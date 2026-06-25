@@ -1,0 +1,42 @@
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
+$errors = New-ErrorList
+
+$script = @'
+from pathlib import Path
+import sys
+
+scan_roots = [
+    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-admin-plugin\src"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-artifacts\src"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-economy-core\src"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-election-core\src"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-narcotics\src"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-world-core\src"),
+    Path(r"D:\Desktop\Copimine\CopiMineClient\src"),
+]
+bad_tokens = ["\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7", "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a", "\u0421\u0403", "\u0421\u201a", "\u0421\u0402", "\u0421\u0453", "?????"]
+
+hits = []
+for root in scan_roots:
+    if not root.exists():
+        continue
+    for path in root.rglob("*.java"):
+        text = path.read_text(encoding="utf-8")
+        if any(token in text for token in bad_tokens):
+            hits.append(str(path))
+
+for hit in hits:
+    print(hit)
+sys.exit(1 if hits else 0)
+'@
+
+$output = $script | python -
+if ($LASTEXITCODE -ne 0) {
+  foreach ($line in ($output -split "`r?`n")) {
+    if (-not [string]::IsNullOrWhiteSpace($line)) {
+      $script:errors.Add("Broken Russian/mojibake found in Java source $line")
+    }
+  }
+}
+
+Throw-IfErrors 'ValidateCopiMineJavaNoBrokenRussianEncoding'

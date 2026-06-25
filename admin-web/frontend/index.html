@@ -1,0 +1,237 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>CopiMine - RP сервер и кабинет</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <div id="toast" class="toast-root" aria-live="polite"></div>
+
+  <section id="login" class="public-site">
+    <header class="public-nav">
+      <a class="public-brand" href="#start" aria-label="CopiMine">
+        <span class="brand-mark brand-mark-small">CM</span>
+        <strong>CopiMine</strong>
+      </a>
+      <nav aria-label="Главные разделы">
+        <a href="#start">Главная</a>
+        <a href="#servers">Как начать</a>
+        <a href="#tops">Состояние</a>
+        <a href="#features">Системы</a>
+        <a href="#rules">Правила</a>
+        <a href="#help">Помощь</a>
+        <a href="#signin">Войти</a>
+        <a class="public-nav-cta" href="#join">Начать играть</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+      </nav>
+    </header>
+
+    <section id="start" class="public-hero public-hero-light">
+      <div class="public-hero-content">
+        <span class="hero-kicker">CopiMine</span>
+        <h1>CopiMine</h1>
+        <p>Minecraft RP-сервер с экономикой AR, выборами игроков, банком, артефактами и личным кабинетом. Сайт показывает только реальные данные сервера или честно пишет, если источник временно недоступен.</p>
+        <div class="public-actions">
+          <a class="btn btn-primary" href="#join">Начать играть</a>
+          <a class="btn btn-secondary" href="#features">Системы сервера</a>
+          <button id="copyIpBtn" class="btn btn-ghost public-ghost" type="button">Скопировать IP</button>
+        </div>
+        <div class="public-status-row">
+          <div class="ip-card">
+            <span>IP сервера</span>
+            <strong id="serverIpText">загружаем адрес...</strong>
+          </div>
+          <div class="server-pulse"><i></i><span id="serverPulseText">Проверяем онлайн и состояние мира...</span></div>
+        </div>
+      </div>
+      <div class="public-hero-art" aria-hidden="true">
+        <img src="/assets/copimine-scene.png" alt="" />
+        <div class="hero-mini-card">
+          <img src="/assets/mc-icons/item/emerald.png" alt="" />
+          <strong>AR-банк</strong>
+          <span>Баланс, PIN, переводы и налог в одном кабинете.</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="servers" class="public-section public-band">
+      <div class="section-head">
+        <span>Сервер</span>
+        <h2>Один мир, понятные игровые системы</h2>
+        <p>Игрок сразу видит, где открыть банк, как участвовать в выборах и где работают лавки артефактов. Всё объяснено коротко и по делу.</p>
+      </div>
+      <div class="showcase-grid">
+        <article class="showcase-card">
+          <img src="/assets/mc-icons/item/grass_block_side.png" alt="" />
+          <strong>Основной мир</strong>
+          <p>Город, роли, экономика AR и игровые события для долгой RP-сессии.</p>
+        </article>
+        <article class="showcase-card">
+          <img src="/assets/mc-icons/item/emerald_block.png" alt="" />
+          <strong>Банк и AR</strong>
+          <p>Единый счёт, PIN, переводы, налог и понятная история операций.</p>
+        </article>
+        <article class="showcase-card">
+          <img src="/assets/mc-icons/item/writable_book.png" alt="" />
+          <strong>Выборы игроков</strong>
+          <p>Заявки, бюллетени, участки, ЦИК и прозрачный подсчёт результатов.</p>
+        </article>
+        <article class="showcase-card">
+          <img src="/assets/mc-icons/item/netherite_sword.png" alt="" />
+          <strong>Артефакты</strong>
+          <p>Официальные предметы выдаются только через защищённую игровую механику.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="tops" class="public-section">
+      <div class="section-head">
+        <span>Состояние</span>
+        <h2>Только реальные данные сервера</h2>
+        <p>Без фейковых топов и выдуманной статистики. Если источник данных не отвечает, сайт так и пишет.</p>
+      </div>
+      <div id="publicStatusGrid" class="public-status-grid"></div>
+      <div id="publicOnlineBoard" class="top-grid"></div>
+    </section>
+
+    <section id="features" class="public-section public-band">
+      <div class="section-head">
+        <span>Системы</span>
+        <h2>Выбери нужный раздел</h2>
+        <p>Короткие карточки объясняют основные механики ещё до входа в кабинет.</p>
+      </div>
+      <div class="feature-switch" id="publicFeatureTabs">
+        <button type="button" class="feature-tab active" data-public-tab="bank">Банк AR</button>
+        <button type="button" class="feature-tab" data-public-tab="elections">Выборы</button>
+        <button type="button" class="feature-tab" data-public-tab="president">Президент</button>
+        <button type="button" class="feature-tab" data-public-tab="artifacts">Артефакты</button>
+      </div>
+      <div class="feature-panel" id="publicFeaturePanel"></div>
+    </section>
+
+    <section id="rules" class="public-section">
+      <div class="section-head">
+        <span>Правила</span>
+        <h2>Коротко и по делу</h2>
+      </div>
+      <div class="rules-grid">
+        <article class="rule-card"><b>01</b><strong>Играем честно</strong><span>Без читов, дюпов, подделки предметов и обхода игровых ограничений.</span></article>
+        <article class="rule-card"><b>02</b><strong>Экономика через AR</strong><span>Операции проходят через банк AR. Обходные схемы считаются нарушением.</span></article>
+        <article class="rule-card"><b>03</b><strong>Уважение к RP</strong><span>Роли, выборы и события работают, когда игроки не ломают чужую игру.</span></article>
+        <article class="rule-card"><b>04</b><strong>Спорные ситуации</strong><span>Собери факты и создай обращение в кабинете. Команда сервера проверит логи.</span></article>
+      </div>
+    </section>
+
+    <section id="join" class="public-section public-band">
+      <div class="section-head">
+        <span>Первый вход</span>
+        <h2>Как начать играть</h2>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card"><b>1</b><strong>Скопируй IP</strong><span>Нажми кнопку выше или возьми адрес из блока состояния сервера.</span></div>
+        <div class="step-card"><b>2</b><strong>Зайди в Minecraft</strong><span>Подключись к версии 1.21.x под своим игровым ником.</span></div>
+        <div class="step-card"><b>3</b><strong>Открой кабинет</strong><span>Создай отдельный сайт-логин, привяжи ник и настрой PIN.</span></div>
+        <div class="step-card"><b>4</b><strong>Играй</strong><span>Пользуйся банком, выборами, налоговой и лавками без лишних команд.</span></div>
+      </div>
+    </section>
+
+    <section id="help" class="public-section">
+      <div class="section-head">
+        <span>Помощь</span>
+        <h2>Что делать, если что-то не получается</h2>
+      </div>
+      <div class="help-grid">
+        <article class="showcase-card"><strong>Не открывается банк</strong><p>Сначала войди в кабинет игрока, привяжи Minecraft-ник и задай PIN.</p></article>
+        <article class="showcase-card"><strong>Лавка артефактов не открылась</strong><p>Обычный игрок открывает лавку только кликом по зарегистрированному блоку лавки.</p></article>
+        <article class="showcase-card"><strong>Предмет не выдался</strong><p>Если инвентарь был полон, товар ждёт в отложенной выдаче в игре и кабинете.</p></article>
+        <article class="showcase-card"><strong>Донат</strong><p>Реальные платежи сейчас отключены. AR не продаётся за реальные деньги.</p></article>
+      </div>
+    </section>
+
+    <section id="signin" class="public-section signin-section">
+      <form id="loginForm" class="login-card" autocomplete="on">
+        <div class="auth-switch" id="authRoleSwitch">
+          <button type="button" class="btn auth-toggle active" data-auth-role="admin">Команда сервера</button>
+          <button type="button" class="btn auth-toggle" data-auth-role="player">Игрок</button>
+        </div>
+
+        <div id="authActionRow" class="auth-switch hidden">
+          <button type="button" class="btn auth-toggle active" data-auth-action="login">Войти</button>
+          <button type="button" class="btn auth-toggle" data-auth-action="register">Регистрация</button>
+        </div>
+        <div class="login-brand">
+          <div class="brand-mark">CM</div>
+          <div>
+            <h2>Вход в CopiMine</h2>
+            <p>Рабочий кабинет сервера</p>
+          </div>
+        </div>
+
+        <div class="login-copy">
+          <strong>Вход для команды сервера и игроков</strong>
+          <span>Логины сайта и пароли хранятся в PostgreSQL auth-хранилище CopiMine. После входа доступны банк, налог, история операций и привязка Minecraft-ника.</span>
+        </div>
+
+        <label for="username">Логин сайта</label>
+        <input id="username" autocomplete="username" spellcheck="false" placeholder="Например, cells_admin" />
+
+        <label for="password">Пароль</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" />
+
+        <button type="submit" class="btn btn-primary btn-wide">Войти</button>
+        <div id="minecraftNameGroup" class="hidden">
+          <label for="playerMinecraftName">Minecraft-ник на сервере</label>
+          <input id="playerMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Например, Cells" />
+        </div>
+
+        <div id="loginError" class="form-error"></div>
+        <p class="login-note">Если доступ не открывается, проверь логин и пароль, затем обратись к старшей команде сервера.</p>
+      </form>
+    </section>
+  </section>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="side-brand">
+        <div class="brand-mark brand-mark-small">CM</div>
+        <div>
+          <strong>CopiMine</strong>
+          <span id="userBadge">пользователь</span>
+        </div>
+      </div>
+
+      <nav id="nav" class="side-nav" aria-label="Разделы кабинета"></nav>
+
+      <div class="side-footer">
+        <div id="miniHealth" class="mini-health">Проверка статуса...</div>
+        <button id="logout" class="btn btn-ghost btn-wide">Выйти</button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <button id="mobileNavToggle" class="btn icon-btn mobile-only" aria-label="Открыть меню">☰</button>
+        <div class="page-heading">
+          <h1 id="pageTitle">Главная</h1>
+          <p id="pageSubtitle">Операционный центр сервера</p>
+        </div>
+        <div class="top-actions">
+          <button id="guestPagesBtn" class="btn btn-secondary" type="button">Гостевые страницы</button>
+          <div id="liveBadge" class="status-chip status-neutral">live</div>
+          <div id="lastUpdate" class="last-update">нет данных</div>
+          <button id="refreshBtn" class="btn btn-secondary">Обновить</button>
+        </div>
+      </header>
+
+      <section id="view" class="view" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

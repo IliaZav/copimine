@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "item_type": "RP_NARCOTIC",
+  "pdc_item_type": "RP_NARCOTIC",
+  "default_texture_mode": "VANILLA",
+  "custom_texture_mode": "CUSTOM",
+  "items": [
+    {
+      "id": "feta",
+      "display_name": "Фета",
+      "base_material": "WHITE_DYE",
+      "custom_model_data": 810001,
+      "model": "copimine:item/feta",
+      "texture": "copimine:item/narcotics/feta",
+      "texture_key": "narcotic_feta",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "kola",
+      "display_name": "Кола",
+      "base_material": "SUGAR",
+      "custom_model_data": 810002,
+      "model": "copimine:item/kola",
+      "texture": "copimine:item/narcotics/kola",
+      "texture_key": "narcotic_kola",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "girion",
+      "display_name": "Гирион",
+      "base_material": "SLIME_BALL",
+      "custom_model_data": 810003,
+      "model": "copimine:item/girion",
+      "texture": "copimine:item/narcotics/girion",
+      "texture_key": "narcotic_girion",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "sbp",
+      "display_name": "СБП",
+      "base_material": "GOLD_NUGGET",
+      "custom_model_data": 810004,
+      "model": "copimine:item/sbp",
+      "texture": "copimine:item/narcotics/sbp",
+      "texture_key": "narcotic_sbp",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "sos",
+      "display_name": "СОС",
+      "base_material": "BONE_MEAL",
+      "custom_model_data": 810005,
+      "model": "copimine:item/sos",
+      "texture": "copimine:item/narcotics/sos",
+      "texture_key": "narcotic_sos",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "drun",
+      "display_name": "Друн",
+      "base_material": "PAPER",
+      "custom_model_data": 810006,
+      "model": "copimine:item/drun",
+      "texture": "copimine:item/narcotics/drun",
+      "texture_key": "narcotic_drun",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "chups",
+      "display_name": "Чупс",
+      "base_material": "BLUE_STAINED_GLASS_PANE",
+      "custom_model_data": 810007,
+      "model": "copimine:item/chups",
+      "texture": "copimine:item/narcotics/chups",
+      "texture_key": "narcotic_chups",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "borshevik",
+      "display_name": "Борщевик",
+      "base_material": "KELP",
+      "custom_model_data": 810008,
+      "model": "copimine:item/borshevik",
+      "texture": "copimine:item/narcotics/borshevik",
+      "texture_key": "narcotic_borshevik",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    },
+    {
+      "id": "zhuzevo",
+      "display_name": "Жужево",
+      "base_material": "BROWN_DYE",
+      "custom_model_data": 810009,
+      "model": "copimine:item/zhuzevo",
+      "texture": "copimine:item/narcotics/zhuzevo",
+      "texture_key": "narcotic_zhuzevo",
+      "source": "self-made",
+      "license": "Internal CopiMine self-made asset"
+    }
+  ]
+}

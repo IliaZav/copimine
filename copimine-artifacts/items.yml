@@ -1,0 +1,17 @@
+items:
+  - id: zmei_gorynych
+    category: WEAPON
+    material: NETHERITE_SWORD
+    custom_model_data: 10001
+    name: "&6Змей Горыныч"
+    rarity: LEGENDARY
+    price_ar: 500
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 12
+    effect: ZMEI_GORYNYCH_POOP
+    effect_chance_percent: 10
+    visual_effect_id: INVERTED_SCREEN
+    lore:
+      - "&7Официальный артефакт CopiMine"
+      - "&7Иногда вызывает хаотичный вымышленный эффект."

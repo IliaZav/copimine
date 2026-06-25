@@ -1,0 +1,67 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/desaturate_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE100"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/color_convolve_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE101"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/scan_pincushion_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE102"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/green_noise_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE103"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/invert_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE104"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/wobble_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE105"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/blobs_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE106"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/pencil_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE107"]
+    },
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/narcotics/chaos_overlay.png",
+      "ascent": 240,
+      "height": 256,
+      "chars": ["\uE108"]
+    }
+  ]
+}

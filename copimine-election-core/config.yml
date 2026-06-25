@@ -1,0 +1,28 @@
+custom-block-visuals:
+  enabled: true
+  base-material: PAPER
+  models:
+    ATM:
+      model-id: atm_terminal
+      custom-model-data: 12002
+      scale: 1.01
+      offset-y: 0.5
+      label: "Банк CopiMine"
+    POLLING_STATION:
+      model-id: polling_station_marker
+      custom-model-data: 14002
+      scale: 1.01
+      offset-y: 0.5
+      label: "Участок ЦИК"
+    TAX_OFFICE:
+      model-id: tax_office_marker
+      custom-model-data: 14003
+      scale: 1.01
+      offset-y: 0.5
+      label: "Налоговая"
+    ARTIFACT_SHOP:
+      model-id: artifact_shop_marker
+      custom-model-data: 14004
+      scale: 1.01
+      offset-y: 0.5
+      label: "Лавка"

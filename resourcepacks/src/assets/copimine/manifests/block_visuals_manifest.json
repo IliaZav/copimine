@@ -1,0 +1,32 @@
+{
+  "visuals": [
+    {
+      "kind": "ATM",
+      "linked_plugin": "CopiMineUltimateAdminPlus",
+      "model_id": "atm_terminal",
+      "custom_model_data": 12002,
+      "base_material": "PAPER"
+    },
+    {
+      "kind": "POLLING_STATION",
+      "linked_plugin": "CopiMineElectionCore",
+      "model_id": "polling_station_marker",
+      "custom_model_data": 14002,
+      "base_material": "PAPER"
+    },
+    {
+      "kind": "TAX_OFFICE",
+      "linked_plugin": "CopiMineElectionCore",
+      "model_id": "tax_office_marker",
+      "custom_model_data": 14003,
+      "base_material": "PAPER"
+    },
+    {
+      "kind": "ARTIFACT_SHOP",
+      "linked_plugin": "CopiMineArtifacts",
+      "model_id": "artifact_shop_marker",
+      "custom_model_data": 14004,
+      "base_material": "PAPER"
+    }
+  ]
+}

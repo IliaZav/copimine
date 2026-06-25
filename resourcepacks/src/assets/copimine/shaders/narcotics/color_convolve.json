@@ -1,0 +1,12 @@
+﻿{
+    "id":  "COLOR_CONVOLVE",
+    "kind":  "client_visual_profile_descriptor",
+    "runtime_supported":  false,
+    "placeholder_only":  true,
+    "server_forceable":  false,
+    "runtime":  "CLIENT_MOD_OR_DOCUMENTATION_ONLY",
+    "reason":  "Paper server cannot force per-player client shader execution without an optional client-side mod.",
+    "fallback_runtime":  "SERVER_PARTICLE_FALLBACK",
+    "source":  "self-made",
+    "license":  "Internal CopiMine self-made asset"
+}

@@ -1,0 +1,21 @@
+# CopiMineArtifacts
+# Runtime settings are intentionally minimal.
+# PostgreSQL credentials are loaded from /opt/copimine/admin-web/.env or COPIMINE_ENV_FILE.
+# The catalog is stored in items.yml and synchronized to PostgreSQL on startup/reload.
+
+debug_gui: false
+
+performance:
+  pending-hints-seconds: 60
+  session-cleanup-seconds: 60
+  session-ttl-seconds: 300
+
+custom-block-visuals:
+  enabled: true
+  models:
+    ARTIFACT_SHOP:
+      model-id: artifact_shop_marker
+      custom-model-data: 14004
+      scale: 1.01
+      offset-y: 0.5
+      label: "Лавка"

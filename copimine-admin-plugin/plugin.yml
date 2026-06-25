@@ -1,0 +1,70 @@
+name: CopiMineUltimateAdminPlus
+version: '9.1.0-postgres-v4'
+main: me.copimine.ultimateplus.CopiMineUltimateAdminPlus
+api-version: '1.21'
+author: SudoKillDash9
+load: POSTWORLD
+libraries:
+  - org.postgresql:postgresql:42.7.5
+depend:
+  - CopiMineEconomyCore
+softdepend:
+  - PlaceholderAPI
+  - LuckPerms
+  - Essentials
+  - voicechat
+  - CopiMineWorldCore
+commands:
+  cmultra:
+    description: "Stable CopiMine admin: hub, players and bridges"
+    usage: /cmultra
+    aliases: [cmplus, uadmin, ultraadmin, adminka]
+  cadm:
+    description: "CopiMine unified admin hub"
+    usage: /cadm
+    aliases: [copimine, cadmin, cpanel, adminhub, cpa, cpadmin]
+  ar:
+    description: "Open CopiMine economy hub"
+    usage: /ar
+    aliases: [ars, arreconomy, aradmin]
+  cmbank:
+    description: "Open CopiMine bank and ATM GUI"
+    usage: /cmbank
+    aliases: [bank, cbank, bankar]
+  appeal:
+    description: "CopiMine staff appeal"
+    usage: /appeal <problem>
+    aliases: [adminrequest, problem, request, helpadm]
+  report:
+    description: "CopiMine staff report"
+    usage: /report <problem>
+    aliases: [problem, helpme, ticket]
+  rpguard:
+    description: "Merged RP command restrictions diagnostics"
+    usage: /rpguard
+    aliases: [cmrpguard, rpcommands]
+permissions:
+  copimine.admin:
+    description: Full CopiMine admin access
+    default: op
+  copimine.economy.admin:
+    description: Manage CopiMine economy hub
+    default: op
+  copimine.bank.admin:
+    description: Manage CopiMine bank and ATM bridge
+    default: op
+  copimine.diagnostics:
+    description: View CopiMine diagnostics and readiness reports
+    default: op
+  copimine.players.admin:
+    description: Manage players
+    default: op
+  copimine.reports.admin:
+    description: Manage player reports
+    default: op
+  copimine.sidebar:
+    description: Toggle election sidebar
+    default: true
+  copimine.rpguard.bypass:
+    description: Allows bypassing RP command restrictions
+    default: op

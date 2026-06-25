@@ -1,0 +1,102 @@
+{
+  "items": [
+    {
+      "id": "zmei_gorynych",
+      "custom_model_data": 10001,
+      "base_material": "netherite_sword",
+      "model": "copimine:item/zmei_gorynych",
+      "texture": "copimine:item/zmei_gorynych"
+    },
+    {
+      "id": "feta",
+      "custom_model_data": 810001,
+      "base_material": "white_dye",
+      "model": "copimine:item/feta",
+      "texture": "copimine:item/narcotics/feta"
+    },
+    {
+      "id": "kola",
+      "custom_model_data": 810002,
+      "base_material": "sugar",
+      "model": "copimine:item/kola",
+      "texture": "copimine:item/narcotics/kola"
+    },
+    {
+      "id": "girion",
+      "custom_model_data": 810003,
+      "base_material": "slime_ball",
+      "model": "copimine:item/girion",
+      "texture": "copimine:item/narcotics/girion"
+    },
+    {
+      "id": "sbp",
+      "custom_model_data": 810004,
+      "base_material": "gold_nugget",
+      "model": "copimine:item/sbp",
+      "texture": "copimine:item/narcotics/sbp"
+    },
+    {
+      "id": "sos",
+      "custom_model_data": 810005,
+      "base_material": "bone_meal",
+      "model": "copimine:item/sos",
+      "texture": "copimine:item/narcotics/sos"
+    },
+    {
+      "id": "drun",
+      "custom_model_data": 810006,
+      "base_material": "paper",
+      "model": "copimine:item/drun",
+      "texture": "copimine:item/narcotics/drun"
+    },
+    {
+      "id": "chups",
+      "custom_model_data": 810007,
+      "base_material": "blue_stained_glass_pane",
+      "model": "copimine:item/chups",
+      "texture": "copimine:item/narcotics/chups"
+    },
+    {
+      "id": "borshevik",
+      "custom_model_data": 810008,
+      "base_material": "kelp",
+      "model": "copimine:item/borshevik",
+      "texture": "copimine:item/narcotics/borshevik"
+    },
+    {
+      "id": "zhuzevo",
+      "custom_model_data": 810009,
+      "base_material": "brown_dye",
+      "model": "copimine:item/zhuzevo",
+      "texture": "copimine:item/narcotics/zhuzevo"
+    },
+    {
+      "id": "atm_terminal",
+      "custom_model_data": 12002,
+      "base_material": "paper",
+      "model": "copimine:item/block/atm_terminal",
+      "texture": "copimine:block/atm_terminal"
+    },
+    {
+      "id": "polling_station_marker",
+      "custom_model_data": 14002,
+      "base_material": "paper",
+      "model": "copimine:item/block/polling_station_marker",
+      "texture": "copimine:block/polling_station_marker"
+    },
+    {
+      "id": "tax_office_marker",
+      "custom_model_data": 14003,
+      "base_material": "paper",
+      "model": "copimine:item/block/tax_office_marker",
+      "texture": "copimine:block/tax_office_marker"
+    },
+    {
+      "id": "artifact_shop_marker",
+      "custom_model_data": 14004,
+      "base_material": "paper",
+      "model": "copimine:item/block/artifact_shop_marker",
+      "texture": "copimine:block/artifact_shop_marker"
+    }
+  ]
+}

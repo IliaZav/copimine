@@ -1,0 +1,34 @@
+gui:
+  bank:
+    title: "Банк CopiMine"
+    balance: "Баланс"
+    deposit: "Внести AR"
+    withdraw: "Снять AR"
+    transfer: "Перевести игроку"
+    history: "История"
+    pin: "PIN-код"
+    atms: "Банкоматы"
+  atm:
+    title: "Банкомат CopiMine"
+    create: "Создать банкомат по блоку"
+    archive: "Отправить банкомат в архив"
+    refresh: "Обновить"
+    close: "Закрыть"
+  shop:
+    title: "Лавка артефактов"
+    catalog: "Каталог"
+    purchases: "Покупки"
+    delivery: "Доставка"
+    repair: "Ремонт"
+    suspicious: "Подозрительные предметы"
+    settings: "Настройки"
+    diagnostics: "Диагностика"
+  pin:
+    title: "Введите PIN"
+    wrong: "Неверный PIN"
+    confirmed: "PIN подтверждён"
+  errors:
+    generic: "Не удалось выполнить действие. Подробности записаны в лог."
+    db: "Ошибка базы данных. Сообщите администратору."
+    no_money: "Недостаточно AR."
+    inventory_full: "Нет места в инвентаре."

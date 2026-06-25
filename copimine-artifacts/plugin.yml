@@ -1,0 +1,41 @@
+name: CopiMineArtifacts
+version: '1.0.0-autocashier'
+main: me.copimine.artifacts.CopiMineArtifacts
+api-version: '1.21'
+author: OpenAI Codex
+load: POSTWORLD
+libraries:
+  - org.postgresql:postgresql:42.7.5
+depend:
+  - CopiMineEconomyCore
+softdepend:
+  - CopiMineUltimateAdminPlus
+commands:
+  cmartifacts:
+    description: CopiMine artifacts autocashier and admin tools
+    usage: /cmartifacts
+    aliases: [cartifacts, artifactshop]
+permissions:
+  copimine.artifacts.admin:
+    description: Manage artifact shops and configuration
+    default: op
+    children:
+      copimine.artifacts.shop.create: true
+      copimine.artifacts.shop.remove: true
+      copimine.artifacts.shop.list: true
+      copimine.artifacts.reload: true
+  copimine.artifacts.shop.create:
+    description: Create artifact shop blocks
+    default: op
+  copimine.artifacts.shop.remove:
+    description: Remove artifact shop blocks
+    default: op
+  copimine.artifacts.shop.list:
+    description: List artifact shop blocks
+    default: op
+  copimine.artifacts.reload:
+    description: Reload artifact catalog and config
+    default: op
+  copimine.artifacts.use:
+    description: Use artifact shops
+    default: true

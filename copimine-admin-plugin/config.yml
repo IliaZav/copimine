@@ -1,0 +1,9 @@
+custom-block-visuals:
+  enabled: true
+  models:
+    ATM:
+      model-id: atm_terminal
+      custom-model-data: 12002
+      scale: 1.01
+      offset-y: 0.5
+      label: "Банк CopiMine"

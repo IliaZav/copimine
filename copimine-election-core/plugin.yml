@@ -1,0 +1,31 @@
+name: CopiMineElectionCore
+version: '1.0.0-election-rebuild'
+main: me.copimine.electioncore.CopiMineElectionCore
+api-version: '1.21'
+author: OpenAI Codex
+load: POSTWORLD
+libraries:
+  - org.postgresql:postgresql:42.7.5
+depend:
+  - CopiMineEconomyCore
+softdepend:
+  - PlaceholderAPI
+  - LuckPerms
+  - Essentials
+commands:
+  hidelive:
+    description: Hide or restore the election live sidebar for yourself
+    usage: /hidelive
+permissions:
+  copimine.election.admin:
+    description: Full CopiMine election administration
+    default: op
+  copimine.election.cik:
+    description: CIK chair actions
+    default: false
+  copimine.election.president:
+    description: President actions
+    default: false
+  copimine.election.debug:
+    description: Election and sidebar debug access
+    default: op

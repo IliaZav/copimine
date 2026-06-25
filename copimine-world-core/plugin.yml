@@ -1,0 +1,14 @@
+name: CopiMineWorldCore
+version: '1.0.0'
+main: me.copimine.worldcore.CopiMineWorldCore
+api-version: '1.21'
+author: OpenAI Codex
+load: POSTWORLD
+commands:
+  cmworld:
+    description: Manage CopiMine world access and borders
+    usage: /cmworld
+permissions:
+  copimine.world.admin:
+    description: Manage CopiMine world limits and world access
+    default: op

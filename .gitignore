@@ -1,0 +1,80 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+
+# Java / build outputs
+build/
+target/
+out/
+*.class
+*.jar
+
+# Archives / dumps
+*.zip
+*.tar
+*.gz
+*.7z
+*.bak
+*.bak.*
+*.backup
+*.backup-*
+*.before-*
+*.broken-*
+*.old
+
+# Local secrets / runtime state
+.env
+*.log
+*.pid
+
+# SQLite / local DB runtime files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Project-local generated/runtime dirs
+admin-web/.venv/
+admin-web/backups/
+admin-web/data/
+admin-web/backend/__pycache__/
+admin-web/scripts/__pycache__/
+admin-web/backend/*.backup-*
+admin-web/backend/*.before-*
+admin-web/backend/*.broken-*
+copimine-db-backups/
+
+# Resource pack build output
+resourcepacks/build/
+
+# Minecraft server runtime
+minecraft/server/**
+!minecraft/server/
+!minecraft/server/server.properties
+!minecraft/server/bukkit.yml
+!minecraft/server/commands.yml
+!minecraft/server/pufferfish.yml
+!minecraft/server/purpur.yml
+!minecraft/server/spigot.yml
+!minecraft/server/wepif.yml
+!minecraft/server/config/
+!minecraft/server/config/paper-global.yml
+!minecraft/server/config/paper-world-defaults.yml

@@ -1,0 +1,79 @@
+$ErrorActionPreference = 'Stop'
+
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
+$source = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
+$text = Get-Content -Raw -Encoding UTF8 $source
+$errors = New-Object System.Collections.Generic.List[string]
+
+function Require-Contains([string]$needle, [string]$message) {
+  if (-not $text.Contains($needle)) { $script:errors.Add($message) }
+}
+
+function Require-Regex([string]$pattern, [string]$message) {
+  if (-not [regex]::IsMatch($text, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+    $script:errors.Add($message)
+  }
+}
+
+function Slice-Between([string]$text, [string]$startNeedle, [string]$endNeedle) {
+  $start = $text.IndexOf($startNeedle)
+  if ($start -lt 0) { return "" }
+  $end = $text.IndexOf($endNeedle, $start + $startNeedle.Length)
+  if ($end -lt 0) { return $text.Substring($start) }
+  return $text.Substring($start, $end - $start)
+}
+
+Require-Contains 'cmv7_official_item_bindings' 'Official role items must have a persistent binding/recovery table.'
+Require-Contains 'giveCikSealIfNeeded' 'CIK chair must be able to recover a personal seal from role/admin UI.'
+Require-Contains 'givePresidentMandateIfNeeded' 'President must be able to recover a personal mandate from role/admin UI.'
+Require-Contains 'hasActiveOfficialItemBinding' 'Recovery must not duplicate an already-bound official item.'
+Require-Contains 'hasOwnedOfficialItem' 'Recovery must check whether the player already carries the official item.'
+Require-Contains 'markOfficialItemDestroyed' 'Destroy-on-Q must revoke the active binding for recovery.'
+Require-Contains 'restoreOfficialItem' 'Admin/role UI must expose safe official item recovery.'
+Require-Contains 'official:recover:' 'Role/admin UI must route official item recovery through explicit actions.'
+
+Require-Contains 'cik_seal' 'CIK seal item must use a stable PDC type.'
+Require-Contains 'president_mandate' 'President mandate item must use a stable PDC type.'
+Require-Regex 'handleDestroyableOfficialDrop[\s\S]*markOfficialItemDestroyed' 'Destroying a seal or mandate with Q must update the official item binding.'
+
+$onInteract = Slice-Between $text 'public void onInteract(PlayerInteractEvent e)' '@EventHandler(priority=EventPriority.HIGHEST) public void onPlace'
+if ([string]::IsNullOrWhiteSpace($onInteract)) {
+  $errors.Add('Could not isolate onInteract station click handler.')
+} else {
+  $depositIdx = $onInteract.IndexOf('depositSealedBallotAtStation')
+  $citizenIdx = $onInteract.IndexOf('sendPollingStationCitizenInfo')
+  $hubIdx = $onInteract.IndexOf('openPollingStationHub')
+  $roleIssueIdx = $onInteract.IndexOf('giveRoleOfficialItemsAtStation')
+  if ($depositIdx -lt 0 -or $citizenIdx -lt 0 -or $hubIdx -lt 0) {
+    $errors.Add('Station click handler must contain deposit, citizen info, and role hub branches.')
+  }
+  if ($roleIssueIdx -ge 0) {
+    $errors.Add('Plain station click must not auto-issue CIK seal or president mandate.')
+  }
+  if ($depositIdx -ge 0 -and $citizenIdx -ge 0 -and $depositIdx -gt $citizenIdx) {
+    $errors.Add('Station click must try sealed ballot deposit before ordinary citizen info.')
+  }
+  if ($citizenIdx -ge 0 -and $hubIdx -ge 0 -and $citizenIdx -gt $hubIdx) {
+    $errors.Add('Station click must send ordinary citizen info before opening any role/admin hub.')
+  }
+}
+
+Require-Contains 'openElectionPreflight' 'Chair/admin must have a preflight checklist screen before opening voting.'
+Require-Contains 'preflightRows' 'Preflight checks must be generated in one shared helper.'
+Require-Contains 'ULTRA7_PREFLIGHT' 'Preflight checks must be audit-visible.'
+Require-Regex 'openChairPanel[\s\S]*open:preflight' 'Chair panel must expose the preflight checklist.'
+Require-Regex 'openPollingStations[\s\S]*open:preflight' 'Polling station menu must expose the preflight checklist.'
+Require-Contains 'PREFLIGHT_STATIONS' 'Preflight UI must cover polling stations.'
+Require-Contains 'PREFLIGHT_CANDIDATES' 'Preflight UI must cover candidates.'
+Require-Contains 'PREFLIGHT_BALLOTS' 'Preflight UI must cover ballots.'
+Require-Contains 'PREFLIGHT_ITEM_GUARD' 'Preflight UI must cover official item protection.'
+
+Require-Regex 'createCikSealItem[\s\S]*cik_seal[\s\S]*tagElectionItem' 'CIK seal must have polished lore and PDC binding.'
+Require-Regex 'createPresidentMandateItem[\s\S]*president_mandate[\s\S]*tagElectionItem' 'President mandate must have polished lore and PDC binding.'
+Require-Regex 'restoreOfficialItem[\s\S]*giveCikSealIfNeeded[\s\S]*givePresidentMandateIfNeeded[\s\S]*sound' 'Role recovery must provide visible RP feedback.'
+
+if ($errors.Count -gt 0) {
+  throw ("Role official items / preflight validation failed:`n - " + ($errors -join "`n - "))
+}
+
+Write-Host 'Role official item and preflight validation passed.'

@@ -1,0 +1,29 @@
+world_limits:
+  overworld:
+    enabled: true
+    world_names:
+      - world
+    center_mode: SPAWN
+    radius: 10000
+    use_vanilla_worldborder: true
+    block_teleport_outside: true
+    correct_players_outside: true
+    warning_distance: 64
+
+world_access:
+  nether:
+    enabled: false
+    world_names:
+      - world_nether
+    allow_portals: false
+    allow_commands_teleport: false
+    redirect_world: world
+    redirect_to_safe_spawn: true
+  end:
+    enabled: false
+    world_names:
+      - world_the_end
+    allow_portals: false
+    allow_commands_teleport: false
+    redirect_world: world
+    redirect_to_safe_spawn: true

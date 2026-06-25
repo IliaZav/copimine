@@ -1,0 +1,17 @@
+[Unit]
+Description=CopiMine Ultimate Admin Web Panel
+After=network.target
+
+[Service]
+Type=simple
+User=qwerty
+WorkingDirectory=/opt/copimine/admin-web
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/copimine/admin-web/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8090 --proxy-headers
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

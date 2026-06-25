@@ -1,0 +1,32 @@
+CopiMine Ultimate Admin v2.1 Discord module test report
+
+Local verification date: 2026-05-03
+
+Passed:
+- python -m py_compile backend/main.py backend/discord_bot.py scripts/backend_smoketest.py scripts/security_selftest.py
+- python scripts/backend_smoketest.py
+- python scripts/security_selftest.py
+- node --check frontend/assets/app.js
+- discord bot missing-config smoke:
+  - DISCORD_BOT_TOKEN=CHANGE_ME and DISCORD_BOT_API_KEY=CHANGE_ME keep the bot alive with a clear configuration warning
+- backend Discord smoke:
+  - POST /api/applications creates a panel-owned application and queues Discord publication
+  - POST /api/reports creates a panel-owned report and queues Discord publication
+  - /api/discord/* bot endpoints reject a wrong API key
+  - bot status patches update application/report status and audit state
+  - POST /api/discord/actions simulates a Discord button and updates a report status
+- uvicorn HTTP smoke on 127.0.0.1:8099:
+  - GET /api/health returned 200 and version 2.1.0
+  - GET / returned 200 and loaded the static frontend shell
+- release archive scan:
+  - no .env
+  - no admin-web/data
+  - no admin-web/backups
+  - no backend/main.py.backup-login-fix
+  - no known old admin-hash/password markers in shipped text files
+
+Notes:
+- Browser automation with the local Playwright CLI wrapper was not used because npx is not installed in this Windows environment.
+- A temporary Python 3.12 venv outside the project was used for dependency-based tests.
+- The system Python 3.14 cannot install the pinned pydantic-core version; production Ubuntu should use the server Python version already used by the project, typically Python 3.10-3.12.
+- Current backend smoketest now skips with an explicit message on Python/venv ABI mismatch unless COPIMINE_STRICT_SMOKE=1 is set.

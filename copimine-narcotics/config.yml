@@ -1,0 +1,251 @@
+runtime:
+  narcotic_version: 1
+  strict_release_mode: true
+  async_threads: 2
+
+database:
+  schema_version: 1
+  preload_brewing_cache_on_enable: true
+
+cauldron:
+  require_full_water: true
+  clear_cauldron_on_completion: true
+  drop_ingredients_on_break_or_water_loss: true
+
+usage:
+  consume_cooldown_seconds: 15
+  usage_window_seconds: 900
+  overdose_threshold: 100
+  duration_override_seconds: 0
+  clear_normal_effects_before_new_use: true
+  milk_blocks_during_overdose: true
+  zhuzevo_forces_overdose: true
+
+textures:
+  mode: VANILLA
+
+client_bridge:
+  enabled: true
+  require_client_mod: false
+  kick_if_missing_client: false
+  handshake_timeout_seconds: 10
+  prefer_client_visuals: true
+  fallback_to_server_overlay: true
+  fallback_to_particles: true
+
+visuals:
+  enabled: false
+  mode: AUTO
+  allow_client_mod_visuals: true
+  allow_server_resource_pack_overlay: true
+  allow_server_particle_fallback: true
+  server_overlay:
+    use_titles: true
+    max_duration_seconds: 60
+    clear_on_stop: true
+  effects:
+    DESATURATE: false
+    COLOR_CONVOLVE: false
+    SCAN_PINCUSHION: false
+    GREEN_NOISE: false
+    INVERT: false
+    WOBBLE: false
+    BLOBS: false
+    PENCIL: false
+    CHAOS: false
+
+storage:
+  allow_player_inventory: true
+  allow_chest: true
+  allow_barrel: true
+  allow_shulker_box: true
+  allow_ender_chest: true
+  block_processing_inventories: true
+
+messages:
+  no_permission: "&cУ вас нет доступа."
+  reload_ok: "&aCopiMineNarcotics обновлён."
+  state_reset_ok: "&aСостояние наркотиков очищено."
+  state_reset_need_confirm: "&eПовторите команду с &fconfirm&e, чтобы очистить только narcotics-состояние."
+  selfcheck_ok: "&aПроверка CopiMineNarcotics завершена."
+  visuals_enabled: "&aVisual runtime включён."
+  visuals_disabled: "&eVisual runtime отключён. Работает только честный server fallback, если он разрешён."
+  texture_mode_set: "&aРежим текстур: &f%s"
+  visual_mode_set: "&aРежим визуала: &f%s"
+  visual_effect_set: "&aЭффект &f%s&a: &f%s"
+  item_given: "&aВыдано: &f%s&a -> &f%s"
+  all_given: "&aИгроку &f%s&a выдан весь набор."
+  player_not_found: "&cИгрок не найден или не в сети."
+  unknown_item: "&cНеизвестный предмет."
+  consume_cooldown: "&eПодождите ещё &f%s&e сек."
+  processing_blocked: "&cГотовые RP-предметы нельзя класть в обработку и автоматику."
+  old_runtime_disabled: "&cСтарый narcotics runtime отключён."
+
+items:
+  feta:
+    display_name: "&fФета"
+    material: WHITE_DYE
+    texture_key: narcotic_feta
+    custom_model_data: 810001
+    overdose_weight: 30
+    visual_effect: DESATURATE
+    recipe:
+      - material:WHITE_DYE
+      - material:GLOWSTONE_DUST
+      - material:RABBIT_FOOT
+      - potion:WEAKNESS
+    normal_effects:
+      - type:SPEED,amplifier:1,duration_seconds:90
+      - type:RESISTANCE,amplifier:0,duration_seconds:40
+    overdose_effects:
+      - type:POISON,amplifier:0,duration_seconds:90
+      - type:WEAKNESS,amplifier:0,duration_seconds:90
+      - type:SLOWNESS,amplifier:0,duration_seconds:90
+
+  kola:
+    display_name: "&fКола"
+    material: SUGAR
+    texture_key: narcotic_kola
+    custom_model_data: 810002
+    overdose_weight: 35
+    visual_effect: COLOR_CONVOLVE
+    recipe:
+      - material:SUGAR
+      - material:DIAMOND
+      - material:JUNGLE_LEAVES
+    normal_effects:
+      - type:SPEED,amplifier:1,duration_seconds:180
+    overdose_effects:
+      - type:POISON,amplifier:0,duration_seconds:90
+      - type:HUNGER,amplifier:0,duration_seconds:180
+      - type:WEAKNESS,amplifier:0,duration_seconds:120
+
+  girion:
+    display_name: "&aГирион"
+    material: SLIME_BALL
+    texture_key: narcotic_girion
+    custom_model_data: 810003
+    overdose_weight: 40
+    visual_effect: SCAN_PINCUSHION
+    recipe:
+      - material:SLIME_BLOCK
+      - material:TURTLE_HELMET
+      - material:EMERALD
+    normal_effects:
+      - type:REGENERATION,amplifier:0,duration_seconds:90
+      - type:RESISTANCE,amplifier:0,duration_seconds:40
+      - type:ABSORPTION,amplifier:0,duration_seconds:120
+    overdose_effects:
+      - type:SLOWNESS,amplifier:3,duration_seconds:20
+      - type:WITHER,amplifier:0,duration_seconds:40
+
+  sbp:
+    display_name: "&6Сбп"
+    material: GOLD_NUGGET
+    texture_key: narcotic_sbp
+    custom_model_data: 810004
+    overdose_weight: 30
+    visual_effect: GREEN_NOISE
+    recipe:
+      - material:GOLD_NUGGET
+      - material:GOLDEN_CARROT
+      - material:STRING
+    normal_effects:
+      - type:LUCK,amplifier:0,duration_seconds:300
+      - type:INVISIBILITY,amplifier:0,duration_seconds:180
+    overdose_effects:
+      - type:WEAVING,amplifier:0,duration_seconds:180
+      - type:CONFUSION,amplifier:0,duration_seconds:120
+
+  sos:
+    display_name: "&fСось"
+    material: BONE_MEAL
+    texture_key: narcotic_sos
+    custom_model_data: 810005
+    overdose_weight: 35
+    visual_effect: INVERT
+    recipe:
+      - material:BONE
+      - material:IRON_BLOCK
+      - material:GHAST_TEAR
+    normal_effects:
+      - type:STRENGTH,amplifier:1,duration_seconds:90
+      - type:JUMP_BOOST,amplifier:1,duration_seconds:90
+    overdose_effects:
+      - type:BLINDNESS,amplifier:0,duration_seconds:20
+      - type:SLOWNESS,amplifier:0,duration_seconds:90
+
+  drun:
+    display_name: "&dДрун"
+    material: PAPER
+    texture_key: narcotic_drun
+    custom_model_data: 810006
+    overdose_weight: 25
+    visual_effect: WOBBLE
+    recipe:
+      - material:AMETHYST_BLOCK
+      - material:END_ROD
+      - material:IRON_INGOT
+    normal_effects:
+      - type:HASTE,amplifier:1,duration_seconds:60
+      - type:GLOWING,amplifier:0,duration_seconds:40
+    overdose_effects:
+      - type:HUNGER,amplifier:0,duration_seconds:60
+      - type:UNLUCK,amplifier:0,duration_seconds:60
+
+  chups:
+    display_name: "&bЧупс"
+    material: BLUE_STAINED_GLASS_PANE
+    texture_key: narcotic_chups
+    custom_model_data: 810007
+    overdose_weight: 30
+    visual_effect: BLOBS
+    recipe:
+      - material:BLUE_STAINED_GLASS
+      - potion:SPEED
+      - material:COCOA_BEANS
+      - material:IRON_NUGGET
+    normal_effects:
+      - type:SPEED,amplifier:0,duration_seconds:90
+      - type:WATER_BREATHING,amplifier:0,duration_seconds:180
+      - type:REGENERATION,amplifier:0,duration_seconds:90
+      - type:SLOW_FALLING,amplifier:0,duration_seconds:90
+    overdose_effects:
+      - type:POISON,amplifier:0,duration_seconds:120
+      - type:WITHER,amplifier:0,duration_seconds:40
+      - type:HUNGER,amplifier:0,duration_seconds:180
+      - type:BAD_OMEN,amplifier:0,duration_seconds:6000
+
+  borshevik:
+    display_name: "&2Борщевик"
+    material: KELP
+    texture_key: narcotic_borshevik
+    custom_model_data: 810008
+    overdose_weight: 40
+    visual_effect: PENCIL
+    recipe:
+      - material:LARGE_FERN
+      - material:DRIED_KELP_BLOCK
+      - material:SUGAR_CANE
+    normal_effects:
+      - type:REGENERATION,amplifier:0,duration_seconds:45
+      - type:FIRE_RESISTANCE,amplifier:0,duration_seconds:180
+    overdose_effects:
+      - type:DARKNESS,amplifier:0,duration_seconds:60
+      - type:HARM,amplifier:0,duration_seconds:1
+
+  zhuzevo:
+    display_name: "&6Жужево"
+    material: BROWN_DYE
+    fallback_material: ROTTEN_FLESH
+    texture_key: narcotic_zhuzevo
+    custom_model_data: 810009
+    overdose_weight: 100
+    visual_effect: CHAOS
+    recipe: []
+    normal_effects: []
+    overdose_effects:
+      - type:POISON,amplifier:1,duration_seconds:120
+      - type:WITHER,amplifier:0,duration_seconds:60
+      - type:SLOWNESS,amplifier:1,duration_seconds:90
+      - type:CONFUSION,amplifier:0,duration_seconds:120

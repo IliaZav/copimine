@@ -23,6 +23,8 @@ node_modules/
 build/
 target/
 out/
+.gradle/
+.gradle-dist/
 *.class
 *.jar
 

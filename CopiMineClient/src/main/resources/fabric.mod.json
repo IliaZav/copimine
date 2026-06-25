@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "copimineclient",
+  "version": "${version}",
+  "name": "CopiMineClient",
+  "description": "Optional client visuals for CopiMine narcotics without Iris or OptiFine.",
+  "authors": [
+    "OpenAI Codex"
+  ],
+  "license": "Proprietary",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "me.copimine.client.CopiMineClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "1.21.1",
+    "fabric-api": "*"
+  }
+}

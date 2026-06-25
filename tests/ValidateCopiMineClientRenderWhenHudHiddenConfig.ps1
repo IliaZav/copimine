@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$root = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $config = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'CopiMineClient\src\main\java\me\copimine\client\ClientConfig.java')
 $manager = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'CopiMineClient\src\main\java\me\copimine\client\ClientVisualManager.java')
 if ($config -notmatch 'render_when_hud_hidden') { throw 'Client config key render_when_hud_hidden missing.' }

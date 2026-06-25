@@ -144,9 +144,16 @@ public final class NarcoticsResourcePackAudit {
         }
 
         boolean thirdPartyUsesSelfMade = fileContainsAny(thirdPartyDoc, List.of("self-made", "self-generated", "self made", "All narcotics item textures"));
-        boolean licensesDocReadable = fileContainsAny(licensesDoc, List.of("self-made", "self-generated", "generated inside the CopiMine project", "сторонние visual assets"));
+        boolean licensesDocReadable = fileContainsAny(licensesDoc, List.of("self-made", "self-generated", "internal CopiMine self-made assets", "сторонние visual assets"));
         if (!licensesDocReadable) {
             errors.add("LICENSES_RESOURCEPACK.md does not clearly describe asset origin");
+        }
+        if (!fileContainsAll(visualsManifest, List.of(
+                "\"client_mod_visual_supported\": true",
+                "\"true_shader_runtime_supported\": false",
+                "\"server_forceable_shader_supported\": false"
+        ))) {
+            errors.add("narcotics_visuals_manifest.json does not contain honest runtime capability flags");
         }
 
         return new Report(

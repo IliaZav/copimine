@@ -79,6 +79,10 @@ public final class VisualRuntimeService {
     }
 
     public void clear(Player player) {
+        clearInternal(player, true);
+    }
+
+    private void clearInternal(Player player, boolean notifyClient) {
         if (player == null) {
             return;
         }
@@ -87,7 +91,9 @@ public final class VisualRuntimeService {
         if (taskId != null) {
             plugin.getServer().getScheduler().cancelTask(taskId);
         }
-        clientBridge.visuals().clearVisuals(player);
+        if (notifyClient) {
+            clientBridge.visuals().clearVisuals(player, "server-clear");
+        }
         clearServerVisualSurface(player);
     }
 
@@ -185,7 +191,35 @@ public final class VisualRuntimeService {
         }
         sessions.put(player.getUniqueId(), new VisualSession(normalized, route, System.currentTimeMillis() + (durationSeconds * 1000L), overdose));
         switch (route) {
-            case CLIENT_MOD_VISUAL -> clientBridge.visuals().sendVisualStart(player, normalized, durationSeconds, overdose ? 1.25F : 1.0F);
+            case CLIENT_MOD_VISUAL -> clientBridge.visuals().sendVisualStart(
+                    player,
+                    normalized,
+                    durationSeconds,
+                    overdose ? 1.0F : 0.85F,
+                    ignoreGate ? "ADMIN_TEST" : "NARCOTICS",
+                    (playerUuid, clientEffectId, seconds, intensity, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        Player online = plugin.getServer().getPlayer(playerUuid);
+                        if (online == null || !online.isOnline()) {
+                            return;
+                        }
+                        VisualSession session = sessions.get(playerUuid);
+                        if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
+                            return;
+                        }
+                        applyServerFallbackRoute(online, clientEffectId, seconds, session.overdose());
+                    }),
+                    (playerUuid, clientEffectId, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        Player online = plugin.getServer().getPlayer(playerUuid);
+                        if (online == null) {
+                            return;
+                        }
+                        VisualSession session = sessions.get(playerUuid);
+                        if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
+                            return;
+                        }
+                        clearInternal(online, false);
+                    })
+            );
             case SERVER_RESOURCE_PACK_OVERLAY -> {
                 applyServerOverlay(player, normalized, durationSeconds, overdose);
                 applyServerFallback(player, normalized, durationSeconds, overdose);
@@ -201,6 +235,20 @@ public final class VisualRuntimeService {
             }
         }, Math.max(20L, durationSeconds * 20L)).getTaskId();
         cleanupTasks.put(player.getUniqueId(), taskId);
+    }
+
+    private void applyServerFallbackRoute(Player player, String effectId, int durationSeconds, boolean overdose) {
+        VisualRoute fallbackRoute = forcedServerRoute(player, effectId);
+        sessions.put(player.getUniqueId(), new VisualSession(effectId.toUpperCase(Locale.ROOT), fallbackRoute, System.currentTimeMillis() + (durationSeconds * 1000L), overdose));
+        switch (fallbackRoute) {
+            case SERVER_RESOURCE_PACK_OVERLAY -> {
+                applyServerOverlay(player, effectId, durationSeconds, overdose);
+                applyServerFallback(player, effectId, durationSeconds, overdose);
+            }
+            case SERVER_PARTICLE_FALLBACK -> applyServerFallback(player, effectId, durationSeconds, overdose);
+            case CLIENT_MOD_VISUAL, DISABLED -> {
+            }
+        }
     }
 
     private VisualRoute resolveRoute(Player player, String effectId, boolean ignoreGate) {

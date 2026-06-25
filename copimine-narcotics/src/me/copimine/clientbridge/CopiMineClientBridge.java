@@ -8,11 +8,15 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 public final class CopiMineClientBridge implements Listener, PluginMessageListener {
     private final CopiMineNarcotics plugin;
@@ -35,11 +39,14 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     }
 
     public void shutdown() {
-        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, ClientBridgePayloads.CHANNEL, this);
-        Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, ClientBridgePayloads.CHANNEL);
         for (Player player : Bukkit.getOnlinePlayers()) {
+            visuals.clearVisuals(player, "plugin-disable");
+            visuals.forgetPlayer(player);
             capabilities.clear(player.getUniqueId());
         }
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, ClientBridgePayloads.CHANNEL, this);
+        Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, ClientBridgePayloads.CHANNEL);
+        visuals.shutdown();
     }
 
     public void reload(NarcoticsConfigService configService) {
@@ -64,7 +71,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     }
 
     public String statusFor(Player player) {
-        return capabilities.describe(player);
+        return capabilities.describe(player) + ", visuals=" + visuals.playerSummary(player);
     }
 
     public String routeHint(Player player, String effectId) {
@@ -82,10 +89,24 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             return;
         }
         try {
-            ClientCapabilityState state = ClientBridgePayloads.decodeHello(message);
-            capabilities.update(player, state);
+            ClientBridgePayloads.Message payload = ClientBridgePayloads.decode(message);
+            switch (payload.type()) {
+                case ClientBridgePayloads.HELLO, ClientBridgePayloads.CAPABILITIES_UPDATE -> {
+                    capabilities.update(player, ClientCapabilityState.fromMessage(payload));
+                    if (player.isOnline()) {
+                        player.sendPluginMessage(plugin, ClientBridgePayloads.CHANNEL, ClientBridgePayloads.encodePing(0L, payload.sessionId()));
+                    }
+                }
+                case ClientBridgePayloads.HEARTBEAT -> capabilities.touch(player, payload.sessionId());
+                case ClientBridgePayloads.VISUAL_ACK, ClientBridgePayloads.VISUAL_FINISHED, ClientBridgePayloads.VISUAL_ERROR -> {
+                    capabilities.touch(player, payload.sessionId());
+                    visuals.handleMessage(player, payload);
+                }
+                default -> capabilities.reportProblem(player, "unsupported-message-type:" + payload.type());
+            }
         } catch (Exception error) {
-            plugin.getLogger().warning("Invalid CopiMineClient handshake from " + player.getName() + ": " + error.getMessage());
+            capabilities.reportProblem(player, error.getMessage());
+            plugin.getLogger().warning("Invalid CopiMineClient payload from " + player.getName() + ": " + error.getMessage());
         }
     }
 
@@ -108,7 +129,19 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        visuals.forgetPlayer(event.getPlayer());
         capabilities.clear(event.getPlayer().getUniqueId());
+    }
+
+    @EventHandler
+    public void onDeath(PlayerDeathEvent event) {
+        visuals.clearVisuals(event.getEntity(), "death");
+        visuals.forgetPlayer(event.getEntity(), "death");
+    }
+
+    @EventHandler
+    public void onWorldChange(PlayerChangedWorldEvent event) {
+        visuals.clearVisuals(event.getPlayer(), "world-change");
     }
 
     public boolean handleCommand(CommandSender sender, String[] args, java.util.function.BiConsumer<Player, String> fallbackTest) {
@@ -118,12 +151,21 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         }
         if (args.length == 0) {
             sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
-            sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");
+            sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds] [intensity]");
             sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <игрок> <effectId> [seconds]");
+            sender.sendMessage(ChatColor.GOLD + "/cmclient stop <игрок> [effectId]");
+            sender.sendMessage(ChatColor.GOLD + "/cmclient clear <игрок>");
+            sender.sendMessage(ChatColor.GOLD + "/cmclient routes <игрок>");
+            sender.sendMessage(ChatColor.GOLD + "/cmclient sessions");
             sender.sendMessage(ChatColor.GOLD + "/cmclient require client <true|false>");
+            sender.sendMessage(ChatColor.GOLD + "/cmclient debug <игрок>");
             return true;
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
+        if ("sessions".equals(sub)) {
+            sender.sendMessage(ChatColor.GRAY + "Client bridge sessions: " + visuals.sessionsSummary());
+            return true;
+        }
         if ("require".equals(sub) && args.length >= 3 && "client".equalsIgnoreCase(args[1])) {
             boolean required = Boolean.parseBoolean(args[2]);
             configService.setRequireClientMod(required);
@@ -143,12 +185,40 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             sender.sendMessage(ChatColor.GRAY + target.getName() + ": " + statusFor(target));
             return true;
         }
+        if ("routes".equals(sub)) {
+            String routes = configService.visualEffectIds().stream()
+                    .sorted()
+                    .map(effectId -> effectId + "=" + routeHint(target, effectId))
+                    .collect(Collectors.joining(", "));
+            sender.sendMessage(ChatColor.GRAY + target.getName() + ": " + routes);
+            return true;
+        }
+        if ("debug".equals(sub)) {
+            sender.sendMessage(ChatColor.GRAY + target.getName() + ": " + statusFor(target));
+            sender.sendMessage(ChatColor.GRAY + "Route hints: " + configService.visualEffectIds().stream()
+                    .sorted()
+                    .map(effectId -> effectId + "=" + routeHint(target, effectId))
+                    .collect(Collectors.joining(", ")));
+            return true;
+        }
+        if ("clear".equals(sub)) {
+            visuals.clearVisuals(target, "admin-clear");
+            sender.sendMessage(ChatColor.GREEN + "Клиентские визуалы очищены: " + target.getName());
+            return true;
+        }
+        if ("stop".equals(sub)) {
+            String effectId = args.length >= 3 ? args[2].toUpperCase(Locale.ROOT) : "CHAOS";
+            visuals.sendVisualStop(target, effectId, "admin-stop");
+            sender.sendMessage(ChatColor.GREEN + "Остановка отправлена: " + target.getName() + " / " + effectId);
+            return true;
+        }
         if (args.length < 3) {
             sender.sendMessage(ChatColor.RED + "Нужно указать effectId.");
             return true;
         }
         String effectId = args[2].toUpperCase(Locale.ROOT);
         int seconds = 30;
+        float intensity = 1.0F;
         if (args.length >= 4) {
             try {
                 seconds = Math.max(1, Math.min(600, Integer.parseInt(args[3])));
@@ -157,12 +227,23 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                 return true;
             }
         }
+        if (args.length >= 5) {
+            try {
+                intensity = ClientBridgePayloads.clampIntensity(Float.parseFloat(args[4]));
+            } catch (Exception error) {
+                sender.sendMessage(ChatColor.RED + "Некорректная intensity.");
+                return true;
+            }
+        }
         if ("visualtest".equals(sub)) {
             if (!visuals.canUse(target, effectId)) {
                 sender.sendMessage(ChatColor.YELLOW + "У игрока нет поддержки CopiMineClient для эффекта " + effectId + ".");
                 return true;
             }
-            visuals.sendVisualStart(target, effectId, seconds, 1.0F);
+            visuals.sendVisualStart(target, effectId, seconds, intensity, "ADMIN_TEST",
+                    (playerUuid, effect, fallbackSeconds, fallbackIntensity, source, reason) -> fallbackTest.accept(target, effect + ":" + fallbackSeconds),
+                    (playerUuid, effect, source, reason) -> {
+                    });
             sender.sendMessage(ChatColor.GREEN + "Клиентский visual test отправлен: " + target.getName() + " / " + effectId);
             return true;
         }

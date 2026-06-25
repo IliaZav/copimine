@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$root = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $jar = Join-Path $root 'CopiMineClient\build\libs\CopiMineClient-0.1.0.jar'
 if (-not (Test-Path $jar)) { throw 'CopiMineClient jar not found. Build the client first.' }
 Add-Type -AssemblyName System.IO.Compression.FileSystem

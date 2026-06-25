@@ -17,7 +17,7 @@ scan_roots = [
     Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\frontend\assets"),
     Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\docs"),
     Path(r"D:\Desktop\Copimine\opt\copimine\tests\manual"),
-    Path(r"D:\Desktop\Copimine\CopiMineClient"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\CopiMineClient"),
 ]
 extensions = {".java", ".py", ".js", ".yml", ".yaml", ".md"}
 skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", "backups"}

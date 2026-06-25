@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$root = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $code = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'CopiMineClient\src\main\java\me\copimine\client\ClientVisualManager.java')
 if ($code -match 'drawGuiTexture\s*\(') {
   throw 'ClientVisualManager should not use drawGuiTexture for fullscreen narcotics overlays.'

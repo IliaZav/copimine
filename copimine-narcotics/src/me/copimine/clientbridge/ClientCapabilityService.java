@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class ClientCapabilityService {
     private final Map<UUID, ClientCapabilityState> states = new ConcurrentHashMap<>();
+    private final Map<UUID, String> lastProblems = new ConcurrentHashMap<>();
     private volatile long ttlMillis = 30_000L;
 
     public void setTtlMillis(long ttlMillis) {
@@ -16,11 +17,46 @@ public final class ClientCapabilityService {
     }
 
     public void update(Player player, ClientCapabilityState state) {
+        if (player == null || state == null) {
+            return;
+        }
         states.put(player.getUniqueId(), state);
+        lastProblems.remove(player.getUniqueId());
+    }
+
+    public void touch(Player player, String sessionId) {
+        if (player == null) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        ClientCapabilityState state = states.get(uuid);
+        if (state == null) {
+            return;
+        }
+        if (sessionId != null && !sessionId.isBlank() && !sessionId.equals(state.sessionId())) {
+            states.remove(uuid);
+            lastProblems.put(uuid, "session-mismatch");
+            return;
+        }
+        states.put(uuid, state.touch(System.currentTimeMillis()));
+    }
+
+    public void reportProblem(Player player, String reason) {
+        if (player == null) {
+            return;
+        }
+        states.remove(player.getUniqueId());
+        if (reason != null && !reason.isBlank()) {
+            lastProblems.put(player.getUniqueId(), reason);
+        }
     }
 
     public void clear(UUID playerUuid) {
+        if (playerUuid == null) {
+            return;
+        }
         states.remove(playerUuid);
+        lastProblems.remove(playerUuid);
     }
 
     public ClientCapabilityState state(Player player) {
@@ -30,6 +66,7 @@ public final class ClientCapabilityService {
         ClientCapabilityState state = states.get(player.getUniqueId());
         if (state != null && state.expired(ttlMillis)) {
             states.remove(player.getUniqueId());
+            lastProblems.put(player.getUniqueId(), "heartbeat-timeout");
             return null;
         }
         return state;
@@ -50,23 +87,33 @@ public final class ClientCapabilityService {
     }
 
     public String describe(Player player) {
+        if (player == null) {
+            return "player-missing";
+        }
         ClientCapabilityState state = state(player);
         if (state == null) {
-            return "CopiMineClient не обнаружен";
+            String problem = lastProblems.get(player.getUniqueId());
+            return problem == null || problem.isBlank()
+                    ? "CopiMineClient не обнаружен"
+                    : "CopiMineClient недоступен: " + problem;
         }
+        long secondsSinceHeartbeat = Math.max(0L, (System.currentTimeMillis() - state.lastSeenMillis()) / 1000L);
         return "protocol=" + state.protocolVersion()
+                + ", session=" + state.sessionId()
                 + ", clientVersion=" + state.clientVersion()
                 + ", clientVisuals=" + state.clientModVisuals()
                 + ", clientOverlay=" + state.clientOverlay()
                 + ", clientShaderLike=" + state.clientShaderLike()
-                + ", irisRequired=" + state.trueIrisShader()
+                + ", trueIrisShader=" + state.trueIrisShader()
+                + ", heartbeatAgo=" + secondsSinceHeartbeat + "s"
                 + ", effects=" + state.supportedEffects().stream().sorted(String::compareToIgnoreCase).toList();
     }
 
     public String routeHint(Player player, String effectId) {
         ClientCapabilityState state = state(player);
         if (state == null) {
-            return "missing-client";
+            String problem = player == null ? "" : lastProblems.get(player.getUniqueId());
+            return problem == null || problem.isBlank() ? "missing-client" : problem;
         }
         String normalized = effectId == null ? "CHAOS" : effectId.toUpperCase(Locale.ROOT);
         if (!state.clientModVisuals()) {

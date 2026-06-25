@@ -56,9 +56,15 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 APP_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = APP_ROOT.parent
 FRONTEND_DIR = APP_ROOT / "frontend"
 DATA_DIR = Path(os.getenv("COPIMINE_ADMIN_DATA", APP_ROOT / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+THIRDPARTY_DIR = PROJECT_ROOT / "thirdparty"
+MODPACK_ZIP = THIRDPARTY_DIR / "CopiMineMods.zip"
+MODPACK_SHA1_FILE = THIRDPARTY_DIR / "CopiMineMods.sha1"
+MODPACK_MANIFEST = THIRDPARTY_DIR / "modpack_manifest.json"
+THIRDPARTY_MANIFEST = THIRDPARTY_DIR / "thirdparty_manifest.json"
 
 
 def load_dotenv(path: Path = APP_ROOT / ".env") -> None:
@@ -4771,6 +4777,7 @@ def public_site_config_sync() -> dict[str, Any]:
         "cabinetEnabled": True,
         "donationEnabled": False,
         "resourcePackRequired": props.get("require-resource-pack", "false").lower() in {"true", "1", "yes", "on"},
+        "modpackDownloadPath": "/downloads/CopiMineMods.zip",
     }
 
 
@@ -4814,6 +4821,31 @@ def public_site_status_sync() -> dict[str, Any]:
             "president": (overview or {}).get("president") or "",
         },
         "generatedAt": now_ts(),
+    }
+
+
+def public_modpack_sync() -> dict[str, Any]:
+    manifest: dict[str, Any] = {}
+    if MODPACK_MANIFEST.exists():
+        try:
+            manifest = json.loads(MODPACK_MANIFEST.read_text(encoding="utf-8"))
+        except Exception:
+            manifest = {}
+    sha1 = ""
+    if MODPACK_SHA1_FILE.exists():
+        try:
+            sha1 = MODPACK_SHA1_FILE.read_text(encoding="utf-8", errors="replace").strip()
+        except Exception:
+            sha1 = ""
+    available = MODPACK_ZIP.exists()
+    return {
+        "available": available,
+        "downloadUrl": "/downloads/CopiMineMods.zip",
+        "filename": MODPACK_ZIP.name,
+        "sha1": sha1,
+        "size": MODPACK_ZIP.stat().st_size if available else 0,
+        "modified": int(MODPACK_ZIP.stat().st_mtime) if available else None,
+        "manifest": manifest,
     }
 
 
@@ -6243,6 +6275,11 @@ async def public_config() -> dict[str, Any]:
 @app.get("/api/public/status")
 async def public_status() -> dict[str, Any]:
     return {"ok": True, "data": await bg(public_site_status_sync)}
+
+
+@app.get("/api/public/modpack")
+async def public_modpack() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(public_modpack_sync)}
 
 
 @app.post("/api/player/register")
@@ -7886,6 +7923,13 @@ async def backups_download(name: str, _: str = Depends(require_admin)) -> FileRe
     if not path.exists() or path.parent != BACKUPS_DIR:
         raise HTTPException(status_code=404, detail="Бэкап не найден")
     return FileResponse(path, filename=name, media_type="application/zip")
+
+
+@app.get("/downloads/CopiMineMods.zip")
+async def modpack_download() -> FileResponse:
+    if not MODPACK_ZIP.exists() or MODPACK_ZIP.parent != THIRDPARTY_DIR:
+        raise HTTPException(status_code=404, detail="Архив модов пока не подготовлен")
+    return FileResponse(MODPACK_ZIP, filename=MODPACK_ZIP.name, media_type="application/zip")
 
 
 @app.delete("/api/backups/{name}")

@@ -402,6 +402,13 @@ code {
 .btn-secondary { background: var(--surface-soft); }
 .btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
 .btn-ghost { background: transparent; color: inherit; }
+.btn-disabled,
+.btn[aria-disabled="true"] {
+  opacity: .58;
+  pointer-events: none;
+  cursor: default;
+  box-shadow: none;
+}
 .btn-wide { width: 100%; }
 .btn-small { min-height: 30px; padding: 6px 9px; font-size: 12px; }
 .icon-btn { width: 40px; padding: 0; display: inline-grid; place-items: center; }

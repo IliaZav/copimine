@@ -24,8 +24,9 @@ $coreprotect = Read-Text 'plugins\CoreProtect\config.yml'
 $tab = Read-Text 'plugins\TAB\config.yml'
 $entityClearer = Read-Text 'plugins\EntityClearer\config.yml'
 
-Require-Regex $serverProperties '(?m)^view-distance=5$' 'Server view-distance should stay low for MSPT.'
-Require-Regex $serverProperties '(?m)^simulation-distance=3$' 'Server simulation-distance should stay low for MSPT.'
+Require-Regex $serverProperties '(?m)^max-players=50$' 'Server max-players should be raised to 50 for the release target.'
+Require-Regex $serverProperties '(?m)^view-distance=8$' 'Server view-distance should be raised to 8 for the release target.'
+Require-Regex $serverProperties '(?m)^simulation-distance=6$' 'Server simulation-distance should start at 6 before any live upgrade to 8.'
 Require-Regex $serverProperties '(?m)^sync-chunk-writes=false$' 'sync-chunk-writes must stay disabled.'
 Require-Regex $serverProperties '(?m)^network-compression-threshold=512$' 'Network compression threshold should be tuned to reduce CPU spikes.'
 
@@ -66,4 +67,4 @@ if ($errors.Count -gt 0) {
   throw ("MSPT tuning validation failed:`n - " + ($errors -join "`n - "))
 }
 
-Write-Host 'MSPT tuning validation passed: server, Paper/Pufferfish/Spigot, CoreProtect, TAB, and EntityClearer configs are tuned.'
+Write-Host 'MSPT tuning validation passed: server, Paper/Pufferfish/Spigot, CoreProtect, TAB, and EntityClearer configs are tuned for the 50-player target.'

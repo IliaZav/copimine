@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "CopiMineMods",
+  "minecraftVersion": "1.21.1",
+  "loader": "Fabric",
+  "downloadPath": "/downloads/CopiMineMods.zip",
+  "files": [
+    {
+      "path": "mods/CopiMineClient-0.1.0.jar",
+      "component": "CopiMineClient",
+      "version": "0.1.0",
+      "license": "Proprietary"
+    },
+    {
+      "path": "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
+      "component": "Emotecraft",
+      "version": "2.4.12+1.21.1-fabric",
+      "license": "GPL-3.0-or-later",
+      "source": "https://modrinth.com/project/pZ2wrerK"
+    },
+    {
+      "path": "mods/fabric-api-0.116.12+1.21.1.jar",
+      "component": "Fabric API",
+      "version": "0.116.12+1.21.1",
+      "license": "Apache-2.0",
+      "source": "https://modrinth.com/project/P7dR8mSH"
+    }
+  ],
+  "notes": [
+    "CoreProtect and the Emotecraft Bukkit plugin are not included in the client archive.",
+    "Iris is optional and is not controlled by CopiMineClient."
+  ]
+}

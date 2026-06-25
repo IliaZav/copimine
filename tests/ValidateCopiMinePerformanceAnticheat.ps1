@@ -72,8 +72,9 @@ if (($punishments + "`n" + $punishmentsRu) -match '\[alert\]|\[webhook\]|\[proxy
   $errors.Add('GrimAC punishments must not contain in-game alert/chat/screen/proxy/webhook commands.')
 }
 
-Require-Regex $serverProperties '(?m)^view-distance=5$' 'view-distance must remain low.'
-Require-Regex $serverProperties '(?m)^simulation-distance=3$' 'simulation-distance must remain low.'
+Require-Regex $serverProperties '(?m)^max-players=50$' 'max-players must be raised to 50 for the release target.'
+Require-Regex $serverProperties '(?m)^view-distance=8$' 'view-distance must be raised to 8 for the release target.'
+Require-Regex $serverProperties '(?m)^simulation-distance=6$' 'simulation-distance should start at 6 before any live upgrade to 8.'
 Require-Regex $serverProperties '(?m)^entity-broadcast-range-percentage=50$' 'entity broadcast range should stay reduced for FPS/network load.'
 Require-Regex $serverProperties '(?m)^network-compression-threshold=512$' 'network compression threshold should remain CPU-friendly.'
 Require-Regex $serverProperties '(?m)^sync-chunk-writes=false$' 'sync chunk writes must be disabled.'

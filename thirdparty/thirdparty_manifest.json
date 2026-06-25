@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "generatedFor": "CopiMine release hardening",
+  "clientArchive": {
+    "path": "thirdparty/CopiMineMods.zip",
+    "sha1": "a7f1d17cfe26f3bea00c64f93a797c7ad1c79b20",
+    "downloadPath": "/downloads/CopiMineMods.zip"
+  },
+  "artifacts": {
+    "clientMods": [
+      {
+        "name": "CopiMineClient",
+        "version": "0.1.0",
+        "path": "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
+        "sha1": "fdb99e5e95123e618dd50648aa1b211fab8f0a84",
+        "license": "Proprietary"
+      },
+      {
+        "name": "Emotecraft",
+        "version": "2.4.12+1.21.1-fabric",
+        "path": "thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
+        "sha1": "9be2a237e27f20d2d00f0036a8be53d7d66c5df5",
+        "license": "GPL-3.0-or-later",
+        "source": "https://modrinth.com/project/pZ2wrerK"
+      },
+      {
+        "name": "Fabric API",
+        "version": "0.116.12+1.21.1",
+        "path": "thirdparty/client-mods/fabric-api-0.116.12+1.21.1.jar",
+        "sha1": "90cd4212da24365fae24c0090234b053094b218b",
+        "license": "Apache-2.0",
+        "source": "https://modrinth.com/project/P7dR8mSH"
+      }
+    ],
+    "serverPlugins": [
+      {
+        "name": "CoreProtect Community Edition",
+        "version": "23.0",
+        "path": "thirdparty/server-plugins/CoreProtect-CE-23.0.jar",
+        "sha1": "50d90f470c26dcbe276554cda15204e14bb99bda",
+        "license": "Artistic-2.0",
+        "source": "https://github.com/PlayPro/CoreProtect"
+      },
+      {
+        "name": "Emotecraft",
+        "version": "2.4.12+1.21.1-bukkit",
+        "path": "thirdparty/server-plugins/emotecraft-2.4.12-bukkit.jar",
+        "sha1": "fa6abee428393a207aa7cf970d267b97ed9a3e20",
+        "license": "GPL-3.0-or-later",
+        "source": "https://modrinth.com/project/pZ2wrerK"
+      }
+    ]
+  }
+}

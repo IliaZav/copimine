@@ -1,27 +1,22 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
 
-$workspaceRoot = Resolve-Path (Join-Path $root '..\..')
 $script = @'
 from pathlib import Path
 import sys
 
 scan_roots = [
-    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-admin-plugin"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-artifacts"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-economy-core"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-election-core"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-narcotics"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\copimine-world-core"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\backend"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\frontend\assets"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\docs"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\tests\manual"),
+    Path(r"D:\Desktop\Copimine\opt\copimine"),
     Path(r"D:\Desktop\Copimine\opt\copimine\CopiMineClient"),
 ]
 extensions = {".java", ".py", ".js", ".yml", ".yaml", ".md"}
-skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", "backups"}
-bad_tokens = ["\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7", "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a", "\u0421\u0403", "\u0421\u201a", "\u0421\u0402", "\u0421\u0453", "?????"]
+skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", "backups", ".idea", ".mvn", "out"}
+bad_tokens = [
+    "\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7",
+    "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a",
+    "\u0421\u0403", "\u0421\u201a", "\u0421\u0402", "\u0421\u0453",
+    "?????", "?????????", "\ufffd"
+]
 
 hits = []
 for root in scan_roots:

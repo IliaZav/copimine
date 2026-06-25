@@ -28,6 +28,10 @@ out/
 *.class
 *.jar
 
+!thirdparty/
+!thirdparty/**
+!thirdparty/**/*.jar
+
 # Archives / dumps
 *.zip
 *.tar
@@ -40,6 +44,11 @@ out/
 *.before-*
 *.broken-*
 *.old
+
+!thirdparty/**/*.zip
+!thirdparty/**/*.txt
+!thirdparty/**/*.json
+!thirdparty/**/*.yml
 
 # Local secrets / runtime state
 .env
@@ -66,6 +75,7 @@ copimine-db-backups/
 
 # Resource pack build output
 resourcepacks/build/
+thirdparty/_modpack_stage/
 
 # Minecraft server runtime
 minecraft/server/**

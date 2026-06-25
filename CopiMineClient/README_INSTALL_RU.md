@@ -16,11 +16,19 @@
 - не является обязательным по умолчанию;
 - не даёт игровых преимуществ.
 
+Совместимость:
+- `CopiMineClient` можно ставить вместе с Emotecraft;
+- `CopiMineClient` не занимает стандартное колесо эмоций Emotecraft;
+- `CopiMineClient` не переключает и не ломает Iris shaderpack.
+
 Как установить:
 1. Установить Fabric Loader для Minecraft `1.21.1`.
 2. Положить `CopiMineClient-<version>.jar` в папку `mods`.
-3. Запустить клиент с Fabric.
-4. Зайти на сервер CopiMine.
+3. Для полного набора клиента положить рядом:
+   - `emotecraft-for-MC1.21.1-2.4.12-fabric.jar`
+   - `fabric-api-0.116.12+1.21.1.jar`
+4. Запустить клиент с Fabric.
+5. Зайти на сервер CopiMine.
 
 Проверка:
 - `/copimineclient status`

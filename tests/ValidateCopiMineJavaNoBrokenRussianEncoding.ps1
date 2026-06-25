@@ -13,8 +13,9 @@ scan_roots = [
     Path(r"D:\Desktop\Copimine\opt\copimine\copimine-narcotics\src"),
     Path(r"D:\Desktop\Copimine\opt\copimine\copimine-world-core\src"),
     Path(r"D:\Desktop\Copimine\opt\copimine\CopiMineClient\src"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\CopiMineClient\src\main\java"),
 ]
-bad_tokens = ["\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7", "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a", "\u0421\u0403", "\u0421\u201a", "\u0421\u0402", "\u0421\u0453", "?????"]
+bad_tokens = ["\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7", "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a", "\u0421\u0403", "\u0421\u201a", "\u0421\u0402", "\u0421\u0453", "?????", "?????????", "\ufffd"]
 
 hits = []
 for root in scan_roots:

@@ -33,6 +33,7 @@
 - `seq`
 - `effectId`
 - `status`
+
 Allowed statuses:
 - `STARTED`
 - `STOPPED`

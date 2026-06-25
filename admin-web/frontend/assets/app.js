@@ -1416,14 +1416,36 @@ function updatePublicHero(status = {}, config = {}) {
 }
 
 async function loadPublicStatus() {
-  const [configRes, statusRes] = await Promise.all([
+  const [configRes, statusRes, modpackRes] = await Promise.all([
     safeApi("/api/public/config", { ok: false, data: {} }),
-    safeApi("/api/public/status", { ok: false, data: {} })
+    safeApi("/api/public/status", { ok: false, data: {} }),
+    safeApi("/api/public/modpack", { ok: false, data: {} })
   ]);
   state.publicConfig = configRes.data || configRes || {};
   state.publicStatus = statusRes.data || statusRes || {};
+  state.publicModpack = modpackRes.data || modpackRes || {};
   updatePublicHero(state.publicStatus, state.publicConfig);
+  updatePublicModpack(state.publicModpack);
   renderPublicStatus(state.publicStatus, state.publicConfig);
+}
+
+function updatePublicModpack(modpack = {}) {
+  const button = $("downloadModsBtn");
+  if (!button) return;
+  if (modpack.available) {
+    button.classList.remove("hidden");
+    button.classList.remove("btn-disabled");
+    button.href = modpack.downloadUrl || "/downloads/CopiMineMods.zip";
+    const sizeMb = modpack.size ? `${(Number(modpack.size) / (1024 * 1024)).toFixed(2)} МБ` : "архив готов";
+    button.textContent = `Скачать моды (${sizeMb})`;
+    button.removeAttribute("aria-disabled");
+    return;
+  }
+  button.classList.remove("hidden");
+  button.classList.add("btn-disabled");
+  button.href = "#help";
+  button.textContent = "Архив модов готовится";
+  button.setAttribute("aria-disabled", "true");
 }
 
 function renderPublicAuthState() {

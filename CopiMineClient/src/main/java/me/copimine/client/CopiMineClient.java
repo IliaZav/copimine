@@ -101,10 +101,10 @@ public final class CopiMineClient implements ClientModInitializer {
                                             return 1;
                                         })))
                 .then(ClientCommandManager.literal("clear")
-                                .executes(context -> {
-                                    visualManager.clearAll("manual");
-                                    context.getSource().sendFeedback(Text.literal("Визуалы очищены"));
-                                    return 1;
-                                })));
+                        .executes(context -> {
+                            visualManager.clearAll("manual");
+                            context.getSource().sendFeedback(Text.literal("Визуалы очищены"));
+                            return 1;
+                        })));
     }
 }

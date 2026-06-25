@@ -14,7 +14,6 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
 

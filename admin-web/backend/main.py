@@ -50,7 +50,7 @@ except Exception:  # pragma: no cover
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -165,6 +165,8 @@ POSTGRES_POOL_MIN_SIZE = max(1, int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1")))
 POSTGRES_POOL_MAX_SIZE = max(POSTGRES_POOL_MIN_SIZE, int(os.getenv("POSTGRES_POOL_MAX_SIZE", "8")))
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cm_session")
 AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "0").lower() in {"1", "true", "yes", "on"}
+CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")
+CSRF_HEADER_NAME = "X-CSRF-Token"
 SENSITIVE_CONFIRM_HEADER = "X-Copimine-Confirm"
 AUDIT_LOG_FILE = DATA_DIR / "audit_log.jsonl"
 EVENT_LOG_FILE = DATA_DIR / "plugin_events.jsonl"
@@ -684,7 +686,7 @@ if ALLOWED_ORIGINS:
         allow_origins=ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-API-Key", SENSITIVE_CONFIRM_HEADER],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key", SENSITIVE_CONFIRM_HEADER, CSRF_HEADER_NAME],
     )
 
 
@@ -712,6 +714,19 @@ async def on_shutdown() -> None:
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next: Callable[..., Any]) -> Response:
+    if request.url.path.startswith("/api/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+        if not is_plugin_key_request(request):
+            origin = (request.headers.get("origin") or "").strip()
+            if origin and not origin_allowed(request, origin):
+                return JSONResponse(status_code=403, content={"detail": "Недопустимый Origin для state-changing запроса"})
+            sec_fetch_site = (request.headers.get("sec-fetch-site") or "").strip().lower()
+            if sec_fetch_site and sec_fetch_site not in {"same-origin", "same-site", "none"}:
+                return JSONResponse(status_code=403, content={"detail": "Cross-site запрос отклонён политикой безопасности"})
+            if request.url.path not in csrf_exempt_paths():
+                cookie_token = (request.cookies.get(CSRF_COOKIE_NAME) or "").strip()
+                header_token = (request.headers.get(CSRF_HEADER_NAME) or "").strip()
+                if not cookie_token or not header_token or cookie_token != header_token or not verify_csrf_token(cookie_token):
+                    return JSONResponse(status_code=403, content={"detail": "CSRF-подтверждение отсутствует или недействительно"})
     response = await call_next(request)
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -723,7 +738,7 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
     )
     return response
 
@@ -735,6 +750,64 @@ def _b64(data: bytes) -> str:
 def _unb64(data: str) -> bytes:
     pad = "=" * (-len(data) % 4)
     return base64.urlsafe_b64decode(data + pad)
+
+
+def make_csrf_token() -> str:
+    nonce = _b64(secrets.token_bytes(24))
+    payload = f"csrf:{nonce}"
+    signature = _b64(hmac.new(SECRET_KEY.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).digest())
+    return f"{nonce}.{signature}"
+
+
+def verify_csrf_token(token: str) -> bool:
+    raw = str(token or "").strip()
+    if "." not in raw:
+        return False
+    nonce, signature = raw.split(".", 1)
+    if not nonce or not signature:
+        return False
+    expected = _b64(hmac.new(SECRET_KEY.encode("utf-8"), f"csrf:{nonce}".encode("utf-8"), hashlib.sha256).digest())
+    return hmac.compare_digest(signature, expected)
+
+
+def set_csrf_cookie(response: Response, token: Optional[str] = None) -> str:
+    value = token or make_csrf_token()
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        value,
+        max_age=SESSION_TTL_SECONDS,
+        httponly=False,
+        secure=AUTH_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return value
+
+
+def clear_csrf_cookie(response: Response) -> None:
+    response.delete_cookie(CSRF_COOKIE_NAME, path="/")
+
+
+def csrf_exempt_paths() -> set[str]:
+    return {
+        "/api/auth/login",
+        "/api/player/login",
+        "/api/player/register",
+    }
+
+
+def origin_allowed(request: Request, origin: str) -> bool:
+    allowed = {
+        str(request.base_url).rstrip("/"),
+        ADMIN_PUBLIC_BASE_URL.rstrip("/"),
+    }
+    allowed.update(ALLOWED_ORIGINS)
+    return origin.rstrip("/") in {item.rstrip("/") for item in allowed if item}
+
+
+def is_plugin_key_request(request: Request) -> bool:
+    api_key = (request.headers.get("x-api-key") or "").strip()
+    return bool(PLUGIN_API_KEY and api_key and hmac.compare_digest(api_key, PLUGIN_API_KEY))
 
 
 def valid_minecraft_name(username: str) -> bool:
@@ -6124,10 +6197,17 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
     clear_failed_login(request, username)
     token = make_token(real_username, "admin", request)
     response.set_cookie(AUTH_COOKIE_NAME, token, max_age=SESSION_TTL_SECONDS, httponly=True, secure=AUTH_COOKIE_SECURE, samesite="lax", path="/")
+    set_csrf_cookie(response)
     audit_event(real_username, "auth.login", status="ok", details={"ip": get_client_ip(request)})
     append_panel_event("admin-panel", "admin_login", actor=real_username, metadata={"ip": get_client_ip(request)}, tags=["security"])
     pg_record_auth_state("admin_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "user": real_username})
     return {"token": token, "username": real_username, "role": "admin", "expiresIn": SESSION_TTL_SECONDS, "cookieAuth": True}
+
+
+@app.get("/api/auth/csrf")
+async def auth_csrf(response: Response) -> dict[str, Any]:
+    set_csrf_cookie(response)
+    return {"ok": True, "cookie": CSRF_COOKIE_NAME, "header": CSRF_HEADER_NAME}
 
 
 @app.post("/api/auth/logout")
@@ -6143,6 +6223,7 @@ async def logout(request: Request, response: Response, authorization: str = Head
         except Exception:
             pass
     response.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    clear_csrf_cookie(response)
     audit_event(actor or "unknown", "auth.logout")
     return {"ok": True}
 
@@ -6202,6 +6283,7 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
     token = make_token(account_id, "player", request)
     response.set_cookie(AUTH_COOKIE_NAME, token, max_age=SESSION_TTL_SECONDS, httponly=True, secure=AUTH_COOKIE_SECURE, samesite="lax", path="/")
+    set_csrf_cookie(response)
     return {"token": token, "role": "player", "expiresIn": SESSION_TTL_SECONDS, "account": {"id": account_id, "username": username, "minecraftName": minecraft_name, "linked": False}}
 
 
@@ -6225,6 +6307,7 @@ async def player_login(data: PlayerLoginIn, request: Request, response: Response
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
     token = make_token(str(account["id"]), "player", request)
     response.set_cookie(AUTH_COOKIE_NAME, token, max_age=SESSION_TTL_SECONDS, httponly=True, secure=AUTH_COOKIE_SECURE, samesite="lax", path="/")
+    set_csrf_cookie(response)
     account["last_login_at"] = now_ts()
     return {"token": token, "role": "player", "expiresIn": SESSION_TTL_SECONDS, "account": public_player_account(account)}
 

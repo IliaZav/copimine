@@ -567,7 +567,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Server overlay поддерживается: " + visualRuntime.supportsServerOverlayRuntime());
             sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.serverOverlaySupportReason());
             sender.sendMessage(ChatColor.GRAY + "Server fallback поддерживается: " + visualRuntime.supportsServerParticleFallback());
-            sender.sendMessage(ChatColor.GRAY + "Shader path: " + visualRuntime.shaderSupportReason());
+            sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
+            sender.sendMessage(ChatColor.GRAY + "Причина отсутствия true shader runtime: " + visualRuntime.shaderSupportReason());
             sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты на месте: " + !report.overlayTextures().isEmpty());
             sender.sendMessage(ChatColor.GRAY + "Shader-профили на месте: " + !report.shaderProfiles().isEmpty());
             sender.sendMessage(ChatColor.GRAY + "Только серверный fallback: " + (!visualRuntime.supportsServerOverlayRuntime() && !configService.allowClientModVisuals()));
@@ -656,8 +657,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Настроенный режим: " + configService.visualMode().name());
             sender.sendMessage(ChatColor.GRAY + "Overlay поддерживается: " + visualRuntime.supportsOverlayRuntime());
             sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.overlaySupportReason());
-            sender.sendMessage(ChatColor.GRAY + "Shader поддерживается: " + visualRuntime.supportsShaderRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина shader: " + visualRuntime.shaderSupportReason());
+            sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
+            sender.sendMessage(ChatColor.GRAY + "Причина отсутствия true shader runtime: " + visualRuntime.shaderSupportReason());
             sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты на месте: " + !report.overlayTextures().isEmpty());
             sender.sendMessage(ChatColor.GRAY + "Shader-профили на месте: " + !report.shaderProfiles().isEmpty());
             sender.sendMessage(ChatColor.GRAY + "Только fallback: " + (!visualRuntime.supportsOverlayRuntime() && !visualRuntime.supportsShaderRuntime()));
@@ -783,7 +784,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GRAY + "Client visuals allowed: " + configService.allowClientModVisuals());
         sender.sendMessage(ChatColor.GRAY + "Server overlay supported: " + visualRuntime.supportsServerOverlayRuntime());
         sender.sendMessage(ChatColor.GRAY + "Server fallback supported: " + visualRuntime.supportsServerParticleFallback());
-        sender.sendMessage(ChatColor.GRAY + "Shader path: " + visualRuntime.shaderSupportReason());
+        sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
+        sender.sendMessage(ChatColor.GRAY + "Причина отсутствия true shader runtime: " + visualRuntime.shaderSupportReason());
         sender.sendMessage(ChatColor.GRAY + "Рецептов: " + configService.items().size());
         sender.sendMessage(ChatColor.GRAY + "Режим текстур: " + configService.textureMode().name());
         sender.sendMessage(ChatColor.GRAY + "Режим визуала: " + configService.visualMode().name());
@@ -815,13 +817,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GRAY + "Client visuals allowed: " + configService.allowClientModVisuals());
         sender.sendMessage(ChatColor.GRAY + "Server overlay supported: " + visualRuntime.supportsServerOverlayRuntime());
         sender.sendMessage(ChatColor.GRAY + "Server fallback supported: " + visualRuntime.supportsServerParticleFallback());
-        sender.sendMessage(ChatColor.GRAY + "Shader path: " + visualRuntime.shaderSupportReason());
+        sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
+        sender.sendMessage(ChatColor.GRAY + "Причина отсутствия true shader runtime: " + visualRuntime.shaderSupportReason());
         sender.sendMessage(ChatColor.GRAY + "Рецептов: " + configService.items().size());
         sender.sendMessage(ChatColor.GRAY + "Режим текстур: " + configService.textureMode().name());
         sender.sendMessage(ChatColor.GRAY + "Режим визуала: " + configService.visualMode().name());
         sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
         sender.sendMessage(ChatColor.GRAY + "Overlay поддерживается: " + visualRuntime.supportsOverlayRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Shader поддерживается: " + visualRuntime.supportsShaderRuntime());
+        sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
         sender.sendMessage(ChatColor.GRAY + "Кэш варки: " + cauldronService.cachedStateCount());
         sender.sendMessage(ChatColor.GRAY + "Модели предметов: " + report.itemModels().size());
         sender.sendMessage(ChatColor.GRAY + "Текстуры предметов: " + report.itemTextures().size());

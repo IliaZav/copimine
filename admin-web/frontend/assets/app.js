@@ -1,7 +1,7 @@
-const $ = (id) => document.getElementById(id);
+﻿const $ = (id) => document.getElementById(id);
 
 const state = {
-  token: localStorage.getItem("copimineToken") || "",
+  token: "",
   role: localStorage.getItem("copimineRole") || "",
   authRole: localStorage.getItem("copimineLastRole") || "admin",
   authAction: "login",
@@ -21,6 +21,8 @@ const state = {
 };
 
 const CONFIRM_HEADER = "X-Copimine-Confirm";
+const CSRF_COOKIE = "cm_csrf";
+const CSRF_HEADER = "X-CSRF-Token";
 
 const publicFeatures = {
   bank: {
@@ -54,7 +56,7 @@ const navGroups = [
     title: "Сервер",
     items: [
       ["dashboard", "Обзор", "Сводка сервера", "О"],
-      ["players", "Игроки", "Профили и действия", "И"],
+      ["players", "Игроки", "Профили и действия", ""],
       ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
       ["economy", "Банк и AR", "Счета, переводы и покупки", "Б"],
       ["artifacts", "Лавки артефактов", "Каталог, покупки, выдача", "А"],
@@ -77,7 +79,7 @@ const navGroups = [
     items: [
       ["server", "Сервер", "Связь с миром и службами", "S"],
       ["security", "Доступ", "Команда и права доступа", "Д"],
-      ["sources", "Источники", "Плагины и файлы", "И"],
+      ["sources", "Источники", "Плагины и файлы", ""],
       ["settings", "Настройки", "Конфигурация", "Н"]
     ]
   }
@@ -93,7 +95,7 @@ const playerNavGroups = [
     items: [
       ["cabinet", "Личный кабинет", "Аккаунт и статус", "Л"],
       ["bank", "Банк AR", "Баланс, PIN и переводы", "Б"],
-      ["history", "История", "Банк, лавка и события", "И"],
+      ["history", "История", "Банк, лавка и события", ""],
       ["settings", "Настройки", "Профиль и интерфейс", "Н"],
       ["security", "Безопасность", "Пароль, PIN и сессии", "Б"],
       ["support", "Поддержка", "Вопросы и обращения", "П"],
@@ -211,7 +213,7 @@ function sourceLabel(value) {
   if (!value || typeof value !== "object") return cleanText(value || "-");
   const name = value.name || value.path || "источник";
   const state = value.exists === false ? "не найден" : value.exists === true ? "найден" : "не проверен";
-  const size = value.size ? ` В· ${bytes(value.size)}` : "";
+  const size = value.size ? ` · ${bytes(value.size)}` : "";
   return `${name}: ${state}${size}`;
 }
 
@@ -248,6 +250,124 @@ function detailSummary(value, max = 180) {
   return typeof value === "object" ? objectSummary(value, max) : short(value, max);
 }
 
+function getCookie(name) {
+  const prefix = `${name}=`;
+  return document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length) || "";
+}
+
+function isUnsafeMethod(method) {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes(String(method || "GET").toUpperCase());
+}
+
+function splitDataClickArgs(raw) {
+  const args = [];
+  let current = "";
+  let quote = "";
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (quote) {
+      current += ch;
+      if (ch === "\\" && i + 1 < raw.length) {
+        current += raw[i + 1];
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === "'" || ch === "\"") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ",") {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
+function parseDataClickArg(token) {
+  if (token === "true") return true;
+  if (token === "false") return false;
+  if (token === "null") return null;
+  if (/^-?\d+(?:\.\d+)?$/.test(token)) return Number(token);
+  if ((token.startsWith("'") && token.endsWith("'")) || (token.startsWith("\"") && token.endsWith("\""))) {
+    return token
+      .slice(1, -1)
+      .replace(/\\\\/g, "\\")
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, "\"");
+  }
+  return token;
+}
+
+function parseDataClickInvocation(expression) {
+  const raw = String(expression || "").trim();
+  if (!raw) return null;
+  if (raw === "if(event.target===this) closeModal()") {
+    return { special: "closeModalOnOverlay" };
+  }
+  const match = raw.match(/^([A-Za-z0-9_$.]+)\((.*)\)$/);
+  if (!match) return null;
+  return {
+    fn: match[1],
+    args: splitDataClickArgs(match[2]).map(parseDataClickArg)
+  };
+}
+
+function wireDataClickDelegation() {
+  document.addEventListener("click", (event) => {
+    const node = event.target.closest("[data-click]");
+    if (!node) return;
+    const parsed = parseDataClickInvocation(node.getAttribute("data-click"));
+    if (!parsed) return;
+    if (parsed.special === "closeModalOnOverlay") {
+      if (event.target === node && typeof window.closeModal === "function") window.closeModal();
+      return;
+    }
+    const handler = window[parsed.fn];
+    if (typeof handler !== "function") {
+      console.warn("Unknown data-click handler", parsed.fn);
+      return;
+    }
+    handler(...parsed.args);
+  });
+}
+
+function wireDataInputDelegation() {
+  document.addEventListener("input", (event) => {
+    const node = event.target.closest("[data-input]");
+    if (!node) return;
+    const action = node.getAttribute("data-input");
+    if (action === "filterTable") {
+      window.filterTable?.(node.getAttribute("data-input-id") || "", node.value || "");
+      return;
+    }
+    if (action === "filterPlayers") {
+      window.filterPlayers?.(node.value || "");
+    }
+  });
+}
+
+async function refreshCsrfCookie() {
+  try {
+    await fetch(`/api/auth/csrf?_fresh=${Date.now()}`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include"
+    });
+  } catch {}
+}
+
 function toast(message, bad = false) {
   const root = $("toast");
   const el = document.createElement("div");
@@ -259,25 +379,32 @@ function toast(message, bad = false) {
 
 function authHeaders(extra = {}) {
   const headers = { ...extra };
-  if (state.token) headers.Authorization = `Bearer ${state.token}`;
   if (!headers["Content-Type"] && !(extra instanceof FormData)) headers["Content-Type"] = "application/json";
   return headers;
 }
 
 async function api(url, opts = {}) {
   const { skipAuthReset = false, ...fetchOpts } = opts;
+  const method = String(fetchOpts.method || "GET").toUpperCase();
+  const headers = authHeaders(fetchOpts.headers || {});
+  if (fetchOpts.body instanceof FormData) delete headers["Content-Type"];
+  if (isUnsafeMethod(method)) {
+    const csrf = getCookie(CSRF_COOKIE);
+    if (csrf) headers[CSRF_HEADER] = csrf;
+  }
   const finalUrl = url.startsWith("/api/") ? `${url}${url.includes("?") ? "&" : "?"}_fresh=${Date.now()}` : url;
   const res = await fetch(finalUrl, {
     ...fetchOpts,
+    method,
     cache: "no-store",
     credentials: "include",
-    headers: authHeaders(fetchOpts.headers || {})
+    headers
   });
   const text = await res.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { detail: text }; }
   if (!res.ok) {
-    if (res.status === 401 && state.token && !skipAuthReset) logout(false);
+    if (res.status === 401 && (state.role || state.cookieAuth) && !skipAuthReset) logout(false);
     throw new Error(data.detail || data.error || `HTTP ${res.status}`);
   }
   return data;
@@ -862,7 +989,7 @@ function electionApplicationCards(rows) {
           <div class="book-card-actions">
             ${pill(recommendationText(row.chair_recommendation), recommendationTone(row.chair_recommendation))}
             ${pill(applicationStatusText(row.admin_status || row.status), adminDecisionTone(row.admin_status || row.status))}
-            <button class="btn btn-secondary btn-small" onclick="openElectionApplicationBook('${esc(row.id)}')">Открыть книгу</button>
+            <button class="btn btn-secondary btn-small" data-click="openElectionApplicationBook('${esc(row.id)}')">Открыть книгу</button>
           </div>
         </article>
       `).join("")}
@@ -932,14 +1059,14 @@ window.openElectionApplicationBook = (applicationId) => {
   const row = state.electionApplications?.[applicationId];
   if (!row) return toast("Книга заявки не найдена", true);
   $("modalRoot").innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal-overlay" data-click="if(event.target===this) closeModal()">
       <div class="modal modal-wide">
         <div class="modal-head">
           <div>
             <h2>Заявка кандидата</h2>
             <p>${esc(row.player_name || "Кандидат")} · ${row.submitted_at ? dt(row.submitted_at) : "книга ещё не сдана"}</p>
           </div>
-          <button class="btn btn-secondary" onclick="closeModal()">Закрыть</button>
+          <button class="btn btn-secondary" data-click="closeModal()">Закрыть</button>
         </div>
         ${applicationBookPreview(row)}
       </div>
@@ -993,14 +1120,14 @@ function tableRows(id) {
 
 function renderStoredTable(id) {
   const t = state.tables[id];
-  if (!t || !t.rows.length) return empty("Данных пока нет", "Источник не подключён или фильтр не нашёл строк.");
+  if (!t || !t.rows.length) return empty("Данных пока нет", "сточник не подключён или фильтр не нашёл строк.");
   const rows = tableRows(id);
   const pages = Math.max(1, Math.ceil(rows.length / t.pageSize));
   t.page = Math.min(Math.max(1, t.page), pages);
   const start = (t.page - 1) * t.pageSize;
   const pageRows = rows.slice(start, start + t.pageSize);
   const head = t.columns.map(col => `
-    <th onclick="sortTable('${id}','${esc(col.key)}')">
+    <th data-click="sortTable('${id}','${esc(col.key)}')">
       ${esc(col.label || col.key)}${t.sortKey === col.key ? (t.sortDir === "asc" ? " ↑" : " ↓") : ""}
     </th>
   `).join("");
@@ -1009,21 +1136,21 @@ function renderStoredTable(id) {
       const raw = row?.[col.key];
       return `<td>${col.render ? col.render(raw, row, start + idx) : formatValue(raw)}</td>`;
     }).join("");
-    const action = t.rowAction ? ` onclick="${t.rowAction}(${start + idx})"` : "";
+    const action = t.rowAction ? ` data-click="${t.rowAction}(${start + idx})"` : "";
     return `<tr${action}>${cells}</tr>`;
   }).join("");
   return `
     <div class="toolbar">
-      <input class="grow" value="${esc(t.filter)}" oninput="filterTable('${id}', this.value)" placeholder="Поиск по таблице" />
-      <button class="btn btn-secondary btn-small" onclick="exportTable('${id}','csv')">Скачать CSV</button>
+      <input class="grow" value="${esc(t.filter)}" data-input="filterTable" data-input-id="${esc(id)}" placeholder="Поиск по таблице" />
+      <button class="btn btn-secondary btn-small" data-click="exportTable('${id}','csv')">Скачать CSV</button>
       <span class="last-update">${rows.length} записей</span>
     </div>
     <div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
     <div class="table-footer">
       <span>Страница ${t.page} из ${pages}</span>
       <div class="action-strip">
-        <button class="btn btn-secondary btn-small" onclick="pageTable('${id}',-1)">Назад</button>
-        <button class="btn btn-secondary btn-small" onclick="pageTable('${id}',1)">Вперёд</button>
+        <button class="btn btn-secondary btn-small" data-click="pageTable('${id}',-1)">Назад</button>
+        <button class="btn btn-secondary btn-small" data-click="pageTable('${id}',1)">Вперёд</button>
       </div>
     </div>
   `;
@@ -1043,6 +1170,14 @@ window.filterTable = (id, value) => {
   t.filter = value;
   t.page = 1;
   document.querySelector(`[data-table="${id}"]`).innerHTML = renderStoredTable(id);
+};
+
+window.filterPlayers = (value) => {
+  const query = cleanText(value).toLowerCase();
+  document.querySelectorAll(".player-row[data-player]").forEach((node) => {
+    const name = cleanText(node.dataset.player || "").toLowerCase();
+    node.classList.toggle("hidden", Boolean(query) && !name.includes(query));
+  });
 };
 
 window.pageTable = (id, delta) => {
@@ -1245,7 +1380,7 @@ function renderPublicStatus(status = {}, config = {}) {
   const onlineBoard = $("publicOnlineBoard");
   if (statusGrid) {
     statusGrid.innerHTML = [
-      publicStatusMetric("Сервер", server.online ? "онлайн" : "офлайн", server.online ? `Отклик ${server.latencyMs ?? "?"} мс` : "Соединение сейчас не подтверждено", server.online ? "good" : "bad"),
+      publicStatusMetric("", server.online ? "" : "", server.online ? ` ${server.latencyMs ?? "?"} ` : "   ", server.online ? "good" : "bad"),
       publicStatusMetric("Игроки", String(server.playersOnline || 0), server.playerCap ? `из ${server.playerCap}` : (server.playerListAvailable ? "публичный список доступен" : "публичный список недоступен"), server.playersOnline ? "good" : "neutral"),
       publicStatusMetric("Выборы", elections.active ? "идут" : "пауза", elections.active ? `${elections.candidates || 0} кандидатов · ${elections.votes || 0} голосов` : "Сейчас нет активного этапа голосования", elections.active ? "good" : "warn"),
       publicStatusMetric("Президент", elections.president || "не выбран", elections.president ? "Данные пришли из ElectionCore" : "Активный срок пока не подтверждён", elections.president ? "good" : "neutral")
@@ -1294,7 +1429,7 @@ async function loadPublicStatus() {
 function renderPublicAuthState() {
     const button = $("publicCabinetBtn");
     if (!button) return;
-    const authed = Boolean(state.role || state.token || state.cookieAuth);
+    const authed = Boolean(state.role || state.cookieAuth);
     button.classList.toggle("hidden", !authed);
     const username = state.user?.username || (state.role === "player" ? "игрок" : "команда");
     button.textContent = state.role === "admin" ? `Открыть кабинет (${username})` : `Личный кабинет (${username})`;
@@ -1312,7 +1447,7 @@ function showGuestPages() {
   }
 
 async function showCabinetFromPublic() {
-    if (!state.role && !state.token && !state.cookieAuth) {
+    if (!state.role && !state.cookieAuth) {
       location.hash = "#signin";
       return;
     }
@@ -1403,11 +1538,9 @@ async function login(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    state.token = data.token || "";
+    state.token = "";
     state.cookieAuth = data.cookieAuth === true;
     state.role = data.role || state.authRole;
-    if (state.token) localStorage.setItem("copimineToken", state.token);
-    else localStorage.removeItem("copimineToken");
     localStorage.setItem("copimineRole", state.role);
     localStorage.setItem("copimineLastRole", state.authRole);
     state.user = data.account || { username: data.username, role: state.role };
@@ -1426,7 +1559,6 @@ async function logout(call = true) {
   state.cookieAuth = false;
   state.user = null;
   state.playerLinkRequest = null;
-  localStorage.removeItem("copimineToken");
   localStorage.removeItem("copimineRole");
   $("app").classList.add("hidden");
   $("login").classList.remove("hidden");
@@ -1507,7 +1639,7 @@ function timeline(rows) {
       <div class="timeline-dot"></div>
       <div class="timeline-body">
         <strong>${esc(row.action || row.eventType || row.type || "событие")}</strong>
-        <span>${esc(row.actor || row.source || "system")} В· ${esc(row.target || "")} ${row.time || row.createdAt || row.timestamp ? "В· " + dt(row.time || row.createdAt || row.timestamp) : ""}</span>
+        <span>${esc(row.actor || row.source || "system")} · ${esc(row.target || "")} ${row.time || row.createdAt || row.timestamp ? "· " + dt(row.time || row.createdAt || row.timestamp) : ""}</span>
       </div>
     </div>
   `).join("")}</div>`;
@@ -1515,7 +1647,7 @@ function timeline(rows) {
 
 function compactCoords(row) {
   if (row?.world == null && row?.x == null) return "";
-  return `${row.world || "world"} ${row.x ?? "—"} ${row.y ?? "—"} ${row.z ?? "—"}`;
+  return `${row.world || "world"} ${row.x ?? ""} ${row.y ?? ""} ${row.z ?? ""}`;
 }
 
 function activityTimeline(rows) {
@@ -1566,10 +1698,10 @@ function inventorySummary(snapshot) {
   const ender = asArray(snapshot.enderChest);
   return `
     <div class="inventory-summary">
-      ${metric("Источник", snapshot.source || "plugin", dt(snapshot.createdAt))}
+      ${metric("сточник", snapshot.source || "plugin", dt(snapshot.createdAt))}
       ${metric("Слоты", inv.length + ender.length, `инв ${inv.length} · эндер ${ender.length}`)}
-      ${metric("АР", number(snapshot.arInInventory) + number(snapshot.arInEnderChest), `инв ${snapshot.arInInventory ?? 0} · эндер ${snapshot.arInEnderChest ?? 0}`, "good")}
-      ${metric("Позиция", snapshot.world || "—", `${snapshot.x ?? "—"} ${snapshot.y ?? "—"} ${snapshot.z ?? "—"}`)}
+      ${metric("", number(snapshot.arInInventory) + number(snapshot.arInEnderChest), ` ${snapshot.arInInventory ?? 0}   ${snapshot.arInEnderChest ?? 0}`, "good")}
+      ${metric("", snapshot.world || "", `${snapshot.x ?? ""} ${snapshot.y ?? ""} ${snapshot.z ?? ""}`)}
     </div>
   `;
 }
@@ -1600,7 +1732,7 @@ function stationCardsHtml(stations = [], deposits = []) {
     const deposit = depositByStation.get(id) || {};
     const active = number(row.active) > 0 && number(row.archived_at) <= 0;
     const votes = number(deposit.votes);
-    const coords = `${row.world || "world"} ${row.x ?? "—"} ${row.y ?? "—"} ${row.z ?? "—"}`;
+    const coords = `${row.world || "world"} ${row.x ?? ""} ${row.y ?? ""} ${row.z ?? ""}`;
     return `
       <article class="station-card ${active ? "active" : "inactive"}">
         <div class="station-card-top">
@@ -1640,9 +1772,9 @@ async function loadDashboard(silent = false) {
     ${dashboardCharts(status, perf, electionOverview, economy, perfReady, eventRows)}
 
     <section class="layout-grid grid-4">
-      ${metric("Minecraft", status.minecraftOnline ? "Онлайн" : "Оффлайн", `ping ${status.latencyMs ?? "—"} ms`, status.minecraftOnline ? "good" : "bad")}
+      ${metric("Minecraft", status.minecraftOnline ? "" : "", `ping ${status.latencyMs ?? ""} ms`, status.minecraftOnline ? "good" : "bad")}
       ${metric("Игроки", players.length, players.length ? players.slice(0, 4).join(", ") : "сейчас никого нет", players.length ? "good" : "")}
-      ${metric("TPS / MSPT", `${perf.tps ?? "—"} / ${perf.mspt ?? "—"}`, short(`${perf.tpsText || ""} ${perf.msptText || ""}`, 80), perf.mspt && perf.mspt > 50 ? "bad" : "good")}
+      ${metric("TPS / MSPT", `${perf.tps ?? ""} / ${perf.mspt ?? ""}`, short(`${perf.tpsText || ""} ${perf.msptText || ""}`, 80), perf.mspt && perf.mspt > 50 ? "bad" : "good")}
       ${metric("Заявки", `${requestsReady}/${requestsTotal}`, "настроенные обязательные параметры", requestsReady === requestsTotal ? "good" : "warn")}
     </section>
 
@@ -1652,8 +1784,8 @@ async function loadDashboard(silent = false) {
     <section class="layout-grid grid-wide">
       ${panel("Операционная сводка", "Ключевые состояния без перехода по разделам", `
         <div class="layout-grid grid-3">
-          ${metric("Выборы", electionOverview.active ? "Идут" : "Пауза", `${short(electionOverview.title || "CopiMine Elections", 42)} · ${electionOverview.candidates ?? 0} кандидатов · ${electionOverview.votes ?? 0} голосов`, electionOverview.active ? "good" : "")}
-          ${metric("АР у игроков", economy.totalKnownInPlayerData ?? 0, "сводка по игровым данным без списаний", "good")}
+          ${metric("", electionOverview.active ? "" : "", `${short(electionOverview.title || "CopiMine Elections", 42)}  ${electionOverview.candidates ?? 0}   ${electionOverview.votes ?? 0} `, electionOverview.active ? "good" : "")}
+          ${metric("  ", economy.totalKnownInPlayerData ?? 0, "     ", "good")}
           ${metric("Связь с сервером", status.rconOk ? "Есть" : "Нет", status.rconOk ? "живые действия доступны" : "часть быстрых действий недоступна", status.rconOk ? "good" : "warn")}
         </div>
         <div style="height:12px"></div>
@@ -1688,8 +1820,8 @@ async function loadPlayers() {
   if (!state.selectedPlayer && state.players[0]) state.selectedPlayer = state.players[0].name;
   const list = state.players.length ? `
     <div class="toolbar">
-      <input class="grow" id="playerSearch" placeholder="Найти игрока" oninput="filterPlayers(this.value)" />
-      <button class="btn btn-secondary" onclick="loadPlayers()">Обновить</button>
+      <input class="grow" id="playerSearch" placeholder="Найти игрока" data-input="filterPlayers" />
+      <button class="btn btn-secondary" data-click="loadPlayers()">Обновить</button>
     </div>
     <div id="playerList" class="player-list">${playerListHtml(state.players)}</div>
   ` : empty("Игроки не найдены", "Проверь usercache/playerdata или источник игроков.");
@@ -1703,7 +1835,7 @@ async function loadPlayers() {
 
 function playerListHtml(rows) {
   return rows.map(row => `
-    <button class="player-row ${state.selectedPlayer === row.name ? "active" : ""}" data-player="${esc(row.name)}" onclick="selectPlayer('${esc(row.name)}')">
+    <button class="player-row ${state.selectedPlayer === row.name ? "active" : ""}" data-player="${esc(row.name)}" data-click="selectPlayer('${esc(row.name)}')">
       ${avatarBadge(row.name, "sm")}
       <span class="player-main">
         <span class="player-name">${esc(row.name)}</span>
@@ -1740,7 +1872,7 @@ async function playerDetailsHtml(player) {
     safeApi(`/api/players/${encodeURIComponent(player)}/actions?limit=30`, { rows: [] })
   ]);
   const live = liveInventory.latest || inventory.live;
-  const actionButtons = playerActions.map(([action, label]) => `<button class="btn btn-secondary btn-small" onclick="playerAction('${esc(player)}','${action}')">${esc(label)}</button>`).join("");
+  const actionButtons = playerActions.map(([action, label]) => `<button class="btn btn-secondary btn-small" data-click="playerAction('${esc(player)}','${action}')">${esc(label)}</button>`).join("");
   const site = profile.siteAccount || {};
   const bank = profile.bank || {};
   const pin = profile.pin || {};
@@ -1752,13 +1884,13 @@ async function playerDetailsHtml(player) {
         <p class="panel-subtitle">Профиль игрока, история действий и инвентарь</p>
       </div>
       <div class="action-strip">
-        <button class="btn btn-primary btn-small" onclick="snapshotInventory('${esc(player)}')">Снимок инвентаря</button>
+        <button class="btn btn-primary btn-small" data-click="snapshotInventory('${esc(player)}')">Снимок инвентаря</button>
       </div>
     </div>
     <div class="layout-grid grid-3">
-      ${metric("Здоровье", profile.health ?? "—", `еда ${profile.food ?? "—"}`)}
-      ${metric("XP", profile.xpLevel ?? "—", profile.dimension || "измерение неизвестно")}
-      ${metric("АР", number(profile.ar?.inventory) + number(profile.ar?.enderChest), `инв ${profile.ar?.inventory ?? 0} · эндер ${profile.ar?.enderChest ?? 0}`, "good")}
+      ${metric("", profile.health ?? "", ` ${profile.food ?? ""}`)}
+      ${metric("XP", profile.xpLevel ?? "", profile.dimension || " ")}
+      ${metric("", number(profile.ar?.inventory) + number(profile.ar?.enderChest), ` ${profile.ar?.inventory ?? 0}   ${profile.ar?.enderChest ?? 0}`, "good")}
     </div>
     <div style="height:12px"></div>
     ${panel("Сайт и банк", "Привязка кабинета, баланс игрока и статус PIN без лишней техники.", kv([
@@ -1770,7 +1902,7 @@ async function playerDetailsHtml(player) {
       ["Состояние PIN", pinState],
       ["PIN заблокирован", Boolean(pin.locked)],
       ["Временный PIN истекает", pin.temporaryExpiresAt ? dt(pin.temporaryExpiresAt) : "--"]
-    ]), site.id ? `<button class="btn btn-secondary btn-small" onclick="playerResetBankPin('${esc(player)}')">Сбросить PIN</button>` : "")}
+    ]), site.id ? `<button class="btn btn-secondary btn-small" data-click="playerResetBankPin('${esc(player)}')">Сбросить PIN</button>` : "")}
     ${panel("Быстрые действия", "Все действия записываются в журнал и требуют серверные права.", `<div class="action-strip">${actionButtons}</div>`)}
     ${panel("Текущий инвентарь", "Если игрок онлайн, первым берётся свежий игровой снимок.", `
       ${inventorySummary(live)}
@@ -1782,7 +1914,7 @@ async function playerDetailsHtml(player) {
       <div style="height:12px"></div>
       ${table("player-live-history", asArray(liveInventory.onlineSnapshots).map(x => ({ createdAt: x.createdAt, source: x.source, inventory: asArray(x.inventory).length, ender: asArray(x.enderChest).length, ar: number(x.arInInventory) + number(x.arInEnderChest), world: x.world })), [
         { key: "createdAt", label: "Время", render: v => dt(v) },
-        { key: "source", label: "Источник" },
+        { key: "source", label: "сточник" },
         { key: "inventory", label: "Инв." },
         { key: "ender", label: "Эндер" },
         { key: "ar", label: "АР" },
@@ -1857,12 +1989,12 @@ window.playerResetBankPin = async (player = state.selectedPlayer) => {
 
 function inventoryGrid(items, limit = 120) {
   items = asArray(items).slice(0, limit);
-  if (!items.length) return empty("Предметов нет", "Источник инвентаря пуст или NBT parser недоступен.");
+  if (!items.length) return empty("Предметов нет", "сточник инвентаря пуст или NBT parser недоступен.");
   return `<div class="inventory-grid">${items.map(item => `
     <div class="slot" title="${esc(item.id || item.displayName || "")}">
       <img src="${esc(item.iconUrl || `/assets/mc-icons/item/${item.icon || "barrier"}.png`)}" alt="" onerror="this.style.display='none'" />
       <b>${esc(short(item.displayName || item.id || "item", 18))}</b>
-      <span>x${esc(item.Count ?? item.count ?? 1)} · slot ${esc(item.Slot ?? item.slot ?? "—")}</span>
+      <span>x${esc(item.Count ?? item.count ?? 1)}  slot ${esc(item.Slot ?? item.slot ?? "")}</span>
     </div>
   `).join("")}</div>`;
 }
@@ -1871,23 +2003,23 @@ function openInventoryModal(snapshot) {
   const inv = asArray(snapshot.inventory);
   const ender = asArray(snapshot.enderChest);
   $("modalRoot").innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal-overlay" data-click="if(event.target===this) closeModal()">
       <div class="modal">
         <div class="modal-head">
           <div>
             <h2>Снимок инвентаря: ${esc(snapshot.name || state.selectedPlayer)}</h2>
             <p>${dt(snapshot.createdAt)} · ${esc(snapshot.world || "игровой мир")}</p>
           </div>
-          <button class="btn btn-secondary" onclick="closeModal()">Закрыть</button>
+          <button class="btn btn-secondary" data-click="closeModal()">Закрыть</button>
         </div>
         <section class="layout-grid grid-4">
           ${metric("Слоты инвентаря", inv.length)}
           ${metric("Слоты эндера", ender.length)}
-          ${metric("АР в инвентаре", snapshot.arInInventory ?? 0, "", "good")}
-          ${metric("АР в эндере", snapshot.arInEnderChest ?? 0, "", "good")}
+          ${metric("  ", snapshot.arInInventory ?? 0, "", "good")}
+          ${metric("  ", snapshot.arInEnderChest ?? 0, "", "good")}
         </section>
         <div style="height:14px"></div>
-        ${panel("Инвентарь", "", inventoryGrid(inv))}
+        ${panel("нвентарь", "", inventoryGrid(inv))}
         ${panel("Эндер-сундук", "", inventoryGrid(ender))}
       </div>
     </div>
@@ -1905,15 +2037,15 @@ async function loadInventories() {
       ${panel("Снимки инвентарей", "Создай снимок по игроку и открой историю из профиля", `
         <div class="toolbar">
           <input id="inventoryPlayerInput" class="grow" placeholder="Ник игрока" list="playersDatalist" />
-          <button class="btn btn-primary" onclick="snapshotInventoryFromInput()">Создать снимок</button>
+          <button class="btn btn-primary" data-click="snapshotInventoryFromInput()">Создать снимок</button>
         </div>
         <datalist id="playersDatalist">${rows.map(x => `<option value="${esc(x.name)}"></option>`).join("")}</datalist>
         ${table("inventory-players", rows, [
           { key: "name", label: "Игрок" },
-          { key: "name", label: "Действие", render: v => `<button class="btn btn-secondary btn-small" onclick="snapshotInventory('${esc(v)}')">Снимок</button>` }
+          { key: "name", label: "Действие", render: v => `<button class="btn btn-secondary btn-small" data-click="snapshotInventory('${esc(v)}')">Снимок</button>` }
         ])}
       `)}
-      ${panel("Как этим пользоваться", "Инструмент для проверок, спорных кейсов и экономики", `
+      ${panel("Как этим пользоваться", "нструмент для проверок, спорных кейсов и экономики", `
         ${kv([
           ["Сценарий", "Выбрать игрока → создать снимок → открыть профиль → сравнить с историей"],
           ["Безопасность", "Сайт читает playerdata и сохраняет снимки в data/, без изменения инвентаря"],
@@ -1958,7 +2090,7 @@ async function loadElections() {
         <p>Сайт показывает ход выборов понятным языком: заявки кандидатов, участки ЦИК, результаты, президента, законы и налог без сырых команд и технических реестров.</p>
         <div class="hero-actions">
           ${pill(`Тур ${esc(election.current_round || summary.round || web.raw?.round || 1)}`, "neutral")}
-          ${pill(`${esc(summary.candidateCount ?? candidateRows.length)} кандидатов`, candidateRows.length ? "good" : "warn")}
+          ${pill(`${esc(summary.candidateCount ?? candidateRows.length)} `, candidateRows.length ? "good" : "warn")}
           ${pill(detail.president?.president_name || detail.president?.minecraft_name || overview.president ? `Президент: ${esc(detail.president?.president_name || detail.president?.minecraft_name || overview.president)}` : "Президент ещё не выбран", detail.president?.president_name || detail.president?.minecraft_name || overview.president ? "good" : "warn")}
         </div>
       </div>
@@ -1990,7 +2122,7 @@ async function loadElections() {
         ["Этап", electionStageLabel(election.current_stage || election.status || web.stageTitle, "—")],
         ["Тур", election.current_round || summary.round || web.raw?.round || "1"],
         ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
-        ["Лимит кандидатов", election.candidate_limit ?? web.raw?.candidateLimit ?? "—"],
+        [" ", election.candidate_limit ?? web.raw?.candidateLimit ?? ""],
         ["Срок президента", election.president_term_days ? `${election.president_term_days} дн.` : "—"],
         ["Режим сайта", data.readOnly ? "Только просмотр" : "Управление разрешено"]
       ]), siteBulletList([
@@ -2012,8 +2144,8 @@ async function loadElections() {
         ${stationCardsHtml(pollingStations, voteDeposits)}
         <div style="height:12px"></div>
         ${kv([
-          ["Активные участки", summary.activePollingStations ?? pollingStations.length],
-          ["Опущено бюллетеней", summary.voteDeposits ?? voteDeposits.reduce((sum, row) => sum + number(row.votes), 0)],
+          [" ", summary.activePollingStations ?? pollingStations.length],
+          [" ", summary.voteDeposits ?? voteDeposits.reduce((sum, row) => sum + number(row.votes), 0)],
           ["Сигналы антифрода", fraudRows.length || "не найдено"]
         ])}
       `)}
@@ -2076,27 +2208,27 @@ async function loadEconomy() {
   const donationSummary = donation.summary || {};
   setView(`
     <section class="layout-grid grid-4">
-      ${metric("AR в обороте", econSummary.totalBalance ?? data.totalKnownInPlayerData ?? 0, "Баланс на руках и в хранилищах", "good")}
-      ${metric("Игроков с AR", econSummary.holders ?? players.length, "Только подтверждённые остатки")}
-      ${metric("Операций AR", econSummary.transactions ?? asArray(ledger.transactions).length, `${econSummary.transfers ?? 0} переводов и ${econSummary.smelts ?? 0} переплавок`)}
-      ${metric("Официальных AR-предметов", econSummary.activeAssets ?? asArray(ledger.assets).length, `${econSummary.events ?? 0} событий и ${econSummary.scans ?? 0} сканов`)}
+      ${metric("AR  ", econSummary.totalBalance ?? data.totalKnownInPlayerData ?? 0, "     ", "good")}
+      ${metric("  AR", econSummary.holders ?? players.length, "  ")}
+      ${metric(" AR", econSummary.transactions ?? asArray(ledger.transactions).length, `${econSummary.transfers ?? 0}   ${econSummary.smelts ?? 0} `)}
+      ${metric(" AR-", econSummary.activeAssets ?? asArray(ledger.assets).length, `${econSummary.events ?? 0}   ${econSummary.scans ?? 0} `)}
     </section>
     <section class="layout-grid grid-wide">
       ${panel("Распределение AR", "Где сейчас сосредоточен баланс", resultBars(players, ["player"], ["amount"]))}
-      ${panel("Операции", "Инструменты для снимков и аудита экономики", `
+      ${panel("Операции", "нструменты для снимков и аудита экономики", `
         <div class="action-strip">
-          <button class="btn btn-primary" onclick="createEconomySnapshot()">Создать снимок</button>
-          <button class="btn btn-secondary" onclick="scanAresWorld()">Скан предметов AR</button>
+          <button class="btn btn-primary" data-click="createEconomySnapshot()">Создать снимок</button>
+          <button class="btn btn-secondary" data-click="scanAresWorld()">Скан предметов AR</button>
         </div>
         <div style="height:12px"></div>
         ${kv([
           ["ID AR-предметов", asArray(data.itemIds).join(", ") || "не настроены"],
           ["История снимков", history.count ? `${history.count} записей` : "пока пусто"],
-          ["Источник журнала", ledger.source || "основной backend"],
-          ["AR в инвентарях", econSummary.inventoryBalance ?? "—"],
-          ["AR в эндер-сундуках", econSummary.enderBalance ?? "—"],
-          ["Переводы", econSummary.transfers ?? "—"],
-          ["Переплавки", econSummary.smelts ?? "—"],
+          ["сточник журнала", ledger.source || "основной backend"],
+          ["AR  ", econSummary.inventoryBalance ?? ""],
+          ["AR  -", econSummary.enderBalance ?? ""],
+          ["", econSummary.transfers ?? ""],
+          ["", econSummary.smelts ?? ""],
           ["Последний снимок", dt(data.lastSnapshotAt || data.createdAt)]
         ])}
       `)}
@@ -2105,7 +2237,7 @@ async function loadEconomy() {
       ${panel("Игроки с AR", "Балансы, инвентари и эндер-сундуки", table("economy-players", players, [
         { key: "player", label: "Игрок" },
         { key: "amount", label: "Баланс" },
-        { key: "inventory", label: "Инвентарь" },
+        { key: "inventory", label: "нвентарь" },
         { key: "enderChest", label: "Эндер" }
       ], { pageSize: 15 }))}
       ${panel("Контейнеры мира", "Подозрительные или крупные хранилища", table("economy-containers", containers, null, { pageSize: 15 }))}
@@ -2125,7 +2257,7 @@ async function loadEconomy() {
         { key: "owner_name", label: "Владелец" },
         { key: "status", label: "Статус" },
         { key: "material", label: "Материал" },
-        { key: "source", label: "Источник" },
+        { key: "source", label: "сточник" },
         { key: "asset_id", label: "Asset", render: value => short(value || "", 12) }
       ], { pageSize: 12 })}</div>`)}
     </section>
@@ -2134,10 +2266,10 @@ async function loadEconomy() {
       ${panel("История снимков", "Снимки состояния AR для аудита и расследований", table("economy-snapshots", asArray(ledger.snapshots), null, { pageSize: 12 }))}
     </section>
     <section class="layout-grid grid-4">
-      ${metric("Донат-счёта", donationSummary.accounts ?? 0, "Отдельно от AR и банка", "good")}
-      ${metric("Донат-баланс", formatDonate(donationSummary.totalBalance ?? 0), "Сумма по всем donation accounts", donationSummary.totalBalance ? "good" : "neutral")}
-      ${metric("Невыдано", donationSummary.unclaimedItems ?? 0, "Предметы ждут выдачи через claim-flow", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
-      ${metric("Открытые сессии", donationSummary.openSessions ?? 0, "Mock donation workflow", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
+      ${metric("-", donationSummary.accounts ?? 0, "  AR  ", "good")}
+      ${metric("-", formatDonate(donationSummary.totalBalance ?? 0), "   donation accounts", donationSummary.totalBalance ? "good" : "neutral")}
+      ${metric("", donationSummary.unclaimedItems ?? 0, "    claim-flow", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
+      ${metric(" ", donationSummary.openSessions ?? 0, "Mock donation workflow", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
     </section>
     <section class="layout-grid grid-2">
       ${panel("Донат-счёта", "Баланс игроков, который не смешивается с AR.", table("donation-balances", asArray(donation.balances), [
@@ -2207,8 +2339,8 @@ async function loadArtifacts() {
     <section class="layout-grid grid-4">
       ${metric("Связка модулей", health.bridgeMode || "ArtifactsBridge", health.jarsOk ? "оба модуля активны" : `модули: ${asArray(health.activeJars).join(", ") || "нет"}`, health.jarsOk ? "good" : "bad")}
       ${metric("База сайта", health.postgres ? "PostgreSQL доступна" : "PostgreSQL недоступна", "единое хранилище CopiMine", health.postgres ? "good" : "bad")}
-      ${metric("Каталог", counts.artifact_items_catalog ?? asArray(catalog.items).length, "кешируется плагином")}
-      ${metric("Pending", counts.artifact_pending_deliveries ?? asArray(pending.deliveries).length, "не терять предметы", Number(counts.artifact_pending_deliveries || 0) ? "warn" : "good")}
+      ${metric("", counts.artifact_items_catalog ?? asArray(catalog.items).length, " ")}
+      ${metric("Pending", counts.artifact_pending_deliveries ?? asArray(pending.deliveries).length, "  ", Number(counts.artifact_pending_deliveries || 0) ? "warn" : "good")}
     </section>
     <section class="layout-grid grid-2">
       ${panel("Каталог лавки", "WEAPON / ARMOR / TOOL активны, RP остаётся заготовкой", table("artifact-catalog", asArray(catalog.items), [
@@ -2284,7 +2416,7 @@ async function loadRequests() {
           <input id="appPlayer" placeholder="Ник игрока" />
           <input id="appContact" placeholder="Контакт или игровой ник" />
           <textarea id="appWhy" class="full" placeholder="Почему игрок хочет участвовать / стать кандидатом"></textarea>
-          <button class="btn btn-primary full" onclick="createRequestApplication()">Создать заявку</button>
+          <button class="btn btn-primary full" data-click="createRequestApplication()">Создать заявку</button>
         </div>
       `)}
       ${panel("Новая жалоба", "Быстрое создание обращения с целью и координатами", `
@@ -2294,7 +2426,7 @@ async function loadRequests() {
           <select id="repSeverity"><option value="normal">normal</option><option value="high">high</option><option value="critical">critical</option></select>
           <input id="repWorld" placeholder="world" />
           <textarea id="repMessage" class="full" placeholder="Описание проблемы"></textarea>
-          <button class="btn btn-primary full" onclick="createRequestReport()">Создать жалобу</button>
+          <button class="btn btn-primary full" data-click="createRequestReport()">Создать жалобу</button>
         </div>
       `)}
     </section>
@@ -2304,7 +2436,7 @@ async function loadRequests() {
         { key: "player", label: "Игрок" },
         { key: "status", label: "Статус", render: v => pill(v || "pending", v === "approved" ? "good" : v === "rejected" ? "bad" : "warn") },
         { key: "createdAt", label: "Создано", render: v => dt(v) },
-        { key: "id", label: "Действия", render: v => `<div class="action-strip"><button class="btn btn-secondary btn-small" onclick="requestApplicationStatus('${esc(v)}','approved')">OK</button><button class="btn btn-secondary btn-small" onclick="requestApplicationStatus('${esc(v)}','rejected')">Reject</button></div>` }
+        { key: "id", label: "Действия", render: v => `<div class="action-strip"><button class="btn btn-secondary btn-small" data-click="requestApplicationStatus('${esc(v)}','approved')">OK</button><button class="btn btn-secondary btn-small" data-click="requestApplicationStatus('${esc(v)}','rejected')">Reject</button></div>` }
       ], { pageSize: 10 }))}
       ${panel("Жалобы", "Рабочая очередь администрации", table("requests-reports", asArray(reports.reports), [
         { key: "id", label: "ID" },
@@ -2312,7 +2444,7 @@ async function loadRequests() {
         { key: "target", label: "Цель" },
         { key: "status", label: "Статус", render: v => pill(v || "open", v === "closed" ? "good" : v === "rejected" ? "bad" : "warn") },
         { key: "severity", label: "Важность" },
-        { key: "id", label: "Действия", render: v => `<div class="action-strip"><button class="btn btn-secondary btn-small" onclick="requestReportStatus('${esc(v)}','in_progress')">Взять</button><button class="btn btn-secondary btn-small" onclick="requestReportStatus('${esc(v)}','closed')">Закрыть</button></div>` }
+        { key: "id", label: "Действия", render: v => `<div class="action-strip"><button class="btn btn-secondary btn-small" data-click="requestReportStatus('${esc(v)}','in_progress')">Взять</button><button class="btn btn-secondary btn-small" data-click="requestReportStatus('${esc(v)}','closed')">Закрыть</button></div>` }
       ], { pageSize: 10 }))}
     </section>
   `);
@@ -2335,12 +2467,12 @@ window.createRequestReport = async () => {
 };
 
 window.requestApplicationStatus = async (id, status) => {
-  try { await api(`/api/applications/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, reason: "Изменено из панели" }) }); toast("Статус заявки обновлён"); loadRequests(); }
+  try { await api(`/api/applications/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, reason: "зменено из панели" }) }); toast("Статус заявки обновлён"); loadRequests(); }
   catch (err) { toast(err.message, true); }
 };
 
 window.requestReportStatus = async (id, status) => {
-  try { await api(`/api/reports/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, reason: "Изменено из панели" }) }); toast("Статус жалобы обновлён"); loadRequests(); }
+  try { await api(`/api/reports/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, reason: "зменено из панели" }) }); toast("Статус жалобы обновлён"); loadRequests(); }
   catch (err) { toast(err.message, true); }
 };
 
@@ -2374,16 +2506,16 @@ async function loadStats() {
     </section>
     <section class="layout-grid grid-wide">
       ${panel("Серверные параметры", "Ключевые настройки, влияющие на стабильность и MSPT", kv([
-        ["view-distance", properties["view-distance"] ?? "—"],
-        ["simulation-distance", properties["simulation-distance"] ?? "—"],
-        ["network-compression-threshold", properties["network-compression-threshold"] ?? "—"],
-        ["entity-broadcast-range-percentage", properties["entity-broadcast-range-percentage"] ?? "—"],
-        ["sync-chunk-writes", properties["sync-chunk-writes"] ?? "—"],
+        ["view-distance", properties["view-distance"] ?? ""],
+        ["simulation-distance", properties["simulation-distance"] ?? ""],
+        ["network-compression-threshold", properties["network-compression-threshold"] ?? ""],
+        ["entity-broadcast-range-percentage", properties["entity-broadcast-range-percentage"] ?? ""],
+        ["sync-chunk-writes", properties["sync-chunk-writes"] ?? ""],
         ["world region files", world.regionFiles ?? 0],
         ["sample region size", bytes(world.sampleRegionSize || 0)]
       ]))}
       ${panel("Сводка плагинов", "Контроль, что активный CopiMine собран в один jar", kv([
-        ["Всего jar", plugins.totalJars ?? 0],
+        [" jar", plugins.totalJars ?? 0],
         ["CopiMine jar", plugins.copimineJars ?? 0],
         ["Живая связь", rcon.ok ? "подключена" : (rcon.error || "не подключена")],
         ["First-run готовность", `${perfReady.readyPercent || 0}%`],
@@ -2440,15 +2572,15 @@ async function loadServer() {
     <section class="layout-grid grid-wide">
       ${panel("Управление сервером", "Опасные действия вынесены в явные кнопки и пишутся в аудит", `
         <div class="action-strip">
-          <button class="btn btn-secondary" onclick="serverControl('status')">Проверить</button>
-          <button class="btn btn-secondary" onclick="serverControl('save-all')">Сохранить мир</button>
-          <button class="btn btn-secondary" onclick="serverControl('restart')">Перезапуск</button>
-          <button class="btn btn-danger" onclick="serverControl('stop')">Остановить</button>
+          <button class="btn btn-secondary" data-click="serverControl('status')">Проверить</button>
+          <button class="btn btn-secondary" data-click="serverControl('save-all')">Сохранить мир</button>
+          <button class="btn btn-secondary" data-click="serverControl('restart')">Перезапуск</button>
+          <button class="btn btn-danger" data-click="serverControl('stop')">Остановить</button>
         </div>
         <div style="height:12px"></div>
         <div class="toolbar">
           <input id="rconCommand" class="grow" placeholder="Безопасная команда сервера" />
-          <button class="btn btn-primary" onclick="runSafeRcon()">Выполнить</button>
+          <button class="btn btn-primary" data-click="runSafeRcon()">Выполнить</button>
         </div>
         <pre id="serverResponse" class="log-box" style="min-height:120px;max-height:220px">Ответ появится здесь</pre>
       `)}
@@ -2477,8 +2609,8 @@ async function loadServer() {
     </section>
     ${panel("Бэкапы", "Создание и скачивание архивов", `
       <div class="action-strip">
-        <button class="btn btn-primary" onclick="createBackup(false)">Бэкап конфигов</button>
-        <button class="btn btn-secondary" onclick="createBackup(true)">Бэкап с world data</button>
+        <button class="btn btn-primary" data-click="createBackup(false)">Бэкап конфигов</button>
+        <button class="btn btn-secondary" data-click="createBackup(true)">Бэкап с world data</button>
       </div>
       <div style="height:12px"></div>
       ${table("backups", asArray(backups.backups), [
@@ -2526,7 +2658,7 @@ async function loadAnticheat() {
         message: row.message || row.eventType || row.event_type || jsonPreview(row)
       })), [
         { key: "severity", label: "Тип", render: v => `<span class="anticheat-signal ${esc(String(v || "info").toLowerCase())}">${esc(v || "info")}</span>` },
-        { key: "source", label: "Источник" },
+        { key: "source", label: "сточник" },
         { key: "time", label: "Время", render: v => Number(v) ? dt(v) : esc(v || "—") },
         { key: "message", label: "Событие", render: v => esc(short(v, 220)) }
       ], { pageSize: 20 }))}
@@ -2569,7 +2701,7 @@ async function loadLogs() {
   setView(`
     <section class="layout-grid grid-2">
       ${panel("Логи сервера", "latest.log, последние строки", `<pre class="log-box">${esc(asArray(data.lines).join("\n") || "Лог пуст")}</pre>`)}
-      ${panel("События плагинов", "Игровые и системные события, которые пришли в панель", table("plugin-events", asArray(events.rows), null, { pageSize: 18 }))}
+      ${panel("События плагинов", "гровые и системные события, которые пришли в панель", table("plugin-events", asArray(events.rows), null, { pageSize: 18 }))}
     </section>
   `);
 }
@@ -2589,7 +2721,7 @@ async function loadInvestigations() {
           <input id="invY" placeholder="Y" />
           <input id="invZ" placeholder="Z" />
           <input id="invRadius" placeholder="Радиус" value="0" />
-          <button class="btn btn-primary" onclick="searchInvestigation()">Искать</button>
+          <button class="btn btn-primary" data-click="searchInvestigation()">скать</button>
         </div>
         <div id="investigationResults">${table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 })}</div>
       `)}
@@ -2624,7 +2756,7 @@ async function loadSources() {
   ]);
   setView(`
     ${panel("Источники данных", "Плагины, файлы и БД, на которых строится панель", table("sources", asArray(data.sources), [
-      { key: "name", label: "Источник" },
+      { key: "name", label: "сточник" },
       { key: "type", label: "Тип" },
       { key: "status", label: "Статус", render: v => pill(v, v === "connected" ? "good" : "warn") },
       { key: "capabilities", label: "Данные", render: v => asArray(v).map(x => pill(x, "neutral")).join(" ") || "—" },
@@ -2684,13 +2816,13 @@ async function loadSecurity() {
             <option value="pardon">Разбанить</option>
           </select>
           <input id="accessReason" class="full" placeholder="Причина" />
-          <button class="btn btn-primary full" onclick="runAccessAction()">Выполнить</button>
+          <button class="btn btn-primary full" data-click="runAccessAction()">Выполнить</button>
         </div>
         <div style="height:12px"></div>
         ${kv([
           ["Требуется OP для входа", access.requireOp],
           ["Нужен whitelist", access.requireWhitelist],
-          ["Изменения через сайт", access.dbWriteEnabled ? "разрешены только готовые действия" : "только через серверный runtime"]
+          ["зменения через сайт", access.dbWriteEnabled ? "разрешены только готовые действия" : "только через серверный runtime"]
         ])}
       `)}
     </section>
@@ -2701,7 +2833,7 @@ async function loadSecurity() {
         { key: "username", label: "Сайт" },
         { key: "status", label: "Статус", render: v => pill(statusLabel(v || "pending"), artifactStatusTone(v)) },
         { key: "approved_by", label: "Одобрил", render: v => esc(v || "—") },
-        { key: "id", label: "Действие", render: (value, row) => String(row.status || "").toUpperCase() === "PENDING" ? `<button class="btn btn-primary" onclick="approveWhitelistRequest('${esc(value)}')">Одобрить</button>` : '<span class="muted">Готово</span>' }
+        { key: "id", label: "Действие", render: (value, row) => String(row.status || "").toUpperCase() === "PENDING" ? `<button class="btn btn-primary" data-click="approveWhitelistRequest('${esc(value)}')">Одобрить</button>` : '<span class="muted">Готово</span>' }
       ], { pageSize: 12 }) : empty("Whitelist-заявок пока нет", "Когда игроки отправят запросы с сайта, они появятся здесь."))}
       ${panel("IP-alerts", "Срабатывают при лимите регистраций и других подозрительных паттернах.", alertRows.length ? table("security-ip-alerts", alertRows, [
         { key: "created_at", label: "Время", render: v => dt(v) },
@@ -2719,7 +2851,7 @@ async function loadSecurity() {
           <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
           <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить доступ к серверу, если нужно</label>
           <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP, если политика входа требует</label>
-          <button class="btn btn-primary full" onclick="createAdminUser()">Создать админа</button>
+          <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
         </div>
       `)}
       ${panel("Защита входа", "Короткая сводка по доступу в админку и подтверждениям.", kv([
@@ -2776,7 +2908,7 @@ window.createAdminUser = async () => {
 window.runAccessAction = async () => {
   try {
     const action = $("accessAction").value;
-    const headers = dangerConfirm(`Изменить Minecraft-доступ: ${action} -> ${$("accessPlayer").value.trim()}`, `ACCESS_${action.toUpperCase()}`);
+    const headers = dangerConfirm(`зменить Minecraft-доступ: ${action} -> ${$("accessPlayer").value.trim()}`, `ACCESS_${action.toUpperCase()}`);
     if (!headers) return;
     await api("/api/minecraft/access-lists", {
       method: "POST",
@@ -2821,7 +2953,7 @@ function playerLinkSummary(result) {
   return kv([
     ["Minecraft-ник", result.minecraftName || "—"],
     ["Доставлен в игре", result.deliveredInGame],
-    ["Истекает", dt(result.expiresAt)]
+    ["стекает", dt(result.expiresAt)]
   ]);
 }
 
@@ -2866,9 +2998,9 @@ async function loadPlayerCabinet() {
       ["Состояние PIN", bankPinState(pin)],
       ["Нужно сменить временный PIN", pin.mustChange],
       ["Временный PIN истекает", tempPin.expiresAt ? dt(tempPin.expiresAt) : "--"]
-    ]), `<button class="btn btn-secondary" onclick="setTab('bank')">Открыть банк</button>`) : panel("Привязка Minecraft", "Перед банком и переводами привяжи аккаунт сайта к своему игровому нику.", `
+    ]), `<button class="btn btn-secondary" data-click="setTab('bank')">Открыть банк</button>`) : panel("Привязка Minecraft", "Перед банком и переводами привяжи аккаунт сайта к своему игровому нику.", `
       <div class="notice">На странице привязки запроси одноразовый код, получи его в Minecraft и подтверди здесь.</div>
-    `, `<button class="btn btn-primary" onclick="setTab('link')">Открыть привязку</button>`)}
+    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`)}
     ${panel("Whitelist", "Разовая заявка на доступ к серверу после привязки Minecraft-ника.", `
       ${kv([
         ["Статус", whitelistStatus],
@@ -2878,7 +3010,7 @@ async function loadPlayerCabinet() {
       ])}
       <div style="height:12px"></div>
       ${!linked ? `<div class="notice">Сначала привяжи Minecraft-ник, затем появится кнопка whitelist-заявки.</div>` : ""}
-      ${linked && !whitelisted && !whitelistRequest ? `<button class="btn btn-primary" onclick="playerRequestWhitelist()">Отправить whitelist-заявку</button>` : ""}
+      ${linked && !whitelisted && !whitelistRequest ? `<button class="btn btn-primary" data-click="playerRequestWhitelist()">Отправить whitelist-заявку</button>` : ""}
       ${linked && whitelistRequest?.status === "PENDING" ? `<div class="notice">Заявка уже отправлена и ждёт одобрения в Discord или админ-панели.</div>` : ""}
       ${whitelisted ? `<div class="notice">Игрок уже добавлен в whitelist. Повторная заявка не нужна.</div>` : ""}
     `)}
@@ -2887,12 +3019,12 @@ async function loadPlayerCabinet() {
       ["Баланс", donation?.linked ? formatDonate(donationBalance) : "—"],
       ["Покупки", "через вкладку Артефакты / Донат"],
       ["SBP", "донат в разработке"]
-    ]), `<button class="btn btn-secondary" onclick="setTab('artifacts')">Открыть лавку</button>`)}
-    ${tempPin.code ? panel("Временный PIN", "Этот код выдан сбросом. Используй его как текущий PIN и сразу замени.", kv([
+    ]), `<button class="btn btn-secondary" data-click="setTab('artifacts')">Открыть лавку</button>`)}
+    ${tempPin.code ? panel("Временный PIN", "Этот код выдан сбросом. спользуй его как текущий PIN и сразу замени.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
-      ["Истекает", dt(tempPin.expiresAt)]
-    ]), `<button class="btn btn-primary" onclick="setTab('bank')">Заменить PIN</button>`) : ""}
+      ["стекает", dt(tempPin.expiresAt)]
+    ]), `<button class="btn btn-primary" data-click="setTab('bank')">Заменить PIN</button>`) : ""}
     ${linked ? panel("Президент и налоги", "Президент сервера, действующие законы и оплата налога без выхода из кабинета.", `
       ${kv([
         ["Президент", electionTax?.president?.president_name || "—"],
@@ -2907,7 +3039,7 @@ async function loadPlayerCabinet() {
         <div class="form-grid">
           <input id="cabinetTaxAmount" type="number" min="1" max="${esc(number(electionTax?.due || 0))}" value="${esc(number(electionTax?.due || 0))}" placeholder="Сумма" />
           <input id="cabinetTaxPin" type="password" inputmode="numeric" placeholder="PIN" />
-          <button class="btn btn-primary full" onclick="playerPayElectionTax()">Оплатить налог</button>
+          <button class="btn btn-primary full" data-click="playerPayElectionTax()">Оплатить налог</button>
         </div>
       ` : ""}
     `) : ""}
@@ -2951,7 +3083,7 @@ async function loadPlayerLink() {
       ${panel("Запросить одноразовый код", "Код не показывается публично и не уходит в логи браузера.", `
         <div class="form-grid">
           <input id="linkMinecraftName" value="${esc(state.user.minecraftName || "")}" placeholder="Minecraft-ник на сервере" />
-          <button class="btn btn-primary full" onclick="playerRequestLinkCode()">Получить код в Minecraft</button>
+          <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
         </div>
         <div style="height:12px"></div>
         ${playerLinkSummary(state.playerLinkRequest)}
@@ -2959,7 +3091,7 @@ async function loadPlayerLink() {
       ${panel("Подтвердить код", "Введи одноразовый код из Minecraft-чата.", `
         <div class="form-grid">
           <input id="linkCodeInput" placeholder="Например: 7H2K9M4Q" />
-          <button class="btn btn-primary full" onclick="playerConfirmLinkCode()">Подтвердить привязку</button>
+          <button class="btn btn-primary full" data-click="playerConfirmLinkCode()">Подтвердить привязку</button>
         </div>
         ${linked ? '<div class="notice">Аккаунт уже привязан. Повторное подтверждение обновит активную привязку к тому же Minecraft-нику.</div>' : ""}
       `)}
@@ -2975,7 +3107,7 @@ async function loadPlayerBank() {
     setView(`
       ${panel("Банк AR закрыт", "Для банка нужна привязка Minecraft-ника.", `
         <div class="notice">Сначала запроси одноразовый код привязки. После этого банк откроется здесь и в игре.</div>
-      `, `<button class="btn btn-primary" onclick="setTab('link')">Открыть привязку</button>`)}
+      `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`)}
     `);
     return;
   }
@@ -3000,14 +3132,14 @@ async function loadPlayerBank() {
     ${tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
-      ["Истекает", dt(tempPin.expiresAt)]
+      ["стекает", dt(tempPin.expiresAt)]
     ])) : ""}
     <section class="layout-grid grid-2">
       ${panel("Задать или изменить PIN", tempPin.code ? "Активен временный PIN. Введи его как текущий и замени сейчас." : "PIN нужен для переводов на сайте и защищённых операций банкомата.", `
         <div class="form-grid">
           <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${tempPin.code ? "Текущий временный PIN" : "Текущий PIN, если уже задан"}" />
           <input id="bankNewPin" type="password" inputmode="numeric" placeholder="Новый PIN, 4-8 цифр" />
-          <button class="btn btn-primary full" onclick="playerSetPin()">Сохранить PIN</button>
+          <button class="btn btn-primary full" data-click="playerSetPin()">Сохранить PIN</button>
         </div>
       `)}
       ${panel("Перевести AR", transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : "Перевод отправит AR на другой счёт и сразу покажет результат в истории.", transferLocked ? `
@@ -3018,7 +3150,7 @@ async function loadPlayerBank() {
           <input id="bankAmount" type="number" min="1" step="1" placeholder="Сумма" />
           <input id="bankPinInput" type="password" inputmode="numeric" placeholder="PIN" />
           <input id="bankNote" class="full" placeholder="Комментарий, необязательно" />
-          <button class="btn btn-primary full" onclick="playerTransfer()">Отправить AR</button>
+          <button class="btn btn-primary full" data-click="playerTransfer()">Отправить AR</button>
         </div>
       `)}
     </section>
@@ -3224,7 +3356,7 @@ async function loadPlayerSettings() {
         ["Minecraft-ник", account.minecraftName || "не привязан"],
         ["Email", account.email || "не указан"],
         ["Создан", dt(account.createdAt)]
-      ]), `<button class="btn btn-secondary" onclick="setTab('link')">Настроить Minecraft</button>`)}
+      ]), `<button class="btn btn-secondary" data-click="setTab('link')">Настроить Minecraft</button>`)}
       ${panel("Что можно настроить", "В кабинете доступны только реальные действия без декоративных переключателей.", safetyRail([
         ["Привязка", "Свяжи кабинет с Minecraft-ником и открой банк.", account.minecraftName ? "good" : "warn"],
         ["Безопасность", "Смени пароль и проверь PIN банка.", "neutral"],
@@ -3245,10 +3377,10 @@ async function loadPlayerSecurity() {
           ["Статус", bankPinState(pin)],
           ["Заблокирован", pin.locked || false],
           ["Нужна замена", pin.mustChange || false]
-        ]), `<button class="btn btn-primary" onclick="setTab('bank')">Открыть банк</button>`)}
+        ]), `<button class="btn btn-primary" data-click="setTab('bank')">Открыть банк</button>`)}
         ${panel("Сессии", "Базовые действия безопасности", `
           <div class="notice">Если заметил подозрительную активность, смени пароль и PIN, затем выйди из аккаунта на всех устройствах.</div>
-          <button class="btn btn-secondary full" onclick="logout(true)">Выйти из текущей сессии</button>
+          <button class="btn btn-secondary full" data-click="logout(true)">Выйти из текущей сессии</button>
         `)}
       </section>
     `);
@@ -3310,6 +3442,8 @@ async function loadCurrent(silent = false) {
 }
 
 function wire() {
+  wireDataClickDelegation();
+  wireDataInputDelegation();
   wirePublicSite();
   $("loginForm").addEventListener("submit", login);
   document.querySelectorAll("[data-auth-role]").forEach((button) => {
@@ -3344,7 +3478,10 @@ function wire() {
 
 async function boot() {
   wire();
-  await bootAuthed({ quiet: !state.token });
+  await refreshCsrfCookie();
+  await bootAuthed({ quiet: !(state.role || state.cookieAuth) });
 }
 
 boot();
+
+

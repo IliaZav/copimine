@@ -108,7 +108,7 @@ public final class VisualRuntimeService {
     }
 
     public boolean supportsShaderRuntime() {
-        return clientBridge.enabled() && configService.allowClientModVisuals() && hasAllShaderProfiles();
+        return false;
     }
 
     public String serverOverlaySupportReason() {

@@ -48,6 +48,7 @@ Reasons:
 - the server must not require client shader mods;
 - the optional `CopiMineClient` mod reuses existing self-made CopiMine overlays and does not need external art to become functional;
 - Paper cannot force Iris/OptiFine shaderpacks and therefore must not claim true server-side shaders.
+- Paper server cannot reliably force true client post-processing shaders, so shader descriptors stay documentation/client-profile only and the live server path resolves to client-mod visuals, resource-pack overlay, or particle fallback.
 
 ## Embedded assets
 

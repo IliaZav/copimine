@@ -3589,7 +3589,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!"PROTECTED_BLOCK_VISUAL".equals(pdc.get(visualEntityTypeKey,PersistentDataType.STRING)))return false;
         String kind=first(pdc.get(visualKindKey,PersistentDataType.STRING),"");
         String linkedId=first(pdc.get(visualLinkedIdKey,PersistentDataType.STRING),"");
-        if(!"ATM".equals(kind)||linkedId.isBlank())return false;
+        if("ATM".equals(kind)||linkedId.isBlank())return false;
+        if(!"ATM".equals(kind))return false;
         e.setCancelled(true);
         try{
             List<Map<String,Object>> rows=query("SELECT active FROM ar_atms WHERE id=? LIMIT 1",linkedId);

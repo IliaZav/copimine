@@ -13,7 +13,9 @@ const initialHashRoute = parseHashRoute(location.hash);
 
 const state = {
   token: "",
-  role: localStorage.getItem("copimineRole") || "",
+  role: "",
+  fullAccess: false,
+  owner: false,
   authRole: localStorage.getItem("copimineLastRole") || "admin",
   authAction: "login",
   cookieAuth: false,
@@ -24,11 +26,13 @@ const state = {
   players: [],
   tables: {},
   refreshTimer: null,
+  refreshPromise: null,
   liveStream: null,
   liveLastEvent: 0,
   playerLinkRequest: null,
   publicStatus: null,
   publicConfig: null,
+  modalResolver: null,
   donationSessionId: initialHashRoute.params.get("session") || localStorage.getItem("copimineDonationSessionId") || "",
   donationFocusItemId: String(initialHashRoute.params.get("item") || "").trim().toLowerCase(),
   donationBusy: false,
@@ -452,6 +456,46 @@ async function refreshCsrfCookie() {
   } catch {}
 }
 
+async function tryRefreshSession() {
+  if (state.refreshPromise) return state.refreshPromise;
+  state.refreshPromise = (async () => {
+    const endpoints = (state.role === "player" || state.authRole === "player")
+      ? ["/api/player/refresh", "/api/auth/refresh"]
+      : ["/api/auth/refresh", "/api/player/refresh"];
+    const csrf = getCookie(CSRF_COOKIE);
+    for (const endpoint of endpoints) {
+      try {
+        const headers = { "Content-Type": "application/json" };
+        if (csrf) headers[CSRF_HEADER] = csrf;
+        const res = await fetch(`${endpoint}?_fresh=${Date.now()}`, {
+          method: "POST",
+          cache: "no-store",
+          credentials: "include",
+          headers,
+          body: "{}"
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        state.cookieAuth = data.cookieAuth === true;
+        state.role = data.role || state.role;
+        state.fullAccess = Boolean(data.fullAccess ?? (state.role === "admin" || state.role === "owner"));
+        state.owner = Boolean(data.owner ?? state.role === "owner");
+        state.authRole = state.role === "player" ? "player" : "admin";
+        localStorage.setItem("copimineLastRole", state.authRole);
+        if (data.account) state.user = data.account;
+        if (data.username && !data.account) state.user = { ...(state.user || {}), username: data.username, role: data.role || state.role };
+        return true;
+      } catch {}
+    }
+    return false;
+  })();
+  try {
+    return await state.refreshPromise;
+  } finally {
+    state.refreshPromise = null;
+  }
+}
+
 function toast(message, bad = false) {
   const root = $("toast");
   const el = document.createElement("div");
@@ -484,7 +528,7 @@ function authHeaders(extra = {}) {
 }
 
 async function api(url, opts = {}) {
-  const { skipAuthReset = false, ...fetchOpts } = opts;
+  const { skipAuthReset = false, retryOn401 = true, ...fetchOpts } = opts;
   const method = String(fetchOpts.method || "GET").toUpperCase();
   const headers = authHeaders(fetchOpts.headers || {});
   if (fetchOpts.body instanceof FormData) delete headers["Content-Type"];
@@ -504,16 +548,54 @@ async function api(url, opts = {}) {
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { detail: text }; }
   if (!res.ok) {
-    if (res.status === 401 && (state.role || state.cookieAuth) && !skipAuthReset) logout(false);
+    if (res.status === 401 && (state.role || state.cookieAuth) && !skipAuthReset && retryOn401) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) return api(url, { ...opts, skipAuthReset: true, retryOn401: false });
+      logout(false);
+    }
     throw new Error(data.detail || data.error || `HTTP ${res.status}`);
   }
   return data;
 }
 
-function dangerConfirm(message, label = "CONFIRM") {
-  const typed = prompt(`${message}\n\nВведите ${label}, чтобы подтвердить действие.`);
-  if (typed !== label) {
-    toast("Действие отменено: код подтверждения не совпал.", true);
+function resolveModal(result = null) {
+  const resolver = state.modalResolver;
+  state.modalResolver = null;
+  $("modalRoot").innerHTML = "";
+  if (typeof resolver === "function") resolver(result);
+}
+
+window.closeModal = () => resolveModal(null);
+window.modalConfirmCancel = () => resolveModal(false);
+window.modalConfirmAccept = () => resolveModal(true);
+
+async function dangerConfirm(message, label = "CONFIRM") {
+  if (state.modalResolver) resolveModal(false);
+  $("modalRoot").innerHTML = `
+    <div class="modal-overlay" data-click="if(event.target===this) closeModal()">
+      <div class="modal">
+        <div class="modal-head">
+          <div>
+            <h2>Подтверди действие</h2>
+            <p>${esc(message)}</p>
+          </div>
+          <button class="btn btn-secondary" data-click="closeModal()">Отмена</button>
+        </div>
+        <div class="notice">
+          Это действие пишет запись в аудит и выполняется только после явного подтверждения.
+        </div>
+        <div class="action-strip">
+          <button class="btn btn-secondary" data-click="modalConfirmCancel()">Отмена</button>
+          <button class="btn btn-danger" data-click="modalConfirmAccept()">Подтвердить</button>
+        </div>
+      </div>
+    </div>
+  `;
+  const confirmed = await new Promise((resolve) => {
+    state.modalResolver = resolve;
+  });
+  if (!confirmed) {
+    toast("Действие отменено.", true);
     return null;
   }
   return { [CONFIRM_HEADER]: label };
@@ -1239,7 +1321,7 @@ function tableRows(id) {
 
 function renderStoredTable(id) {
   const t = state.tables[id];
-  if (!t || !t.rows.length) return empty("Данных пока нет", "сточник не подключён или фильтр не нашёл строк.");
+  if (!t || !t.rows.length) return empty("Данных пока нет", "Источник не подключён или фильтр не нашёл строк.");
   const rows = tableRows(id);
   const pages = Math.max(1, Math.ceil(rows.length / t.pageSize));
   t.page = Math.min(Math.max(1, t.page), pages);
@@ -1704,7 +1786,6 @@ async function login(event) {
     state.token = "";
     state.cookieAuth = data.cookieAuth === true;
     state.role = data.role || state.authRole;
-    localStorage.setItem("copimineRole", state.role);
     localStorage.setItem("copimineLastRole", state.authRole);
     state.user = data.account || { username: data.username, role: state.role };
     await bootAuthed();
@@ -1719,10 +1800,11 @@ async function logout(call = true) {
   }
   state.token = "";
   state.role = "";
+  state.fullAccess = false;
+  state.owner = false;
   state.cookieAuth = false;
   state.user = null;
   state.playerLinkRequest = null;
-  localStorage.removeItem("copimineRole");
   $("app").classList.add("hidden");
   $("login").classList.remove("hidden");
   stopLivePanelStream();
@@ -1731,17 +1813,17 @@ async function logout(call = true) {
 }
 
 async function resolveAuthSession() {
-  const order = isPlayerRole() ? ["player", "admin"] : ["admin", "player"];
+  const order = state.authRole === "player" ? ["player", "admin"] : ["admin", "player"];
   let lastError = new Error("Authentication is required");
   for (const role of order) {
     try {
       if (role === "admin") {
         const me = await api("/api/auth/me", { skipAuthReset: true });
         const config = await safeApi("/api/config", {});
-        return { role: me.role || "admin", user: me, config };
+        return { role: me.role || "admin", user: me, config, fullAccess: Boolean(me.fullAccess), owner: Boolean(me.owner) };
       }
       const me = await api("/api/player/me", { skipAuthReset: true });
-      return { role: "player", user: me.account || {}, config: {} };
+      return { role: "player", user: me.account || {}, config: {}, fullAccess: false, owner: false };
     } catch (err) {
       lastError = err;
     }
@@ -1755,15 +1837,16 @@ async function bootAuthed(options = {}) {
   try {
     const session = await resolveAuthSession();
     state.role = session.role;
+    state.fullAccess = Boolean(session.fullAccess);
+    state.owner = Boolean(session.owner);
     state.user = session.user;
     state.config = session.config || {};
-    localStorage.setItem("copimineRole", state.role);
     const cookieAuth = Boolean(state.config.features?.cookieAuth || state.config.cookieAuth || state.cookieAuth);
     state.cookieAuth = cookieAuth;
     const username = isPlayerRole() ? (state.user.username || "player") : (state.user.username || "admin");
     $("userBadge").textContent = isPlayerRole()
       ? `${username} · игрок`
-      : `${username}${isJuniorAdminRole() ? " · младший админ" : ""}`;
+      : `${username}${isJuniorAdminRole() ? " · младший админ" : (state.owner ? " · владелец" : "")}`;
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
     logout(false);
@@ -1863,7 +1946,7 @@ function inventorySummary(snapshot) {
   const ender = asArray(snapshot.enderChest);
   return `
     <div class="inventory-summary">
-      ${metric("сточник", snapshot.source || "plugin", dt(snapshot.createdAt))}
+      ${metric("Источник", snapshot.source || "plugin", dt(snapshot.createdAt))}
       ${metric("Слоты", inv.length + ender.length, `инв ${inv.length} · эндер ${ender.length}`)}
       ${metric("", number(snapshot.arInInventory) + number(snapshot.arInEnderChest), ` ${snapshot.arInInventory ?? 0}   ${snapshot.arInEnderChest ?? 0}`, "good")}
       ${metric("", snapshot.world || "", `${snapshot.x ?? ""} ${snapshot.y ?? ""} ${snapshot.z ?? ""}`)}
@@ -2087,7 +2170,7 @@ async function playerDetailsHtml(player) {
       <div class="spacer-12"></div>
       ${table("player-live-history", asArray(liveInventory.onlineSnapshots).map(x => ({ createdAt: x.createdAt, source: x.source, inventory: asArray(x.inventory).length, ender: asArray(x.enderChest).length, ar: number(x.arInInventory) + number(x.arInEnderChest), world: x.world })), [
         { key: "createdAt", label: "Время", render: v => dt(v) },
-        { key: "source", label: "сточник" },
+        { key: "source", label: "Источник" },
         { key: "inventory", label: "Инв." },
         { key: "ender", label: "Эндер" },
         { key: "ar", label: "АР" },
@@ -2118,7 +2201,7 @@ window.playerAction = async (player, action) => {
     tp_here: "PLAYER_TP_HERE",
     tp_coords: "PLAYER_TP_COORDS"
   };
-  const headers = dangerLabels[action] ? dangerConfirm(`Опасное действие с игроком: ${action} -> ${player}`, dangerLabels[action]) : {};
+  const headers = dangerLabels[action] ? await dangerConfirm(`Опасное действие с игроком: ${action} -> ${player}`, dangerLabels[action]) : {};
   if (!headers) return;
   try {
     const res = await api(`/api/players/${encodeURIComponent(player)}/command/${action}`, { method: "POST", headers, body: JSON.stringify(body) });
@@ -2142,7 +2225,7 @@ window.snapshotInventory = async (player = state.selectedPlayer) => {
 
 window.playerResetBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
-  const headers = dangerConfirm(`Сбросить банковский PIN для ${player}? Старый PIN сразу перестанет работать.`, "PLAYER_BANK_PIN_RESET");
+  const headers = await dangerConfirm(`Сбросить банковский PIN для ${player}? Старый PIN сразу перестанет работать.`, "PLAYER_BANK_PIN_RESET");
   if (!headers) return;
   try {
     const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/reset`, {
@@ -2162,7 +2245,7 @@ window.playerResetBankPin = async (player = state.selectedPlayer) => {
 
 function inventoryGrid(items, limit = 120) {
   items = asArray(items).slice(0, limit);
-  if (!items.length) return empty("Предметов нет", "сточник инвентаря пуст или NBT parser недоступен.");
+  if (!items.length) return empty("Предметов нет", "Источник инвентаря пуст или NBT parser недоступен.");
   return `<div class="inventory-grid">${items.map(item => `
     <div class="slot" title="${esc(item.id || item.displayName || "")}">
       <img src="${esc(item.iconUrl || `/assets/mc-icons/item/${item.icon || "barrier"}.png`)}" alt="" onerror="this.style.display='none'" />
@@ -2192,14 +2275,12 @@ function openInventoryModal(snapshot) {
           ${metric("  ", snapshot.arInEnderChest ?? 0, "", "good")}
         </section>
         <div class="spacer-14"></div>
-        ${panel("нвентарь", "", inventoryGrid(inv))}
+        ${panel("Инвентарь", "", inventoryGrid(inv))}
         ${panel("Эндер-сундук", "", inventoryGrid(ender))}
       </div>
     </div>
   `;
 }
-
-window.closeModal = () => { $("modalRoot").innerHTML = ""; };
 
 async function loadInventories() {
   setLoading("Готовлю инвентари");
@@ -2412,7 +2493,7 @@ async function loadEconomy() {
         ${kv([
           ["ID AR-предметов", asArray(data.itemIds).join(", ") || "не настроены"],
           ["История снимков", history.count ? `${history.count} записей` : "пока пусто"],
-          ["сточник журнала", ledger.source || "основной backend"],
+          ["Источник журнала", ledger.source || "основной backend"],
           ["AR  ", econSummary.inventoryBalance ?? ""],
           ["AR  -", econSummary.enderBalance ?? ""],
           ["", econSummary.transfers ?? ""],
@@ -2425,7 +2506,7 @@ async function loadEconomy() {
       ${panel("Игроки с AR", "Балансы, инвентари и эндер-сундуки", table("economy-players", players, [
         { key: "player", label: "Игрок" },
         { key: "amount", label: "Баланс" },
-        { key: "inventory", label: "нвентарь" },
+        { key: "inventory", label: "Инвентарь" },
         { key: "enderChest", label: "Эндер" }
       ], { pageSize: 15 }))}
       ${panel("Контейнеры мира", "Подозрительные или крупные хранилища", table("economy-containers", containers, null, { pageSize: 15 }))}
@@ -2445,7 +2526,7 @@ async function loadEconomy() {
         { key: "owner_name", label: "Владелец" },
         { key: "status", label: "Статус" },
         { key: "material", label: "Материал" },
-        { key: "source", label: "сточник" },
+        { key: "source", label: "Источник" },
         { key: "asset_id", label: "Asset", render: value => short(value || "", 12) }
       ], { pageSize: 12 })}</div>`)}
     </section>
@@ -2568,7 +2649,7 @@ window.scanAresWorld = async () => {
 
 window.adminDonationAddBalance = async () => {
   try {
-    const headers = dangerConfirm(`Пополнить donation-баланс игрока ${$("donationAdminName")?.value?.trim() || $("donationAdminUuid")?.value?.trim()}`, "DONATION_ADD_BALANCE");
+    const headers = await dangerConfirm(`Пополнить donation-баланс игрока ${$("donationAdminName")?.value?.trim() || $("donationAdminUuid")?.value?.trim()}`, "DONATION_ADD_BALANCE");
     if (!headers) return;
     await api("/api/admin/donation/add-balance", {
       method: "POST",
@@ -2590,7 +2671,7 @@ window.adminDonationAddBalance = async () => {
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
-  const headers = dangerConfirm(`Назначить новый случайный постоянный PIN для ${player}?`, "PLAYER_BANK_PIN_RANDOMIZE");
+  const headers = await dangerConfirm(`Назначить новый случайный постоянный PIN для ${player}?`, "PLAYER_BANK_PIN_RANDOMIZE");
   if (!headers) return;
   try {
     const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/randomize`, {
@@ -2609,7 +2690,7 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
   const pin = prompt(`Новый PIN для ${player} (4-8 цифр)`, "") || "";
   if (!pin.trim()) return;
-  const headers = dangerConfirm(`Задать новый PIN для ${player}? Старый PIN перестанет работать сразу.`, "PLAYER_BANK_PIN_SET");
+  const headers = await dangerConfirm(`Задать новый PIN для ${player}? Старый PIN перестанет работать сразу.`, "PLAYER_BANK_PIN_SET");
   if (!headers) return;
   try {
     const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/set`, {
@@ -2626,7 +2707,7 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
 
 window.adminDonationTestPurchase = async () => {
   try {
-    const headers = dangerConfirm(`Создать test purchase ${$("donationTestItemId")?.value?.trim() || "item"} для ${$("donationTestName")?.value?.trim() || $("donationTestUuid")?.value?.trim()}`, "DONATION_TEST_PURCHASE");
+    const headers = await dangerConfirm(`Создать test purchase ${$("donationTestItemId")?.value?.trim() || "item"} для ${$("donationTestName")?.value?.trim() || $("donationTestUuid")?.value?.trim()}`, "DONATION_TEST_PURCHASE");
     if (!headers) return;
     await api("/api/admin/donation/test-purchase", {
       method: "POST",
@@ -2646,7 +2727,7 @@ window.adminDonationTestPurchase = async () => {
 
 window.adminDonationMarkPaid = async (sessionId) => {
   try {
-    const headers = dangerConfirm(`Отметить session ${sessionId} как PAID?`, "DONATION_MARK_PAID");
+    const headers = await dangerConfirm(`Отметить session ${sessionId} как PAID?`, "DONATION_MARK_PAID");
     if (!headers) return;
     await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/mark-paid`, {
       method: "POST",
@@ -2662,7 +2743,7 @@ window.adminDonationMarkPaid = async (sessionId) => {
 
 window.adminDonationCancelSession = async (sessionId) => {
   try {
-    const headers = dangerConfirm(`Отменить session ${sessionId}?`, "DONATION_CANCEL_SESSION");
+    const headers = await dangerConfirm(`Отменить session ${sessionId}?`, "DONATION_CANCEL_SESSION");
     if (!headers) return;
     await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/cancel`, {
       method: "POST",
@@ -2678,7 +2759,7 @@ window.adminDonationCancelSession = async (sessionId) => {
 
 window.adminSetTreasuryPin = async () => {
   try {
-    const headers = dangerConfirm("Сменить PIN казны?", "TREASURY_PIN_SET");
+    const headers = await dangerConfirm("Сменить PIN казны?", "TREASURY_PIN_SET");
     if (!headers) return;
     const result = await api("/api/admin/economy/treasury/pin", {
       method: "POST",
@@ -3040,7 +3121,7 @@ async function loadAnticheat() {
         message: row.message || row.eventType || row.event_type || jsonPreview(row)
       })), [
         { key: "severity", label: "Тип", render: v => `<span class="anticheat-signal ${esc(String(v || "info").toLowerCase())}">${esc(v || "info")}</span>` },
-        { key: "source", label: "сточник" },
+        { key: "source", label: "Источник" },
         { key: "time", label: "Время", render: v => Number(v) ? dt(v) : esc(v || "—") },
         { key: "message", label: "Событие", render: v => esc(short(v, 220)) }
       ], { pageSize: 20 }))}
@@ -3051,7 +3132,7 @@ async function loadAnticheat() {
 window.serverControl = async (action) => {
   if (["stop", "restart"].includes(action) && !confirm(`Подтвердить ${action}?`)) return;
   const labels = { stop: "SERVER_STOP", restart: "SERVER_RESTART", say: "SERVER_SAY" };
-  const headers = labels[action] ? dangerConfirm(`Опасное серверное действие: ${action}`, labels[action]) : {};
+  const headers = labels[action] ? await dangerConfirm(`Опасное серверное действие: ${action}`, labels[action]) : {};
   if (!headers) return;
   try {
     const res = await api("/api/server/control", { method: "POST", headers, body: JSON.stringify({ action }) });
@@ -3295,7 +3376,7 @@ window.pluginRegistryBackup = async (pluginId) => {
       toast("У этого плагина нет allowlisted configPath", true);
       return;
     }
-    const headers = dangerConfirm(`Создать backup конфига ${pluginId}?`, "PLUGIN_REGISTRY_BACKUP");
+    const headers = await dangerConfirm(`Создать backup конфига ${pluginId}?`, "PLUGIN_REGISTRY_BACKUP");
     if (!headers) return;
     const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/backup`, {
       method: "POST",
@@ -3316,7 +3397,7 @@ window.pluginRegistryApply = async (pluginId) => {
       return;
     }
     const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
-    const headers = dangerConfirm(`Применить allowlisted config changes для ${pluginId}?`, "PLUGIN_REGISTRY_APPLY");
+    const headers = await dangerConfirm(`Применить allowlisted config changes для ${pluginId}?`, "PLUGIN_REGISTRY_APPLY");
     if (!headers) return;
     const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/apply`, {
       method: "POST",
@@ -3336,7 +3417,7 @@ window.pluginRegistryReload = async (pluginId) => {
       toast("Для этого плагина нет allowlisted reload flow", true);
       return;
     }
-    const headers = dangerConfirm(`Перезагрузить ${pluginId} через allowlisted reload flow?`, "PLUGIN_REGISTRY_RELOAD");
+    const headers = await dangerConfirm(`Перезагрузить ${pluginId} через allowlisted reload flow?`, "PLUGIN_REGISTRY_RELOAD");
     if (!headers) return;
     const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/reload`, {
       method: "POST",
@@ -3360,7 +3441,7 @@ async function loadSources() {
   ]);
   setView(`
     ${panel("Источники данных", "Плагины, файлы и БД, на которых строится панель", table("sources", asArray(data.sources), [
-      { key: "name", label: "сточник" },
+      { key: "name", label: "Источник" },
       { key: "type", label: "Тип" },
       { key: "status", label: "Статус", render: v => pill(v, v === "connected" ? "good" : "warn") },
       { key: "capabilities", label: "Данные", render: v => asArray(v).map(x => pill(x, "neutral")).join(" ") || "—" },
@@ -3476,7 +3557,7 @@ async function loadSecurity() {
 
 window.approveWhitelistRequest = async (requestId) => {
   try {
-    const headers = dangerConfirm(`Одобрить whitelist-заявку ${requestId}`, "WHITELIST_APPROVE");
+    const headers = await dangerConfirm(`Одобрить whitelist-заявку ${requestId}`, "WHITELIST_APPROVE");
     if (!headers) return;
     await api("/api/admin/whitelist/approve", {
       method: "POST",
@@ -3494,7 +3575,7 @@ window.createAdminUser = async () => {
   const password = $("newAdminPassword")?.value || "";
   if (!isMinecraftName(username)) return toast("Ник должен быть 3-16 символов: A-Z, 0-9 или _.", true);
   if (password.length < 8) return toast("Пароль должен быть не короче 8 символов.", true);
-    const headers = dangerConfirm(`Создать админа панели: ${username}`, "ADMIN_CREATE");
+    const headers = await dangerConfirm(`Создать админа панели: ${username}`, "ADMIN_CREATE");
   if (!headers) return;
   try {
     await api("/api/security/admins", {
@@ -3519,7 +3600,7 @@ window.createAdminUser = async () => {
 window.runAccessAction = async () => {
   try {
     const action = $("accessAction").value;
-    const headers = dangerConfirm(`зменить Minecraft-доступ: ${action} -> ${$("accessPlayer").value.trim()}`, `ACCESS_${action.toUpperCase()}`);
+    const headers = await dangerConfirm(`Изменить Minecraft-доступ: ${action} -> ${$("accessPlayer").value.trim()}`, `ACCESS_${action.toUpperCase()}`);
     if (!headers) return;
     await api("/api/minecraft/access-lists", {
       method: "POST",
@@ -3564,7 +3645,7 @@ function playerLinkSummary(result) {
   return kv([
     ["Minecraft-ник", result.minecraftName || "—"],
     ["Доставлен в игре", result.deliveredInGame],
-    ["стекает", dt(result.expiresAt)]
+    ["Истекает", dt(result.expiresAt)]
   ]);
 }
 
@@ -3631,10 +3712,10 @@ async function loadPlayerCabinet() {
       ["Покупки", "через вкладку Артефакты / Донат"],
       ["SBP", "MOCK_SBP active, пополнение через фиксированные пакеты"]
     ]), `<button class="btn btn-secondary" data-click="setTab('donation-balance')">Открыть донат</button>`)}
-    ${tempPin.code ? panel("Временный PIN", "Этот код выдан сбросом. спользуй его как текущий PIN и сразу замени.", kv([
+    ${tempPin.code ? panel("Временный PIN", "Этот код выдан сбросом. Используй его как текущий PIN и сразу замени.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
-      ["стекает", dt(tempPin.expiresAt)]
+      ["Истекает", dt(tempPin.expiresAt)]
     ]), `<button class="btn btn-primary" data-click="setTab('bank')">Заменить PIN</button>`) : ""}
     ${linked ? panel("Президент и налоги", "Президент сервера, действующие законы и оплата налога без выхода из кабинета.", `
       ${kv([
@@ -3758,7 +3839,7 @@ async function loadPlayerBank() {
     ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
-      ["стекает", dt(tempPin.expiresAt)]
+      ["Истекает", dt(tempPin.expiresAt)]
     ])) : ""}
     <section class="layout-grid grid-2">
       ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "Президент и админ видят PIN казны и могут менять его прямо здесь." : (tempPin.code ? "Активен временный PIN. Введи его как текущий и замени сейчас." : "PIN нужен для переводов на сайте и защищённых операций банкомата."), `
@@ -4035,7 +4116,7 @@ async function loadPlayerDonationItems() {
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Выдачи", asArray(owned.claims).length, "Ожидают или уже завершены", asArray(owned.claims).length ? "warn" : "neutral")}
-      ${metric("Active", owned.summary?.active || 0, "Сейчас у игрока", (owned.summary?.active || 0) ? "good" : "neutral")}
+      ${metric("Активные", owned.summary?.active || 0, "Сейчас у игрока", (owned.summary?.active || 0) ? "good" : "neutral")}
       ${metric("Reclaimable", owned.summary?.reclaimable || 0, "Можно вернуть через лавку", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
       ${metric("Ожидают выдачи", owned.summary?.claimPending || 0, "Выдача и review идут только в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
     </section>
@@ -4379,7 +4460,7 @@ function wire() {
 async function boot() {
   wire();
   await refreshCsrfCookie();
-  await bootAuthed({ quiet: !(state.role || state.cookieAuth) });
+  await bootAuthed({ quiet: true });
 }
 
 Object.assign(dataClickHandlers, {

@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Any, Optional, Callable
+from typing import Any, Optional, Callable, Mapping
 from urllib.parse import quote
 
 VOTER_UUID_COL = "voter_" "uuid"
@@ -119,13 +119,15 @@ def load_dotenv(path: Path = APP_ROOT / ".env") -> None:
 load_dotenv()
 
 # No built-in real admins: production access is loaded from .env or data/admin_users.json.
-# There are no roles: every authenticated panel admin can manage everything.
+# Runtime roles are owner / admin / junior_admin / player.
 DEFAULT_ADMIN_USERS: dict[str, dict[str, str]] = {}
 SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(32))
 PLUGIN_API_KEY = os.getenv("PLUGIN_API_KEY", "")
 REQUIRE_OP_FOR_LOGIN = os.getenv("REQUIRE_OP_FOR_LOGIN", "1").lower() in {"1", "true", "yes", "on"}
 REQUIRE_WHITELIST_FOR_LOGIN = os.getenv("REQUIRE_WHITELIST_FOR_LOGIN", "1").lower() in {"1", "true", "yes", "on"}
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(60 * 60 * 8)))
+ACCESS_TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", str(15 * 60)))
+REFRESH_TOKEN_TTL_SECONDS = int(os.getenv("REFRESH_TOKEN_TTL_SECONDS", str(60 * 60 * 24 * 30)))
 LOGIN_MAX_ATTEMPTS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
 LOGIN_LOCK_SECONDS = int(os.getenv("LOGIN_LOCK_SECONDS", "900"))
 PIN_MAX_ATTEMPTS = int(os.getenv("PIN_MAX_ATTEMPTS", "5"))
@@ -210,11 +212,13 @@ POSTGRES_CONNECT_TIMEOUT = int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "5"))
 POSTGRES_POOL_MIN_SIZE = max(1, int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1")))
 POSTGRES_POOL_MAX_SIZE = max(POSTGRES_POOL_MIN_SIZE, int(os.getenv("POSTGRES_POOL_MAX_SIZE", "8")))
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cm_session")
+AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "cm_refresh")
 AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "1").lower() in {"1", "true", "yes", "on"}
 AUTH_BEARER_FALLBACK_ENABLED = os.getenv("AUTH_BEARER_FALLBACK_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")
 CSRF_HEADER_NAME = "X-CSRF-Token"
 SENSITIVE_CONFIRM_HEADER = "X-Copimine-Confirm"
+TOKEN_ISSUER = os.getenv("AUTH_TOKEN_ISSUER", "copimine-admin-web")
 AUDIT_LOG_FILE = DATA_DIR / "audit_log.jsonl"
 EVENT_LOG_FILE = DATA_DIR / "plugin_events.jsonl"
 ECONOMY_SNAPSHOTS_FILE = DATA_DIR / "economy_snapshots.jsonl"
@@ -823,6 +827,53 @@ def _unb64(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + pad)
 
 
+def token_header_b64() -> str:
+    return _b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode("utf-8"))
+
+
+def sign_token_parts(header_b64: str, body_b64: str) -> str:
+    signed = f"{header_b64}.{body_b64}".encode("ascii")
+    return _b64(hmac.new(SECRET_KEY.encode("utf-8"), signed, hashlib.sha256).digest())
+
+
+def encode_signed_token(payload: dict[str, Any]) -> str:
+    header_b64 = token_header_b64()
+    body_b64 = _b64(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signature = sign_token_parts(header_b64, body_b64)
+    return f"{header_b64}.{body_b64}.{signature}"
+
+
+def decode_signed_token(token: str) -> dict[str, Any]:
+    raw = str(token or "").strip()
+    parts = raw.split(".")
+    if len(parts) == 3:
+        header_b64, body_b64, signature = parts
+        expected = sign_token_parts(header_b64, body_b64)
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("bad signature")
+        header = json.loads(_unb64(header_b64).decode("utf-8"))
+        if str(header.get("alg") or "").upper() != "HS256":
+            raise ValueError("unsupported algorithm")
+        payload = json.loads(_unb64(body_b64).decode("utf-8"))
+        if str(payload.get("iss") or "") != TOKEN_ISSUER:
+            raise ValueError("unexpected issuer")
+        if int(payload.get("exp", 0)) < now_ts():
+            raise ValueError("expired")
+        return payload
+    if len(parts) == 2:
+        body_b64, signature = parts
+        expected = _b64(hmac.new(SECRET_KEY.encode("utf-8"), body_b64.encode("ascii"), hashlib.sha256).digest())
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("bad legacy signature")
+        payload = json.loads(_unb64(body_b64).decode("utf-8"))
+        if int(payload.get("exp", 0)) < now_ts():
+            raise ValueError("expired")
+        payload.setdefault("typ", "access")
+        payload.setdefault("iss", TOKEN_ISSUER)
+        return payload
+    raise ValueError("unsupported token format")
+
+
 def make_csrf_token() -> str:
     nonce = _b64(secrets.token_bytes(24))
     payload = f"csrf:{nonce}"
@@ -857,6 +908,42 @@ def set_csrf_cookie(response: Response, token: Optional[str] = None) -> str:
 
 def clear_csrf_cookie(response: Response) -> None:
     response.delete_cookie(CSRF_COOKIE_NAME, path="/")
+
+
+def set_access_cookie(response: Response, token: str, max_age: int = ACCESS_TOKEN_TTL_SECONDS) -> None:
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        token,
+        max_age=max_age,
+        httponly=True,
+        secure=AUTH_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+
+
+def set_refresh_cookie(response: Response, token: str, max_age: int = REFRESH_TOKEN_TTL_SECONDS) -> None:
+    response.set_cookie(
+        AUTH_REFRESH_COOKIE_NAME,
+        token,
+        max_age=max_age,
+        httponly=True,
+        secure=AUTH_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    set_access_cookie(response, access_token)
+    set_refresh_cookie(response, refresh_token)
+    set_csrf_cookie(response)
+
+
+def clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    response.delete_cookie(AUTH_REFRESH_COOKIE_NAME, path="/")
+    clear_csrf_cookie(response)
 
 
 def csrf_exempt_paths() -> set[str]:
@@ -2159,6 +2246,25 @@ def ensure_auth_db() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_admin_sessions_user_exp ON cm_admin_sessions(username,expires_at,revoked_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_admin_sessions_exp ON cm_admin_sessions(expires_at,revoked_at)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cm_refresh_sessions(
+                jti TEXT PRIMARY KEY,
+                subject_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'player',
+                token_hash TEXT NOT NULL DEFAULT '',
+                family_id TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                replaced_by TEXT NOT NULL DEFAULT '',
+                revoked_at INTEGER NOT NULL DEFAULT 0,
+                ip TEXT NOT NULL DEFAULT '',
+                user_agent TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_refresh_sessions_subject_exp ON cm_refresh_sessions(subject_id,expires_at,revoked_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_refresh_sessions_family_exp ON cm_refresh_sessions(family_id,expires_at,revoked_at)")
         conn.commit()
 
 
@@ -2430,27 +2536,110 @@ def revoke_session(jti: str) -> None:
         conn.commit()
 
 
-def make_token(username: str, role: str, request: Optional[Request] = None, ttl: int = SESSION_TTL_SECONDS) -> str:
+def save_refresh_session(jti: str, subject_id: str, role: str, family_id: str, token: str, request: Optional[Request], issued: int, expires: int) -> None:
+    ensure_auth_db()
+    with auth_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO cm_refresh_sessions(jti,subject_id,role,token_hash,family_id,created_at,expires_at,replaced_by,revoked_at,ip,user_agent)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,'',0,%s,%s)
+            ON CONFLICT(jti) DO UPDATE SET
+                subject_id=excluded.subject_id,
+                role=excluded.role,
+                token_hash=excluded.token_hash,
+                family_id=excluded.family_id,
+                created_at=excluded.created_at,
+                expires_at=excluded.expires_at,
+                replaced_by='',
+                revoked_at=0,
+                ip=excluded.ip,
+                user_agent=excluded.user_agent
+            """,
+            (
+                jti,
+                subject_id,
+                role,
+                sha256_hex(token),
+                family_id,
+                issued,
+                expires,
+                get_client_ip(request),
+                request.headers.get("user-agent", "")[:300] if request else "",
+            ),
+        )
+        conn.execute("DELETE FROM cm_refresh_sessions WHERE expires_at<=%s OR revoked_at>0", (issued,))
+        conn.commit()
+
+
+def read_refresh_session(jti: str) -> Optional[dict[str, Any]]:
+    if not jti:
+        return None
+    ensure_auth_db()
+    with auth_conn() as conn:
+        row = conn.execute("SELECT * FROM cm_refresh_sessions WHERE jti=%s", (jti,)).fetchone()
+        conn.commit()
+    return dict(row) if row else None
+
+
+def revoke_refresh_session(jti: str, replaced_by: str = "") -> None:
+    if not jti:
+        return
+    ensure_auth_db()
+    with auth_conn() as conn:
+        conn.execute(
+            "UPDATE cm_refresh_sessions SET revoked_at=%s, replaced_by=COALESCE(NULLIF(%s,''), replaced_by) WHERE jti=%s",
+            (now_ts(), replaced_by, jti),
+        )
+        conn.commit()
+
+
+def make_token(username: str, role: str, request: Optional[Request] = None, ttl: int = ACCESS_TOKEN_TTL_SECONDS, extra_claims: Optional[dict[str, Any]] = None) -> str:
     issued = now_ts()
     expires = issued + ttl
     jti = secrets.token_urlsafe(18)
-    payload = {"sub": username, "role": role, "jti": jti, "exp": expires, "iat": issued}
-    body = _b64(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-    sig = _b64(hmac.new(SECRET_KEY.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest())
-    token = f"{body}.{sig}"
+    payload = {
+        "iss": TOKEN_ISSUER,
+        "sub": username,
+        "role": role,
+        "jti": jti,
+        "typ": "access",
+        "token_version": 1,
+        "exp": expires,
+        "iat": issued,
+    }
+    if extra_claims:
+        payload.update(extra_claims)
+    token = encode_signed_token(payload)
     save_session(jti, token, username, role, request, issued, expires)
+    return token
+
+
+def make_refresh_token(subject_id: str, role: str, request: Optional[Request] = None, ttl: int = REFRESH_TOKEN_TTL_SECONDS, family_id: str = "") -> str:
+    issued = now_ts()
+    expires = issued + ttl
+    jti = secrets.token_urlsafe(18)
+    family = family_id or secrets.token_urlsafe(18)
+    payload = {
+        "iss": TOKEN_ISSUER,
+        "sub": subject_id,
+        "role": role,
+        "jti": jti,
+        "family": family,
+        "typ": "refresh",
+        "token_version": 1,
+        "exp": expires,
+        "iat": issued,
+    }
+    token = encode_signed_token(payload)
+    save_refresh_session(jti, subject_id, role, family, token, request, issued, expires)
     return token
 
 
 def verify_token(token: str) -> dict[str, Any]:
     try:
-        body, sig = token.split(".", 1)
-        expected = _b64(hmac.new(SECRET_KEY.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest())
-        if not hmac.compare_digest(sig, expected):
-            raise ValueError("bad signature")
-        payload = json.loads(_unb64(body).decode("utf-8"))
-        if int(payload.get("exp", 0)) < now_ts():
-            raise ValueError("expired")
+        payload = decode_signed_token(token)
+        if str(payload.get("typ") or "access") != "access":
+            raise ValueError("wrong token type")
         sessions = read_sessions()
         jti = str(payload.get("jti", ""))
         if not jti or jti not in sessions:
@@ -2463,6 +2652,28 @@ def verify_token(token: str) -> dict[str, Any]:
         return payload
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Сессия недействительна или истекла") from exc
+
+
+def verify_refresh_token(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    try:
+        payload = decode_signed_token(token)
+        if str(payload.get("typ") or "") != "refresh":
+            raise ValueError("wrong token type")
+        jti = str(payload.get("jti") or "")
+        row = read_refresh_session(jti)
+        if not row:
+            raise ValueError("refresh session missing")
+        if int(row.get("revoked_at") or 0) > 0:
+            raise ValueError("refresh revoked")
+        if str(row.get("replaced_by") or "").strip():
+            raise ValueError("refresh replaced")
+        if int(row.get("expires_at") or 0) < now_ts():
+            raise ValueError("refresh expired")
+        if not hmac.compare_digest(str(row.get("token_hash") or ""), sha256_hex(token)):
+            raise ValueError("refresh hash mismatch")
+        return payload, row
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Refresh-сессия недействительна или истекла") from exc
 
 
 def minecraft_access_lists() -> dict[str, Any]:
@@ -2538,6 +2749,10 @@ def request_auth_token(request: Request, authorization: str = "") -> str:
     if AUTH_BEARER_FALLBACK_ENABLED and authorization.startswith("Bearer "):
         return authorization.removeprefix("Bearer ").strip()
     return ""
+
+
+def request_refresh_token(request: Request) -> str:
+    return str(request.cookies.get(AUTH_REFRESH_COOKIE_NAME) or "").strip()
 
 
 def normalize_admin_role(value: Any) -> str:
@@ -2627,7 +2842,12 @@ def require_player(request: Request, authorization: str = Header(default="")) ->
         raise HTTPException(status_code=403, detail="Player session is required")
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        return player_account_by_id(conn, str(payload.get("sub") or ""))
+        account = player_account_by_id(conn, str(payload.get("sub") or ""))
+        if not account:
+            raise HTTPException(status_code=401, detail="Player account is missing")
+        if not bool(int(account.get("enabled") or 0)):
+            raise HTTPException(status_code=403, detail="Player account is disabled")
+        return account
 
 
 def public_player_account(row: dict[str, Any]) -> dict[str, Any]:
@@ -2640,6 +2860,87 @@ def public_player_account(row: dict[str, Any]) -> dict[str, Any]:
         "linked": bool(row.get("minecraft_uuid")),
         "createdAt": int(row.get("created_at") or 0),
         "lastLoginAt": int(row.get("last_login_at") or 0),
+    }
+
+
+def issue_admin_auth_pair(username: str, role: str, request: Optional[Request]) -> tuple[str, str]:
+    access = make_token(username, role, request, extra_claims={"display_name": username})
+    refresh = make_refresh_token(username, role, request)
+    return access, refresh
+
+
+def issue_player_auth_pair(account: Mapping[str, Any] | dict[str, Any], request: Optional[Request], family_id: str = "") -> tuple[str, str]:
+    account_id = str(account.get("id") or "")
+    access = make_token(
+        account_id,
+        "player",
+        request,
+        extra_claims={
+            "display_name": str(account.get("username") or ""),
+            "player_uuid": str(account.get("minecraft_uuid") or ""),
+        },
+    )
+    refresh = make_refresh_token(account_id, "player", request, family_id=family_id)
+    return access, refresh
+
+
+def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Request], audience: str) -> dict[str, Any]:
+    payload, row = verify_refresh_token(refresh_token)
+    role = str(payload.get("role") or "")
+    subject = str(payload.get("sub") or "")
+    family_id = str(payload.get("family") or row.get("family_id") or "")
+    if audience == "player":
+        if role != "player":
+            raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к кабинету игрока")
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            account = player_account_by_id(conn, subject)
+            if not account:
+                revoke_refresh_session(str(payload.get("jti") or ""))
+                raise HTTPException(status_code=401, detail="Аккаунт игрока не найден")
+            if not bool(int(account.get("enabled") or 0)):
+                revoke_refresh_session(str(payload.get("jti") or ""))
+                raise HTTPException(status_code=403, detail="Аккаунт игрока отключён")
+            conn.commit()
+        access_token, refresh_token_new = issue_player_auth_pair(account, request, family_id=family_id)
+        refresh_payload = decode_signed_token(refresh_token_new)
+        revoke_refresh_session(str(payload.get("jti") or ""), str(refresh_payload.get("jti") or ""))
+        return {
+            "role": "player",
+            "fullAccess": False,
+            "owner": False,
+            "cookieAuth": True,
+            "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
+            "account": public_player_account(account),
+            "accessToken": access_token,
+            "refreshToken": refresh_token_new,
+        }
+    if role == "player":
+        raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к админ-панели")
+    real_username, meta = resolve_admin_user(subject)
+    if not meta or not bool(meta.get("enabled", True)):
+        revoke_refresh_session(str(payload.get("jti") or ""))
+        raise HTTPException(status_code=403, detail="Доступ к админке отозван")
+    current_role = normalize_admin_role(meta.get("role"))
+    if not is_panel_admin_role(current_role):
+        revoke_refresh_session(str(payload.get("jti") or ""))
+        raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
+    access_ok, access_errors = minecraft_access_ok(real_username)
+    if not access_ok:
+        raise HTTPException(status_code=403, detail="Minecraft-доступ отозван: " + "; ".join(access_errors))
+    access_token = make_token(real_username, current_role, request, extra_claims={"display_name": real_username})
+    refresh_token_new = make_refresh_token(real_username, current_role, request, family_id=family_id)
+    refresh_payload = decode_signed_token(refresh_token_new)
+    revoke_refresh_session(str(payload.get("jti") or ""), str(refresh_payload.get("jti") or ""))
+    return {
+        "username": real_username,
+        "role": current_role,
+        "fullAccess": is_full_admin_role(current_role),
+        "owner": current_role == "owner",
+        "cookieAuth": True,
+        "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
+        "accessToken": access_token,
+        "refreshToken": refresh_token_new,
     }
 
 
@@ -7105,13 +7406,19 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
     role = normalize_admin_role(meta.get("role"))
     if not is_panel_admin_role(role):
         raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
-    token = make_token(real_username, role, request)
-    response.set_cookie(AUTH_COOKIE_NAME, token, max_age=SESSION_TTL_SECONDS, httponly=True, secure=AUTH_COOKIE_SECURE, samesite="lax", path="/")
-    set_csrf_cookie(response)
+    access_token, refresh_token = issue_admin_auth_pair(real_username, role, request)
+    set_auth_cookies(response, access_token, refresh_token)
     audit_event(real_username, "auth.login", status="ok", details={"ip": get_client_ip(request)})
     append_panel_event("admin-panel", "admin_login", actor=real_username, metadata={"ip": get_client_ip(request)}, tags=["security"])
     pg_record_auth_state("admin_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "user": real_username})
-    return {"username": real_username, "role": role, "expiresIn": SESSION_TTL_SECONDS, "cookieAuth": True}
+    return {
+        "username": real_username,
+        "role": role,
+        "fullAccess": is_full_admin_role(role),
+        "owner": role == "owner",
+        "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
+        "cookieAuth": True,
+    }
 
 
 @app.get("/api/auth/csrf")
@@ -7120,20 +7427,35 @@ async def auth_csrf(response: Response) -> dict[str, Any]:
     return {"ok": True, "cookie": CSRF_COOKIE_NAME, "header": CSRF_HEADER_NAME}
 
 
+@app.post("/api/auth/refresh")
+async def auth_refresh(request: Request, response: Response) -> dict[str, Any]:
+    refresh_token = request_refresh_token(request)
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh-сессия отсутствует")
+    result = await bg(rotate_auth_pair_from_refresh_sync, refresh_token, request, "admin")
+    set_auth_cookies(response, str(result.pop("accessToken")), str(result.pop("refreshToken")))
+    return result
+
+
 @app.post("/api/auth/logout")
 async def logout(request: Request, response: Response, authorization: str = Header(default="")) -> dict[str, Any]:
     token = request_auth_token(request, authorization)
+    refresh_token = request_refresh_token(request)
     actor = ""
     if token:
         try:
-            body, _ = token.split(".", 1)
-            payload = json.loads(_unb64(body).decode("utf-8"))
+            payload = decode_signed_token(token)
             actor = str(payload.get("sub", ""))
             revoke_session(str(payload.get("jti", "")))
         except Exception:
             pass
-    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
-    clear_csrf_cookie(response)
+    if refresh_token:
+        try:
+            payload = decode_signed_token(refresh_token)
+            revoke_refresh_session(str(payload.get("jti", "")))
+        except Exception:
+            pass
+    clear_auth_cookies(response)
     audit_event(actor or "unknown", "auth.logout")
     return {"ok": True}
 
@@ -7143,7 +7465,15 @@ async def me(context: dict[str, Any] = Depends(require_panel_admin_context)) -> 
     username = str(context.get("username") or "")
     access_ok, access_errors = minecraft_access_ok(username)
     meta = current_admin_users().get(username, {})
-    return {"username": username, "role": normalize_admin_role(meta.get("role") or context.get("role")), "minecraftAccessOk": access_ok, "minecraftAccessErrors": access_errors}
+    role = normalize_admin_role(meta.get("role") or context.get("role"))
+    return {
+        "username": username,
+        "role": role,
+        "fullAccess": is_full_admin_role(role),
+        "owner": role == "owner",
+        "minecraftAccessOk": access_ok,
+        "minecraftAccessErrors": access_errors,
+    }
 
 
 @app.get("/api/public/config")
@@ -7243,12 +7573,11 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
         )
         conn.commit()
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
-    token = make_token(account_id, "player", request)
-    response.set_cookie(AUTH_COOKIE_NAME, token, max_age=SESSION_TTL_SECONDS, httponly=True, secure=AUTH_COOKIE_SECURE, samesite="lax", path="/")
-    set_csrf_cookie(response)
+    access_token, refresh_token = issue_player_auth_pair({"id": account_id, "username": username, "minecraft_uuid": "", "minecraft_name": minecraft_name}, request)
+    set_auth_cookies(response, access_token, refresh_token)
     return {
         "role": "player",
-        "expiresIn": SESSION_TTL_SECONDS,
+        "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
         "cookieAuth": True,
         "account": {"id": account_id, "username": username, "minecraftName": minecraft_name, "linked": False},
     }
@@ -7273,11 +7602,20 @@ async def player_login(data: PlayerLoginIn, request: Request, response: Response
         conn.commit()
     clear_failed_login(request, "player:" + username)
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
-    token = make_token(str(account["id"]), "player", request)
-    response.set_cookie(AUTH_COOKIE_NAME, token, max_age=SESSION_TTL_SECONDS, httponly=True, secure=AUTH_COOKIE_SECURE, samesite="lax", path="/")
-    set_csrf_cookie(response)
+    access_token, refresh_token = issue_player_auth_pair(account, request)
+    set_auth_cookies(response, access_token, refresh_token)
     account["last_login_at"] = now_ts()
-    return {"role": "player", "expiresIn": SESSION_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
+    return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
+
+
+@app.post("/api/player/refresh")
+async def player_refresh(request: Request, response: Response) -> dict[str, Any]:
+    refresh_token = request_refresh_token(request)
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh-сессия отсутствует")
+    result = await bg(rotate_auth_pair_from_refresh_sync, refresh_token, request, "player")
+    set_auth_cookies(response, str(result.pop("accessToken")), str(result.pop("refreshToken")))
+    return result
 
 
 @app.get("/api/player/me")

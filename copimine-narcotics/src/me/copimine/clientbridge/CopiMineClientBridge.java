@@ -78,7 +78,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     }
 
     private void applyCapabilityTtl() {
-        long ttlMillis = Math.max(30L, configService.handshakeTimeoutSeconds() * 3L) * 1000L;
+        long ttlMillis = Math.max(30L, configService.handshakeTimeoutSeconds() * 3L) * 1_000L;
         capabilities.setTtlMillis(ttlMillis);
     }
 

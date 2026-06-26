@@ -14,16 +14,6 @@ let currentBudgetValue = 0;
 let currentRotation = -16;
 let publicFallbackLoaded = false;
 
-function esc(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[char]);
-}
-
 function formatAr(value) {
   const amount = Number(value || 0);
   const normalized = Number.isFinite(amount) ? amount : 0;
@@ -65,28 +55,54 @@ function animateCounter(nextValue) {
   requestAnimationFrame(tick);
 }
 
+function replaceChildrenSafe(node, children) {
+  if (!node) return;
+  node.replaceChildren(...children);
+}
+
+function makeElement(tag, className = "", text = "") {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text) element.textContent = text;
+  return element;
+}
+
 function renderHistory(items = []) {
   if (!historyMount) return;
   const rows = Array.isArray(items) ? items : [];
   if (!rows.length) {
-    historyMount.innerHTML = `
-      <article class="showcase-card">
-        <strong>История пока пустая</strong>
-        <p>Как только появятся доходы лавки, ремонты или выплаты, они отобразятся здесь.</p>
-      </article>
-    `;
+    const card = makeElement("article", "showcase-card");
+    card.append(
+      makeElement("strong", "", "История пока пустая"),
+      makeElement("p", "", "Как только появятся доходы лавки, ремонты или выплаты, они отобразятся здесь.")
+    );
+    replaceChildrenSafe(historyMount, [card]);
     return;
   }
-  historyMount.innerHTML = rows.slice(0, 6).map((row) => `
-    <article class="treasury-history-card">
-      <div class="treasury-history-row">
-        <span class="treasury-history-type">${esc(row.label || row.type || "Операция")}</span>
-        <strong>${esc(formatAr(row.amount || row.amount_ar || 0))}</strong>
-      </div>
-      <p>${esc(row.comment || row.item_name || row.public_actor_name || row.actor || "Публичная операция казны")}</p>
-      <span class="treasury-history-date">${esc(formatDate(row.createdAt || row.created_at))}</span>
-    </article>
-  `).join("");
+
+  const cards = rows.slice(0, 6).map((row) => {
+    const card = makeElement("article", "treasury-history-card");
+    const head = makeElement("div", "treasury-history-row");
+    head.append(
+      makeElement("span", "treasury-history-type", String(row.label || row.type || "Операция")),
+      makeElement("strong", "", formatAr(row.amount || row.amount_ar || 0))
+    );
+
+    const summary = makeElement(
+      "p",
+      "",
+      String(row.comment || row.item_name || row.public_actor_name || row.actor || "Публичная операция казны")
+    );
+    const stamp = makeElement(
+      "span",
+      "treasury-history-date",
+      formatDate(row.createdAt || row.created_at)
+    );
+
+    card.append(head, summary, stamp);
+    return card;
+  });
+  replaceChildrenSafe(historyMount, cards);
 }
 
 function renderPresidentCard(president = {}) {
@@ -100,12 +116,14 @@ function renderPresidentCard(president = {}) {
     if (skinImage) skinImage.removeAttribute("src");
     return;
   }
+
   presidentName.textContent = name;
-  presidentMeta.textContent = "Карточка подтягивается из public API. Если скин недоступен, сайт оставляет только имя и статус без битых изображений.";
+  presidentMeta.textContent = "Карточка подтягивается из public API. Если скин недоступен, сайт оставляет имя и статус без битых изображений.";
   if (!uuid || !skinImage || !skinShell) {
     skinShell?.classList.add("hidden");
     return;
   }
+
   skinImage.src = `/api/public/president/skin/body?uuid=${encodeURIComponent(uuid)}`;
   skinImage.alt = `Скин президента ${name}`;
   skinShell.classList.remove("hidden");
@@ -161,7 +179,7 @@ async function loadFallback() {
     const historyPayload = historyRes.ok ? await historyRes.json() : { ok: false, data: null };
     if (budgetPayload?.ok && budgetPayload.data) renderBudget(budgetPayload.data);
     if (historyPayload?.ok && historyPayload.data) renderHistory(historyPayload.data.items || []);
-  } catch (error) {
+  } catch (_error) {
     if (budgetDetail) {
       budgetDetail.textContent = "Источник публичной казны временно недоступен. Попробуйте позже.";
     }

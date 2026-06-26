@@ -117,8 +117,12 @@ public final class VisualRuntimeService {
         return detectOverlaySupport();
     }
 
+    public boolean supportsClientShaderLikeRuntime() {
+        return detectClientShaderLikeSupport();
+    }
+
     public boolean supportsShaderRuntime() {
-        return detectShaderSupport();
+        return detectTrueShaderSupport();
     }
 
     public String serverOverlaySupportReason() {
@@ -134,7 +138,7 @@ public final class VisualRuntimeService {
         if (!hasAllOverlayAssets()) {
             return "overlay texture assets missing";
         }
-        if (!manifestFlag("server_overlay_supported")) {
+        if (!overlaySupportedManifestFlag()) {
             return "overlay runtime disabled by visuals manifest";
         }
         return "supported via title glyph fallback; may temporarily override other titles";
@@ -151,6 +155,16 @@ public final class VisualRuntimeService {
     }
 
     public String shaderSupportReason() {
+        if (!supportsClientShaderLikeRuntime()) {
+            return clientShaderLikeSupportReason();
+        }
+        if (!manifestFlag("true_shader_runtime_supported")) {
+            return "CopiMineClient does not force Iris/OptiFine shaders; true post-processing shaders are not server-forceable on Paper, so the client uses optional shader-like fullscreen overlays instead";
+        }
+        return "available through optional CopiMineClient runtime";
+    }
+
+    public String clientShaderLikeSupportReason() {
         if (!configService.allowClientModVisuals()) {
             return "client shader-like route disabled in config";
         }
@@ -160,13 +174,10 @@ public final class VisualRuntimeService {
         if (!hasAllShaderProfiles()) {
             return "client shader-like profiles missing";
         }
-        if (!manifestFlag("client_mod_visual_supported")) {
+        if (!shaderLikeSupportedManifestFlag()) {
             return "client-mod visual runtime disabled by visuals manifest";
         }
-        if (!manifestFlag("true_shader_runtime_supported")) {
-            return "true post-processing shaders are not server-forceable on Paper; CopiMineClient provides only optional shader-like client visuals";
-        }
-        return "available through optional CopiMineClient visual runtime";
+        return "available through optional CopiMineClient fullscreen overlay runtime";
     }
 
     public String overlaySupportReason() {
@@ -342,19 +353,35 @@ public final class VisualRuntimeService {
             return false;
         }
         Path fontManifest = projectRoot().resolve("resourcepacks").resolve("src").resolve("assets").resolve("copimine").resolve("font").resolve("narcotics_overlay.json");
-        return Files.isRegularFile(fontManifest) && hasAllOverlayAssets() && manifestFlag("server_overlay_supported");
+        return Files.isRegularFile(fontManifest) && hasAllOverlayAssets() && overlaySupportedManifestFlag();
     }
 
     private boolean detectOverlaySupport() {
         return detectServerOverlaySupport();
     }
 
-    private boolean detectShaderSupport() {
+    private boolean detectClientShaderLikeSupport() {
         return configService.allowClientModVisuals()
                 && configService.clientBridgeEnabled()
                 && clientBridge.enabled()
                 && hasAllShaderProfiles()
-                && manifestFlag("client_mod_visual_supported");
+                && shaderLikeSupportedManifestFlag();
+    }
+
+    private boolean detectTrueShaderSupport() {
+        return detectClientShaderLikeSupport() && manifestFlag("true_shader_runtime_supported");
+    }
+
+    private boolean detectShaderSupport() {
+        return detectTrueShaderSupport();
+    }
+
+    private boolean overlaySupportedManifestFlag() {
+        return manifestFlag("server_overlay_supported") || manifestFlag("overlay_supported");
+    }
+
+    private boolean shaderLikeSupportedManifestFlag() {
+        return manifestFlag("client_mod_visual_supported") || manifestFlag("shader_supported");
     }
 
     private boolean manifestFlag(String key) {

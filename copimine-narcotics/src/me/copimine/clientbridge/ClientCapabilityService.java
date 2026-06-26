@@ -24,21 +24,22 @@ public final class ClientCapabilityService {
         lastProblems.remove(player.getUniqueId());
     }
 
-    public void touch(Player player, String sessionId) {
+    public boolean touch(Player player, String sessionId) {
         if (player == null) {
-            return;
+            return false;
         }
         UUID uuid = player.getUniqueId();
         ClientCapabilityState state = states.get(uuid);
         if (state == null) {
-            return;
+            return false;
         }
         if (sessionId != null && !sessionId.isBlank() && !sessionId.equals(state.sessionId())) {
             states.remove(uuid);
             lastProblems.put(uuid, "session-mismatch");
-            return;
+            return false;
         }
         states.put(uuid, state.touch(System.currentTimeMillis()));
+        return true;
     }
 
     public void reportProblem(Player player, String reason) {

@@ -7,8 +7,11 @@ $narcoticsMain = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narc
 $narcoticsDb = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\db\NarcoticsDatabase.java')
 
 if ($narcoticsMain -match 'DriverManager|getConnection\(|PreparedStatement|executeQuery|executeUpdate') { $errors.Add('CopiMineNarcotics main thread runtime must not do direct SQL.') }
-foreach ($marker in @('CompletableFuture','Executors.newFixedThreadPool','runAsync','supplyAsync')) {
+foreach ($marker in @('CompletableFuture','runAsync','supplyAsync')) {
   if ($narcoticsDb -notmatch [regex]::Escape($marker)) { $errors.Add("Narcotics DB async marker missing: $marker") }
+}
+if ($narcoticsDb -notmatch 'Executors\.newFixedThreadPool|ThreadPoolExecutor|LinkedBlockingQueue') {
+  $errors.Add('Narcotics DB executor must remain explicitly asynchronous and bounded.')
 }
 foreach ($marker in @('runAsync(() ->','loadCatalogFromConfig()','loadShopsFromPostgres()','shopsByLocation','catalogById')) {
   if ($artifacts -notmatch [regex]::Escape($marker)) { $errors.Add("Artifacts async/cache marker missing: $marker") }

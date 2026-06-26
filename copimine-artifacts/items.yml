@@ -1,7 +1,8 @@
-items:
+﻿items:
   - id: zmei_gorynych
     category: WEAPON
     material: NETHERITE_SWORD
+    source: AR_SHOP
     custom_model_data: 10001
     name: "&6Змей Горыныч"
     rarity: LEGENDARY
@@ -14,4 +15,387 @@ items:
     visual_effect_id: INVERTED_SCREEN
     lore:
       - "&7Официальный артефакт CopiMine"
-      - "&7Иногда вызывает хаотичный вымышленный эффект."
+      - "&7Иногда вызывает хаотичный фирменный эффект."
+
+  - id: smena_bez_perekura_pickaxe
+    category: TOOL
+    material: NETHERITE_PICKAXE
+    source: AR_SHOP
+    custom_model_data: 10002
+    name: "&6Кирка «Смена без перекура»"
+    rarity: EPIC
+    price_ar: 2500
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 420
+    effect: HASTE_BURST_LONG
+    effect_chance_percent: 100
+    visual_effect_id: PIXEL_WAVE
+    lore:
+      - "&7ПКМ в воздух: Haste II на 3 минуты."
+      - "&7Откат 7 минут. Без vein-miner и без глобальных сканов."
+  - id: lesnoy_bespredel_axe
+    category: TOOL
+    material: NETHERITE_AXE
+    source: AR_SHOP
+    custom_model_data: 10003
+    name: "&6Топор «Лесной беспредел»"
+    rarity: EPIC
+    price_ar: 2200
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 45
+    effect: FORESTER_CHAIN
+    effect_chance_percent: 18
+    visual_effect_id: STATIC_NOISE
+    lore:
+      - "&718% шанс аккуратно свалить всё дерево."
+      - "&7Работает только по связанным брёвнам и с лимитом по блокам."
+  - id: kopatel_transhey_shovel
+    category: TOOL
+    material: NETHERITE_SHOVEL
+    source: AR_SHOP
+    custom_model_data: 10004
+    name: "&6Лопата «Копатель траншей»"
+    rarity: RARE
+    price_ar: 1300
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 0
+    effect: TRENCH_BONUS
+    effect_chance_percent: 1
+    visual_effect_id: TUNNEL_VISION
+    lore:
+      - "&7На песке и гравии иногда выбивает бонусный ресурс."
+      - "&7Шанс 1% на DIAMOND, EMERALD или GOLD_INGOT."
+  - id: fermer_bez_sna_hoe
+    category: TOOL
+    material: NETHERITE_HOE
+    source: AR_SHOP
+    custom_model_data: 10005
+    name: "&6Мотыга «Фермер без сна»"
+    rarity: EPIC
+    price_ar: 1800
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 20
+    effect: FARMER_SWEEP
+    effect_chance_percent: 100
+    visual_effect_id: GREEN_NOISE
+    lore:
+      - "&7Shift + ПКМ по зрелой грядке: сбор и пересадка 5x5."
+      - "&7Работает только по обычным фермам без автокрафта."
+  - id: dezhurniy_argument_sword
+    category: WEAPON
+    material: NETHERITE_SWORD
+    source: AR_SHOP
+    custom_model_data: 10006
+    name: "&6Меч «Дежурный аргумент»"
+    rarity: LEGENDARY
+    price_ar: 5000
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 30
+    effect: DUTY_ARGUMENT
+    effect_chance_percent: 20
+    visual_effect_id: DARK_PULSE
+    lore:
+      - "&7Контролируемый PvP-эффект без ваншотов и без грифа."
+      - "&7Кратко замедляет цель и усиливает владельца."
+  - id: vechniy_razgon_firework
+    category: TOOL
+    material: FIREWORK_ROCKET
+    source: AR_SHOP
+    custom_model_data: 10007
+    name: "&6Фейерверк «Вечный разгон II»"
+    rarity: LEGENDARY
+    price_ar: 9999
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 3
+    effect: ETERNAL_BOOST
+    effect_chance_percent: 100
+    visual_effect_id: CHROMATIC_SHIFT
+    lore:
+      - "&7Элитровый буст без расхода и без взрыва."
+      - "&7Нельзя заряжать в арбалет и нельзя чинить."
+
+  - id: treasurer_chestplate
+    category: ARMOR
+    material: NETHERITE_CHESTPLATE
+    source: AR_SHOP
+    custom_model_data: 10010
+    name: "&6Нагрудник Казначея"
+    rarity: EPIC
+    price_ar: 3600
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 28
+    effect: TANK_VEST
+    effect_chance_percent: 100
+    visual_effect_id: AMBER_WARP
+    lore:
+      - "&7Смягчает тяжёлый входящий урон."
+      - "&7Даёт аварийную защиту без режима бессмертия."
+
+  - id: copimine_miner_pickaxe
+    category: TOOL
+    material: NETHERITE_PICKAXE
+    source: AR_SHOP
+    custom_model_data: 10011
+    name: "&6Кирка CopiMine Miner"
+    rarity: EPIC
+    price_ar: 2400
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 360
+    effect: HASTE_BURST_LONG
+    effect_chance_percent: 100
+    visual_effect_id: PIXEL_WAVE
+    lore:
+      - "&7ПКМ в воздух: контролируемый буст добычи."
+      - "&7Не даёт глобальных авто-копателей и world-scan."
+
+  - id: craftsman_hammer
+    category: TOOL
+    material: MACE
+    source: AR_SHOP
+    custom_model_data: 10012
+    name: "&6Молот Ремесленника"
+    rarity: RARE
+    price_ar: 1700
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 20
+    effect: HASTE_BURST_LONG
+    effect_chance_percent: 100
+    visual_effect_id: STATIC_NOISE
+    lore:
+      - "&7Даёт короткий рабочий буст по команде владельца."
+      - "&7Не чинится на наковальне и не уходит в автокрафт."
+
+donation-catalog:
+  catalog-version: 1
+  updated-at: 1782345600
+  website-base-url: "https://admin.copimine.ru"
+  items:
+    - item-id: batin_remen_sudnogo_dnya
+      display-name: "&6Батин Ремень Судного Дня"
+      base-material: NETHERITE_AXE
+      price-donation: 500
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: BREAKABLE
+      effect-profile-id: BATIN_REMEN
+      effect-description: "Шанс замедлить цель, сбить темп боя и кратко усилить владельца."
+      cooldown-seconds: 25
+      proc-chance: 0.15
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: DARK_PULSE
+      lore:
+        - "&7Тяжёлый PvP-предмет контроля."
+        - "&7Молния только визуальная и без грифа."
+
+    - item-id: nu_ty_i_nakopal_blyat_pickaxe
+      display-name: "&6Кирка \"Ну ты и накопал, блять\""
+      base-material: NETHERITE_PICKAXE
+      price-donation: 450
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: BREAKABLE
+      effect-profile-id: NAKOPAL_PICKAXE
+      effect-description: "Безопасный контролирующий бур: временно закапывает цель и даёт бонус владельцу."
+      cooldown-seconds: 40
+      proc-chance: 0.12
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: TUNNEL_VISION
+      lore:
+        - "&7Контрольная кирка с откатом ловушки."
+        - "&7Не должна закапывать в опасные блоки."
+
+    - item-id: kosa_nalogovoy_inspekcii
+      display-name: "&6Коса Налоговой Инспекции"
+      base-material: NETHERITE_HOE
+      price-donation: 400
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: BREAKABLE
+      effect-profile-id: NALOGOVAYA_KOSA
+      effect-description: "Бонусный урон, голод для цели и ограниченный вампиризм владельца."
+      cooldown-seconds: 18
+      proc-chance: 0.18
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: STATIC_NOISE
+      lore:
+        - "&7Налоговый карательный инструмент."
+        - "&7Самолечение остаётся ограниченным."
+
+    - item-id: kaska_prorab_huev
+      display-name: "&6Каска \"Прораб хуев\""
+      base-material: NETHERITE_HELMET
+      price-donation: 350
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: BREAKABLE
+      effect-profile-id: PRORAB_HELMET
+      effect-description: "Смягчает падение, замедляет атакующего и кратко ускоряет работу владельца."
+      cooldown-seconds: 20
+      proc-chance: 0.16
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: PIXEL_WAVE
+      lore:
+        - "&7Шлем выжившего строителя."
+        - "&7Пассивно защищает от грубых ошибок."
+
+    - item-id: mne_pohuy_ya_v_tanke_vest
+      display-name: "&6Жилет \"Мне похуй, я в танке\""
+      base-material: NETHERITE_CHESTPLATE
+      price-donation: 400
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: BREAKABLE
+      effect-profile-id: TANK_VEST
+      effect-description: "Краткая стойкость, контролируемый возврат урона и аварийное поглощение."
+      cooldown-seconds: 30
+      proc-chance: 0.12
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: AMBER_WARP
+      lore:
+        - "&7Оборонительный жилет для затяжных драк."
+        - "&7Не превращается в бессмертие."
+
+    - item-id: ne_segodnya_suka_shield
+      display-name: "&6Щит \"Не сегодня, сука\""
+      base-material: SHIELD
+      price-donation: 300
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: BREAKABLE
+      effect-profile-id: NOT_TODAY_SHIELD
+      effect-description: "Щит возмездия: тошнота цели, визуальная молния и короткая стойкость."
+      cooldown-seconds: 22
+      proc-chance: 0.2
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: CHROMATIC_SHIFT
+      lore:
+        - "&7Щит для жёсткого ответа в ближнем бою."
+        - "&7Молния только декоративная."
+
+    - item-id: ya_esche_ne_vse_isportil_totem
+      display-name: "&6Тотем \"Я ещё не всё испортил\""
+      base-material: TOTEM_OF_UNDYING
+      price-donation: 500
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: CONSUME_ON_TRIGGER
+      effect-profile-id: BROKEN_TOTEM
+      effect-description: "Аварийный relic с длинным кулдауном и без права на бесплатные дубликаты."
+      cooldown-seconds: 300
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: false
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: MOON_GLOW
+      lore:
+        - "&7Срабатывает как контролируемый emergency relic."
+        - "&7После расхода покупается заново."
+
+    - item-id: pohuy_na_debaffy_amulet
+      display-name: "&6Амулет \"Похуй на дебаффы\""
+      base-material: HEART_OF_THE_SEA
+      price-donation: 250
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: DEBUFF_AMULET
+      effect-description: "Снимает только разрешённый дебафф и никогда не трогает overdose/system effects."
+      cooldown-seconds: 90
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: false
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: COLD_FOG
+      lore:
+        - "&7Чистит ровно один допустимый дебафф."
+        - "&7Narcotics overdose и системные эффекты не снимает."
+
+    - item-id: vremya_platit_nalogi_clock
+      display-name: "&6Часы \"Время платить налоги\""
+      base-material: CLOCK
+      price-donation: 200
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: TAX_CLOCK
+      effect-description: "Показывает налоговый статус и даёт лёгкий utility/combat proc."
+      cooldown-seconds: 20
+      proc-chance: 0.15
+      max-stack: 1
+      repairable: false
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: STATIC_NOISE
+      lore:
+        - "&7Читает налоговый статус через bridge при доступности."
+        - "&7Небольшой utility-эффект в бою."
+
+    - item-id: gde_moy_lut_blyat_compass
+      display-name: "&6Компас \"Где мой лут, блять?\""
+      base-material: COMPASS
+      price-donation: 200
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: LOOT_COMPASS
+      effect-description: "Указывает только владельцу на его последнюю точку смерти, если мир это допускает."
+      cooldown-seconds: 10
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: false
+      custom-texture-mode-allowed: true
+      custom-model-data: 0
+      visual-effect-id: TUNNEL_VISION
+      lore:
+        - "&7Ищет только твою последнюю смерть."
+        - "&7Уважает закрытые и защищённые миры."
+

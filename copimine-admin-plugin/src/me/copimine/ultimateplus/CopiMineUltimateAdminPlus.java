@@ -608,12 +608,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST)
     public void onBreak(BlockBreakEvent e) {
         if (checkMode.containsKey(e.getPlayer().getUniqueId()) && !hasAdmin(e.getPlayer())) { e.setCancelled(true); return; }
-        if(isBankAtmBlock(e.getBlock())){
-            e.setCancelled(true);
-            warn(e.getPlayer(),"This block is a registered AR ATM. Archive it from the economy GUI before breaking.");
-            audit(e.getPlayer().getName(),"ULTRA7_BANK_ATM_BREAK_BLOCKED",bankAtmId(e.getBlock()),true);
-            return;
-        }
         Material m=e.getBlock().getType();
         if (m==Material.DIAMOND_ORE || m==Material.DEEPSLATE_DIAMOND_ORE) {
             try {
@@ -789,7 +783,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&7Новый чистый модуль выборов.",
                 "&7Участки, ЦИК, заявки, президент,",
                 "&7законы, live-панель и налоговая."),"open:elections");
-        btn(m,13,Material.DIAMOND_ORE,"&b&lР­РєРѕРЅРѕРјРёРєР°",List.of(
+        btn(m,13,Material.DIAMOND_ORE,"&b&lЭкономика",List.of(
                 "&7АР, банк, банкоматы, ledger,",
                 "&7сканы и защита экономики.",
                 "&7Рабочий контур без выборного мусора."),"open:economy");
@@ -801,6 +795,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openMainHub(Player p){
+        if(isRestrictedJuniorAdmin(p)){
+            Menu m=new Menu("hub-junior"); create(m,27,"&2&lCopiMine &8| &fМладший админ");
+            btn(m,11,Material.PLAYER_HEAD,"&e&lИгроки",List.of(
+                    "&7Профили, инвентари и проверки.",
+                    "&7Опасные действия, экономика, выборы и миры",
+                    "&7для младшего админа заблокированы."),"open:players");
+            btn(m,15,Material.PAPER,"&bОграничения роли",List.of(
+                    "&7Роль предназначена для безопасной модерации.",
+                    "&7Снятие админов, опасные кнопки, казна,",
+                    "&7выборные и world-control действия отключены."),"none");
+            p.openInventory(m.inv);
+            return;
+        }
         Menu m=new Menu("hub-clean"); create(m,27,"&2&lCopiMine &8| &fадминка");
         btn(m,10,Material.GOLDEN_HELMET,"&6&lВыборы",List.of(
                 "&7Новый чистый модуль выборов.",
@@ -838,6 +845,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private boolean openWorldCoreHub(Player p){
+        if(isRestrictedJuniorAdmin(p)){
+            warn(p,"Младшему админу недоступно управление мирами.");
+            return false;
+        }
         Plugin plugin=Bukkit.getPluginManager().getPlugin("CopiMineWorldCore");
         if(plugin==null||!plugin.isEnabled()){
             warn(p,"CopiMineWorldCore недоступен.");
@@ -899,6 +910,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private boolean isLegacyElectionAction(String action){
         return action.startsWith("open:election-")
+                || action.equals("open:election-operations")
+                || action.equals("open:election-ledgers")
+                || action.equals("open:election-recovery-advanced")
+                || action.equals("open:election-settings")
                 || action.startsWith("open:citizen-")
                 || action.startsWith("open:applications-")
                 || action.startsWith("open:ballots-")
@@ -2189,6 +2204,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private void handle(Player p, ClickType click, String a, String menuId) throws Exception {
         if(a.equals("close")){p.closeInventory();return;}
+        if(isRestrictedJuniorAdmin(p)&&isBlockedJuniorAdminAction(a)){
+            warn(p,"Младший админ не может выполнять это действие.");
+            if(!a.startsWith("open:players"))openMainHub(p);
+            return;
+        }
         if(a.equals("open:citizen-election")||a.equals("open:citizen-guide")||a.equals("open:citizen-candidates")){redirectLegacyElectionAction(p);return;}
         if(a.startsWith("open:cik-target:")){Player t=Bukkit.getPlayerExact(a.substring("open:cik-target:".length())); if(t==null){warn(p,"Игрок оффлайн.");return;} openCikSealPlayerPanel(p,t); return;}
         if(a.startsWith("view-app:")){String[] parts=a.split(":",3); if(parts.length>=3)openCandidateApplicationPreview(p,parts[1],parts[2]); return;}
@@ -2209,18 +2229,25 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(a.startsWith("station:delete-confirm:")){openPollingStationDeleteConfirm(p,a.substring("station:delete-confirm:".length()));return;}
         if(a.startsWith("station:delete:")){msg(p,archivePollingStation(p,a.substring("station:delete:".length()))); openPollingStations(p);return;}
         if(a.startsWith("station:teleport:")){teleportPollingStation(p,a.substring("station:teleport:".length()));return;}
-        if(a.equals("open:applications-issue")){openApplicationsIssue(p);return;} if(a.equals("open:ballots-issue")){openBallotsIssue(p);return;} if(a.equals("open:give-app-player")){openGivePlayer(p,true);return;} if(a.equals("open:give-ballot-player")){openGivePlayer(p,false);return;}
+        if(a.equals("open:applications-issue")||a.equals("open:ballots-issue")||a.equals("open:give-app-player")||a.equals("open:give-ballot-player")){
+            warn(p,"Выдача заявок и бюллетеней перенесена в CopiMineElectionCore.");
+            openElections(p);
+            return;
+        }
         if(a.equals("open:candidates")){openCandidates(p);return;} if(a.equals("open:add-candidate")){openAddCandidate(p);return;} if(a.equals("open:curators")){openCurators(p);return;} if(a.equals("open:add-curator")){openAddCurator(p);return;} if(a.equals("open:election-danger")){openDanger(p);return;}
         if(a.equals("open:applications-review")){openApplicationsReview(p);return;} if(a.equals("open:ballots-ledger")){openBallotsLedger(p);return;} if(a.equals("open:election-audit")){openElectionAudit(p);return;} if(a.equals("open:election-emergency")){openElectionEmergency(p);return;} if(a.equals("open:application-issues")){openApplicationIssuesLedger(p);return;} if(a.equals("open:submitted-applications-emergency")){openSubmittedApplicationsEmergency(p);return;}
         if(a.equals("open:economy")||a.equals("open:economy-basic")||a.equals("open:economy-advanced")||a.equals("open:ar-top")||a.equals("open:ar-custody")||a.equals("open:ar-health")||a.equals("open:scan")||a.equals("open:ar-scans")){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;} economy.openAdminEconomyHub(p);return;}
-        if(a.equals("open:bank-atms")){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;} economy.openAtmDirectory(p);return;}
-        if(a.equals("bank-atm:create-target")){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;} msg(p,economy.createAtmFromTarget(p)); economy.openAtmDirectory(p);return;}
-        if(a.startsWith("bank-atm:delete:")){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;} if(click!=ClickType.SHIFT_RIGHT){warn(p,"Shift+Right click required.");return;} msg(p,economy.archiveAtm(p,a.substring("bank-atm:delete:".length()))); economy.openAtmDirectory(p);return;}
-        if(a.startsWith("open:bank-atm:")){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;} economy.atmService().openAtm(p,a.substring("open:bank-atm:".length()));return;}
+        if(a.equals("open:bank-atms")||a.equals("bank-atm:create-target")||a.startsWith("bank-atm:delete:")||a.startsWith("open:bank-atm:")){
+            CopiMineEconomyCore economy=economyCore();
+            if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;}
+            warn(p,"Управление банкоматами перенесено в CopiMineEconomyCore.");
+            economy.openAdminEconomyHub(p);
+            return;
+        }
         if(a.startsWith("bank:")||a.startsWith("bankpin:")){
             CopiMineEconomyCore economy=economyCore();
             if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;}
-            warn(p,"Старые банковые действия отключены. Используйте новый раздел экономики в CopiMineEconomyCore.");
+            warn(p,"Старые банковские действия отключены. Используйте новый раздел экономики в CopiMineEconomyCore.");
             economy.openAdminEconomyHub(p);
             return;
         }
@@ -2246,12 +2273,17 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String[] parts=a.split(":",3); if(parts.length<3)return; String act=parts[1], name=parts[2]; Player t=Bukkit.getPlayerExact(name); if(t==null){warn(admin,"Игрок оффлайн.");return;}
         recordPlayerActivity(t,"ADMIN_ACTION",t.getLocation(),"admin="+admin.getName()+" action="+act,true);
         if(isExtraPrank(act)){handleExtraPrank(admin,t,act); audit(admin.getName(),"ULTRA7_PLAYER_"+act.toUpperCase(Locale.ROOT),t.getName(),true); snapshotOnlineInventory(t,"admin_"+act); return;}
+        if("givebook".equals(act)||"giveballot".equals(act)){
+            warn(admin,"Выдача заявок и бюллетеней перенесена в CopiMineElectionCore.");
+            openElections(admin);
+            return;
+        }
         switch(act){
             case "inv" -> admin.openInventory(t.getInventory()); case "ender" -> admin.openInventory(t.getEnderChest()); case "tpto" -> {admin.teleport(t.getLocation()); msg(admin,"&aТП к игроку.");} case "tphere" -> {t.teleport(admin.getLocation()); msg(admin,"&aИгрок телепортирован.");}
             case "freeze" -> toggleFreeze(admin,t); case "heal" -> {t.setHealth(Math.min(t.getMaxHealth(),20.0)); t.setFoodLevel(20); t.setSaturation(20f); t.setFireTicks(0); msg(admin,"&aВылечен.");} case "feed" -> {t.setFoodLevel(20); t.setSaturation(20f);}
             case "launch" -> {t.setVelocity(t.getVelocity().setY(1.45)); sound(t,"ENTITY_FIREWORK_ROCKET_LAUNCH",1f,1f);} case "up10" -> t.teleport(t.getLocation().clone().add(0,10,0)); case "levitate" -> effect(t,5,1,"LEVITATION"); case "randomtp" -> randomTpNear(t); case "nearby" -> nearbyReport(admin,t);
             case "gm-survival" -> t.setGameMode(GameMode.SURVIVAL); case "gm-creative" -> t.setGameMode(GameMode.CREATIVE); case "gm-spectator" -> t.setGameMode(GameMode.SPECTATOR); case "gm-adventure" -> t.setGameMode(GameMode.ADVENTURE);
-            case "repairhand" -> repairHand(admin,t); case "armoroff" -> armorOff(admin,t); case "snapshot" -> {snapshotOnlineInventory(t,"admin_manual"); msg(admin,"&aSnapshot saved.");} case "arsync" -> {syncAr(t); msg(admin,"&aAR synced for &e"+t.getName());} case "clearinv" -> {if(click!=ClickType.SHIFT_LEFT){warn(admin,"Только Shift+ЛКМ.");return;} t.getInventory().clear();} case "givebook" -> issueApplicationBook(t,admin.getName()); case "giveballot" -> issueBallot(t,admin.getName()); case "shufflehotbar" -> shuffleHotbar(t);
+            case "repairhand" -> repairHand(admin,t); case "armoroff" -> armorOff(admin,t); case "snapshot" -> {snapshotOnlineInventory(t,"admin_manual"); msg(admin,"&aSnapshot saved.");} case "arsync" -> {syncAr(t); msg(admin,"&aAR synced for &e"+t.getName());} case "clearinv" -> {if(click!=ClickType.SHIFT_LEFT){warn(admin,"Только Shift+ЛКМ.");return;} t.getInventory().clear();} case "givebook","giveballot" -> {warn(admin,"Выдача заявок и бюллетеней перенесена в CopiMineElectionCore."); openElections(admin);} case "shufflehotbar" -> shuffleHotbar(t);
             case "title" -> t.sendTitle(c("&6&lВнимание"),c("&fАдминистрация наблюдает"),10,60,10); case "message" -> msg(t,"&eАдминистрация: &fПожалуйста, соблюдай правила сервера."); case "glow" -> effect(t,30,0,"GLOWING"); case "dark" -> {effect(t,6,0,"BLINDNESS"); effect(t,6,1,"SLOWNESS","SLOW");} case "cleanse" -> {t.setFireTicks(0); t.getActivePotionEffects().forEach(pe->t.removePotionEffect(pe.getType()));} case "god10" -> {effect(t,10,4,"DAMAGE_RESISTANCE","RESISTANCE"); effect(t,10,2,"REGENERATION");} case "fakeop" -> t.sendMessage(c("&7[Server: Made "+t.getName()+" a server operator]")); case "panic" -> {t.sendTitle(c("&c&lВНИМАНИЕ"),c("&fСрочная проверка реакции"),0,45,10); sound(t,"ENTITY_ENDER_DRAGON_GROWL",.45f,1.7f);} case "confuse" -> {effect(t,7,0,"NAUSEA","CONFUSION"); effect(t,3,0,"BLINDNESS"); sound(t,"ENTITY_ILLUSIONER_CAST_SPELL",.8f,1.2f);} case "inventory-lock" -> {inventoryLocks.put(t.getUniqueId(),now()+5000L); t.closeInventory(); t.sendTitle(c("&7Инвентарь закрыт"),c("&fПауза 5 секунд"),5,45,10); Bukkit.getScheduler().runTaskLater(this,()->inventoryLocks.remove(t.getUniqueId()),110L);}
             case "pumpkin" -> t.getInventory().setHelmet(new ItemStack(Material.CARVED_PUMPKIN)); case "scare" -> {sound(t,"ENTITY_CREEPER_PRIMED",1f,.55f); Bukkit.getScheduler().runTaskLater(this,()->sound(t,"ENTITY_WITHER_SPAWN",.7f,.7f),18L);} case "lightning" -> t.getWorld().strikeLightningEffect(t.getLocation()); case "explosion" -> t.getWorld().createExplosion(t.getLocation(),0F,false,false); case "spin" -> spin(t); case "chickens" -> chickens(t); case "anvil" -> sound(t,"BLOCK_ANVIL_LAND",1f,.8f); case "taxpaper" -> giveTaxPaper(t); case "bee" -> {sound(t,"ENTITY_BEE_LOOP_AGGRESSIVE",1f,1.8f); t.sendTitle(c("&eБзззз..."),c("&7Где-то рядом пчёлы"),5,45,10);} case "warden" -> {sound(t,"ENTITY_WARDEN_SONIC_BOOM",1f,.9f); t.sendTitle(c("&9&lТссс..."),c("&7Варден услышал тебя"),5,55,10);} case "nausea" -> effect(t,8,0,"NAUSEA","CONFUSION"); case "fireworkfake" -> {sound(t,"ENTITY_FIREWORK_ROCKET_LAUNCH",1f,1f); sound(t,"ENTITY_FIREWORK_ROCKET_TWINKLE",1f,1.2f);} case "potato" -> givePotato(t); case "swap" -> {Location al=admin.getLocation(), tl=t.getLocation(); admin.teleport(tl); t.teleport(al);} case "fakeban" -> {t.sendTitle(c("&4&lBAN"),c("&cШутка. Но правила лучше соблюдать."),5,70,15); sound(t,"ENTITY_WITHER_DEATH",.7f,.8f);} case "horn" -> sound(t,"ITEM_GOAT_HORN_SOUND_0",1f,1f);
             case "kick" -> t.kickPlayer(c("&cКикнут администрацией CopiMine.")); case "ipban" -> {if(click!=ClickType.SHIFT_RIGHT){warn(admin,"Только Shift+ПКМ.");return;} if(t.getAddress()!=null){String ip=t.getAddress().getAddress().getHostAddress(); Bukkit.getBanList(BanList.Type.IP).addBan(ip,"IP-ban CopiMine",(Date)null,admin.getName()); t.kickPlayer(c("&cIP-ban"));}} case "burn5" -> t.setFireTicks(100); case "slow10" -> {effect(t,10,5,"SLOWNESS","SLOW"); effect(t,10,2,"MINING_FATIGUE","SLOW_DIGGING");}
@@ -2448,7 +2480,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean tryBlankNumbersWith(Object o,String className){
         try{Class<?> nf=Class.forName(className); Object blank=nf.getMethod("blank").invoke(null); try{o.getClass().getMethod("setNumberFormat",nf).invoke(o,blank);}catch(NoSuchMethodException ex){o.getClass().getMethod("numberFormat",nf).invoke(o,blank);} return true;}catch(Throwable ignored){return false;}
     }
-    private String graphBar(long v,long max,int w){ int f=max<=0?0:(int)Math.round((double)v/max*w); f=Math.max(0,Math.min(w,f)); return "в–°".repeat(f)+"в–±".repeat(w-f); }
+    private String graphBar(long v,long max,int w){ int f=max<=0?0:(int)Math.round((double)v/max*w); f=Math.max(0,Math.min(w,f)); return "▰".repeat(f)+"▱".repeat(w-f); }
     private String percent(long v,long total){ return total<=0?"0%":Math.round((double)Math.max(0,v)*100D/Math.max(1,total))+"%"; }
     private String anim(){ return new String[]{"▖","▘","▝","▗"}[tick%4]; }
     private String animLine(){ return new String[]{"Голоса обновляются ▌░░","Голоса обновляются ▌▌░","Голоса обновляются ▌▌▌","Выборы продолжаются"}[tick%4]; }
@@ -4314,12 +4346,24 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Plugin plugin=Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
         return plugin instanceof CopiMineEconomyCore core && plugin.isEnabled()?core:null;
     }
-    private boolean hasAnyAdmin(CommandSender s){return hasAdmin(s)||hasElectionAdmin(s)||hasEconomyAdmin(s)||hasPlayerAdmin(s);}
+    private boolean hasAnyAdmin(CommandSender s){return hasAdmin(s)||hasJuniorAdmin(s)||hasElectionAdmin(s)||hasEconomyAdmin(s)||hasPlayerAdmin(s);}
     private boolean hasAdmin(CommandSender s){if(!(s instanceof Player p))return true; return p.isOp()||p.hasPermission("copimine.admin")||p.hasPermission("copimine.ultra.admin");}
-    private boolean hasElectionAdmin(CommandSender s){if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
-    private boolean hasElectionRecoveryAdmin(CommandSender s){if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
-    private boolean hasEconomyAdmin(CommandSender s){if(!(s instanceof Player p))return true; return hasAdmin(s)||p.hasPermission("copimine.economy.admin")||p.hasPermission("copimine.bank.admin");}
-    private boolean hasPlayerAdmin(CommandSender s){if(!(s instanceof Player p))return true; return hasAdmin(s)||p.hasPermission("copimine.players.admin");}
+    private boolean hasJuniorAdmin(CommandSender s){if(!(s instanceof Player p))return false; return !hasAdmin(s)&&p.hasPermission("copimine.admin.junior");}
+    private boolean isRestrictedJuniorAdmin(CommandSender s){return hasJuniorAdmin(s)&&!hasAdmin(s);}
+    private boolean hasElectionAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
+    private boolean hasElectionRecoveryAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
+    private boolean hasEconomyAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(!(s instanceof Player p))return true; return hasAdmin(s)||p.hasPermission("copimine.economy.admin")||p.hasPermission("copimine.bank.admin");}
+    private boolean hasPlayerAdmin(CommandSender s){if(!(s instanceof Player p))return true; return hasAdmin(s)||hasJuniorAdmin(s)||p.hasPermission("copimine.players.admin");}
+    private boolean isBlockedJuniorAdminAction(String action){
+        if(action==null||action.isBlank())return true;
+        return !(action.equals("open:hub")
+                || action.equals("open:admin-map")
+                || action.equals("open:players")
+                || action.startsWith("player:")
+                || action.startsWith("open:p-inv:")
+                || action.startsWith("open:p-timeline:")
+                || action.equals("close"));
+    }
     private boolean isCurator(Player p){return false;}
     private boolean isChair(Player p){try{return scalarLong("SELECT COUNT(*) FROM cik_chairs WHERE player_uuid=? AND active=1",p.getUniqueId().toString())>0;}catch(Exception e){return false;}}
     private boolean isPresident(Player p){try{return scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'",p.getUniqueId().toString())>0||p.hasPermission("copimine.election.president");}catch(Exception e){return p.hasPermission("copimine.election.president");}}
@@ -4677,7 +4721,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(pool!=null)pool.close();
     }
     private long safeScalar(String sql){try{return scalarLong(sql);}catch(Exception e){return 0;}}
-    private int onOff(String v){if(v==null)return 0; return Set.of("1","true","yes","on","РґР°","РІРєР»").contains(v.trim().toLowerCase(Locale.ROOT))?1:0;}
+    private int onOff(String v){if(v==null)return 0; return Set.of("1","true","yes","on","да","вкл").contains(v.trim().toLowerCase(Locale.ROOT))?1:0;}
     private String flag(String v){return onOff(v)==1?"&aON":"&cOFF";}
     private String humanStage(String s){return switch(s==null?"":s.toUpperCase(Locale.ROOT)){case"DRAFT"->"подготовка";case"APPLICATIONS_OPEN","NOMINATION"->"приём заявок";case"APPLICATIONS_CLOSED","REVIEW"->"проверка заявок";case"BALLOTS_OPEN"->"выдача бюллетеней";case"DEBATE"->"дебаты";case"VOTING_OPEN","VOTING"->"голосование";case"COUNTING"->"подсчёт";case"FINISHED","INAUGURATION"->"итоги";case"CANCELLED"->"отменено";case"SECOND_ROUND_REQUIRED"->"второй тур";case"ARCHIVED"->"архив";case"RESET"->"сброс";default->s==null?"неизвестно":s;};}
     private String humanStatus(String s){return switch(s==null?"":s.toUpperCase(Locale.ROOT)){case"DRAFT"->"подготовка";case"APPLICATIONS_OPEN"->"приём заявок";case"APPLICATIONS_CLOSED"->"заявки закрыты";case"BALLOTS_OPEN"->"выдача бюллетеней";case"VOTING_OPEN"->"голосование";case"COUNTING"->"подсчёт";case"FINISHED"->"завершены";case"CANCELLED"->"отменены";case"SECOND_ROUND_REQUIRED"->"нужен второй тур";case"ACTIVE"->"идут";case"PAUSED"->"пауза";case"ENDED"->"завершены";case"RESET"->"сброшены";default->s==null?"нет":s;};}
@@ -4769,7 +4813,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(root.equals("rpguard"))return handleRpGuardCommand(sender,args);
             if(root.equals("report")||root.equals("appeal")){handleReport(sender,args);return true;}
             if(root.equals("cadm")){if(sender instanceof Player p&&hasAnyAdmin(p))openMainHub(p);else warn(sender,"Нет прав."); return true;}
-            if(root.equals("ar")||root.equals("cmbank")){if(sender instanceof Player p&&hasEconomyAdmin(p)){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} if(root.equals("cmbank"))economy.openAtmDirectory(p); else economy.openAdminEconomyHub(p);}else msg(sender,"Банк и AR управляются через /cmultra."); return true;}
+            if(root.equals("ar")||root.equals("cmbank")){if(sender instanceof Player p&&hasEconomyAdmin(p)){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} economy.openAdminEconomyHub(p);}else msg(sender,"Банк и AR управляются через /cmultra."); return true;}
             if(!hasAnyAdmin(sender)){warn(sender,"Нет прав.");return true;}
             if(args.length==0||args[0].equalsIgnoreCase("menu")){if(sender instanceof Player p)openMainHub(p); else help(sender); return true;}
             switch(args[0].toLowerCase(Locale.ROOT)){
@@ -4782,7 +4826,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return true;
     }
     private String joinArgs(String[] args,int start){if(args==null||args.length<=start)return"emergency"; return String.join(" ",Arrays.copyOfRange(args,start,args.length)).trim();}
-    private void help(CommandSender s){msg(s,"&6/cmultra &7- меню"); msg(s,"&6/cmbank &7- банк, AR и банкоматы"); msg(s,"&6/cmultra ar sync"); msg(s,"&6/cmultra check start|stop|return <player>"); msg(s,"&6/cadm &7- общий хаб, раздел &fВыборы &7открывает CopiMineElectionCore"); msg(s,"&6/hidelive &7- скрыть live-панель выборов только у себя");}
+    private void help(CommandSender s){msg(s,"&6/cmultra &7- меню"); msg(s,"&6/cmbank &7- открыть раздел экономики"); msg(s,"&6/cmultra ar sync"); msg(s,"&6/cmultra check start|stop|return <player>"); msg(s,"&6/cadm &7- общий хаб, раздел &fВыборы &7открывает CopiMineElectionCore"); msg(s,"&6/hidelive &7- скрыть live-панель выборов только у себя");}
     @Override public List<String> onTabComplete(CommandSender s,Command c,String a,String[] args){String root=c.getName().toLowerCase(Locale.ROOT); if(root.equals("cmbank"))return List.of(); if(root.equals("rpguard")&&args.length==1)return List.of("status","test").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==1)return List.of("menu","ar","check").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&args[0].equalsIgnoreCase("check"))return Bukkit.getOnlinePlayers().stream().map(Player::getName).filter(x->x.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); return List.of();}
 
     private record PgSettings(String host,int port,String database,String user,String password,String schema,int poolSize,int connectTimeoutMs,int statementTimeoutMs,Path envFile){

@@ -26,6 +26,19 @@
   font-synthesis-weight: none;
 }
 
+.spacer-12 {
+  height: 12px;
+}
+
+.spacer-14 {
+  height: 14px;
+}
+
+.log-box-tall {
+  min-height: 120px;
+  max-height: 220px;
+}
+
 /* Final public Minecraft UI layer */
 .public-nav {
   color: var(--ink);
@@ -3171,7 +3184,6 @@ td {
 
 html, body {
   background:
-    radial-gradient(circle at top, rgba(53, 240, 127, 0.11), transparent 34%),
     linear-gradient(180deg, #07120b 0%, #09170f 42%, #06110b 100%);
   color: var(--ink);
 }
@@ -3198,7 +3210,6 @@ table,
   color: var(--ink);
   border-color: var(--line) !important;
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(16px);
 }
 
 .public-nav a:not(.public-brand),
@@ -3255,7 +3266,6 @@ textarea::placeholder {
 .workspace,
 .view {
   background:
-    radial-gradient(circle at top right, rgba(53, 240, 127, 0.1), transparent 28%),
     linear-gradient(180deg, rgba(6, 17, 11, 0.88), rgba(7, 18, 11, 0.98)) !important;
   color: var(--ink);
 }
@@ -3395,5 +3405,51 @@ table td {
 @media (max-width: 620px) {
   .public-status-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+.qr-block {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.qr-image {
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: #fff;
+  border-radius: var(--r-lg);
+  border: 1px solid rgba(124, 255, 167, 0.12);
+  padding: 10px;
+  box-shadow: var(--shadow-soft);
+}
+
+.qr-copy {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.action-strip.wrap {
+  flex-wrap: wrap;
+}
+
+.btn.disabled,
+.btn[disabled] {
+  opacity: 0.58;
+  pointer-events: none;
+  filter: saturate(0.65);
+}
+
+@media (max-width: 820px) {
+  .qr-block {
+    grid-template-columns: 1fr;
+  }
+
+  .qr-image {
+    max-width: 280px;
   }
 }

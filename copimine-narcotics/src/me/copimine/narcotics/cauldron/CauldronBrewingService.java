@@ -50,9 +50,13 @@ public final class CauldronBrewingService {
             return;
         }
         database.loadBrewingStates().thenAccept(states -> {
-                    cache.clear();
                     for (Map.Entry<BlockKey, NarcoticsDatabase.LoadedBrewingState> entry : states.entrySet()) {
-                        cache.put(entry.getKey(), new CauldronState(entry.getValue().ingredients(), entry.getValue().version()));
+                        cache.compute(entry.getKey(), (ignored, current) -> {
+                            if (current != null && current.version() > entry.getValue().version()) {
+                                return current;
+                            }
+                            return new CauldronState(entry.getValue().ingredients(), entry.getValue().version());
+                        });
                     }
                 })
                 .exceptionally(error -> {

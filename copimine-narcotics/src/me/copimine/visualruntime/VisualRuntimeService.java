@@ -46,6 +46,7 @@ public final class VisualRuntimeService {
     private final Map<UUID, VisualSession> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Integer> cleanupTasks = new ConcurrentHashMap<>();
     private final Map<UUID, Boolean> resourcePackReady = new ConcurrentHashMap<>();
+    private final Map<UUID, VisualSession> clearHints = new ConcurrentHashMap<>();
 
     public VisualRuntimeService(CopiMineNarcotics plugin, NarcoticsConfigService configService, CopiMineClientBridge clientBridge) {
         this.plugin = plugin;
@@ -86,13 +87,16 @@ public final class VisualRuntimeService {
         if (player == null) {
             return;
         }
-        sessions.remove(player.getUniqueId());
+        VisualSession previousSession = sessions.remove(player.getUniqueId());
         Integer taskId = cleanupTasks.remove(player.getUniqueId());
         if (taskId != null) {
             plugin.getServer().getScheduler().cancelTask(taskId);
         }
         if (notifyClient) {
-            clientBridge.visuals().clearVisuals(player, "server-clear");
+            clientBridge.visuals().clearVisuals(player);
+        }
+        if (previousSession != null) {
+            clearHints.put(player.getUniqueId(), previousSession);
         }
         clearServerVisualSurface(player);
     }
@@ -110,11 +114,11 @@ public final class VisualRuntimeService {
     }
 
     public boolean supportsOverlayRuntime() {
-        return supportsServerOverlayRuntime();
+        return detectOverlaySupport();
     }
 
     public boolean supportsShaderRuntime() {
-        return false;
+        return detectShaderSupport();
     }
 
     public String serverOverlaySupportReason() {
@@ -147,7 +151,22 @@ public final class VisualRuntimeService {
     }
 
     public String shaderSupportReason() {
-        return "Paper server does not force Iris/OptiFine shaders. Shader descriptors remain client-mod/profile documentation only.";
+        if (!configService.allowClientModVisuals()) {
+            return "client shader-like route disabled in config";
+        }
+        if (!clientBridge.enabled() || !configService.clientBridgeEnabled()) {
+            return "client bridge disabled";
+        }
+        if (!hasAllShaderProfiles()) {
+            return "client shader-like profiles missing";
+        }
+        if (!manifestFlag("client_mod_visual_supported")) {
+            return "client-mod visual runtime disabled by visuals manifest";
+        }
+        if (!manifestFlag("true_shader_runtime_supported")) {
+            return "true post-processing shaders are not server-forceable on Paper; CopiMineClient provides only optional shader-like client visuals";
+        }
+        return "available through optional CopiMineClient visual runtime";
     }
 
     public String overlaySupportReason() {
@@ -181,15 +200,12 @@ public final class VisualRuntimeService {
             return;
         }
         VisualRoute route = forceServerRoute ? forcedServerRoute(player, normalized) : resolveRoute(player, normalized, ignoreGate);
-        Integer previousTask = cleanupTasks.remove(player.getUniqueId());
-        if (previousTask != null) {
-            plugin.getServer().getScheduler().cancelTask(previousTask);
-        }
         clear(player);
         if (route == VisualRoute.DISABLED) {
             return;
         }
-        sessions.put(player.getUniqueId(), new VisualSession(normalized, route, System.currentTimeMillis() + (durationSeconds * 1000L), overdose));
+        long untilMillis = System.currentTimeMillis() + (durationSeconds * 1000L);
+        sessions.put(player.getUniqueId(), new VisualSession(normalized, route, untilMillis, overdose));
         switch (route) {
             case CLIENT_MOD_VISUAL -> clientBridge.visuals().sendVisualStart(
                     player,
@@ -228,18 +244,13 @@ public final class VisualRuntimeService {
             case DISABLED -> {
             }
         }
-        int taskId = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            VisualSession session = sessions.get(player.getUniqueId());
-            if (session != null && session.untilMillis() <= System.currentTimeMillis()) {
-                clear(player);
-            }
-        }, Math.max(20L, durationSeconds * 20L)).getTaskId();
-        cleanupTasks.put(player.getUniqueId(), taskId);
+        scheduleCleanup(player, untilMillis);
     }
 
     private void applyServerFallbackRoute(Player player, String effectId, int durationSeconds, boolean overdose) {
         VisualRoute fallbackRoute = forcedServerRoute(player, effectId);
-        sessions.put(player.getUniqueId(), new VisualSession(effectId.toUpperCase(Locale.ROOT), fallbackRoute, System.currentTimeMillis() + (durationSeconds * 1000L), overdose));
+        long untilMillis = System.currentTimeMillis() + (durationSeconds * 1000L);
+        sessions.put(player.getUniqueId(), new VisualSession(effectId.toUpperCase(Locale.ROOT), fallbackRoute, untilMillis, overdose));
         switch (fallbackRoute) {
             case SERVER_RESOURCE_PACK_OVERLAY -> {
                 applyServerOverlay(player, effectId, durationSeconds, overdose);
@@ -249,6 +260,25 @@ public final class VisualRuntimeService {
             case CLIENT_MOD_VISUAL, DISABLED -> {
             }
         }
+        scheduleCleanup(player, untilMillis);
+    }
+
+    private void scheduleCleanup(Player player, long untilMillis) {
+        if (player == null) {
+            return;
+        }
+        Integer previousTask = cleanupTasks.remove(player.getUniqueId());
+        if (previousTask != null) {
+            plugin.getServer().getScheduler().cancelTask(previousTask);
+        }
+        long ticksLeft = Math.max(20L, (long) Math.ceil(Math.max(1L, untilMillis - System.currentTimeMillis()) / 50.0D));
+        int taskId = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            VisualSession session = sessions.get(player.getUniqueId());
+            if (session != null && session.untilMillis() <= System.currentTimeMillis()) {
+                clear(player);
+            }
+        }, ticksLeft).getTaskId();
+        cleanupTasks.put(player.getUniqueId(), taskId);
     }
 
     private VisualRoute resolveRoute(Player player, String effectId, boolean ignoreGate) {
@@ -315,6 +345,18 @@ public final class VisualRuntimeService {
         return Files.isRegularFile(fontManifest) && hasAllOverlayAssets() && manifestFlag("server_overlay_supported");
     }
 
+    private boolean detectOverlaySupport() {
+        return detectServerOverlaySupport();
+    }
+
+    private boolean detectShaderSupport() {
+        return configService.allowClientModVisuals()
+                && configService.clientBridgeEnabled()
+                && clientBridge.enabled()
+                && hasAllShaderProfiles()
+                && manifestFlag("client_mod_visual_supported");
+    }
+
     private boolean manifestFlag(String key) {
         Path manifest = projectRoot().resolve("resourcepacks").resolve("src").resolve("assets").resolve("copimine").resolve("manifests").resolve("narcotics_visuals_manifest.json");
         if (!Files.isRegularFile(manifest)) {
@@ -346,8 +388,13 @@ public final class VisualRuntimeService {
         }
     }
 
+    private void applyOverlay(Player player, String effectId, int durationSeconds, boolean overdose) {
+        applyServerOverlay(player, effectId, durationSeconds, overdose);
+    }
+
     private void clearServerVisualSurface(Player player) {
-        if (configService.serverOverlayClearOnStop()) {
+        VisualSession session = clearHints.remove(player.getUniqueId());
+        if (session != null && session.route() == VisualRoute.SERVER_RESOURCE_PACK_OVERLAY && configService.serverOverlayClearOnStop()) {
             player.clearTitle();
             player.sendActionBar(Component.empty());
         }

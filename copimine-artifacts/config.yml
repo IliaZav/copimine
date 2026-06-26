@@ -10,6 +10,15 @@ performance:
   session-cleanup-seconds: 60
   session-ttl-seconds: 300
 
+donation:
+  website-base-url: "https://admin.copimine.ru"
+  purchase-path-template: "/#donation-shop?item={item_id}"
+  payment-path-template: "/#donation-balance?session={session_id}"
+  qr-fallback-message: "Оплата доступна на сайте CopiMine. Открой ссылку и используй код сессии."
+  max-history-rows: 18
+  max-reclaim-rows: 18
+  fixed-packs: [50, 100, 250, 500, 1000]
+
 custom-block-visuals:
   enabled: true
   models:

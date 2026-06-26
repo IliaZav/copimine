@@ -50,8 +50,8 @@ public final class NarcoticsDatabase {
             Class.forName("org.postgresql.Driver");
             DriverManager.setLoginTimeout(10);
             executor = new ThreadPoolExecutor(
-                    configService.asyncThreads(),
-                    configService.asyncThreads(),
+                    1,
+                    1,
                     30L,
                     TimeUnit.SECONDS,
                     new LinkedBlockingQueue<>(512),
@@ -162,7 +162,7 @@ public final class NarcoticsDatabase {
         return supplyAsync(() -> {
             try (Connection connection = openConnection();
                  PreparedStatement statement = connection.prepareStatement("""
-                         SELECT current_scale,last_consumed_at,overdose_until,inverted_movement_until,last_item_id
+                         SELECT current_scale,last_consumed_at,overdose_until,inverted_movement_until,last_item_id,state_version
                          FROM narcotics_player_overdose
                          WHERE player_uuid=?
                          """)) {
@@ -177,7 +177,8 @@ public final class NarcoticsDatabase {
                             rs.getLong(2),
                             rs.getLong(3),
                             rs.getLong(4),
-                            Optional.ofNullable(rs.getString(5)).orElse("")
+                            Optional.ofNullable(rs.getString(5)).orElse(""),
+                            rs.getLong(6)
                     );
                 }
             }
@@ -187,15 +188,17 @@ public final class NarcoticsDatabase {
     public CompletableFuture<Void> savePlayerState(OverdoseService.PlayerState state) {
         return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO narcotics_player_overdose(player_uuid,current_scale,last_consumed_at,overdose_until,inverted_movement_until,last_item_id,updated_at)
-                    VALUES (?,?,?,?,?,?,?)
+                    INSERT INTO narcotics_player_overdose(player_uuid,current_scale,last_consumed_at,overdose_until,inverted_movement_until,last_item_id,state_version,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?)
                     ON CONFLICT (player_uuid)
                     DO UPDATE SET current_scale=EXCLUDED.current_scale,
                                   last_consumed_at=EXCLUDED.last_consumed_at,
                                   overdose_until=EXCLUDED.overdose_until,
                                   inverted_movement_until=EXCLUDED.inverted_movement_until,
                                   last_item_id=EXCLUDED.last_item_id,
+                                  state_version=EXCLUDED.state_version,
                                   updated_at=EXCLUDED.updated_at
+                    WHERE narcotics_player_overdose.state_version < EXCLUDED.state_version
                     """)) {
                 statement.setString(1, state.playerUuid().toString());
                 statement.setInt(2, state.currentScale());
@@ -203,7 +206,8 @@ public final class NarcoticsDatabase {
                 statement.setLong(4, state.overdoseUntil());
                 statement.setLong(5, state.invertedMovementUntil());
                 statement.setString(6, state.lastItemId());
-                statement.setLong(7, Instant.now().getEpochSecond());
+                statement.setLong(7, state.stateVersion());
+                statement.setLong(8, Instant.now().getEpochSecond());
                 statement.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement("""
@@ -310,9 +314,11 @@ public final class NarcoticsDatabase {
                   overdose_until BIGINT NOT NULL DEFAULT 0,
                   inverted_movement_until BIGINT NOT NULL DEFAULT 0,
                   last_item_id TEXT NOT NULL DEFAULT '',
+                  state_version BIGINT NOT NULL DEFAULT 0,
                   updated_at BIGINT NOT NULL DEFAULT 0
                 )
                 """);
+        sql.add("ALTER TABLE narcotics_player_overdose ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 0");
         sql.add("""
                 CREATE TABLE IF NOT EXISTS narcotics_player_usage_window (
                   player_uuid TEXT PRIMARY KEY,

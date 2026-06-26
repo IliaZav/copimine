@@ -16,8 +16,9 @@ if (-not (Test-Path $jar)) { $errors.Add('Missing built CopiMineArtifacts.jar.')
 if (-not (Test-Path $activeJar)) { $errors.Add('Missing active CopiMineArtifacts.jar in minecraft/server/plugins.') }
 if ((Get-Content -Raw $pluginYml) -notmatch 'name:\s*CopiMineArtifacts') { $errors.Add('plugin.yml name mismatch.') }
 if ((Get-Content -Raw $pluginYml) -notmatch 'main:\s*me\.copimine\.artifacts\.CopiMineArtifacts') { $errors.Add('plugin.yml main class mismatch.') }
-if ((Get-Content -Raw $pluginYml) -notmatch "(?ms)^depend:\s*(\r?\n)+\s*-\s*CopiMineUltimateAdminPlus") { $errors.Add('CopiMineArtifacts must hard-depend on CopiMineUltimateAdminPlus.') }
-if ((Get-Content -Raw $pluginYml) -match '(?m)^softdepend:') { $errors.Add('CopiMineArtifacts must not use softdepend for the bank bridge.') }
+$pluginText = Get-Content -Raw $pluginYml
+if ($pluginText -notmatch "(?ms)^depend:\s*(\r?\n)+\s*-\s*CopiMineEconomyCore") { $errors.Add('CopiMineArtifacts must hard-depend on CopiMineEconomyCore.') }
+if ($pluginText -notmatch "(?ms)^softdepend:\s*(\r?\n)+\s*-\s*CopiMineUltimateAdminPlus") { $errors.Add('CopiMineArtifacts should keep AdminPlus only as an optional hub/delegator integration.') }
 if (Test-Path $activeJar) {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $zip = [System.IO.Compression.ZipFile]::OpenRead($activeJar)

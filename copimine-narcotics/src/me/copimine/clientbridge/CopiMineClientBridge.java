@@ -98,8 +98,9 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                 }
                 case ClientBridgePayloads.HEARTBEAT -> capabilities.touch(player, payload.sessionId());
                 case ClientBridgePayloads.VISUAL_ACK, ClientBridgePayloads.VISUAL_FINISHED, ClientBridgePayloads.VISUAL_ERROR -> {
-                    capabilities.touch(player, payload.sessionId());
-                    visuals.handleMessage(player, payload);
+                    if (capabilities.touch(player, payload.sessionId())) {
+                        visuals.handleMessage(player, payload);
+                    }
                 }
                 default -> capabilities.reportProblem(player, "unsupported-message-type:" + payload.type());
             }

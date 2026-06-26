@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class OverdoseService {
     private final CopiMineNarcotics plugin;
@@ -30,6 +31,7 @@ public final class OverdoseService {
     private final Map<UUID, PlayerState> states = new ConcurrentHashMap<>();
     private final Map<UUID, Set<PotionEffectType>> trackedEffects = new ConcurrentHashMap<>();
     private final Set<UUID> movementGuard = ConcurrentHashMap.newKeySet();
+    private final AtomicLong stateEpoch = new AtomicLong(0L);
 
     public OverdoseService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, VisualRuntimeService visualRuntime) {
         this.plugin = plugin;
@@ -43,7 +45,13 @@ public final class OverdoseService {
     }
 
     public void preloadState(UUID playerUuid) {
-        database.loadPlayerState(playerUuid).thenAccept(state -> states.put(playerUuid, state))
+        long requestEpoch = stateEpoch.get();
+        database.loadPlayerState(playerUuid).thenAccept(state -> {
+                    if (stateEpoch.get() != requestEpoch) {
+                        return;
+                    }
+                    states.compute(playerUuid, (ignored, current) -> current == null || state.stateVersion() >= current.stateVersion() ? state : current);
+                })
                 .exceptionally(error -> {
                     plugin.getLogger().warning("Failed to preload narcotics state: " + error.getMessage());
                     return null;
@@ -61,7 +69,7 @@ public final class OverdoseService {
         overdose = overdose || newScale >= configService.overdoseThreshold();
 
         if (configService.clearNormalEffectsBeforeNewUse()) {
-            clearActiveEffects(player, false);
+            clearTransientEffects(player);
         }
 
         PlayerState updated = new PlayerState(
@@ -70,7 +78,8 @@ public final class OverdoseService {
                 now,
                 state.overdoseUntil(),
                 state.invertedMovementUntil(),
-                definition.id()
+                definition.id(),
+                state.stateVersion() + 1L
         );
 
         if (overdose) {
@@ -114,6 +123,27 @@ public final class OverdoseService {
     }
 
     public void clearActiveEffects(Player player, boolean preserveState) {
+        clearTransientEffects(player);
+        if (preserveState) {
+            return;
+        }
+        PlayerState state = states.get(player.getUniqueId());
+        if (state != null) {
+            PlayerState cleared = new PlayerState(
+                    state.playerUuid(),
+                    state.currentScale(),
+                    state.lastConsumedAt(),
+                    0L,
+                    0L,
+                    state.lastItemId(),
+                    state.stateVersion() + 1L
+            );
+            states.put(player.getUniqueId(), cleared);
+            database.savePlayerState(cleared);
+        }
+    }
+
+    private void clearTransientEffects(Player player) {
         Set<PotionEffectType> effects = trackedEffects.remove(player.getUniqueId());
         if (effects != null) {
             for (PotionEffectType effect : effects) {
@@ -123,25 +153,20 @@ public final class OverdoseService {
         player.removePotionEffect(PotionEffectType.DARKNESS);
         player.removePotionEffect(PotionEffectType.NAUSEA);
         visualRuntime.clear(player);
-        if (!preserveState) {
-            PlayerState state = states.get(player.getUniqueId());
-            if (state != null) {
-                PlayerState cleared = new PlayerState(state.playerUuid(), state.currentScale(), state.lastConsumedAt(), 0L, 0L, state.lastItemId());
-                states.put(player.getUniqueId(), cleared);
-                database.savePlayerState(cleared);
-            }
-        }
     }
 
     public void clearAllCachedState() {
+        stateEpoch.incrementAndGet();
         states.clear();
         trackedEffects.clear();
         movementGuard.clear();
     }
 
     public void forceClearOverdose(Player player) {
-        clearActiveEffects(player, false);
-        PlayerState cleared = PlayerState.empty(player.getUniqueId());
+        clearTransientEffects(player);
+        PlayerState previous = states.get(player.getUniqueId());
+        long nextVersion = previous == null ? 1L : previous.stateVersion() + 1L;
+        PlayerState cleared = new PlayerState(player.getUniqueId(), 0, 0L, 0L, 0L, "", nextVersion);
         states.put(player.getUniqueId(), cleared);
         database.savePlayerState(cleared);
     }
@@ -180,7 +205,7 @@ public final class OverdoseService {
         int duration = effectiveDuration(Math.max(30, maxDuration(effectsToApply)));
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 30, 0.45D, 0.55D, 0.45D, 0.01D);
         visualRuntime.apply(player, visualId, duration, true);
-        return new PlayerState(state.playerUuid(), 0, state.lastConsumedAt(), now + duration, state.invertedMovementUntil(), state.lastItemId());
+        return new PlayerState(state.playerUuid(), 0, state.lastConsumedAt(), now + duration, state.invertedMovementUntil(), state.lastItemId(), state.stateVersion());
     }
 
     private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects) {
@@ -221,17 +246,17 @@ public final class OverdoseService {
         return configService.durationOverrideSeconds() > 0 ? configService.durationOverrideSeconds() : baseSeconds;
     }
 
-    public record PlayerState(UUID playerUuid, int currentScale, long lastConsumedAt, long overdoseUntil, long invertedMovementUntil, String lastItemId) {
+    public record PlayerState(UUID playerUuid, int currentScale, long lastConsumedAt, long overdoseUntil, long invertedMovementUntil, String lastItemId, long stateVersion) {
         public static PlayerState empty(UUID playerUuid) {
-            return new PlayerState(playerUuid, 0, 0L, 0L, 0L, "");
+            return new PlayerState(playerUuid, 0, 0L, 0L, 0L, "", 0L);
         }
 
         public PlayerState withCurrentScale(int scale) {
-            return new PlayerState(playerUuid, scale, lastConsumedAt, overdoseUntil, invertedMovementUntil, lastItemId);
+            return new PlayerState(playerUuid, scale, lastConsumedAt, overdoseUntil, invertedMovementUntil, lastItemId, stateVersion);
         }
 
         public PlayerState withInvertedMovementUntil(long until) {
-            return new PlayerState(playerUuid, currentScale, lastConsumedAt, overdoseUntil, until, lastItemId);
+            return new PlayerState(playerUuid, currentScale, lastConsumedAt, overdoseUntil, until, lastItemId, stateVersion);
         }
     }
 }

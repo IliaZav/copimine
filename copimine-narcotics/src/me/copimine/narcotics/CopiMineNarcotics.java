@@ -65,6 +65,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     private static final Set<String> VALID_VISUAL_MODES = Set.of("AUTO", "CLIENT_MOD", "SERVER_OVERLAY", "SERVER_FALLBACK");
 
     private final ConcurrentHashMap<UUID, Long> consumeCooldownUntil = new ConcurrentHashMap<>();
+    private volatile boolean resetInProgress = false;
 
     private NarcoticsConfigService configService;
     private NarcoticsDatabase database;
@@ -108,7 +109,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     @Override
     public void onDisable() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            overdoseService.clearActiveEffects(player, false);
+            overdoseService.clearActiveEffects(player, true);
             visualRuntime.clear(player);
         }
         consumeCooldownUntil.clear();
@@ -127,6 +128,17 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         Player player = event.getPlayer();
         ItemStack inHand = player.getInventory().getItemInMainHand();
         NarcoticDefinition official = itemFactory.resolveOfficial(inHand);
+        if (resetInProgress) {
+            boolean brewingAttempt = event.getAction() == Action.RIGHT_CLICK_BLOCK
+                    && event.getClickedBlock() != null
+                    && cauldronService.isSupportedCauldron(event.getClickedBlock())
+                    && recipeService.isRecognizedIngredient(inHand);
+            if (official != null || brewingAttempt) {
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.YELLOW + "Наркотики временно недоступны: идёт сброс состояния.");
+            }
+            return;
+        }
 
         if (official != null) {
             if (event.getAction() == Action.RIGHT_CLICK_AIR) {
@@ -294,9 +306,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 case "give" -> handleGive(sender, args);
                 case "reload" -> handleReload(sender);
                 case "reset-state", "reset" -> handleResetState(sender, args);
-                case "clearoverdose" -> handleClearOverdose(sender, args);
-                case "texture", "texture-mode" -> handleTexture(sender, args);
-                case "visuals" -> handleVisualsV2(sender, args);
+                case "clearoverdose" -> handleClearOverdoseV2(sender, args);
+                case "texture", "texture-mode" -> handleTextureV2(sender, args);
+                case "visuals" -> handleVisualsV3(sender, args);
                 case "visual-mode" -> handleVisualMode(sender, args);
                 case "visual-effect" -> handleVisualEffect(sender, args);
                 case "selfcheck" -> handleSelfCheckV2(sender);
@@ -454,9 +466,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(message("state_reset_need_confirm"));
             return true;
         }
+        if (resetInProgress) {
+            sender.sendMessage(ChatColor.YELLOW + "Сброс уже выполняется.");
+            return true;
+        }
+        resetInProgress = true;
         database.resetNarcoticsState().whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(this, () -> {
             if (error != null) {
                 getLogger().warning("Narcotics reset failed: " + error.getMessage());
+                resetInProgress = false;
                 sender.sendMessage(ChatColor.RED + "Не удалось очистить состояние наркотиков.");
                 return;
             }
@@ -467,11 +485,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 visualRuntime.clear(online);
             }
             sender.sendMessage(message("state_reset_ok"));
+            resetInProgress = false;
         }));
         return true;
     }
 
-    private boolean handleClearOverdose(CommandSender sender, String[] args) {
+    private boolean handleClearOverdoseV2(CommandSender sender, String[] args) {
         if (!hasPermission(sender, "copimine.narcotics.clearoverdose")) {
             sender.sendMessage(message("no_permission"));
             return true;
@@ -491,7 +510,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return true;
     }
 
-    private boolean handleTexture(CommandSender sender, String[] args) {
+    private boolean handleTextureV2(CommandSender sender, String[] args) {
         if (!hasPermission(sender, "copimine.narcotics.texture")) {
             sender.sendMessage(message("no_permission"));
             return true;
@@ -549,7 +568,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return true;
     }
 
-    private boolean handleVisualsV2(CommandSender sender, String[] args) {
+    private boolean handleVisualsV3(CommandSender sender, String[] args) {
         if (!hasPermission(sender, "copimine.narcotics.visuals")) {
             sender.sendMessage(message("no_permission"));
             return true;
@@ -567,11 +586,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Server overlay поддерживается: " + visualRuntime.supportsServerOverlayRuntime());
             sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.serverOverlaySupportReason());
             sender.sendMessage(ChatColor.GRAY + "Server fallback поддерживается: " + visualRuntime.supportsServerParticleFallback());
-            sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина отсутствия true shader runtime: " + visualRuntime.shaderSupportReason());
+            sender.sendMessage(ChatColor.GRAY + "Клиентский shader-like runtime: " + visualRuntime.supportsShaderRuntime());
+            sender.sendMessage(ChatColor.GRAY + "Статус shader-like runtime: " + visualRuntime.shaderSupportReason());
             sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты на месте: " + !report.overlayTextures().isEmpty());
             sender.sendMessage(ChatColor.GRAY + "Shader-профили на месте: " + !report.shaderProfiles().isEmpty());
-            sender.sendMessage(ChatColor.GRAY + "Только серверный fallback: " + (!visualRuntime.supportsServerOverlayRuntime() && !configService.allowClientModVisuals()));
+            sender.sendMessage(ChatColor.GRAY + "Только серверный fallback: " + (!visualRuntime.supportsServerOverlayRuntime() && !visualRuntime.supportsShaderRuntime()));
             sender.sendMessage(ChatColor.GRAY + "Включённые эффекты: " + configService.visualEffectIds().stream().filter(configService::isVisualEffectEnabled).sorted().toList());
             String sampleEffect = configService.visualEffectIds().stream().sorted().findFirst().orElse("CHAOS");
             sender.sendMessage(ChatColor.GRAY + "Итоговый маршрут (" + sampleEffect + "): " + visualRuntime.resolvedModeFor(sampleEffect));
@@ -642,94 +661,20 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return true;
     }
 
+    private boolean handleClearOverdose(CommandSender sender, String[] args) {
+        return handleClearOverdoseV2(sender, args);
+    }
+
+    private boolean handleTexture(CommandSender sender, String[] args) {
+        return handleTextureV2(sender, args);
+    }
+
+    private boolean handleVisualsV2(CommandSender sender, String[] args) {
+        return handleVisualsV3(sender, args);
+    }
+
     private boolean handleVisuals(CommandSender sender, String[] args) {
-        if (!hasPermission(sender, "copimine.narcotics.visuals")) {
-            sender.sendMessage(message("no_permission"));
-            return true;
-        }
-        if (args.length < 2) {
-            sendHelpV2(sender);
-            return true;
-        }
-        if ("status".equalsIgnoreCase(args[1])) {
-            NarcoticsResourcePackAudit.Report report = resourcePackAudit.inspect();
-            sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
-            sender.sendMessage(ChatColor.GRAY + "Настроенный режим: " + configService.visualMode().name());
-            sender.sendMessage(ChatColor.GRAY + "Overlay поддерживается: " + visualRuntime.supportsOverlayRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.overlaySupportReason());
-            sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Причина отсутствия true shader runtime: " + visualRuntime.shaderSupportReason());
-            sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты на месте: " + !report.overlayTextures().isEmpty());
-            sender.sendMessage(ChatColor.GRAY + "Shader-профили на месте: " + !report.shaderProfiles().isEmpty());
-            sender.sendMessage(ChatColor.GRAY + "Только fallback: " + (!visualRuntime.supportsOverlayRuntime() && !visualRuntime.supportsShaderRuntime()));
-            sender.sendMessage(ChatColor.GRAY + "Включённые эффекты: " + configService.visualEffectIds().stream().filter(configService::isVisualEffectEnabled).sorted().toList());
-            String sampleEffect = configService.visualEffectIds().stream().sorted().findFirst().orElse("CHAOS");
-            sender.sendMessage(ChatColor.GRAY + "Итоговый режим (" + sampleEffect + "): " + visualRuntime.resolvedModeFor(sampleEffect));
-            if (!report.ok()) {
-                sender.sendMessage(ChatColor.RED + "Проблемы resource pack: " + report.summary());
-            }
-            return true;
-        }
-        if ("enable".equalsIgnoreCase(args[1]) || "disable".equalsIgnoreCase(args[1])) {
-            boolean enable = "enable".equalsIgnoreCase(args[1]);
-            if (args.length == 2) {
-                configService.setVisualsEnabled(enable);
-                sender.sendMessage(enable ? message("visuals_enabled") : message("visuals_disabled"));
-                database.auditAsync(sender.getName(), "visuals", enable ? "enable" : "disable");
-                return true;
-            }
-            String effectId = args[2].toUpperCase(Locale.ROOT);
-            if (!"ALL".equals(effectId) && !configService.visualEffectIds().contains(effectId)) {
-                sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
-                return true;
-            }
-            if ("ALL".equals(effectId)) {
-                for (String id : configService.visualEffectIds()) {
-                    configService.setVisualEffectEnabled(id, enable);
-                }
-            } else {
-                configService.setVisualEffectEnabled(effectId, enable);
-            }
-            if (enable) {
-                configService.setVisualsEnabled(true);
-            }
-            sender.sendMessage(message("visual_effect_set", effectId, enable ? "ON" : "OFF"));
-            database.auditAsync(sender.getName(), "visual_effect", effectId + "=" + enable);
-            return true;
-        }
-        if ("mode".equalsIgnoreCase(args[1])) {
-            if (args.length < 3) {
-                sendHelpV2(sender);
-                return true;
-            }
-            return handleVisualMode(sender, new String[]{"visual-mode", args[2]});
-        }
-        if ("test".equalsIgnoreCase(args[1])) {
-            if (args.length < 4) {
-                sendHelpV2(sender);
-                return true;
-            }
-            Player target = Bukkit.getPlayerExact(args[2]);
-            if (target == null) {
-                sender.sendMessage(message("player_not_found"));
-                return true;
-            }
-            String effectId = args[3].toUpperCase(Locale.ROOT);
-            if (!configService.visualEffectIds().contains(effectId)) {
-                sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
-                return true;
-            }
-            Integer seconds = parseBoundedInt(sender, args.length >= 5 ? args[4] : "30", "duration", 1, 600, false);
-            if (seconds == null) {
-                return true;
-            }
-            visualRuntime.apply(target, effectId, seconds, false);
-            database.auditAsync(sender.getName(), "visual_test", target.getName() + "," + effectId + "," + seconds);
-            sender.sendMessage(ChatColor.GREEN + "Тест визуала отправлен: " + target.getName());
-            return true;
-        }
-        sendHelpV2(sender);
-        return true;
+        return handleVisualsV3(sender, args);
     }
 
     private boolean handleVisualMode(CommandSender sender, String[] args) {
@@ -976,10 +921,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         boolean currentOfficial = itemFactory.isOfficialFinishedItem(current);
         boolean hotbarOfficial = event.getHotbarButton() >= 0
                 && itemFactory.isOfficialFinishedItem(event.getWhoClicked().getInventory().getItem(event.getHotbarButton()));
+        boolean offhandOfficial = itemFactory.isOfficialFinishedItem(event.getWhoClicked().getInventory().getItemInOffHand());
         InventoryAction action = event.getAction();
         ClickType click = event.getClick();
 
-        if (!cursorOfficial && !currentOfficial && !hotbarOfficial) {
+        if (!cursorOfficial && !currentOfficial && !hotbarOfficial && !offhandOfficial) {
             return false;
         }
 
@@ -987,7 +933,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             if (currentOfficial && isRecoveryExtraction(click, action, cursor)) {
                 return false;
             }
-            return cursorOfficial || hotbarOfficial || currentOfficial;
+            return cursorOfficial || hotbarOfficial || offhandOfficial || currentOfficial;
         }
 
         if (topBlocked && clicked == event.getWhoClicked().getInventory()) {
@@ -998,6 +944,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 return true;
             }
             if ((click == ClickType.NUMBER_KEY || action == InventoryAction.HOTBAR_SWAP || action == InventoryAction.HOTBAR_MOVE_AND_READD) && hotbarOfficial) {
+                return true;
+            }
+            if (click == ClickType.SWAP_OFFHAND && offhandOfficial) {
                 return true;
             }
             if (click.isShiftClick() && currentOfficial) {
@@ -1151,3 +1100,4 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return out;
     }
 }
+

@@ -7,7 +7,7 @@ if (-not (Test-Path -LiteralPath $javaPath)) {
 }
 
 $java = Get-Content -Raw -Encoding UTF8 $javaPath
-$match = [regex]::Match($java, 'synchronized Connection acquire\(\) throws SQLException \{(?<body>.*?)\n        synchronized void release', 'Singleline')
+$match = [regex]::Match($java, 'synchronized Connection acquire\(\) throws SQLException \{(?<body>.*?)\n\s*synchronized void release', 'Singleline')
 if (-not $match.Success) {
   throw 'Could not isolate PgPool.acquire() body for validation.'
 }

@@ -78,6 +78,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private static final long PIN_LOCK_SECONDS = 900L;
     private static final long PIN_ATTEMPT_WINDOW_SECONDS = 900L;
     private static final int MODEL_ATM_TERMINAL = 12002;
+    private static final String TREASURY_ACCOUNT_ID = "PRESIDENT_BUDGET";
+    private static final String TREASURY_ACCOUNT_TYPE = "TREASURY";
+    private static final Set<Long> DONATION_PACKS = Set.of(50L, 100L, 250L, 500L, 1000L);
+    private static final long DONATION_SESSION_TTL_MS = 15L * 60L * 1000L;
 
     private DbSettings db;
     private ExecutorService dbExecutor;
@@ -93,8 +97,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private final PinService pinService = new PinServiceImpl();
     private final AtmService atmService = new AtmServiceImpl();
     private final LedgerService ledgerService = new LedgerServiceImpl();
-    private final DonationBalanceService donationBalanceService = new DonationBalanceServiceImpl();
-    private final DonationPurchaseService donationPurchaseService = new DonationPurchaseServiceImpl();
+    private final DonationBalanceServiceImpl donationBalanceService = new DonationBalanceServiceImpl();
+    private final DonationPaymentServiceImpl donationPaymentService = new DonationPaymentServiceImpl();
+    private final DonationPurchaseServiceImpl donationPurchaseService = new DonationPurchaseServiceImpl();
     private final EconomyService economyService = new EconomyServiceImpl();
     private final ArtifactsBridge artifactsBridge = new ArtifactsBridgeImpl();
 
@@ -104,6 +109,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         AtmService atmService();
         LedgerService ledgerService();
         DonationBalanceService donationBalanceService();
+        DonationPaymentService donationPaymentService();
         DonationPurchaseService donationPurchaseService();
     }
 
@@ -149,21 +155,36 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         CompletableFuture<List<Map<String, Object>>> ledgerAsync(UUID playerUuid, int limit);
     }
 
+    public interface DonationPaymentService {
+        Set<Long> allowedPacks();
+        CompletableFuture<Map<String, Object>> createSessionAsync(UUID playerUuid, String playerName, long amountRub, String actor, String source, String idempotencyKey);
+        CompletableFuture<Map<String, Object>> sessionAsync(UUID playerUuid, String sessionId);
+        CompletableFuture<Map<String, Object>> markPaidAsync(String sessionId, String actor, String idempotencyKey);
+        CompletableFuture<Map<String, Object>> cancelAsync(String sessionId, String actor);
+    }
+
     public interface DonationPurchaseService {
         CompletableFuture<Map<String, Object>> createTestPurchaseAsync(UUID playerUuid, String playerName, String itemId, long price, String actor);
+        CompletableFuture<Map<String, Object>> purchaseIntentAsync(UUID playerUuid, String playerName, String itemId, long priceDonation, String actor, String source, String idempotencyKey);
         CompletableFuture<Map<String, Object>> createClaimAsync(UUID playerUuid, String itemId, long amount, String actor, String purchaseId);
         CompletableFuture<List<Map<String, Object>>> getUnclaimedItemsAsync(UUID playerUuid, int limit);
         CompletableFuture<Boolean> reserveClaimAsync(UUID playerUuid, String claimId);
         CompletableFuture<Boolean> markClaimDeliveringAsync(UUID playerUuid, String claimId);
         CompletableFuture<Boolean> completeClaimAsync(UUID playerUuid, String claimId);
+        CompletableFuture<Boolean> completeClaimByPurchaseAsync(UUID playerUuid, String purchaseId);
         CompletableFuture<Boolean> markClaimDeliveryReviewAsync(UUID playerUuid, String claimId);
         CompletableFuture<Boolean> releaseClaimAsync(UUID playerUuid, String claimId);
     }
 
     public interface ArtifactsBridge {
         PinStatus pinStatus(UUID playerUuid);
+        CompletableFuture<PinStatus> pinStatusAsync(UUID playerUuid);
         TxnResult charge(UUID playerUuid, String playerName, long amount, String pin, String idempotencyKey, String action, String details);
         TxnResult refund(UUID playerUuid, String playerName, long amount, String idempotencyKey, String action, String details);
+        TxnResult credit(UUID playerUuid, String playerName, long amount, String idempotencyKey, String action, String details);
+        TxnResult creditAccount(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details);
+        TxnResult transferToAccount(UUID playerUuid, String playerName, String pin, String toAccountId, String toOwnerUuid, String toOwnerName, long amount, String idempotencyKey, String action, String details);
+        TxnResult transferFromAccount(String fromAccountId, String fromOwnerUuid, String fromOwnerName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details);
         long balance(UUID playerUuid, String playerName);
         Health health(UUID playerUuid, String context);
     }
@@ -244,6 +265,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         getServer().getServicesManager().register(AtmService.class, atmService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(LedgerService.class, ledgerService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(DonationBalanceService.class, donationBalanceService, this, ServicePriority.Normal);
+        getServer().getServicesManager().register(DonationPaymentService.class, donationPaymentService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(DonationPurchaseService.class, donationPurchaseService, this, ServicePriority.Normal);
         Bukkit.getScheduler().runTaskLater(this, () -> {
             try {
@@ -284,6 +306,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     public DonationBalanceService donationBalanceService() {
         return donationBalanceService;
+    }
+
+    public DonationPaymentService donationPaymentService() {
+        return donationPaymentService;
     }
 
     public DonationPurchaseService donationPurchaseService() {
@@ -461,30 +487,45 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return;
         }
         if (action.startsWith("atm:deposit-hand:")) {
-            player.sendMessage(color(depositArFromHandAsync(player, action.substring("atm:deposit-hand:".length()))));
+            String[] parts = action.split(":");
+            player.sendMessage(color(depositArFromHandAsync(player, parts[2], parts.length > 3 ? parts[3] : "PERSONAL")));
             return;
         }
         if (action.startsWith("atm:deposit-all:")) {
-            player.sendMessage(color(depositAllArAsync(player, action.substring("atm:deposit-all:".length()))));
+            String[] parts = action.split(":");
+            player.sendMessage(color(depositAllArAsync(player, parts[2], parts.length > 3 ? parts[3] : "PERSONAL")));
+            return;
+        }
+        if (action.startsWith("atm:account:")) {
+            String[] parts = action.split(":");
+            openBankAtmAccount(player, parts[2], parts.length > 3 ? parts[3] : "PERSONAL");
             return;
         }
         if (action.startsWith("atm:withdraw:")) {
             String[] parts = action.split(":");
-            openAtmPinPad(player, parts[2], "WITHDRAW", parseInt(parts[3], 0), "", "", "");
+            String scope = parts.length > 4 ? parts[3] : "PERSONAL";
+            int amount = parseInt(parts.length > 4 ? parts[4] : parts[3], 0);
+            openAtmPinPad(player, parts[2], scope, "WITHDRAW", amount, "", "", "");
             return;
         }
         if (action.startsWith("atm:targets:")) {
-            openBankTransferTargets(player, action.substring("atm:targets:".length()));
+            String[] parts = action.split(":");
+            openBankTransferTargets(player, parts[2], parts.length > 3 ? parts[3] : "PERSONAL");
             return;
         }
         if (action.startsWith("atm:target:")) {
             String[] parts = action.split(":");
-            openBankTransferAmounts(player, parts[2], parts[3]);
+            String scope = parts.length > 4 ? parts[3] : "PERSONAL";
+            String targetUuid = parts.length > 4 ? parts[4] : parts[3];
+            openBankTransferAmounts(player, parts[2], scope, targetUuid);
             return;
         }
         if (action.startsWith("atm:transfer:")) {
             String[] parts = action.split(":");
-            openAtmPinPad(player, parts[2], "TRANSFER", parseInt(parts[4], 0), "", parts[3], bankTargetName(parts[3]));
+            String scope = parts.length > 5 ? parts[3] : "PERSONAL";
+            String targetUuid = parts.length > 5 ? parts[4] : parts[3];
+            int amount = parseInt(parts.length > 5 ? parts[5] : parts[4], 0);
+            openAtmPinPad(player, parts[2], scope, "TRANSFER", amount, "", targetUuid, bankTargetName(targetUuid));
             return;
         }
         if (action.startsWith("pin:")) {
@@ -676,6 +717,67 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openBankAtm(Player player, String atmId) {
+        if (hasTreasuryAccess(player)) {
+            MenuHolder holder = new MenuHolder("economy:atm-select", atmId);
+            Inventory inventory = holder.create(27, color("&b&lР‘Р°РЅРє CopiMine"));
+            button(holder, inventory, 11, Material.PLAYER_HEAD, "&bР›РёС‡РЅС‹Р№ С‡С‘С‚",
+                    List.of("&7РћР±С‹С‡РЅС‹Р№ Р±Р°РЅРєРѕРІСЃРєРёР№ С‡РµРє Рё Р»РёС‡РЅС‹Р№ PIN."), "atm:account:" + atmId + ":PERSONAL");
+            button(holder, inventory, 15, Material.GOLD_BLOCK, "&6РљР°Р·РЅР°",
+                    List.of("&7РћС‚РґРµР»СЊРЅС‹Р№ С‡РµРє РєР°Р·РЅС‹.", "&7Р”РѕСЃС‚СѓРї С‚РѕР»СЊРєРѕ Сѓ РїСЂРµР·РёРґРµРЅС‚Р° Рё Р°РґРјРёРЅРѕРІ."), "atm:account:" + atmId + ":TREASURY");
+            button(holder, inventory, 22, Material.ARROW, "&aРљ Р±Р°РЅРєРѕРјР°С‚Р°Рј", List.of(), "nav:atms");
+            player.openInventory(inventory);
+            return;
+        }
+        openBankAtmAccount(player, atmId, "PERSONAL");
+    }
+
+    private void openBankAtmAccount(Player player, String atmId, String accountScope) {
+        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        if ("PERSONAL".equals(scope)) {
+            openBankAtmLegacy(player, atmId);
+            return;
+        }
+        dbFuture("open treasury atm", () -> {
+            List<Map<String, Object>> rows = queryList("SELECT id,name FROM ar_atms WHERE id=? AND active=1 LIMIT 1", atmId);
+            if (rows.isEmpty()) {
+                return null;
+            }
+            Map<String, Object> treasury = tx(this::ensureTreasuryAccount);
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("scope", "TREASURY");
+            payload.put("name", first(string(rows.getFirst().get("name")), "Р‘Р°РЅРєРѕРјР°С‚"));
+            payload.put("balance", longValue(treasury.get("balance")));
+            return payload;
+        }).whenComplete((payload, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            if (error != null) {
+                player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ Р±Р°РЅРєРѕРјР°С‚."));
+                getLogger().warning("treasury ATM open: " + safeError(error));
+                return;
+            }
+            if (payload == null) {
+                player.sendMessage(color("&cР‘Р°РЅРєРѕРјР°С‚ Р±РѕР»СЊС€Рµ РЅРµ Р°РєС‚РёРІРµРЅ."));
+                return;
+            }
+            MenuHolder holder = new MenuHolder("economy:atm", atmId);
+            holder.data.put("scope", "TREASURY");
+            Inventory inventory = holder.create(54, color("&b&lР‘Р°РЅРє CopiMine"));
+            button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Р‘Р°РЅРєРѕРјР°С‚"),
+                    List.of("&7РЎС‡С‘С‚: &fРљР°Р·РЅР° CopiMine", "&7Р‘Р°Р»Р°РЅСЃ: &f" + payload.get("balance") + " AR"), "");
+            button(holder, inventory, 10, Material.DIAMOND_ORE, "&aР’РЅРµСЃС‚Рё РїСЂРµРґРјРµС‚ РёР· СЂСѓРєРё", List.of("&7Р‘РµСЂС‘С‚ РѕС„РёС†РёР°Р»СЊРЅС‹Р№ AR РёР· РѕСЃРЅРѕРІРЅРѕР№ СЂСѓРєРё.", "&7PIN РЅРµ С‚СЂРµР±СѓРµС‚СЃСЏ."), "atm:deposit-hand:" + atmId + ":TREASURY");
+            button(holder, inventory, 12, Material.CHEST, "&aР’РЅРµСЃС‚Рё РІРµСЃСЊ AR", List.of("&7Р‘РµСЂС‘С‚ РІРµСЃСЊ РѕС„РёС†РёР°Р»СЊРЅС‹Р№ AR РёР· РёРЅРІРµРЅС‚Р°СЂСЏ.", "&7PIN РЅРµ С‚СЂРµР±СѓРµС‚СЃСЏ."), "atm:deposit-all:" + atmId + ":TREASURY");
+            button(holder, inventory, 14, Material.PLAYER_HEAD, "&bРџРµСЂРµРІРµСЃС‚Рё РёРіСЂРѕРєСѓ", List.of("&7Р‘Р°РЅРєРѕРІСЃРєРёР№ РїРµСЂРµРІРѕРґ СЃ РїСЂРѕРІРµСЂРєРѕР№ PIN РєР°Р·РЅС‹."), "atm:targets:" + atmId + ":TREASURY");
+            button(holder, inventory, 28, Material.EMERALD, "&eРЎРЅСЏС‚СЊ 1 AR", List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "atm:withdraw:" + atmId + ":TREASURY:1");
+            button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eРЎРЅСЏС‚СЊ 16 AR", List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "atm:withdraw:" + atmId + ":TREASURY:16");
+            button(holder, inventory, 32, Material.DIAMOND_ORE, "&eРЎРЅСЏС‚СЊ 64 AR", List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "atm:withdraw:" + atmId + ":TREASURY:64");
+            button(holder, inventory, 49, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of(), "atm:open:" + atmId);
+            player.openInventory(inventory);
+        }));
+    }
+
+    private void openBankAtmLegacy(Player player, String atmId) {
         UUID playerUuid = player.getUniqueId();
         String playerName = player.getName();
         dbFuture("open atm", () -> {
@@ -717,7 +819,28 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }));
     }
 
-    private void openBankTransferTargets(Player player, String atmId) throws Exception {
+    private void openBankTransferTargets(Player player, String atmId, String accountScope) throws Exception {
+        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        if ("PERSONAL".equals(scope)) {
+            openBankTransferTargetsLegacy(player, atmId);
+            return;
+        }
+        MenuHolder holder = new MenuHolder("economy:targets", atmId);
+        holder.data.put("scope", scope);
+        Inventory inventory = holder.create(54, color("&b&lРљРѕРјСѓ РїРµСЂРµРІРµСЃС‚Рё AR"));
+        int slot = 10;
+        for (Player target : Bukkit.getOnlinePlayers().stream().sorted(Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER)).toList()) {
+            if (target.getUniqueId().equals(player.getUniqueId()) || slot >= 44) {
+                continue;
+            }
+            button(holder, inventory, slot++, Material.PLAYER_HEAD, "&b" + target.getName(),
+                    List.of("&7РћРЅР»Р°Р№РЅ: &fРґР°", "&7UUID: &f" + shortId(target.getUniqueId().toString())), "atm:target:" + atmId + ":" + scope + ":" + target.getUniqueId());
+        }
+        button(holder, inventory, 49, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of(), "atm:account:" + atmId + ":" + scope);
+        player.openInventory(inventory);
+    }
+
+    private void openBankTransferTargetsLegacy(Player player, String atmId) throws Exception {
         MenuHolder holder = new MenuHolder("economy:targets", atmId);
         Inventory inventory = holder.create(54, color("&b&lКому перевести AR"));
         int slot = 10;
@@ -732,7 +855,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         player.openInventory(inventory);
     }
 
-    private void openBankTransferAmounts(Player player, String atmId, String targetUuid) throws Exception {
+    private void openBankTransferAmounts(Player player, String atmId, String accountScope, String targetUuid) throws Exception {
+        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        if ("PERSONAL".equals(scope)) {
+            openBankTransferAmountsLegacy(player, atmId, targetUuid);
+            return;
+        }
+        MenuHolder holder = new MenuHolder("economy:amount", atmId);
+        holder.data.put("scope", scope);
+        Inventory inventory = holder.create(27, color("&b&lРЎСѓРјРјР° РїРµСЂРµРІРѕРґР°"));
+        String targetName = bankTargetName(targetUuid);
+        button(holder, inventory, 4, Material.PLAYER_HEAD, "&b" + first(targetName, targetUuid), List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "");
+        button(holder, inventory, 11, Material.EMERALD, "&eРџРµСЂРµРІРµСЃС‚Рё 1 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":1");
+        button(holder, inventory, 13, Material.EMERALD_BLOCK, "&eРџРµСЂРµРІРµСЃС‚Рё 16 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":16");
+        button(holder, inventory, 15, Material.DIAMOND_ORE, "&eРџРµСЂРµРІРµСЃС‚Рё 64 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":64");
+        button(holder, inventory, 22, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of(), "atm:targets:" + atmId + ":" + scope);
+        player.openInventory(inventory);
+    }
+
+    private void openBankTransferAmountsLegacy(Player player, String atmId, String targetUuid) throws Exception {
         MenuHolder holder = new MenuHolder("economy:amount", atmId);
         Inventory inventory = holder.create(27, color("&b&lСумма перевода"));
         String targetName = bankTargetName(targetUuid);
@@ -744,16 +885,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         player.openInventory(inventory);
     }
 
-    private void openAtmPinPad(Player player, String atmId, String action, int amount, String pin, String targetUuid, String targetName) {
+    private void openAtmPinPad(Player player, String atmId, String accountScope, String action, int amount, String pin, String targetUuid, String targetName) {
+        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
         String masked = pin.isBlank() ? "• • • •" : pin.chars().mapToObj(i -> "•").reduce((a, b) -> a + " " + b).orElse("•");
         MenuHolder holder = new MenuHolder("atm:pin", atmId);
         Inventory inventory = holder.create(45, color("&e&lВведите PIN"));
         holder.data.put("atm_id", atmId);
+        holder.data.put("account_scope", scope);
         holder.data.put("action", action);
         holder.data.put("amount", String.valueOf(amount));
         holder.data.put("target_uuid", first(targetUuid, ""));
         holder.data.put("target_name", first(targetName, ""));
-        atmPinSessions.put(player.getUniqueId(), new AtmPinSession(atmId, action, amount, pin, targetUuid, targetName));
+        atmPinSessions.put(player.getUniqueId(), new AtmPinSession(atmId, scope, action, amount, pin, targetUuid, targetName));
         button(holder, inventory, 13, Material.PAPER, "&fВведите PIN",
                 targetUuid.isBlank()
                         ? List.of("&7Код: &f" + masked)
@@ -776,21 +919,22 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             player.closeInventory();
             return;
         }
+        String scope = "TREASURY".equalsIgnoreCase(session.accountScope()) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
         String pin = first(session.pin(), "");
         if (action.startsWith("pin:digit:")) {
             if (pin.length() < 8) {
                 pin += action.substring("pin:digit:".length());
             }
-            openAtmPinPad(player, session.atmId(), session.action(), session.amount(), pin, session.targetUuid(), session.targetName());
+            openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), pin, session.targetUuid(), session.targetName());
             return;
         }
         if (action.equals("pin:clear")) {
-            openAtmPinPad(player, session.atmId(), session.action(), session.amount(), "", session.targetUuid(), session.targetName());
+            openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), "", session.targetUuid(), session.targetName());
             return;
         }
         if (action.equals("pin:cancel")) {
             atmPinSessions.remove(player.getUniqueId());
-            openBankAtm(player, session.atmId());
+            openBankAtmAccount(player, session.atmId(), scope);
             return;
         }
         if (!action.equals("pin:confirm")) {
@@ -798,53 +942,92 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         if (!pin.matches("\\d{4,8}")) {
             player.sendMessage(color("&cВведите PIN полностью: от 4 до 8 цифр."));
-            openAtmPinPad(player, session.atmId(), session.action(), session.amount(), pin, session.targetUuid(), session.targetName());
+            openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), pin, session.targetUuid(), session.targetName());
             return;
         }
-        TxnResult result;
-        if ("TRANSFER".equals(session.action())) {
-            result = bankService.transferWithPin(player.getUniqueId(), player.getName(), UUID.fromString(session.targetUuid()), first(session.targetName(), bankTargetName(session.targetUuid())), session.amount(), pin,
-                    "atm-transfer-" + UUID.randomUUID(), "ATM_TRANSFER", "atm=" + session.atmId());
-        } else {
-            result = applyWithdrawWithPin(player, session.atmId(), session.amount(), pin);
-        }
-        if (!result.ok) {
-            player.sendMessage(color("&c" + first(result.message, "Операция отклонена.")));
-            openAtmPinPad(player, session.atmId(), session.action(), session.amount(), pin, session.targetUuid(), session.targetName());
-            return;
-        }
+        String confirmedPin = pin;
         atmPinSessions.remove(player.getUniqueId());
-        player.sendMessage(color("&aОперация выполнена."));
-        openBankAtm(player, session.atmId());
+        player.closeInventory();
+        player.sendMessage(color("&7Обрабатываем банковскую операцию..."));
+        CompletableFuture<TxnResult> future;
+        if ("TRANSFER".equals(session.action())) {
+            if ("TREASURY".equals(scope)) {
+                future = transferFromTreasuryWithPinAsync(
+                        player,
+                        UUID.fromString(session.targetUuid()),
+                        first(session.targetName(), bankTargetName(session.targetUuid())),
+                        session.amount(),
+                        confirmedPin,
+                        "atm-treasury-transfer-" + UUID.randomUUID(),
+                        "TREASURY_TRANSFER_OUT",
+                        "atm=" + session.atmId());
+            } else {
+                future = bankService.transferWithPinAsync(
+                        player.getUniqueId(),
+                        player.getName(),
+                        UUID.fromString(session.targetUuid()),
+                        first(session.targetName(), bankTargetName(session.targetUuid())),
+                        session.amount(),
+                        confirmedPin,
+                        "atm-transfer-" + UUID.randomUUID(),
+                        "ATM_TRANSFER",
+                        "atm=" + session.atmId());
+            }
+        } else {
+            if ("TREASURY".equals(scope)) {
+                future = chargeTreasuryWithPinAsync(
+                        player,
+                        session.amount(),
+                        confirmedPin,
+                        "atm-treasury-withdraw-" + UUID.randomUUID(),
+                        "TREASURY_WITHDRAW",
+                        "atm=" + session.atmId());
+            } else {
+                future = bankService.chargeAsync(
+                        player.getUniqueId(),
+                        player.getName(),
+                        session.amount(),
+                        confirmedPin,
+                        "atm-withdraw-" + UUID.randomUUID(),
+                        "ATM_WITHDRAW",
+                        "atm=" + session.atmId());
+            }
+        }
+        future.whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            if (error != null || result == null || !result.ok) {
+                atmPinSessions.put(player.getUniqueId(), new AtmPinSession(session.atmId(), scope, session.action(), session.amount(), confirmedPin, session.targetUuid(), session.targetName()));
+                if (error != null) {
+                    getLogger().warning("ATM PIN operation: " + safeError(error));
+                }
+                player.sendMessage(color("&c" + first(result == null ? "" : result.message, "Операция отклонена.")));
+                openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), confirmedPin, session.targetUuid(), session.targetName());
+                return;
+            }
+            if (!"TRANSFER".equals(session.action())) {
+                completeWithdrawOnMainThread(player, session.amount());
+            }
+            player.sendMessage(color("&aОперация выполнена."));
+            openBankAtmAccount(player, session.atmId(), scope);
+        }));
     }
 
-    private String depositArFromHand(Player player, String atmId) throws Exception {
+    private String depositArFromHandAsync(Player player, String atmId, String accountScope) throws Exception {
         ItemStack stack = player.getInventory().getItemInMainHand();
         if (!isOfficialAr(stack)) {
             return "&cВ основной руке нет официального AR.";
         }
-        int amount = stack.getAmount();
-        player.getInventory().setItemInMainHand(null);
-        TxnResult result = bankService.credit(player.getUniqueId(), player.getName(), amount, "atm-hand-" + UUID.randomUUID(), "ATM_DEPOSIT", "atm=" + atmId);
-        if (!result.ok) {
-            player.getInventory().setItemInMainHand(stack);
-            return "&cНе удалось внести AR в банк.";
-        }
-        openBankAtm(player, atmId);
-        return "&aВ банк внесено: &f" + amount + " AR";
-    }
-
-    private String depositArFromHandAsync(Player player, String atmId) throws Exception {
-        ItemStack stack = player.getInventory().getItemInMainHand();
-        if (!isOfficialAr(stack)) {
-            return "&cВ основной руке нет официального AR.";
-        }
+        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
         int amount = stack.getAmount();
         ItemStack snapshot = stack.clone();
         player.getInventory().setItemInMainHand(null);
         player.updateInventory();
         String txKey = "atm-hand-" + UUID.randomUUID();
-        bankService.creditAsync(player.getUniqueId(), player.getName(), amount, txKey, "ATM_DEPOSIT", "atm=" + atmId)
+        ("TREASURY".equals(scope)
+                ? creditAccountAsync(treasuryAccountId(), player.getUniqueId().toString(), player.getName(), amount, txKey, "TREASURY_DEPOSIT", "atm=" + atmId)
+                : bankService.creditAsync(player.getUniqueId(), player.getName(), amount, txKey, "ATM_DEPOSIT", "atm=" + atmId))
                 .whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
                     if (!player.isOnline()) {
                         return;
@@ -856,39 +1039,28 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         if (error != null) {
                             getLogger().warning("atm deposit hand: " + safeError(error));
                         }
-                        openBankAtm(player, atmId);
+                        openBankAtmAccount(player, atmId, scope);
                         return;
                     }
                     player.sendMessage(color("&aВ банк внесено: &f" + amount + " AR"));
-                    openBankAtm(player, atmId);
+                    openBankAtmAccount(player, atmId, scope);
                 }));
         return "&7Вносим AR в банк...";
     }
 
-    private String depositAllAr(Player player, String atmId) throws Exception {
+    private String depositAllArAsync(Player player, String atmId, String accountScope) throws Exception {
         int available = countOfficialAr(player.getInventory());
         if (available <= 0) {
             return "&cВ инвентаре нет официального AR.";
         }
-        TxnResult result = bankService.credit(player.getUniqueId(), player.getName(), available, "atm-all-" + UUID.randomUUID(), "ATM_DEPOSIT_ALL", "atm=" + atmId);
-        if (!result.ok) {
-            return "&cНе удалось внести AR в банк.";
-        }
-        removeOfficialAr(player.getInventory(), available);
-        openBankAtm(player, atmId);
-        return "&aВ банк внесено: &f" + available + " AR";
-    }
-
-    private String depositAllArAsync(Player player, String atmId) throws Exception {
-        int available = countOfficialAr(player.getInventory());
-        if (available <= 0) {
-            return "&cВ инвентаре нет официального AR.";
-        }
+        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
         ItemStack[] snapshot = cloneInventoryContents(player.getInventory());
         removeOfficialAr(player.getInventory(), available);
         player.updateInventory();
         String txKey = "atm-all-" + UUID.randomUUID();
-        bankService.creditAsync(player.getUniqueId(), player.getName(), available, txKey, "ATM_DEPOSIT_ALL", "atm=" + atmId)
+        ("TREASURY".equals(scope)
+                ? creditAccountAsync(treasuryAccountId(), player.getUniqueId().toString(), player.getName(), available, txKey, "TREASURY_DEPOSIT_ALL", "atm=" + atmId)
+                : bankService.creditAsync(player.getUniqueId(), player.getName(), available, txKey, "ATM_DEPOSIT_ALL", "atm=" + atmId))
                 .whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
                     if (!player.isOnline()) {
                         return;
@@ -899,11 +1071,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         if (error != null) {
                             getLogger().warning("atm deposit all: " + safeError(error));
                         }
-                        openBankAtm(player, atmId);
+                        openBankAtmAccount(player, atmId, scope);
                         return;
                     }
                     player.sendMessage(color("&aВ банк внесено: &f" + available + " AR"));
-                    openBankAtm(player, atmId);
+                    openBankAtmAccount(player, atmId, scope);
                 }));
         return "&7Вносим весь AR в банк...";
     }
@@ -926,17 +1098,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         player.updateInventory();
     }
 
-    private TxnResult applyWithdrawWithPin(Player player, String atmId, long amount, String pin) throws Exception {
-        TxnResult result = bankService.charge(player.getUniqueId(), player.getName(), amount, pin, "atm-withdraw-" + UUID.randomUUID(), "ATM_WITHDRAW", "atm=" + atmId);
-        if (!result.ok) {
-            return result;
-        }
+    private void completeWithdrawOnMainThread(Player player, long amount) {
         ItemStack out = createOfficialArStack((int) amount, player.getUniqueId().toString(), player.getName(), "bank-withdraw");
         Map<Integer, ItemStack> left = player.getInventory().addItem(out);
         if (!left.isEmpty()) {
             left.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
         }
-        return result;
     }
 
     private ItemStack createOfficialArStack(int amount, String ownerUuid, String ownerName, String source) {
@@ -1248,8 +1415,54 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         });
     }
 
+    private void recordFailedAccountPinAttempt(String accountId, String source) {
+        long t = nowSec();
+        dbAsync("record failed account pin", () -> {
+            update("INSERT INTO failed_pin_attempts(minecraft_uuid,site_account_id,attempted_at,source) VALUES(?,?,?,?)", "", first(accountId, ""), t, first(source, "economy-core-account"));
+            long attempts = scalarLong("SELECT COUNT(*) FROM failed_pin_attempts WHERE site_account_id=? AND attempted_at>=?", first(accountId, ""), t - PIN_ATTEMPT_WINDOW_SECONDS);
+            if (attempts >= PIN_MAX_ATTEMPTS) {
+                long until = t + PIN_LOCK_SECONDS;
+                update("INSERT INTO account_lockouts(account_id,locked_until,reason,updated_at) VALUES(?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET locked_until=GREATEST(account_lockouts.locked_until,excluded.locked_until),reason=excluded.reason,updated_at=excluded.updated_at",
+                        accountPinLockoutKey(accountId), until, "bank-account-pin", t);
+            }
+            return;
+        });
+    }
+
     private String bankPinLockoutKey(String uuid) {
         return "bank-pin:" + uuid;
+    }
+
+    private String accountPinLockoutKey(String accountId) {
+        return "bank-pin:account:" + first(accountId, "");
+    }
+
+    private boolean accountPinSet(String accountId) throws Exception {
+        return scalarLong("SELECT COUNT(*) FROM bank_account_pins WHERE account_id=? AND COALESCE(pin_hash,'')<>''", accountId) > 0;
+    }
+
+    private boolean accountPinMustChange(String accountId) throws Exception {
+        return scalarLong("SELECT COALESCE(must_change,0) FROM bank_account_pins WHERE account_id=? LIMIT 1", accountId) > 0;
+    }
+
+    private long accountPinLockedSeconds(String accountId) throws Exception {
+        long until = scalarLong("SELECT COALESCE(locked_until,0) FROM account_lockouts WHERE account_id=?", accountPinLockoutKey(accountId));
+        return Math.max(0L, until - nowSec());
+    }
+
+    private boolean verifyAccountPinHash(String accountId, String pin) throws Exception {
+        if (pin == null || !pin.matches("\\d{4,8}")) {
+            return false;
+        }
+        List<Map<String, Object>> rows = queryList("SELECT pin_hash FROM bank_account_pins WHERE account_id=? LIMIT 1", accountId);
+        if (rows.isEmpty()) {
+            return false;
+        }
+        boolean ok = verifyPinHash(string(rows.getFirst().get("pin_hash")), pin);
+        if (ok) {
+            update("DELETE FROM account_lockouts WHERE account_id=?", accountPinLockoutKey(accountId));
+        }
+        return ok;
     }
 
     private long now() {
@@ -1262,6 +1475,344 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private String bankAccountId(String uuid) {
         return "ar:" + first(uuid, "");
+    }
+
+    private String treasuryAccountId() {
+        return TREASURY_ACCOUNT_ID;
+    }
+
+    private Map<String, Object> activePresidentTerm(Connection connection) throws Exception {
+        return queryOne(connection, "SELECT president_uuid,president_name FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1");
+    }
+
+    private Map<String, Object> ensureTreasuryAccount(Connection connection) throws Exception {
+        long t = now();
+        Map<String, Object> term = activePresidentTerm(connection);
+        String ownerUuid = term == null ? "" : string(term.get("president_uuid"));
+        String ownerName = first(term == null ? "" : string(term.get("president_name")), "Казна CopiMine");
+        update(connection, "INSERT INTO cmv4_bank_accounts(account_id,owner_uuid,owner_name,account_type,currency,balance,status,version,created_at,updated_at) VALUES(?,?,?,?,'AR',0,'ACTIVE',0,?,?) ON CONFLICT(account_id) DO UPDATE SET owner_uuid=excluded.owner_uuid,owner_name=excluded.owner_name,updated_at=excluded.updated_at",
+                treasuryAccountId(), ownerUuid, ownerName, TREASURY_ACCOUNT_TYPE, t, t);
+        return queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", treasuryAccountId());
+    }
+
+    private boolean hasTreasuryAccess(Player player) {
+        if (player == null) {
+            return false;
+        }
+        if (hasEconomyAdmin(player)) {
+            return true;
+        }
+        try {
+            return scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'", player.getUniqueId().toString()) > 0;
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    private TxnResult creditAccount(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details) {
+        if (accountId == null || accountId.isBlank() || amount <= 0L) {
+            return new TxnResult(false, "INVALID_REQUEST", "Некорректные данные пополнения.", 0L, "");
+        }
+        try {
+            return tx(connection -> {
+                Map<String, Object> account = treasuryAccountId().equals(accountId)
+                        ? ensureTreasuryAccount(connection)
+                        : queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", accountId);
+                if (account == null || account.isEmpty()) {
+                    throw new IllegalStateException("Target account is missing.");
+                }
+                String targetId = string(account.get("account_id"));
+                String txKey = first(idempotencyKey, "credit-" + UUID.randomUUID());
+                TxnResult replay = new BankServiceImpl().replayCreditIfCommitted(connection, txKey, targetId);
+                if (replay != null) {
+                    return replay;
+                }
+                long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", targetId);
+                long after = before + amount;
+                long t = now();
+                String txId = txKey;
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, targetId);
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId, targetId, first(action, "CREDIT"), first(ownerUuid, ""), first(action, "CREDIT"), amount, after, txId, "COMMITTED", t, first(ownerName, ""), first(details, ""));
+                return new TxnResult(true, "OK", "Пополнение выполнено.", after, txId);
+            });
+        } catch (Exception error) {
+            return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
+        }
+    }
+
+    private CompletableFuture<TxnResult> creditAccountAsync(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details) {
+        return dbFuture("bank credit account", () -> creditAccount(accountId, ownerUuid, ownerName, amount, idempotencyKey, action, details));
+    }
+
+    private Map<String, Object> resolveManagedAccount(Connection connection, String accountId, String ownerUuid, String ownerName) throws Exception {
+        String normalizedId = first(accountId, "").trim();
+        if (normalizedId.isBlank()) {
+            throw new IllegalArgumentException("Account id is required.");
+        }
+        if (treasuryAccountId().equalsIgnoreCase(normalizedId)) {
+            return ensureTreasuryAccount(connection);
+        }
+        Map<String, Object> existing = queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", normalizedId);
+        if (existing != null && !existing.isEmpty()) {
+            return existing;
+        }
+        if (!first(ownerUuid, "").isBlank()) {
+            ensureBankAccount(connection, ownerUuid, first(ownerName, ""));
+            existing = queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", normalizedId);
+            if (existing != null && !existing.isEmpty()) {
+                return existing;
+            }
+        }
+        throw new IllegalStateException("Managed account was not found: " + normalizedId);
+    }
+
+    private TxnResult replayTransferIfCommitted(Connection connection, String txKey, String fromAccountId, String toAccountId, long amount) throws Exception {
+        if (txKey == null || txKey.isBlank()) {
+            return null;
+        }
+        Map<String, Object> existing = queryOne(connection,
+                "SELECT tx_id,from_account_id,to_account_id,amount FROM cmv4_bank_transfers WHERE idempotency_key=? LIMIT 1",
+                txKey);
+        if (existing == null || existing.isEmpty()) {
+            return null;
+        }
+        if (!fromAccountId.equalsIgnoreCase(string(existing.get("from_account_id")))
+                || !toAccountId.equalsIgnoreCase(string(existing.get("to_account_id")))
+                || longValue(existing.get("amount")) != amount) {
+            return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Transfer idempotency key is already bound to another operation.", 0L, "");
+        }
+        long replayBalance = scalarLong(connection,
+                "SELECT COALESCE(balance_after,0) FROM cmv4_bank_ledger WHERE tx_id=? LIMIT 1",
+                string(existing.get("tx_id")) + ":out");
+        return new TxnResult(true, "OK", "Idempotent replay.", replayBalance, string(existing.get("tx_id")));
+    }
+
+    private TxnResult transferPlayerToAccount(UUID playerUuid, String playerName, String pin, String toAccountId, String toOwnerUuid, String toOwnerName, long amount, String idempotencyKey, String action, String details) {
+        requireAsyncBankContext("ArtifactsBridge.transferToAccount");
+        if (playerUuid == null || amount <= 0 || first(toAccountId, "").isBlank()) {
+            return new TxnResult(false, "INVALID_REQUEST", "Transfer request is invalid.", 0L, "");
+        }
+        String playerKey = playerUuid.toString();
+        String providedPin = first(pin, "");
+        try {
+            if (!providedPin.isBlank()) {
+                long locked = bankPinLockedSeconds(playerKey);
+                if (locked > 0) {
+                    return new TxnResult(false, "PIN_LOCKED", "PIN temporarily locked.", 0L, "");
+                }
+                if (!bankPinSet(playerKey)) {
+                    return new TxnResult(false, "PIN_REQUIRED", "Bank PIN is not configured.", 0L, "");
+                }
+                if (bankPinMustChange(playerKey)) {
+                    return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Temporary PIN must be changed first.", 0L, "");
+                }
+                if (!verifyBankPin(playerKey, providedPin)) {
+                    Player online = Bukkit.getPlayer(playerUuid);
+                    if (online != null) {
+                        recordFailedPinAttempt(online, "economy-artifact-transfer");
+                    }
+                    return new TxnResult(false, "PIN_INVALID", "PIN is invalid.", 0L, "");
+                }
+            }
+            return tx(connection -> {
+                Map<String, Object> fromAccount = ensureBankAccount(connection, playerKey, first(playerName, ""));
+                Map<String, Object> toAccount = resolveManagedAccount(connection, toAccountId, toOwnerUuid, toOwnerName);
+                String fromId = string(fromAccount.get("account_id"));
+                String resolvedToId = string(toAccount.get("account_id"));
+                String txKey = first(idempotencyKey, "managed-transfer-" + UUID.randomUUID());
+                TxnResult replay = replayTransferIfCommitted(connection, txKey, fromId, resolvedToId, amount);
+                if (replay != null) {
+                    return replay;
+                }
+                long fromBefore;
+                long toBefore;
+                if (fromId.compareTo(resolvedToId) <= 0) {
+                    fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", resolvedToId);
+                } else {
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", resolvedToId);
+                    fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
+                }
+                if (fromBefore < amount) {
+                    return new TxnResult(false, "INSUFFICIENT_AR", "Not enough AR in bank.", fromBefore, "");
+                }
+                long when = now();
+                long fromAfter = fromBefore - amount;
+                long toAfter = toBefore + amount;
+                String txId = txKey;
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", fromAfter, when, fromId);
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", toAfter, when, resolvedToId);
+                update(connection, "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(?,?,?,?,'AR','COMMITTED',?,?,?,?)",
+                        txId, fromId, resolvedToId, amount, txKey, when, first(playerName, ""), first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId + ":out", fromId, resolvedToId, playerKey, first(action, "TRANSFER_OUT"), amount, fromAfter, txId + ":out", "COMMITTED", when, first(playerName, ""), first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId + ":in", resolvedToId, fromId, first(string(toAccount.get("owner_uuid")), first(toOwnerUuid, "")), first(action, "TRANSFER_IN"), amount, toAfter, txId + ":in", "COMMITTED", when, first(playerName, ""), first(details, ""));
+                return new TxnResult(true, "OK", "Transfer completed.", fromAfter, txId);
+            });
+        } catch (Exception error) {
+            try {
+                String txKey = first(idempotencyKey, "");
+                if (!txKey.isBlank()) {
+                    TxnResult replay = tx(connection -> replayTransferIfCommitted(connection, txKey, bankAccountId(playerKey), first(toAccountId, "").trim(), amount));
+                    if (replay != null && replay.ok) {
+                        return replay;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
+        }
+    }
+
+    private TxnResult transferFromAccount(String fromAccountId, String fromOwnerUuid, String fromOwnerName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
+        requireAsyncBankContext("ArtifactsBridge.transferFromAccount");
+        if (toUuid == null || amount <= 0 || first(fromAccountId, "").isBlank()) {
+            return new TxnResult(false, "INVALID_REQUEST", "Transfer request is invalid.", 0L, "");
+        }
+        try {
+            return tx(connection -> {
+                Map<String, Object> fromAccount = resolveManagedAccount(connection, fromAccountId, fromOwnerUuid, fromOwnerName);
+                Map<String, Object> toAccount = ensureBankAccount(connection, toUuid.toString(), first(toName, ""));
+                String resolvedFromId = string(fromAccount.get("account_id"));
+                String toId = string(toAccount.get("account_id"));
+                String txKey = first(idempotencyKey, "managed-transfer-" + UUID.randomUUID());
+                TxnResult replay = replayTransferIfCommitted(connection, txKey, resolvedFromId, toId, amount);
+                if (replay != null) {
+                    return replay;
+                }
+                long fromBefore;
+                long toBefore;
+                if (resolvedFromId.compareTo(toId) <= 0) {
+                    fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", resolvedFromId);
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                } else {
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                    fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", resolvedFromId);
+                }
+                if (fromBefore < amount) {
+                    return new TxnResult(false, "INSUFFICIENT_AR", "Not enough AR in source account.", fromBefore, "");
+                }
+                long when = now();
+                long fromAfter = fromBefore - amount;
+                long toAfter = toBefore + amount;
+                String txId = txKey;
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", fromAfter, when, resolvedFromId);
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", toAfter, when, toId);
+                update(connection, "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(?,?,?,?,'AR','COMMITTED',?,?,?,?)",
+                        txId, resolvedFromId, toId, amount, txKey, when, first(fromOwnerName, ""), first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId + ":out", resolvedFromId, toId, first(string(fromAccount.get("owner_uuid")), first(fromOwnerUuid, "")), first(action, "TRANSFER_OUT"), amount, fromAfter, txId + ":out", "COMMITTED", when, first(fromOwnerName, ""), first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId + ":in", toId, resolvedFromId, toUuid.toString(), first(action, "TRANSFER_IN"), amount, toAfter, txId + ":in", "COMMITTED", when, first(fromOwnerName, ""), first(details, ""));
+                return new TxnResult(true, "OK", "Transfer completed.", toAfter, txId);
+            });
+        } catch (Exception error) {
+            try {
+                String txKey = first(idempotencyKey, "");
+                if (!txKey.isBlank()) {
+                    TxnResult replay = tx(connection -> replayTransferIfCommitted(connection, txKey, first(fromAccountId, "").trim(), bankAccountId(toUuid.toString()), amount));
+                    if (replay != null && replay.ok) {
+                        return replay;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
+        }
+    }
+
+    private CompletableFuture<TxnResult> chargeTreasuryWithPinAsync(Player actor, long amount, String pin, String idempotencyKey, String action, String details) {
+        return dbFuture("treasury charge", () -> {
+            if (actor == null || amount <= 0L) {
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректный запрос.", 0L, "");
+            }
+            String accountId = treasuryAccountId();
+            if (accountPinLockedSeconds(accountId) > 0L) {
+                return new TxnResult(false, "PIN_LOCKED", "PIN казны временно заблокирован.", 0L, "");
+            }
+            if (!accountPinSet(accountId)) {
+                return new TxnResult(false, "PIN_REQUIRED", "Сначала задай PIN казны на сайте.", 0L, "");
+            }
+            if (accountPinMustChange(accountId)) {
+                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN казны нужно обновить на сайте.", 0L, "");
+            }
+            if (!verifyAccountPinHash(accountId, pin)) {
+                recordFailedAccountPinAttempt(accountId, "economy-treasury-withdraw");
+                return new TxnResult(false, "PIN_INVALID", "Неверный PIN казны.", 0L, "");
+            }
+            return tx(connection -> {
+                ensureTreasuryAccount(connection);
+                String txKey = first(idempotencyKey, "treasury-charge-" + UUID.randomUUID());
+                TxnResult replay = replayArtifactStyleTxn(connection, txKey, accountId, "", -amount, first(details, ""));
+                if (replay != null) {
+                    return replay;
+                }
+                long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", accountId);
+                long after = before - amount;
+                if (after < 0L) {
+                    return new TxnResult(false, "INSUFFICIENT_AR", "Недостаточно AR в казне.", before, "");
+                }
+                long t = now();
+                String txId = "bank-" + first(action, "TREASURY_DEBIT") + "-" + UUID.randomUUID();
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, accountId);
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId, accountId, first(action, "TREASURY_DEBIT"), actor.getUniqueId().toString(), "DEBIT", amount, after, txKey, "COMMITTED", t, actor.getName(), first(details, ""));
+                return new TxnResult(true, "OK", "Списание из казны выполнено.", after, txId);
+            });
+        });
+    }
+
+    private CompletableFuture<TxnResult> transferFromTreasuryWithPinAsync(Player actor, UUID targetUuid, String targetName, long amount, String pin, String idempotencyKey, String action, String details) {
+        return dbFuture("treasury transfer", () -> {
+            if (actor == null || targetUuid == null || amount <= 0L) {
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректный перевод.", 0L, "");
+            }
+            String accountId = treasuryAccountId();
+            if (accountPinLockedSeconds(accountId) > 0L) {
+                return new TxnResult(false, "PIN_LOCKED", "PIN казны временно заблокирован.", 0L, "");
+            }
+            if (!accountPinSet(accountId)) {
+                return new TxnResult(false, "PIN_REQUIRED", "Сначала задай PIN казны на сайте.", 0L, "");
+            }
+            if (accountPinMustChange(accountId)) {
+                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN казны нужно обновить на сайте.", 0L, "");
+            }
+            if (!verifyAccountPinHash(accountId, pin)) {
+                recordFailedAccountPinAttempt(accountId, "economy-treasury-transfer");
+                return new TxnResult(false, "PIN_INVALID", "Неверный PIN казны.", 0L, "");
+            }
+            return tx(connection -> {
+                Map<String, Object> fromAccount = ensureTreasuryAccount(connection);
+                Map<String, Object> toAccount = ensureBankAccount(connection, targetUuid.toString(), first(targetName, ""));
+                String fromId = string(fromAccount.get("account_id"));
+                String toId = string(toAccount.get("account_id"));
+                String txKey = first(idempotencyKey, "treasury-transfer-" + UUID.randomUUID());
+                TxnResult replay = new BankServiceImpl().replayTransferIfCommitted(connection, txKey, fromId, toId, amount);
+                if (replay != null) {
+                    return replay;
+                }
+                long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
+                long targetBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                if (before < amount) {
+                    return new TxnResult(false, "INSUFFICIENT_AR", "Недостаточно AR в казне.", before, "");
+                }
+                long t = now();
+                long after = before - amount;
+                long targetAfter = targetBefore + amount;
+                String txId = txKey;
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, fromId);
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", targetAfter, t, toId);
+                update(connection, "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(?,?,?,?,'AR','COMMITTED',?,?,?,?)",
+                        txId, fromId, toId, amount, txId, t, actor.getName(), first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId + ":out", fromId, toId, actor.getUniqueId().toString(), first(action, "TREASURY_TRANSFER_OUT"), amount, after, txId + ":out", "COMMITTED", t, actor.getName(), first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId + ":in", toId, fromId, targetUuid.toString(), "TRANSFER_IN", amount, targetAfter, txId + ":in", "COMMITTED", t, actor.getName(), first(details, ""));
+                return new TxnResult(true, "OK", "Перевод из казны выполнен.", after, txId);
+            });
+        });
     }
 
     private void ensureBankAccount(String uuid, String name) throws Exception {
@@ -1285,6 +1836,73 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return queryOne(connection, "SELECT * FROM donation_accounts WHERE player_uuid=? LIMIT 1", uuid);
     }
 
+    private TxnResult mutateDonationBalanceInConnection(Connection connection, UUID playerUuid, String playerName, long delta, String reason, String actor, String source, String idempotencyKey) throws Exception {
+        if (playerUuid == null || delta == 0L) {
+            return new TxnResult(false, "INVALID_REQUEST", "Некорректный donation-запрос.", 0L, "");
+        }
+        String uuid = playerUuid.toString();
+        ensureDonationAccount(connection, uuid, first(playerName, ""));
+        String key = first(idempotencyKey, "").trim();
+        if (!key.isBlank()) {
+            TxnResult replay = replayDonationBalanceMutation(connection, key, uuid, delta, reason, actor, source);
+            if (replay != null) {
+                return replay;
+            }
+        }
+        long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM donation_accounts WHERE player_uuid=? FOR UPDATE", uuid);
+        long after = before + delta;
+        if (after < 0L) {
+            return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Недостаточно донат-баланса.", before, "");
+        }
+        long t = now();
+        String txId = "don-" + UUID.randomUUID();
+        update(connection, "UPDATE donation_accounts SET balance=?,updated_at=?,player_name=? WHERE player_uuid=?", after, t, first(playerName, ""), uuid);
+        update(connection, "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                txId, uuid, delta, after, first(reason, ""), first(actor, ""), first(source, ""), key, t);
+        return new TxnResult(true, "OK", delta >= 0 ? "Баланс пополнен." : "Баланс списан.", after, txId);
+    }
+
+    private TxnResult replayDonationBalanceMutation(Connection connection, String idempotencyKey, String playerUuid, long delta, String reason, String actor, String source) throws Exception {
+        if (first(idempotencyKey, "").isBlank()) {
+            return null;
+        }
+        Map<String, Object> existing = queryOne(connection,
+                "SELECT id,player_uuid,delta,balance_after,reason,actor,source FROM donation_balance_ledger WHERE idempotency_key=? LIMIT 1",
+                idempotencyKey);
+        if (existing == null || existing.isEmpty()) {
+            return null;
+        }
+        if (!string(existing.get("player_uuid")).equalsIgnoreCase(first(playerUuid, ""))
+                || longValue(existing.get("delta")) != delta
+                || !string(existing.get("reason")).equals(first(reason, ""))
+                || !string(existing.get("actor")).equals(first(actor, ""))
+                || !string(existing.get("source")).equals(first(source, ""))) {
+            throw new IllegalStateException("Donation idempotency key conflicts with another operation.");
+        }
+        return new TxnResult(true, "OK", "Idempotent replay.", longValue(existing.get("balance_after")), string(existing.get("id")));
+    }
+
+    private TxnResult replayArtifactStyleTxn(Connection connection, String idempotencyKey, String accountId, String playerUuid, long signedAmount, String details) throws Exception {
+        if (first(idempotencyKey, "").isBlank()) {
+            return null;
+        }
+        Map<String, Object> existing = queryOne(connection,
+                "SELECT tx_id,account_id,player_uuid,tx_type,amount,balance_after,details FROM cmv4_bank_ledger WHERE idempotency_key=? LIMIT 1",
+                idempotencyKey);
+        if (existing == null || existing.isEmpty()) {
+            return null;
+        }
+        String expectedType = signedAmount < 0 ? "DEBIT" : "CREDIT";
+        if (!string(existing.get("account_id")).equals(accountId)
+                || !string(existing.get("player_uuid")).equalsIgnoreCase(first(playerUuid, ""))
+                || !string(existing.get("tx_type")).equalsIgnoreCase(expectedType)
+                || longValue(existing.get("amount")) != Math.abs(signedAmount)
+                || !string(existing.get("details")).equals(first(details, ""))) {
+            throw new IllegalStateException("Bank idempotency key conflicts with another operation.");
+        }
+        return new TxnResult(true, "OK", "Idempotent replay.", longValue(existing.get("balance_after")), string(existing.get("tx_id")));
+    }
+
     private String bankTargetName(String targetUuid) {
         Player player = Bukkit.getPlayer(UUID.fromString(targetUuid));
         return player != null ? player.getName() : targetUuid;
@@ -1303,6 +1921,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_ledger(tx_id TEXT PRIMARY KEY,account_id TEXT NOT NULL,counterparty_account_id TEXT NOT NULL DEFAULT '',player_uuid TEXT NOT NULL DEFAULT '',tx_type TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>=0),balance_after BIGINT NOT NULL DEFAULT 0,idempotency_key TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'COMMITTED',created_at BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_transfers(tx_id TEXT PRIMARY KEY,from_account_id TEXT NOT NULL,to_account_id TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>0),currency TEXT NOT NULL DEFAULT 'AR',status TEXT NOT NULL DEFAULT 'COMMITTED',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS bank_pin_hashes(minecraft_uuid TEXT PRIMARY KEY,site_account_id TEXT NOT NULL DEFAULT '',pin_hash TEXT NOT NULL,must_change INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS bank_account_pins(account_id TEXT PRIMARY KEY,pin_hash TEXT NOT NULL,pin_sealed TEXT NOT NULL DEFAULT '',must_change INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,updated_by TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS ar_atms(id TEXT PRIMARY KEY,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,name TEXT NOT NULL DEFAULT 'Банкомат',active INTEGER NOT NULL DEFAULT 1,created_by TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,archived_by TEXT NOT NULL DEFAULT '',archived_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS account_lockouts(account_id TEXT PRIMARY KEY,locked_until BIGINT NOT NULL DEFAULT 0,reason TEXT NOT NULL DEFAULT '',updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS failed_pin_attempts(id BIGSERIAL PRIMARY KEY,minecraft_uuid TEXT NOT NULL,site_account_id TEXT NOT NULL DEFAULT '',attempted_at BIGINT NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '')");
@@ -1311,14 +1930,29 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_audit_events(id BIGSERIAL PRIMARY KEY,time BIGINT NOT NULL DEFAULT 0,actor TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '',admin_only INTEGER NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_accounts(player_uuid TEXT PRIMARY KEY,player_name TEXT NOT NULL DEFAULT '',balance BIGINT NOT NULL DEFAULT 0 CHECK(balance>=0),created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_balance_ledger(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,delta BIGINT NOT NULL,balance_after BIGINT NOT NULL DEFAULT 0,reason TEXT NOT NULL DEFAULT '',actor TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0)");
-            update(connection, "CREATE TABLE IF NOT EXISTS donation_payment_sessions(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT 'SBP_MOCK',amount BIGINT NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'CREATED',qr_payload TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,expires_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
-            update(connection, "CREATE TABLE IF NOT EXISTS donation_purchases(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,item_id TEXT NOT NULL,price BIGINT NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'CREATED',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS donation_payment_sessions(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL DEFAULT '',player_name TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT 'MOCK_SBP',amount BIGINT NOT NULL DEFAULT 0,amount_rub BIGINT NOT NULL DEFAULT 0,donation_units BIGINT NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'RUB',status TEXT NOT NULL DEFAULT 'CREATED',qr_payload TEXT NOT NULL DEFAULT '',qr_image_path TEXT NOT NULL DEFAULT '',callback_payload_json TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,expires_at BIGINT NOT NULL DEFAULT 0,paid_at BIGINT NOT NULL DEFAULT 0,cancelled_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS donation_purchases(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',item_id TEXT NOT NULL,price BIGINT NOT NULL DEFAULT 0,price_donation BIGINT NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'CREATED',source TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_item_claims(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,item_id TEXT NOT NULL,amount BIGINT NOT NULL DEFAULT 1,status TEXT NOT NULL DEFAULT 'UNCLAIMED',claimed_at BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,purchase_id TEXT NOT NULL DEFAULT '',actor TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_block_visuals(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,entity_uuid TEXT NOT NULL DEFAULT '',base_material TEXT NOT NULL DEFAULT 'PAPER',custom_model_data INTEGER NOT NULL DEFAULT 0,model_id TEXT NOT NULL DEFAULT '',offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,yaw DOUBLE PRECISION NOT NULL DEFAULT 0,pitch DOUBLE PRECISION NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS amount_rub BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS donation_units BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'RUB'");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS qr_image_path TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS callback_payload_json TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS paid_at BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS cancelled_at BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS price_donation BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_owner_type_active ON cmv4_bank_accounts(owner_uuid,account_type,currency) WHERE status='ACTIVE'");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_ledger_idempotency ON cmv4_bank_ledger(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_transfers_idempotency ON cmv4_bank_transfers(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_donation_balance_ledger_idempotency ON donation_balance_ledger(idempotency_key) WHERE idempotency_key<>''");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_donation_sessions_idempotency ON donation_payment_sessions(idempotency_key) WHERE idempotency_key<>''");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_donation_purchases_idempotency ON donation_purchases(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_balance_ledger_player_time ON donation_balance_ledger(player_uuid,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_sessions_player_status ON donation_payment_sessions(player_uuid,status,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_purchases_player_status ON donation_purchases(player_uuid,status,created_at DESC)");
@@ -1509,6 +2143,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }, dbExecutor);
     }
 
+    private void requireAsyncBankContext(String operation) {
+        if (Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException(operation + " must not run on the Bukkit main thread.");
+        }
+    }
+
     @FunctionalInterface
     private interface SqlSupplier<T> {
         T get() throws Exception;
@@ -1557,6 +2197,36 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return 0L;
         }
     }
+
+    /*
+        private TxnResult mutateInConnection(Connection connection, UUID playerUuid, String playerName, long delta, String reason, String actor, String source, String idempotencyKey) throws Exception {
+            if (playerUuid == null || delta == 0L) {
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректный donation-запрос.", 0L, "");
+            }
+            String uuid = playerUuid.toString();
+            ensureDonationAccount(connection, uuid, first(playerName, ""));
+            String key = first(idempotencyKey, "");
+            if (!key.isBlank()) {
+                List<Map<String, Object>> existing = queryList(connection, "SELECT id,balance_after FROM donation_balance_ledger WHERE idempotency_key=? LIMIT 1", key);
+                if (!existing.isEmpty()) {
+                    return new TxnResult(true, "OK", "Idempotent replay.", longValue(existing.getFirst().get("balance_after")), string(existing.getFirst().get("id")));
+                }
+            }
+            long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM donation_accounts WHERE player_uuid=? FOR UPDATE", uuid);
+            long after = before + delta;
+            if (after < 0L) {
+                return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Недостаточно донат-баланса.", before, "");
+            }
+            long t = now();
+            String txId = "don-" + UUID.randomUUID();
+            update(connection, "UPDATE donation_accounts SET balance=?,updated_at=?,player_name=? WHERE player_uuid=?", after, t, first(playerName, ""), uuid);
+            update(connection, "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                    txId, uuid, delta, after, first(reason, ""), first(actor, ""), first(source, ""), key, t);
+            return new TxnResult(true, "OK", delta >= 0 ? "Баланс пополнен." : "Баланс списан.", after, txId);
+        }
+    }
+
+    */
 
     private String string(Object value) {
         return value == null ? "" : String.valueOf(value);
@@ -1622,7 +2292,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
     }
 
-    private record AtmPinSession(String atmId, String action, int amount, String pin, String targetUuid, String targetName) {}
+    private record AtmPinSession(String atmId, String accountScope, String action, int amount, String pin, String targetUuid, String targetName) {}
 
     private static final class MenuHolder implements InventoryHolder {
         private final String id;
@@ -1679,6 +2349,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
 
         @Override
+        public DonationPaymentService donationPaymentService() {
+            return donationPaymentService;
+        }
+
+        @Override
         public DonationPurchaseService donationPurchaseService() {
             return donationPurchaseService;
         }
@@ -1687,6 +2362,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private final class DonationBalanceServiceImpl implements DonationBalanceService {
         @Override
         public long balance(UUID playerUuid, String playerName) {
+            requireAsyncBankContext("DonationBalanceService.balance");
             if (playerUuid == null) {
                 return 0L;
             }
@@ -1739,6 +2415,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return new TxnResult(false, "INVALID_REQUEST", "Некорректный donation-запрос.", 0L, "");
             }
             try {
+                return tx(connection -> mutateDonationBalanceInConnection(connection, playerUuid, playerName, delta, reason, actor, source, idempotencyKey));
+                /*
                 return tx(connection -> {
                     String uuid = playerUuid.toString();
                     ensureDonationAccount(connection, uuid, first(playerName, ""));
@@ -1761,14 +2439,233 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                             txId, uuid, delta, after, first(reason, ""), first(actor, ""), first(source, ""), key, t);
                     return new TxnResult(true, "OK", delta >= 0 ? "Баланс пополнен." : "Баланс списан.", after, txId);
                 });
+                */
             } catch (Exception error) {
                 return new TxnResult(false, "DONATION_ERROR", safeError(error), 0L, "");
             }
         }
     }
 
-    private void requireKnownDonationItem(String itemId) {
-        String normalized = first(itemId, "").trim();
+    private final class DonationPaymentServiceImpl implements DonationPaymentService {
+        @Override
+        public Set<Long> allowedPacks() {
+            return DONATION_PACKS;
+        }
+
+        @Override
+        public CompletableFuture<Map<String, Object>> createSessionAsync(UUID playerUuid, String playerName, long amountRub, String actor, String source, String idempotencyKey) {
+            return dbFuture("donation session create", () -> tx(connection -> {
+                requireFixedDonationPack(amountRub);
+                if (playerUuid == null) {
+                    throw new IllegalArgumentException("Donation session requires a linked player UUID.");
+                }
+                String uuid = playerUuid == null ? "" : playerUuid.toString();
+                String key = first(idempotencyKey, "").trim();
+                if (!key.isBlank()) {
+                    Map<String, Object> existing = queryOne(connection, "SELECT * FROM donation_payment_sessions WHERE idempotency_key=? LIMIT 1", key);
+                    if (existing != null) {
+                        if (!uuid.equalsIgnoreCase(string(existing.get("player_uuid")))) {
+                            throw new IllegalStateException("Donation session idempotency key already belongs to another player.");
+                        }
+                        long existingAmount = Math.max(0L, longValue(existing.get("amount_rub")));
+                        if (existingAmount != amountRub) {
+                            throw new IllegalStateException("Donation session idempotency key already belongs to a different amount.");
+                        }
+                        return sanitizeSession(existing);
+                    }
+                }
+                long current = now();
+                String sessionId = "donation-session-" + UUID.randomUUID();
+                long donationUnits = amountRub;
+                String qrPayload = buildMockSbpQrPayload(playerUuid, amountRub, sessionId);
+                update(connection, """
+                        INSERT INTO donation_payment_sessions(
+                            id,player_uuid,player_name,provider,amount,amount_rub,donation_units,currency,status,qr_payload,qr_image_path,callback_payload_json,idempotency_key,created_at,expires_at,paid_at,cancelled_at,updated_at
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """,
+                        sessionId, uuid, first(playerName, ""), "MOCK_SBP", amountRub, amountRub, donationUnits, "RUB", "PENDING",
+                        qrPayload, "", "", key, current, current + DONATION_SESSION_TTL_MS, 0L, 0L, current);
+                pluginEvent("donation", "session_created", first(actor, ""), uuid, "session=" + sessionId + " amount=" + amountRub + " source=" + first(source, ""));
+                Map<String, Object> created = new LinkedHashMap<>();
+                created.put("session_id", sessionId);
+                created.put("player_uuid", uuid);
+                created.put("player_name", first(playerName, ""));
+                created.put("provider", "MOCK_SBP");
+                created.put("amount_rub", amountRub);
+                created.put("donation_units", donationUnits);
+                created.put("currency", "RUB");
+                created.put("status", "PENDING");
+                created.put("qr_payload", qrPayload);
+                created.put("created_at", current);
+                created.put("expires_at", current + DONATION_SESSION_TTL_MS);
+                created.put("paid_at", 0L);
+                created.put("cancelled_at", 0L);
+                return created;
+            }));
+        }
+
+        @Override
+        public CompletableFuture<Map<String, Object>> sessionAsync(UUID playerUuid, String sessionId) {
+            return dbFuture("donation session read", () -> tx(connection -> {
+                if (first(sessionId, "").isBlank()) {
+                    return Map.of();
+                }
+                Map<String, Object> row = queryOne(connection, "SELECT * FROM donation_payment_sessions WHERE id=? FOR UPDATE", sessionId);
+                if (row == null) {
+                    return Map.of();
+                }
+                if (playerUuid != null) {
+                    String owner = string(row.get("player_uuid"));
+                    if (!owner.isBlank() && !owner.equalsIgnoreCase(playerUuid.toString())) {
+                        return Map.of();
+                    }
+                }
+                long current = now();
+                if (donationSessionExpired(row, current)) {
+                    update(connection, "UPDATE donation_payment_sessions SET status='EXPIRED',updated_at=? WHERE id=? AND status IN ('CREATED','PENDING')", current, sessionId);
+                    row.put("status", "EXPIRED");
+                    row.put("updated_at", current);
+                }
+                return sanitizeSession(row);
+            }));
+        }
+
+        @Override
+        public CompletableFuture<Map<String, Object>> markPaidAsync(String sessionId, String actor, String idempotencyKey) {
+            return dbFuture("donation session mark paid", () -> tx(connection -> {
+                if (first(sessionId, "").isBlank()) {
+                    throw new IllegalArgumentException("Donation session id is required.");
+                }
+                String ledgerKey = "donation-session-paid-" + sessionId;
+                Map<String, Object> row = queryOne(connection, "SELECT * FROM donation_payment_sessions WHERE id=? FOR UPDATE", sessionId);
+                if (row == null) {
+                    throw new IllegalArgumentException("Unknown donation session: " + sessionId);
+                }
+                long current = now();
+                if (donationSessionExpired(row, current)) {
+                    update(connection, "UPDATE donation_payment_sessions SET status='EXPIRED',updated_at=? WHERE id=? AND status IN ('CREATED','PENDING')", current, sessionId);
+                    throw new IllegalStateException("Donation session is expired.");
+                }
+                String status = string(row.get("status"));
+                String uuid = string(row.get("player_uuid"));
+                if ("PAID".equalsIgnoreCase(status)) {
+                    Map<String, Object> ledger = queryOne(connection,
+                            "SELECT id,balance_after FROM donation_balance_ledger WHERE idempotency_key=? LIMIT 1",
+                            ledgerKey);
+                    if (ledger == null || ledger.isEmpty()) {
+                        pluginEvent("donation", "session_manual_review", first(actor, ""), uuid, "session=" + sessionId + " reason=paid_without_ledger");
+                        throw new IllegalStateException("Donation session is already marked paid, but its ledger entry is missing. Manual review is required.");
+                    }
+                    return sanitizeSession(row);
+                }
+                if ("CANCELLED".equalsIgnoreCase(status) || "EXPIRED".equalsIgnoreCase(status)) {
+                    throw new IllegalStateException("Donation session is not payable anymore.");
+                }
+                if (uuid.isBlank()) {
+                    throw new IllegalStateException("Donation session is missing a linked player UUID.");
+                }
+                String playerName = string(row.get("player_name"));
+                long units = Math.max(0L, longValue(row.get("donation_units")));
+                long amountRub = Math.max(0L, longValue(row.get("amount_rub")));
+                if (units <= 0L) {
+                    units = amountRub;
+                }
+                TxnResult credit = mutateDonationBalanceInConnection(connection, UUID.fromString(uuid), playerName, units, "DONATION_TOPUP", first(actor, ""), "mock_sbp", ledgerKey);
+                if (!credit.ok) {
+                    throw new IllegalStateException(first(credit.message, "Failed to credit donation balance."));
+                }
+                update(connection, "UPDATE donation_payment_sessions SET status='PAID',paid_at=?,updated_at=? WHERE id=?", current, current, sessionId);
+                row.put("status", "PAID");
+                row.put("paid_at", current);
+                row.put("updated_at", current);
+                pluginEvent("donation", "session_paid", first(actor, ""), uuid, "session=" + sessionId + " amount=" + amountRub + " units=" + units);
+                return sanitizeSession(row);
+            }));
+        }
+
+        @Override
+        public CompletableFuture<Map<String, Object>> cancelAsync(String sessionId, String actor) {
+            return dbFuture("donation session cancel", () -> tx(connection -> {
+                if (first(sessionId, "").isBlank()) {
+                    throw new IllegalArgumentException("Donation session id is required.");
+                }
+                Map<String, Object> row = queryOne(connection, "SELECT * FROM donation_payment_sessions WHERE id=? FOR UPDATE", sessionId);
+                if (row == null) {
+                    throw new IllegalArgumentException("Unknown donation session: " + sessionId);
+                }
+                long current = now();
+                if (donationSessionExpired(row, current)) {
+                    update(connection, "UPDATE donation_payment_sessions SET status='EXPIRED',updated_at=? WHERE id=? AND status IN ('CREATED','PENDING')", current, sessionId);
+                    throw new IllegalStateException("Donation session is expired.");
+                }
+                String status = string(row.get("status"));
+                if ("PAID".equalsIgnoreCase(status) || "CANCELLED".equalsIgnoreCase(status)) {
+                    return sanitizeSession(row);
+                }
+                update(connection, "UPDATE donation_payment_sessions SET status='CANCELLED',cancelled_at=?,updated_at=? WHERE id=?", current, current, sessionId);
+                row.put("status", "CANCELLED");
+                row.put("cancelled_at", current);
+                row.put("updated_at", current);
+                pluginEvent("donation", "session_cancelled", first(actor, ""), string(row.get("player_uuid")), "session=" + sessionId);
+                return sanitizeSession(row);
+            }));
+        }
+    }
+
+    private void requireFixedDonationPack(long amountRub) {
+        if (!DONATION_PACKS.contains(amountRub)) {
+            throw new IllegalArgumentException("Unsupported donation pack: " + amountRub);
+        }
+    }
+
+    private String buildMockSbpQrPayload(UUID playerUuid, long amountRub, String sessionId) {
+        String uuid = playerUuid == null ? "" : playerUuid.toString();
+        return "SBP|MOCK_SBP|session=" + sessionId + "|player=" + uuid + "|amount=" + amountRub + "|currency=RUB";
+    }
+
+    private Map<String, Object> sanitizeSession(Map<String, Object> row) {
+        if (row == null || row.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> safe = new LinkedHashMap<>();
+        String sessionId = first(string(row.get("id")), string(row.get("session_id")));
+        safe.put("id", sessionId);
+        safe.put("session_id", sessionId);
+        safe.put("player_uuid", string(row.get("player_uuid")));
+        safe.put("player_name", string(row.get("player_name")));
+        safe.put("provider", first(string(row.get("provider")), "MOCK_SBP"));
+        safe.put("amount_rub", longValue(firstNonNull(row.get("amount_rub"), row.get("amount"))));
+        safe.put("donation_units", longValue(firstNonNull(row.get("donation_units"), row.get("amount"))));
+        safe.put("currency", first(string(row.get("currency")), "RUB"));
+        safe.put("status", first(string(row.get("status")), "CREATED"));
+        safe.put("qr_payload", string(row.get("qr_payload")));
+        safe.put("qr_image_path", string(row.get("qr_image_path")));
+        safe.put("created_at", longValue(row.get("created_at")));
+        safe.put("expires_at", longValue(row.get("expires_at")));
+        safe.put("paid_at", longValue(row.get("paid_at")));
+        safe.put("cancelled_at", longValue(row.get("cancelled_at")));
+        safe.put("updated_at", longValue(row.get("updated_at")));
+        safe.put("session_code", sessionId.length() > 8 ? sessionId.substring(sessionId.length() - 8) : sessionId);
+        return safe;
+    }
+
+    private boolean donationSessionExpired(Map<String, Object> row, long current) {
+        if (row == null || row.isEmpty()) {
+            return false;
+        }
+        String status = string(row.get("status"));
+        long expiresAt = longValue(row.get("expires_at"));
+        return ("CREATED".equalsIgnoreCase(status) || "PENDING".equalsIgnoreCase(status))
+                && expiresAt > 0L
+                && expiresAt <= current;
+    }
+
+    private Object firstNonNull(Object first, Object second) {
+        return first != null ? first : second;
+    }
+
+    private String normalizeDonationItemId(String itemId) {
+        String normalized = first(itemId, "").trim().toLowerCase(Locale.ROOT);
         if (normalized.isBlank()) {
             throw new IllegalArgumentException("Donation claim item id is required.");
         }
@@ -1777,12 +2674,80 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             throw new IllegalStateException("CopiMineArtifacts is required to validate donation item ids.");
         }
         try {
-            Object result = plugin.getClass().getMethod("knowsCatalogItem", String.class).invoke(plugin, normalized);
+            Object result = plugin.getClass().getMethod("knowsDonationCatalogItem", String.class).invoke(plugin, normalized);
             if (!(result instanceof Boolean known) || !known) {
-                throw new IllegalArgumentException("Unknown artifact catalog item id: " + normalized);
+                throw new IllegalArgumentException("Unknown donation catalog item id: " + normalized);
             }
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException("Unable to validate donation item id via CopiMineArtifacts.", error);
+        }
+        return normalized;
+    }
+
+    private long resolveDonationCatalogPrice(String itemId) {
+        String normalized = normalizeDonationItemId(itemId);
+        Plugin plugin = Bukkit.getPluginManager().getPlugin("CopiMineArtifacts");
+        if (plugin == null || !plugin.isEnabled()) {
+            throw new IllegalStateException("CopiMineArtifacts is required to resolve donation item prices.");
+        }
+        try {
+            Object result = plugin.getClass().getMethod("donationCatalogPrice", String.class).invoke(plugin, normalized);
+            long price = result instanceof Number number ? number.longValue() : longValue(result);
+            if (price <= 0L) {
+                throw new IllegalStateException("Donation catalog price must be positive for item " + normalized);
+            }
+            return price;
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException("Unable to resolve donation price via CopiMineArtifacts.", error);
+        }
+    }
+
+    private void requireKnownDonationItem(String itemId) {
+        normalizeDonationItemId(itemId);
+    }
+
+    private boolean hasOpenDonationEntitlement(Connection connection, String playerUuid, String itemId) throws SQLException {
+        if (first(playerUuid, "").isBlank() || first(itemId, "").isBlank()) {
+            return false;
+        }
+        try (PreparedStatement claims = connection.prepareStatement("""
+                SELECT 1
+                FROM donation_item_claims
+                WHERE player_uuid=?
+                  AND item_id=?
+                  AND status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')
+                LIMIT 1
+                """);
+             PreparedStatement instances = connection.prepareStatement("""
+                SELECT 1
+                FROM artifact_item_instances
+                WHERE owner_uuid=?
+                  AND item_id=?
+                  AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')
+                LIMIT 1
+                """)) {
+            claims.setString(1, playerUuid);
+            claims.setString(2, itemId);
+            try (ResultSet rs = claims.executeQuery()) {
+                if (rs.next()) {
+                    return true;
+                }
+            }
+            instances.setString(1, playerUuid);
+            instances.setString(2, itemId);
+            try (ResultSet rs = instances.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private void lockDonationEntitlement(Connection connection, String playerUuid, String itemId) throws SQLException {
+        if (connection == null || first(playerUuid, "").isBlank() || first(itemId, "").isBlank()) {
+            return;
+        }
+        try (PreparedStatement ps = connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+            ps.setString(1, "donation-entitlement:" + playerUuid + ":" + itemId.toLowerCase(Locale.ROOT));
+            ps.execute();
         }
     }
 
@@ -1790,40 +2755,117 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         @Override
         public CompletableFuture<Map<String, Object>> createTestPurchaseAsync(UUID playerUuid, String playerName, String itemId, long price, String actor) {
             return dbFuture("create donation test purchase", () -> tx(connection -> {
-                requireKnownDonationItem(itemId);
+                String normalized = normalizeDonationItemId(itemId);
+                long catalogPrice = resolveDonationCatalogPrice(normalized);
                 String uuid = playerUuid == null ? "" : playerUuid.toString();
+                lockDonationEntitlement(connection, uuid, normalized);
+                if (hasOpenDonationEntitlement(connection, uuid, normalized)) {
+                    throw new IllegalStateException("Player already has an active or unfinished donation entitlement for this item.");
+                }
                 long t = now();
                 String purchaseId = "don-purchase-" + UUID.randomUUID();
-                update(connection, "INSERT INTO donation_purchases(id,player_uuid,item_id,price,status,created_at,updated_at) VALUES(?,?,?,?, 'PAID', ?, ?)",
-                        purchaseId, uuid, first(itemId, ""), Math.max(0L, price), t, t);
+                update(connection, "INSERT INTO donation_purchases(id,player_uuid,player_name,item_id,price,price_donation,status,source,idempotency_key,created_at,updated_at) VALUES(?,?,?,?,?,?, 'CLAIM_PENDING', ?, ?, ?, ?)",
+                        purchaseId, uuid, first(playerName, ""), normalized, catalogPrice, catalogPrice, "admin_test_purchase", "admin-test-purchase-" + purchaseId, t, t);
                 String claimId = "don-claim-" + UUID.randomUUID();
                 update(connection, "INSERT INTO donation_item_claims(id,player_uuid,item_id,amount,status,claimed_at,created_at,updated_at,purchase_id,actor) VALUES(?,?,?,?, 'UNCLAIMED', 0, ?, ?, ?, ?)",
-                        claimId, uuid, first(itemId, ""), 1L, t, t, purchaseId, first(actor, ""));
+                        claimId, uuid, normalized, 1L, t, t, purchaseId, first(actor, ""));
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("purchase_id", purchaseId);
                 row.put("claim_id", claimId);
                 row.put("player_uuid", uuid);
                 row.put("player_name", first(playerName, ""));
-                row.put("item_id", first(itemId, ""));
-                row.put("price", Math.max(0L, price));
-                row.put("status", "PAID");
+                row.put("item_id", normalized);
+                row.put("price", catalogPrice);
+                row.put("price_donation", catalogPrice);
+                row.put("status", "CLAIM_PENDING");
                 return row;
+            }));
+        }
+
+        @Override
+        public CompletableFuture<Map<String, Object>> purchaseIntentAsync(UUID playerUuid, String playerName, String itemId, long priceDonation, String actor, String source, String idempotencyKey) {
+            return dbFuture("donation purchase intent", () -> tx(connection -> {
+                if (playerUuid == null) {
+                    throw new IllegalArgumentException("Donation purchase requires player UUID.");
+                }
+                String normalized = normalizeDonationItemId(itemId);
+                String purchaseKey = first(idempotencyKey, "").trim();
+                if (!purchaseKey.isBlank()) {
+                    Map<String, Object> existing = queryOne(connection, "SELECT id,player_uuid,item_id,status,price_donation,created_at FROM donation_purchases WHERE idempotency_key=? LIMIT 1", purchaseKey);
+                    if (existing != null) {
+                        if (!playerUuid.toString().equalsIgnoreCase(string(existing.get("player_uuid")))) {
+                            throw new IllegalStateException("Donation purchase idempotency key already belongs to another player.");
+                        }
+                        if (!normalized.equalsIgnoreCase(string(existing.get("item_id")))) {
+                            throw new IllegalStateException("Donation purchase idempotency key already belongs to another item.");
+                        }
+                        long storedPrice = longValue(firstNonNull(existing.get("price_donation"), existing.get("price")));
+                        if (priceDonation > 0L && storedPrice > 0L && priceDonation != storedPrice) {
+                            throw new IllegalStateException("Donation purchase idempotency key already belongs to another price.");
+                        }
+                        return Map.of(
+                                "purchase_id", string(existing.get("id")),
+                                "item_id", string(existing.get("item_id")),
+                                "status", string(existing.get("status")),
+                                "price_donation", storedPrice,
+                                "created_at", longValue(existing.get("created_at")),
+                                "idempotent", true
+                        );
+                    }
+                }
+                lockDonationEntitlement(connection, playerUuid.toString(), normalized);
+                if (hasOpenDonationEntitlement(connection, playerUuid.toString(), normalized)) {
+                    throw new IllegalStateException("Player already has an active or unfinished donation entitlement for this item.");
+                }
+                long price = resolveDonationCatalogPrice(normalized);
+                TxnResult charge = mutateDonationBalanceInConnection(connection, playerUuid, playerName, -price, "DONATION_PURCHASE", first(actor, ""), first(source, "donation_shop"), first(purchaseKey, "purchase-intent-" + playerUuid + "-" + normalized + "-" + now()));
+                if (!charge.ok) {
+                    throw new IllegalStateException(first(charge.message, "Donation purchase failed."));
+                }
+                long current = now();
+                String purchaseId = "don-purchase-" + UUID.randomUUID();
+                String claimId = "don-claim-" + UUID.randomUUID();
+                update(connection, "INSERT INTO donation_purchases(id,player_uuid,player_name,item_id,price,price_donation,status,source,idempotency_key,created_at,updated_at) VALUES(?,?,?,?,?,?, 'CLAIM_PENDING', ?, ?, ?, ?)",
+                        purchaseId, playerUuid.toString(), first(playerName, ""), normalized, price, price, first(source, "donation_shop"), purchaseKey, current, current);
+                update(connection, "INSERT INTO donation_item_claims(id,player_uuid,item_id,amount,status,claimed_at,created_at,updated_at,purchase_id,actor) VALUES(?,?,?,?, 'UNCLAIMED', 0, ?, ?, ?, ?)",
+                        claimId, playerUuid.toString(), normalized, 1L, current, current, purchaseId, first(actor, ""));
+                pluginEvent("donation", "purchase_created", first(actor, ""), playerUuid.toString(), "purchase=" + purchaseId + " item=" + normalized + " price=" + price);
+                return Map.of(
+                        "purchase_id", purchaseId,
+                        "claim_id", claimId,
+                        "item_id", normalized,
+                        "status", "CLAIM_PENDING",
+                        "price_donation", price,
+                        "balance_after", charge.balanceAfter
+                );
             }));
         }
 
         @Override
         public CompletableFuture<Map<String, Object>> createClaimAsync(UUID playerUuid, String itemId, long amount, String actor, String purchaseId) {
             return dbFuture("create donation claim", () -> tx(connection -> {
-                requireKnownDonationItem(itemId);
+                if (playerUuid == null) {
+                    throw new IllegalArgumentException("Donation claim requires player UUID.");
+                }
+                String normalized = normalizeDonationItemId(itemId);
+                long normalizedAmount = Math.max(1L, amount);
+                if (normalizedAmount != 1L) {
+                    throw new IllegalArgumentException("Donation claim amount must be exactly 1 for owner-bound donation items.");
+                }
+                String playerUuidText = playerUuid.toString();
+                lockDonationEntitlement(connection, playerUuidText, normalized);
+                if (hasOpenDonationEntitlement(connection, playerUuidText, normalized)) {
+                    throw new IllegalStateException("Player already has an active or unfinished donation entitlement for this item.");
+                }
                 String claimId = "don-claim-" + UUID.randomUUID();
                 long t = now();
                 update(connection, "INSERT INTO donation_item_claims(id,player_uuid,item_id,amount,status,claimed_at,created_at,updated_at,purchase_id,actor) VALUES(?,?,?,?, 'UNCLAIMED', 0, ?, ?, ?, ?)",
-                        claimId, playerUuid == null ? "" : playerUuid.toString(), first(itemId, ""), Math.max(1L, amount), t, t, first(purchaseId, ""), first(actor, ""));
+                        claimId, playerUuidText, normalized, normalizedAmount, t, t, first(purchaseId, ""), first(actor, ""));
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("claim_id", claimId);
-                row.put("player_uuid", playerUuid == null ? "" : playerUuid.toString());
-                row.put("item_id", first(itemId, ""));
-                row.put("amount", Math.max(1L, amount));
+                row.put("player_uuid", playerUuidText);
+                row.put("item_id", normalized);
+                row.put("amount", normalizedAmount);
                 row.put("status", "UNCLAIMED");
                 return row;
             }));
@@ -1835,8 +2877,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 if (playerUuid == null) {
                     return List.of();
                 }
-                return queryList("SELECT id,item_id,amount,status,purchase_id,created_at FROM donation_item_claims WHERE player_uuid=? AND status='UNCLAIMED' ORDER BY created_at DESC LIMIT ?",
-                        playerUuid.toString(), Math.max(1, Math.min(limit, 200)));
+                return queryList("""
+                        SELECT id,item_id,amount,status,purchase_id,created_at,updated_at
+                        FROM donation_item_claims
+                        WHERE player_uuid=?
+                          AND status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                        """, playerUuid.toString(), Math.max(1, Math.min(limit, 200)));
             });
         }
 
@@ -1905,6 +2953,33 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
 
         @Override
+        public CompletableFuture<Boolean> completeClaimByPurchaseAsync(UUID playerUuid, String purchaseId) {
+            return dbFuture("complete donation claim by purchase", () -> {
+                if (playerUuid == null || first(purchaseId, "").isBlank()) {
+                    return false;
+                }
+                return tx(connection -> {
+                    List<Map<String, Object>> rows = queryList(connection, "SELECT id,status FROM donation_item_claims WHERE purchase_id=? AND player_uuid=? FOR UPDATE", purchaseId, playerUuid.toString());
+                    if (rows.isEmpty()) {
+                        return false;
+                    }
+                    Map<String, Object> row = rows.getFirst();
+                    String status = string(row.get("status"));
+                    if ("CLAIMED".equalsIgnoreCase(status)) {
+                        return true;
+                    }
+                    if (!"DELIVERING".equalsIgnoreCase(status)) {
+                        return false;
+                    }
+                    long current = now();
+                    update(connection, "UPDATE donation_item_claims SET status='CLAIMED',claimed_at=?,updated_at=? WHERE id=?", current, current, string(row.get("id")));
+                    update(connection, "UPDATE donation_purchases SET status='CLAIMED',updated_at=? WHERE id=?", current, purchaseId);
+                    return true;
+                });
+            });
+        }
+
+        @Override
         public CompletableFuture<Boolean> markClaimDeliveryReviewAsync(UUID playerUuid, String claimId) {
             return dbFuture("mark donation claim delivery review", () -> {
                 if (playerUuid == null || first(claimId, "").isBlank()) {
@@ -1934,14 +3009,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     return false;
                 }
                 return tx(connection -> {
-                    List<Map<String, Object>> rows = queryList(connection, "SELECT status FROM donation_item_claims WHERE id=? AND player_uuid=? FOR UPDATE", claimId, playerUuid.toString());
+                    List<Map<String, Object>> rows = queryList(connection, "SELECT status,purchase_id FROM donation_item_claims WHERE id=? AND player_uuid=? FOR UPDATE", claimId, playerUuid.toString());
                     if (rows.isEmpty()) {
                         return false;
                     }
                     if (!"RESERVED".equalsIgnoreCase(string(rows.getFirst().get("status")))) {
                         return false;
                     }
-                    update(connection, "UPDATE donation_item_claims SET status='UNCLAIMED',updated_at=? WHERE id=?", now(), claimId);
+                    long current = now();
+                    update(connection, "UPDATE donation_item_claims SET status='UNCLAIMED',updated_at=? WHERE id=?", current, claimId);
+                    update(connection, "UPDATE donation_purchases SET status='CLAIM_PENDING',updated_at=? WHERE id=?", current, first(string(rows.getFirst().get("purchase_id")), ""));
                     return true;
                 });
             });
@@ -2011,13 +3088,38 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
 
         @Override
+        public CompletableFuture<PinStatus> pinStatusAsync(UUID playerUuid) {
+            return dbFuture("artifacts pin status", () -> BankServiceImpl.pinStatusFor(playerUuid));
+        }
+
+        @Override
         public TxnResult charge(UUID playerUuid, String playerName, long amount, String pin, String idempotencyKey, String action, String details) {
             return bankService.charge(playerUuid, playerName, amount, pin, idempotencyKey, action, details);
         }
 
         @Override
+        public TxnResult creditAccount(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details) {
+            return CopiMineEconomyCore.this.creditAccount(accountId, ownerUuid, ownerName, amount, idempotencyKey, action, details);
+        }
+
+        @Override
+        public TxnResult transferToAccount(UUID playerUuid, String playerName, String pin, String toAccountId, String toOwnerUuid, String toOwnerName, long amount, String idempotencyKey, String action, String details) {
+            return CopiMineEconomyCore.this.transferPlayerToAccount(playerUuid, playerName, pin, toAccountId, toOwnerUuid, toOwnerName, amount, idempotencyKey, action, details);
+        }
+
+        @Override
+        public TxnResult transferFromAccount(String fromAccountId, String fromOwnerUuid, String fromOwnerName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
+            return CopiMineEconomyCore.this.transferFromAccount(fromAccountId, fromOwnerUuid, fromOwnerName, toUuid, toName, amount, idempotencyKey, action, details);
+        }
+
+        @Override
         public TxnResult refund(UUID playerUuid, String playerName, long amount, String idempotencyKey, String action, String details) {
             return bankService.refund(playerUuid, playerName, amount, idempotencyKey, action, details);
+        }
+
+        @Override
+        public TxnResult credit(UUID playerUuid, String playerName, long amount, String idempotencyKey, String action, String details) {
+            return bankService.credit(playerUuid, playerName, amount, idempotencyKey, action, details);
         }
 
         @Override
@@ -2076,6 +3178,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         @Override
         public TxnResult charge(UUID playerUuid, String playerName, long amount, String pin, String idempotencyKey, String action, String details) {
+            requireAsyncBankContext("BankService.charge");
             return artifactStyleTxn(playerUuid, playerName, -Math.max(0L, amount), pin, idempotencyKey, action, details);
         }
 
@@ -2091,8 +3194,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         @Override
         public TxnResult transferWithPin(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String pin, String idempotencyKey, String action, String details) {
+            requireAsyncBankContext("BankService.transferWithPin");
             if (fromUuid == null || toUuid == null || amount <= 0) {
                 return new TxnResult(false, "INVALID_REQUEST", "Некорректные данные перевода.", 0L, "");
+            }
+            if (fromUuid.equals(toUuid)) {
+                return new TxnResult(false, "INVALID_REQUEST", "Нельзя перевести AR на тот же счёт.", 0L, "");
             }
             try {
                 long locked = bankPinLockedSeconds(fromUuid.toString());
@@ -2117,15 +3224,27 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     Map<String, Object> toAccount = ensureBankAccount(connection, toUuid.toString(), first(toName, ""));
                     String fromId = string(fromAccount.get("account_id"));
                     String toId = string(toAccount.get("account_id"));
-                    long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
-                    long targetBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                    String txKey = first(idempotencyKey, "tx-" + UUID.randomUUID());
+                    TxnResult replay = replayTransferIfCommitted(connection, txKey, fromId, toId, amount);
+                    if (replay != null) {
+                        return replay;
+                    }
+                    long before;
+                    long targetBefore;
+                    if (fromId.compareTo(toId) <= 0) {
+                        before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
+                        targetBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                    } else {
+                        targetBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                        before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
+                    }
                     if (before < amount) {
                         return new TxnResult(false, "INSUFFICIENT_AR", "Недостаточно AR на счёте.", before, "");
                     }
                     long t = now();
                     long after = before - amount;
                     long targetAfter = targetBefore + amount;
-                    String txId = first(idempotencyKey, "tx-" + UUID.randomUUID());
+                    String txId = txKey;
                     update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, fromId);
                     update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", targetAfter, t, toId);
                     update(connection, "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(?,?,?,?,'AR','COMMITTED',?,?,?,?)",
@@ -2134,9 +3253,19 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                             txId + ":out", fromId, toId, fromUuid.toString(), first(action, "TRANSFER_OUT"), amount, after, txId + ":out", "COMMITTED", t, first(fromName, ""), first(details, ""));
                     update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                             txId + ":in", toId, fromId, toUuid.toString(), "TRANSFER_IN", amount, targetAfter, txId + ":in", "COMMITTED", t, first(fromName, ""), first(details, ""));
-                    return new TxnResult(true, "OK", "Коммит выполнен.", after, txId);
+                    return new TxnResult(true, "OK", "Перевод выполнен.", after, txId);
                 });
             } catch (Exception error) {
+                try {
+                    String txKey = first(idempotencyKey, "");
+                    if (!txKey.isBlank()) {
+                        TxnResult replay = tx(connection -> replayTransferIfCommitted(connection, txKey, bankAccountId(fromUuid.toString()), bankAccountId(toUuid.toString()), amount));
+                        if (replay != null && replay.ok) {
+                            return replay;
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
                 return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
             }
         }
@@ -2148,6 +3277,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         @Override
         public TxnResult credit(UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
+            requireAsyncBankContext("BankService.credit");
             if (toUuid == null || amount <= 0) {
                 return new TxnResult(false, "INVALID_REQUEST", "Некорректные данные пополнения.", 0L, "");
             }
@@ -2155,16 +3285,31 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return tx(connection -> {
                     Map<String, Object> account = ensureBankAccount(connection, toUuid.toString(), first(toName, ""));
                     String accountId = string(account.get("account_id"));
+                    String txKey = first(idempotencyKey, "credit-" + UUID.randomUUID());
+                    TxnResult replay = replayCreditIfCommitted(connection, txKey, accountId);
+                    if (replay != null) {
+                        return replay;
+                    }
                     long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", accountId);
                     long after = before + amount;
                     long t = now();
-                    String txId = first(idempotencyKey, "credit-" + UUID.randomUUID());
+                    String txId = txKey;
                     update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, accountId);
                     update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                             txId, accountId, first(action, "CREDIT"), toUuid.toString(), first(action, "CREDIT"), amount, after, txId, "COMMITTED", t, first(toName, ""), first(details, ""));
-                    return new TxnResult(true, "OK", "Коммит выполнен.", after, txId);
+                    return new TxnResult(true, "OK", "Пополнение выполнено.", after, txId);
                 });
             } catch (Exception error) {
+                try {
+                    String txKey = first(idempotencyKey, "");
+                    if (!txKey.isBlank()) {
+                        TxnResult replay = tx(connection -> replayCreditIfCommitted(connection, txKey, bankAccountId(toUuid.toString())));
+                        if (replay != null && replay.ok) {
+                            return replay;
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
                 return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
             }
         }
@@ -2209,9 +3354,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 }
                 return tx(connection -> {
                     ensureBankAccount(connection, uuid, first(playerName, ""));
-                    List<Map<String, Object>> existing = queryList(connection, "SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=? LIMIT 1", txKey);
-                    if (!existing.isEmpty()) {
-                        return new TxnResult(true, "OK", "Idempotent replay.", intValue(existing.getFirst().get("balance_after")), string(existing.getFirst().get("tx_id")));
+                    TxnResult replay = replayArtifactStyleTxn(connection, txKey, accountId, uuid, signedAmount, detailText);
+                    if (replay != null) {
+                        return replay;
                     }
                     long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", accountId);
                     long after = signedAmount < 0 ? before - amount : before + amount;
@@ -2229,5 +3374,43 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
             }
         }
+
+        private TxnResult replayTransferIfCommitted(Connection connection, String txKey, String fromAccountId, String toAccountId, long amount) throws Exception {
+            if (txKey == null || txKey.isBlank()) {
+                return null;
+            }
+            Map<String, Object> existing = queryOne(connection,
+                    "SELECT tx_id,from_account_id,to_account_id,amount FROM cmv4_bank_transfers WHERE idempotency_key=? LIMIT 1",
+                    txKey);
+            if (existing == null || existing.isEmpty()) {
+                return null;
+            }
+            if (!fromAccountId.equalsIgnoreCase(string(existing.get("from_account_id")))
+                    || !toAccountId.equalsIgnoreCase(string(existing.get("to_account_id")))
+                    || longValue(existing.get("amount")) != amount) {
+                return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Ключ перевода уже привязан к другой операции.", 0L, "");
+            }
+            long replayBalance = scalarLong(connection,
+                    "SELECT COALESCE(balance_after,0) FROM cmv4_bank_ledger WHERE tx_id=? LIMIT 1",
+                    string(existing.get("tx_id")) + ":out");
+            return new TxnResult(true, "OK", "Идемпотентный повтор.", replayBalance, string(existing.get("tx_id")));
+        }
+
+        private TxnResult replayCreditIfCommitted(Connection connection, String txKey, String accountId) throws Exception {
+            if (txKey == null || txKey.isBlank()) {
+                return null;
+            }
+            Map<String, Object> existing = queryOne(connection,
+                    "SELECT tx_id,account_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=? LIMIT 1",
+                    txKey);
+            if (existing == null || existing.isEmpty()) {
+                return null;
+            }
+            if (!accountId.equalsIgnoreCase(string(existing.get("account_id")))) {
+                return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Ключ пополнения уже привязан к другому счёту.", 0L, "");
+            }
+            return new TxnResult(true, "OK", "Идемпотентный повтор.", longValue(existing.get("balance_after")), string(existing.get("tx_id")));
+        }
     }
 }
+

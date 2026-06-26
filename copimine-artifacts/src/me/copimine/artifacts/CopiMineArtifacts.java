@@ -1,16 +1,72 @@
 package me.copimine.artifacts;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.sql.Array;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Queue;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.Map.Entry;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.stream.Collectors;
 import me.copimine.economycore.CopiMineEconomyCore;
-
+import me.copimine.economycore.CopiMineEconomyCore.ArtifactsBridge;
+import me.copimine.economycore.CopiMineEconomyCore.DonationBalanceService;
+import me.copimine.economycore.CopiMineEconomyCore.DonationPaymentService;
+import me.copimine.economycore.CopiMineEconomyCore.DonationPurchaseService;
+import me.copimine.economycore.CopiMineEconomyCore.Health;
+import me.copimine.economycore.CopiMineEconomyCore.PinStatus;
+import me.copimine.economycore.CopiMineEconomyCore.TxnResult;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.Tag;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.Ageable;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -18,32 +74,49 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.Display.Billboard;
+import org.bukkit.entity.ItemDisplay.ItemDisplayTransform;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.inventory.PrepareAnvilEvent;
+import org.bukkit.event.inventory.PrepareGrindstoneEvent;
+import org.bukkit.event.inventory.PrepareItemCraftEvent;
+import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemBreakEvent;
+import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -54,3280 +127,9600 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.sql.Array;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Deque;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Level;
-import java.util.stream.Collectors;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 public final class CopiMineArtifacts extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
-    private enum Category { WEAPON, ARMOR, TOOL, RP }
-    private static final int MODEL_ARTIFACT_SHOP_MARKER = 14004;
-    private enum ViewType { MAIN, CATEGORY, DETAIL, CONFIRM, PIN, PURCHASES, PENDING_DELIVERY, HELP, REPAIR, SUCCESS, ERROR, ADMIN_MAIN, ADMIN_SHOPS, ADMIN_CATALOG, ADMIN_DIAGNOSTICS }
+   private static final String PRESIDENT_BUDGET_ACCOUNT_ID = "PRESIDENT_BUDGET";
+   private static final UUID EMPTY_UUID = new UUID(0L, 0L);
+   private static final int MODEL_ARTIFACT_SHOP_MARKER = 14004;
+   private static final String ARTIFACT_LIMIT_SUPPLY = "ARTIFACT_LIMIT_SUPPLY";
+   private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
+   private static final String GUI_BACK_LABEL = "&aНазад";
+   private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
+   private static final Map<String, Integer> ARTIFACT_MODEL_DATA = Map.of("zmei_gorynych", 10001);
+   private static final Map<String, Integer> ARTIFACT_EFFECT_CHANCE = Map.of("zmei_gorynych", 10);
+   private static final Map<String, String> ARTIFACT_VISUAL_EFFECTS = Map.of("zmei_gorynych", "INVERTED_SCREEN");
+   private final Map<String, CopiMineArtifacts.CatalogItem> catalogById = new ConcurrentHashMap<>();
+   private final Map<String, CopiMineArtifacts.DonationCatalogItem> donationCatalogById = new ConcurrentHashMap<>();
+   private final Map<CopiMineArtifacts.Category, List<CopiMineArtifacts.CatalogItem>> catalogByCategory = new ConcurrentHashMap<>();
+   private final Map<UUID, CopiMineArtifacts.SessionState> sessions = new ConcurrentHashMap<>();
+   private final Map<String, CopiMineArtifacts.Shop> shopsByLocation = new ConcurrentHashMap<>();
+   private final Map<UUID, Long> actionCooldowns = new ConcurrentHashMap<>();
+   private final Map<UUID, Location> lastDeathLocations = new ConcurrentHashMap<>();
+   private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
+   private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
+   private final Set<String> provisionalDonationInstanceIds = ConcurrentHashMap.newKeySet();
+   private final Set<String> pendingVisualRepairChunks = ConcurrentHashMap.newKeySet();
+   private final Set<String> suspiciousSeen = ConcurrentHashMap.newKeySet();
+   private final Set<String> chainedTreeBreaks = ConcurrentHashMap.newKeySet();
+   private final Queue<String> visualRepairQueue = new ConcurrentLinkedQueue<>();
+   private final Object donationLossJournalLock = new Object();
+   private final AtomicBoolean bridgeWarned = new AtomicBoolean(false);
+   private final AtomicBoolean visualRepairDrainRunning = new AtomicBoolean(false);
+   private final Random random = new Random();
+   private static final long SESSION_TTL_SECONDS = 900L;
+   private int donationCatalogVersion = 1;
+   private long donationCatalogUpdatedAt = 0L;
+   private ExecutorService dbExecutor;
+   private CopiMineArtifacts.PgPool pgPool;
+   private CopiMineArtifacts.PgSettings pgSettings;
+   private CopiMineArtifacts.ArtifactBridgeAdapter bridge;
+   private boolean debugGui;
+   private CopiMineArtifacts.VisualEffectService visualEffects;
+   private Path donationLossJournalPath;
+   private NamespacedKey keyItemId;
+   private NamespacedKey keyUniqueItemId;
+   private NamespacedKey keyCategory;
+   private NamespacedKey keyRarity;
+   private NamespacedKey keyOwnerUuid;
+   private NamespacedKey keyOwnerName;
+   private NamespacedKey keyPurchaseId;
+   private NamespacedKey keyItemType;
+   private NamespacedKey keySource;
+   private NamespacedKey keyBound;
+   private NamespacedKey keyReclaimable;
+   private NamespacedKey visualEntityTypeKey;
+   private NamespacedKey visualKindKey;
+   private NamespacedKey visualLinkedIdKey;
+   private NamespacedKey visualModelIdKey;
+   private BukkitTask deliveryTask;
+   private BukkitTask sessionCleanupTask;
 
-    private record CatalogItem(
-            String itemId,
-            Category category,
-            Material material,
-            String name,
-            String rarity,
-            long priceAr,
-            int supplyLimit,
-            int perPlayerLimit,
-            int cooldownSeconds,
-            String effect,
-            int customModelData,
-            int effectChancePercent,
-            String visualEffectId,
-            List<String> lore
-    ) {}
-
-    private record Shop(
-            String shopId,
-            String title,
-            String world,
-            int x,
-            int y,
-            int z,
-            boolean enabled
-    ) {
-        String locationKey() { return world + ":" + x + ":" + y + ":" + z; }
-    }
-
-    private record PurchaseContext(String purchaseId, String uniqueItemId, CatalogItem item, Shop shop, String pin) {}
-    private record BridgePinStatus(boolean configured, boolean mustChange, long lockedSeconds) {}
-    private record BridgeTxnResult(boolean ok, String code, String message, long balanceAfter, String txId) {}
-    private record BridgeHealthSnapshot(boolean bridgeReady, boolean postgresReady, boolean pinReady, long balance, String context, String lastError) {}
-    private record PendingDeliveryRow(String deliveryId, String purchaseId, String uniqueItemId, String itemId) {}
-    private record DonationClaimRow(String claimId, String purchaseId, String itemId, long amount) {}
-    private record DonationDeliveryContext(String purchaseId, CatalogItem item, List<String> uniqueItemIds) {}
-
-    private static final class MenuHolder implements InventoryHolder {
-        final UUID sessionId;
-        final UUID playerUuid;
-        final String shopId;
-        final ViewType viewType;
-        final String category;
-        final String itemId;
-        final int page;
-        private Inventory inventory;
-
-        MenuHolder(SessionState state, UUID playerUuid) {
-            this.sessionId = state.sessionId;
-            this.playerUuid = playerUuid;
-            this.shopId = state.shopId == null ? "" : state.shopId;
-            this.viewType = state.viewType;
-            this.category = state.currentCategory == null ? "" : state.currentCategory;
-            this.itemId = state.currentItemId == null ? "" : state.currentItemId;
-            this.page = state.page;
-        }
-
-        void setInventory(Inventory inventory) {
-            this.inventory = inventory;
-        }
-
-        @Override public Inventory getInventory() { return inventory; }
-    }
-
-    private static final class SessionState {
-        UUID sessionId = UUID.randomUUID();
-        String shopId = "";
-        ViewType viewType = ViewType.MAIN;
-        String currentCategory = "";
-        String currentItemId = "";
-        int page = 0;
-        String pinBuffer = "";
-        String purchaseInFlightId = "";
-        long lastClickAt = 0L;
-        long lastActionAt = 0L;
-        final Map<Integer, String> actions = new HashMap<>();
-    }
-
-    private static final class PgSettings {
-        final String host;
-        final int port;
-        final String db;
-        final String schema;
-        final String user;
-        final String password;
-        PgSettings(String host, int port, String db, String schema, String user, String password) {
-            this.host = host;
-            this.port = port;
-            this.db = db;
-            this.schema = schema;
-            this.user = user;
-            this.password = password;
-        }
-        String jdbcUrl() {
-            return "jdbc:postgresql://" + host + ":" + port + "/" + db + "?currentSchema=" + schema;
-        }
-    }
-
-    private static final class PgPool {
-        private final PgSettings settings;
-        private final Deque<Connection> idle = new ArrayDeque<>();
-        private final int max;
-        private int total;
-        PgPool(PgSettings settings, int max) {
-            this.settings = settings;
-            this.max = Math.max(2, max);
-        }
-        synchronized Connection acquire() throws SQLException {
-            long deadline = System.currentTimeMillis() + 1500L;
-            while (true) {
-                while (!idle.isEmpty()) {
-                    Connection c = idle.pop();
-                    if (c != null && !c.isClosed()) {
-                        return c;
-                    }
-                    total--;
-                }
-                if (total < max) {
-                    total++;
-                    Connection c = DriverManager.getConnection(settings.jdbcUrl(), settings.user, settings.password);
-                    c.setAutoCommit(true);
-                    return c;
-                }
-                long remaining = deadline - System.currentTimeMillis();
-                if (remaining <= 0L) {
-                    throw new SQLException("Artifact PostgreSQL pool timed out while waiting for a free connection.");
-                }
-                try {
-                    wait(Math.min(remaining, 250L));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new SQLException("Artifact PostgreSQL pool wait interrupted.", e);
-                }
-            }
-        }
-        synchronized void release(Connection c) {
-            if (c == null) return;
+   public void onEnable() {
+      this.saveDefaultConfig();
+      this.debugGui = this.getConfig().getBoolean("debug_gui", false);
+      this.ensureItemsConfig();
+      this.keyItemId = new NamespacedKey(this, "artifact_item_id");
+      this.keyUniqueItemId = new NamespacedKey(this, "artifact_unique_item_id");
+      this.keyCategory = new NamespacedKey(this, "artifact_category");
+      this.keyRarity = new NamespacedKey(this, "artifact_rarity");
+      this.keyOwnerUuid = new NamespacedKey(this, "artifact_owner_uuid");
+      this.keyOwnerName = new NamespacedKey(this, "artifact_owner_name");
+      this.keyPurchaseId = new NamespacedKey(this, "artifact_purchase_id");
+      this.keyItemType = new NamespacedKey(this, "copimine_item_type");
+      this.keySource = new NamespacedKey(this, "artifact_source");
+      this.keyBound = new NamespacedKey(this, "artifact_bound");
+      this.keyReclaimable = new NamespacedKey(this, "artifact_reclaimable");
+      this.visualEntityTypeKey = new NamespacedKey(this, "visual_entity_type");
+      this.visualKindKey = new NamespacedKey(this, "visual_kind");
+      this.visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
+      this.visualModelIdKey = new NamespacedKey(this, "visual_model_id");
+      this.visualEffects = new CopiMineArtifacts.VisualEffectService(this);
+      this.dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors())));
+      this.donationLossJournalPath = this.getDataFolder().toPath().resolve("donation-loss-journal.tsv");
+      Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
+      if (var1 != null && var1.isEnabled()) {
+         this.bridge = new CopiMineArtifacts.ArtifactBridgeAdapter();
+         if (!this.bridge.isAvailable()) {
+            this.getLogger()
+               .severe("CopiMineEconomyCore ArtifactsBridge is unavailable. CopiMineArtifacts will not start without the official economy bridge.");
+            this.getServer().getPluginManager().disablePlugin(this);
+         } else {
             try {
-                if (c.isClosed()) {
-                    total--;
-                } else {
-                    idle.push(c);
-                }
-            } catch (SQLException e) {
-                total--;
+               Class.forName("org.postgresql.Driver");
+               this.pgSettings = this.loadPgSettings();
+               this.pgPool = new CopiMineArtifacts.PgPool(this.pgSettings, 4);
+               this.ensureSchema();
+               this.loadCatalogFromConfig();
+               this.syncCatalogToPostgres();
+               this.loadShopsFromPostgres();
+               this.loadInstanceCache();
+               this.flushPendingDonationLossJournalAsync();
+               this.runAsync(this::reconcilePendingRevenuePayouts);
+               this.repairProtectedBlockVisuals();
+               this.runAsync(() -> {
+                  CopiMineArtifacts.BridgeHealthSnapshot var1x = this.bridge.health((UUID)null, "artifacts-startup");
+                  this.getLogger().info("Artifacts bridge ready=" + var1x.bridgeReady() + " postgres=" + var1x.postgresReady() + " context=" + var1x.context());
+                  this.audit("SERVER", "bridge_ready", "CopiMineEconomyCore", "postgres=" + var1x.postgresReady() + " context=" + var1x.context());
+               });
+            } catch (Exception var3) {
+               throw new RuntimeException("CopiMineArtifacts failed to initialize PostgreSQL: " + this.safeErr(var3), var3);
             }
-            notifyAll();
-        }
-        synchronized void close() {
-            for (Connection c : idle) {
-                try { c.close(); } catch (SQLException ignored) {}
+
+            PluginCommand var2 = this.getCommand("cmartifacts");
+            if (var2 != null) {
+               var2.setExecutor(this);
+               var2.setTabCompleter(this);
             }
-            idle.clear();
-            total = 0;
-        }
-    }
 
-    private static final class VisualEffectService {
-        private final JavaPlugin plugin;
+            Bukkit.getPluginManager().registerEvents(this, this);
+            this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
+            this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
+            this.getLogger().info("CopiMineArtifacts enabled with " + this.catalogById.size() + " active catalog items.");
+         }
+      } else {
+         this.getLogger().severe("CopiMineEconomyCore is not enabled. CopiMineArtifacts requires the official economy bridge and will stop.");
+         this.getServer().getPluginManager().disablePlugin(this);
+      }
+   }
 
-        VisualEffectService(JavaPlugin plugin) {
-            this.plugin = plugin;
-        }
+   public boolean knowsCatalogItem(String var1) {
+      return var1 != null && this.catalogById.containsKey(var1.toLowerCase(Locale.ROOT));
+   }
 
-        void applyTo(LivingEntity target, String effectId, int durationSeconds) {
-            if (target == null || effectId == null || effectId.isBlank()) {
-                return;
-            }
-            int ticks = Math.max(20, durationSeconds * 20);
-            Location loc = target.getLocation().add(0.0D, 1.0D, 0.0D);
-            World world = loc.getWorld();
-            if (world == null) {
-                return;
-            }
-            switch (effectId.toUpperCase(Locale.ROOT)) {
-                case "INVERTED_SCREEN" -> {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, ticks, 0, false, false, true));
-                    if (target instanceof Player player) {
-                        player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, Math.min(ticks, 20 * 4), 0, false, false, true));
-                    }
-                    world.spawnParticle(Particle.REVERSE_PORTAL, loc, 24, 0.45, 0.45, 0.45, 0.02);
-                }
-                case "DARK_PULSE" -> {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, Math.min(ticks, 20 * 8), 0, false, false, true));
-                    world.spawnParticle(Particle.SMOKE, loc, 18, 0.4, 0.3, 0.4, 0.03);
-                }
-                case "MOON_GLOW" -> {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, ticks, 0, false, false, true));
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, ticks, 0, false, false, true));
-                    world.spawnParticle(Particle.END_ROD, loc, 22, 0.4, 0.5, 0.4, 0.01);
-                }
-                case "AMBER_WARP" -> {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, ticks, 0, false, false, true));
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, ticks, 0, false, false, true));
-                    world.spawnParticle(Particle.WAX_ON, loc, 24, 0.45, 0.45, 0.45, 0.02);
-                }
-                case "COLD_FOG" -> {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, ticks, 0, false, false, true));
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, ticks, 0, false, false, true));
-                    world.spawnParticle(Particle.CLOUD, loc, 26, 0.55, 0.35, 0.55, 0.02);
-                }
-                case "PIXEL_WAVE" -> world.spawnParticle(Particle.WAX_OFF, loc, 20, 0.4, 0.4, 0.4, 0.01);
-                case "CHROMATIC_SHIFT" -> {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, Math.min(ticks, 20 * 12), 0, false, false, true));
-                    world.spawnParticle(Particle.ENTITY_EFFECT, loc, 20, 0.4, 0.4, 0.4, 1.0);
-                }
-                case "STATIC_NOISE" -> world.spawnParticle(Particle.ASH, loc, 18, 0.4, 0.5, 0.4, 0.02);
-                case "TUNNEL_VISION" -> {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, Math.min(ticks, 20 * 3), 0, false, false, true));
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, Math.min(ticks, 20 * 6), 0, false, false, true));
-                    world.spawnParticle(Particle.TRIAL_OMEN, loc, 16, 0.25, 0.25, 0.25, 0.0);
-                }
-                default -> plugin.getLogger().fine("Unknown visual effect id: " + effectId);
-            }
-        }
-    }
+   public boolean knowsDonationCatalogItem(String itemId) {
+      return itemId != null && this.donationCatalogById.containsKey(itemId.toLowerCase(Locale.ROOT));
+   }
 
-    private static final Map<String, Integer> ARTIFACT_MODEL_DATA = Map.of(
-            "zmei_gorynych", 10001
-    );
-    private static final Map<String, Integer> ARTIFACT_EFFECT_CHANCE = Map.of(
-            "zmei_gorynych", 10
-    );
-    private static final Map<String, String> ARTIFACT_VISUAL_EFFECTS = Map.of(
-            "zmei_gorynych", "INVERTED_SCREEN"
-    );
+   public long donationCatalogPrice(String var1) {
+      CopiMineArtifacts.DonationCatalogItem var2 = this.donationCatalogItem(var1);
+      return var2 == null ? -1L : Math.max(0L, var2.priceDonation());
+   }
 
-    private final Map<String, CatalogItem> catalogById = new ConcurrentHashMap<>();
-    private final Map<Category, List<CatalogItem>> catalogByCategory = new ConcurrentHashMap<>();
-    private final Map<UUID, SessionState> sessions = new ConcurrentHashMap<>();
-    private final Map<String, Shop> shopsByLocation = new ConcurrentHashMap<>();
-    private final Map<UUID, Long> actionCooldowns = new ConcurrentHashMap<>();
-    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
-    private final Set<String> suspiciousSeen = ConcurrentHashMap.newKeySet();
-    private final AtomicBoolean bridgeWarned = new AtomicBoolean(false);
-    private final Random random = new Random();
-    private static final long SESSION_TTL_SECONDS = 15L * 60L;
-    private ExecutorService dbExecutor;
-    private PgPool pgPool;
-    private PgSettings pgSettings;
-    private ArtifactBridgeAdapter bridge;
-    private boolean debugGui;
-    private VisualEffectService visualEffects;
+   public List<Map<String, Object>> donationCatalogSnapshot() {
+      return this.donationCatalogById.values()
+         .stream()
+         .sorted((var0, var1) -> var0.itemId().compareToIgnoreCase(var1.itemId()))
+         .map(var1 -> {
+         LinkedHashMap<String, Object> var2 = new LinkedHashMap<>();
+         var2.put("item_id", var1.itemId());
+         var2.put("display_name", var1.displayName());
+         var2.put("base_material", var1.baseMaterial().name());
+         var2.put("price_donation", var1.priceDonation());
+         var2.put("enabled", var1.enabled());
+         var2.put("source", var1.source());
+         var2.put("owner_bound", var1.ownerBound());
+         var2.put("reclaim_policy", var1.reclaimPolicy());
+         var2.put("consume_policy", var1.consumePolicy());
+         var2.put("effect_profile_id", var1.effectProfileId());
+         var2.put("effect_description", var1.effectDescription());
+         var2.put("cooldown_seconds", var1.cooldownSeconds());
+         var2.put("proc_chance", var1.procChance());
+         var2.put("max_stack", var1.maxStack());
+         var2.put("repairable", var1.repairable());
+         var2.put("custom_texture_mode_allowed", var1.customTextureModeAllowed());
+         var2.put("custom_model_data", var1.customModelData());
+         var2.put("visual_effect_id", var1.visualEffectId());
+         var2.put("catalog_version", this.donationCatalogVersion);
+         var2.put("updated_at", this.donationCatalogUpdatedAt);
+         var2.put("lore", List.copyOf(var1.lore()));
+         return (Map<String, Object>)var2;
+      }).toList();
+   }
 
-    private NamespacedKey keyItemId;
-    private NamespacedKey keyUniqueItemId;
-    private NamespacedKey keyCategory;
-    private NamespacedKey keyRarity;
-    private NamespacedKey keyOwnerUuid;
-    private NamespacedKey keyPurchaseId;
-    private NamespacedKey visualEntityTypeKey;
-    private NamespacedKey visualKindKey;
-    private NamespacedKey visualLinkedIdKey;
-    private NamespacedKey visualModelIdKey;
-    private BukkitTask deliveryTask;
-    private BukkitTask sessionCleanupTask;
+   public void onDisable() {
+      Bukkit.getScheduler().cancelTasks(this);
+      if (this.deliveryTask != null) {
+         this.deliveryTask.cancel();
+      }
 
-    @Override
-    public void onEnable() {
-        saveDefaultConfig();
-        debugGui = getConfig().getBoolean("debug_gui", false);
-        ensureItemsConfig();
-        keyItemId = new NamespacedKey(this, "artifact_item_id");
-        keyUniqueItemId = new NamespacedKey(this, "artifact_unique_item_id");
-        keyCategory = new NamespacedKey(this, "artifact_category");
-        keyRarity = new NamespacedKey(this, "artifact_rarity");
-        keyOwnerUuid = new NamespacedKey(this, "artifact_owner_uuid");
-        keyPurchaseId = new NamespacedKey(this, "artifact_purchase_id");
-        visualEntityTypeKey = new NamespacedKey(this, "visual_entity_type");
-        visualKindKey = new NamespacedKey(this, "visual_kind");
-        visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
-        visualModelIdKey = new NamespacedKey(this, "visual_model_id");
-        visualEffects = new VisualEffectService(this);
-        dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors())));
-        Plugin mainPlugin = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
-        if (mainPlugin == null || !mainPlugin.isEnabled()) {
-            getLogger().severe("CopiMineEconomyCore is not enabled. CopiMineArtifacts requires the official economy bridge and will stop.");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
-        bridge = new ArtifactBridgeAdapter();
-        if (!bridge.isAvailable()) {
-            getLogger().severe("CopiMineEconomyCore ArtifactsBridge is unavailable. CopiMineArtifacts will not start without the official economy bridge.");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
-        try {
-            Class.forName("org.postgresql.Driver");
-            pgSettings = loadPgSettings();
-            pgPool = new PgPool(pgSettings, 4);
-            ensureSchema();
-            loadCatalogFromConfig();
-            syncCatalogToPostgres();
-            loadShopsFromPostgres();
-            loadInstanceCache();
-            repairProtectedBlockVisuals();
-            BridgeHealthSnapshot health = bridge.health(null, "artifacts-startup");
-            getLogger().info("Artifacts bridge ready=" + health.bridgeReady() + " postgres=" + health.postgresReady() + " context=" + health.context());
-            audit("SERVER", "bridge_ready", "CopiMineEconomyCore", "postgres=" + health.postgresReady() + " context=" + health.context());
-        } catch (Exception e) {
-            throw new RuntimeException("CopiMineArtifacts failed to initialize PostgreSQL: " + safeErr(e), e);
-        }
-        PluginCommand command = getCommand("cmartifacts");
-        if (command != null) {
-            command.setExecutor(this);
-            command.setTabCompleter(this);
-        }
-        Bukkit.getPluginManager().registerEvents(this, this);
-        deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
-        sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
-        getLogger().info("CopiMineArtifacts enabled with " + catalogById.size() + " active catalog items.");
-    }
+      if (this.sessionCleanupTask != null) {
+         this.sessionCleanupTask.cancel();
+      }
 
-    public boolean knowsCatalogItem(String itemId) {
-        return itemId != null && catalogById.containsKey(itemId.toLowerCase(Locale.ROOT));
-    }
+      if (this.dbExecutor != null) {
+         this.dbExecutor.shutdown();
 
-    @Override
-    public void onDisable() {
-        if (deliveryTask != null) deliveryTask.cancel();
-        if (sessionCleanupTask != null) sessionCleanupTask.cancel();
-        if (dbExecutor != null) {
-            dbExecutor.shutdown();
-            try { dbExecutor.awaitTermination(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
-        }
-        if (pgPool != null) pgPool.close();
-    }
+         try {
+            this.dbExecutor.awaitTermination(5L, TimeUnit.SECONDS);
+         } catch (InterruptedException var2) {
+            Thread.currentThread().interrupt();
+         }
+      }
 
-    private void ensureItemsConfig() {
-        File items = new File(getDataFolder(), "items.yml");
-        if (!items.exists()) {
-            getDataFolder().mkdirs();
+      this.visualRepairQueue.clear();
+      this.pendingVisualRepairChunks.clear();
+      this.visualRepairDrainRunning.set(false);
+
+      if (this.pgPool != null) {
+         this.pgPool.close();
+      }
+   }
+
+   private void ensureItemsConfig() {
+      File var1 = new File(this.getDataFolder(), "items.yml");
+      if (!var1.exists()) {
+         this.getDataFolder().mkdirs();
+
+         try {
+            this.saveResource("items.yml", false);
+         } catch (IllegalArgumentException var5) {
             try {
-                saveResource("items.yml", false);
-            } catch (IllegalArgumentException ignored) {
-                try {
-                    Files.writeString(items.toPath(), defaultItemsYaml(), StandardCharsets.UTF_8);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+               Files.writeString(var1.toPath(), this.defaultItemsYaml(), StandardCharsets.UTF_8);
+            } catch (IOException var4) {
+               throw new RuntimeException(var4);
             }
-        }
-    }
+         }
+      }
+   }
 
-    private String defaultItemsYaml() {
-        return "items:\n" +
-                "  - id: zmei_gorynych\n" +
-                "    category: WEAPON\n" +
-                "    material: NETHERITE_SWORD\n" +
-                "    custom_model_data: 10001\n" +
-                "    name: \"&6Змей Горыныч\"\n" +
-                "    rarity: LEGENDARY\n" +
-                "    price_ar: 500\n" +
-                "    supply_limit: 0\n" +
-                "    per_player_limit: 1\n" +
-                "    cooldown_seconds: 12\n" +
-                "    effect: ZMEI_GORYNYCH_POOP\n" +
-                "    effect_chance_percent: 10\n" +
-                "    visual_effect_id: INVERTED_SCREEN\n" +
-                "    lore:\n" +
-                "      - \"&7Официальное оружие CopiMineArtifacts\"\n" +
-                "      - \"&7При ударе может вызвать электрический импульс.\"\n";
-    }
+   private String defaultItemsYaml() {
+      return "items:\n  - id: zmei_gorynych\n    category: WEAPON\n    material: NETHERITE_SWORD\n    custom_model_data: 10001\n    name: \"&6\u0417\u043c\u0435\u0439 \u0413\u043e\u0440\u044b\u043d\u044b\u0447\"\n    rarity: LEGENDARY\n    price_ar: 500\n    supply_limit: 0\n    per_player_limit: 1\n    cooldown_seconds: 12\n    effect: ZMEI_GORYNYCH_POOP\n    effect_chance_percent: 10\n    visual_effect_id: INVERTED_SCREEN\n    lore:\n      - \"&7\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u043e\u0435 \u043e\u0440\u0443\u0436\u0438\u0435 CopiMineArtifacts\"\n      - \"&7\u041f\u0440\u0438 \u0443\u0434\u0430\u0440\u0435 \u043c\u043e\u0436\u0435\u0442 \u0432\u044b\u0437\u0432\u0430\u0442\u044c \u044d\u043b\u0435\u043a\u0442\u0440\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0438\u043c\u043f\u0443\u043b\u044c\u0441.\"\n";
+   }
 
-    private PgSettings loadPgSettings() throws IOException {
-        Map<String, String> env = new HashMap<>(System.getenv());
-        for (Path candidate : envCandidates()) {
-            if (!Files.isRegularFile(candidate)) continue;
-            try (BufferedReader reader = Files.newBufferedReader(candidate, StandardCharsets.UTF_8)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String raw = line.trim();
-                    if (raw.isEmpty() || raw.startsWith("#") || !raw.contains("=")) continue;
-                    String[] parts = raw.split("=", 2);
-                    env.putIfAbsent(parts[0].trim(), parts[1].trim());
-                }
+   private CopiMineArtifacts.PgSettings loadPgSettings() throws IOException {
+      HashMap var1 = new HashMap<>(System.getenv());
+
+      for (Path var3 : this.envCandidates()) {
+         if (Files.isRegularFile(var3)) {
+            String var5;
+            try (BufferedReader var4 = Files.newBufferedReader(var3, StandardCharsets.UTF_8)) {
+               while ((var5 = var4.readLine()) != null) {
+                  String var6 = var5.trim();
+                  if (!var6.isEmpty() && !var6.startsWith("#") && var6.contains("=")) {
+                     String[] var7 = var6.split("=", 2);
+                     var1.putIfAbsent(var7[0].trim(), var7[1].trim());
+                  }
+               }
+               break;
+            }
+         }
+      }
+
+      String var10 = String.valueOf(var1.getOrDefault("POSTGRES_PASSWORD", ""));
+      if (var10.isBlank()) {
+         throw new IOException("POSTGRES_PASSWORD is missing");
+      } else {
+         return new CopiMineArtifacts.PgSettings(
+            String.valueOf(var1.getOrDefault("POSTGRES_HOST", "127.0.0.1")),
+            this.parseInt(String.valueOf(var1.getOrDefault("POSTGRES_PORT", "5432")), 5432),
+            String.valueOf(var1.getOrDefault("POSTGRES_DB", "copimine")),
+            String.valueOf(var1.getOrDefault("POSTGRES_SCHEMA", "copimine")),
+            String.valueOf(var1.getOrDefault("POSTGRES_USER", "copimine")),
+            var10
+         );
+      }
+   }
+
+   private List<Path> envCandidates() {
+      ArrayList var1 = new ArrayList();
+      String var2 = System.getenv("COPIMINE_ENV_FILE");
+      if (var2 != null && !var2.isBlank()) {
+         var1.add(Path.of(var2));
+      }
+
+      File var3 = this.getDataFolder();
+      File var4 = var3.getParentFile();
+      if (var4 != null) {
+         File var5 = var4.getParentFile();
+         if (var5 != null) {
+            File var6 = var5.getParentFile();
+            if (var6 != null) {
+               File var7 = var6.getParentFile();
+               if (var7 != null) {
+                  var1.add(var7.toPath().resolve("admin-web").resolve(".env"));
+               }
+            }
+         }
+      }
+
+      return var1;
+   }
+
+   private void ensureSchema() throws SQLException {
+      Connection var1 = this.pgPool.acquire();
+
+      try (Statement var2 = var1.createStatement()) {
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_items_catalog(\n        item_id TEXT PRIMARY KEY,\n        category TEXT NOT NULL,\n        material TEXT NOT NULL,\n        display_name TEXT NOT NULL,\n        rarity TEXT NOT NULL,\n        price_ar BIGINT NOT NULL,\n        supply_limit INTEGER NOT NULL DEFAULT 0,\n        per_player_limit INTEGER NOT NULL DEFAULT 0,\n        cooldown_seconds INTEGER NOT NULL DEFAULT 0,\n        effect_name TEXT NOT NULL DEFAULT 'NONE',\n        custom_model_data INTEGER NOT NULL DEFAULT 0,\n        effect_chance_percent INTEGER NOT NULL DEFAULT 100,\n        visual_effect_id TEXT NOT NULL DEFAULT '',\n        lore_json TEXT NOT NULL DEFAULT '[]',\n        enabled BOOLEAN NOT NULL DEFAULT TRUE,\n        updated_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_item_instances(\n        unique_item_id TEXT PRIMARY KEY,\n        item_id TEXT NOT NULL,\n        owner_uuid TEXT NOT NULL,\n        purchase_id TEXT NOT NULL,\n        status TEXT NOT NULL,\n        repaired_count INTEGER NOT NULL DEFAULT 0,\n        created_at BIGINT NOT NULL,\n        updated_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_shops(\n        shop_id TEXT PRIMARY KEY,\n        world_name TEXT NOT NULL,\n        block_x INTEGER NOT NULL,\n        block_y INTEGER NOT NULL,\n        block_z INTEGER NOT NULL,\n        title TEXT NOT NULL,\n        enabled BOOLEAN NOT NULL DEFAULT TRUE,\n        created_at BIGINT NOT NULL,\n        updated_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS protected_block_visuals(\n        id TEXT PRIMARY KEY,\n        kind TEXT NOT NULL,\n        linked_id TEXT NOT NULL,\n        world TEXT NOT NULL,\n        x INTEGER NOT NULL,\n        y INTEGER NOT NULL,\n        z INTEGER NOT NULL,\n        entity_uuid TEXT NOT NULL DEFAULT '',\n        base_material TEXT NOT NULL DEFAULT 'PAPER',\n        custom_model_data INTEGER NOT NULL DEFAULT 0,\n        model_id TEXT NOT NULL DEFAULT '',\n        offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,\n        offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,\n        offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,\n        scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,\n        scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,\n        scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,\n        yaw DOUBLE PRECISION NOT NULL DEFAULT 0,\n        pitch DOUBLE PRECISION NOT NULL DEFAULT 0,\n        created_at BIGINT NOT NULL DEFAULT 0,\n        updated_at BIGINT NOT NULL DEFAULT 0,\n        active INTEGER NOT NULL DEFAULT 1\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_purchases(\n        purchase_id TEXT PRIMARY KEY,\n        unique_item_id TEXT NOT NULL,\n        player_uuid TEXT NOT NULL,\n        player_name TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        shop_id TEXT NOT NULL,\n        price_ar BIGINT NOT NULL,\n        bank_tx_id TEXT NOT NULL DEFAULT '',\n        idempotency_key TEXT NOT NULL,\n        status TEXT NOT NULL,\n        delivery_mode TEXT NOT NULL DEFAULT 'DIRECT',\n        created_at BIGINT NOT NULL,\n        updated_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_repairs(\n        repair_id TEXT PRIMARY KEY,\n        unique_item_id TEXT NOT NULL,\n        player_uuid TEXT NOT NULL,\n        player_name TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        repair_cost_ar BIGINT NOT NULL,\n        bank_tx_id TEXT NOT NULL DEFAULT '',\n        status TEXT NOT NULL,\n        created_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_suspicious_events(\n        event_id TEXT PRIMARY KEY,\n        player_uuid TEXT NOT NULL,\n        player_name TEXT NOT NULL,\n        event_type TEXT NOT NULL,\n        details TEXT NOT NULL,\n        created_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_audit_log(\n        audit_id TEXT PRIMARY KEY,\n        actor TEXT NOT NULL,\n        action TEXT NOT NULL,\n        target_id TEXT NOT NULL,\n        details TEXT NOT NULL,\n        created_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_pending_deliveries(\n        delivery_id TEXT PRIMARY KEY,\n        purchase_id TEXT NOT NULL,\n        unique_item_id TEXT NOT NULL,\n        player_uuid TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        status TEXT NOT NULL,\n        created_at BIGINT NOT NULL,\n        updated_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_revenue_payouts(\n        purchase_id TEXT PRIMARY KEY,\n        president_uuid TEXT NOT NULL,\n        president_name TEXT NOT NULL DEFAULT '',\n        recipient_account_id TEXT NOT NULL DEFAULT 'PRESIDENT_BUDGET',\n        buyer_uuid TEXT NOT NULL,\n        buyer_name TEXT NOT NULL DEFAULT '',\n        item_id TEXT NOT NULL,\n        shop_id TEXT NOT NULL,\n        amount_ar BIGINT NOT NULL DEFAULT 0,\n        status TEXT NOT NULL DEFAULT 'PENDING',\n        bank_tx_id TEXT NOT NULL DEFAULT '',\n        idempotency_key TEXT NOT NULL DEFAULT '',\n        last_error TEXT NOT NULL DEFAULT '',\n        created_at BIGINT NOT NULL DEFAULT 0,\n        updated_at BIGINT NOT NULL DEFAULT 0\n    )\n"
+         );
+         var2.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_shops_block ON artifact_shops(world_name,block_x,block_y,block_z)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_purchases_player_time ON artifact_purchases(player_uuid,created_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_instances_item ON artifact_item_instances(item_id,status)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_instances_owner_item_status ON artifact_item_instances(owner_uuid,item_id,status)");
+         var2.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_artifact_instances_owner_item_live ON artifact_item_instances(owner_uuid,item_id) WHERE status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')"
+         );
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_pending_player ON artifact_pending_deliveries(player_uuid,status,created_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_revenue_payouts_status ON artifact_revenue_payouts(status,updated_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_revenue_payouts_president ON artifact_revenue_payouts(president_uuid,created_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_revenue_payouts_recipient ON artifact_revenue_payouts(recipient_account_id,created_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_repairs_player ON artifact_repairs(player_uuid,created_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_suspicious_time ON artifact_suspicious_events(created_at DESC,event_type)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_location ON protected_block_visuals(world,x,y,z,active)");
+         var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS supply_limit INTEGER NOT NULL DEFAULT 0");
+         var2.execute("ALTER TABLE artifact_revenue_payouts ADD COLUMN IF NOT EXISTS recipient_account_id TEXT NOT NULL DEFAULT 'PRESIDENT_BUDGET'");
+         var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS per_player_limit INTEGER NOT NULL DEFAULT 0");
+         var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS custom_model_data INTEGER NOT NULL DEFAULT 0");
+         var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS effect_chance_percent INTEGER NOT NULL DEFAULT 100");
+         var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS visual_effect_id TEXT NOT NULL DEFAULT ''");
+      } finally {
+         this.pgPool.release(var1);
+      }
+   }
+
+   private void loadCatalogFromConfig() {
+      this.catalogById.clear();
+      this.donationCatalogById.clear();
+      this.donationCatalogVersion = 1;
+      this.donationCatalogUpdatedAt = 0L;
+      EnumMap<CopiMineArtifacts.Category, List<CopiMineArtifacts.CatalogItem>> var1 = new EnumMap<>(CopiMineArtifacts.Category.class);
+
+      for (CopiMineArtifacts.Category var5 : CopiMineArtifacts.Category.values()) {
+         var1.put(var5, new ArrayList());
+      }
+
+      YamlConfiguration var12 = YamlConfiguration.loadConfiguration(new File(this.getDataFolder(), "items.yml"));
+
+      for (Map<?, ?> var16 : var12.getMapList("items")) {
+         String var6 = this.str(var16.get("id"));
+         if (!var6.isBlank()) {
+            CopiMineArtifacts.Category var7 = this.parseCategory(this.str(var16.get("category")));
+            Material var8 = Material.matchMaterial(this.str(var16.get("material")));
+            if (var8 == null) {
+               var8 = Material.STONE;
+            }
+
+            List<String> var9 = this.asStringList(var16.get("lore"));
+            Object var10 = var16.containsKey("visual_effect_id") ? var16.get("visual_effect_id") : this.artifactVisualEffect(var6);
+            CopiMineArtifacts.CatalogItem var11 = new CopiMineArtifacts.CatalogItem(
+               var6,
+               var7,
+               var8,
+               this.str(var16.get("name")),
+               this.str(var16.get("rarity")),
+               this.parseLong(this.str(var16.get("price_ar")), 0L),
+               Math.max(0, this.parseInt(this.str(var16.get("supply_limit")), 0)),
+               Math.max(0, this.parseInt(this.str(var16.get("per_player_limit")), 0)),
+               this.parseInt(this.str(var16.get("cooldown_seconds")), 0),
+               this.str(var16.get("effect")),
+               this.parseInt(this.str(var16.get("custom_model_data")), this.artifactModelData(var6)),
+         // normalizeChance(parseInt(str(row.get("effect_chance_percent")), artifactEffectChance(itemId)))
+         this.normalizeChance(this.parseInt(this.str(var16.get("effect_chance_percent")), this.artifactEffectChance(var6))),
+               this.str(var10),
+               var9
+            );
+            this.catalogById.put(var6, var11);
+            ((List)var1.get(var7)).add(var11);
+         }
+      }
+
+      ConfigurationSection var15 = var12.getConfigurationSection("donation-catalog");
+      if (var15 != null) {
+         this.donationCatalogVersion = Math.max(1, var15.getInt("catalog-version", 1));
+         this.donationCatalogUpdatedAt = this.parseLong(String.valueOf(var15.get("updated-at")), this.now());
+
+         for (Map<?, ?> var19 : var15.getMapList("items")) {
+            CopiMineArtifacts.DonationCatalogItem var21 = this.parseDonationCatalogItem(var19);
+            if (var21 != null && !var21.itemId().isBlank()) {
+               if (this.catalogById.containsKey(var21.itemId()) || this.donationCatalogById.containsKey(var21.itemId())) {
+                  throw new IllegalStateException("Duplicate donation catalog item id: " + var21.itemId());
+               }
+
+               this.donationCatalogById.put(var21.itemId(), var21);
+               CopiMineArtifacts.CatalogItem var22 = this.synthesizeDonationRuntimeItem(var21);
+               this.catalogById.put(var22.itemId(), var22);
+            }
+         }
+      }
+
+      this.catalogByCategory.clear();
+
+      for (Entry<CopiMineArtifacts.Category, List<CopiMineArtifacts.CatalogItem>> var20 : var1.entrySet()) {
+         this.catalogByCategory.put(var20.getKey(), List.copyOf(var20.getValue()));
+      }
+   }
+
+   private CopiMineArtifacts.DonationCatalogItem parseDonationCatalogItem(Map<?, ?> var1) {
+      String var2 = this.str(var1.get("item-id")).trim().toLowerCase(Locale.ROOT);
+      if (var2.isBlank()) {
+         return null;
+      } else {
+         Material var3 = Material.matchMaterial(this.str(var1.get("base-material")));
+         if (var3 == null) {
+            var3 = Material.STONE;
+         }
+
+         List var4 = this.asStringList(var1.get("lore"));
+         return new CopiMineArtifacts.DonationCatalogItem(
+            var2,
+            this.str(var1.get("display-name")),
+            var3,
+            Math.max(0L, this.parseLong(this.str(var1.get("price-donation")), 0L)),
+            this.parseBoolean(var1.get("enabled"), true),
+            this.firstNonBlank(this.str(var1.get("source")), "DONATION_SHOP"),
+            this.parseBoolean(var1.get("owner-bound"), true),
+            this.firstNonBlank(this.str(var1.get("reclaim-policy")), "LOSS_ONLY"),
+            this.firstNonBlank(this.str(var1.get("consume-policy")), "BREAKABLE"),
+            this.firstNonBlank(this.str(var1.get("effect-profile-id")), var2.toUpperCase(Locale.ROOT)),
+            this.firstNonBlank(
+               this.str(var1.get("effect-description")),
+               "\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0439 \u0434\u043e\u043d\u0430\u0442-\u043f\u0440\u0435\u0434\u043c\u0435\u0442 CopiMine."
+            ),
+            Math.max(0, this.parseInt(this.str(var1.get("cooldown-seconds")), 0)),
+            this.clampProcChance(this.parseDouble(this.str(var1.get("proc-chance")), 0.0)),
+            Math.max(1, this.parseInt(this.str(var1.get("max-stack")), 1)),
+            this.parseBoolean(var1.get("repairable"), false),
+            this.parseBoolean(var1.get("custom-texture-mode-allowed"), true),
+            Math.max(0, this.parseInt(this.str(var1.get("custom-model-data")), 0)),
+            this.firstNonBlank(this.str(var1.get("visual-effect-id")), ""),
+            var4
+         );
+      }
+   }
+
+   private CopiMineArtifacts.CatalogItem synthesizeDonationRuntimeItem(CopiMineArtifacts.DonationCatalogItem var1) {
+      ArrayList var2 = new ArrayList<>(var1.lore());
+      if (var2.isEmpty()) {
+         var2.add(
+            "&7\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0439 \u0434\u043e\u043d\u0430\u0442-\u043f\u0440\u0435\u0434\u043c\u0435\u0442 CopiMine"
+         );
+         var2.add("&7" + var1.effectDescription());
+         var2.add(
+            "&7\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u0438 \u0432\u043e\u0437\u0432\u0440\u0430\u0442 \u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0435\u0440\u0435\u0437 \u0438\u0433\u0440\u043e\u0432\u0443\u044e \u043b\u0430\u0432\u043a\u0443."
+         );
+      }
+
+      return new CopiMineArtifacts.CatalogItem(
+         var1.itemId(),
+         CopiMineArtifacts.Category.RP,
+         var1.baseMaterial(),
+         var1.displayName(),
+         "DONATION",
+         0L,
+         0,
+         0,
+         var1.cooldownSeconds(),
+         var1.effectProfileId(),
+         var1.customModelData(),
+         this.normalizeChance((int)Math.round(var1.procChance() * 100.0)),
+         var1.visualEffectId(),
+         var2
+      );
+   }
+
+   private void syncCatalogToPostgres() throws SQLException {
+      Connection var1 = this.pgPool.acquire();
+
+      try {
+         var1.setAutoCommit(false);
+
+         try (PreparedStatement var2 = var1.prepareStatement(
+               "    INSERT INTO artifact_items_catalog(item_id,category,material,display_name,rarity,price_ar,supply_limit,per_player_limit,cooldown_seconds,effect_name,custom_model_data,effect_chance_percent,visual_effect_id,lore_json,enabled,updated_at)\n    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)\n    ON CONFLICT(item_id) DO UPDATE SET\n        category=EXCLUDED.category,\n        material=EXCLUDED.material,\n        display_name=EXCLUDED.display_name,\n        rarity=EXCLUDED.rarity,\n        price_ar=EXCLUDED.price_ar,\n        supply_limit=EXCLUDED.supply_limit,\n        per_player_limit=EXCLUDED.per_player_limit,\n        cooldown_seconds=EXCLUDED.cooldown_seconds,\n        effect_name=EXCLUDED.effect_name,\n        custom_model_data=EXCLUDED.custom_model_data,\n        effect_chance_percent=EXCLUDED.effect_chance_percent,\n        visual_effect_id=EXCLUDED.visual_effect_id,\n        lore_json=EXCLUDED.lore_json,\n        enabled=EXCLUDED.enabled,\n        updated_at=EXCLUDED.updated_at\n"
+            )) {
+            long var3 = this.now();
+
+            for (CopiMineArtifacts.CatalogItem var6 : this.catalogById.values()) {
+               var2.setString(1, var6.itemId());
+               var2.setString(2, var6.category().name());
+               var2.setString(3, var6.material().name());
+               var2.setString(4, var6.name());
+               var2.setString(5, var6.rarity());
+               var2.setLong(6, var6.priceAr());
+               var2.setInt(7, var6.supplyLimit());
+               var2.setInt(8, var6.perPlayerLimit());
+               var2.setInt(9, var6.cooldownSeconds());
+               var2.setString(10, var6.effect());
+               var2.setInt(11, var6.customModelData());
+               var2.setInt(12, var6.effectChancePercent());
+               var2.setString(13, var6.visualEffectId());
+               var2.setString(14, this.toJson(var6.lore()));
+               CopiMineArtifacts.DonationCatalogItem var7 = this.donationCatalogById.get(var6.itemId());
+               var2.setBoolean(15, var7 != null ? var7.enabled() : var6.category() != CopiMineArtifacts.Category.RP);
+               var2.setLong(16, var3);
+               var2.addBatch();
+            }
+
+            var2.executeBatch();
+         }
+
+         var1.commit();
+      } catch (SQLException var19) {
+         var1.rollback();
+         throw var19;
+      } finally {
+         try {
+            var1.setAutoCommit(true);
+         } catch (SQLException var16) {
+         }
+
+         this.pgPool.release(var1);
+      }
+   }
+
+   private void loadShopsFromPostgres() throws SQLException {
+      this.shopsByLocation.clear();
+      Connection var1 = this.pgPool.acquire();
+
+      try (
+         PreparedStatement var2 = var1.prepareStatement("SELECT shop_id,title,world_name,block_x,block_y,block_z,enabled FROM artifact_shops");
+         ResultSet var3 = var2.executeQuery();
+      ) {
+         while (var3.next()) {
+            CopiMineArtifacts.Shop var4 = new CopiMineArtifacts.Shop(
+               var3.getString(1), var3.getString(2), var3.getString(3), var3.getInt(4), var3.getInt(5), var3.getInt(6), var3.getBoolean(7)
+            );
+            this.shopsByLocation.put(var4.locationKey(), var4);
+         }
+      } finally {
+         this.pgPool.release(var1);
+      }
+   }
+
+   private void loadInstanceCache() throws SQLException {
+      this.instanceToItem.clear();
+      this.instanceBindings.clear();
+      Connection var1 = this.pgPool.acquire();
+
+      try (
+         PreparedStatement var2 = var1.prepareStatement(
+            "SELECT unique_item_id,item_id,owner_uuid FROM artifact_item_instances WHERE status IN ('DELIVERED','ACTIVE')"
+         );
+         ResultSet var3 = var2.executeQuery();
+      ) {
+         while (var3.next()) {
+            this.cacheOfficialBinding(var3.getString(1), var3.getString(2), var3.getString(3));
+         }
+      } finally {
+         this.pgPool.release(var1);
+      }
+   }
+
+   private void cacheOfficialBinding(String uniqueItemId, String itemId, UUID ownerUuid) {
+      this.cacheOfficialBinding(uniqueItemId, itemId, ownerUuid == null ? "" : ownerUuid.toString());
+   }
+
+    private void cacheOfficialBinding(String uniqueItemId, String itemId, String ownerUuid) {
+      String safeUnique = this.firstNonBlank(uniqueItemId, "");
+      String safeItem = this.firstNonBlank(itemId, "");
+      String safeOwner = this.firstNonBlank(ownerUuid, "");
+      if (!safeUnique.isBlank() && !safeItem.isBlank() && !safeOwner.isBlank()) {
+         this.provisionalDonationInstanceIds.remove(safeUnique);
+         this.instanceToItem.put(safeUnique, safeItem);
+         this.instanceBindings.put(safeUnique, new CopiMineArtifacts.OfficialInstanceBinding(safeItem, safeOwner));
+      }
+   }
+
+   private void removeOfficialBinding(String var1) {
+      String var2 = this.firstNonBlank(var1, "");
+      if (!var2.isBlank()) {
+         this.provisionalDonationInstanceIds.remove(var2);
+         this.instanceToItem.remove(var2);
+         this.instanceBindings.remove(var2);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onShopInteract(PlayerInteractEvent var1) {
+      if (var1.getAction() == Action.RIGHT_CLICK_BLOCK) {
+         Block var2 = var1.getClickedBlock();
+         if (var2 != null) {
+            CopiMineArtifacts.Shop var3 = this.shopsByLocation.get(this.blockKey(var2.getLocation()));
+            if (var3 != null) {
+               var1.setCancelled(true);
+               if (!var3.enabled()) {
+                  var1.getPlayer()
+                     .sendMessage(
+                        this.color(
+                           "&c\u041c\u0430\u0433\u0430\u0437\u0438\u043d \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."
+                        )
+                     );
+               } else if (!var1.getPlayer().hasPermission("copimine.artifacts.use")) {
+                  var1.getPlayer().sendMessage(this.color("&c\u041d\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a CopiMineArtifacts."));
+               } else {
+                  this.openMain(var1.getPlayer(), var3, true);
+               }
+            }
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onShopVisualInteract(PlayerInteractEntityEvent var1) {
+      if (var1.getRightClicked() instanceof ItemDisplay var2) {
+         PersistentDataContainer var6 = var2.getPersistentDataContainer();
+         if ("PROTECTED_BLOCK_VISUAL".equals(var6.get(this.visualEntityTypeKey, PersistentDataType.STRING))) {
+            if ("ARTIFACT_SHOP".equals(this.first((String)var6.get(this.visualKindKey, PersistentDataType.STRING), ""))) {
+               String var4 = this.first((String)var6.get(this.visualLinkedIdKey, PersistentDataType.STRING), "");
+               if (!var4.isBlank()) {
+                  var1.setCancelled(true);
+                  CopiMineArtifacts.Shop var5 = this.shopsByLocation
+                     .values()
+                     .stream()
+                     .filter(var1x -> var1x.shopId().equalsIgnoreCase(var4))
+                     .findFirst()
+                     .orElse(null);
+                  if (var5 != null && var5.enabled()) {
+                     if (!var1.getPlayer().hasPermission("copimine.artifacts.use")) {
+                        var1.getPlayer().sendMessage(this.color("&c\u041d\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a CopiMineArtifacts."));
+                     } else {
+                        this.openMain(var1.getPlayer(), var5, true);
+                     }
+                  } else {
+                     var1.getPlayer()
+                        .sendMessage(
+                           this.color(
+                              "&c\u041b\u0430\u0432\u043a\u0430 \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430."
+                           )
+                        );
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   @EventHandler
+   public void onChunkLoad(ChunkLoadEvent var1) {
+      if (this.customBlockVisualsEnabled()) {
+         try {
+            this.repairProtectedBlockVisuals(var1.getWorld().getName(), var1.getChunk().getX(), var1.getChunk().getZ());
+         } catch (Exception var3) {
+            this.getLogger().log(Level.WARNING, "Artifact shop visual repair failed for chunk load", (Throwable)var3);
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onShopBreak(BlockBreakEvent var1) {
+      if (!this.chainedTreeBreaks.remove(this.blockKey(var1.getBlock().getLocation()))) {
+         CopiMineArtifacts.Shop var2 = this.shopsByLocation.get(this.blockKey(var1.getBlock().getLocation()));
+         if (var2 != null) {
+            if (!this.isArtifactsAdmin(var1.getPlayer())) {
+               var1.setCancelled(true);
+               var1.getPlayer()
+                  .sendMessage(
+                     this.color(
+                        "&c\u041b\u0430\u0432\u043a\u0430 CopiMineArtifacts \u0441\u043d\u0438\u043c\u0430\u0435\u0442\u0441\u044f \u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0435\u0440\u0435\u0437 /cmartifacts shop remove."
+                     )
+                  );
+            }
+         } else {
+            Player var3 = var1.getPlayer();
+            CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var3.getInventory().getItemInMainHand(), var3, "tool_use");
+            if (var4 != null) {
+               String var5 = var4.effect().toUpperCase(Locale.ROOT);
+               if (this.artifactToolEffects().contains(var5)) {
+                  long var6 = this.actionCooldowns.getOrDefault(var3.getUniqueId(), 0L);
+                  long var8 = this.now();
+                  if (var6 <= var8) {
+                     this.actionCooldowns.put(var3.getUniqueId(), var8 + (long)Math.max(2, var4.cooldownSeconds()));
+                     switch (var5) {
+                        case "MINER_PULSE":
+                        case "HASTE_BURST":
+                           var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 100, 1, false, false, true));
+                           var3.getWorld().spawnParticle(Particle.ENCHANT, var1.getBlock().getLocation().add(0.5, 0.8, 0.5), 10, 0.35, 0.35, 0.35, 0.01);
+                           break;
+                        case "FORESTER_FOCUS":
+                           var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
+                           var3.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 0, false, false, true));
+                           var3.getWorld().playSound(var3.getLocation(), Sound.BLOCK_WOOD_BREAK, 0.35F, 1.25F);
+                           break;
+                        case "SURVEYOR_TOUCH":
+                           var3.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 0, false, false, true));
+                           var3.getWorld().spawnParticle(Particle.DUST, var1.getBlock().getLocation().add(0.5, 0.5, 0.5), 8, 0.25, 0.25, 0.25, 0.01);
+                           break;
+                        case "CRAFTSMAN_CHECK":
+                           var3.addPotionEffect(new PotionEffect(PotionEffectType.LUCK, 100, 0, false, false, true));
+                           var3.getWorld().playSound(var3.getLocation(), Sound.BLOCK_ANVIL_USE, 0.25F, 1.6F);
+                           break;
+                        case "FORESTER_CHAIN":
+                           if (!this.rollEffectChance(var4)) {
+                              return;
+                           }
+
+                           this.tryForesterChain(var3, var1.getBlock(), var3.getInventory().getItemInMainHand());
+                           break;
+                        case "TRENCH_BONUS":
+                           if (!this.rollEffectChance(var4)) {
+                              return;
+                           }
+
+                           this.grantTrenchBonus(var3, var1.getBlock());
+                     }
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onInventoryClick(InventoryClickEvent var1) {
+      if (var1.getWhoClicked() instanceof Player var2) {
+         Inventory top = var1.getView().getTopInventory();
+         // event.getView().getTopInventory()
+         Inventory var10 = top;
+         if (var10.getHolder() instanceof CopiMineArtifacts.MenuHolder var4) {
+            var1.setCancelled(true);
+            int rawSlot = var1.getRawSlot();
+            int var11 = rawSlot;
+            if (rawSlot < 0 || rawSlot >= top.getSize()) {
+               return;
+            }
+
+            if (var11 >= 0 && var11 < var10.getSize()) {
+               if (!var4.playerUuid.equals(var2.getUniqueId())) {
+                  this.debugGui("wrong-player holder=" + var4.playerUuid + " clicker=" + var2.getUniqueId() + " session=" + var4.sessionId);
+                  var2.closeInventory();
+                  var2.sendMessage(
+                     this.color(
+                        "&c\u042d\u0442\u043e \u043c\u0435\u043d\u044e \u043e\u0442\u043a\u0440\u044b\u0442\u043e \u043d\u0435 \u0434\u043b\u044f \u0432\u0430\u0441. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043b\u0430\u0432\u043a\u0443 \u0437\u0430\u043d\u043e\u0432\u043e."
+                     )
+                  );
+               } else {
+                  CopiMineArtifacts.SessionState var6 = this.sessions.get(var2.getUniqueId());
+                  if (var6 == null || !var6.sessionId.equals(var4.sessionId)) {
+                     this.debugGui(
+                        "stale-session player="
+                           + var2.getName()
+                           + " screen="
+                           + var4.viewType
+                           + " rawSlot="
+                           + var11
+                           + " holderSession="
+                           + var4.sessionId
+                           + " currentSession="
+                           + (var6 == null ? "missing" : var6.sessionId)
+                     );
+                     var2.closeInventory();
+                     var2.sendMessage(
+                        this.color(
+                           "&c\u041c\u0435\u043d\u044e \u0443\u0441\u0442\u0430\u0440\u0435\u043b\u043e. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043b\u0430\u0432\u043a\u0443 \u0437\u0430\u043d\u043e\u0432\u043e."
+                        )
+                     );
+                  } else if (!var1.getClick().isShiftClick() && var1.getHotbarButton() < 0) {
+                     String var7 = var6.actions.getOrDefault(var11, "");
+                     this.debugGui(
+                        "click player="
+                           + var2.getName()
+                           + " screen="
+                           + var4.viewType
+                           + " rawSlot="
+                           + var11
+                           + " action="
+                           + (var7.isBlank() ? "none" : var7)
+                           + " shop="
+                           + var4.shopId
+                           + " category="
+                           + var4.category
+                           + " item="
+                           + var4.itemId
+                           + " session="
+                           + var4.sessionId
+                     );
+                     if (!var7.isBlank()) {
+                        if (System.currentTimeMillis() - var6.lastClickAt >= 150L || !var7.startsWith("confirm:")) {
+                           var6.lastClickAt = System.currentTimeMillis();
+                           var6.lastActionAt = System.currentTimeMillis();
+
+                           try {
+                              this.handleMenuAction(var2, var6, var7);
+                           } catch (Exception var9) {
+                              this.getLogger()
+                                 .log(
+                                    Level.SEVERE,
+                                    "Artifact GUI click failed screen=" + var4.viewType + " rawSlot=" + var11 + " action=" + var7,
+                                    (Throwable)var9
+                                 );
+                              var2.sendMessage(
+                                 this.color(
+                                    "&c\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435. \u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0438\u0441\u0430\u043d\u0430 \u0432 \u043b\u043e\u0433."
+                                 )
+                              );
+                           }
+                        }
+                     } else if (var4.viewType == CopiMineArtifacts.ViewType.MAIN && var11 == 16) {
+                        this.openDonationRoot(var2);
+                     } else {
+                        this.debugGui("no-action player=" + var2.getName() + " screen=" + var4.viewType + " rawSlot=" + var11 + " session=" + var4.sessionId);
+                     }
+                  }
+               }
+            }
+         } else {
+            if (this.shouldBlockOfficialArtifactInsertion(var1)) {
+               var1.setCancelled(true);
+            }
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onInventoryDrag(InventoryDragEvent var1) {
+      Inventory var2 = var1.getView().getTopInventory();
+      if (var2.getHolder() instanceof CopiMineArtifacts.MenuHolder) {
+         var1.setCancelled(true);
+      } else {
+         if (this.isBlockedArtifactProcessingInventory(var2) && this.isOfficialArtifactItem(var1.getOldCursor())) {
+            for (int var4 : var1.getRawSlots()) {
+               if (var4 >= 0 && var4 < var2.getSize()) {
+                  var1.setCancelled(true);
+                  return;
+               }
+            }
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onInventoryMoveItem(InventoryMoveItemEvent var1) {
+      if (this.isBlockedArtifactProcessingInventory(var1.getDestination()) && this.isOfficialArtifactItem(var1.getItem())) {
+         var1.setCancelled(true);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onPlayerItemMend(PlayerItemMendEvent var1) {
+      if (this.isOfficialArtifactItem(var1.getItem())) {
+         var1.setCancelled(true);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST
+   )
+   public void onPrepareItemCraft(PrepareItemCraftEvent var1) {
+      if (this.hasOfficialArtifactIngredient(var1.getInventory().getMatrix())) {
+         var1.getInventory().setResult(null);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST
+   )
+   public void onPrepareAnvil(PrepareAnvilEvent var1) {
+      if (this.hasOfficialArtifactIngredient(var1.getInventory().getStorageContents())) {
+         var1.setResult(null);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST
+   )
+   public void onPrepareSmithing(PrepareSmithingEvent var1) {
+      if (this.hasOfficialArtifactIngredient(var1.getInventory().getStorageContents())) {
+         var1.setResult(null);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST
+   )
+   public void onPrepareGrindstone(PrepareGrindstoneEvent var1) {
+      if (this.hasOfficialArtifactIngredient(var1.getInventory().getStorageContents())) {
+         var1.setResult(null);
+      }
+   }
+
+   @EventHandler
+   public void onInventoryClose(InventoryCloseEvent var1) {
+      if (var1.getPlayer() instanceof Player var2) {
+         if (var1.getInventory().getHolder() instanceof CopiMineArtifacts.MenuHolder var5) {
+            Bukkit.getScheduler()
+               .runTaskLater(
+                  this,
+                  () -> {
+                     if (var2.isOnline()) {
+                        Inventory var3 = var2.getOpenInventory().getTopInventory();
+                        if (var3.getHolder() instanceof CopiMineArtifacts.MenuHolder var6) {
+                           this.debugGui(
+                              "close-transition player=" + var2.getName() + " from=" + var5.viewType + " to=" + var6.viewType + " session=" + var6.sessionId
+                           );
+                        } else {
+                           CopiMineArtifacts.SessionState var4 = this.sessions.get(var2.getUniqueId());
+                           if (var4 != null && var4.purchaseInFlightId.isBlank() && var4.sessionId.equals(var5.sessionId)) {
+                              this.sessions.remove(var2.getUniqueId());
+                              this.debugGui("session-cleanup player=" + var2.getName() + " screen=" + var5.viewType + " session=" + var5.sessionId);
+                           }
+                        }
+                     }
+                  },
+                  2L
+               );
+         }
+      }
+   }
+
+   @EventHandler
+   public void onQuit(PlayerQuitEvent var1) {
+      this.sessions.remove(var1.getPlayer().getUniqueId());
+   }
+
+   @EventHandler
+   public void onDeath(PlayerDeathEvent var1) {
+      CopiMineArtifacts.SessionState var2 = this.sessions.get(var1.getEntity().getUniqueId());
+      if (var2 != null && var2.purchaseInFlightId.isBlank()) {
+         var2.actions.clear();
+         var2.pinBuffer = "";
+      }
+
+      if (!var1.getKeepInventory()) {
+         LinkedHashMap var3 = new LinkedHashMap();
+
+         for (ItemStack var5 : var1.getDrops()) {
+            CopiMineArtifacts.OfficialDonationRef var6 = this.officialDonationRef(var5);
+            if (var6 != null && var1.getEntity().getUniqueId().equals(var6.ownerUuid())) {
+               var3.put(var6.uniqueItemId(), var6.itemId());
+            }
+         }
+
+         if (!var3.isEmpty()) {
+            if (!this.recordDonationLossJournal(var1.getEntity().getUniqueId(), var3, "death")) {
+               this.getLogger().warning("Donation loss journal is unavailable during death handling; keeping donation items in drops.");
+               return;
+            }
+
+            var1.getDrops().removeIf(var3x -> {
+               CopiMineArtifacts.OfficialDonationRef var4 = this.officialDonationRef(var3x);
+               return var4 != null && var1.getEntity().getUniqueId().equals(var4.ownerUuid()) && var3.containsKey(var4.uniqueItemId());
+            });
+            this.flushPendingDonationLossJournalAsync();
+            var1.getEntity()
+               .sendMessage(
+                  this.color(
+                     "&e\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0405\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u00b0\u0420\u00bb\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u00bb\u0421\u040b. \u0420\u0098\u0421\u2026 \u0420\u0458\u0420\u0455\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0420\u0454\u0420\u0405\u0420\u0455\u0420\u0457\u0420\u0454\u0421\u0453 &f\u0412\u00ab\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a \u0421\u0453\u0421\u201a\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039\u0412\u00bb&e \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b5."
+                  )
+               );
+         }
+      }
+   }
+
+   @EventHandler(
+      ignoreCancelled = true
+   )
+   public void onPlayerItemBreak(PlayerItemBreakEvent var1) {
+      CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getBrokenItem());
+      if (var2 != null && var1.getPlayer().getUniqueId().equals(var2.ownerUuid())) {
+         this.runAsync(() -> {
+            try {
+               // updateDonationInstanceStatus(ref.ownerUuid(), ref.uniqueItemId(), ref.itemId(), "BROKEN"
+               if (this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "BROKEN", Set.of("ACTIVE", "DELIVERING"), true)) {
+                  this.audit(var1.getPlayer().getName(), "donation_item_broken", var2.uniqueItemId(), var2.itemId());
+               }
+            } catch (SQLException var4) {
+               this.getLogger().log(Level.WARNING, "Donation item break status update failed", (Throwable)var4);
+            }
+         });
+      }
+   }
+
+   @EventHandler(
+      ignoreCancelled = true
+   )
+   public void onEntityResurrect(EntityResurrectEvent var1) {
+      if (var1.getEntity() instanceof Player var2) {
+         ItemStack[] var10 = new ItemStack[]{var2.getInventory().getItemInMainHand(), var2.getInventory().getItemInOffHand()};
+
+         for (ItemStack var7 : var10) {
+            CopiMineArtifacts.OfficialDonationRef var8 = this.officialDonationRef(var7);
+            if (var8 != null && var7.getType() == Material.TOTEM_OF_UNDYING && var2.getUniqueId().equals(var8.ownerUuid())) {
+               CopiMineArtifacts.CatalogItem var9 = this.authenticCatalogItem(var7, var2, "resurrect");
+               if (var9 != null && "BROKEN_TOTEM".equalsIgnoreCase(var9.effect())) {
+                  this.runAsync(
+                     () -> {
+                        try {
+                           // updateDonationInstanceStatus(ref.ownerUuid(), ref.uniqueItemId(), ref.itemId(), "CONSUMED"
+                           if (this.updateDonationInstanceStatus(
+                              var8.ownerUuid(), var8.uniqueItemId(), var8.itemId(), "CONSUMED", Set.of("ACTIVE", "DELIVERING"), true
+                           )) {
+                              this.audit(var2.getName(), "donation_item_consumed", var8.uniqueItemId(), var8.itemId());
+                           }
+                        } catch (SQLException var4) {
+                           this.getLogger().log(Level.WARNING, "Donation totem consume update failed", (Throwable)var4);
+                        }
+                     }
+                  );
+                  break;
+               }
+            }
+         }
+      }
+   }
+
+   @EventHandler(
+      ignoreCancelled = true
+   )
+   public void onDonationItemDespawn(ItemDespawnEvent var1) {
+      CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getEntity().getItemStack());
+      if (var2 != null) {
+         if (!this.recordDonationLossJournal(var2.ownerUuid(), Map.of(var2.uniqueItemId(), var2.itemId()), "despawn")) {
+            var1.setCancelled(true);
+         } else {
+            this.flushPendingDonationLossJournalAsync();
+         }
+      }
+   }
+
+   @EventHandler(
+      ignoreCancelled = true
+   )
+   public void onDonationItemDestroyed(EntityDamageEvent var1) {
+      if (var1.getEntity() instanceof Item var2) {
+         CopiMineArtifacts.OfficialDonationRef var4 = this.officialDonationRef(var2.getItemStack());
+         if (var4 != null) {
+            switch (var1.getCause()) {
+               case FIRE:
+               case FIRE_TICK:
+               case LAVA:
+               case VOID:
+               case BLOCK_EXPLOSION:
+               case ENTITY_EXPLOSION:
+               case CONTACT:
+                  var1.setCancelled(true);
+                  if (!this.recordDonationLossJournal(
+                     var4.ownerUuid(), Map.of(var4.uniqueItemId(), var4.itemId()), var1.getCause().name().toLowerCase(Locale.ROOT)
+                  )) {
+                     return;
+                  } else {
+                     var2.remove();
+                     this.flushPendingDonationLossJournalAsync();
+                  }
+            }
+         }
+      }
+   }
+
+   private void cleanupExpiredSessions() {
+      long var1 = System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(900L);
+      this.sessions.entrySet().removeIf(var2 -> {
+         CopiMineArtifacts.SessionState var3 = var2.getValue();
+         return var3 != null && var3.purchaseInFlightId.isBlank() && var3.lastActionAt > 0L && var3.lastActionAt < var1;
+      });
+   }
+
+   @EventHandler
+   public void onJoin(PlayerJoinEvent var1) {
+      this.recoverStrandedDeliveries(var1.getPlayer());
+      this.runAsync(
+         () -> {
+            int var2 = this.pendingCount(var1.getPlayer().getUniqueId().toString());
+            if (var2 > 0) {
+               this.runSync(
+                  () -> var1.getPlayer()
+                        .sendMessage(
+                                                       this.color(
+                               "&eУ вас есть отложенная выдача CopiMineArtifacts: &f"
+                                  + var2
+                                 + "&e. Используйте &f/cmartifacts claim&e."
+                            )
+                        )
+               );
+            }
+         }
+      );
+   }
+
+   @EventHandler(
+      ignoreCancelled = true
+   )
+   public void onPlayerDeath(PlayerDeathEvent var1) {
+      if (var1.getEntity() != null) {
+         this.lastDeathLocations.put(var1.getEntity().getUniqueId(), var1.getEntity().getLocation().clone());
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onArtifactInteract(PlayerInteractEvent var1) {
+      Player var2 = var1.getPlayer();
+      CopiMineArtifacts.CatalogItem var3 = this.authenticCatalogItem(var1.getItem(), var2, "interact");
+      if (var3 != null) {
+         String var4 = var3.effect().toUpperCase(Locale.ROOT);
+         if (this.artifactInteractEffects().contains(var4)) {
+            Action var5 = var1.getAction();
+            if ("FARMER_SWEEP".equals(var4)) {
+               if (var5 != Action.RIGHT_CLICK_BLOCK || var1.getClickedBlock() == null || !var2.isSneaking()) {
+                  return;
+               }
+            } else if (var5 != Action.RIGHT_CLICK_AIR) {
+               return;
+            }
+
+            long var6 = this.now();
+            long var8 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            if (var8 > var6) {
+               var2.sendMessage(
+                  this.color(
+                     "&e\u0420\u0452\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5."
+                  )
+               );
+               var1.setCancelled(true);
+            } else {
+               boolean var10 = switch (var4) {
+                  case "HASTE_BURST_LONG" -> {
+                     var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 3600, 1, false, false, true));
+                     var2.getWorld().spawnParticle(Particle.ENCHANT, var2.getLocation().add(0.0, 1.0, 0.0), 18, 0.45, 0.45, 0.45, 0.02);
+                     yield true;
+                  }
+                  case "FARMER_SWEEP" -> this.tryFarmerSweep(var2, var1.getClickedBlock(), var1.getItem());
+                  case "DEBUFF_AMULET" -> this.cleanseAllowedDebuff(var2);
+                  case "TAX_CLOCK" -> {
+                     this.showTaxClockStatus(var2);
+                     yield true;
+                  }
+                  case "LOOT_COMPASS" -> this.pointCompassToLastDeath(var2, var1.getItem());
+                  case "ETERNAL_BOOST" -> this.triggerEternalBoost(var2);
+                  default -> false;
+               };
+               if (var10) {
+                  this.actionCooldowns.put(var2.getUniqueId(), var6 + (long)Math.max(1, var3.cooldownSeconds()));
+                  if (!var3.visualEffectId().isBlank()) {
+                     this.visualEffects.applyTo(var2, var3.visualEffectId(), Math.max(4, var3.cooldownSeconds()));
+                  }
+
+                  var1.setCancelled(true);
+               }
+            }
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onArtifactDefend(EntityDamageEvent var1) {
+      if (var1.getEntity() instanceof Player var2) {
+         CopiMineArtifacts.CatalogItem var13 = this.authenticCatalogItem(var2.getInventory().getHelmet(), var2, "defend_helmet");
+         CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var2.getInventory().getChestplate(), var2, "defend_chest");
+         CopiMineArtifacts.CatalogItem var5 = this.authenticCatalogItem(var2.getInventory().getItemInOffHand(), var2, "defend_offhand");
+         if (var13 != null && "PRORAB_HELMET".equalsIgnoreCase(var13.effect()) && var1.getCause() == DamageCause.FALL) {
+            var1.setDamage(var1.getDamage() * 0.4);
+            var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 0, false, false, true));
+            var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
+         }
+
+         if (var4 != null && "TANK_VEST".equalsIgnoreCase(var4.effect())) {
+            long var6 = this.now();
+            long var8 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            if (var8 <= var6 && var1.getDamage() >= 4.0) {
+               var1.setDamage(var1.getDamage() * 0.8);
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 100, 0, false, false, true));
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 0, false, false, true));
+               this.actionCooldowns.put(var2.getUniqueId(), var6 + (long)Math.max(8, var4.cooldownSeconds()));
+            }
+         }
+
+         if (var5 != null && "NOT_TODAY_SHIELD".equalsIgnoreCase(var5.effect()) && var2.isBlocking() && var1 instanceof EntityDamageByEntityEvent var14) {
+            long var7 = this.now();
+            long var9 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            if (var9 <= var7) {
+               if (var14.getDamager() instanceof LivingEntity var11) {
+                  var11.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
+                  var11.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
+               }
+
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 0, false, false, true));
+               this.actionCooldowns.put(var2.getUniqueId(), var7 + (long)Math.max(6, var5.cooldownSeconds()));
+            }
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onCrossbowArtifactShot(EntityShootBowEvent var1) {
+      if (var1.getEntity() instanceof Player var2) {
+         CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var1.getConsumable(), var2, "crossbow");
+         if (var4 != null && "ETERNAL_BOOST".equalsIgnoreCase(var4.effect())) {
+            var1.setCancelled(true);
+            var2.sendMessage(
+               this.color(
+                  "&cЭтот фейерверк работает только как элитровый буст."
+               )
+            );
+         }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onArtifactDamage(EntityDamageByEntityEvent var1) {
+      Player var2 = null;
+      if (var1.getDamager() instanceof Player var3) {
+         var2 = var3;
+      } else if (var1.getDamager() instanceof Projectile var4 && var4.getShooter() instanceof Player var5) {
+         var2 = var5;
+      }
+
+      if (var2 != null) {
+         ItemStack var14 = var2.getInventory().getItemInMainHand();
+         CopiMineArtifacts.CatalogItem var15 = this.authenticCatalogItem(var14, var2, "use");
+         if (var15 != null) {
+            String var16 = var15.effect().toUpperCase(Locale.ROOT);
+            if (this.artifactCombatEffects().contains(var16)) {
+               if (this.rollEffectChance(var15)) {
+                  long var19 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+                  long var8 = this.now();
+                  if (var19 <= var8) {
+                     this.actionCooldowns.put(var2.getUniqueId(), var8 + (long)var15.cooldownSeconds());
+                     LivingEntity var10 = var1.getEntity() instanceof LivingEntity var11 ? var11 : null;
+                     Location var20 = var1.getEntity().getLocation().add(0.0, 1.0, 0.0);
+                     switch (var16) {
+                        case "LIGHTNING":
+                           var20.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, var20, 10, 0.3, 0.3, 0.3, 0.01);
+                           var20.getWorld().playSound(var20, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 0.5F, 1.8F);
+                           var1.setDamage(var1.getDamage() + 2.0);
+                           break;
+                        case "DRAGON_PUNISHMENT":
+                           var20.getWorld().spawnParticle(Particle.DRAGON_BREATH, var20, 16, 0.35, 0.35, 0.35, 0.01);
+                           var20.getWorld().playSound(var20, Sound.ENTITY_ENDER_DRAGON_FLAP, 0.35F, 1.45F);
+                           var1.setDamage(var1.getDamage() + 1.5);
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 80, 0, false, false, true));
+                           }
+                           break;
+                        case "WATCH_GLOW":
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 120, 0, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
+                           }
+
+                           var20.getWorld().spawnParticle(Particle.ENCHANT, var20, 14, 0.4, 0.4, 0.4, 0.02);
+                           var20.getWorld().playSound(var20, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.45F, 1.35F);
+                           break;
+                        case "DEBT_SNARE":
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 0, false, false, true));
+                           }
+
+                           var20.getWorld().spawnParticle(Particle.CRIT, var20, 12, 0.35, 0.25, 0.35, 0.05);
+                           var20.getWorld().playSound(var20, Sound.BLOCK_CHAIN_HIT, 0.5F, 0.8F);
+                           break;
+                        case "SMUGGLER_MARK":
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 100, 0, false, false, true));
+                           }
+
+                           var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 0, false, false, true));
+                           var20.getWorld().spawnParticle(Particle.SMOKE, var20, 8, 0.3, 0.3, 0.3, 0.02);
+                           var20.getWorld().playSound(var20, Sound.ENTITY_ARROW_HIT_PLAYER, 0.35F, 1.7F);
+                           break;
+                        case "ZMEI_GORYNYCH_POOP":
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 120, 0, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 160, 0, false, false, true));
+                           }
+
+                           var20.getWorld().spawnParticle(Particle.DRAGON_BREATH, var20, 24, 0.45, 0.35, 0.45, 0.01);
+                           var20.getWorld().spawnParticle(Particle.SMOKE, var20, 18, 0.35, 0.25, 0.35, 0.03);
+                           break;
+                        case "BATIN_REMEN":
+                           var1.setDamage(var1.getDamage() + 2.5);
+                           var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 0, false, false, true));
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 1, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 80, 0, false, false, true));
+                           }
+
+                           var20.getWorld().spawnParticle(Particle.CRIT, var20, 18, 0.35, 0.35, 0.35, 0.03);
+                           break;
+                        case "NAKOPAL_PICKAXE":
+                           var1.setDamage(var1.getDamage() + 1.0);
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 2, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0, false, false, true));
+                              this.applyTemporaryCobwebSnare(var10);
+                           }
+
+                           var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
+                           var20.getWorld().spawnParticle(Particle.BLOCK, var20, 16, 0.3, 0.3, 0.3, Material.DEEPSLATE.createBlockData());
+                           break;
+                        case "NALOGOVAYA_KOSA":
+                           var1.setDamage(var1.getDamage() + 1.5);
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 100, 0, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
+                           }
+
+                           this.healPlayerCapped(var2, 2.0);
+                           var20.getWorld().spawnParticle(Particle.SCULK_SOUL, var20, 10, 0.25, 0.25, 0.25, 0.01);
+                           break;
+                        case "DUTY_ARGUMENT":
+                           var1.setDamage(var1.getDamage() + 2.0);
+                           var2.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 80, 0, false, false, true));
+                           if (var10 != null) {
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 0, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 80, 0, false, false, true));
+                           }
+
+                           var20.getWorld().spawnParticle(Particle.ENCHANT, var20, 18, 0.3, 0.3, 0.3, 0.02);
+                     }
+
+                     if (var10 != null && !var15.visualEffectId().isBlank()) {
+                        this.visualEffects.applyTo(var10, var15.visualEffectId(), Math.max(4, var15.cooldownSeconds()));
+                        if ("ZMEI_GORYNYCH_POOP".equals(var16)) {
+                           this.visualEffects.applyTo(var10, "DARK_PULSE", 4);
+                        }
+                     }
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   public boolean onCommand(CommandSender var1, Command var2, String var3, String[] var4) {
+      if (var1 instanceof Player var5) {
+         if (var4.length == 0) {
+            if (this.isArtifactsAdmin(var5)) {
+               // openArtifactsAdminMenu(player);
+               this.openArtifactsAdminMenu(var5);
+            } else {
+               // sendPlayerShopHelp(player);
+               this.sendPlayerShopHelp(var5);
+            }
+
+            return true;
+         } else if ("claim".equalsIgnoreCase(var4[0])) {
+            this.claimPending(var5);
+            return true;
+         } else if ("repair".equalsIgnoreCase(var4[0])) {
+            this.openRepair(var5);
+            return true;
+         } else if ("admin".equalsIgnoreCase(var4[0])) {
+            if (!this.isArtifactsAdmin(var5)) {
+               this.noPermission(var5);
+               return true;
+            } else {
+               // openArtifactsAdminMenu(player);
+               this.openArtifactsAdminMenu(var5);
+               return true;
+            }
+         } else if ("reload".equalsIgnoreCase(var4[0])) {
+            if (!this.hasArtifactPermission(var5, "copimine.artifacts.reload")) {
+               this.noPermission(var5);
+               return true;
+            } else {
+               this.reloadConfig();
+               this.debugGui = this.getConfig().getBoolean("debug_gui", false);
+               this.loadCatalogFromConfig();
+
+               try {
+                  this.syncCatalogToPostgres();
+                  var5.sendMessage(this.color("&aCopiMineArtifacts catalog reloaded."));
+               } catch (SQLException var7) {
+                  this.getLogger().log(Level.WARNING, "Artifacts reload failed", (Throwable)var7);
+                  var5.sendMessage(
+                     this.color(
+                        "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_RELOAD_FAILED"
+                     )
+                  );
+               }
+
+               return true;
+            }
+         } else if ("shop".equalsIgnoreCase(var4[0])) {
+            return this.handleShopCommand(var5, Arrays.copyOfRange(var4, 1, var4.length));
+         } else {
+            var5.sendMessage(
+               this.color(
+                  "&c\u0420\u045c\u0420\u00b5\u0420\u0451\u0420\u00b7\u0420\u0406\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0454\u0420\u0455\u0420\u0458\u0420\u00b0\u0420\u0405\u0420\u0491\u0420\u00b0 CopiMineArtifacts."
+               )
+            );
+            return true;
+         }
+      } else {
+         var1.sendMessage("Players only.");
+         return true;
+      }
+   }
+
+   private boolean handleShopCommand(Player var1, String[] var2) {
+      if (var2.length == 0) {
+         if (!this.isArtifactsAdmin(var1)) {
+            this.noPermission(var1);
+            return true;
+         } else {
+            var1.sendMessage(this.color("&e/cmartifacts shop create <shop_id>"));
+            var1.sendMessage(this.color("&e/cmartifacts shop remove"));
+            var1.sendMessage(this.color("&e/cmartifacts shop list"));
+            var1.sendMessage(this.color("&e/cmartifacts shop open <shop_id>"));
+            return true;
+         }
+      } else if ("create".equalsIgnoreCase(var2[0])) {
+         if (!this.hasArtifactPermission(var1, "copimine.artifacts.shop.create")) {
+            this.noPermission(var1);
+            return true;
+         } else if (var2.length < 2) {
+            var1.sendMessage(this.color("&c\u0420\u0408\u0420\u0454\u0420\u00b0\u0420\u00b6\u0420\u0451 shop_id."));
+            return true;
+         } else {
+            Block var8 = var1.getTargetBlockExact(6);
+            if (var8 == null) {
+               var1.sendMessage(
+                  this.color(
+                     "&c\u0420\u040e\u0420\u0458\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0406 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u00b0\u0421\u2026 6 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406."
+                  )
+               );
+               return true;
+            } else {
+               String var9 = this.blockKey(var8.getLocation());
+               if (this.shopsByLocation.containsKey(var9)) {
+                  var1.sendMessage(
+                     this.color(
+                        "&c\u0420\u045c\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0458 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u00b5 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 CopiMineArtifacts."
+                     )
+                  );
+                  return true;
+               } else {
+                  String var5 = var2[1].toLowerCase(Locale.ROOT);
+                  CopiMineArtifacts.Shop var6 = new CopiMineArtifacts.Shop(
+                     var5, "CopiMine Artifacts", var8.getWorld().getName(), var8.getX(), var8.getY(), var8.getZ(), true
+                  );
+                  this.runAsync(
+                     () -> {
+                        try {
+                           this.saveShop(var6);
+                           this.shopsByLocation.put(var6.locationKey(), var6);
+                           this.audit(var1.getName(), "shop_create", var6.shopId(), var6.locationKey());
+                           this.runSync(
+                              () -> {
+                                 try {
+                                    // spawnOrReplaceProtectedBlockVisual(target.getLocation(), "ARTIFACT_SHOP", shop.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker")
+                                    this.spawnOrReplaceProtectedBlockVisual(
+                                       var8.getLocation(), "ARTIFACT_SHOP", var6.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker"
+                                    );
+                                 } catch (Exception var4x) {
+                                    this.getLogger().log(Level.WARNING, "Artifact shop visual create failed", (Throwable)var4x);
+                                 }
+                              }
+                           );
+                           this.runSync(
+                              () -> var1.sendMessage(
+                                    this.color(
+                                       "&a\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0421\u0403\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u0405\u0420\u00b0: &f"
+                                          + var6.shopId()
+                                    )
+                                 )
+                           );
+                        } catch (SQLException var5x) {
+                           this.getLogger().log(Level.WARNING, "Artifact shop create failed", (Throwable)var5x);
+                           this.runSync(
+                              () -> var1.sendMessage(
+                                    this.color(
+                                       "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_SHOP_SAVE_FAILED"
+                                    )
+                                 )
+                           );
+                        }
+                     }
+                  );
+                  return true;
+               }
+            }
+         }
+      } else if ("remove".equalsIgnoreCase(var2[0])) {
+         if (!this.hasArtifactPermission(var1, "copimine.artifacts.shop.remove")) {
+            this.noPermission(var1);
+            return true;
+         } else {
+            Block var7 = var1.getTargetBlockExact(6);
+            if (var7 == null) {
+               var1.sendMessage(
+                  this.color(
+                     "&c\u0420\u040e\u0420\u0458\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0406 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u00b0\u0421\u2026 6 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406."
+                  )
+               );
+               return true;
+            } else {
+               CopiMineArtifacts.Shop var4 = this.shopsByLocation.get(this.blockKey(var7.getLocation()));
+               if (var4 == null) {
+                  var1.sendMessage(
+                     this.color(
+                        "&c\u0420\u045c\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0458 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u00b5 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 CopiMineArtifacts."
+                     )
+                  );
+                  return true;
+               } else {
+                  this.runAsync(
+                     () -> {
+                        try {
+                           this.deleteShop(var4.shopId());
+                           this.shopsByLocation.remove(var4.locationKey());
+                           this.audit(var1.getName(), "shop_remove", var4.shopId(), var4.locationKey());
+                           this.runSync(() -> {
+                              try {
+                                 // cleanupProtectedBlockVisuals("ARTIFACT_SHOP", shop.shopId())
+                                 this.cleanupProtectedBlockVisuals("ARTIFACT_SHOP", var4.shopId());
+                              } catch (Exception var3x) {
+                                 this.getLogger().log(Level.WARNING, "Artifact shop visual cleanup failed", (Throwable)var3x);
+                              }
+                           });
+                           this.runSync(
+                              () -> var1.sendMessage(
+                                    this.color(
+                                       "&a\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0: &f"
+                                          + var4.shopId()
+                                    )
+                                 )
+                           );
+                        } catch (SQLException var4x) {
+                           this.getLogger().log(Level.WARNING, "Artifact shop remove failed", (Throwable)var4x);
+                           this.runSync(
+                              () -> var1.sendMessage(
+                                    this.color(
+                                       "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_SHOP_REMOVE_FAILED"
+                                    )
+                                 )
+                           );
+                        }
+                     }
+                  );
+                  return true;
+               }
+            }
+         }
+      } else if ("list".equalsIgnoreCase(var2[0])) {
+         if (!this.hasArtifactPermission(var1, "copimine.artifacts.shop.list")) {
+            this.noPermission(var1);
+            return true;
+         } else {
+            var1.sendMessage(
+               this.color(
+                  "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 CopiMineArtifacts: &f"
+                     + this.shopsByLocation.values().stream().map(CopiMineArtifacts.Shop::shopId).collect(Collectors.joining(", "))
+               )
+            );
+            return true;
+         }
+      } else if ("open".equalsIgnoreCase(var2[0])) {
+         if (!this.isArtifactsAdmin(var1)) {
+            this.noPermission(var1);
+            return true;
+         } else if (var2.length < 2) {
+            var1.sendMessage(this.color("&c\u0420\u0408\u0420\u0454\u0420\u00b0\u0420\u00b6\u0420\u0451 shop_id."));
+            return true;
+         } else {
+            CopiMineArtifacts.Shop var3 = this.shopsByLocation
+               .values()
+               .stream()
+               .filter(var1x -> var1x.shopId().equalsIgnoreCase(var2[1]))
+               .findFirst()
+               .orElse(null);
+            if (var3 == null) {
+               var1.sendMessage(
+                  this.color(
+                     "&c\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u0405\u0420\u00b5 \u0420\u0405\u0420\u00b0\u0420\u2116\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u00b0: &f"
+                        + var2[1]
+                  )
+               );
+               return true;
+            } else {
+               this.openMain(var1, var3, true);
+               return true;
+            }
+         }
+      } else {
+         var1.sendMessage(
+            this.color(
+               "&c\u0420\u045c\u0420\u00b5\u0420\u0451\u0420\u00b7\u0420\u0406\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0454\u0420\u0455\u0420\u0458\u0420\u00b0\u0420\u0405\u0420\u0491\u0420\u00b0 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+            )
+         );
+         return true;
+      }
+   }
+
+   private void openArtifactsAdminMenu(Player var1) {
+      if (this.useDonationShopV2Menus()) {
+         this.openArtifactsAdminMenuV2(var1);
+      } else {
+         CopiMineArtifacts.SessionState var2 = this.freshSession(var1);
+         var2.viewType = CopiMineArtifacts.ViewType.ADMIN_MAIN;
+         Inventory var3 = this.createMenu(var1, var2, CopiMineArtifacts.ViewType.ADMIN_MAIN, 27, "&8Artifacts Admin");
+         var3.setItem(
+            4,
+            this.button(
+               Material.NETHER_STAR,
+               "&aCopiMineArtifacts",
+               List.of(
+                  "&7\u0420\u040e\u0420\u00bb\u0421\u0453\u0420\u00b6\u0420\u00b5\u0420\u00b1\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b0\u0420\u0405\u0420\u00b5\u0420\u00bb\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0455\u0420\u0454 \u0420\u0451 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u00b0.",
+                  "&8\u0420\u0098\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0420\u0406\u0420\u00b0\u0421\u040b\u0421\u201a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u0455\u0420\u0458 \u0420\u0457\u0420\u0455 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0421\u0453."
+               )
+            )
+         );
+         this.setAction(
+            var3,
+            var2,
+            10,
+            this.button(
+               Material.CHEST,
+               "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451",
+               List.of(
+                  "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+               )
+            ),
+            "admin:shops"
+         );
+         this.setAction(
+            var3,
+            var2,
+            12,
+            this.button(
+               Material.BOOK,
+               "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+               List.of(
+                  "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406 \u0420\u0457\u0420\u0455 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f\u0420\u0458."
+               )
+            ),
+            "admin:catalog"
+         );
+         this.setAction(
+            var3,
+            var2,
+            14,
+            this.button(
+               Material.COMPARATOR,
+               "&e\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0",
+               List.of("&7Bridge, PostgreSQL, PIN \u0420\u0451 \u0420\u0454\u0421\u040c\u0421\u20ac.")
+            ),
+            "admin:diagnostics"
+         );
+         this.setAction(
+            var3,
+            var2,
+            16,
+            this.button(
+               Material.CLOCK,
+               "&aReload",
+               List.of(
+                  "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a config.yml \u0420\u0451 items.yml."
+               )
+            ),
+            "admin:reload"
+         );
+         this.setAction(
+            var3,
+            var2,
+            22,
+            this.button(
+               Material.BARRIER,
+               "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+               List.of(
+                  "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+               )
+            ),
+            "close"
+         );
+         this.setAction(
+            var3,
+            var2,
+            16,
+            this.button(
+               Material.NETHER_STAR,
+               "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+               List.of(
+                  "&7Owner-bound \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 mock SBP foundation.",
+                  "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5, \u0420\u00b0 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+               )
+            ),
+            "donation:root"
+         );
+         var1.openInventory(var3);
+      }
+   }
+
+   private void openAdminShops(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.ADMIN_SHOPS;
+      Inventory var3 = this.createMenu(
+         var1,
+         var2,
+         CopiMineArtifacts.ViewType.ADMIN_SHOPS,
+         54,
+         "&8\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+      );
+      var3.setItem(
+         4,
+         this.button(
+            Material.CHEST,
+            "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406",
+            List.of(
+               "&7\u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5: /cmartifacts shop create <id>",
+               "&7\u0420\u0408\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5: /cmartifacts shop remove"
+            )
+         )
+      );
+      int var4 = 10;
+
+      for (CopiMineArtifacts.Shop var6 : this.shopsByLocation.values()) {
+         if (var4 >= 35) {
+            break;
+         }
+
+         var3.setItem(
+            var4,
+            this.button(
+               Material.BARREL,
+               "&f" + var6.shopId(),
+               List.of(
+                  "&7\u0420\u045a\u0420\u0451\u0421\u0402: &f" + var6.world(),
+                  "&7XYZ: &f" + var6.x() + " " + var6.y() + " " + var6.z(),
+                  "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: "
+                     + (
+                        var6.enabled()
+                           ? "&a\u0420\u0406\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u00b0"
+                           : "&c\u0420\u0406\u0421\u2039\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u00b0"
+                     )
+               )
+            )
+         );
+         if (++var4 % 9 == 8) {
+            var4 += 2;
+         }
+      }
+
+      this.setAction(
+         var3,
+         var2,
+         45,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+            )
+         ),
+         "admin:main"
+      );
+      this.setAction(
+         var3,
+         var2,
+         49,
+         this.button(
+            Material.CLOCK,
+            "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0455\u0420\u0454."
+            )
+         ),
+         "refresh"
+      );
+      this.setAction(
+         var3,
+         var2,
+         53,
+         this.button(
+            Material.BARRIER,
+            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+         ),
+         "close"
+      );
+      var1.openInventory(var3);
+   }
+
+   private void openAdminCatalog(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.ADMIN_CATALOG;
+      Inventory var3 = this.createMenu(
+         var1,
+         var2,
+         CopiMineArtifacts.ViewType.ADMIN_CATALOG,
+         27,
+         "&8\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+      );
+      var3.setItem(
+         4,
+         this.button(
+            Material.BOOK,
+            "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+            List.of(
+               "&7\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406: &f"
+                  + this.catalogById.size()
+            )
+         )
+      );
+      this.setAction(var3, var2, 10, this.categoryIcon(CopiMineArtifacts.Category.WEAPON), "cat:WEAPON");
+      this.setAction(var3, var2, 12, this.categoryIcon(CopiMineArtifacts.Category.ARMOR), "cat:ARMOR");
+      this.setAction(var3, var2, 14, this.categoryIcon(CopiMineArtifacts.Category.TOOL), "cat:TOOL");
+      var3.setItem(
+         16,
+         this.button(
+            Material.BOOK,
+            "&e\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u0451",
+            List.of(
+               "&7\u0420\u00a0\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403-\u0420\u0457\u0420\u00b0\u0420\u0454 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u0406\u0420\u0405\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u0451\u0420\u2116 \u0420\u0406\u0420\u0451\u0420\u0491 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406."
+            )
+         )
+      );
+      this.setAction(
+         var3,
+         var2,
+         22,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+            )
+         ),
+         "admin:main"
+      );
+      var1.openInventory(var3);
+   }
+
+   private void openAdminDiagnostics(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.ADMIN_DIAGNOSTICS;
+      Inventory var3 = this.createMenu(
+         var1,
+         var2,
+         CopiMineArtifacts.ViewType.ADMIN_DIAGNOSTICS,
+         27,
+         "&8\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+      );
+      CopiMineArtifacts.BridgeHealthSnapshot var4 = new CopiMineArtifacts.BridgeHealthSnapshot(
+         false, false, false, 0L, "artifacts-admin-gui", "LEGACY_REDIRECT"
+      );
+      var3.setItem(
+         10,
+         this.button(
+            var4.bridgeReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
+            "&eBridge",
+            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var4.bridgeReady())
+         )
+      );
+      var3.setItem(
+         12,
+         this.button(
+            var4.postgresReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
+            "&ePostgreSQL",
+            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var4.postgresReady())
+         )
+      );
+      var3.setItem(
+         14,
+         this.button(
+            var4.pinReady() ? Material.LIME_CONCRETE : Material.ORANGE_CONCRETE,
+            "&ePIN",
+            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var4.pinReady())
+         )
+      );
+      var3.setItem(
+         16,
+         this.button(
+            Material.CLOCK,
+            "&eTasks",
+            List.of(
+               "&7Pending hints: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
+               "&7Session cleanup: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
+               "&7Every tick \u0420\u00b7\u0420\u00b0\u0420\u0491\u0420\u00b0\u0421\u2021 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a"
+            )
+         )
+      );
+      this.setAction(
+         var3,
+         var2,
+         22,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+            )
+         ),
+         "admin:main"
+      );
+      var1.openInventory(var3);
+   }
+
+   private void openAdminDiagnosticsAsync(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.ADMIN_DIAGNOSTICS;
+      UUID var3 = var1.getUniqueId();
+      this.runAsync(() -> {
+         CopiMineArtifacts.BridgeHealthSnapshot var3x = this.bridge.health(var3, "artifacts-admin-gui");
+         this.runSync(() -> {
+            if (var1.isOnline()) {
+               this.openAdminDiagnosticsMenu(var1, var3x);
+            }
+         });
+      });
+   }
+
+   private void openAdminDiagnosticsMenu(Player var1, CopiMineArtifacts.BridgeHealthSnapshot var2) {
+      CopiMineArtifacts.SessionState var3 = this.session(var1);
+      var3.viewType = CopiMineArtifacts.ViewType.ADMIN_DIAGNOSTICS;
+      Inventory var4 = this.createMenu(
+         var1,
+         var3,
+         CopiMineArtifacts.ViewType.ADMIN_DIAGNOSTICS,
+         27,
+         "&8\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+      );
+      var4.setItem(
+         10,
+         this.button(
+            var2.bridgeReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
+            "&eBridge",
+            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var2.bridgeReady())
+         )
+      );
+      var4.setItem(
+         12,
+         this.button(
+            var2.postgresReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
+            "&ePostgreSQL",
+            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var2.postgresReady())
+         )
+      );
+      var4.setItem(
+         14,
+         this.button(
+            var2.pinReady() ? Material.LIME_CONCRETE : Material.ORANGE_CONCRETE,
+            "&ePIN",
+            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var2.pinReady())
+         )
+      );
+      var4.setItem(
+         16,
+         this.button(
+            Material.CLOCK,
+            "&eTasks",
+            List.of(
+               "&7Pending hints: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
+               "&7Session cleanup: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
+               "&7Every tick \u0420\u00b7\u0420\u00b0\u0420\u0491\u0420\u00b0\u0421\u2021 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a"
+            )
+         )
+      );
+      this.setAction(
+         var4,
+         var3,
+         22,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+            )
+         ),
+         "admin:main"
+      );
+      var1.openInventory(var4);
+   }
+
+   public List<String> onTabComplete(CommandSender var1, Command var2, String var3, String[] var4) {
+      if (var4.length == 1) {
+         return this.prefix(List.of("admin", "claim", "repair", "reload", "shop"), var4[0]);
+      } else {
+         return var4.length == 2 && "shop".equalsIgnoreCase(var4[0])
+            ? this.prefix(List.of("create", "remove", "list", "open"), var4[1])
+            : Collections.emptyList();
+      }
+   }
+
+   private void openMain(Player var1, CopiMineArtifacts.Shop var2) {
+      this.openMain(var1, var2, false);
+   }
+
+   private void openMain(Player var1, CopiMineArtifacts.Shop var2, boolean var3) {
+      if (this.useDonationShopV2Menus()) {
+         this.openMainV2(var1, var2, var3);
+      } else {
+         CopiMineArtifacts.SessionState var4 = var3 ? this.freshSession(var1) : this.session(var1);
+         var4.shopId = var2.shopId();
+         var4.viewType = CopiMineArtifacts.ViewType.MAIN;
+         var4.currentCategory = "";
+         var4.currentItemId = "";
+         var4.page = 0;
+         Inventory var5 = this.createMenu(
+            var1,
+            var4,
+            CopiMineArtifacts.ViewType.MAIN,
+            54,
+            "&8\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+         );
+         var5.setItem(
+            4,
+            this.button(
+               Material.EMERALD,
+               "&6" + var2.title(),
+               List.of(
+                  "&7\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 CopiMine.",
+                  "&7\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454 AR.",
+                  "&8PIN \u0420\u0451 \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a UltimateAdminPlus."
+               )
+            )
+         );
+         this.setAction(var5, var4, 10, this.categoryIcon(CopiMineArtifacts.Category.WEAPON), "cat:WEAPON");
+         this.setAction(var5, var4, 12, this.categoryIcon(CopiMineArtifacts.Category.ARMOR), "cat:ARMOR");
+         this.setAction(var5, var4, 14, this.categoryIcon(CopiMineArtifacts.Category.TOOL), "cat:TOOL");
+         var5.setItem(
+            16,
+            this.button(
+               Material.BOOK,
+               "&e\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u0451",
+               List.of(
+                  "&7\u0420\u00a0\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403-\u0420\u0457\u0420\u00b0\u0420\u0454 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u0406\u0420\u0405\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u0451\u0420\u2116 \u0420\u0406\u0420\u0451\u0420\u0491 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406."
+               )
+            )
+         );
+         this.setAction(
+            var5,
+            var4,
+            28,
+            this.button(
+               Material.CHEST,
+               "&b\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+               List.of(
+                  "&7\u0420\u0098\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0420\u0451\u0421\u2026 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0455\u0420\u0454.",
+                  "&7\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403\u0421\u2039 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+               )
+            ),
+            "purchases"
+         );
+         this.setAction(
+            var5,
+            var4,
+            30,
+            this.button(
+               Material.CHEST_MINECART,
+               "&a\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+               List.of(
+                  "&7\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039, \u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u00bb\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a.",
+                  "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0455\u0421\u0403\u0420\u0406\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u0491\u0420\u0451\u0421\u20ac\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+               )
+            ),
+            "pending"
+         );
+         this.setAction(
+            var5,
+            var4,
+            32,
+            this.button(
+               Material.ANVIL,
+               "&a\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a",
+               List.of(
+                  "&7\u0420\u045f\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0406 \u0421\u0402\u0421\u0453\u0420\u0454\u0420\u00b5.",
+                  "&7\u0420\u040e\u0421\u201a\u0420\u0455\u0420\u0451\u0420\u0458\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u0451\u0421\u0403\u0420\u0451\u0421\u201a \u0420\u0455\u0421\u201a \u0420\u0451\u0420\u00b7\u0420\u0405\u0420\u0455\u0421\u0403\u0420\u00b0."
+               )
+            ),
+            "repair:open"
+         );
+         this.setAction(
+            var5,
+            var4,
+            34,
+            this.button(
+               Material.BOOK,
+               "&e\u0420\u045f\u0420\u0455\u0420\u0458\u0420\u0455\u0421\u2030\u0421\u040a",
+               List.of(
+                  "&7\u0420\u0459\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0451\u0420\u0405\u0421\u0403\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u0454\u0421\u2020\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b5, PIN \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b5."
+               )
+            ),
+            "help"
+         );
+         this.setAction(
+            var5,
+            var4,
+            45,
+            this.button(
+               Material.ARROW,
+               "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+               List.of(
+                  "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0421\u0453."
+               )
+            ),
+            "close"
+         );
+         this.setAction(
+            var5,
+            var4,
+            49,
+            this.button(
+               Material.CLOCK,
+               "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+               List.of(
+                  "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a \u0421\u201a\u0420\u00b5\u0420\u0454\u0421\u0453\u0421\u2030\u0420\u00b5\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+               )
+            ),
+            "refresh"
+         );
+         this.setAction(
+            var5,
+            var4,
+            53,
+            this.button(
+               Material.BARRIER,
+               "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+               List.of(
+                  "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+               )
+            ),
+            "close"
+         );
+         var1.openInventory(var5);
+      }
+   }
+
+   private void openCategory(Player var1, CopiMineArtifacts.Category var2) {
+      this.openCategory(var1, var2, 0);
+   }
+
+   private boolean useDonationShopV2Menus() {
+      return true;
+   }
+
+   private void openArtifactsAdminMenuV2(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.freshSession(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.ADMIN_MAIN;
+      Inventory var3 = this.createMenu(var1, var2, CopiMineArtifacts.ViewType.ADMIN_MAIN, 27, "&8Artifacts Admin");
+      var3.setItem(
+         4,
+         this.button(
+            Material.NETHER_STAR,
+            "&aCopiMineArtifacts",
+            List.of(
+               "&7\u0420\u040e\u0420\u00bb\u0421\u0453\u0420\u00b6\u0420\u00b5\u0420\u00b1\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b0\u0420\u0405\u0420\u00b5\u0420\u00bb\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0455\u0420\u0454 \u0420\u0451 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u00b0.",
+               "&8\u0420\u0098\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0420\u0406\u0420\u00b0\u0421\u040b\u0421\u201a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u0455\u0420\u0458 \u0420\u0457\u0420\u0455 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0421\u0453."
+            )
+         )
+      );
+      this.setAction(
+         var3,
+         var2,
+         10,
+         this.button(
+            Material.CHEST,
+            "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451",
+            List.of(
+               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+            )
+         ),
+         "admin:shops"
+      );
+      this.setAction(
+         var3,
+         var2,
+         12,
+         this.button(
+            Material.BOOK,
+            "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+            List.of(
+               "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406 \u0420\u0457\u0420\u0455 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f\u0420\u0458."
+            )
+         ),
+         "admin:catalog"
+      );
+      this.setAction(
+         var3,
+         var2,
+         14,
+         this.button(
+            Material.COMPARATOR,
+            "&e\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0",
+            List.of("&7Bridge, PostgreSQL, PIN \u0420\u0451 \u0420\u0454\u0421\u040c\u0421\u20ac.")
+         ),
+         "admin:diagnostics"
+      );
+      this.setAction(
+         var3,
+         var2,
+         16,
+         this.button(
+            Material.NETHER_STAR,
+            "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+            List.of(
+               "&7Owner-bound \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 mock SBP foundation.",
+               "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5, \u0420\u00b0 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+            )
+         ),
+         "donation:root"
+      );
+      this.setAction(
+         var3,
+         var2,
+         20,
+         this.button(
+            Material.CLOCK,
+            "&aReload",
+            List.of(
+               "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a config.yml \u0420\u0451 items.yml."
+            )
+         ),
+         "admin:reload"
+      );
+      this.setAction(
+         var3,
+         var2,
+         22,
+         this.button(
+            Material.BARRIER,
+            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+         ),
+         "close"
+      );
+      var1.openInventory(var3);
+   }
+
+   private void openMainV2(Player var1, CopiMineArtifacts.Shop var2, boolean var3) {
+      CopiMineArtifacts.SessionState var4 = var3 ? this.freshSession(var1) : this.session(var1);
+      var4.shopId = var2.shopId();
+      var4.viewType = CopiMineArtifacts.ViewType.MAIN;
+      var4.currentCategory = "";
+      var4.currentItemId = "";
+      var4.page = 0;
+      Inventory var5 = this.createMenu(
+         var1,
+         var4,
+         CopiMineArtifacts.ViewType.MAIN,
+         54,
+         "&8\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+      );
+      var5.setItem(
+         4,
+         this.button(
+            Material.EMERALD,
+            "&6" + var2.title(),
+            List.of(
+               "&7\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 CopiMine.",
+               "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0420\u00b1\u0421\u2039\u0421\u2021\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454 AR.",
+               "&8PIN \u0420\u0451 \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a CopiMineEconomyCore."
+            )
+         )
+      );
+      this.setAction(var5, var4, 10, this.categoryIcon(CopiMineArtifacts.Category.WEAPON), "cat:WEAPON");
+      this.setAction(var5, var4, 12, this.categoryIcon(CopiMineArtifacts.Category.ARMOR), "cat:ARMOR");
+      this.setAction(var5, var4, 14, this.categoryIcon(CopiMineArtifacts.Category.TOOL), "cat:TOOL");
+      this.setAction(
+         var5,
+         var4,
+         16,
+         this.button(
+            Material.NETHER_STAR,
+            "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+            List.of(
+               "&7\u0420\u045f\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5, donation-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403, claim \u0420\u0451 reclaim.",
+               "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a."
+            )
+         ),
+         "donation:root"
+      );
+      this.setAction(
+         var5,
+         var4,
+         28,
+         this.button(
+            Material.CHEST,
+            "&b\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+            List.of(
+               "&7\u0420\u0098\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0420\u0451\u0421\u2026 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0455\u0420\u0454.",
+               "&7\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403\u0421\u2039 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+            )
+         ),
+         "purchases"
+      );
+      this.setAction(
+         var5,
+         var4,
+         30,
+         this.button(
+            Material.CHEST_MINECART,
+            "&a\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            List.of(
+               "&7\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039, \u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u00bb\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a.",
+               "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0455\u0421\u0403\u0420\u0406\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u0491\u0420\u0451\u0421\u20ac\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+            )
+         ),
+         "pending"
+      );
+      this.setAction(
+         var5,
+         var4,
+         32,
+         this.button(
+            Material.ANVIL,
+            "&a\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a",
+            List.of(
+               "&7\u0420\u045f\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0406 \u0421\u0402\u0421\u0453\u0420\u0454\u0420\u00b5.",
+               "&7\u0420\u040e\u0421\u201a\u0420\u0455\u0420\u0451\u0420\u0458\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u0451\u0421\u0403\u0420\u0451\u0421\u201a \u0420\u0455\u0421\u201a \u0420\u0451\u0420\u00b7\u0420\u0405\u0420\u0455\u0421\u0403\u0420\u00b0."
+            )
+         ),
+         "repair:open"
+      );
+      this.setAction(
+         var5,
+         var4,
+         34,
+         this.button(
+            Material.BOOK,
+            "&e\u0420\u045f\u0420\u0455\u0420\u0458\u0420\u0455\u0421\u2030\u0421\u040a",
+            List.of(
+               "&7\u0420\u0459\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0451\u0420\u0405\u0421\u0403\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u0454\u0421\u2020\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b5, PIN \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b5."
+            )
+         ),
+         "help"
+      );
+      this.setAction(
+         var5,
+         var4,
+         45,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0421\u0453."
+            )
+         ),
+         "close"
+      );
+      this.setAction(
+         var5,
+         var4,
+         49,
+         this.button(
+            Material.CLOCK,
+            "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a \u0421\u201a\u0420\u00b5\u0420\u0454\u0421\u0453\u0421\u2030\u0420\u00b5\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+            )
+         ),
+         "refresh"
+      );
+      this.setAction(
+         var5,
+         var4,
+         53,
+         this.button(
+            Material.BARRIER,
+            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+            )
+         ),
+         "close"
+      );
+      var1.openInventory(var5);
+   }
+
+   private void openCategory(Player var1, CopiMineArtifacts.Category var2, int var3) {
+      CopiMineArtifacts.SessionState var4 = this.session(var1);
+      var4.viewType = CopiMineArtifacts.ViewType.CATEGORY;
+      var4.currentCategory = var2.name();
+      var4.currentItemId = "";
+      var4.page = Math.max(0, var3);
+      Inventory var5 = this.createMenu(var1, var4, CopiMineArtifacts.ViewType.CATEGORY, 54, "&8" + this.categoryTitle(var2));
+      var5.setItem(
+         4,
+         this.button(
+            this.categoryMaterial(var2),
+            "&f" + this.categoryTitle(var2),
+            List.of(
+               this.categoryHint(var2),
+               "&8\u0420\u2019\u0421\u2039\u0420\u00b1\u0420\u00b5\u0421\u0402\u0420\u0451 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a, \u0421\u2021\u0421\u201a\u0420\u0455\u0420\u00b1\u0421\u2039 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0421\u0453."
+            )
+         )
+      );
+      List var6 = this.catalogByCategory.getOrDefault(var2, List.of());
+      int[] var7 = new int[]{10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+      if (var2 != CopiMineArtifacts.Category.RP && !var6.isEmpty()) {
+         int var8 = var4.page * var7.length;
+
+         for (int var9 = 0; var9 < var7.length; var9++) {
+            int var10 = var8 + var9;
+            if (var10 >= var6.size()) {
+               break;
+            }
+
+            CopiMineArtifacts.CatalogItem var11 = (CopiMineArtifacts.CatalogItem)var6.get(var10);
+            this.setAction(var5, var4, var7[var9], this.previewIcon(var11), "detail:" + var11.itemId());
+         }
+      } else {
+         var5.setItem(
+            22,
+            this.button(
+               Material.PAPER,
+               "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+               List.of(
+                  "&7\u0420\u040e\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0406 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+               )
+            )
+         );
+      }
+
+      this.setAction(
+         var5,
+         var4,
+         45,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+            )
+         ),
+         "back:main"
+      );
+      this.setAction(
+         var5,
+         var4,
+         48,
+         this.button(
+            Material.SPECTRAL_ARROW,
+            "&e\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0421\u2039\u0420\u0491\u0421\u0453\u0421\u2030\u0420\u00b0\u0421\u040f",
+            List.of(
+               "&7\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0421\u2039\u0420\u0491\u0421\u0453\u0421\u2030\u0420\u00b0\u0421\u040f \u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u2020\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+            )
+         ),
+         "page:prev"
+      );
+      this.setAction(
+         var5,
+         var4,
+         49,
+         this.button(
+            Material.CLOCK,
+            "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+            )
+         ),
+         "refresh"
+      );
+      this.setAction(
+         var5,
+         var4,
+         50,
+         this.button(
+            Material.SPECTRAL_ARROW,
+            "&e\u0420\u040e\u0420\u00bb\u0420\u00b5\u0420\u0491\u0421\u0453\u0421\u040b\u0421\u2030\u0420\u00b0\u0421\u040f",
+            List.of(
+               "&7\u0420\u040e\u0420\u00bb\u0420\u00b5\u0420\u0491\u0421\u0453\u0421\u040b\u0421\u2030\u0420\u00b0\u0421\u040f \u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u2020\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+            )
+         ),
+         "page:next"
+      );
+      this.setAction(
+         var5,
+         var4,
+         53,
+         this.button(
+            Material.BARRIER,
+            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+         ),
+         "close"
+      );
+      var1.openInventory(var5);
+   }
+
+   private void openDetail(Player var1, CopiMineArtifacts.CatalogItem var2) {
+      CopiMineArtifacts.SessionState var3 = this.session(var1);
+      var3.viewType = CopiMineArtifacts.ViewType.DETAIL;
+      var3.currentItemId = var2.itemId();
+      Inventory var4 = this.createMenu(
+         var1,
+         var3,
+         CopiMineArtifacts.ViewType.DETAIL,
+         45,
+         "&8\u0420\u0459\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0"
+      );
+      var4.setItem(13, this.previewIcon(var2));
+      var4.setItem(
+         20,
+         this.button(
+            Material.EMERALD,
+            "&a\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: " + var2.priceAr() + " AR",
+            List.of(
+               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 bank bridge."
+            )
+         )
+      );
+      this.setAction(
+         var4,
+         var3,
+         22,
+         this.button(
+            Material.LIME_WOOL,
+            "&a\u0420\u0459\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451.",
+               "&8\u0420\u201d\u0420\u00b0\u0420\u00bb\u0420\u00b5\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u00b6\u0420\u00b5\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u00b5\u0420\u00b1\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f PIN."
+            )
+         ),
+         "confirm:" + var2.itemId()
+      );
+      var4.setItem(
+         24,
+         this.button(
+            Material.PAPER,
+            "&e\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a\u0421\u2039",
+            List.of(
+               "&7\u0420\u045c\u0420\u00b0 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402: &f"
+                  + (
+                     var2.supplyLimit() <= 0
+                        ? "\u0420\u00b1\u0420\u00b5\u0420\u00b7 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a\u0420\u00b0"
+                        : var2.supplyLimit()
+                  ),
+               "&7\u0420\u045c\u0420\u00b0 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u00b0: &f"
+                  + (
+                     var2.perPlayerLimit() <= 0
+                        ? "\u0420\u00b1\u0420\u00b5\u0420\u00b7 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a\u0420\u00b0"
+                        : var2.perPlayerLimit()
+                  )
+            )
+         )
+      );
+      this.setAction(
+         var4,
+         var3,
+         31,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040b."
+            )
+         ),
+         "back:category"
+      );
+      this.setAction(
+         var4,
+         var3,
+         40,
+         this.button(
+            Material.BARRIER,
+            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+         ),
+         "close"
+      );
+      var1.openInventory(var4);
+   }
+
+   private void openConfirm(Player var1, CopiMineArtifacts.CatalogItem var2) {
+      CopiMineArtifacts.SessionState var3 = this.session(var1);
+      var3.viewType = CopiMineArtifacts.ViewType.CONFIRM;
+      var3.currentItemId = var2.itemId();
+      Inventory var4 = this.createMenu(
+         var1,
+         var3,
+         CopiMineArtifacts.ViewType.CONFIRM,
+         45,
+         "&8\u0420\u045f\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5"
+      );
+      var4.setItem(11, this.previewIcon(var2));
+      var4.setItem(
+         13,
+         this.button(
+            Material.PAPER,
+            "&f\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+            List.of(
+               "&7\u0420\u045e\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402: &f" + this.strip(var2.name()),
+               "&7\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: &f" + var2.priceAr() + " AR",
+               "&7\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0: &f" + var3.shopId
+            )
+         )
+      );
+      var4.setItem(
+         15,
+         this.button(
+            Material.GOLD_INGOT,
+            "&eBank bridge",
+            List.of(
+               "&7\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451 PIN \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a CopiMineEconomyCore.",
+               "&7Artifacts \u0420\u0405\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0405\u0420\u00b0\u0420\u0457\u0421\u0402\u0421\u040f\u0420\u0458\u0421\u0453\u0421\u040b."
+            )
+         )
+      );
+      this.setAction(
+         var4,
+         var3,
+         29,
+         this.button(
+            Material.LIME_WOOL,
+            "&a\u0420\u045f\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0491\u0420\u0451\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0421\u201a\u0421\u040a: &f" + var2.priceAr() + " AR",
+               "&8\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0421\u2030\u0420\u0451\u0421\u2030\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0455\u0421\u201a \u0420\u0491\u0420\u0406\u0420\u0455\u0420\u2116\u0420\u0405\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u00b0."
+            )
+         ),
+         "purchase:" + var2.itemId()
+      );
+      this.setAction(
+         var4,
+         var3,
+         33,
+         this.button(
+            Material.RED_WOOL,
+            "&c\u0420\u045b\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b0",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b5 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0."
+            )
+         ),
+         "back:detail"
+      );
+      this.setAction(
+         var4,
+         var3,
+         40,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b5 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0."
+            )
+         ),
+         "back:detail"
+      );
+      var1.openInventory(var4);
+   }
+
+   private void openPin(Player var1, CopiMineArtifacts.CatalogItem var2) {
+      CopiMineArtifacts.SessionState var3 = this.session(var1);
+      var3.viewType = CopiMineArtifacts.ViewType.PIN;
+      var3.currentItemId = var2.itemId();
+      Inventory var4 = this.createMenu(
+         var1, var3, CopiMineArtifacts.ViewType.PIN, 54, "&8\u0420\u2019\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b5 PIN"
+      );
+      int[] var5 = new int[]{20, 21, 22, 29, 30, 31, 38, 39, 40, 48};
+
+      for (int var6 = 1; var6 <= 9; var6++) {
+         this.setAction(var4, var3, var5[var6 - 1], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + var6, List.of()), "digit:" + var6);
+      }
+
+      this.setAction(var4, var3, var5[9], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f0", List.of()), "digit:0");
+      var4.setItem(
+         13,
+         this.button(
+            Material.PAPER,
+            "&b\u0420\u2019\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b5 PIN",
+            List.of("&7" + this.maskedPin(var3.pinBuffer))
+         )
+      );
+      this.setAction(
+         var4,
+         var3,
+         23,
+         this.button(
+            Material.BARRIER,
+            "&cCancel",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u040b."
+            )
+         ),
+         "pin:cancel"
+      );
+      this.setAction(
+         var4,
+         var3,
+         32,
+         this.button(
+            Material.YELLOW_WOOL,
+            "&eClear",
+            List.of(
+               "&7\u0420\u045b\u0421\u2021\u0420\u0451\u0421\u0403\u0421\u201a\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0421\u2018\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u2116 PIN."
+            )
+         ),
+         "pin:clear"
+      );
+      this.setAction(
+         var4,
+         var3,
+         41,
+         this.button(Material.LIME_WOOL, "&aEnter", List.of("&7\u0420\u0459\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a " + var2.name())),
+         "pin:submit"
+      );
+      var1.openInventory(var4);
+   }
+
+   private void refreshPin(Player var1) {
+      CopiMineArtifacts.CatalogItem var2 = this.catalogById.get(this.session(var1).currentItemId);
+      if (var2 != null) {
+         this.openPin(var1, var2);
+      }
+   }
+
+   private void openPurchases(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.PURCHASES;
+      Inventory var3 = this.createMenu(
+         var1,
+         var2,
+         CopiMineArtifacts.ViewType.PURCHASES,
+         54,
+         "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451"
+      );
+      var3.setItem(
+         4,
+         this.button(
+            Material.CHEST,
+            "&b\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            List.of(
+               "&7\u0420\u045c\u0420\u0455\u0420\u0406\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0457\u0420\u0455\u0421\u040f\u0420\u0406\u0420\u00bb\u0421\u040f\u0421\u040b\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u0403\u0421\u0402\u0420\u00b0\u0420\u00b7\u0421\u0453.",
+               "&7\u0420\u2022\u0421\u0403\u0420\u00bb\u0420\u0451 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0421\u2039\u0420\u2116, \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402 \u0420\u00b6\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a."
+            )
+         )
+      );
+      this.runAsync(
+         () -> {
+            List<String> var4 = this.readRecentPurchases(var1.getUniqueId().toString());
+            List<CopiMineArtifacts.PendingDeliveryRow> var5 = this.readPending(var1.getUniqueId().toString());
+            this.runSync(
+               () -> {
+                  int var6 = 10;
+
+                  for (String var8 : var4) {
+                     if (var6 >= 35) {
+                        break;
+                     }
+
+                     var3.setItem(
+                        var6,
+                        this.button(
+                           Material.PAPER, "&f\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0", List.of("&7" + var8)
+                        )
+                     );
+                     if (++var6 % 9 == 8) {
+                        var6 += 2;
+                     }
+                  }
+
+                  int var11 = 37;
+
+                  for (CopiMineArtifacts.PendingDeliveryRow var9 : var5) {
+                     if (var11 >= 44) {
+                        break;
+                     }
+
+                     CopiMineArtifacts.CatalogItem var10 = this.runtimeCatalogItem(var9.itemId());
+                     this.setAction(
+                        var3,
+                        var2,
+                        var11,
+                        this.button(
+                           Material.CHEST_MINECART,
+                           "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: "
+                              + (var10 == null ? var9.itemId() : this.strip(var10.name())),
+                           List.of(
+                              "&7\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+                              "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                           )
+                        ),
+                        "claim:" + var9.deliveryId()
+                     );
+                     var11++;
+                  }
+
+                  this.setAction(
+                     var3,
+                     var2,
+                     45,
+                     this.button(
+                        Material.ARROW,
+                        "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                        List.of(
+                           "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+                        )
+                     ),
+                     "back:main"
+                  );
+                  this.setAction(
+                     var3,
+                     var2,
+                     49,
+                     this.button(
+                        Material.CLOCK,
+                        "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                        List.of(
+                           "&7\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453."
+                        )
+                     ),
+                     "refresh"
+                  );
+                  this.setAction(
+                     var3,
+                     var2,
+                     53,
+                     this.button(
+                        Material.BARRIER,
+                        "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                        List.of(
+                           "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                        )
+                     ),
+                     "close"
+                  );
+                  var1.openInventory(var3);
+               }
+            );
+         }
+      );
+   }
+
+   private void openDonationRoot(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      Inventory var3 = this.createMenu(
+         var1,
+         var2,
+         CopiMineArtifacts.ViewType.DONATION_ROOT,
+         27,
+         "&8\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0"
+      );
+      var3.setItem(
+         4,
+         this.button(
+            Material.NETHER_STAR,
+            "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+            List.of(
+               "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0455\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u2021\u0420\u00b0\u0420\u00b5\u0421\u201a \u0420\u00b7\u0420\u00b0 \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u0453 \u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453.",
+               "&7\u0420\u0098\u0420\u0456\u0421\u0402\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u2021\u0420\u00b0\u0420\u00b5\u0421\u201a \u0420\u00b7\u0420\u00b0 claim, reclaim \u0420\u0451 anti-dupe."
+            )
+         )
+      );
+      this.setAction(
+         var3,
+         var2,
+         10,
+         this.button(
+            Material.BOOK,
+            "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+            List.of(
+               "&7\u0420\u040e\u0420\u0458\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u00b5\u0421\u201a\u0421\u040a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039, \u0421\u2020\u0420\u00b5\u0420\u0405\u0421\u2039 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451."
+            )
+         ),
+         "donation:catalog"
+      );
+      this.setAction(
+         var3,
+         var2,
+         12,
+         this.button(
+            Material.EMERALD,
+            "&a\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403",
+            List.of(
+               "&7\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403, provider \u0420\u0451 \u0420\u0451\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u040f."
+            )
+         ),
+         "donation:balance"
+      );
+      this.setAction(
+         var3,
+         var2,
+         14,
+         this.button(
+            Material.FILLED_MAP,
+            "&b\u0420\u045f\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0421\u201a\u0421\u040a payment session \u0420\u0405\u0420\u00b0 50 / 100 / 250 / 500 / 1000."
+            )
+         ),
+         "donation:topup"
+      );
+      this.setAction(
+         var3,
+         var2,
+         16,
+         this.button(
+            Material.CHEST,
+            "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+            List.of(
+               "&7Claims, active-\u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039 \u0420\u0451 pending delivery."
+            )
+         ),
+         "donation:owned"
+      );
+      this.setAction(
+         var3,
+         var2,
+         22,
+         this.button(
+            Material.RECOVERY_COMPASS,
+            "&dВернуть утерянные предметы",
+            List.of(
+               "&7Показывает только LOST_RECLAIMABLE предметы."
+            )
+         ),
+         "donation:reclaim"
+      );
+      this.setAction(
+         var3,
+         var2,
+         18,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0455\u0421\u0403\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+            )
+         ),
+         "back:main"
+      );
+      this.setAction(
+         var3,
+         var2,
+         26,
+         this.button(
+            Material.BARRIER,
+            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            List.of(
+               "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+            )
+         ),
+         "close"
+      );
+      var1.openInventory(var3);
+   }
+
+   private void openDonationBalance(Player var1) {
+      DonationBalanceService var2 = this.donationBalanceService();
+      if (var2 == null) {
+         var1.sendMessage(
+            this.color(
+               "&cCopiMineEconomyCore \u0420\u0405\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u00b5\u0420\u0405. Donation-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0421\u0403\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0405\u0420\u00b5 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a."
+            )
+         );
+      } else {
+         var2.balanceAsync(var1.getUniqueId(), var1.getName())
+            .whenComplete(
+               (var2x, var3) -> this.runSync(
+                     () -> {
+                        if (var1.isOnline()) {
+                           if (var3 != null) {
+                              this.getLogger().log(Level.WARNING, "Donation balance fetch failed", var3);
+                              var1.sendMessage(
+                                 this.color(
+                                    "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a donation-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403."
+                                 )
+                              );
+                           } else {
+                              CopiMineArtifacts.SessionState var4 = this.session(var1);
+                              Inventory var5 = this.createMenu(
+                                 var1,
+                                 var4,
+                                 CopiMineArtifacts.ViewType.DONATION_BALANCE,
+                                 45,
+                                 "&8\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403"
+                              );
+                              var5.setItem(
+                                 4,
+                                 this.button(
+                                    Material.EMERALD,
+                                    "&a\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403: " + var2x + " Donation",
+                                    List.of(
+                                       "&7Donation \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0458\u0420\u00b5\u0421\u20ac\u0420\u0451\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u0403 AR.",
+                                       "&7\u0420\u0459\u0421\u0453\u0421\u0402\u0421\u0403 \u0421\u201e\u0420\u0451\u0420\u0454\u0421\u0403\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0420\u0405: 1 \u0421\u0402\u0421\u0453\u0420\u00b1\u0420\u00bb\u0421\u040a = 1 Donation."
+                                    )
+                                 )
+                              );
+                              int[] var6 = new int[]{19, 20, 21, 22, 23};
+                              List var7 = this.donationFixedPacks();
+
+                              for (int var8 = 0; var8 < Math.min(var6.length, var7.size()); var8++) {
+                                 long var9 = (Long)var7.get(var8);
+                                 this.setAction(
+                                    var5,
+                                    var4,
+                                    var6[var8],
+                                    this.button(
+                                       Material.SUNFLOWER,
+                                       "&e\u0420\u045f\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b0 "
+                                          + var9,
+                                       List.of(
+                                          "&7\u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0421\u201a\u0421\u040a mock SBP session.",
+                                          "&7\u0420\u045f\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u2039."
+                                       )
+                                    ),
+                                    "donation:topup:create:" + var9
+                                 );
+                              }
+
+                              var5.setItem(
+                                 13,
+                                 this.button(
+                                    Material.PAPER,
+                                    "&f\u0420\u0459\u0420\u00b0\u0420\u0454 \u0421\u040c\u0421\u201a\u0420\u0455 \u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u00b0\u0420\u00b5\u0421\u201a",
+                                    List.of(
+                                       "&71. \u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u2116 payment session.",
+                                       "&72. \u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u2116 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 QR fallback.",
+                                       "&73. \u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451\u0420\u00b7\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403\u0420\u00b0 PAID."
+                                    )
+                                 )
+                              );
+                              var5.setItem(
+                                 31,
+                                 this.button(
+                                    Material.BOOK,
+                                    "&bFallback",
+                                    List.of(
+                                       "&7" + this.donationQrFallbackMessage(),
+                                       "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u2039: &f"
+                                          + this.donationWebsiteBaseUrl()
+                                    )
+                                 )
+                              );
+                              this.setAction(
+                                 var5,
+                                 var4,
+                                 36,
+                                 this.button(
+                                    Material.ARROW,
+                                    "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                    List.of(
+                                       "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                    )
+                                 ),
+                                 "donation:root"
+                              );
+                              this.setAction(
+                                 var5,
+                                 var4,
+                                 40,
+                                 this.button(
+                                    Material.CLOCK,
+                                    "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                    List.of(
+                                       "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451 provider status."
+                                    )
+                                 ),
+                                 "donation:balance"
+                              );
+                              this.setAction(
+                                 var5,
+                                 var4,
+                                 44,
+                                 this.button(
+                                    Material.BARRIER,
+                                    "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                    List.of(
+                                       "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                    )
+                                 ),
+                                 "close"
+                              );
+                              var1.openInventory(var5);
+                           }
+                        }
+                     }
+                  )
+            );
+      }
+   }
+
+   private void openDonationCatalog(Player var1) {
+      this.runAsync(
+         () -> {
+            CopiMineArtifacts.DonationOwnershipSnapshot var2 = this.readDonationOwnershipSnapshot(var1.getUniqueId().toString());
+            List var3 = this.donationCatalogById.values().stream().filter(CopiMineArtifacts.DonationCatalogItem::enabled).sorted((var0, var1xx) -> {
+               int var2x = Long.compare(var0.priceDonation(), var1xx.priceDonation());
+               return var2x != 0 ? var2x : var0.displayName().compareToIgnoreCase(var1xx.displayName());
+            }).toList();
+            this.runSync(
+               () -> {
+                  if (var1.isOnline()) {
+                     CopiMineArtifacts.SessionState var4 = this.session(var1);
+                     Inventory var5 = this.createMenu(
+                        var1,
+                        var4,
+                        CopiMineArtifacts.ViewType.DONATION_CATALOG,
+                        54,
+                        "&8\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u00b0"
+                     );
+                     var5.setItem(
+                        4,
+                        this.button(
+                           Material.NETHER_STAR,
+                           "&d\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+                           List.of(
+                              "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5.",
+                              "&7\u0420\u045f\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u2039 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u00b7\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                           )
+                        )
+                     );
+                     int[] var6 = new int[]{10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+
+                     for (int var7 = 0; var7 < Math.min(var6.length, var3.size()); var7++) {
+                        CopiMineArtifacts.DonationCatalogItem var8 = (CopiMineArtifacts.DonationCatalogItem)var3.get(var7);
+                        CopiMineArtifacts.CatalogItem var9 = this.catalogById.get(var8.itemId());
+                        if (var9 != null) {
+                           String var10 = var2.activeItemIds().contains(var8.itemId())
+                              ? "&a\u0420\u0408\u0420\u00b6\u0420\u00b5 \u0421\u0453 \u0421\u201a\u0420\u00b5\u0420\u00b1\u0421\u040f"
+                              : (
+                                 var2.claimableItemIds().contains(var8.itemId())
+                                    ? "&e\u0420\u045a\u0420\u0455\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u00b7\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a"
+                                    : "&7\u0420\u045c\u0420\u00b5 \u0420\u0454\u0421\u0453\u0420\u0457\u0420\u00bb\u0420\u00b5\u0420\u0405"
+                              );
+                           this.setAction(
+                              var5,
+                              var4,
+                              var6[var7],
+                              this.button(
+                                 var9.material(),
+                                 "&f" + var8.displayName(),
+                                 List.of(
+                                    "&7\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: &f" + var8.priceDonation() + " Donation",
+                                    "&7\u0420\u00ad\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a: &f"
+                                       + this.firstNonBlank(
+                                          var8.effectDescription(),
+                                          "\u0420\u0455\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0457\u0420\u0455\u0421\u040f\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5"
+                                       ),
+                                    "&7\u0420\u0459\u0421\u0453\u0420\u00bb\u0420\u0491\u0420\u00b0\u0421\u0453\u0420\u0405: &f"
+                                       + Math.max(0, var8.cooldownSeconds())
+                                       + " \u0421\u0403\u0420\u00b5\u0420\u0454.",
+                                    "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: " + var10,
+                                    "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0421\u2021\u0421\u201a\u0420\u0455\u0420\u00b1\u0421\u2039 \u0420\u0457\u0420\u0455\u0420\u00bb\u0421\u0453\u0421\u2021\u0420\u0451\u0421\u201a\u0421\u040a \u0421\u0403\u0421\u0403\u0421\u2039\u0420\u00bb\u0420\u0454\u0421\u0453 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a."
+                                 )
+                              ),
+                              "donation:catalog:item:" + var8.itemId()
+                           );
+                        }
+                     }
+
+                     this.setAction(
+                        var5,
+                        var4,
+                        45,
+                        this.button(
+                           Material.ARROW,
+                           "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                           List.of(
+                              "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                           )
+                        ),
+                        "donation:root"
+                     );
+                     this.setAction(
+                        var5,
+                        var4,
+                        49,
+                        this.button(
+                           Material.CLOCK,
+                           "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                           List.of(
+                              "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a ownership status."
+                           )
+                        ),
+                        "donation:catalog"
+                     );
+                     this.setAction(
+                        var5,
+                        var4,
+                        53,
+                        this.button(
+                           Material.BARRIER,
+                           "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                           List.of(
+                              "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                           )
+                        ),
+                        "close"
+                     );
+                     var1.openInventory(var5);
+                  }
+               }
+            );
+         }
+      );
+   }
+
+   private void openDonationOwnedClean(Player var1) {
+      this.readDonationClaimsAsync(var1.getUniqueId())
+         .whenComplete(
+            (var2, var3) -> {
+               if (var3 != null) {
+                  this.runSync(
+                     () -> {
+                        if (var1.isOnline()) {
+                           var1.sendMessage(
+                              this.color(
+                                 "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451 claims."
+                              )
+                           );
+                        }
+                     }
+                  );
+               } else {
+                  this.runAsync(
+                     () -> {
+                        CopiMineArtifacts.DonationOwnershipSnapshot var3x = this.readDonationOwnershipSnapshot(var1.getUniqueId().toString());
+                        this.runSync(
+                           () -> {
+                              if (var1.isOnline()) {
+                                 CopiMineArtifacts.SessionState var4 = this.session(var1);
+                                 Inventory var5 = this.createMenu(
+                                    var1,
+                                    var4,
+                                    CopiMineArtifacts.ViewType.DONATION_OWNED,
+                                    54,
+                                    "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                                 );
+                                 var5.setItem(
+                                    4,
+                                    this.button(
+                                       Material.CHEST,
+                                       "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+                                       List.of(
+                                          "&7\u0420\u2014\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a \u0421\u0403\u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u0405\u0421\u2039 claims, \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0420\u00b5 \u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039",
+                                          "&7\u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451, \u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0421\u0453\u0421\u20ac\u0420\u00bb\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453.",
+                                          "&7\u0420\u00a4\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a, \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                                       )
+                                    )
+                                 );
+                                 int var6 = 10;
+
+                                 for (CopiMineArtifacts.DonationClaimRow var8 : var2 == null ? List.<CopiMineArtifacts.DonationClaimRow>of() : var2) {
+                                    if (var6 >= 35) {
+                                       break;
+                                    }
+
+                                    CopiMineArtifacts.DonationCatalogItem var9 = this.donationCatalogItem(var8.itemId());
+                                    String var10 = var9 == null ? var8.itemId() : var9.displayName();
+                                    String var11 = this.firstNonBlank(var8.status(), "UNCLAIMED");
+                                    if (this.donationClaimReady(var11)) {
+                                       this.setAction(
+                                          var5,
+                                          var4,
+                                          var6,
+                                          this.button(
+                                             Material.CHEST_MINECART,
+                                             "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: " + var10,
+                                             List.of(
+                                                "&7Claim: &f" + var8.claimId(),
+                                                "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455: &f"
+                                                   + var8.amount(),
+                                                "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0421\u0403\u0420\u0406\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u0491\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                                             )
+                                          ),
+                                          "claim:" + var8.claimId()
+                                       );
+                                    } else {
+                                       var5.setItem(
+                                          var6,
+                                          this.button(
+                                             Material.CLOCK,
+                                             "&e\u0420\u2019 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5: "
+                                                + var10,
+                                             List.of(
+                                                "&7Claim: &f" + var8.claimId(),
+                                                "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: &f"
+                                                   + this.donationClaimStatusLabelSafe(var11),
+                                                "&7\u0420\u2019\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0457\u0421\u0402\u0420\u00b0\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453."
+                                             )
+                                          )
+                                       );
+                                    }
+
+                                    if (++var6 % 9 == 8) {
+                                       var6 += 2;
+                                    }
+                                 }
+
+                                 int var12 = 37;
+
+                                 for (String var15 : var3x.activeItemIds()) {
+                                    if (var12 >= 44) {
+                                       break;
+                                    }
+
+                                    CopiMineArtifacts.DonationCatalogItem var16 = this.donationCatalogItem(var15);
+                                    var5.setItem(
+                                       var12++,
+                                       this.button(
+                                          Material.LIME_CONCRETE,
+                                          "&a\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u00b5\u0420\u0405: "
+                                             + (var16 == null ? var15 : var16.displayName()),
+                                          List.of(
+                                             "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u0451 \u0420\u00b7\u0420\u00b0\u0420\u0454\u0421\u0402\u0420\u00b5\u0420\u0457\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u2116."
+                                          )
+                                       )
+                                    );
+                                 }
+
+                                 if ((var2 == null || var2.isEmpty()) && var3x.activeItemIds().isEmpty()) {
+                                    String var14 = var3x.claimPendingCount() > 0
+                                       ? "&7\u0420\u2022\u0421\u0403\u0421\u201a\u0421\u040a claims \u0420\u0406 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5. \u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451 \u0421\u040c\u0420\u0454\u0421\u0402\u0420\u00b0\u0420\u0405 \u0421\u2021\u0421\u0453\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5."
+                                       : "&7\u0420\u045c\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0405\u0420\u00b5\u0421\u201a purchase claim \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451.";
+                                    var5.setItem(
+                                       22,
+                                       this.button(
+                                          Material.PAPER,
+                                          "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                                          List.of(var14)
+                                       )
+                                    );
+                                 }
+
+                                 this.setAction(
+                                    var5,
+                                    var4,
+                                    45,
+                                    this.button(
+                                       Material.ARROW,
+                                       "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                       List.of(
+                                          "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                       )
+                                    ),
+                                    "donation:root"
+                                 );
+                                 this.setAction(
+                                    var5,
+                                    var4,
+                                    49,
+                                    this.button(
+                                       Material.CLOCK,
+                                       "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                       List.of(
+                                          "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a claims \u0420\u0451 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0420\u00b5 \u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039."
+                                       )
+                                    ),
+                                    "donation:owned"
+                                 );
+                                 this.setAction(
+                                    var5,
+                                    var4,
+                                    53,
+                                    this.button(
+                                       Material.BARRIER,
+                                       "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                       List.of(
+                                          "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                       )
+                                    ),
+                                    "close"
+                                 );
+                                 var1.openInventory(var5);
+                              }
+                           }
+                        );
+                     }
+                  );
+               }
+            }
+         );
+   }
+
+   private String donationClaimStatusLabelSafe(String var1) {
+      String var2 = this.firstNonBlank(var1, "UNCLAIMED").toUpperCase(Locale.ROOT);
+
+      return switch (var2) {
+         case "UNCLAIMED" -> "Можно забрать";
+         case "RESERVED", "DELIVERING" -> "Выдача обрабатывается";
+         case "DELIVERY_REVIEW" -> "Ручная проверка";
+         default -> var2;
+      };
+   }
+
+   private void openDonationOwned(Player var1) {
+      if (this.dbExecutor != null || this.donationLossJournalPath != null) {
+         this.openDonationOwnedClean(var1);
+      } else if (this.useDonationShopV2Menus()) {
+         this.openDonationOwnedV2(var1);
+      } else {
+         this.readDonationClaimsAsync(var1.getUniqueId())
+            .whenComplete(
+               (var2, var3) -> {
+                  if (var3 != null) {
+                     this.runSync(
+                        () -> {
+                           if (var1.isOnline()) {
+                              var1.sendMessage(
+                                 this.color(
+                                    "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a donation-claims."
+                                 )
+                              );
+                           }
+                        }
+                     );
+                  } else {
+                     this.runAsync(
+                        () -> {
+                           CopiMineArtifacts.DonationOwnershipSnapshot var3x = this.readDonationOwnershipSnapshot(var1.getUniqueId().toString());
+                           this.runSync(
+                              () -> {
+                                 if (var1.isOnline()) {
+                                    CopiMineArtifacts.SessionState var4 = this.session(var1);
+                                    Inventory var5 = this.createMenu(
+                                       var1,
+                                       var4,
+                                       CopiMineArtifacts.ViewType.DONATION_OWNED,
+                                       54,
+                                       "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                                    );
+                                    var5.setItem(
+                                       4,
+                                       this.button(
+                                          Material.CHEST,
+                                          "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+                                          List.of(
+                                             "&7Claims \u0420\u0451 active-\u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039.",
+                                             "&7\u0420\u00a4\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a, \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                                          )
+                                       )
+                                    );
+                                    int var6 = 10;
+
+                                    for (CopiMineArtifacts.DonationClaimRow var8 : var2 == null ? List.<CopiMineArtifacts.DonationClaimRow>of() : var2) {
+                                       if (var6 >= 35) {
+                                          break;
+                                       }
+
+                                       CopiMineArtifacts.DonationCatalogItem var9 = this.donationCatalogItem(var8.itemId());
+                                       String var10 = var9 == null ? var8.itemId() : var9.displayName();
+                                       this.setAction(
+                                          var5,
+                                          var4,
+                                          var6,
+                                          this.button(
+                                             Material.CHEST_MINECART,
+                                             "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: " + var10,
+                                             List.of(
+                                                "&7Claim: &f" + var8.claimId(),
+                                                "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455: &f"
+                                                   + var8.amount(),
+                                                "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                                             )
+                                          ),
+                                          "claim:" + var8.claimId()
+                                       );
+                                       if (++var6 % 9 == 8) {
+                                          var6 += 2;
+                                       }
+                                    }
+
+                                    int var11 = 37;
+
+                                    for (String var13 : var3x.activeItemIds()) {
+                                       if (var11 >= 44) {
+                                          break;
+                                       }
+
+                                       CopiMineArtifacts.DonationCatalogItem var14 = this.donationCatalogItem(var13);
+                                       var5.setItem(
+                                          var11++,
+                                          this.button(
+                                             Material.LIME_CONCRETE,
+                                             "&a\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u00b5\u0420\u0405: "
+                                                + (var14 == null ? var13 : var14.displayName()),
+                                             List.of(
+                                                "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u0451 \u0420\u00b7\u0420\u00b0\u0420\u0454\u0421\u0402\u0420\u00b5\u0420\u0457\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u2116."
+                                             )
+                                          )
+                                       );
+                                    }
+
+                                    if ((var2 == null || var2.isEmpty()) && var3x.activeItemIds().isEmpty()) {
+                                       var5.setItem(
+                                          22,
+                                          this.button(
+                                             Material.PAPER,
+                                             "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                                             List.of(
+                                                "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u00bb claim \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+                                             )
+                                          )
+                                       );
+                                    }
+
+                                    this.setAction(
+                                       var5,
+                                       var4,
+                                       45,
+                                       this.button(
+                                          Material.ARROW,
+                                          "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                          List.of(
+                                             "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                          )
+                                       ),
+                                       "donation:root"
+                                    );
+                                    this.setAction(
+                                       var5,
+                                       var4,
+                                       49,
+                                       this.button(
+                                          Material.CLOCK,
+                                          "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                          List.of(
+                                             "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a claims \u0420\u0451 active instances."
+                                          )
+                                       ),
+                                       "donation:owned"
+                                    );
+                                    this.setAction(
+                                       var5,
+                                       var4,
+                                       53,
+                                       this.button(
+                                          Material.BARRIER,
+                                          "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                          List.of(
+                                             "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                          )
+                                       ),
+                                       "close"
+                                    );
+                                    var1.openInventory(var5);
+                                 }
+                              }
+                           );
+                        }
+                     );
+                  }
+               }
+            );
+      }
+   }
+
+   private void openDonationReclaim(Player var1) {
+      this.runAsync(
+         () -> {
+            List var2 = this.readReclaimableDonationRows(var1.getUniqueId().toString(), 21);
+            this.runSync(
+               () -> {
+                  if (var1.isOnline()) {
+                     CopiMineArtifacts.SessionState var3 = this.session(var1);
+                     Inventory var4 = this.createMenu(
+                        var1,
+                        var3,
+                        CopiMineArtifacts.ViewType.DONATION_RECLAIM,
+                        54,
+                        "&8\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a \u0421\u0453\u0421\u201a\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                     );
+                     var4.setItem(
+                        4,
+                        this.button(
+                           Material.RECOVERY_COMPASS,
+                           "&dВернуть утерянные предметы",
+                           List.of(
+                              "&7Здесь показываются только LOST_RECLAIMABLE предметы.",
+                              "&7Возврат идёт по одному предмету за раз."
+                           )
+                        )
+                     );
+                     int[] var5 = new int[]{10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+
+                     for (int var6 = 0; var6 < Math.min(var5.length, var2.size()); var6++) {
+                        CopiMineArtifacts.ReclaimableDonationRow var7 = (CopiMineArtifacts.ReclaimableDonationRow)var2.get(var6);
+                        CopiMineArtifacts.DonationCatalogItem var8 = this.donationCatalogItem(var7.itemId());
+                        String var9 = var8 == null ? var7.itemId() : var8.displayName();
+                        this.setAction(
+                           var4,
+                           var3,
+                           var5[var6],
+                           this.button(
+                              Material.NETHER_STAR,
+                              "&dВернуть: " + var9,
+                              List.of(
+                                 "&7Потерян: &f"
+                                    + Instant.ofEpochSecond(var7.updatedAt()),
+                                 "&8Старый экземпляр будет переведён в REPLACED_AFTER_LOSS."
+                              )
+                           ),
+                           "donation:reclaim:item:" + var7.uniqueItemId()
+                        );
+                     }
+
+                     if (var2.isEmpty()) {
+                        var4.setItem(
+                           22,
+                           this.button(
+                              Material.LIME_CONCRETE,
+                              "&aНечего возвращать",
+                              List.of(
+                                 "&7Сейчас у тебя нет LOST_RECLAIMABLE предметов."
+                              )
+                           )
+                        );
+                     }
+
+                     this.setAction(
+                        var4,
+                        var3,
+                        45,
+                        this.button(
+                           Material.ARROW,
+                           "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                           List.of(
+                              "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                           )
+                        ),
+                        "donation:root"
+                     );
+                     this.setAction(
+                        var4,
+                        var3,
+                        49,
+                        this.button(
+                           Material.CLOCK,
+                           "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                           List.of(
+                              "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a lost items."
+                           )
+                        ),
+                        "donation:reclaim"
+                     );
+                     this.setAction(
+                        var4,
+                        var3,
+                        53,
+                        this.button(
+                           Material.BARRIER,
+                           "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                           List.of(
+                              "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                           )
+                        ),
+                        "close"
+                     );
+                     var1.openInventory(var4);
+                  }
+               }
+            );
+         }
+      );
+   }
+
+   private boolean donationClaimReady(String var1) {
+      return "UNCLAIMED".equalsIgnoreCase(this.firstNonBlank(var1, ""));
+   }
+
+   private boolean donationClaimInProgress(String var1) {
+      String var2 = this.firstNonBlank(var1, "").toUpperCase(Locale.ROOT);
+      return Set.of("RESERVED", "DELIVERING", "DELIVERY_REVIEW").contains(var2);
+   }
+
+   private String donationClaimStatusLabel(String var1) {
+      String var2 = this.firstNonBlank(var1, "UNCLAIMED").toUpperCase(Locale.ROOT);
+
+      return switch (var2) {
+         case "UNCLAIMED" -> "Можно забрать";
+         case "RESERVED", "DELIVERING" -> "Выдача обрабатывается";
+         case "DELIVERY_REVIEW" -> "Ручная проверка";
+         default -> var2;
+      };
+   }
+
+   private void openDonationOwnedV2(Player var1) {
+      this.readDonationClaimsAsync(var1.getUniqueId())
+         .whenComplete(
+            (var2, var3) -> {
+               if (var3 != null) {
+                  this.runSync(
+                     () -> {
+                        if (var1.isOnline()) {
+                           var1.sendMessage(
+                              this.color(
+                                 "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a donation-claims."
+                              )
+                           );
+                        }
+                     }
+                  );
+               } else {
+                  this.runAsync(
+                     () -> {
+                        CopiMineArtifacts.DonationOwnershipSnapshot var3x = this.readDonationOwnershipSnapshot(var1.getUniqueId().toString());
+                        this.runSync(
+                           () -> {
+                              if (var1.isOnline()) {
+                                 CopiMineArtifacts.SessionState var4 = this.session(var1);
+                                 Inventory var5 = this.createMenu(
+                                    var1,
+                                    var4,
+                                    CopiMineArtifacts.ViewType.DONATION_OWNED,
+                                    54,
+                                    "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                                 );
+                                 var5.setItem(
+                                    4,
+                                    this.button(
+                                       Material.CHEST,
+                                       "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+                                       List.of(
+                                          "&7Claims, active-\u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039 \u0420\u0451 stuck-\u0421\u0403\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u040f\u0420\u0405\u0420\u0451\u0421\u040f.",
+                                          "&7\u0420\u00a4\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a, \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                                       )
+                                    )
+                                 );
+                                 int var6 = 10;
+
+                                 for (CopiMineArtifacts.DonationClaimRow var8 : var2 == null ? List.<CopiMineArtifacts.DonationClaimRow>of() : var2) {
+                                    if (var6 >= 35) {
+                                       break;
+                                    }
+
+                                    CopiMineArtifacts.DonationCatalogItem var9 = this.donationCatalogItem(var8.itemId());
+                                    String var10 = var9 == null ? var8.itemId() : var9.displayName();
+                                    String var11 = this.firstNonBlank(var8.status(), "UNCLAIMED");
+                                    if (this.donationClaimReady(var11)) {
+                                       this.setAction(
+                                          var5,
+                                          var4,
+                                          var6,
+                                          this.button(
+                                             Material.CHEST_MINECART,
+                                             "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: " + var10,
+                                             List.of(
+                                                "&7Claim: &f" + var8.claimId(),
+                                                "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455: &f"
+                                                   + var8.amount(),
+                                                "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                                             )
+                                          ),
+                                          "claim:" + var8.claimId()
+                                       );
+                                    } else {
+                                       var5.setItem(
+                                          var6,
+                                          this.button(
+                                             Material.CLOCK,
+                                             "&e\u0420\u2019 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5: "
+                                                + var10,
+                                             List.of(
+                                                "&7Claim: &f" + var8.claimId(),
+                                                "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: &f" + var11,
+                                                "&7\u0420\u2019\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0457\u0421\u0402\u0420\u00b0\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453."
+                                             )
+                                          )
+                                       );
+                                    }
+
+                                    if (++var6 % 9 == 8) {
+                                       var6 += 2;
+                                    }
+                                 }
+
+                                 int var12 = 37;
+
+                                 for (String var15 : var3x.activeItemIds()) {
+                                    if (var12 >= 44) {
+                                       break;
+                                    }
+
+                                    CopiMineArtifacts.DonationCatalogItem var16 = this.donationCatalogItem(var15);
+                                    var5.setItem(
+                                       var12++,
+                                       this.button(
+                                          Material.LIME_CONCRETE,
+                                          "&a\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u00b5\u0420\u0405: "
+                                             + (var16 == null ? var15 : var16.displayName()),
+                                          List.of(
+                                             "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u0451 \u0420\u00b7\u0420\u00b0\u0420\u0454\u0421\u0402\u0420\u00b5\u0420\u0457\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u2116."
+                                          )
+                                       )
+                                    );
+                                 }
+
+                                 if ((var2 == null || var2.isEmpty()) && var3x.activeItemIds().isEmpty()) {
+                                    String var14 = var3x.claimPendingCount() > 0
+                                       ? "&7\u0420\u2022\u0421\u0403\u0421\u201a\u0421\u040a claims \u0420\u0406 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5. \u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451 \u0421\u040c\u0420\u0454\u0421\u0402\u0420\u00b0\u0420\u0405 \u0421\u2021\u0421\u0453\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5."
+                                       : "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u00bb claim \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451.";
+                                    var5.setItem(
+                                       22,
+                                       this.button(
+                                          Material.PAPER,
+                                          "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                                          List.of(var14)
+                                       )
+                                    );
+                                 }
+
+                                 this.setAction(
+                                    var5,
+                                    var4,
+                                    45,
+                                    this.button(
+                                       Material.ARROW,
+                                       "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                       List.of(
+                                          "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                       )
+                                    ),
+                                    "donation:root"
+                                 );
+                                 this.setAction(
+                                    var5,
+                                    var4,
+                                    49,
+                                    this.button(
+                                       Material.CLOCK,
+                                       "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                       List.of(
+                                          "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a claims \u0420\u0451 active instances."
+                                       )
+                                    ),
+                                    "donation:owned"
+                                 );
+                                 this.setAction(
+                                    var5,
+                                    var4,
+                                    53,
+                                    this.button(
+                                       Material.BARRIER,
+                                       "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                       List.of(
+                                          "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                       )
+                                    ),
+                                    "close"
+                                 );
+                                 var1.openInventory(var5);
+                              }
+                           }
+                        );
+                     }
+                  );
+               }
+            }
+         );
+   }
+
+   private void openPendingDeliveries(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.PENDING_DELIVERY;
+      Inventory var3 = this.createMenu(
+         var1,
+         var2,
+         CopiMineArtifacts.ViewType.PENDING_DELIVERY,
+         54,
+         "&8\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0"
+      );
+      var3.setItem(
+         4,
+         this.button(
+            Material.CHEST_MINECART,
+            "&a\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            List.of(
+               "&7\u0420\u2014\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a \u0420\u00bb\u0420\u00b5\u0420\u00b6\u0420\u00b0\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039,",
+               "&7\u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u00bb\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a."
+            )
+         )
+      );
+      this.runAsync(
+         () -> {
+            List<CopiMineArtifacts.PendingDeliveryRow> var4 = this.readPending(var1.getUniqueId().toString());
+            this.runSync(
+               () -> {
+                  int var5 = 10;
+
+                  for (CopiMineArtifacts.PendingDeliveryRow var7 : var4) {
+                     if (var5 >= 35) {
+                        break;
+                     }
+
+                     CopiMineArtifacts.CatalogItem var8 = this.runtimeCatalogItem(var7.itemId());
+                     this.setAction(
+                        var3,
+                        var2,
+                        var5,
+                        this.button(
+                           Material.CHEST_MINECART,
+                           "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: "
+                              + (var8 == null ? var7.itemId() : this.strip(var8.name())),
+                           List.of(
+                              "&7\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+                              "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                           )
+                        ),
+                        "claim:" + var7.deliveryId()
+                     );
+                     if (++var5 % 9 == 8) {
+                        var5 += 2;
+                     }
+                  }
+
+                  if (var4.isEmpty()) {
+                     var3.setItem(
+                        22,
+                        this.button(
+                           Material.LIME_CONCRETE,
+                           "&a\u0420\u045f\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                           List.of(
+                              "&7\u0420\u045c\u0420\u00b5\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406, \u0420\u0455\u0420\u00b6\u0420\u0451\u0420\u0491\u0420\u00b0\u0421\u040b\u0421\u2030\u0420\u0451\u0421\u2026 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+                           )
+                        )
+                     );
+                  }
+
+                  this.setAction(
+                     var3,
+                     var2,
+                     45,
+                     this.button(
+                        Material.ARROW,
+                        "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                        List.of(
+                           "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+                        )
+                     ),
+                     "back:main"
+                  );
+                  this.setAction(
+                     var3,
+                     var2,
+                     49,
+                     this.button(
+                        Material.CLOCK,
+                        "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                        List.of(
+                           "&7\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7."
+                        )
+                     ),
+                     "refresh"
+                  );
+                  this.setAction(
+                     var3,
+                     var2,
+                     53,
+                     this.button(
+                        Material.BARRIER,
+                        "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                        List.of(
+                           "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                        )
+                     ),
+                     "close"
+                  );
+                  var1.openInventory(var3);
+               }
+            );
+         }
+      );
+   }
+
+   private void openHelp(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.viewType = CopiMineArtifacts.ViewType.HELP;
+      Inventory var3 = this.createMenu(
+         var1,
+         var2,
+         CopiMineArtifacts.ViewType.HELP,
+         27,
+         "&8\u0420\u045f\u0420\u0455\u0420\u0458\u0420\u0455\u0421\u2030\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451"
+      );
+      var3.setItem(
+         10,
+         this.button(
+            Material.BOOK,
+            "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0",
+            List.of(
+               "&7\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 -> \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f -> \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402 -> \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0491\u0420\u0451\u0421\u201a\u0421\u040a.",
+               "&7\u0420\u2022\u0421\u0403\u0420\u00bb\u0420\u0451 PIN \u0420\u0406\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0421\u2018\u0420\u0405, \u0420\u0457\u0420\u0455\u0421\u040f\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u2020\u0420\u0451\u0421\u201e\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b0\u0420\u0405\u0420\u00b5\u0420\u00bb\u0421\u040a."
+            )
+         )
+      );
+      var3.setItem(
+         12,
+         this.button(
+            Material.CHEST_MINECART,
+            "&e\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            List.of(
+               "&7\u0420\u2022\u0421\u0403\u0420\u00bb\u0420\u0451 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b5\u0420\u0405, \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0421\u201a\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f.",
+               "&7\u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u2116 \u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451 /cmartifacts claim."
+            )
+         )
+      );
+      var3.setItem(
+         14,
+         this.button(
+            Material.ANVIL,
+            "&e\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a",
+            List.of(
+               "&7\u0420\u2019\u0420\u0455\u0420\u00b7\u0421\u040a\u0420\u0458\u0420\u0451 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0406 \u0421\u0402\u0421\u0453\u0420\u0454\u0421\u0453.",
+               "&7\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451 \u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451 /cmartifacts repair."
+            )
+         )
+      );
+      var3.setItem(
+         16,
+         this.button(
+            Material.BOOK,
+            "&e\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u0451",
+            List.of(
+               "&7\u0420\u00a0\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403-\u0420\u0457\u0420\u00b0\u0420\u0454 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0 \u0420\u0455\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u0406\u0420\u0405\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u0451\u0420\u2116 \u0420\u0406\u0420\u0451\u0420\u0491 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406."
+            )
+         )
+      );
+      this.setAction(
+         var3,
+         var2,
+         22,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+            )
+         ),
+         "back:main"
+      );
+      var1.openInventory(var3);
+   }
+
+   private void openSuccess(Player var1, CopiMineArtifacts.CatalogItem var2, long var3) {
+      CopiMineArtifacts.SessionState var5 = this.session(var1);
+      var5.viewType = CopiMineArtifacts.ViewType.SUCCESS;
+      var5.currentItemId = var2.itemId();
+      Inventory var6 = this.createMenu(
+         var1,
+         var5,
+         CopiMineArtifacts.ViewType.SUCCESS,
+         27,
+         "&8\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u20ac\u0420\u00b5\u0420\u0405\u0420\u00b0"
+      );
+      var6.setItem(
+         13,
+         this.button(
+            Material.LIME_CONCRETE,
+            "&a\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0421\u0403\u0420\u0457\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u00b0",
+            List.of(
+               "&7\u0420\u045e\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402: &f" + this.strip(var2.name()),
+               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0455: &f" + var2.priceAr() + " AR",
+               "&7\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f: &f"
+                  + var3
+                  + " AR"
+            )
+         )
+      );
+      this.setAction(
+         var6,
+         var5,
+         11,
+         this.button(
+            Material.EMERALD,
+            "&a\u0420\u0459\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7",
+            List.of(
+               "&7\u0420\u045f\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0"
+            )
+         ),
+         "confirm:" + var2.itemId()
+      );
+      this.setAction(
+         var6,
+         var5,
+         15,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491 \u0420\u0406 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040b",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0454\u0421\u0453 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406"
+            )
+         ),
+         "back:category"
+      );
+      this.setAction(
+         var6,
+         var5,
+         22,
+         this.button(
+            Material.CHEST,
+            "&b\u0420\u201c\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0456\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451"
+            )
+         ),
+         "back:main"
+      );
+      var1.openInventory(var6);
+   }
+
+   private void openError(Player var1, CopiMineArtifacts.CatalogItem var2, String var3, String var4) {
+      CopiMineArtifacts.SessionState var5 = this.session(var1);
+      var5.viewType = CopiMineArtifacts.ViewType.ERROR;
+      var5.currentItemId = var2.itemId();
+      Inventory var6 = this.createMenu(
+         var1,
+         var5,
+         CopiMineArtifacts.ViewType.ERROR,
+         27,
+         "&8\u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451"
+      );
+      var6.setItem(13, this.button(Material.RED_CONCRETE, var3, List.of("&7" + var4)));
+      this.setAction(
+         var6,
+         var5,
+         11,
+         this.button(
+            Material.RED_WOOL,
+            "&c\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491 \u0420\u0454 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u040b",
+            List.of(
+               "&7\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7"
+            )
+         ),
+         "back:confirm"
+      );
+      this.setAction(
+         var6,
+         var5,
+         15,
+         this.button(
+            Material.ARROW,
+            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491 \u0420\u0454 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0421\u0453",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b5 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0"
+            )
+         ),
+         "back:detail"
+      );
+      this.setAction(
+         var6,
+         var5,
+         22,
+         this.button(
+            Material.CHEST,
+            "&b\u0420\u201c\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b",
+            List.of(
+               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0456\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451"
+            )
+         ),
+         "back:main"
+      );
+      var1.openInventory(var6);
+   }
+
+   private void openRepair(Player var1) {
+      ItemStack var2 = var1.getInventory().getItemInMainHand();
+      CopiMineArtifacts.CatalogItem var3 = this.authenticCatalogItem(var2, var1, "repair_open");
+      if (var3 == null) {
+         var1.sendMessage(
+            this.color(
+               "&c\u0420\u2019 \u0421\u0402\u0421\u0453\u0420\u0454\u0420\u00b5 \u0420\u0491\u0420\u0455\u0420\u00bb\u0420\u00b6\u0420\u00b5\u0420\u0405 \u0420\u00b1\u0421\u2039\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a CopiMineArtifacts."
+            )
+         );
+      } else if (!this.isArCatalogItem(var3.itemId())) {
+         // player.sendMessage(color("&cDonation-
+         var1.sendMessage(
+            this.color(
+               "&cDonation-\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u0451\u0420\u0458\u0420\u00b0\u0421\u040b\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0406 AR-\u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a."
+            )
+         );
+      } else {
+         if (var2.getItemMeta() instanceof Damageable var4 && var4.getDamage() > 0) {
+            long var9 = this.repairPrice(var2, var3);
+            CopiMineArtifacts.SessionState var7 = this.session(var1);
+            var7.viewType = CopiMineArtifacts.ViewType.REPAIR;
+            var7.currentItemId = var3.itemId();
+            Inventory var8 = this.createMenu(
+               var1,
+               var7,
+               CopiMineArtifacts.ViewType.REPAIR,
+               27,
+               "&8\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u00b0"
+            );
+            var8.setItem(13, var2.clone());
+            this.setAction(
+               var8,
+               var7,
+               11,
+               this.button(
+                  Material.ANVIL,
+                  "&a\u0420\u045f\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u00b7\u0420\u00b0 " + var9 + " AR",
+                  List.of(
+                     "&7\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u00b7\u0420\u00b0 AR"
+                  )
+               ),
+               "repair:confirm:" + var9
+            );
+            this.setAction(
+               var8,
+               var7,
+               15,
+               this.button(
+                  Material.ARROW,
+                  "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                  List.of(
+                     "&7\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a"
+                  )
+               ),
+               "repair:cancel"
+            );
+            var1.openInventory(var8);
+            return;
+         }
+
+         var1.sendMessage(
+            this.color(
+               "&e\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0421\u201a\u0421\u0402\u0420\u00b5\u0420\u00b1\u0421\u0453\u0420\u00b5\u0421\u201a \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a\u0420\u00b0."
+            )
+         );
+      }
+   }
+
+   private void handleMenuAction(Player var1, CopiMineArtifacts.SessionState var2, String var3) {
+      if (var3.startsWith("cat:")) {
+         this.openCategory(var1, CopiMineArtifacts.Category.valueOf(var3.substring(4)));
+      } else if (var3.startsWith("detail:")) {
+         CopiMineArtifacts.CatalogItem var17 = this.catalogById.get(var3.substring(7));
+         if (var17 != null) {
+            this.openDetail(var1, var17);
+         }
+      } else if (var3.startsWith("confirm:")) {
+         CopiMineArtifacts.CatalogItem var16 = this.catalogById.get(var3.substring(8));
+         if (var16 != null) {
+            this.openConfirm(var1, var16);
+         }
+      } else if (var3.startsWith("purchase:")) {
+         CopiMineArtifacts.CatalogItem var15 = this.catalogById.get(var3.substring(9));
+         if (var15 != null) {
+            if (!var2.purchaseInFlightId.isBlank()) {
+               var1.sendMessage(
+                  this.color(
+                     "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u00b0\u0421\u201a\u0421\u2039\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f."
+                  )
+               );
+            } else {
+               var2.purchaseInFlightId = "pin-status:" + var15.itemId();
+               this.bridge
+                  .pinStatusAsync(var1.getUniqueId())
+                  .whenComplete(
+                     (var3x, var4x) -> this.runSync(
+                           () -> {
+                              CopiMineArtifacts.SessionState var5x = this.session(var1);
+                              if (var1.isOnline() && var5x.purchaseInFlightId.equals("pin-status:" + var15.itemId())) {
+                                 var5x.purchaseInFlightId = "";
+                                 if (var4x != null) {
+                                    var1.sendMessage(
+                                       this.color(
+                                          "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a PIN-\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403. \u0420\u045f\u0420\u0455\u0420\u0457\u0421\u0402\u0420\u0455\u0420\u00b1\u0421\u0453\u0420\u2116\u0421\u201a\u0420\u00b5 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7."
+                                       )
+                                    );
+                                 } else {
+                                    if (var3x != null && var3x.configured()) {
+                                       this.openPin(var1, var15);
+                                    } else {
+                                       this.executePurchase(var1, this.currentShop(var5x), var15, "");
+                                    }
+                                 }
+                              }
+                           }
+                        )
+                  );
+            }
+         }
+      } else if (var3.startsWith("digit:")) {
+         if (var2.pinBuffer.length() < 8) {
+            var2.pinBuffer = var2.pinBuffer + var3.substring(6);
+         }
+
+         this.refreshPin(var1);
+      } else if ("pin:clear".equals(var3)) {
+         var2.pinBuffer = "";
+         this.refreshPin(var1);
+      } else if ("pin:cancel".equals(var3)) {
+         CopiMineArtifacts.CatalogItem var14 = this.catalogById.get(var2.currentItemId);
+         if (var14 != null) {
+            this.openConfirm(var1, var14);
+         }
+      } else if ("pin:submit".equals(var3)) {
+         CopiMineArtifacts.CatalogItem var13 = this.catalogById.get(var2.currentItemId);
+         if (var13 != null) {
+            this.executePurchase(var1, this.currentShop(var2), var13, var2.pinBuffer);
+         }
+      } else if ("purchases".equals(var3)) {
+         this.openPurchases(var1);
+      } else if ("pending".equals(var3)) {
+         // "pending".equals(action)
+         this.openPendingDeliveries(var1);
+      } else if ("help".equals(var3)) {
+         this.openHelp(var1);
+      } else if ("donation:root".equals(var3)) {
+         this.openDonationRoot(var1);
+      } else if ("donation:balance".equals(var3) || "donation:topup".equals(var3)) {
+         this.openDonationBalance(var1);
+      } else if ("donation:catalog".equals(var3)) {
+         this.openDonationCatalog(var1);
+      } else if ("donation:owned".equals(var3)) {
+         this.openDonationOwned(var1);
+      } else if ("donation:reclaim".equals(var3)) {
+         this.openDonationReclaim(var1);
+      } else if (var3.startsWith("donation:catalog:item:")) {
+         String var12 = var3.substring("donation:catalog:item:".length()).toLowerCase(Locale.ROOT);
+         CopiMineArtifacts.DonationCatalogItem var19 = this.donationCatalogItem(var12);
+         if (var19 != null && var19.enabled()) {
+            var1.sendMessage(this.color("&bПокупка donation-предметов выполняется на сайте: &f" + this.donationPurchaseUrl(var12)));
+            var1.sendMessage(this.color("&7После оплаты предмет появится в claim, и его можно будет забрать в игре."));
+         } else {
+            var1.sendMessage(this.color("&cЭтот donation-предмет сейчас недоступен."));
+         }
+      } else if (var3.startsWith("donation:topup:create:")) {
+         DonationPaymentService var11 = this.donationPaymentService();
+         if (var11 == null) {
+            var1.sendMessage(this.color("&cCopiMineEconomyCore недоступен. Payment session сейчас не создать."));
+         } else {
+            long var18 = this.parseLong(var3.substring("donation:topup:create:".length()), 0L);
+            if (!this.donationFixedPacks().contains(var18)) {
+               var1.sendMessage(this.color("&cРазрешены только пакеты 50 / 100 / 250 / 500 / 1000."));
+            } else {
+               var11.createSessionAsync(
+                     var1.getUniqueId(),
+                     var1.getName(),
+                     var18,
+                     var1.getName(),
+                     "artifact_shop_gui",
+                     "artifact-donation-session-" + var1.getUniqueId() + "-" + var18 + "-" + UUID.randomUUID()
+                  )
+                  .whenComplete(
+                     (var4x, var5x) -> this.runSync(
+                           () -> {
+                              if (var1.isOnline()) {
+                                 if (var5x == null && var4x != null) {
+                                    String var6 = this.firstNonBlank(this.str(var4x.get("session_id")), this.firstNonBlank(this.str(var4x.get("id")), ""));
+                                    String var7x = var6.length() > 8 ? var6.substring(var6.length() - 8) : var6;
+                                    var1.sendMessage(this.color("&aPayment session создана на &f" + var18 + " Donation&a."));
+                                    var1.sendMessage(this.color("&7Ссылка: &f" + this.donationPaymentUrl(var6)));
+                                    var1.sendMessage(this.color("&7Код сессии: &f" + var7x));
+                                    var1.sendMessage(this.color("&7" + this.donationQrFallbackMessage()));
+                                    this.openDonationBalance(var1);
+                                 } else {
+                                    this.getLogger().log(Level.WARNING, "Donation session create failed from artifact GUI", var5x);
+                                    var1.sendMessage(this.color("&cНе удалось создать payment session."));
+                                 }
+                              }
+                           }
+                        )
+                  );
+            }
+         }
+      } else if (var3.startsWith("donation:reclaim:item:")) {
+         this.reclaimDonationItemSafe(var1, var3.substring("donation:reclaim:item:".length()));
+      } else if ("refresh".equals(var3)) {
+         // "refresh".equals(action)
+         this.refreshCurrentMenu(var1, var2);
+      } else if ("page:prev".equals(var3)) {
+         if (!var2.currentCategory.isBlank()) {
+            this.openCategory(var1, CopiMineArtifacts.Category.valueOf(var2.currentCategory), Math.max(0, var2.page - 1));
+         }
+      } else if ("page:next".equals(var3)) {
+         if (!var2.currentCategory.isBlank()) {
+            CopiMineArtifacts.Category var10 = CopiMineArtifacts.Category.valueOf(var2.currentCategory);
+            int var5 = Math.max(0, (this.catalogByCategory.getOrDefault(var10, List.of()).size() - 1) / 21);
+            this.openCategory(var1, var10, Math.min(var5, var2.page + 1));
+         }
+      } else if ("admin:main".equals(var3)) {
+         this.openArtifactsAdminMenu(var1);
+      } else if ("admin:shops".equals(var3)) {
+         this.openAdminShops(var1);
+      } else if ("admin:catalog".equals(var3)) {
+         this.openAdminCatalog(var1);
+      } else if ("admin:diagnostics".equals(var3)) {
+         this.openAdminDiagnosticsAsync(var1);
+      } else if ("admin:reload".equals(var3)) {
+         if (!this.hasArtifactPermission(var1, "copimine.artifacts.reload")) {
+            this.noPermission(var1);
+         } else {
+            this.reloadConfig();
+            this.debugGui = this.getConfig().getBoolean("debug_gui", false);
+            this.loadCatalogFromConfig();
+            this.runAsync(
+               () -> {
+                  try {
+                     this.syncCatalogToPostgres();
+                     this.runSync(() -> {
+                        var1.sendMessage(this.color("&aCopiMineArtifacts catalog reloaded."));
+                        this.openAdminDiagnosticsAsync(var1);
+                     });
+                  } catch (SQLException var3x) {
+                     this.getLogger().log(Level.WARNING, "Artifacts admin reload failed", (Throwable)var3x);
+                     this.runSync(
+                        () -> var1.sendMessage(
+                              this.color(
+                                 "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_RELOAD_FAILED"
+                              )
+                           )
+                     );
+                  }
+               }
+            );
+         }
+      } else if ("repair:open".equals(var3)) {
+         this.openRepair(var1);
+      } else if ("close".equals(var3)) {
+         var1.closeInventory();
+      } else if (var3.startsWith("claim:")) {
+         this.claimOne(var1, var3.substring(6));
+      } else if (var3.startsWith("repair:confirm:")) {
+         long var9 = this.parseLong(var3.substring("repair:confirm:".length()), 0L);
+         this.executeRepair(var1, var9);
+      } else if ("repair:cancel".equals(var3)) {
+         var1.closeInventory();
+      } else if ("back:main".equals(var3)) {
+         CopiMineArtifacts.Shop var8 = this.currentShop(var2);
+         if (var8 != null) {
+            this.openMain(var1, var8);
+         }
+      } else if ("back:category".equals(var3)) {
+         this.openCategory(var1, CopiMineArtifacts.Category.valueOf(var2.currentCategory));
+      } else if ("back:detail".equals(var3)) {
+         CopiMineArtifacts.CatalogItem var7 = this.catalogById.get(var2.currentItemId);
+         if (var7 != null) {
+            this.openDetail(var1, var7);
+         }
+      } else {
+         if ("back:confirm".equals(var3)) {
+            CopiMineArtifacts.CatalogItem var4 = this.catalogById.get(var2.currentItemId);
+            if (var4 != null) {
+               this.openConfirm(var1, var4);
+            }
+         }
+      }
+   }
+
+   private void refreshCurrentMenu(Player var1, CopiMineArtifacts.SessionState var2) {
+      switch (var2.viewType) {
+         case MAIN:
+            CopiMineArtifacts.Shop var7 = this.currentShop(var2);
+            if (var7 != null) {
+               this.openMain(var1, var7);
             }
             break;
-        }
-        String password = env.getOrDefault("POSTGRES_PASSWORD", "");
-        if (password.isBlank()) throw new IOException("POSTGRES_PASSWORD is missing");
-        return new PgSettings(
-                env.getOrDefault("POSTGRES_HOST", "127.0.0.1"),
-                parseInt(env.getOrDefault("POSTGRES_PORT", "5432"), 5432),
-                env.getOrDefault("POSTGRES_DB", "copimine"),
-                env.getOrDefault("POSTGRES_SCHEMA", "copimine"),
-                env.getOrDefault("POSTGRES_USER", "copimine"),
-                password
-        );
-    }
-
-    private List<Path> envCandidates() {
-        List<Path> paths = new ArrayList<>();
-        String explicit = System.getenv("COPIMINE_ENV_FILE");
-        if (explicit != null && !explicit.isBlank()) paths.add(Path.of(explicit));
-        File data = getDataFolder();
-        File plugins = data.getParentFile();
-        if (plugins != null) {
-            File server = plugins.getParentFile();
-            if (server != null) {
-                File minecraft = server.getParentFile();
-                if (minecraft != null) {
-                    File root = minecraft.getParentFile();
-                    if (root != null) {
-                        paths.add(root.toPath().resolve("admin-web").resolve(".env"));
-                    }
-                }
+         case CATEGORY:
+            if (!var2.currentCategory.isBlank()) {
+               this.openCategory(var1, CopiMineArtifacts.Category.valueOf(var2.currentCategory), var2.page);
             }
-        }
-        return paths;
-    }
+            break;
+         case DETAIL:
+            CopiMineArtifacts.CatalogItem var6 = this.catalogById.get(var2.currentItemId);
+            if (var6 != null) {
+               this.openDetail(var1, var6);
+            }
+            break;
+         case CONFIRM:
+            CopiMineArtifacts.CatalogItem var5 = this.catalogById.get(var2.currentItemId);
+            if (var5 != null) {
+               this.openConfirm(var1, var5);
+            }
+            break;
+         case PIN:
+            CopiMineArtifacts.CatalogItem var4 = this.catalogById.get(var2.currentItemId);
+            if (var4 != null) {
+               this.openPin(var1, var4);
+            }
+            break;
+         case PURCHASES:
+            this.openPurchases(var1);
+            break;
+         case PENDING_DELIVERY:
+            this.openPendingDeliveries(var1);
+            break;
+         case HELP:
+            this.openHelp(var1);
+            break;
+         case REPAIR:
+            this.openRepair(var1);
+            break;
+         case SUCCESS:
+         case ERROR:
+         default:
+            CopiMineArtifacts.Shop var3 = this.currentShop(var2);
+            if (var3 != null) {
+               this.openMain(var1, var3);
+            }
+            break;
+         case DONATION_ROOT:
+            this.openDonationRoot(var1);
+            break;
+         case DONATION_BALANCE:
+            this.openDonationBalance(var1);
+            break;
+         case DONATION_CATALOG:
+            this.openDonationCatalog(var1);
+            break;
+         case DONATION_OWNED:
+            this.openDonationOwned(var1);
+            break;
+         case DONATION_RECLAIM:
+            this.openDonationReclaim(var1);
+            break;
+         case ADMIN_MAIN:
+            this.openArtifactsAdminMenu(var1);
+            break;
+         case ADMIN_SHOPS:
+            this.openAdminShops(var1);
+            break;
+         case ADMIN_CATALOG:
+            this.openAdminCatalog(var1);
+            break;
+         case ADMIN_DIAGNOSTICS:
+            this.openAdminDiagnosticsAsync(var1);
+      }
+   }
 
-    private void ensureSchema() throws SQLException {
-        Connection c = pgPool.acquire();
-        try (Statement st = c.createStatement()) {
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_items_catalog(
-                    item_id TEXT PRIMARY KEY,
-                    category TEXT NOT NULL,
-                    material TEXT NOT NULL,
-                    display_name TEXT NOT NULL,
-                    rarity TEXT NOT NULL,
-                    price_ar BIGINT NOT NULL,
-                    supply_limit INTEGER NOT NULL DEFAULT 0,
-                    per_player_limit INTEGER NOT NULL DEFAULT 0,
-                    cooldown_seconds INTEGER NOT NULL DEFAULT 0,
-                    effect_name TEXT NOT NULL DEFAULT 'NONE',
-                    custom_model_data INTEGER NOT NULL DEFAULT 0,
-                    effect_chance_percent INTEGER NOT NULL DEFAULT 100,
-                    visual_effect_id TEXT NOT NULL DEFAULT '',
-                    lore_json TEXT NOT NULL DEFAULT '[]',
-                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                    updated_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_item_instances(
-                    unique_item_id TEXT PRIMARY KEY,
-                    item_id TEXT NOT NULL,
-                    owner_uuid TEXT NOT NULL,
-                    purchase_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    repaired_count INTEGER NOT NULL DEFAULT 0,
-                    created_at BIGINT NOT NULL,
-                    updated_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_shops(
-                    shop_id TEXT PRIMARY KEY,
-                    world_name TEXT NOT NULL,
-                    block_x INTEGER NOT NULL,
-                    block_y INTEGER NOT NULL,
-                    block_z INTEGER NOT NULL,
-                    title TEXT NOT NULL,
-                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                    created_at BIGINT NOT NULL,
-                    updated_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS protected_block_visuals(
-                    id TEXT PRIMARY KEY,
-                    kind TEXT NOT NULL,
-                    linked_id TEXT NOT NULL,
-                    world TEXT NOT NULL,
-                    x INTEGER NOT NULL,
-                    y INTEGER NOT NULL,
-                    z INTEGER NOT NULL,
-                    entity_uuid TEXT NOT NULL DEFAULT '',
-                    base_material TEXT NOT NULL DEFAULT 'PAPER',
-                    custom_model_data INTEGER NOT NULL DEFAULT 0,
-                    model_id TEXT NOT NULL DEFAULT '',
-                    offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,
-                    offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,
-                    offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,
-                    scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,
-                    scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,
-                    scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,
-                    yaw DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    pitch DOUBLE PRECISION NOT NULL DEFAULT 0,
-                    created_at BIGINT NOT NULL DEFAULT 0,
-                    updated_at BIGINT NOT NULL DEFAULT 0,
-                    active INTEGER NOT NULL DEFAULT 1
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_purchases(
-                    purchase_id TEXT PRIMARY KEY,
-                    unique_item_id TEXT NOT NULL,
-                    player_uuid TEXT NOT NULL,
-                    player_name TEXT NOT NULL,
-                    item_id TEXT NOT NULL,
-                    shop_id TEXT NOT NULL,
-                    price_ar BIGINT NOT NULL,
-                    bank_tx_id TEXT NOT NULL DEFAULT '',
-                    idempotency_key TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    delivery_mode TEXT NOT NULL DEFAULT 'DIRECT',
-                    created_at BIGINT NOT NULL,
-                    updated_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_repairs(
-                    repair_id TEXT PRIMARY KEY,
-                    unique_item_id TEXT NOT NULL,
-                    player_uuid TEXT NOT NULL,
-                    player_name TEXT NOT NULL,
-                    item_id TEXT NOT NULL,
-                    repair_cost_ar BIGINT NOT NULL,
-                    bank_tx_id TEXT NOT NULL DEFAULT '',
-                    status TEXT NOT NULL,
-                    created_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_suspicious_events(
-                    event_id TEXT PRIMARY KEY,
-                    player_uuid TEXT NOT NULL,
-                    player_name TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    details TEXT NOT NULL,
-                    created_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_audit_log(
-                    audit_id TEXT PRIMARY KEY,
-                    actor TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    target_id TEXT NOT NULL,
-                    details TEXT NOT NULL,
-                    created_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("""
-                CREATE TABLE IF NOT EXISTS artifact_pending_deliveries(
-                    delivery_id TEXT PRIMARY KEY,
-                    purchase_id TEXT NOT NULL,
-                    unique_item_id TEXT NOT NULL,
-                    player_uuid TEXT NOT NULL,
-                    item_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    created_at BIGINT NOT NULL,
-                    updated_at BIGINT NOT NULL
-                )
-            """);
-            st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_shops_block ON artifact_shops(world_name,block_x,block_y,block_z)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_artifact_purchases_player_time ON artifact_purchases(player_uuid,created_at DESC)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_artifact_instances_item ON artifact_item_instances(item_id,status)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_artifact_pending_player ON artifact_pending_deliveries(player_uuid,status,created_at DESC)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_artifact_repairs_player ON artifact_repairs(player_uuid,created_at DESC)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_artifact_suspicious_time ON artifact_suspicious_events(created_at DESC,event_type)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_location ON protected_block_visuals(world,x,y,z,active)");
-            st.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS supply_limit INTEGER NOT NULL DEFAULT 0");
-            st.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS per_player_limit INTEGER NOT NULL DEFAULT 0");
-            st.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS custom_model_data INTEGER NOT NULL DEFAULT 0");
-            st.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS effect_chance_percent INTEGER NOT NULL DEFAULT 100");
-            st.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS visual_effect_id TEXT NOT NULL DEFAULT ''");
-        } finally {
-            pgPool.release(c);
-        }
-    }
-
-    private void loadCatalogFromConfig() {
-        catalogById.clear();
-        EnumMap<Category, List<CatalogItem>> byCategory = new EnumMap<>(Category.class);
-        for (Category category : Category.values()) byCategory.put(category, new ArrayList<>());
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "items.yml"));
-        List<Map<?, ?>> rows = yaml.getMapList("items");
-        for (Map<?, ?> row : rows) {
-            String itemId = str(row.get("id"));
-            if (itemId.isBlank()) continue;
-            Category category = parseCategory(str(row.get("category")));
-            Material material = Material.matchMaterial(str(row.get("material")));
-            if (material == null) material = Material.STONE;
-            List<String> lore = asStringList(row.get("lore"));
-            Object visualEffectValue = row.containsKey("visual_effect_id") ? row.get("visual_effect_id") : artifactVisualEffect(itemId);
-            CatalogItem item = new CatalogItem(
-                    itemId,
-                    category,
-                    material,
-                    str(row.get("name")),
-                    str(row.get("rarity")),
-                    parseLong(str(row.get("price_ar")), 0L),
-                    Math.max(0, parseInt(str(row.get("supply_limit")), 0)),
-                    Math.max(0, parseInt(str(row.get("per_player_limit")), 0)),
-                    parseInt(str(row.get("cooldown_seconds")), 0),
-                    str(row.get("effect")),
-                    parseInt(str(row.get("custom_model_data")), artifactModelData(itemId)),
-                    normalizeChance(parseInt(str(row.get("effect_chance_percent")), artifactEffectChance(itemId))),
-                    str(visualEffectValue),
-                    lore
+   private void executePurchase(Player var1, CopiMineArtifacts.Shop var2, CopiMineArtifacts.CatalogItem var3, String var4) {
+      if (var1 != null && var3 != null && var2 != null && this.bridge != null) {
+         CopiMineArtifacts.SessionState var5 = this.session(var1);
+         if (!var5.purchaseInFlightId.isBlank()) {
+            var1.sendMessage(
+               this.color(
+                  "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u00b0\u0421\u201a\u0421\u2039\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f."
+               )
             );
-            catalogById.put(itemId, item);
-            byCategory.get(category).add(item);
-        }
-        catalogByCategory.clear();
-        for (Map.Entry<Category, List<CatalogItem>> e : byCategory.entrySet()) {
-            catalogByCategory.put(e.getKey(), List.copyOf(e.getValue()));
-        }
-    }
+         } else if (var3.category() == CopiMineArtifacts.Category.RP) {
+            var1.sendMessage(
+               this.color(
+                  "&e\u0420\u201d\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0420\u0451 \u0421\u0403\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+               )
+            );
+         } else if (var1.getInventory().firstEmpty() < 0) {
+            var1.sendMessage(
+               this.color(
+                  "&c\u0420\u045c\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0405\u0420\u0455 \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5. AR \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0421\u2039."
+               )
+            );
+         } else {
+            CopiMineArtifacts.ShopRevenueRecipient var6x = this.resolveActivePresidentRevenueRecipient();
+            if (var6x == null) {
+               var1.sendMessage(this.color("&cЛавка временно недоступна: нет активного президента для зачисления выручки."));
+               return;
+            }
 
-    private void syncCatalogToPostgres() throws SQLException {
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement ps = c.prepareStatement("""
-                INSERT INTO artifact_items_catalog(item_id,category,material,display_name,rarity,price_ar,supply_limit,per_player_limit,cooldown_seconds,effect_name,custom_model_data,effect_chance_percent,visual_effect_id,lore_json,enabled,updated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(item_id) DO UPDATE SET
-                    category=EXCLUDED.category,
-                    material=EXCLUDED.material,
-                    display_name=EXCLUDED.display_name,
-                    rarity=EXCLUDED.rarity,
-                    price_ar=EXCLUDED.price_ar,
-                    supply_limit=EXCLUDED.supply_limit,
-                    per_player_limit=EXCLUDED.per_player_limit,
-                    cooldown_seconds=EXCLUDED.cooldown_seconds,
-                    effect_name=EXCLUDED.effect_name,
-                    custom_model_data=EXCLUDED.custom_model_data,
-                    effect_chance_percent=EXCLUDED.effect_chance_percent,
-                    visual_effect_id=EXCLUDED.visual_effect_id,
-                    lore_json=EXCLUDED.lore_json,
-                    enabled=EXCLUDED.enabled,
-                    updated_at=EXCLUDED.updated_at
-            """)) {
-                long now = now();
-                for (CatalogItem item : catalogById.values()) {
-                    ps.setString(1, item.itemId());
-                    ps.setString(2, item.category().name());
-                    ps.setString(3, item.material().name());
-                    ps.setString(4, item.name());
-                    ps.setString(5, item.rarity());
-                    ps.setLong(6, item.priceAr());
-                    ps.setInt(7, item.supplyLimit());
-                    ps.setInt(8, item.perPlayerLimit());
-                    ps.setInt(9, item.cooldownSeconds());
-                    ps.setString(10, item.effect());
-                    ps.setInt(11, item.customModelData());
-                    ps.setInt(12, item.effectChancePercent());
-                    ps.setString(13, item.visualEffectId());
-                    ps.setString(14, toJson(item.lore()));
-                    ps.setBoolean(15, item.category() != Category.RP);
-                    ps.setLong(16, now);
-                    ps.addBatch();
-                }
-                ps.executeBatch();
-            }
-            c.commit();
-        } catch (SQLException e) {
-            c.rollback();
-            throw e;
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
-
-    private void loadShopsFromPostgres() throws SQLException {
-        shopsByLocation.clear();
-        Connection c = pgPool.acquire();
-        try (PreparedStatement ps = c.prepareStatement("SELECT shop_id,title,world_name,block_x,block_y,block_z,enabled FROM artifact_shops")) {
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Shop shop = new Shop(
-                            rs.getString(1),
-                            rs.getString(2),
-                            rs.getString(3),
-                            rs.getInt(4),
-                            rs.getInt(5),
-                            rs.getInt(6),
-                            rs.getBoolean(7)
-                    );
-                    shopsByLocation.put(shop.locationKey(), shop);
-                }
-            }
-        } finally {
-            pgPool.release(c);
-        }
-    }
-
-    private void loadInstanceCache() throws SQLException {
-        instanceToItem.clear();
-        Connection c = pgPool.acquire();
-        try (PreparedStatement ps = c.prepareStatement("SELECT unique_item_id,item_id FROM artifact_item_instances WHERE status IN ('DELIVERED','PENDING_DELIVERY','DONATION_DELIVERING')")) {
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    instanceToItem.put(rs.getString(1), rs.getString(2));
-                }
-            }
-        } finally {
-            pgPool.release(c);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onShopInteract(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
-        Block block = event.getClickedBlock();
-        if (block == null) return;
-        Shop shop = shopsByLocation.get(blockKey(block.getLocation()));
-        if (shop == null) return;
-        event.setCancelled(true);
-        if (!shop.enabled()) {
-            event.getPlayer().sendMessage(color("&cМагазин временно недоступен."));
-            return;
-        }
-        if (!event.getPlayer().hasPermission("copimine.artifacts.use")) {
-            event.getPlayer().sendMessage(color("&cНет доступа к CopiMineArtifacts."));
-            return;
-        }
-        openMain(event.getPlayer(), shop, true);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onShopVisualInteract(PlayerInteractEntityEvent event) {
-        if (!(event.getRightClicked() instanceof ItemDisplay display)) return;
-        PersistentDataContainer pdc = display.getPersistentDataContainer();
-        if (!"PROTECTED_BLOCK_VISUAL".equals(pdc.get(visualEntityTypeKey, PersistentDataType.STRING))) return;
-        if (!"ARTIFACT_SHOP".equals(first(pdc.get(visualKindKey, PersistentDataType.STRING), ""))) return;
-        String shopId = first(pdc.get(visualLinkedIdKey, PersistentDataType.STRING), "");
-        if (shopId.isBlank()) return;
-        event.setCancelled(true);
-        Shop shop = shopsByLocation.values().stream().filter(candidate -> candidate.shopId().equalsIgnoreCase(shopId)).findFirst().orElse(null);
-        if (shop == null || !shop.enabled()) {
-            event.getPlayer().sendMessage(color("&cЛавка сейчас недоступна."));
-            return;
-        }
-        if (!event.getPlayer().hasPermission("copimine.artifacts.use")) {
-            event.getPlayer().sendMessage(color("&cНет доступа к CopiMineArtifacts."));
-            return;
-        }
-        openMain(event.getPlayer(), shop, true);
-    }
-
-    @EventHandler
-    public void onChunkLoad(ChunkLoadEvent event) {
-        if (!customBlockVisualsEnabled()) return;
-        try {
-            repairProtectedBlockVisuals(event.getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ());
-        } catch (Exception e) {
-            getLogger().log(Level.WARNING, "Artifact shop visual repair failed for chunk load", e);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onShopBreak(BlockBreakEvent event) {
-        Shop shop = shopsByLocation.get(blockKey(event.getBlock().getLocation()));
-        if (shop != null) {
-            if (!isArtifactsAdmin(event.getPlayer())) {
-                event.setCancelled(true);
-                event.getPlayer().sendMessage(color("&cЛавка CopiMineArtifacts снимается только через /cmartifacts shop remove."));
-            }
-            return;
-        }
-        Player player = event.getPlayer();
-        CatalogItem catalog = authenticCatalogItem(player.getInventory().getItemInMainHand(), player, "tool_use");
-        if (catalog == null) return;
-        String effect = catalog.effect().toUpperCase(Locale.ROOT);
-        if (!artifactToolEffects().contains(effect)) return;
-        long cooldownUntil = actionCooldowns.getOrDefault(player.getUniqueId(), 0L);
-        long now = now();
-        if (cooldownUntil > now) return;
-        actionCooldowns.put(player.getUniqueId(), now + Math.max(2, catalog.cooldownSeconds()));
-        switch (effect) {
-            case "MINER_PULSE", "HASTE_BURST" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 20 * 5, 1, false, false, true));
-                player.getWorld().spawnParticle(Particle.ENCHANT, event.getBlock().getLocation().add(0.5, 0.8, 0.5), 10, 0.35, 0.35, 0.35, 0.01);
-            }
-            case "FORESTER_FOCUS" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 20 * 4, 0, false, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 3, 0, false, false, true));
-                player.getWorld().playSound(player.getLocation(), Sound.BLOCK_WOOD_BREAK, 0.35f, 1.25f);
-            }
-            case "SURVEYOR_TOUCH" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 3, 0, false, false, true));
-                player.getWorld().spawnParticle(Particle.DUST, event.getBlock().getLocation().add(0.5, 0.5, 0.5), 8, 0.25, 0.25, 0.25, 0.01);
-            }
-            case "CRAFTSMAN_CHECK" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.LUCK, 20 * 5, 0, false, false, true));
-                player.getWorld().playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 0.25f, 1.6f);
-            }
-            default -> { }
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) return;
-        Inventory top = event.getView().getTopInventory();
-        if (!(top.getHolder() instanceof MenuHolder holder)) return;
-        event.setCancelled(true);
-        int rawSlot = event.getRawSlot();
-        if (rawSlot < 0 || rawSlot >= top.getSize()) return;
-        if (!holder.playerUuid.equals(player.getUniqueId())) {
-            debugGui("wrong-player holder=" + holder.playerUuid + " clicker=" + player.getUniqueId() + " session=" + holder.sessionId);
-            player.closeInventory();
-            player.sendMessage(color("&cЭто меню открыто не для вас. Откройте лавку заново."));
-            return;
-        }
-        SessionState state = sessions.get(player.getUniqueId());
-        if (state == null || !state.sessionId.equals(holder.sessionId)) {
-            debugGui("stale-session player=" + player.getName() + " screen=" + holder.viewType + " rawSlot=" + rawSlot + " holderSession=" + holder.sessionId + " currentSession=" + (state == null ? "missing" : state.sessionId));
-            player.closeInventory();
-            player.sendMessage(color("&cМеню устарело. Откройте лавку заново."));
-            return;
-        }
-        if (event.getClick().isShiftClick() || event.getHotbarButton() >= 0) return;
-        String action = state.actions.getOrDefault(rawSlot, "");
-        debugGui("click player=" + player.getName() + " screen=" + holder.viewType + " rawSlot=" + rawSlot + " action=" + (action.isBlank() ? "none" : action) + " shop=" + holder.shopId + " category=" + holder.category + " item=" + holder.itemId + " session=" + holder.sessionId);
-        if (action.isBlank()) {
-            debugGui("no-action player=" + player.getName() + " screen=" + holder.viewType + " rawSlot=" + rawSlot + " session=" + holder.sessionId);
-            return;
-        }
-        if (System.currentTimeMillis() - state.lastClickAt < 150L && action.startsWith("confirm:")) return;
-        state.lastClickAt = System.currentTimeMillis();
-        state.lastActionAt = System.currentTimeMillis();
-        try {
-            handleMenuAction(player, state, action);
-        } catch (Exception ex) {
-            getLogger().log(Level.SEVERE, "Artifact GUI click failed screen=" + holder.viewType + " rawSlot=" + rawSlot + " action=" + action, ex);
-            player.sendMessage(color("&cНе удалось выполнить действие. Ошибка записана в лог."));
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onInventoryDrag(InventoryDragEvent event) {
-        if (event.getView().getTopInventory().getHolder() instanceof MenuHolder) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler
-    public void onInventoryClose(InventoryCloseEvent event) {
-        if (!(event.getPlayer() instanceof Player player)) return;
-        if (event.getInventory().getHolder() instanceof MenuHolder holder) {
-            Bukkit.getScheduler().runTaskLater(this, () -> {
-                if (!player.isOnline()) return;
-                Inventory top = player.getOpenInventory().getTopInventory();
-                if (top.getHolder() instanceof MenuHolder nextHolder) {
-                    debugGui("close-transition player=" + player.getName() + " from=" + holder.viewType + " to=" + nextHolder.viewType + " session=" + nextHolder.sessionId);
-                    return;
-                }
-                SessionState state = sessions.get(player.getUniqueId());
-                if (state != null && state.purchaseInFlightId.isBlank() && state.sessionId.equals(holder.sessionId)) {
-                    sessions.remove(player.getUniqueId());
-                    debugGui("session-cleanup player=" + player.getName() + " screen=" + holder.viewType + " session=" + holder.sessionId);
-                }
-            }, 2L);
-        }
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        sessions.remove(event.getPlayer().getUniqueId());
-    }
-
-    @EventHandler
-    public void onDeath(PlayerDeathEvent event) {
-        SessionState state = sessions.get(event.getEntity().getUniqueId());
-        if (state == null || !state.purchaseInFlightId.isBlank()) return;
-        state.actions.clear();
-        state.pinBuffer = "";
-    }
-
-    private void cleanupExpiredSessions() {
-        long cutoff = System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(SESSION_TTL_SECONDS);
-        sessions.entrySet().removeIf(entry -> {
-            SessionState state = entry.getValue();
-            return state != null
-                    && state.purchaseInFlightId.isBlank()
-                    && state.lastActionAt > 0L
-                    && state.lastActionAt < cutoff;
-        });
-    }
-
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        runAsync(() -> {
-            int count = pendingCount(event.getPlayer().getUniqueId().toString());
-            if (count > 0) {
-                runSync(() -> event.getPlayer().sendMessage(color("&eУ вас есть отложенная выдача CopiMineArtifacts: &f" + count + "&e. Используйте &f/cmartifacts claim&e.")));
-            }
-        });
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArtifactDamage(EntityDamageByEntityEvent event) {
-        Player player = null;
-        if (event.getDamager() instanceof Player directPlayer) {
-            player = directPlayer;
-        } else if (event.getDamager() instanceof Projectile projectile && projectile.getShooter() instanceof Player shooter) {
-            player = shooter;
-        }
-        if (player == null) return;
-        ItemStack item = player.getInventory().getItemInMainHand();
-        CatalogItem catalog = authenticCatalogItem(item, player, "use");
-        if (catalog == null) return;
-        String effect = catalog.effect().toUpperCase(Locale.ROOT);
-        if (!artifactCombatEffects().contains(effect)) return;
-        if (!rollEffectChance(catalog)) return;
-        long cooldownUntil = actionCooldowns.getOrDefault(player.getUniqueId(), 0L);
-        long now = now();
-        if (cooldownUntil > now) return;
-        actionCooldowns.put(player.getUniqueId(), now + catalog.cooldownSeconds());
-        LivingEntity target = event.getEntity() instanceof LivingEntity living ? living : null;
-        Location loc = event.getEntity().getLocation().add(0, 1, 0);
-        switch (effect) {
-            case "LIGHTNING" -> {
-                loc.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, loc, 10, 0.3, 0.3, 0.3, 0.01);
-                loc.getWorld().playSound(loc, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 0.5f, 1.8f);
-                event.setDamage(event.getDamage() + 2.0D);
-            }
-            case "DRAGON_PUNISHMENT" -> {
-                loc.getWorld().spawnParticle(Particle.DRAGON_BREATH, loc, 16, 0.35, 0.35, 0.35, 0.01);
-                loc.getWorld().playSound(loc, Sound.ENTITY_ENDER_DRAGON_FLAP, 0.35f, 1.45f);
-                event.setDamage(event.getDamage() + 1.5D);
-                if (target != null) target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 20 * 4, 0, false, false, true));
-            }
-            case "WATCH_GLOW" -> {
-                if (target != null) {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 20 * 6, 0, false, false, true));
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 20 * 3, 0, false, false, true));
-                }
-                loc.getWorld().spawnParticle(Particle.ENCHANT, loc, 14, 0.4, 0.4, 0.4, 0.02);
-                loc.getWorld().playSound(loc, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.45f, 1.35f);
-            }
-            case "DEBT_SNARE" -> {
-                if (target != null) target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20 * 3, 0, false, false, true));
-                loc.getWorld().spawnParticle(Particle.CRIT, loc, 12, 0.35, 0.25, 0.35, 0.05);
-                loc.getWorld().playSound(loc, Sound.BLOCK_CHAIN_HIT, 0.5f, 0.8f);
-            }
-            case "SMUGGLER_MARK" -> {
-                if (target != null) target.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 20 * 5, 0, false, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 3, 0, false, false, true));
-                loc.getWorld().spawnParticle(Particle.SMOKE, loc, 8, 0.3, 0.3, 0.3, 0.02);
-                loc.getWorld().playSound(loc, Sound.ENTITY_ARROW_HIT_PLAYER, 0.35f, 1.7f);
-            }
-            case "ZMEI_GORYNYCH_POOP" -> {
-                if (target != null) {
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20 * 6, 0, false, false, true));
-                    target.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 20 * 8, 0, false, false, true));
-                }
-                loc.getWorld().spawnParticle(Particle.DRAGON_BREATH, loc, 24, 0.45, 0.35, 0.45, 0.01);
-                loc.getWorld().spawnParticle(Particle.SMOKE, loc, 18, 0.35, 0.25, 0.35, 0.03);
-            }
-            default -> { }
-        }
-        if (target != null && !catalog.visualEffectId().isBlank()) {
-            visualEffects.applyTo(target, catalog.visualEffectId(), Math.max(4, catalog.cooldownSeconds()));
-            if ("ZMEI_GORYNYCH_POOP".equals(effect)) {
-                visualEffects.applyTo(target, "DARK_PULSE", 4);
-            }
-        }
-    }
-
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
-            return true;
-        }
-        if (args.length == 0) {
-            if (isArtifactsAdmin(player)) {
-                openArtifactsAdminMenu(player);
-            } else {
-                sendPlayerShopHelp(player);
-            }
-            return true;
-        }
-        if ("claim".equalsIgnoreCase(args[0])) {
-            claimPending(player);
-            return true;
-        }
-        if ("repair".equalsIgnoreCase(args[0])) {
-            openRepair(player);
-            return true;
-        }
-        if ("admin".equalsIgnoreCase(args[0])) {
-            if (!isArtifactsAdmin(player)) {
-                noPermission(player);
-                return true;
-            }
-            openArtifactsAdminMenu(player);
-            return true;
-        }
-        if ("reload".equalsIgnoreCase(args[0])) {
-            if (!hasArtifactPermission(player, "copimine.artifacts.reload")) {
-                noPermission(player);
-                return true;
-            }
-            reloadConfig();
-            debugGui = getConfig().getBoolean("debug_gui", false);
-            loadCatalogFromConfig();
-            try {
-                syncCatalogToPostgres();
-                player.sendMessage(color("&aCopiMineArtifacts catalog reloaded."));
-            } catch (SQLException e) {
-                getLogger().log(Level.WARNING, "Artifacts reload failed", e);
-                player.sendMessage(color("&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_RELOAD_FAILED"));
-            }
-            return true;
-        }
-        if ("shop".equalsIgnoreCase(args[0])) {
-            return handleShopCommand(player, Arrays.copyOfRange(args, 1, args.length));
-        }
-        player.sendMessage(color("&cНеизвестная команда CopiMineArtifacts."));
-        return true;
-    }
-
-    private boolean handleShopCommand(Player player, String[] args) {
-        if (args.length == 0) {
-            if (!isArtifactsAdmin(player)) {
-                noPermission(player);
-                return true;
-            }
-            player.sendMessage(color("&e/cmartifacts shop create <shop_id>"));
-            player.sendMessage(color("&e/cmartifacts shop remove"));
-            player.sendMessage(color("&e/cmartifacts shop list"));
-            player.sendMessage(color("&e/cmartifacts shop open <shop_id>"));
-            return true;
-        }
-        if ("create".equalsIgnoreCase(args[0])) {
-            if (!hasArtifactPermission(player, "copimine.artifacts.shop.create")) {
-                noPermission(player);
-                return true;
-            }
-            if (args.length < 2) {
-                player.sendMessage(color("&cУкажи shop_id."));
-                return true;
-            }
-            Block target = player.getTargetBlockExact(6);
-            if (target == null) {
-                player.sendMessage(color("&cСмотри на блок лавки в пределах 6 блоков."));
-                return true;
-            }
-            String key = blockKey(target.getLocation());
-            if (shopsByLocation.containsKey(key)) {
-                player.sendMessage(color("&cНа этом блоке уже есть лавка CopiMineArtifacts."));
-                return true;
-            }
-            String shopId = args[1].toLowerCase(Locale.ROOT);
-            Shop shop = new Shop(shopId, "CopiMine Artifacts", target.getWorld().getName(), target.getX(), target.getY(), target.getZ(), true);
-            runAsync(() -> {
-                try {
-                    saveShop(shop);
-                    shopsByLocation.put(shop.locationKey(), shop);
-                    audit(player.getName(), "shop_create", shop.shopId(), shop.locationKey());
-                    runSync(() -> {
-                        try {
-                            spawnOrReplaceProtectedBlockVisual(target.getLocation(), "ARTIFACT_SHOP", shop.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker");
-                        } catch (Exception e) {
-                            getLogger().log(Level.WARNING, "Artifact shop visual create failed", e);
+            String var6 = UUID.randomUUID().toString();
+            var5.purchaseInFlightId = var6;
+            CopiMineArtifacts.PurchaseContext var7 = new CopiMineArtifacts.PurchaseContext(var6, UUID.randomUUID().toString(), var3, var2, var4, var6x);
+            var1.sendMessage(
+               this.color(
+                  "&7CopiMineArtifacts: \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0420\u0458 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453..."
+               )
+            );
+            this.runAsync(
+               () -> {
+                  int var8 = this.purchasedCount(var3.itemId());
+                  if (var3.supplyLimit() > 0 && var8 >= var3.supplyLimit()) {
+                     this.runSync(
+                        () -> {
+                           var5.purchaseInFlightId = "";
+                           if (var1.isOnline()) {
+                              var1.sendMessage(
+                                 this.color(
+                                    "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u00b0 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405."
+                                 )
+                              );
+                              this.openError(
+                                 var1,
+                                 var3,
+                                 "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405",
+                                 "\u0420\u201d\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u0455 "
+                                    + var3.supplyLimit()
+                                    + " \u0421\u20ac\u0421\u201a. \u0420\u0405\u0420\u00b0 \u0420\u0406\u0420\u00b5\u0421\u0403\u0421\u040a \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402."
+                              );
+                           }
                         }
-                    });
-                    runSync(() -> player.sendMessage(color("&aЛавка создана: &f" + shop.shopId())));
-                } catch (SQLException e) {
-                    getLogger().log(Level.WARNING, "Artifact shop create failed", e);
-                    runSync(() -> player.sendMessage(color("&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_SHOP_SAVE_FAILED")));
-                }
-            });
-            return true;
-        }
-        if ("remove".equalsIgnoreCase(args[0])) {
-            if (!hasArtifactPermission(player, "copimine.artifacts.shop.remove")) {
-                noPermission(player);
-                return true;
-            }
-            Block target = player.getTargetBlockExact(6);
-            if (target == null) {
-                player.sendMessage(color("&cСмотри на блок лавки в пределах 6 блоков."));
-                return true;
-            }
-            Shop shop = shopsByLocation.get(blockKey(target.getLocation()));
-            if (shop == null) {
-                player.sendMessage(color("&cНа этом блоке нет лавки CopiMineArtifacts."));
-                return true;
-            }
-            runAsync(() -> {
-                try {
-                    deleteShop(shop.shopId());
-                    shopsByLocation.remove(shop.locationKey());
-                    audit(player.getName(), "shop_remove", shop.shopId(), shop.locationKey());
-                    runSync(() -> {
-                        try {
-                            cleanupProtectedBlockVisuals("ARTIFACT_SHOP", shop.shopId());
-                        } catch (Exception e) {
-                            getLogger().log(Level.WARNING, "Artifact shop visual cleanup failed", e);
+                     );
+                  } else {
+                     int var9 = this.playerPurchasedCount(var1.getUniqueId().toString(), var3.itemId());
+                     if (var3.perPlayerLimit() > 0 && var9 >= var3.perPlayerLimit()) {
+                        this.runSync(
+                           () -> {
+                              var5.purchaseInFlightId = "";
+                              if (var1.isOnline()) {
+                                 var1.sendMessage(
+                                    this.color(
+                                       "&c\u0420\u2019\u0420\u00b0\u0421\u20ac \u0420\u0457\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a."
+                                    )
+                                 );
+                                 this.openError(
+                                    var1,
+                                    var3,
+                                    "&c\u0420\u045f\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a",
+                                    "\u0420\u045a\u0420\u0455\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0420\u00b1\u0420\u0455\u0420\u00bb\u0421\u040a\u0421\u20ac\u0420\u00b5 "
+                                       + var3.perPlayerLimit()
+                                       + " \u0421\u20ac\u0421\u201a. \u0420\u0405\u0420\u00b0 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u00b0."
+                                 );
+                              }
+                           }
+                        );
+                     } else {
+                        CopiMineArtifacts.BridgeTxnResult var10 = this.bridge
+                           .transferToAccount(
+                              var1,
+                              var4,
+                              this.firstNonBlank(var7.revenueRecipient().budgetAccountId(), PRESIDENT_BUDGET_ACCOUNT_ID),
+                              var7.revenueRecipient().presidentUuid().toString(),
+                              var7.revenueRecipient().presidentName(),
+                              var3.priceAr(),
+                              "artifact-purchase-" + var6,
+                              "AR_SHOP_PURCHASE",
+                              "item=" + var3.itemId() + " shop=" + var2.shopId()
+                           );
+                        if (!var10.ok()) {
+                           this.runSync(
+                              () -> {
+                                 var5.purchaseInFlightId = "";
+                                 if (var1.isOnline()) {
+                                    if ("INSUFFICIENT_AR".equalsIgnoreCase(var10.code())) {
+                                       var1.sendMessage(
+                                          this.color(
+                                             "&c\u0420\u045c\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0405\u0420\u0455 AR \u0420\u0405\u0420\u00b0 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454\u0420\u0455\u0420\u0406\u0421\u0403\u0420\u0454\u0420\u0455\u0420\u0458 \u0421\u0403\u0421\u2021\u0421\u2018\u0421\u201a\u0420\u00b5."
+                                          )
+                                       );
+                                       this.openError(
+                                          var1,
+                                          var3,
+                                          "&c\u0420\u045c\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0405\u0420\u0455 AR",
+                                          "\u0420\u045c\u0420\u00b0 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454\u0420\u0455\u0420\u0406\u0421\u0403\u0420\u0454\u0420\u0455\u0420\u0458 \u0421\u0403\u0421\u2021\u0421\u2018\u0421\u201a\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0421\u2026\u0420\u0406\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00b5\u0421\u201a \u0421\u0403\u0421\u0402\u0420\u00b5\u0420\u0491\u0421\u0403\u0421\u201a\u0420\u0406 \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451."
+                                       );
+                                    } else if ("PIN_INVALID".equalsIgnoreCase(var10.code())) {
+                                       var1.sendMessage(
+                                          this.color(
+                                             "&cPIN \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0421\u2018\u0420\u0405 \u0420\u0405\u0420\u00b5\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0405\u0420\u0455."
+                                          )
+                                       );
+                                       this.openError(
+                                          var1,
+                                          var3,
+                                          "&c\u0420\u045c\u0420\u00b5\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u2039\u0420\u2116 PIN",
+                                          "\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040a\u0421\u201a\u0420\u00b5 \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0421\u2018\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u2116 PIN \u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u201a\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453."
+                                       );
+                                    } else {
+                                       var1.sendMessage(
+                                          this.color(
+                                             "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0420\u0455\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0. \u0420\u0459\u0420\u0455\u0420\u0491: "
+                                                + this.safeBridgeCode(var10.code())
+                                          )
+                                       );
+                                       this.openError(
+                                          var1,
+                                          var3,
+                                          "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0420\u0455\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0",
+                                          "\u0420\u0459\u0420\u0455\u0420\u0491: " + this.safeBridgeCode(var10.code())
+                                       );
+                                    }
+                                 }
+                              }
+                           );
+                        } else {
+                           try {
+                              this.persistPaidPurchase(var1, var7, var10);
+                           } catch (SQLException var15) {
+                              CopiMineArtifacts.BridgeTxnResult var12 = this.bridge
+                                 .transferFromAccount(
+                                    this.firstNonBlank(var7.revenueRecipient().budgetAccountId(), PRESIDENT_BUDGET_ACCOUNT_ID),
+                                    var7.revenueRecipient().presidentUuid().toString(),
+                                    var7.revenueRecipient().presidentName(),
+                                    var1.getUniqueId(),
+                                    var1.getName(),
+                                    var3.priceAr(),
+                                    "artifact-refund-" + var6,
+                                    "AR_SHOP_PURCHASE_REFUND",
+                                    "purchase=" + var6
+                                 );
+                              boolean var13 = "ARTIFACT_LIMIT_SUPPLY".equalsIgnoreCase(this.firstNonBlank(var15.getMessage(), ""));
+                              boolean var14 = "ARTIFACT_LIMIT_PLAYER".equalsIgnoreCase(this.firstNonBlank(var15.getMessage(), ""));
+                              if (!var12.ok()) {
+                                 this.audit(
+                                    var1.getName(),
+                                    "purchase_manual_review",
+                                    var7.purchaseId(),
+                                    var7.item().itemId() + " reason=persist_failed refund=" + this.safeBridgeCode(var12.code())
+                                 );
+                                 this.getLogger()
+                                    .log(
+                                       Level.WARNING,
+                                       "Artifact purchase refund failed after persist error: " + var7.purchaseId() + " / " + this.safeBridgeCode(var12.code()),
+                                       (Throwable)var15
+                                    );
+                              }
+
+                              this.runSync(
+                                 () -> {
+                                    var5.purchaseInFlightId = "";
+                                    if (var1.isOnline()) {
+                                       if (var12.ok()) {
+                                          if (var13) {
+                                             var1.sendMessage(
+                                                this.color(
+                                                   "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405. AR \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                                )
+                                             );
+                                             this.openError(
+                                                var1,
+                                                var3,
+                                                "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405",
+                                                "\u0420\u2019\u0420\u0455 \u0420\u0406\u0421\u0402\u0420\u00b5\u0420\u0458\u0421\u040f \u0421\u201e\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0420\u0455\u0420\u2116 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0451 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0420\u00bb \u0420\u0491\u0421\u0402\u0421\u0453\u0420\u0456\u0420\u0455\u0420\u2116 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u00bb\u0421\u040a. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                                             );
+                                          } else if (var14) {
+                                             var1.sendMessage(
+                                                this.color(
+                                                   "&c\u0420\u2019\u0420\u00b0\u0421\u20ac \u0420\u0457\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a. AR \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                                )
+                                             );
+                                             this.openError(
+                                                var1,
+                                                var3,
+                                                "&c\u0420\u045f\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a",
+                                                "\u0420\u2019\u0420\u0455 \u0420\u0406\u0421\u0402\u0420\u00b5\u0420\u0458\u0421\u040f \u0421\u201e\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0420\u0455\u0420\u2116 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0451 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u00b1\u0421\u2039\u0420\u00bb \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0421\u201a. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                                             );
+                                          } else {
+                                             var1.sendMessage(
+                                                this.color(
+                                                   "&c\u0420\u2018\u0420\u00b0\u0420\u00b7\u0420\u00b0 CopiMineArtifacts \u0420\u0405\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0, AR \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                                )
+                                             );
+                                             this.openError(
+                                                var1,
+                                                var3,
+                                                "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0",
+                                                "\u0420\u00a4\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0455\u0421\u20ac\u0420\u00bb\u0420\u00b0. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                                             );
+                                          }
+                                       } else {
+                                          var1.sendMessage(
+                                             this.color(
+                                                "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f AR. \u0420\u0452\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0421\u2018\u0420\u0405, \u0420\u0405\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0421\u2020\u0420\u0451\u0420\u0451."
+                                             )
+                                          );
+                                          this.openError(
+                                             var1,
+                                             var3,
+                                             "&c\u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0",
+                                             "\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0455\u0421\u20ac\u0420\u00bb\u0420\u0455, \u0420\u0405\u0420\u0455 rollback \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0421\u2018\u0420\u0405. \u0420\u0452\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u00b0."
+                                          );
+                                       }
+                                    }
+                                 }
+                              );
+                              return;
+                           }
+
+                           this.runSync(() -> this.deliverPurchase(var1, var7, var10));
                         }
-                    });
-                    runSync(() -> player.sendMessage(color("&aЛавка удалена: &f" + shop.shopId())));
-                } catch (SQLException e) {
-                    getLogger().log(Level.WARNING, "Artifact shop remove failed", e);
-                    runSync(() -> player.sendMessage(color("&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_SHOP_REMOVE_FAILED")));
-                }
-            });
+                     }
+                  }
+               }
+            );
+         }
+      } else {
+         var1.sendMessage(this.color("&cCopiMineEconomyCore bridge is unavailable."));
+      }
+   }
+
+   private void persistPaidPurchase(Player var1, CopiMineArtifacts.PurchaseContext var2, CopiMineArtifacts.BridgeTxnResult var3) throws SQLException {
+      /*
+      persistPaidPurchase(Player player, PurchaseContext context, BridgeTxnResult charge)
+      lockArtifactPurchaseConstraints(c, player.getUniqueId().toString(), context.item().itemId());
+      purchasedCount(c, context.item().itemId())
+      playerPurchasedCount(c, player.getUniqueId().toString(), context.item().itemId())
+      */
+      Connection var4 = this.pgPool.acquire();
+
+      try {
+         var4.setAutoCommit(false);
+
+         try (
+            PreparedStatement var5 = var4.prepareStatement(
+               "    INSERT INTO artifact_purchases(purchase_id,unique_item_id,player_uuid,player_name,item_id,shop_id,price_ar,bank_tx_id,idempotency_key,status,delivery_mode,created_at,updated_at)\n    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)\n"
+            );
+            PreparedStatement var6 = var4.prepareStatement(
+               "    INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at)\n    VALUES(?,?,?,?,?,?,?,?)\n"
+            );
+            PreparedStatement var8 = var4.prepareStatement(
+                "    INSERT INTO artifact_revenue_payouts(purchase_id,president_uuid,president_name,recipient_account_id,buyer_uuid,buyer_name,item_id,shop_id,amount_ar,status,bank_tx_id,idempotency_key,last_error,created_at,updated_at)\n    VALUES(?,?,?,?,?,?,?,?,?,?,'',?,?,?,?)\n"
+            );
+         ) {
+            this.lockArtifactPurchaseConstraints(var4, var1.getUniqueId().toString(), var2.item().itemId());
+            if (var2.item().supplyLimit() > 0 && this.purchasedCount(var4, var2.item().itemId()) >= var2.item().supplyLimit()) {
+               throw new SQLException("ARTIFACT_LIMIT_SUPPLY");
+            }
+
+            if (var2.item().perPlayerLimit() > 0
+               && this.playerPurchasedCount(var4, var1.getUniqueId().toString(), var2.item().itemId()) >= var2.item().perPlayerLimit()) {
+               throw new SQLException("ARTIFACT_LIMIT_PLAYER");
+            }
+
+            long var7 = this.now();
+            var5.setString(1, var2.purchaseId());
+            var5.setString(2, var2.uniqueItemId());
+            var5.setString(3, var1.getUniqueId().toString());
+            var5.setString(4, var1.getName());
+            var5.setString(5, var2.item().itemId());
+            var5.setString(6, var2.shop().shopId());
+            var5.setLong(7, var2.item().priceAr());
+            var5.setString(8, var3.txId());
+            var5.setString(9, "artifact-purchase-" + var2.purchaseId());
+            var5.setString(10, "PAID");
+            var5.setString(11, "DIRECT");
+            var5.setLong(12, var7);
+            var5.setLong(13, var7);
+            var5.executeUpdate();
+            var6.setString(1, var2.uniqueItemId());
+            var6.setString(2, var2.item().itemId());
+            var6.setString(3, var1.getUniqueId().toString());
+            var6.setString(4, var2.purchaseId());
+            var6.setString(5, "DELIVERING");
+            var6.setInt(6, 0);
+            var6.setLong(7, var7);
+            var6.setLong(8, var7);
+            var6.executeUpdate();
+            var8.setString(1, var2.purchaseId());
+            var8.setString(2, var2.revenueRecipient().presidentUuid().toString());
+            var8.setString(3, var2.revenueRecipient().presidentName());
+            var8.setString(4, this.firstNonBlank(var2.revenueRecipient().budgetAccountId(), PRESIDENT_BUDGET_ACCOUNT_ID));
+            var8.setString(5, var1.getUniqueId().toString());
+            var8.setString(6, var1.getName());
+            var8.setString(7, var2.item().itemId());
+            var8.setString(8, var2.shop().shopId());
+            var8.setLong(9, var2.item().priceAr());
+            var8.setString(10, "CREDITED");
+            var8.setString(11, var3.txId());
+            var8.setString(12, "artifact-president-budget-" + var2.purchaseId());
+            var8.setString(13, "");
+            var8.setLong(14, var7);
+            var8.setLong(15, var7);
+            var8.executeUpdate();
+            var4.commit();
+         } catch (SQLException var24) {
+            var4.rollback();
+            throw var24;
+         }
+      } finally {
+         try {
+            var4.setAutoCommit(true);
+         } catch (SQLException var19) {
+         }
+
+         this.pgPool.release(var4);
+      }
+   }
+
+   private void deliverPurchase(Player var1, CopiMineArtifacts.PurchaseContext var2, CopiMineArtifacts.BridgeTxnResult var3) {
+      /*
+      deliverPurchase(Player player, PurchaseContext context, BridgeTxnResult charge)
+      markArtifactPurchaseReview(context.purchaseId(), context.uniqueItemId());
+      finalize_after_physical_delivery_failed
+      */
+      CopiMineArtifacts.SessionState var4 = this.session(var1);
+      ItemStack var5 = this.createOfficialItem(var2.item(), var2.uniqueItemId(), var1.getUniqueId(), var2.purchaseId());
+      HashMap var6 = var1.getInventory().addItem(new ItemStack[]{var5});
+      if (var6.isEmpty()) {
+         this.cacheOfficialBinding(var2.uniqueItemId(), var2.item().itemId(), var1.getUniqueId());
+         this.runAsync(
+            () -> {
+               try {
+                  this.markPurchaseDelivered(var2.purchaseId(), var2.uniqueItemId(), var2.item().itemId());
+                  this.audit(var1.getName(), "purchase_delivered", var2.purchaseId(), var2.item().itemId());
+                  this.triggerRevenuePayoutAsync(var2.purchaseId());
+               } catch (SQLException var6x) {
+                  try {
+                     this.markArtifactPurchaseReview(var2.purchaseId(), var2.uniqueItemId());
+                     this.audit(
+                        var1.getName(), "purchase_manual_review", var2.purchaseId(), var2.item().itemId() + " reason=finalize_after_physical_delivery_failed"
+                     );
+                  } catch (SQLException var5x) {
+                     this.getLogger()
+                        .log(Level.WARNING, "Artifact purchase review mark failed after physical issuance: " + var2.purchaseId(), (Throwable)var5x);
+                  }
+
+                  this.getLogger().log(Level.WARNING, "Artifact purchase finalize failed after physical issuance: " + var2.purchaseId(), (Throwable)var6x);
+               }
+            }
+         );
+         var4.purchaseInFlightId = "";
+         var1.sendMessage(
+            this.color(
+               "&a\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0421\u0403\u0420\u0457\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u00b0. \u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f: &f"
+                  + var3.balanceAfter()
+                  + " AR"
+            )
+         );
+         var1.playSound(var1.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8F, 1.4F);
+         this.openSuccess(var1, var2.item(), var3.balanceAfter());
+      } else {
+         this.runAsync(
+            () -> {
+               try {
+                  this.createPendingDelivery(var1, var2);
+                  this.audit(var1.getName(), "purchase_pending_delivery", var2.purchaseId(), var2.item().itemId());
+                  this.triggerRevenuePayoutAsync(var2.purchaseId());
+                  this.runSync(
+                     () -> {
+                        var4.purchaseInFlightId = "";
+                        if (var1.isOnline()) {
+                           var1.sendMessage(
+                              this.color(
+                                 "&e\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405, \u0420\u0405\u0420\u0455 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0421\u201a. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453."
+                              )
+                           );
+                           this.openPurchases(var1);
+                        }
+                     }
+                  );
+               } catch (SQLException var12) {
+                  /*
+                  createPendingDelivery(player, context)
+                  BridgeTxnResult refund = bridge.refund(player, context.item().priceAr(), "artifact-pending-refund-"
+                  markArtifactPurchaseCancelled(context.purchaseId(), context.uniqueItemId())
+                  markArtifactPurchaseReview(context.purchaseId(), context.uniqueItemId())
+                  bridge.refund
+                  */
+                  CopiMineArtifacts.BridgeTxnResult var5x = this.bridge
+                     .refund(
+                        var1,
+                        var2.item().priceAr(),
+                        "artifact-pending-refund-" + var2.purchaseId(),
+                        "artifact_pending_delivery_refund",
+                        "purchase=" + var2.purchaseId()
+                     );
+                  boolean var6x = false;
+                  boolean var7 = false;
+                  if (var5x.ok()) {
+                     try {
+                        this.cancelRevenuePayout(var2.purchaseId(), "pending_delivery_create_failed");
+                        this.markArtifactPurchaseCancelled(var2.purchaseId(), var2.uniqueItemId());
+                        var6x = true;
+                        this.audit(
+                           var1.getName(), "purchase_cancelled_refunded", var2.purchaseId(), var2.item().itemId() + " reason=pending_delivery_create_failed"
+                        );
+                     } catch (SQLException var11) {
+                        this.getLogger()
+                           .log(Level.WARNING, "Artifact purchase cleanup failed after pending-delivery refund: " + var2.purchaseId(), (Throwable)var11);
+                     }
+                  }
+
+                  if (!var6x) {
+                     try {
+                        this.markArtifactPurchaseReview(var2.purchaseId(), var2.uniqueItemId());
+                        var7 = true;
+                     } catch (SQLException var10) {
+                        this.getLogger()
+                           .log(Level.WARNING, "Artifact purchase review mark failed after pending-delivery error: " + var2.purchaseId(), (Throwable)var10);
+                     }
+
+                     this.audit(
+                        var1.getName(),
+                        "purchase_manual_review",
+                        var2.purchaseId(),
+                        var2.item().itemId() + " reason=pending_delivery_create_failed refund=" + this.safeBridgeCode(var5x.code())
+                     );
+                  }
+
+                  if (!var5x.ok()) {
+                     this.getLogger()
+                        .log(
+                           Level.WARNING,
+                           "Artifact purchase refund failed after pending-delivery error: " + var2.purchaseId() + " / " + this.safeBridgeCode(var5x.code()),
+                           (Throwable)var12
+                        );
+                  }
+
+                  boolean var8 = var5x.ok() && var6x;
+                  boolean var9 = var7;
+                  this.runSync(
+                     () -> {
+                        var4.purchaseInFlightId = "";
+                        if (var1.isOnline()) {
+                           if (var8) {
+                              var1.sendMessage(
+                                 this.color(
+                                    "&c\u0420\u0098\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u00b1\u0421\u2039\u0420\u00bb \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0421\u201a, \u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0, AR \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                 )
+                              );
+                              this.openError(
+                                 var1,
+                                 var2.item(),
+                                 "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0",
+                                 "\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00bb\u0420\u00b0\u0421\u0403\u0421\u040a. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                              );
+                           } else if (var9) {
+                              var1.sendMessage(
+                                 this.color(
+                                    "&c\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453, \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451\u0420\u2116 \u0420\u0457\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0421\u2018\u0420\u0405."
+                                 )
+                              );
+                              this.openError(
+                                 var1,
+                                 var2.item(),
+                                 "&c\u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0",
+                                 "\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451. \u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040a \u0420\u00b6\u0421\u0453\u0421\u0402\u0420\u0405\u0420\u00b0\u0420\u00bb \u0420\u00b0\u0421\u0453\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b0 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451."
+                              );
+                           } else {
+                              var1.sendMessage(
+                                 this.color(
+                                    "&c\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a, \u0420\u00b0 \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0455\u0420\u00b5 \u0420\u0406\u0420\u0455\u0421\u0403\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0455. \u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0."
+                                 )
+                              );
+                              this.openError(
+                                 var1,
+                                 var2.item(),
+                                 "&c\u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0",
+                                 "\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b1\u0420\u00b5\u0420\u00b7\u0420\u0455\u0420\u0457\u0420\u00b0\u0421\u0403\u0420\u0405\u0420\u0455 \u0421\u201e\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451."
+                              );
+                           }
+                        }
+                     }
+                  );
+               }
+            }
+         );
+      }
+   }
+
+   private void executeRepair(Player var1, long var2) {
+      /*
+      executeRepair(Player player, long price)
+      BridgeTxnResult refund = bridge.refund(player, price, "artifact-repair-refund-"
+      repair_manual_review
+      bridge.refund
+      */
+      ItemStack var4 = var1.getInventory().getItemInMainHand();
+      CopiMineArtifacts.CatalogItem var5 = this.authenticCatalogItem(var4, var1, "repair");
+      if (var5 == null) {
+         var1.sendMessage(
+            this.color(
+               "&c\u0420\u045f\u0420\u0455\u0420\u0491\u0420\u0491\u0420\u00b5\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u0451\u0420\u0458\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0406 \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a."
+            )
+         );
+      } else if (!this.isArCatalogItem(var5.itemId())) {
+         // if (!isArCatalogItem(catalog.itemId())) {
+         // player.sendMessage(color("&cDonation-
+         var1.sendMessage(
+            this.color(
+               "&cDonation-\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u0451\u0420\u0458\u0420\u00b0\u0421\u040b\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0406 AR-\u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a."
+            )
+         );
+      } else {
+         if (var4.getItemMeta() instanceof Damageable var6 && var6.getDamage() > 0) {
+            this.runAsync(
+               () -> {
+                  CopiMineArtifacts.BridgeTxnResult var6x = this.bridge
+                     .transferToAccount(
+                        var1,
+                        "",
+                        PRESIDENT_BUDGET_ACCOUNT_ID,
+                        EMPTY_UUID.toString(),
+                        "Президентская казна",
+                        var2,
+                        "artifact-repair-" + UUID.randomUUID(),
+                        "AR_ITEM_REPAIR",
+                        "item=" + var5.itemId()
+                     );
+                  if (!var6x.ok()) {
+                     this.runSync(
+                        () -> var1.sendMessage(
+                              this.color(
+                                 "&c\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0420\u0455\u0420\u0405\u0421\u2018\u0420\u0405. \u0420\u0459\u0420\u0455\u0420\u0491: "
+                                    + this.safeBridgeCode(var6x.code())
+                              )
+                           )
+                     );
+                  } else {
+                     String var7 = UUID.randomUUID().toString();
+
+                     try {
+                        this.persistRepair(var1, var5, var4, var7, var2, var6x.txId());
+                     } catch (SQLException var10) {
+                        CopiMineArtifacts.BridgeTxnResult var9 = this.bridge
+                           .transferFromAccount(
+                              PRESIDENT_BUDGET_ACCOUNT_ID,
+                              EMPTY_UUID.toString(),
+                              "Президентская казна",
+                              var1.getUniqueId(),
+                              var1.getName(),
+                              var2,
+                              "artifact-repair-refund-" + var7,
+                              "AR_ITEM_REPAIR_REFUND",
+                              "repair=" + var7
+                           );
+                        if (!var9.ok()) {
+                           this.audit(var1.getName(), "repair_manual_review", var7, var5.itemId() + " refund=" + this.safeBridgeCode(var9.code()));
+                           this.getLogger()
+                              .log(
+                                 Level.WARNING,
+                                 "Artifact repair refund failed after persist error: " + var7 + " / " + this.safeBridgeCode(var9.code()),
+                                 (Throwable)var10
+                              );
+                        }
+
+                        this.runSync(
+                           () -> {
+                              if (var9.ok()) {
+                                 var1.sendMessage(
+                                    this.color(
+                                       "&c\u0420\u2018\u0420\u00b0\u0420\u00b7\u0420\u00b0 \u0420\u0405\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0. \u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u2018\u0420\u0405, AR \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                    )
+                                 );
+                              } else {
+                                 var1.sendMessage(
+                                    this.color(
+                                       "&c\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f AR. \u0420\u0452\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0421\u2018\u0420\u0405, \u0420\u0405\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0421\u2020\u0420\u0451\u0420\u0451."
+                                    )
+                                 );
+                              }
+                           }
+                        );
+                        return;
+                     }
+
+                     this.runSync(
+                        () -> {
+                           Damageable var5xx = (Damageable)var4.getItemMeta();
+                           var5xx.setDamage(0);
+                           var4.setItemMeta(var5xx);
+                           var1.getInventory().setItemInMainHand(var4);
+                           var1.sendMessage(
+                              this.color(
+                                 "&a\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u20ac\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 &f"
+                                    + var2
+                                    + " AR"
+                              )
+                           );
+                           var1.closeInventory();
+                        }
+                     );
+                  }
+               }
+            );
+            return;
+         }
+
+         var1.sendMessage(
+            this.color(
+               "&e\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0405\u0420\u00b5 \u0421\u201a\u0421\u0402\u0420\u00b5\u0420\u00b1\u0421\u0453\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f."
+            )
+         );
+      }
+   }
+
+   private void claimPending(Player var1) {
+      this.claimPendingV2(var1);
+   }
+
+   private void claimPendingV2(Player var1) {
+      this.runAsync(
+         () -> {
+            List<CopiMineArtifacts.PendingDeliveryRow> var2 = this.readPending(var1.getUniqueId().toString());
+            this.readDonationClaimsAsync(var1.getUniqueId())
+               .whenComplete(
+                  (var3, var4) -> this.runSync(
+                        () -> {
+                           if (!var1.isOnline()) {
+                              return;
+                           }
+                           if (var4 != null) {
+                              this.getLogger().log(Level.WARNING, "Donation claims fetch failed", var4);
+                              var1.sendMessage(this.color("&cНе удалось загрузить донат-выдачи. Попробуй ещё раз."));
+                              return;
+                           }
+                           List<CopiMineArtifacts.DonationClaimRow> var5 = var3 == null ? List.of() : var3;
+                           if (var2.isEmpty() && var5.isEmpty()) {
+                              var1.sendMessage(this.color("&eСейчас нет предметов, ожидающих выдачи."));
+                              return;
+                           }
+
+                           for (CopiMineArtifacts.PendingDeliveryRow var7 : var2) {
+                              if (var1.getInventory().firstEmpty() < 0) {
+                                 var1.sendMessage(this.color("&cИнвентарь заполнен. Освободи место и повтори команду."));
+                                 return;
+                              }
+                              this.deliverPendingRowV2(var1, var7);
+                           }
+
+                           for (CopiMineArtifacts.DonationClaimRow var10 : var5) {
+                              int var8 = this.requiredDonationSlots(var10.amount());
+                              if (var8 < 0) {
+                                 var1.sendMessage(this.color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
+                                 return;
+                              }
+                              if (this.freeStorageSlots(var1.getInventory()) < var8) {
+                                 var1.sendMessage(this.color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + var8));
+                                 return;
+                              }
+                              this.deliverDonationClaimRowV2(var1, var10);
+                           }
+                        }
+                     )
+               );
+         }
+      );
+   }
+
+   private void claimOne(Player var1, String var2) {
+      this.claimOneV2(var1, var2);
+   }
+
+   private void claimOneV2(Player var1, String var2) {
+      this.runAsync(
+         () -> {
+            List<CopiMineArtifacts.PendingDeliveryRow> var3 = this.readPending(var1.getUniqueId().toString()).stream().filter(var1xx -> var1xx.deliveryId().equals(var2)).toList();
+            if (!var3.isEmpty()) {
+               this.runSync(() -> this.deliverPendingRowV2(var1, var3.getFirst()));
+               return;
+            }
+
+            this.readDonationClaimsAsync(var1.getUniqueId())
+               .whenComplete(
+                  (var3x, var4) -> this.runSync(
+                        () -> {
+                           if (!var1.isOnline()) {
+                              return;
+                           }
+                           if (var4 != null) {
+                              this.getLogger().log(Level.WARNING, "Donation claim lookup failed", var4);
+                              var1.sendMessage(this.color("&cНе удалось проверить donation-выдачу."));
+                              return;
+                           }
+
+                           List<CopiMineArtifacts.DonationClaimRow> var5 = (var3x == null ? List.<CopiMineArtifacts.DonationClaimRow>of() : var3x)
+                              .stream()
+                              .filter(var1xxxx -> var1xxxx.claimId().equals(var2))
+                              .toList();
+                           if (var5.isEmpty()) {
+                              var1.sendMessage(this.color("&cПредмет для выдачи не найден."));
+                              return;
+                           }
+
+                           CopiMineArtifacts.DonationClaimRow var6 = var5.getFirst();
+                           int var7 = this.requiredDonationSlots(var6.amount());
+                           if (var7 < 0) {
+                              var1.sendMessage(this.color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
+                           } else if (this.freeStorageSlots(var1.getInventory()) < var7) {
+                              var1.sendMessage(this.color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + var7));
+                           } else {
+                              this.deliverDonationClaimRowV2(var1, var6);
+                           }
+                        }
+                     )
+               );
+         }
+      );
+   }
+
+   private void deliverPendingRow(Player var1, CopiMineArtifacts.PendingDeliveryRow var2) {
+      this.deliverPendingRowV2(var1, var2);
+   }
+
+   private void deliverPendingRowV2(Player var1, CopiMineArtifacts.PendingDeliveryRow var2) {
+      this.reservePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId())
+         .whenComplete(
+            (var3, var4) -> this.runSync(
+                  () -> {
+                     if (!var1.isOnline()) {
+                        if (Boolean.TRUE.equals(var3)) {
+                           this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                        }
+                        return;
+                     }
+                     if (var4 != null) {
+                        this.getLogger().log(Level.WARNING, "Pending delivery reservation failed", var4);
+                        var1.sendMessage(this.color("&cНе удалось зарезервировать отложенную выдачу."));
+                        return;
+                     }
+                     if (!Boolean.TRUE.equals(var3)) {
+                        var1.sendMessage(this.color("&eЭта отложенная выдача уже обрабатывается или была получена."));
+                        return;
+                     }
+
+                     CopiMineArtifacts.CatalogItem var5 = this.runtimeCatalogItem(var2.itemId());
+                     if (var5 == null) {
+                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                        var1.sendMessage(this.color("&cОтложенная выдача повреждена: item missing."));
+                        return;
+                     }
+                     if (var1.getInventory().firstEmpty() < 0) {
+                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                        var1.sendMessage(this.color("&cИнвентарь заполнен. Отложенная выдача не потеряна."));
+                        return;
+                     }
+
+                     ItemStack var6 = this.createOfficialItem(var5, var2.uniqueItemId(), var1.getUniqueId(), var2.purchaseId());
+                     this.cacheProvisionalDonationInstances(var2.itemId(), var1.getUniqueId(), List.of(var2.uniqueItemId()));
+                     HashMap var7 = var1.getInventory().addItem(new ItemStack[]{var6});
+                     if (!var7.isEmpty()) {
+                        this.removeProvisionalDonationInstances(List.of(var2.uniqueItemId()));
+                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                        var1.sendMessage(this.color("&cИнвентарь заполнен. Отложенная выдача не потеряна."));
+                        return;
+                     }
+
+                     this.runAsync(() -> {
+                        try {
+                           this.markPendingClaimed(var2.deliveryId(), var2.purchaseId(), var2.uniqueItemId(), var2.itemId());
+                        } catch (SQLException var3xx) {
+                           try {
+                              this.markArtifactPurchaseReview(var2.purchaseId(), var2.uniqueItemId());
+                              this.audit(var1.getName(), "purchase_manual_review", var2.purchaseId(), var2.itemId() + " reason=pending_delivery_finalize_failed");
+                           } catch (SQLException var4xx) {
+                              this.getLogger().log(Level.WARNING, "Pending delivery review mark failed after finalize error: " + var2.deliveryId(), var4xx);
+                           }
+                           this.getLogger().log(Level.WARNING, "Pending delivery finalization failed: " + var2.deliveryId(), var3xx);
+                        }
+                     });
+                     var1.sendMessage(this.color("&aОтложенная выдача получена: &f" + this.strip(var5.name())));
+                  }
+               )
+         );
+   }
+
+   private void deliverPendingRowLegacy(Player var1, CopiMineArtifacts.PendingDeliveryRow var2) {
+      this.deliverPendingRowV2(var1, var2);
+   }
+
+   private void deliverDonationClaimRow(Player var1, CopiMineArtifacts.DonationClaimRow var2) {
+      this.deliverDonationClaimRowV2(var1, var2);
+   }
+
+   private void deliverDonationClaimRowV2(Player var1, CopiMineArtifacts.DonationClaimRow var2) {
+      this.reserveDonationClaimAsync(var1.getUniqueId(), var2.claimId())
+         .whenComplete(
+            (var3, var4) -> this.runSync(
+                  () -> {
+                     if (!var1.isOnline()) {
+                        if (Boolean.TRUE.equals(var3)) {
+                           this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        }
+                        return;
+                     }
+                     if (var4 != null) {
+                        this.getLogger().log(Level.WARNING, "Donation claim reservation failed", var4);
+                        var1.sendMessage(this.color("&cНе удалось зарезервировать донат-выдачу."));
+                        return;
+                     }
+                     if (!Boolean.TRUE.equals(var3)) {
+                        var1.sendMessage(this.color("&eЭтот донат-предмет уже забирается или был выдан."));
+                        return;
+                     }
+
+                     CopiMineArtifacts.CatalogItem var5 = this.runtimeCatalogItem(var2.itemId());
+                     if (var5 == null) {
+                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        var1.sendMessage(this.color("&cДонат-предмет недоступен в каталоге."));
+                        return;
+                     }
+                     if (var2.amount() != 1L) {
+                        this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        var1.sendMessage(this.color("&cВыдача этого donation claim отправлена на ручную проверку. Один claim должен создавать только один owner-bound предмет."));
+                        return;
+                     }
+
+                     int var6 = this.requiredDonationSlots(var2.amount());
+                     if (var6 < 0) {
+                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        var1.sendMessage(this.color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
+                        return;
+                     }
+                     if (this.freeStorageSlots(var1.getInventory()) < var6) {
+                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        var1.sendMessage(this.color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + var6));
+                        return;
+                     }
+
+                     String var7 = var2.purchaseId() != null && !var2.purchaseId().isBlank() ? var2.purchaseId() : "donation-" + var2.claimId();
+                     ArrayList<String> var8 = new ArrayList<>(var6);
+                     for (int var9 = 0; var9 < var6; var9++) {
+                        var8.add(UUID.randomUUID().toString());
+                     }
+
+                     this.prepareDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var7, var5.itemId(), var8)
+                        .whenComplete(
+                           (var7x, var8x) -> this.runSync(
+                                 () -> {
+                                    if (!var1.isOnline()) {
+                                       if (Boolean.TRUE.equals(var7x)) {
+                                          this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8);
+                                       } else {
+                                          this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                       }
+                                       return;
+                                    }
+                                    if (var8x == null && Boolean.TRUE.equals(var7x)) {
+                                       this.cacheProvisionalDonationInstances(var5.itemId(), var1.getUniqueId(), var8);
+                                       ArrayList<String> var9x = new ArrayList<>(var8.size());
+
+                                       for (String var11 : var8) {
+                                          ItemStack var12 = this.createOfficialItem(var5, var11, var1.getUniqueId(), var7);
+                                          HashMap var13 = var1.getInventory().addItem(new ItemStack[]{var12});
+                                          if (!var13.isEmpty()) {
+                                             this.removeOfficialItemsFromInventory(var1.getInventory(), var9x);
+                                             this.removeProvisionalDonationInstances(var8);
+                                             this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8);
+                                             var1.sendMessage(this.color("&cИнвентарь изменился во время выдачи. Выдача отправлена на ручную проверку и не будет автоматически повторена."));
+                                             return;
+                                          }
+                                          var9x.add(var11);
+                                       }
+
+                                       this.finalizeDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var7, var5.itemId(), var8)
+                                          .whenComplete(
+                                             (var3xxxx, var4xxxx) -> {
+                                                if (var4xxxx != null || !Boolean.TRUE.equals(var3xxxx)) {
+                                                   this.getLogger().log(Level.WARNING, "Donation claim was delivered but completion failed: " + var2.claimId(), var4xxxx);
+                                                   this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                                }
+                                             }
+                                          );
+                                       this.audit(var1.getName(), "donation_claim_delivered", var2.claimId(), var5.itemId());
+                                       var1.sendMessage(this.color("&aДонат-предмет получен: &f" + this.strip(var5.name()) + " &7x" + var6));
+                                    } else {
+                                       if (Boolean.TRUE.equals(var7x)) {
+                                          this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8);
+                                       } else {
+                                          this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                       }
+                                       this.getLogger().log(Level.WARNING, "Donation claim prepare failed: " + var2.claimId(), var8x);
+                                       var1.sendMessage(this.color("&cНе удалось подготовить донат-выдачу. Попробуй ещё раз."));
+                                    }
+                                 }
+                              )
+                        );
+                  }
+               )
+         );
+   }
+
+   private CompletableFuture<List<CopiMineArtifacts.DonationClaimRow>> readDonationClaimsAsync(UUID var1) {
+      DonationPurchaseService var2 = this.donationPurchaseService();
+      if (var2 == null || var1 == null) {
+         return CompletableFuture.completedFuture(List.of());
+      }
+
+      return var2.getUnclaimedItemsAsync(var1, 200)
+         .thenApply(
+            var1x -> {
+               ArrayList<CopiMineArtifacts.DonationClaimRow> var2x = new ArrayList<>();
+               for (Map<String, Object> var4 : var1x == null ? List.<Map<String, Object>>of() : var1x) {
+                  String var5 = this.firstNonBlank(this.str(var4.get("id")), this.str(var4.get("claim_id")));
+                  String var6 = this.firstNonBlank(this.str(var4.get("purchase_id")), "");
+                  String var7 = this.firstNonBlank(this.str(var4.get("item_id")), "").toLowerCase(Locale.ROOT);
+                  long var8 = Math.max(1L, this.parseLong(this.str(var4.get("amount")), 1L));
+                  String var10 = this.firstNonBlank(this.str(var4.get("status")), "UNCLAIMED");
+                  if (!var5.isBlank() && !var7.isBlank()) {
+                     var2x.add(new CopiMineArtifacts.DonationClaimRow(var5, var6, var7, var8, var10));
+                  }
+               }
+               return var2x;
+            }
+         );
+   }
+
+   private CompletableFuture<Boolean> reserveDonationClaimAsync(UUID var1, String var2) {
+      DonationPurchaseService var3 = this.donationPurchaseService();
+      return var3 != null && var1 != null && var2 != null && !var2.isBlank() ? var3.reserveClaimAsync(var1, var2) : CompletableFuture.completedFuture(false);
+   }
+
+   private CompletableFuture<Boolean> markDonationClaimDeliveringAsync(UUID var1, String var2) {
+      DonationPurchaseService var3 = this.donationPurchaseService();
+      return var3 != null && var1 != null && var2 != null && !var2.isBlank() ? var3.markClaimDeliveringAsync(var1, var2) : CompletableFuture.completedFuture(false);
+   }
+
+   private CompletableFuture<Boolean> completeDonationClaimAsync(UUID var1, String var2) {
+      DonationPurchaseService var3 = this.donationPurchaseService();
+      return var3 != null && var1 != null && var2 != null && !var2.isBlank() ? var3.completeClaimAsync(var1, var2) : CompletableFuture.completedFuture(false);
+   }
+
+   private CompletableFuture<Boolean> completeDonationClaimByPurchaseAsync(UUID var1, String var2) {
+      DonationPurchaseService var3 = this.donationPurchaseService();
+      return var3 != null && var1 != null && var2 != null && !var2.isBlank() ? var3.completeClaimByPurchaseAsync(var1, var2) : CompletableFuture.completedFuture(false);
+   }
+
+   private CopiMineArtifacts.ReclaimableDonationRow findReclaimableDonationRow(String var1, String var2) {
+      if (this.firstNonBlank(var1, "").isBlank() || this.firstNonBlank(var2, "").isBlank()) {
+         return null;
+      }
+
+      for (CopiMineArtifacts.ReclaimableDonationRow var4 : this.readReclaimableDonationRows(var1, 54)) {
+         if (var2.equalsIgnoreCase(var4.uniqueItemId())) {
+            return var4;
+         }
+      }
+      return null;
+   }
+
+   private void reclaimDonationItemSafe(Player var1, String var2) {
+      if (this.freeStorageSlots(var1.getInventory()) < 1) {
+         var1.sendMessage(this.color("&eОсвободи хотя бы один слот в инвентаре, чтобы вернуть предмет."));
+         return;
+      }
+
+      this.runAsync(
+         () -> {
+            CopiMineArtifacts.ReclaimableDonationRow var3 = this.findReclaimableDonationRow(var1.getUniqueId().toString(), var2);
+            if (var3 == null) {
+               this.runSync(() -> {
+                  if (var1.isOnline()) {
+                     var1.sendMessage(this.color("&cЭтот предмет уже нельзя вернуть или он уже обработан."));
+                  }
+               });
+               return;
+            }
+
+            CopiMineArtifacts.DonationCatalogItem var4 = this.donationCatalogItem(var3.itemId());
+            CopiMineArtifacts.CatalogItem var5 = this.runtimeCatalogItem(var3.itemId());
+            if (var5 == null) {
+               this.runSync(() -> {
+                  if (var1.isOnline()) {
+                     var1.sendMessage(this.color("&cКаталог этого донат-предмета сейчас недоступен."));
+                  }
+               });
+               return;
+            }
+            if (var4 == null || !"LOSS_ONLY".equalsIgnoreCase(this.firstNonBlank(var4.reclaimPolicy(), "LOSS_ONLY"))) {
+               this.runSync(() -> {
+                  if (var1.isOnline()) {
+                     var1.sendMessage(this.color("&cДля этого предмета бесплатный возврат после потери отключён."));
+                  }
+               });
+               return;
+            }
+
+            CopiMineArtifacts.DonationReclaimContext var6;
+            try {
+               var6 = this.prepareDonationReclaim(var1.getUniqueId(), var3);
+            } catch (SQLException var10) {
+               this.getLogger().log(Level.WARNING, "Donation reclaim prepare failed", var10);
+               this.runSync(() -> {
+                  if (var1.isOnline()) {
+                     var1.sendMessage(this.color("&cНе удалось подготовить возврат. Попробуй ещё раз позже."));
+                  }
+               });
+               return;
+            }
+
+            this.runSync(
+               () -> {
+                  if (!var1.isOnline()) {
+                     this.runAsync(() -> {
+                        try {
+                           this.rollbackDonationReclaim(var1.getUniqueId(), var6);
+                        } catch (SQLException var4x) {
+                           this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after quit", var4x);
+                        }
+                     });
+                     return;
+                  }
+                  if (this.freeStorageSlots(var1.getInventory()) < 1) {
+                     this.runAsync(() -> {
+                        try {
+                           this.rollbackDonationReclaim(var1.getUniqueId(), var6);
+                        } catch (SQLException var4x) {
+                           this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after inventory change", var4x);
+                        }
+                     });
+                     var1.sendMessage(this.color("&cИнвентарь изменился во время возврата. Освободи место и попробуй ещё раз."));
+                     return;
+                  }
+
+                  ItemStack var4x = this.createOfficialItem(var5, var6.newUniqueItemId(), var1.getUniqueId(), var6.purchaseId());
+                  this.cacheProvisionalDonationInstances(var5.itemId(), var1.getUniqueId(), List.of(var6.newUniqueItemId()));
+                  HashMap var5x = var1.getInventory().addItem(new ItemStack[]{var4x});
+                  if (!var5x.isEmpty()) {
+                     this.removeProvisionalDonationInstances(List.of(var6.newUniqueItemId()));
+                     this.runAsync(() -> {
+                        try {
+                           this.rollbackDonationReclaim(var1.getUniqueId(), var6);
+                        } catch (SQLException var4xx) {
+                           this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after addItem leftovers", var4xx);
+                        }
+                     });
+                     var1.sendMessage(this.color("&cИнвентарь изменился во время возврата. Освободи место и попробуй ещё раз."));
+                     return;
+                  }
+
+                  this.finalizeDonationReclaimAsync(var1.getUniqueId(), var6)
+                     .whenComplete(
+                        (var7, var8) -> this.runSync(
+                              () -> {
+                                 if (var8 == null && Boolean.TRUE.equals(var7)) {
+                                    this.audit(var1.getName(), "donation_reclaim_issued", var6.newUniqueItemId(), var5.itemId());
+                                    if (var1.isOnline()) {
+                                       var1.sendMessage(this.color("&aПотерянный донат-предмет возвращён: &f" + this.strip(var5.name())));
+                                       this.openDonationReclaim(var1);
+                                    }
+                                 } else {
+                                    this.getLogger().log(Level.WARNING, "Donation reclaim finalize failed", var8);
+                                    this.audit(var1.getName(), "donation_reclaim_review", var6.newUniqueItemId(), var5.itemId());
+                                    if (var1.isOnline()) {
+                                       var1.sendMessage(this.color("&eПредмет уже выдан, но финализация ушла на ручную проверку. Повторный reclaim автоматически не откроется."));
+                                    }
+                                 }
+                              }
+                           )
+                     );
+               }
+            );
+         }
+      );
+   }
+
+   private CompletableFuture<Boolean> reviewDonationClaimAsync(UUID var1, String var2) {
+      DonationPurchaseService var3 = this.donationPurchaseService();
+      return var3 != null && var1 != null && var2 != null && !var2.isBlank()
+         ? var3.markClaimDeliveryReviewAsync(var1, var2)
+         : CompletableFuture.completedFuture(false);
+   }
+
+   private CompletableFuture<Boolean> releaseDonationClaimAsync(UUID var1, String var2) {
+      DonationPurchaseService var3 = this.donationPurchaseService();
+      return var3 != null && var1 != null && var2 != null && !var2.isBlank() ? var3.releaseClaimAsync(var1, var2) : CompletableFuture.completedFuture(false);
+   }
+
+   private DonationBalanceService donationBalanceService() {
+      Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
+      if (var1 instanceof CopiMineEconomyCore var2 && var1.isEnabled()) {
+         try {
+            return var2.donationBalanceService();
+         } catch (Exception var4) {
+            return null;
+         }
+      }
+
+      return null;
+   }
+
+   private DonationPaymentService donationPaymentService() {
+      Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
+      if (var1 instanceof CopiMineEconomyCore var2 && var1.isEnabled()) {
+         try {
+            return var2.donationPaymentService();
+         } catch (Exception var4) {
+            return null;
+         }
+      }
+
+      return null;
+   }
+
+   private DonationPurchaseService donationPurchaseService() {
+      Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
+      if (var1 instanceof CopiMineEconomyCore var2 && var1.isEnabled()) {
+         try {
+            return var2.donationPurchaseService();
+         } catch (Exception var4) {
+            return null;
+         }
+      }
+
+      return null;
+   }
+
+   private CopiMineArtifacts.ShopRevenueRecipient resolveActivePresidentRevenueRecipient() {
+      Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineElectionCore");
+      if (var1 == null || !var1.isEnabled()) {
+         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, "Президентская казна", "", PRESIDENT_BUDGET_ACCOUNT_ID);
+      }
+
+      try {
+         Object var2 = var1.getClass().getMethod("activePresidentRevenueProfile").invoke(var1);
+         if (!(var2 instanceof Map<?, ?> var3)) {
+            return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, "Президентская казна", "", PRESIDENT_BUDGET_ACCOUNT_ID);
+         }
+
+         String var4 = this.firstNonBlank(this.str(var3.get("president_uuid")), "");
+         UUID var5 = var4.isBlank() ? EMPTY_UUID : UUID.fromString(var4);
+         return new CopiMineArtifacts.ShopRevenueRecipient(
+            var5,
+            this.firstNonBlank(this.str(var3.get("president_name")), "Президентская казна"),
+            this.firstNonBlank(this.str(var3.get("term_id")), ""),
+            this.firstNonBlank(this.str(var3.get("budget_account_id")), PRESIDENT_BUDGET_ACCOUNT_ID)
+         );
+      } catch (Exception var6) {
+         this.getLogger().log(Level.WARNING, "Failed to resolve active president for artifact revenue", (Throwable)var6);
+         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, "Президентская казна", "", PRESIDENT_BUDGET_ACCOUNT_ID);
+      }
+   }
+
+   private void triggerRevenuePayoutAsync(String var1) {
+      if (var1 != null && !var1.isBlank() && this.bridge != null) {
+         this.runAsync(() -> {
+            try {
+               this.processRevenuePayout(var1);
+            } catch (Exception var3) {
+               this.getLogger().log(Level.WARNING, "Artifact revenue payout failed for " + var1, (Throwable)var3);
+            }
+         });
+      }
+   }
+
+   private void reconcilePendingRevenuePayouts() {
+      if (this.pgPool != null && this.bridge != null) {
+         try {
+            for (Map<String, Object> var2 : this.readPendingRevenuePayouts(128)) {
+               String var3 = this.firstNonBlank(this.str(var2.get("purchase_id")), "");
+               if (!var3.isBlank()) {
+                  this.processRevenuePayout(var3);
+               }
+            }
+         } catch (Exception var4) {
+            this.getLogger().log(Level.WARNING, "Artifact revenue payout reconcile failed", (Throwable)var4);
+         }
+      }
+   }
+
+   private List<Map<String, Object>> readPendingRevenuePayouts(int var1) throws SQLException {
+      Connection var2 = this.pgPool.acquire();
+
+      try {
+         PreparedStatement var3 = var2.prepareStatement(
+            "SELECT purchase_id,president_uuid,president_name,recipient_account_id,amount_ar,item_id,buyer_uuid,buyer_name,idempotency_key,status FROM artifact_revenue_payouts WHERE status='PENDING' ORDER BY created_at ASC LIMIT ?"
+         );
+
+         try {
+            var3.setInt(1, Math.max(1, var1));
+            ResultSet var4 = var3.executeQuery();
+
+            try {
+               return this.readRows(var4);
+            } finally {
+               var4.close();
+            }
+         } finally {
+            var3.close();
+         }
+      } finally {
+         this.pgPool.release(var2);
+      }
+   }
+
+   private List<Map<String, Object>> readRows(ResultSet var1) throws SQLException {
+      ArrayList<Map<String, Object>> var2 = new ArrayList<>();
+      ResultSetMetaData var3 = var1.getMetaData();
+      int var4 = var3.getColumnCount();
+
+      while (var1.next()) {
+         LinkedHashMap<String, Object> var5 = new LinkedHashMap<>();
+
+         for (int var6 = 1; var6 <= var4; ++var6) {
+            String var7 = this.firstNonBlank(var3.getColumnLabel(var6), var3.getColumnName(var6));
+            var5.put(var7, var1.getObject(var6));
+         }
+
+         var2.add(var5);
+      }
+
+      return var2;
+   }
+
+   private void processRevenuePayout(String var1) throws Exception {
+      Map<String, Object> var2 = this.readRevenuePayoutRow(var1);
+      if (var2 == null || !"PENDING".equalsIgnoreCase(this.firstNonBlank(this.str(var2.get("status")), ""))) {
+         return;
+      }
+
+      String var3 = this.firstNonBlank(this.str(var2.get("recipient_account_id")), PRESIDENT_BUDGET_ACCOUNT_ID);
+      String var4 = this.firstNonBlank(this.str(var2.get("president_uuid")), "");
+      String var5x = this.firstNonBlank(this.str(var2.get("president_name")), "Президентская казна");
+      long var5 = Math.max(0L, this.parseLong(this.str(var2.get("amount_ar")), 0L));
+      if (var5 <= 0L) {
+         this.markRevenuePayoutReview(var1, "amount_invalid");
+         return;
+      }
+
+      CopiMineArtifacts.BridgeTxnResult var7 = this.bridge.creditAccount(
+         var3,
+         var4,
+         var5x,
+         var5,
+         this.firstNonBlank(this.str(var2.get("idempotency_key")), "artifact-president-budget-" + var1),
+         "artifact_president_budget",
+         "purchase=" + var1 + ";item=" + this.firstNonBlank(this.str(var2.get("item_id")), "") + ";buyer=" + this.firstNonBlank(this.str(var2.get("buyer_uuid")), "")
+      );
+      if (var7.ok()) {
+         this.markRevenuePayoutCredited(var1, var7.txId());
+         this.audit(var5x, "artifact_revenue_paid", var1, "amount=" + var5 + " buyer=" + this.firstNonBlank(this.str(var2.get("buyer_name")), ""));
+      } else {
+         this.markRevenuePayoutReview(var1, this.safeBridgeCode(var7.code()));
+         this.audit(var5x, "artifact_revenue_review", var1, "code=" + this.safeBridgeCode(var7.code()));
+      }
+   }
+
+   private Map<String, Object> readRevenuePayoutRow(String var1) throws SQLException {
+      Connection var2 = this.pgPool.acquire();
+
+      try {
+         PreparedStatement var3 = var2.prepareStatement(
+            "SELECT purchase_id,president_uuid,president_name,recipient_account_id,buyer_uuid,buyer_name,item_id,amount_ar,idempotency_key,status FROM artifact_revenue_payouts WHERE purchase_id=? LIMIT 1"
+         );
+
+         try {
+            var3.setString(1, var1);
+            ResultSet var4 = var3.executeQuery();
+
+            try {
+               List<Map<String, Object>> var5 = this.readRows(var4);
+               return var5.isEmpty() ? null : var5.getFirst();
+            } finally {
+               var4.close();
+            }
+         } finally {
+            var3.close();
+         }
+      } finally {
+         this.pgPool.release(var2);
+      }
+   }
+
+   private void markRevenuePayoutCredited(String var1, String var2) throws SQLException {
+      Connection var3 = this.pgPool.acquire();
+
+      try {
+         PreparedStatement var4 = var3.prepareStatement(
+            "UPDATE artifact_revenue_payouts SET status='CREDITED',bank_tx_id=?,last_error='',updated_at=? WHERE purchase_id=? AND status='PENDING'"
+         );
+
+         try {
+            var4.setString(1, this.firstNonBlank(var2, ""));
+            var4.setLong(2, this.now());
+            var4.setString(3, var1);
+            var4.executeUpdate();
+         } finally {
+            var4.close();
+         }
+      } finally {
+         this.pgPool.release(var3);
+      }
+   }
+
+   private void markRevenuePayoutReview(String var1, String var2) throws SQLException {
+      Connection var3 = this.pgPool.acquire();
+
+      try {
+         PreparedStatement var4 = var3.prepareStatement(
+            "UPDATE artifact_revenue_payouts SET status='REVIEW',last_error=?,updated_at=? WHERE purchase_id=? AND status='PENDING'"
+         );
+
+         try {
+            var4.setString(1, this.firstNonBlank(var2, ""));
+            var4.setLong(2, this.now());
+            var4.setString(3, var1);
+            var4.executeUpdate();
+         } finally {
+            var4.close();
+         }
+      } finally {
+         this.pgPool.release(var3);
+      }
+   }
+
+   private void cancelRevenuePayout(String var1, String var2) throws SQLException {
+      Connection var3 = this.pgPool.acquire();
+
+      try {
+         PreparedStatement var4 = var3.prepareStatement(
+            "UPDATE artifact_revenue_payouts SET status='CANCELLED',last_error=?,updated_at=? WHERE purchase_id=? AND status='PENDING'"
+         );
+
+         try {
+            var4.setString(1, this.firstNonBlank(var2, ""));
+            var4.setLong(2, this.now());
+            var4.setString(3, var1);
+            var4.executeUpdate();
+         } finally {
+            var4.close();
+         }
+      } finally {
+         this.pgPool.release(var3);
+      }
+   }
+
+   private CompletableFuture<Boolean> prepareDonationDeliveryAsync(UUID var1, String var2, String var3, String var4, List<String> var5) {
+      return this.markDonationClaimDeliveringAsync(var1, var2)
+         .thenCompose(var6 -> !Boolean.TRUE.equals(var6) ? CompletableFuture.completedFuture(false) : CompletableFuture.supplyAsync(() -> {
+               try {
+                  this.persistDonationInstances(var1, var3, var4, var5);
+                  return true;
+               } catch (Exception var7) {
+                  this.reviewDonationClaimAsync(var1, var2);
+                  throw new IllegalStateException("Failed to persist donation artifact instances.", var7);
+               }
+            }, this.dbExecutor));
+   }
+
+   private CompletableFuture<Boolean> finalizeDonationDeliveryAsync(UUID var1, String var2, String var3, String var4, List<String> var5) {
+      return CompletableFuture.<Boolean>supplyAsync(() -> {
+            try {
+               // markDonationInstancesDelivered(itemId, uniqueItemIds);
+               this.markDonationInstancesDelivered(var4, var5);
+               return true;
+            } catch (Exception var4x) {
+               throw new IllegalStateException("Failed to mark delivered donation artifact instances.", var4x);
+            }
+         }, this.dbExecutor)
+         .thenCompose(
+            var4x -> !Boolean.TRUE.equals(var4x)
+                  ? CompletableFuture.completedFuture(false)
+                  : this.completeDonationClaimAsync(var1, var2).thenCompose(var4xx -> {
+                     if (Boolean.TRUE.equals(var4xx)) {
+                        this.audit(this.first(var1 == null ? "" : var1.toString(), "unknown"), "donation_claim_claimed", var2, var3);
+                        return CompletableFuture.completedFuture(true);
+                     } else {
+                        this.reviewDonationClaimAsync(var1, var2);
+                        return CompletableFuture.failedFuture(new IllegalStateException("Failed to complete donation claim after physical delivery."));
+                     }
+                  })
+         );
+   }
+
+   private CompletableFuture<Boolean> failDonationDeliveryAsync(UUID var1, String var2, List<String> var3) {
+      this.reviewDonationClaimAsync(var1, var2);
+      return CompletableFuture.supplyAsync(() -> {
+         try {
+            this.markDonationInstancesFailed(var3);
             return true;
-        }
-        if ("list".equalsIgnoreCase(args[0])) {
-            if (!hasArtifactPermission(player, "copimine.artifacts.shop.list")) {
-                noPermission(player);
-                return true;
+         } catch (Exception var4) {
+            this.getLogger().log(Level.WARNING, "Donation delivery cleanup failed for claim " + var2, (Throwable)var4);
+            return false;
+         }
+      }, this.dbExecutor);
+   }
+
+   private int freeStorageSlots(PlayerInventory var1) {
+      int var2 = 0;
+
+      for (ItemStack var6 : var1.getStorageContents()) {
+         if (var6 == null || var6.getType() == Material.AIR) {
+            var2++;
+         }
+      }
+
+      return var2;
+   }
+
+   private int requiredDonationSlots(long var1) {
+      if (var1 <= 0L) {
+         return 1;
+      } else {
+         return var1 > 36L ? -1 : (int)var1;
+      }
+   }
+
+   private void removeOfficialItemsFromInventory(PlayerInventory inventory, Collection<String> uniqueItemIds) {
+      if (inventory != null && uniqueItemIds != null && !uniqueItemIds.isEmpty()) {
+         Set var3 = uniqueItemIds.stream().filter(Objects::nonNull).filter(var0 -> !var0.isBlank()).collect(Collectors.toSet());
+         if (!var3.isEmpty()) {
+            ItemStack[] var4 = inventory.getStorageContents();
+            boolean var5 = false;
+
+            for (int var6 = 0; var6 < var4.length; var6++) {
+               ItemStack var7 = var4[var6];
+               if (var7 != null && var7.getType() != Material.AIR && var7.hasItemMeta()) {
+                  String var8 = (String)var7.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
+                  if (var8 != null && var3.contains(var8)) {
+                     inventory.setItem(var6, null);
+                     var5 = true;
+                  }
+               }
             }
-            player.sendMessage(color("&eЛавки CopiMineArtifacts: &f" + shopsByLocation.values().stream().map(Shop::shopId).collect(Collectors.joining(", "))));
-            return true;
-        }
-        if ("open".equalsIgnoreCase(args[0])) {
-            if (!isArtifactsAdmin(player)) {
-                noPermission(player);
-                return true;
+
+            if (var5 && inventory.getHolder() instanceof Player var9) {
+               var9.updateInventory();
             }
-            if (args.length < 2) {
-                player.sendMessage(color("&cУкажи shop_id."));
-                return true;
+         }
+      }
+   }
+
+   private void cacheProvisionalDonationInstances(String var1, UUID var2, Collection<String> var3) {
+      if (!this.firstNonBlank(var1, "").isBlank() && var2 != null && var3 != null && !var3.isEmpty()) {
+         for (String var5 : var3) {
+            if (var5 != null && !var5.isBlank()) {
+               this.provisionalDonationInstanceIds.add(var5);
             }
-            Shop shop = shopsByLocation.values().stream().filter(s -> s.shopId().equalsIgnoreCase(args[1])).findFirst().orElse(null);
-            if (shop == null) {
-                player.sendMessage(color("&cЛавка не найдена: &f" + args[1]));
-                return true;
+         }
+      }
+   }
+
+   private void removeProvisionalDonationInstances(Collection<String> var1) {
+      if (var1 != null && !var1.isEmpty()) {
+         for (String var3 : var1) {
+            if (var3 != null && !var3.isBlank()) {
+               this.provisionalDonationInstanceIds.remove(var3);
             }
-            openMain(player, shop, true);
-            return true;
-        }
-        player.sendMessage(color("&cНеизвестная команда лавки."));
-        return true;
-    }
+         }
+      }
+   }
 
-    private void openArtifactsAdminMenu(Player player) {
-        SessionState state = freshSession(player);
-        state.viewType = ViewType.ADMIN_MAIN;
-        Inventory inv = createMenu(player, state, ViewType.ADMIN_MAIN, 27, "&8Artifacts Admin");
-        inv.setItem(4, button(Material.NETHER_STAR, "&aCopiMineArtifacts", List.of(
-                "&7Служебная панель лавок и каталога.",
-                "&8Игроки открывают лавку только кликом по блоку."
-        )));
-        setAction(inv, state, 10, button(Material.CHEST, "&eЛавки", List.of("&7Список активных блоков лавки.")), "admin:shops");
-        setAction(inv, state, 12, button(Material.BOOK, "&eКаталог", List.of("&7Количество товаров по категориям.")), "admin:catalog");
-        setAction(inv, state, 14, button(Material.COMPARATOR, "&eДиагностика", List.of("&7Bridge, PostgreSQL, PIN и кэш.")), "admin:diagnostics");
-        setAction(inv, state, 16, button(Material.CLOCK, "&aReload", List.of("&7Перезагрузить config.yml и items.yml.")), "admin:reload");
-        setAction(inv, state, 22, button(Material.BARRIER, "&cЗакрыть", List.of("&7Выйти из меню.")), "close");
-        player.openInventory(inv);
-    }
+   private void recoverStrandedDeliveries(Player var1) {
+      if (var1 != null) {
+         UUID var2 = var1.getUniqueId();
+         this.runAsync(() -> {
+            List var3 = this.readPendingByStatus(var2.toString(), "DELIVERING");
+            List var4 = this.readDeliveringInstances(var2.toString());
+            this.runSync(() -> this.reconcileStrandedDeliveries(var1, var3, var4));
+         });
+      }
+   }
 
-    private void openAdminShops(Player player) {
-        SessionState state = session(player);
-        state.viewType = ViewType.ADMIN_SHOPS;
-        Inventory inv = createMenu(player, state, ViewType.ADMIN_SHOPS, 54, "&8Лавки артефактов");
-        inv.setItem(4, button(Material.CHEST, "&eЛавки артефактов", List.of(
-                "&7Создание: /cmartifacts shop create <id>",
-                "&7Удаление: /cmartifacts shop remove"
-        )));
-        int slot = 10;
-        for (Shop shop : shopsByLocation.values()) {
-            if (slot >= 35) break;
-            inv.setItem(slot, button(Material.BARREL, "&f" + shop.shopId(), List.of(
-                    "&7Мир: &f" + shop.world(),
-                    "&7XYZ: &f" + shop.x() + " " + shop.y() + " " + shop.z(),
-                    "&7Статус: " + (shop.enabled() ? "&aвключена" : "&cвыключена")
-            )));
-            slot++;
-            if (slot % 9 == 8) slot += 2;
-        }
-        setAction(inv, state, 45, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в админ-меню.")), "admin:main");
-        setAction(inv, state, 49, button(Material.CLOCK, "&eОбновить", List.of("&7Обновить список лавок.")), "refresh");
-        setAction(inv, state, 53, button(Material.BARRIER, "&cЗакрыть", List.of("&7Выйти из меню.")), "close");
-        player.openInventory(inv);
-    }
+   private void reconcileStrandedDeliveries(Player var1, List<CopiMineArtifacts.PendingDeliveryRow> var2, List<CopiMineArtifacts.DeliveringInstanceRow> var3) {
+      if (var1 != null && var1.isOnline()) {
+         UUID var4 = var1.getUniqueId();
+         HashSet var5 = new HashSet();
+         int var6 = 0;
+         int var7 = 0;
 
-    private void openAdminCatalog(Player player) {
-        SessionState state = session(player);
-        state.viewType = ViewType.ADMIN_CATALOG;
-        Inventory inv = createMenu(player, state, ViewType.ADMIN_CATALOG, 27, "&8Каталог артефактов");
-        inv.setItem(4, button(Material.BOOK, "&eКаталог", List.of("&7Активных товаров: &f" + catalogById.size())));
-        setAction(inv, state, 10, categoryIcon(Category.WEAPON), "cat:WEAPON");
-        setAction(inv, state, 12, categoryIcon(Category.ARMOR), "cat:ARMOR");
-        setAction(inv, state, 14, categoryIcon(Category.TOOL), "cat:TOOL");
-        inv.setItem(16, button(Material.BOOK, "&eОфициальные модели", List.of("&7Ресурс-пак сервера меняет внешний вид официальных предметов.")));
-        setAction(inv, state, 22, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в админ-меню.")), "admin:main");
-        player.openInventory(inv);
-    }
-
-    private void openAdminDiagnostics(Player player) {
-        SessionState state = session(player);
-        state.viewType = ViewType.ADMIN_DIAGNOSTICS;
-        Inventory inv = createMenu(player, state, ViewType.ADMIN_DIAGNOSTICS, 27, "&8Диагностика артефактов");
-        BridgeHealthSnapshot health = bridge.health(player, "artifacts-admin-gui");
-        inv.setItem(10, button(health.bridgeReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE, "&eBridge", List.of("&7Готов: &f" + health.bridgeReady())));
-        inv.setItem(12, button(health.postgresReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE, "&ePostgreSQL", List.of("&7Готов: &f" + health.postgresReady())));
-        inv.setItem(14, button(health.pinReady() ? Material.LIME_CONCRETE : Material.ORANGE_CONCRETE, "&ePIN", List.of("&7Готов: &f" + health.pinReady())));
-        inv.setItem(16, button(Material.CLOCK, "&eTasks", List.of(
-                "&7Pending hints: &f1 раз в минуту",
-                "&7Session cleanup: &f1 раз в минуту",
-                "&7Every tick задач лавки нет"
-        )));
-        setAction(inv, state, 22, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в админ-меню.")), "admin:main");
-        player.openInventory(inv);
-    }
-
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) return prefix(List.of("admin", "claim", "repair", "reload", "shop"), args[0]);
-        if (args.length == 2 && "shop".equalsIgnoreCase(args[0])) return prefix(List.of("create", "remove", "list", "open"), args[1]);
-        return Collections.emptyList();
-    }
-
-    private void openMain(Player player, Shop shop) {
-        openMain(player, shop, false);
-    }
-
-    private void openMain(Player player, Shop shop, boolean fresh) {
-        SessionState state = fresh ? freshSession(player) : session(player);
-        state.shopId = shop.shopId();
-        state.viewType = ViewType.MAIN;
-        state.currentCategory = "";
-        state.currentItemId = "";
-        state.page = 0;
-        Inventory inv = createMenu(player, state, ViewType.MAIN, 54, "&8Лавка артефактов");
-        inv.setItem(4, button(Material.EMERALD, "&6" + shop.title(), List.of(
-                "&7Официальные предметы CopiMine.",
-                "&7Оплата идёт только через банк AR.",
-                "&8PIN и баланс проверяет UltimateAdminPlus."
-        )));
-        setAction(inv, state, 10, categoryIcon(Category.WEAPON), "cat:WEAPON");
-        setAction(inv, state, 12, categoryIcon(Category.ARMOR), "cat:ARMOR");
-        setAction(inv, state, 14, categoryIcon(Category.TOOL), "cat:TOOL");
-        inv.setItem(16, button(Material.BOOK, "&eОфициальные модели", List.of("&7Ресурс-пак сервера меняет внешний вид официальных предметов.")));
-        setAction(inv, state, 28, button(Material.CHEST, "&bМои покупки", List.of(
-                "&7История последних покупок.",
-                "&7Оплаченные предметы и статусы выдачи."
-        )), "purchases");
-        setAction(inv, state, 30, button(Material.CHEST_MINECART, "&aОтложенная выдача", List.of(
-                "&7Предметы, которые не поместились в инвентарь.",
-                "&eНажми, когда освободишь место."
-        )), "pending");
-        setAction(inv, state, 32, button(Material.ANVIL, "&aРемонт", List.of(
-                "&7Починить официальный предмет в руке.",
-                "&7Стоимость зависит от износа."
-        )), "repair:open");
-        setAction(inv, state, 34, button(Material.BOOK, "&eПомощь", List.of(
-                "&7Короткая инструкция по покупке, PIN и выдаче."
-        )), "help");
-        setAction(inv, state, 45, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в игру.")), "close");
-        setAction(inv, state, 49, button(Material.CLOCK, "&eОбновить", List.of("&7Перерисовать текущее меню.")), "refresh");
-        setAction(inv, state, 53, button(Material.BARRIER, "&cЗакрыть", List.of("&7Выйти из лавки.")), "close");
-        player.openInventory(inv);
-    }
-
-    private void openCategory(Player player, Category category) {
-        openCategory(player, category, 0);
-    }
-
-    private void openCategory(Player player, Category category, int page) {
-        SessionState state = session(player);
-        state.viewType = ViewType.CATEGORY;
-        state.currentCategory = category.name();
-        state.currentItemId = "";
-        state.page = Math.max(0, page);
-        Inventory inv = createMenu(player, state, ViewType.CATEGORY, 54, "&8" + categoryTitle(category));
-        inv.setItem(4, button(categoryMaterial(category), "&f" + categoryTitle(category), List.of(categoryHint(category), "&8Выбери предмет, чтобы открыть карточку.")));
-        List<CatalogItem> items = catalogByCategory.getOrDefault(category, List.of());
-        int[] itemSlots = {10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34};
-        if (category == Category.RP || items.isEmpty()) {
-            inv.setItem(22, button(Material.PAPER, "&eПока пусто", List.of("&7Сейчас в этой категории нет доступных товаров.")));
-        } else {
-            int from = state.page * itemSlots.length;
-            for (int i = 0; i < itemSlots.length; i++) {
-                int idx = from + i;
-                if (idx >= items.size()) break;
-                CatalogItem item = items.get(idx);
-                setAction(inv, state, itemSlots[i], previewIcon(item), "detail:" + item.itemId());
-            }
-        }
-        setAction(inv, state, 45, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в лавку.")), "back:main");
-        setAction(inv, state, 48, button(Material.SPECTRAL_ARROW, "&eПредыдущая", List.of("&7Предыдущая страница товаров.")), "page:prev");
-        setAction(inv, state, 49, button(Material.CLOCK, "&eОбновить", List.of("&7Обновить список товаров.")), "refresh");
-        setAction(inv, state, 50, button(Material.SPECTRAL_ARROW, "&eСледующая", List.of("&7Следующая страница товаров.")), "page:next");
-        setAction(inv, state, 53, button(Material.BARRIER, "&cЗакрыть", List.of("&7Выйти из меню.")), "close");
-        player.openInventory(inv);
-    }
-
-    private void openDetail(Player player, CatalogItem item) {
-        SessionState state = session(player);
-        state.viewType = ViewType.DETAIL;
-        state.currentItemId = item.itemId();
-        Inventory inv = createMenu(player, state, ViewType.DETAIL, 45, "&8Карточка товара");
-        inv.setItem(13, previewIcon(item));
-        inv.setItem(20, button(Material.EMERALD, "&aЦена: " + item.priceAr() + " AR", List.of("&7Списание выполняется только через bank bridge.")));
-        setAction(inv, state, 22, button(Material.LIME_WOOL, "&aКупить", List.of("&7Открыть подтверждение покупки.", "&8Далее может потребоваться PIN.")), "confirm:" + item.itemId());
-        inv.setItem(24, button(Material.PAPER, "&eЛимиты", List.of(
-                "&7На сервер: &f" + (item.supplyLimit() <= 0 ? "без лимита" : item.supplyLimit()),
-                "&7На игрока: &f" + (item.perPlayerLimit() <= 0 ? "без лимита" : item.perPlayerLimit())
-        )));
-        setAction(inv, state, 31, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в категорию.")), "back:category");
-        setAction(inv, state, 40, button(Material.BARRIER, "&cЗакрыть", List.of("&7Выйти из меню.")), "close");
-        player.openInventory(inv);
-    }
-
-    private void openConfirm(Player player, CatalogItem item) {
-        SessionState state = session(player);
-        state.viewType = ViewType.CONFIRM;
-        state.currentItemId = item.itemId();
-        Inventory inv = createMenu(player, state, ViewType.CONFIRM, 45, "&8Подтверждение");
-        inv.setItem(11, previewIcon(item));
-        inv.setItem(13, button(Material.PAPER, "&fПроверка покупки", List.of(
-                "&7Товар: &f" + strip(item.name()),
-                "&7Цена: &f" + item.priceAr() + " AR",
-                "&7Лавка: &f" + state.shopId
-        )));
-        inv.setItem(15, button(Material.GOLD_INGOT, "&eBank bridge", List.of(
-                "&7Баланс и PIN проверяет CopiMineEconomyCore.",
-                "&7Artifacts не меняет баланс напрямую."
-        )));
-        setAction(inv, state, 29, button(Material.LIME_WOOL, "&aПодтвердить", List.of("&7Списать: &f" + item.priceAr() + " AR", "&8Покупка защищена от двойного клика.")), "purchase:" + item.itemId());
-        setAction(inv, state, 33, button(Material.RED_WOOL, "&cОтмена", List.of("&7Вернуться к карточке товара.")), "back:detail");
-        setAction(inv, state, 40, button(Material.ARROW, "&aНазад", List.of("&7Вернуться к карточке товара.")), "back:detail");
-        player.openInventory(inv);
-    }
-
-    private void openPin(Player player, CatalogItem item) {
-        SessionState state = session(player);
-        state.viewType = ViewType.PIN;
-        state.currentItemId = item.itemId();
-        Inventory inv = createMenu(player, state, ViewType.PIN, 54, "&8Введите PIN");
-        int[] slots = {20,21,22,29,30,31,38,39,40,48};
-        for (int i = 1; i <= 9; i++) {
-            setAction(inv, state, slots[i - 1], button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + i, List.of()), "digit:" + i);
-        }
-        setAction(inv, state, slots[9], button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f0", List.of()), "digit:0");
-        inv.setItem(13, button(Material.PAPER, "&bВведите PIN", List.of("&7" + maskedPin(state.pinBuffer))));
-        setAction(inv, state, 23, button(Material.BARRIER, "&cCancel", List.of("&7Вернуться к подтверждению.")), "pin:cancel");
-        setAction(inv, state, 32, button(Material.YELLOW_WOOL, "&eClear", List.of("&7Очистить введённый PIN.")), "pin:clear");
-        setAction(inv, state, 41, button(Material.LIME_WOOL, "&aEnter", List.of("&7Купить " + item.name())), "pin:submit");
-        player.openInventory(inv);
-    }
-
-    private void refreshPin(Player player) {
-        CatalogItem item = catalogById.get(session(player).currentItemId);
-        if (item != null) openPin(player, item);
-    }
-
-    private void openPurchases(Player player) {
-        SessionState state = session(player);
-        state.viewType = ViewType.PURCHASES;
-        Inventory inv = createMenu(player, state, ViewType.PURCHASES, 54, "&8Мои покупки");
-        inv.setItem(4, button(Material.CHEST, "&bПокупки и выдача", List.of("&7Новые предметы появляются сразу.", "&7Если инвентарь полный, товар ждёт здесь.")));
-        runAsync(() -> {
-            List<String> rows = readRecentPurchases(player.getUniqueId().toString());
-            List<PendingDeliveryRow> pending = readPending(player.getUniqueId().toString());
-            runSync(() -> {
-                int slot = 10;
-                for (String row : rows) {
-                    if (slot >= 35) break;
-                    inv.setItem(slot, button(Material.PAPER, "&fПокупка", List.of("&7" + row)));
-                    slot++;
-                    if (slot % 9 == 8) slot += 2;
-                }
-                int pendingSlot = 37;
-                for (PendingDeliveryRow row : pending) {
-                    if (pendingSlot >= 44) break;
-                    CatalogItem item = catalogById.get(row.itemId());
-                    setAction(inv, state, pendingSlot, button(Material.CHEST_MINECART, "&aЗабрать: " + (item == null ? row.itemId() : strip(item.name())), List.of("&7Отложенная выдача", "&eНажми, когда в инвентаре есть место.")), "claim:" + row.deliveryId());
-                    pendingSlot++;
-                }
-                setAction(inv, state, 45, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в лавку.")), "back:main");
-                setAction(inv, state, 49, button(Material.CLOCK, "&eОбновить", List.of("&7Обновить покупки и выдачу.")), "refresh");
-                setAction(inv, state, 53, button(Material.BARRIER, "&cЗакрыть", List.of("&7Выйти из меню.")), "close");
-                player.openInventory(inv);
-            });
-        });
-    }
-
-    private void openPendingDeliveries(Player player) {
-        SessionState state = session(player);
-        state.viewType = ViewType.PENDING_DELIVERY;
-        Inventory inv = createMenu(player, state, ViewType.PENDING_DELIVERY, 54, "&8Отложенная выдача");
-        inv.setItem(4, button(Material.CHEST_MINECART, "&aОтложенная выдача", List.of(
-                "&7Здесь лежат оплаченные предметы,",
-                "&7которые не поместились в инвентарь."
-        )));
-        runAsync(() -> {
-            List<PendingDeliveryRow> pending = readPending(player.getUniqueId().toString());
-            runSync(() -> {
-                int slot = 10;
-                for (PendingDeliveryRow row : pending) {
-                    if (slot >= 35) break;
-                    CatalogItem item = catalogById.get(row.itemId());
-                    setAction(inv, state, slot, button(Material.CHEST_MINECART, "&aЗабрать: " + (item == null ? row.itemId() : strip(item.name())), List.of(
-                            "&7Отложенная выдача",
-                            "&eНажми, когда в инвентаре есть место."
-                    )), "claim:" + row.deliveryId());
-                    slot++;
-                    if (slot % 9 == 8) slot += 2;
-                }
-                if (pending.isEmpty()) {
-                    inv.setItem(22, button(Material.LIME_CONCRETE, "&aПусто", List.of("&7Нет предметов, ожидающих выдачи.")));
-                }
-                setAction(inv, state, 45, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в лавку.")), "back:main");
-                setAction(inv, state, 49, button(Material.CLOCK, "&eОбновить", List.of("&7Проверить отложенную выдачу ещё раз.")), "refresh");
-                setAction(inv, state, 53, button(Material.BARRIER, "&cЗакрыть", List.of("&7Выйти из меню.")), "close");
-                player.openInventory(inv);
-            });
-        });
-    }
-
-    private void openHelp(Player player) {
-        SessionState state = session(player);
-        state.viewType = ViewType.HELP;
-        Inventory inv = createMenu(player, state, ViewType.HELP, 27, "&8Помощь лавки");
-        inv.setItem(10, button(Material.BOOK, "&eПокупка", List.of("&7Лавка -> категория -> товар -> подтвердить.", "&7Если PIN включён, появится цифровая панель.")));
-        inv.setItem(12, button(Material.CHEST_MINECART, "&eОтложенная выдача", List.of("&7Если инвентарь заполнен, предмет не теряется.", "&7Открой Мои покупки или введи /cmartifacts claim.")));
-        inv.setItem(14, button(Material.ANVIL, "&eРемонт", List.of("&7Возьми официальный предмет в руку.", "&7Нажми Ремонт или введи /cmartifacts repair.")));
-        inv.setItem(16, button(Material.BOOK, "&eОфициальные модели", List.of("&7Ресурс-пак сервера обновляет внешний вид официальных предметов.")));
-        setAction(inv, state, 22, button(Material.ARROW, "&aНазад", List.of("&7Вернуться в лавку.")), "back:main");
-        player.openInventory(inv);
-    }
-
-    private void openSuccess(Player player, CatalogItem item, long balanceAfter) {
-        SessionState state = session(player);
-        state.viewType = ViewType.SUCCESS;
-        state.currentItemId = item.itemId();
-        Inventory inv = createMenu(player, state, ViewType.SUCCESS, 27, "&8Покупка завершена");
-        inv.setItem(13, button(Material.LIME_CONCRETE, "&aПокупка успешна", List.of(
-                "&7Товар: &f" + strip(item.name()),
-                "&7Списано: &f" + item.priceAr() + " AR",
-                "&7Баланс после списания: &f" + balanceAfter + " AR"
-        )));
-        setAction(inv, state, 11, button(Material.EMERALD, "&aКупить ещё раз", List.of("&7Повторить покупку этого товара")), "confirm:" + item.itemId());
-        setAction(inv, state, 15, button(Material.ARROW, "&aНазад в категорию", List.of("&7Вернуться к списку товаров")), "back:category");
-        setAction(inv, state, 22, button(Material.CHEST, "&bГлавное меню", List.of("&7Вернуться в главное меню лавки")), "back:main");
-        player.openInventory(inv);
-    }
-
-    private void openError(Player player, CatalogItem item, String title, String message) {
-        SessionState state = session(player);
-        state.viewType = ViewType.ERROR;
-        state.currentItemId = item.itemId();
-        Inventory inv = createMenu(player, state, ViewType.ERROR, 27, "&8Ошибка покупки");
-        inv.setItem(13, button(Material.RED_CONCRETE, title, List.of("&7" + message)));
-        setAction(inv, state, 11, button(Material.RED_WOOL, "&cНазад к подтверждению", List.of("&7Проверить покупку ещё раз")), "back:confirm");
-        setAction(inv, state, 15, button(Material.ARROW, "&aНазад к товару", List.of("&7Вернуться к карточке товара")), "back:detail");
-        setAction(inv, state, 22, button(Material.CHEST, "&bГлавное меню", List.of("&7Вернуться в главное меню лавки")), "back:main");
-        player.openInventory(inv);
-    }
-
-    private void openRepair(Player player) {
-        ItemStack item = player.getInventory().getItemInMainHand();
-        CatalogItem catalog = authenticCatalogItem(item, player, "repair_open");
-        if (catalog == null) {
-            player.sendMessage(color("&cВ руке должен быть официальный предмет CopiMineArtifacts."));
-            return;
-        }
-        if (!(item.getItemMeta() instanceof Damageable damageable) || damageable.getDamage() <= 0) {
-            player.sendMessage(color("&eЭтот предмет не требует ремонта."));
-            return;
-        }
-        long price = repairPrice(item, catalog);
-        SessionState state = session(player);
-        state.viewType = ViewType.REPAIR;
-        state.currentItemId = catalog.itemId();
-        Inventory inv = createMenu(player, state, ViewType.REPAIR, 27, "&8Ремонт артефакта");
-        inv.setItem(13, item.clone());
-        setAction(inv, state, 11, button(Material.ANVIL, "&aПочинить за " + price + " AR", List.of("&7Официальный ремонт за AR")), "repair:confirm:" + price);
-        setAction(inv, state, 15, button(Material.ARROW, "&aНазад", List.of("&7Закрыть ремонт")), "repair:cancel");
-        player.openInventory(inv);
-    }
-
-    private void handleMenuAction(Player player, SessionState state, String action) {
-        if (action.startsWith("cat:")) {
-            openCategory(player, Category.valueOf(action.substring(4)));
-            return;
-        }
-        if (action.startsWith("detail:")) {
-            CatalogItem item = catalogById.get(action.substring(7));
-            if (item != null) openDetail(player, item);
-            return;
-        }
-        if (action.startsWith("confirm:")) {
-            CatalogItem item = catalogById.get(action.substring(8));
-            if (item != null) openConfirm(player, item);
-            return;
-        }
-        if (action.startsWith("purchase:")) {
-            CatalogItem item = catalogById.get(action.substring(9));
-            if (item == null) return;
-            BridgePinStatus pin = bridge.pinStatus(player);
-            if (pin.configured()) {
-                openPin(player, item);
+         for (CopiMineArtifacts.PendingDeliveryRow var8 : var2 == null ? List.<CopiMineArtifacts.PendingDeliveryRow>of() : var2) {
+            var5.add(var8.uniqueItemId());
+            if (this.playerHasOfficialInstance(var1, var8.uniqueItemId(), var8.itemId(), var4)) {
+               this.cacheOfficialBinding(var8.uniqueItemId(), var8.itemId(), var4);
+               var6++;
+               this.runAsync(() -> {
+                  try {
+                     this.markPendingClaimed(var8.deliveryId(), var8.purchaseId(), var8.uniqueItemId(), var8.itemId());
+                  } catch (SQLException var3x) {
+                     this.getLogger().log(Level.WARNING, "Failed to recover pending delivery " + var8.deliveryId(), (Throwable)var3x);
+                  }
+               });
             } else {
-                executePurchase(player, currentShop(state), item, "");
+               this.releasePendingDeliveryAsync(var4, var8.deliveryId());
             }
-            return;
-        }
-        if (action.startsWith("digit:")) {
-            if (state.pinBuffer.length() < 8) state.pinBuffer += action.substring(6);
-            refreshPin(player);
-            return;
-        }
-        if ("pin:clear".equals(action)) {
-            state.pinBuffer = "";
-            refreshPin(player);
-            return;
-        }
-        if ("pin:cancel".equals(action)) {
-            CatalogItem item = catalogById.get(state.currentItemId);
-            if (item != null) openConfirm(player, item);
-            return;
-        }
-        if ("pin:submit".equals(action)) {
-            CatalogItem item = catalogById.get(state.currentItemId);
-            if (item != null) executePurchase(player, currentShop(state), item, state.pinBuffer);
-            return;
-        }
-        if ("purchases".equals(action)) {
-            openPurchases(player);
-            return;
-        }
-        if ("pending".equals(action)) {
-            openPendingDeliveries(player);
-            return;
-        }
-        if ("help".equals(action)) {
-            openHelp(player);
-            return;
-        }
-        if ("refresh".equals(action)) {
-            refreshCurrentMenu(player, state);
-            return;
-        }
-        if ("page:prev".equals(action)) {
-            if (!state.currentCategory.isBlank()) {
-                openCategory(player, Category.valueOf(state.currentCategory), Math.max(0, state.page - 1));
-            }
-            return;
-        }
-        if ("page:next".equals(action)) {
-            if (!state.currentCategory.isBlank()) {
-                Category category = Category.valueOf(state.currentCategory);
-                int maxPage = Math.max(0, (catalogByCategory.getOrDefault(category, List.of()).size() - 1) / 21);
-                openCategory(player, category, Math.min(maxPage, state.page + 1));
-            }
-            return;
-        }
-        if ("admin:main".equals(action)) {
-            openArtifactsAdminMenu(player);
-            return;
-        }
-        if ("admin:shops".equals(action)) {
-            openAdminShops(player);
-            return;
-        }
-        if ("admin:catalog".equals(action)) {
-            openAdminCatalog(player);
-            return;
-        }
-        if ("admin:diagnostics".equals(action)) {
-            openAdminDiagnostics(player);
-            return;
-        }
-        if ("admin:reload".equals(action)) {
-            if (!hasArtifactPermission(player, "copimine.artifacts.reload")) {
-                noPermission(player);
-                return;
-            }
-            reloadConfig();
-            debugGui = getConfig().getBoolean("debug_gui", false);
-            loadCatalogFromConfig();
-            runAsync(() -> {
-                try {
-                    syncCatalogToPostgres();
-                    runSync(() -> {
-                        player.sendMessage(color("&aCopiMineArtifacts catalog reloaded."));
-                        openAdminDiagnostics(player);
-                    });
-                } catch (SQLException e) {
-                    getLogger().log(Level.WARNING, "Artifacts admin reload failed", e);
-                    runSync(() -> player.sendMessage(color("&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_RELOAD_FAILED")));
-                }
-            });
-            return;
-        }
-        if ("repair:open".equals(action)) {
-            openRepair(player);
-            return;
-        }
-        if ("close".equals(action)) {
-            player.closeInventory();
-            return;
-        }
-        if (action.startsWith("claim:")) {
-            claimOne(player, action.substring(6));
-            return;
-        }
-        if (action.startsWith("repair:confirm:")) {
-            long price = parseLong(action.substring("repair:confirm:".length()), 0L);
-            executeRepair(player, price);
-            return;
-        }
-        if ("repair:cancel".equals(action)) {
-            player.closeInventory();
-            return;
-        }
-        if ("back:main".equals(action)) {
-            Shop shop = currentShop(state);
-            if (shop != null) openMain(player, shop);
-            return;
-        }
-        if ("back:category".equals(action)) {
-            openCategory(player, Category.valueOf(state.currentCategory));
-            return;
-        }
-        if ("back:detail".equals(action)) {
-            CatalogItem item = catalogById.get(state.currentItemId);
-            if (item != null) openDetail(player, item);
-            return;
-        }
-        if ("back:confirm".equals(action)) {
-            CatalogItem item = catalogById.get(state.currentItemId);
-            if (item != null) openConfirm(player, item);
-        }
-    }
+         }
 
-    private void refreshCurrentMenu(Player player, SessionState state) {
-        switch (state.viewType) {
-            case MAIN -> {
-                Shop shop = currentShop(state);
-                if (shop != null) openMain(player, shop);
-            }
-            case CATEGORY -> {
-                if (!state.currentCategory.isBlank()) openCategory(player, Category.valueOf(state.currentCategory), state.page);
-            }
-            case DETAIL -> {
-                CatalogItem item = catalogById.get(state.currentItemId);
-                if (item != null) openDetail(player, item);
-            }
-            case CONFIRM -> {
-                CatalogItem item = catalogById.get(state.currentItemId);
-                if (item != null) openConfirm(player, item);
-            }
-            case PIN -> {
-                CatalogItem item = catalogById.get(state.currentItemId);
-                if (item != null) openPin(player, item);
-            }
-            case PURCHASES -> openPurchases(player);
-            case PENDING_DELIVERY -> openPendingDeliveries(player);
-            case HELP -> openHelp(player);
-            case REPAIR -> openRepair(player);
-            case ADMIN_MAIN -> openArtifactsAdminMenu(player);
-            case ADMIN_SHOPS -> openAdminShops(player);
-            case ADMIN_CATALOG -> openAdminCatalog(player);
-            case ADMIN_DIAGNOSTICS -> openAdminDiagnostics(player);
-            default -> {
-                Shop shop = currentShop(state);
-                if (shop != null) openMain(player, shop);
-            }
-        }
-    }
+         for (CopiMineArtifacts.DeliveringInstanceRow var10 : var3 == null ? List.<CopiMineArtifacts.DeliveringInstanceRow>of() : var3) {
+            if (!var5.contains(var10.uniqueItemId())) {
+               if (!this.playerHasOfficialInstance(var1, var10.uniqueItemId(), var10.itemId(), var4)) {
+                  if (this.isDonationCatalogItem(var10.itemId()) && this.firstNonBlank(var10.purchaseId(), "").isBlank()) {
+                     this.runAsync(() -> {
+                        try {
+                           this.rollbackStrandedDonationReclaim(var4, var10);
+                        } catch (SQLException var4x) {
+                           this.getLogger().log(Level.WARNING, "Failed to rollback stranded donation reclaim " + var10.uniqueItemId(), (Throwable)var4x);
+                        }
+                     });
+                  } else if (!this.firstNonBlank(var10.purchaseId(), "").isBlank()) {
+                     var7++;
+                     this.runAsync(() -> {
+                        try {
+                           this.createPendingDeliveryRecovery(var4, var10.purchaseId(), var10.uniqueItemId(), var10.itemId());
+                        } catch (SQLException var4x) {
+                           this.getLogger().log(Level.WARNING, "Failed to recover stranded artifact delivery " + var10.purchaseId(), (Throwable)var4x);
+                        }
+                     });
+                  }
+               } else {
+                  this.cacheOfficialBinding(var10.uniqueItemId(), var10.itemId(), var4);
+                  var6++;
+                  if (this.isDonationCatalogItem(var10.itemId())) {
+                     this.runAsync(() -> {
+                        try {
+                           this.markDonationInstancesDelivered(var10.itemId(), List.of(var10.uniqueItemId()));
+                        } catch (SQLException var4x) {
+                           this.getLogger().log(Level.WARNING, "Failed to recover donation instance " + var10.uniqueItemId(), (Throwable)var4x);
+                        }
 
-    private void executePurchase(Player player, Shop shop, CatalogItem item, String pin) {
-        if (shop == null) {
-            player.sendMessage(color("&cМагазин временно недоступен."));
-            return;
-        }
-        SessionState state = session(player);
-        if (!state.purchaseInFlightId.isBlank()) {
-            player.sendMessage(color("&eПокупка уже обрабатывается."));
-            return;
-        }
-        if (item.category() == Category.RP) {
-            player.sendMessage(color("&eДля этой категории сейчас нет доступных товаров."));
-            return;
-        }
-        if (player.getInventory().firstEmpty() < 0) {
-            player.sendMessage(color("&cНедостаточно места в инвентаре. AR не списаны."));
-            return;
-        }
-        String purchaseId = UUID.randomUUID().toString();
-        state.purchaseInFlightId = purchaseId;
-        PurchaseContext context = new PurchaseContext(purchaseId, UUID.randomUUID().toString(), item, shop, pin);
-        player.sendMessage(color("&7CopiMineArtifacts: проверяем покупку..."));
-        runAsync(() -> {
-            int totalPurchased = purchasedCount(item.itemId());
-            if (item.supplyLimit() > 0 && totalPurchased >= item.supplyLimit()) {
-                runSync(() -> {
-                    state.purchaseInFlightId = "";
-                    player.sendMessage(color("&cЛимит поставки для этого артефакта исчерпан."));
-                    openError(player, item, "&cЛимит поставки исчерпан", "Доступно " + item.supplyLimit() + " шт. на весь сервер.");
-                });
-                return;
+                        this.completeDonationClaimByPurchaseAsync(var4, var10.purchaseId());
+                     });
+                  } else {
+                     this.runAsync(() -> {
+                        try {
+                           this.markPurchaseDelivered(var10.purchaseId(), var10.uniqueItemId(), var10.itemId());
+                           this.triggerRevenuePayoutAsync(var10.purchaseId());
+                        } catch (SQLException var3x) {
+                           this.getLogger().log(Level.WARNING, "Failed to recover artifact purchase " + var10.purchaseId(), (Throwable)var3x);
+                        }
+                     });
+                  }
+               }
             }
-            int playerPurchased = playerPurchasedCount(player.getUniqueId().toString(), item.itemId());
-            if (item.perPlayerLimit() > 0 && playerPurchased >= item.perPlayerLimit()) {
-                runSync(() -> {
-                    state.purchaseInFlightId = "";
-                    player.sendMessage(color("&cВаш персональный лимит на этот артефакт уже достигнут."));
-                    openError(player, item, "&cПерсональный лимит достигнут", "Можно купить не больше " + item.perPlayerLimit() + " шт. на игрока.");
-                });
-                return;
-            }
-            BridgeTxnResult charge = bridge.charge(player, item.priceAr(), pin, "artifact-purchase-" + purchaseId, "artifact_purchase", "item=" + item.itemId() + " shop=" + shop.shopId());
-            if (!charge.ok()) {
-                runSync(() -> {
-                    state.purchaseInFlightId = "";
-                    if ("INSUFFICIENT_AR".equalsIgnoreCase(charge.code())) {
-                        player.sendMessage(color("&cНедостаточно AR на банковском счёте."));
-                    } else if ("PIN_INVALID".equalsIgnoreCase(charge.code())) {
-                        player.sendMessage(color("&cPIN введён неверно."));
-                    } else {
-                        player.sendMessage(color("&cПокупка отклонена. Код: " + safeBridgeCode(charge.code())));
-                    }
-                    if ("INSUFFICIENT_AR".equalsIgnoreCase(charge.code())) {
-                        openError(player, item, "&cНедостаточно AR", "На банковском счёте не хватает средств для покупки.");
-                    } else if ("PIN_INVALID".equalsIgnoreCase(charge.code())) {
-                        openError(player, item, "&cНеверный PIN", "Проверьте введённый PIN и повторите покупку.");
-                    } else {
-                        openError(player, item, "&cПокупка отклонена", "Код: " + safeBridgeCode(charge.code()));
-                    }
-                });
-                return;
-            }
-            try {
-                persistPaidPurchase(player, context, charge);
-            } catch (SQLException e) {
-                bridge.refund(player, item.priceAr(), "artifact-refund-" + purchaseId, "artifact_refund", "purchase=" + purchaseId);
-                runSync(() -> {
-                    state.purchaseInFlightId = "";
-                    player.sendMessage(color("&cБаза CopiMineArtifacts недоступна. Покупка отменена, AR возвращены."));
-                });
-                return;
-            }
-            runSync(() -> deliverPurchase(player, context, charge));
-        });
-    }
+         }
 
-    private void persistPaidPurchase(Player player, PurchaseContext context, BridgeTxnResult charge) throws SQLException {
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement purchase = c.prepareStatement("""
-                INSERT INTO artifact_purchases(purchase_id,unique_item_id,player_uuid,player_name,item_id,shop_id,price_ar,bank_tx_id,idempotency_key,status,delivery_mode,created_at,updated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """);
-                 PreparedStatement instance = c.prepareStatement("""
-                INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at)
-                VALUES(?,?,?,?,?,?,?,?)
-            """)) {
-                long now = now();
-                purchase.setString(1, context.purchaseId());
-                purchase.setString(2, context.uniqueItemId());
-                purchase.setString(3, player.getUniqueId().toString());
-                purchase.setString(4, player.getName());
-                purchase.setString(5, context.item().itemId());
-                purchase.setString(6, context.shop().shopId());
-                purchase.setLong(7, context.item().priceAr());
-                purchase.setString(8, charge.txId());
-                purchase.setString(9, "artifact-purchase-" + context.purchaseId());
-                purchase.setString(10, "PAID");
-                purchase.setString(11, "DIRECT");
-                purchase.setLong(12, now);
-                purchase.setLong(13, now);
-                purchase.executeUpdate();
+         if (var6 > 0) {
+            var1.sendMessage(
+               this.color(
+                  "&eCopiMineArtifacts \u0420\u0406\u0420\u0455\u0421\u0403\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0420\u00bb \u0420\u0405\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u20ac\u0421\u2018\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451: &f"
+                     + var6
+               )
+            );
+         }
 
-                instance.setString(1, context.uniqueItemId());
-                instance.setString(2, context.item().itemId());
-                instance.setString(3, player.getUniqueId().toString());
-                instance.setString(4, context.purchaseId());
-                instance.setString(5, "DELIVERING");
-                instance.setInt(6, 0);
-                instance.setLong(7, now);
-                instance.setLong(8, now);
-                instance.executeUpdate();
-                c.commit();
-                instanceToItem.put(context.uniqueItemId(), context.item().itemId());
-            } catch (SQLException e) {
-                c.rollback();
-                throw e;
-            }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
+         if (var7 > 0) {
+            var1.sendMessage(this.color("&eЧасть покупок была возвращена в безопасную очередь выдачи. Открой раздел покупок и забери предметы заново."));
+         }
+      }
+   }
 
-    private void deliverPurchase(Player player, PurchaseContext context, BridgeTxnResult charge) {
-        SessionState state = session(player);
-        ItemStack stack = createOfficialItem(context.item(), context.uniqueItemId(), player.getUniqueId(), context.purchaseId());
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(stack);
-        if (leftovers.isEmpty()) {
-            runAsync(() -> {
-                try {
-                    markPurchaseDelivered(context.purchaseId(), context.uniqueItemId());
-                    audit(player.getName(), "purchase_delivered", context.purchaseId(), context.item().itemId());
-                } catch (SQLException ignored) {}
-            });
-            state.purchaseInFlightId = "";
-            player.sendMessage(color("&aПокупка успешна. Баланс после списания: &f" + charge.balanceAfter() + " AR"));
-            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.4f);
-            openSuccess(player, context.item(), charge.balanceAfter());
-            return;
-        }
-        runAsync(() -> {
-            try {
-                createPendingDelivery(player, context);
-                audit(player.getName(), "purchase_pending_delivery", context.purchaseId(), context.item().itemId());
-            } catch (SQLException ignored) {}
-        });
-        state.purchaseInFlightId = "";
-        player.sendMessage(color("&eПредмет оплачен, но инвентарь занялся. Покупка переведена в отложенная выдача."));
-        openPurchases(player);
-    }
+   private void createPendingDeliveryRecovery(UUID var1, String var2, String var3, String var4) throws SQLException {
+      Connection var5 = this.pgPool.acquire();
 
-    private void executeRepair(Player player, long price) {
-        ItemStack item = player.getInventory().getItemInMainHand();
-        CatalogItem catalog = authenticCatalogItem(item, player, "repair");
-        if (catalog == null) {
-            player.sendMessage(color("&cПоддельный предмет не принимается в ремонт."));
-            return;
-        }
-        if (!(item.getItemMeta() instanceof Damageable damageable) || damageable.getDamage() <= 0) {
-            player.sendMessage(color("&eРемонт не требуется."));
-            return;
-        }
-        runAsync(() -> {
-            BridgeTxnResult charge = bridge.charge(player, price, "", "artifact-repair-" + UUID.randomUUID(), "artifact_repair", "item=" + catalog.itemId());
-            if (!charge.ok()) {
-                runSync(() -> player.sendMessage(color("&cРемонт отклонён. Код: " + safeBridgeCode(charge.code()))));
-                return;
-            }
-            String repairId = UUID.randomUUID().toString();
-            try {
-                persistRepair(player, catalog, item, repairId, price, charge.txId());
-            } catch (SQLException e) {
-                bridge.refund(player, price, "artifact-repair-refund-" + repairId, "artifact_repair_refund", "repair=" + repairId);
-                runSync(() -> player.sendMessage(color("&cБаза недоступна. Ремонт отменён, AR возвращены.")));
-                return;
-            }
-            runSync(() -> {
-                Damageable d = (Damageable) item.getItemMeta();
-                d.setDamage(0);
-                item.setItemMeta((ItemMeta) d);
-                player.getInventory().setItemInMainHand(item);
-                player.sendMessage(color("&aРемонт завершён за &f" + price + " AR"));
-                player.closeInventory();
-            });
-        });
-    }
-    private void claimPending(Player player) {
-        runAsync(() -> {
-            List<PendingDeliveryRow> rows = readPending(player.getUniqueId().toString());
-            readDonationClaimsAsync(player.getUniqueId()).whenComplete((donationRows, error) -> runSync(() -> {
-                if (!player.isOnline()) {
-                    return;
-                }
-                if (error != null) {
-                    getLogger().log(Level.WARNING, "Donation claims fetch failed", error);
-                    player.sendMessage(color("&cНе удалось загрузить донат-выдачу. Попробуй ещё раз."));
-                    return;
-                }
-                List<DonationClaimRow> safeDonationRows = donationRows == null ? List.of() : donationRows;
-                if (rows.isEmpty() && safeDonationRows.isEmpty()) {
-                    player.sendMessage(color("&eУ тебя нет предметов, ожидающих выдачи."));
-                    return;
-                }
-                for (PendingDeliveryRow row : rows) {
-                    if (player.getInventory().firstEmpty() < 0) {
-                        player.sendMessage(color("&cИнвентарь заполнен. Освободи место и повтори команду."));
-                        return;
-                    }
-                    deliverPendingRow(player, row);
-                }
-                for (DonationClaimRow row : safeDonationRows) {
-                    int requiredSlots = requiredDonationSlots(row.amount());
-                    if (requiredSlots < 0) {
-                        player.sendMessage(color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
-                        return;
-                    }
-                    if (freeStorageSlots(player.getInventory()) < requiredSlots) {
-                        player.sendMessage(color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + requiredSlots));
-                        return;
-                    }
-                    deliverDonationClaimRow(player, row);
-                }
-            }));
-        });
-    }
-    private void claimOne(Player player, String deliveryId) {
-        runAsync(() -> {
-            List<PendingDeliveryRow> rows = readPending(player.getUniqueId().toString()).stream().filter(x -> x.deliveryId().equals(deliveryId)).toList();
-            if (!rows.isEmpty()) {
-                runSync(() -> deliverPendingRow(player, rows.get(0)));
-                return;
-            }
-            readDonationClaimsAsync(player.getUniqueId()).whenComplete((donationRows, error) -> runSync(() -> {
-                if (!player.isOnline()) {
-                    return;
-                }
-                if (error != null) {
-                    getLogger().log(Level.WARNING, "Donation claim lookup failed", error);
-                    player.sendMessage(color("&cНе удалось проверить донат-выдачу."));
-                    return;
-                }
-                List<DonationClaimRow> matches = (donationRows == null ? List.<DonationClaimRow>of() : donationRows).stream()
-                        .filter(x -> x.claimId().equals(deliveryId))
-                        .toList();
-                if (matches.isEmpty()) {
-                    player.sendMessage(color("&cПредмет для выдачи не найден."));
-                    return;
-                }
-                int requiredSlots = requiredDonationSlots(matches.getFirst().amount());
-                if (requiredSlots < 0) {
-                    player.sendMessage(color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
-                    return;
-                }
-                if (freeStorageSlots(player.getInventory()) < requiredSlots) {
-                    player.sendMessage(color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + requiredSlots));
-                    return;
-                }
-                deliverDonationClaimRow(player, matches.getFirst());
-            }));
-        });
-    }
+      try {
+         var5.setAutoCommit(false);
 
-    private void deliverPendingRow(Player player, PendingDeliveryRow row) {
-        CatalogItem item = catalogById.get(row.itemId());
-        if (item == null) {
-            player.sendMessage(color("&cОтложенная выдача повреждён: item missing."));
-            return;
-        }
-        if (player.getInventory().firstEmpty() < 0) {
-            player.sendMessage(color("&cИнвентарь заполнен. Отложенная выдача не потерян."));
-            return;
-        }
-        ItemStack stack = createOfficialItem(item, row.uniqueItemId(), player.getUniqueId(), row.purchaseId());
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(stack);
-        if (!leftovers.isEmpty()) {
-            player.sendMessage(color("&cИнвентарь заполнен. Отложенная выдача не потерян."));
-            return;
-        }
-        runAsync(() -> {
-            try {
-                markPendingClaimed(row.deliveryId(), row.purchaseId(), row.uniqueItemId());
-            } catch (SQLException ignored) {}
-        });
-        player.sendMessage(color("&aОтложенная выдача получен: &f" + strip(item.name())));
-    }
-
-    private void deliverDonationClaimRow(Player player, DonationClaimRow row) {
-        reserveDonationClaimAsync(player.getUniqueId(), row.claimId()).whenComplete((reserved, error) -> runSync(() -> {
-            if (!player.isOnline()) {
-                if (Boolean.TRUE.equals(reserved)) {
-                    releaseDonationClaimAsync(player.getUniqueId(), row.claimId());
-                }
-                return;
+         try (
+            PreparedStatement var6 = var5.prepareStatement(
+               "SELECT delivery_id,status FROM artifact_pending_deliveries WHERE purchase_id=? AND unique_item_id=? ORDER BY created_at DESC LIMIT 1 FOR UPDATE"
+            );
+            PreparedStatement var7 = var5.prepareStatement(
+               "INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)"
+            );
+            PreparedStatement var8 = var5.prepareStatement(
+               "UPDATE artifact_purchases SET status='PENDING_DELIVERY',delivery_mode='PENDING',updated_at=? WHERE purchase_id=? AND status IN ('PAID','DELIVERING','PENDING_DELIVERY')"
+            );
+            PreparedStatement var9 = var5.prepareStatement(
+               "UPDATE artifact_item_instances SET status='PENDING_DELIVERY',updated_at=? WHERE unique_item_id=? AND status IN ('DELIVERING','PENDING_DELIVERY')"
+            );
+         ) {
+            var6.setString(1, var2);
+            var6.setString(2, var3);
+            String var10 = "";
+            String var11 = "";
+            try (ResultSet var12 = var6.executeQuery()) {
+               if (var12.next()) {
+                  var10 = this.firstNonBlank(var12.getString(1), "");
+                  var11 = this.firstNonBlank(var12.getString(2), "");
+               }
             }
-            if (error != null) {
-                getLogger().log(Level.WARNING, "Donation claim reservation failed", error);
-                player.sendMessage(color("&cНе удалось зарезервировать донат-выдачу."));
-                return;
-            }
-            if (!Boolean.TRUE.equals(reserved)) {
-                player.sendMessage(color("&eЭтот донат-предмет уже забирается или был выдан."));
-                return;
-            }
-            CatalogItem item = catalogById.get(row.itemId());
-            if (item == null) {
-                releaseDonationClaimAsync(player.getUniqueId(), row.claimId());
-                player.sendMessage(color("&cДонат-предмет недоступен в каталоге."));
-                return;
-            }
-            int amount = requiredDonationSlots(row.amount());
-            if (amount < 0) {
-                releaseDonationClaimAsync(player.getUniqueId(), row.claimId());
-                player.sendMessage(color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
-                return;
-            }
-            if (freeStorageSlots(player.getInventory()) < amount) {
-                releaseDonationClaimAsync(player.getUniqueId(), row.claimId());
-                player.sendMessage(color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + amount));
-                return;
-            }
-            String purchaseId = row.purchaseId() == null || row.purchaseId().isBlank() ? "donation-" + row.claimId() : row.purchaseId();
-            List<String> uniqueItemIds = new ArrayList<>(amount);
-            for (int i = 0; i < amount; i++) {
-                uniqueItemIds.add(UUID.randomUUID().toString());
-            }
-            prepareDonationDeliveryAsync(player.getUniqueId(), row.claimId(), purchaseId, item.itemId(), uniqueItemIds).whenComplete((prepared, prepareError) -> runSync(() -> {
-                if (!player.isOnline()) {
-                    if (Boolean.TRUE.equals(prepared)) {
-                        failDonationDeliveryAsync(player.getUniqueId(), row.claimId(), uniqueItemIds);
-                    } else {
-                        releaseDonationClaimAsync(player.getUniqueId(), row.claimId());
-                    }
-                    return;
-                }
-                if (prepareError != null || !Boolean.TRUE.equals(prepared)) {
-                    if (Boolean.TRUE.equals(prepared)) {
-                        failDonationDeliveryAsync(player.getUniqueId(), row.claimId(), uniqueItemIds);
-                    } else {
-                        releaseDonationClaimAsync(player.getUniqueId(), row.claimId());
-                    }
-                    getLogger().log(Level.WARNING, "Donation claim prepare failed: " + row.claimId(), prepareError);
-                    player.sendMessage(color("&cНе удалось подготовить донат-выдачу. Попробуй ещё раз."));
-                    return;
-                }
-                for (String uniqueItemId : uniqueItemIds) {
-                    ItemStack stack = createOfficialItem(item, uniqueItemId, player.getUniqueId(), purchaseId);
-                    Map<Integer, ItemStack> leftovers = player.getInventory().addItem(stack);
-                    if (!leftovers.isEmpty()) {
-                        failDonationDeliveryAsync(player.getUniqueId(), row.claimId(), uniqueItemIds);
-                        player.sendMessage(color("&cИнвентарь изменился во время выдачи. Выдача отправлена на ручную проверку и не будет автоматически повторена."));
-                        return;
-                    }
-                }
-                finalizeDonationDeliveryAsync(player.getUniqueId(), row.claimId(), purchaseId, uniqueItemIds).whenComplete((completed, completeError) -> {
-                    if (completeError != null || !Boolean.TRUE.equals(completed)) {
-                        getLogger().log(Level.WARNING, "Donation claim was delivered but completion failed: " + row.claimId(), completeError);
-                        reviewDonationClaimAsync(player.getUniqueId(), row.claimId());
-                    }
-                });
-                audit(player.getName(), "donation_claim_delivered", row.claimId(), item.itemId());
-                player.sendMessage(color("&aДонат-предмет получен: &f" + strip(item.name()) + " &7x" + amount));
-            }));
-        }));
-    }
 
-    private CompletableFuture<List<DonationClaimRow>> readDonationClaimsAsync(UUID playerUuid) {
-        if (playerUuid == null) {
-            return CompletableFuture.completedFuture(List.of());
-        }
-        CopiMineEconomyCore.DonationPurchaseService service = donationPurchaseService();
-        if (service == null) {
-            return CompletableFuture.completedFuture(List.of());
-        }
-        return service.getUnclaimedItemsAsync(playerUuid, 18).thenApply(rows -> {
-            List<DonationClaimRow> out = new ArrayList<>();
-            for (Map<String, Object> row : rows) {
-                out.add(new DonationClaimRow(
-                        str(row.get("id")),
-                        str(row.get("purchase_id")),
-                        str(row.get("item_id")),
-                        parseLong(str(row.get("amount")), 1L)
-                ));
+            if (!var10.isBlank() && Set.of("PENDING", "DELIVERING", "CLAIMED").contains(var11.toUpperCase(Locale.ROOT))) {
+               var5.rollback();
+               return;
             }
-            return out;
-        });
-    }
 
-    private CompletableFuture<Boolean> reserveDonationClaimAsync(UUID playerUuid, String claimId) {
-        CopiMineEconomyCore.DonationPurchaseService service = donationPurchaseService();
-        if (service == null || playerUuid == null || claimId == null || claimId.isBlank()) {
-            return CompletableFuture.completedFuture(false);
-        }
-        return service.reserveClaimAsync(playerUuid, claimId);
-    }
+            long var18 = this.now();
+            if (var10.isBlank()) {
+               String var13 = UUID.randomUUID().toString();
+               var7.setString(1, var13);
+               var7.setString(2, var2);
+               var7.setString(3, var3);
+               var7.setString(4, var1.toString());
+               var7.setString(5, var4);
+               var7.setString(6, "PENDING");
+               var7.setLong(7, var18);
+               var7.setLong(8, var18);
+               var7.executeUpdate();
+            }
 
-    private CompletableFuture<Boolean> completeDonationClaimAsync(UUID playerUuid, String claimId) {
-        CopiMineEconomyCore.DonationPurchaseService service = donationPurchaseService();
-        if (service == null || playerUuid == null || claimId == null || claimId.isBlank()) {
-            return CompletableFuture.completedFuture(false);
-        }
-        return service.completeClaimAsync(playerUuid, claimId);
-    }
+            var8.setLong(1, var18);
+            var8.setString(2, var2);
+            var8.executeUpdate();
+            var9.setLong(1, var18);
+            var9.setString(2, var3);
+            if (var9.executeUpdate() <= 0) {
+               throw new SQLException("Stranded delivery recovery lost artifact instance state.");
+            }
 
-    private CompletableFuture<Boolean> markDonationClaimDeliveringAsync(UUID playerUuid, String claimId) {
-        CopiMineEconomyCore.DonationPurchaseService service = donationPurchaseService();
-        if (service == null || playerUuid == null || claimId == null || claimId.isBlank()) {
-            return CompletableFuture.completedFuture(false);
-        }
-        return service.markClaimDeliveringAsync(playerUuid, claimId);
-    }
+            var5.commit();
+            this.audit("SERVER", "purchase_recovered_to_pending", var2, var4);
+         } catch (SQLException var17) {
+            var5.rollback();
+            throw var17;
+         }
+      } finally {
+         try {
+            var5.setAutoCommit(true);
+         } catch (SQLException var16) {
+         }
 
-    private CompletableFuture<Boolean> reviewDonationClaimAsync(UUID playerUuid, String claimId) {
-        CopiMineEconomyCore.DonationPurchaseService service = donationPurchaseService();
-        if (service == null || playerUuid == null || claimId == null || claimId.isBlank()) {
-            return CompletableFuture.completedFuture(false);
-        }
-        return service.markClaimDeliveryReviewAsync(playerUuid, claimId);
-    }
+         this.pgPool.release(var5);
+      }
+   }
 
-    private CompletableFuture<Boolean> releaseDonationClaimAsync(UUID playerUuid, String claimId) {
-        CopiMineEconomyCore.DonationPurchaseService service = donationPurchaseService();
-        if (service == null || playerUuid == null || claimId == null || claimId.isBlank()) {
-            return CompletableFuture.completedFuture(false);
-        }
-        return service.releaseClaimAsync(playerUuid, claimId);
-    }
+   private boolean playerHasOfficialInstance(Player var1, String var2, String var3, UUID var4) {
+      if (var1 != null && var2 != null && !var2.isBlank() && var3 != null && !var3.isBlank() && var4 != null) {
+         for (ItemStack var8 : var1.getInventory().getContents()) {
+            if (this.officialItemMatches(var8, var2, var3, var4)) {
+               return true;
+            }
+         }
 
-    private CopiMineEconomyCore.DonationPurchaseService donationPurchaseService() {
-        Plugin plugin = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
-        if (!(plugin instanceof CopiMineEconomyCore main) || !plugin.isEnabled()) {
+         return this.officialItemMatches(var1.getInventory().getItemInOffHand(), var2, var3, var4);
+      } else {
+         return false;
+      }
+   }
+
+   private boolean officialItemMatches(ItemStack var1, String var2, String var3, UUID var4) {
+      if (var1 != null && var1.getType() != Material.AIR && var1.hasItemMeta() && var4 != null) {
+         PersistentDataContainer var5 = var1.getItemMeta().getPersistentDataContainer();
+         return var2.equalsIgnoreCase(this.firstNonBlank((String)var5.get(this.keyUniqueItemId, PersistentDataType.STRING), ""))
+            && var3.equalsIgnoreCase(this.firstNonBlank((String)var5.get(this.keyItemId, PersistentDataType.STRING), ""))
+            && var4.toString().equalsIgnoreCase(this.firstNonBlank((String)var5.get(this.keyOwnerUuid, PersistentDataType.STRING), ""));
+      } else {
+         return false;
+      }
+   }
+
+   private CopiMineArtifacts.OfficialDonationRef officialDonationRef(ItemStack var1) {
+      if (var1 != null && var1.getType() != Material.AIR && var1.hasItemMeta()) {
+         ItemMeta var2 = var1.getItemMeta();
+         if (var2 == null) {
             return null;
-        }
-        try {
-            return main.donationPurchaseService();
-        } catch (Exception e) {
-            return null;
-        }
-    }
+         } else {
+            PersistentDataContainer var3 = var2.getPersistentDataContainer();
+            String var4 = this.firstNonBlank((String)var3.get(this.keyItemType, PersistentDataType.STRING), "");
+            String var5 = this.firstNonBlank((String)var3.get(this.keySource, PersistentDataType.STRING), "");
+            if ("DONATION_SHOP_ITEM".equalsIgnoreCase(var4) && "DONATION_SHOP".equalsIgnoreCase(var5)) {
+               String var6 = this.firstNonBlank((String)var3.get(this.keyItemId, PersistentDataType.STRING), "").toLowerCase(Locale.ROOT);
+               String var7 = this.firstNonBlank((String)var3.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
+               String var8 = this.firstNonBlank((String)var3.get(this.keyOwnerUuid, PersistentDataType.STRING), "");
+               if (!var6.isBlank() && !var7.isBlank() && !var8.isBlank() && this.isDonationCatalogItem(var6)) {
+                  CopiMineArtifacts.OfficialInstanceBinding var9 = this.instanceBindings.get(var7);
+                  if (var9 != null
+                     && var6.equalsIgnoreCase(var9.itemId())
+                     && var8.equalsIgnoreCase(var9.ownerUuid())
+                     && var6.equalsIgnoreCase(this.firstNonBlank(this.instanceToItem.get(var7), ""))) {
+                     UUID var10;
+                     try {
+                        var10 = UUID.fromString(var8);
+                     } catch (IllegalArgumentException var12) {
+                        return null;
+                     }
 
-    private CompletableFuture<Boolean> prepareDonationDeliveryAsync(UUID playerUuid, String claimId, String purchaseId, String itemId, List<String> uniqueItemIds) {
-        return markDonationClaimDeliveringAsync(playerUuid, claimId).thenCompose(marked -> {
-            if (!Boolean.TRUE.equals(marked)) {
-                return CompletableFuture.completedFuture(false);
+                     return new CopiMineArtifacts.OfficialDonationRef(
+                        var7, var6, var10, this.firstNonBlank((String)var3.get(this.keyPurchaseId, PersistentDataType.STRING), "")
+                     );
+                  } else {
+                     return null;
+                  }
+               } else {
+                  return null;
+               }
+            } else {
+               return null;
             }
-            return CompletableFuture.supplyAsync(() -> {
-                try {
-                    persistDonationInstances(playerUuid, purchaseId, itemId, uniqueItemIds);
-                    return true;
-                } catch (Exception error) {
-                    reviewDonationClaimAsync(playerUuid, claimId);
-                    throw new IllegalStateException("Failed to persist donation artifact instances.", error);
-                }
-            }, dbExecutor);
-        });
-    }
+         }
+      } else {
+         return null;
+      }
+   }
 
-    private CompletableFuture<Boolean> finalizeDonationDeliveryAsync(UUID playerUuid, String claimId, String purchaseId, List<String> uniqueItemIds) {
-        return completeDonationClaimAsync(playerUuid, claimId).thenCompose(completed -> {
-            if (!Boolean.TRUE.equals(completed)) {
-                return CompletableFuture.completedFuture(false);
+   private boolean hasBlockingDonationInstance(UUID var1, String var2) throws SQLException {
+      if (var1 != null && var2 != null && !var2.isBlank()) {
+         Connection var3 = this.pgPool.acquire();
+
+         boolean var6;
+         try (PreparedStatement var4 = var3.prepareStatement(
+               "    SELECT COUNT(*)\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND item_id=?\n      AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')\n"
+            )) {
+            var4.setString(1, var1.toString());
+            var4.setString(2, var2);
+
+            try (ResultSet var5 = var4.executeQuery()) {
+               var6 = var5.next() && var5.getInt(1) > 0;
             }
-            return CompletableFuture.supplyAsync(() -> {
-                try {
-                    markDonationInstancesDelivered(uniqueItemIds);
-                    audit(first(playerUuid == null ? "" : playerUuid.toString(), "unknown"), "donation_claim_claimed", claimId, purchaseId);
-                    return true;
-                } catch (Exception error) {
-                    throw new IllegalStateException("Failed to finalize donation artifact instances.", error);
-                }
-            }, dbExecutor);
-        });
-    }
+         } finally {
+            this.pgPool.release(var3);
+         }
 
-    private CompletableFuture<Boolean> failDonationDeliveryAsync(UUID playerUuid, String claimId, List<String> uniqueItemIds) {
-        reviewDonationClaimAsync(playerUuid, claimId);
-        return CompletableFuture.supplyAsync(() -> {
+         return var6;
+      } else {
+         return false;
+      }
+   }
+
+   private List<CopiMineArtifacts.ReclaimableDonationRow> readReclaimableDonationRows(String var1, int var2) {
+      if (var1 != null && !var1.isBlank()) {
+         Connection var3 = null;
+
+         List var5;
+         try {
+            var3 = this.pgPool.acquire();
+
+            try (PreparedStatement var4 = var3.prepareStatement(
+                  "    SELECT unique_item_id,purchase_id,item_id,updated_at\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND status='LOST_RECLAIMABLE'\n    ORDER BY updated_at DESC\n    LIMIT ?\n"
+               )) {
+               var4.setString(1, var1);
+               var4.setInt(2, Math.max(1, Math.min(var2, 54)));
+
+               try (ResultSet var21 = var4.executeQuery()) {
+                  ArrayList var6 = new ArrayList();
+
+                  while (var21.next()) {
+                     var6.add(new CopiMineArtifacts.ReclaimableDonationRow(var21.getString(1), var21.getString(2), var21.getString(3), var21.getLong(4)));
+                  }
+
+                  return var6;
+               }
+            }
+         } catch (SQLException var19) {
+            this.getLogger().log(Level.WARNING, "Donation reclaim rows fetch failed", (Throwable)var19);
+            var5 = List.of();
+         } finally {
+            if (var3 != null) {
+               this.pgPool.release(var3);
+            }
+         }
+
+         return var5;
+      } else {
+         return List.of();
+      }
+   }
+
+   private CopiMineArtifacts.DonationOwnershipSnapshot readDonationOwnershipSnapshot(String var1) {
+      if (var1 != null && !var1.isBlank()) {
+         Connection var2 = null;
+
+         CopiMineArtifacts.DonationOwnershipSnapshot var4;
+         try {
+            var2 = this.pgPool.acquire();
+            HashSet var3 = new HashSet();
+            HashSet var33 = new HashSet();
+            HashSet var5 = new HashSet();
+            ArrayList var6 = new ArrayList();
+
+            try (
+               PreparedStatement var7 = var2.prepareStatement(
+                  "    SELECT item_id\n    FROM donation_item_claims\n    WHERE player_uuid=?\n      AND status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')\n"
+               );
+               PreparedStatement var8 = var2.prepareStatement(
+                  "    SELECT unique_item_id,purchase_id,item_id,status,updated_at\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND item_id IN (\n          SELECT DISTINCT item_id\n          FROM artifact_item_instances\n          WHERE owner_uuid=?\n      )\n    ORDER BY updated_at DESC\n"
+               );
+            ) {
+               var7.setString(1, var1);
+
+               try (ResultSet var9 = var7.executeQuery()) {
+                  while (var9.next()) {
+                     String var10 = this.firstNonBlank(var9.getString(1), "").toLowerCase(Locale.ROOT);
+                     if (!var10.isBlank()) {
+                        var33.add(var10);
+                     }
+                  }
+               }
+
+               var8.setString(1, var1);
+               var8.setString(2, var1);
+
+               try (ResultSet var35 = var8.executeQuery()) {
+                  while (var35.next()) {
+                     String var36 = this.firstNonBlank(var35.getString(3), "").toLowerCase(Locale.ROOT);
+                     String var11 = this.firstNonBlank(var35.getString(4), "");
+                     if (!var36.isBlank()) {
+                        if ("ACTIVE".equalsIgnoreCase(var11)) {
+                           var3.add(var36);
+                        } else if ("LOST_RECLAIMABLE".equalsIgnoreCase(var11)) {
+                           var5.add(var36);
+                           var6.add(new CopiMineArtifacts.ReclaimableDonationRow(var35.getString(1), var35.getString(2), var36, var35.getLong(5)));
+                        }
+                     }
+                  }
+               }
+            }
+
+            return new CopiMineArtifacts.DonationOwnershipSnapshot(Set.copyOf(var3), Set.copyOf(var33), Set.copyOf(var5), List.copyOf(var6), var33.size());
+         } catch (SQLException var31) {
+            this.getLogger().log(Level.WARNING, "Donation ownership snapshot failed", (Throwable)var31);
+            var4 = new CopiMineArtifacts.DonationOwnershipSnapshot(Set.of(), Set.of(), Set.of(), List.of(), 0);
+         } finally {
+            if (var2 != null) {
+               this.pgPool.release(var2);
+            }
+         }
+
+         return var4;
+      } else {
+         return new CopiMineArtifacts.DonationOwnershipSnapshot(Set.of(), Set.of(), Set.of(), List.of(), 0);
+      }
+   }
+
+   private boolean updateDonationInstanceStatus(UUID var1, String var2, String var3, String var4, Set<String> var5, boolean var6) throws SQLException {
+      if (var1 != null && var2 != null && !var2.isBlank() && var3 != null && !var3.isBlank() && var4 != null && !var4.isBlank()) {
+         Connection var7 = this.pgPool.acquire();
+
+         boolean var41;
+         try {
+            var7.setAutoCommit(false);
+            String[] var8 = var5 != null && !var5.isEmpty() ? var5.toArray(String[]::new) : new String[]{"ACTIVE"};
+
+            try (
+               PreparedStatement var9 = var7.prepareStatement(
+                  "    SELECT status\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n      AND item_id=?\n    FOR UPDATE\n"
+               );
+               PreparedStatement var10 = var7.prepareStatement(
+                  "    UPDATE artifact_item_instances\n    SET status=?,updated_at=?\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n      AND item_id=?\n"
+               );
+            ) {
+               var9.setString(1, var1.toString());
+               var9.setString(2, var2);
+               var9.setString(3, var3);
+
+               String var11;
+               try (ResultSet var12 = var9.executeQuery()) {
+                  if (!var12.next()) {
+                     var7.rollback();
+                     return false;
+                  }
+
+                  var11 = this.firstNonBlank(var12.getString(1), "");
+               }
+
+               if (!Arrays.stream(var8).noneMatch(var1x -> var1x.equalsIgnoreCase(var11))) {
+                  long var40 = this.now();
+                  var10.setString(1, var4);
+                  var10.setLong(2, var40);
+                  var10.setString(3, var1.toString());
+                  var10.setString(4, var2);
+                  var10.setString(5, var3);
+                  boolean var14 = var10.executeUpdate() > 0;
+                  var7.commit();
+                  if (var14 && var6) {
+                     this.removeOfficialBinding(var2);
+                  }
+
+                  return var14;
+               }
+
+               var7.rollback();
+               var41 = false;
+            } catch (SQLException var38) {
+               var7.rollback();
+               throw var38;
+            }
+         } finally {
             try {
-                markDonationInstancesFailed(uniqueItemIds);
-                return true;
-            } catch (Exception error) {
-                getLogger().log(Level.WARNING, "Donation delivery cleanup failed for claim " + claimId, error);
-                return false;
+               var7.setAutoCommit(true);
+            } catch (SQLException var31) {
             }
-        }, dbExecutor);
-    }
 
-    private int freeStorageSlots(PlayerInventory inventory) {
-        int free = 0;
-        for (ItemStack stack : inventory.getStorageContents()) {
-            if (stack == null || stack.getType() == Material.AIR) {
-                free++;
+            this.pgPool.release(var7);
+         }
+
+         return var41;
+      } else {
+         return false;
+      }
+   }
+
+   private void markDonationInstancesLost(UUID var1, Map<String, String> var2, String var3) throws SQLException {
+      if (var1 != null && var2 != null && !var2.isEmpty()) {
+         for (Entry var5 : var2.entrySet()) {
+            boolean var6 = this.updateDonationInstanceStatus(
+               var1, (String)var5.getKey(), (String)var5.getValue(), "LOST_RECLAIMABLE", Set.of("ACTIVE", "DELIVERING", "PENDING_DELIVERY", "DELIVERED"), true
+            );
+            if (var6) {
+               this.audit(
+                  var1.toString(), "donation_item_lost", (String)var5.getKey(), (String)var5.getValue() + " reason=" + this.firstNonBlank(var3, "unknown")
+               );
             }
-        }
-        return free;
-    }
+         }
+      }
+   }
 
-    private int requiredDonationSlots(long amount) {
-        if (amount <= 0L) {
-            return 1;
-        }
-        return amount > 36L ? -1 : (int) amount;
-    }
+   private boolean recordDonationLossJournal(UUID var1, Map<String, String> var2, String var3) {
+      if (var1 != null && var2 != null && !var2.isEmpty() && this.donationLossJournalPath != null) {
+         ArrayList var4 = new ArrayList();
+         long var5 = this.now();
+         String var7 = this.sanitizeJournalValue(this.firstNonBlank(var3, "unknown"));
 
-    private CatalogItem authenticCatalogItem(ItemStack item, Player player, String eventType) {
-        if (item == null || item.getType() == Material.AIR || !item.hasItemMeta()) return null;
-        ItemMeta meta = item.getItemMeta();
-        String itemId = meta.getPersistentDataContainer().get(keyItemId, PersistentDataType.STRING);
-        String uniqueItemId = meta.getPersistentDataContainer().get(keyUniqueItemId, PersistentDataType.STRING);
-        if (itemId == null || uniqueItemId == null) return null;
-        CatalogItem catalog = catalogById.get(itemId);
-        Integer actualModelData = meta.hasCustomModelData() ? meta.getCustomModelData() : null;
-        boolean modelMismatch = catalog != null && catalog.customModelData() > 0 && !Objects.equals(actualModelData, catalog.customModelData());
-        if (catalog == null || !instanceToItem.containsKey(uniqueItemId) || modelMismatch) {
-            String marker = player.getUniqueId() + ":" + uniqueItemId + ":" + eventType;
-            if (suspiciousSeen.add(marker)) {
-                runAsync(() -> logSuspicious(player, eventType, "itemId=" + itemId + " unique=" + uniqueItemId + " model=" + actualModelData));
+         for (Entry var9 : var2.entrySet()) {
+            String var10 = this.sanitizeJournalValue(this.firstNonBlank((String)var9.getKey(), ""));
+            String var11 = this.sanitizeJournalValue(this.firstNonBlank((String)var9.getValue(), ""));
+            if (!var10.isBlank() && !var11.isBlank()) {
+               var4.add(var5 + "\t" + var1 + "\t" + var10 + "\t" + var11 + "\t" + var7);
             }
-            player.sendMessage(color("&cПодозрительный предмет CopiMineArtifacts заблокирован."));
+         }
+
+         if (var4.isEmpty()) {
+            return false;
+         } else {
+            synchronized (this.donationLossJournalLock) {
+               boolean var10000;
+               try {
+                  Files.createDirectories(this.donationLossJournalPath.getParent());
+                  Files.write(this.donationLossJournalPath, var4, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                  var10000 = true;
+               } catch (IOException var13) {
+                  this.getLogger().log(Level.WARNING, "Failed to persist donation loss journal", (Throwable)var13);
+                  return false;
+               }
+
+               return var10000;
+            }
+         }
+      } else {
+         return false;
+      }
+   }
+
+   private CompletableFuture<Boolean> finalizeDonationReclaimAsync(UUID var1, CopiMineArtifacts.DonationReclaimContext var2) {
+      return var1 != null && var2 != null ? CompletableFuture.supplyAsync(() -> {
+         SQLException var3 = null;
+
+         for (int var4 = 0; var4 < 3; var4++) {
+            try {
+               this.completeDonationReclaim(var1, var2);
+               return true;
+            } catch (SQLException var8) {
+               var3 = var8;
+               if (var4 < 2) {
+                  try {
+                     Thread.sleep(100L * (long)(var4 + 1));
+                  } catch (InterruptedException var7) {
+                     Thread.currentThread().interrupt();
+                     break;
+                  }
+                  continue;
+               }
+               break;
+            }
+         }
+
+         throw new CompletionException(new IllegalStateException("Failed to finalize donation reclaim.", var3));
+      }, this.dbExecutor) : CompletableFuture.completedFuture(false);
+   }
+
+   private String sanitizeJournalValue(String var1) {
+      return this.firstNonBlank(var1, "").replace('\t', '_').replace('\r', '_').replace('\n', '_').trim();
+   }
+
+   private void flushPendingDonationLossJournalAsync() {
+      if (this.dbExecutor != null && this.donationLossJournalPath != null) {
+         CompletableFuture.runAsync(() -> {
+            try {
+               this.reconcileDonationLossJournal();
+            } catch (Exception var2) {
+               this.getLogger().log(Level.WARNING, "Donation loss journal reconcile failed", (Throwable)var2);
+            }
+         }, this.dbExecutor);
+      }
+   }
+
+   private void reconcileDonationLossJournal() throws IOException, SQLException {
+      List<CopiMineArtifacts.DonationLossJournalEntry> var1 = this.readDonationLossJournalEntries();
+      if (!var1.isEmpty()) {
+         ArrayList var2 = new ArrayList();
+
+         for (CopiMineArtifacts.DonationLossJournalEntry var4 : var1) {
+            try {
+               if (!this.applyDonationLossJournalEntry(var4)) {
+                  var2.add(var4);
+               }
+            } catch (SQLException var6) {
+               var2.add(var4);
+            }
+         }
+
+         if (var2.size() != var1.size()) {
+            this.rewriteDonationLossJournalEntries(var2);
+         }
+      }
+   }
+
+   private List<CopiMineArtifacts.DonationLossJournalEntry> readDonationLossJournalEntries() throws IOException {
+      if (this.donationLossJournalPath == null) {
+         return List.of();
+      } else {
+         synchronized (this.donationLossJournalLock) {
+            if (!Files.exists(this.donationLossJournalPath)) {
+               return List.of();
+            } else {
+               ArrayList var2 = new ArrayList();
+
+               for (String var4 : Files.readAllLines(this.donationLossJournalPath, StandardCharsets.UTF_8)) {
+                  String var5 = this.firstNonBlank(var4, "").trim();
+                  if (!var5.isBlank()) {
+                     String[] var6 = var5.split("\\t", 5);
+                     if (var6.length >= 5) {
+                        var2.add(new CopiMineArtifacts.DonationLossJournalEntry(this.parseLong(var6[0], 0L), var6[1], var6[2], var6[3], var6[4]));
+                     }
+                  }
+               }
+
+               return var2;
+            }
+         }
+      }
+   }
+
+   private void rewriteDonationLossJournalEntries(List<CopiMineArtifacts.DonationLossJournalEntry> var1) throws IOException {
+      if (this.donationLossJournalPath != null) {
+         synchronized (this.donationLossJournalLock) {
+            if (var1 != null && !var1.isEmpty()) {
+               ArrayList var3 = new ArrayList(var1.size());
+
+               for (CopiMineArtifacts.DonationLossJournalEntry var5 : var1) {
+                  var3.add(
+                     var5.createdAt()
+                        + "\t"
+                        + this.sanitizeJournalValue(var5.ownerUuid())
+                        + "\t"
+                        + this.sanitizeJournalValue(var5.uniqueItemId())
+                        + "\t"
+                        + this.sanitizeJournalValue(var5.itemId())
+                        + "\t"
+                        + this.sanitizeJournalValue(var5.reason())
+                  );
+               }
+
+               Files.write(
+                  this.donationLossJournalPath,
+                  var3,
+                  StandardCharsets.UTF_8,
+                  StandardOpenOption.CREATE,
+                  StandardOpenOption.TRUNCATE_EXISTING,
+                  StandardOpenOption.WRITE
+               );
+            } else {
+               Files.deleteIfExists(this.donationLossJournalPath);
+            }
+         }
+      }
+   }
+
+   private boolean applyDonationLossJournalEntry(CopiMineArtifacts.DonationLossJournalEntry var1) throws SQLException {
+      if (var1 != null && !var1.ownerUuid().isBlank() && !var1.uniqueItemId().isBlank() && !var1.itemId().isBlank()) {
+         UUID var2;
+         try {
+            var2 = UUID.fromString(var1.ownerUuid());
+         } catch (IllegalArgumentException var5) {
+            return true;
+         }
+
+         String var3 = this.readDonationInstanceStatus(var2, var1.uniqueItemId(), var1.itemId());
+         if (var3 != null && !var3.isBlank()) {
+            String var4 = var3.toUpperCase(Locale.ROOT);
+            if (Set.of("LOST_RECLAIMABLE", "REPLACED_AFTER_LOSS", "BROKEN", "CONSUMED", "DELETED_AS_INVALID").contains(var4)) {
+               return true;
+            } else {
+               this.markDonationInstancesLost(var2, Map.of(var1.uniqueItemId(), var1.itemId()), var1.reason());
+               return true;
+            }
+         } else {
+            return true;
+         }
+      } else {
+         return true;
+      }
+   }
+
+   private String readDonationInstanceStatus(UUID var1, String var2, String var3) throws SQLException {
+      if (var1 != null && !this.firstNonBlank(var2, "").isBlank() && !this.firstNonBlank(var3, "").isBlank()) {
+         Connection var4 = this.pgPool.acquire();
+
+         String var7;
+         try (PreparedStatement var5 = var4.prepareStatement(
+               "SELECT status\nFROM artifact_item_instances\nWHERE owner_uuid=?\n  AND unique_item_id=?\n  AND item_id=?\nLIMIT 1\n"
+            )) {
+            var5.setString(1, var1.toString());
+            var5.setString(2, var2);
+            var5.setString(3, var3);
+
+            try (ResultSet var6 = var5.executeQuery()) {
+               var7 = var6.next() ? this.firstNonBlank(var6.getString(1), "") : "";
+            }
+         } finally {
+            this.pgPool.release(var4);
+         }
+
+         return var7;
+      } else {
+         return "";
+      }
+   }
+
+   private String readOwnerUuidForInstance(Connection var1, String var2) throws SQLException {
+      if (var1 != null && !this.firstNonBlank(var2, "").isBlank()) {
+         String var5;
+         try (PreparedStatement var3 = var1.prepareStatement(
+               "    SELECT owner_uuid\n    FROM artifact_item_instances\n    WHERE unique_item_id=?\n    LIMIT 1\n"
+            )) {
+            var3.setString(1, var2);
+
+            try (ResultSet var4 = var3.executeQuery()) {
+               var5 = var4.next() ? this.firstNonBlank(var4.getString(1), "") : "";
+            }
+         }
+
+         return var5;
+      } else {
+         return "";
+      }
+   }
+
+   private CopiMineArtifacts.DonationCatalogItem donationCatalogItem(String var1) {
+      return var1 == null ? null : this.donationCatalogById.get(var1.toLowerCase(Locale.ROOT));
+   }
+
+   private CopiMineArtifacts.CatalogItem runtimeCatalogItem(String var1) {
+      if (var1 == null) {
+         return null;
+      } else {
+         CopiMineArtifacts.CatalogItem var2 = this.catalogById.get(var1.toLowerCase(Locale.ROOT));
+         if (var2 != null) {
+            return var2;
+         } else {
+            CopiMineArtifacts.DonationCatalogItem var3 = this.donationCatalogItem(var1);
+            return var3 == null ? null : this.synthesizeDonationRuntimeItem(var3);
+         }
+      }
+   }
+
+   private boolean isDonationCatalogItem(String var1) {
+      return this.donationCatalogItem(var1) != null;
+   }
+
+   private boolean isArCatalogItem(String itemId) {
+      return itemId != null
+         && this.catalogById.containsKey(itemId.toLowerCase(Locale.ROOT))
+         && !this.donationCatalogById.containsKey(itemId.toLowerCase(Locale.ROOT));
+   }
+
+   private boolean isOfficialArtifactItem(ItemStack var1) {
+      if (var1 != null && var1.getType() != Material.AIR && var1.hasItemMeta()) {
+         ItemMeta var2 = var1.getItemMeta();
+         if (var2 == null) {
+            return false;
+         } else {
+            PersistentDataContainer var3 = var2.getPersistentDataContainer();
+            String var4 = (String)var3.get(this.keyItemId, PersistentDataType.STRING);
+            String var5 = (String)var3.get(this.keyUniqueItemId, PersistentDataType.STRING);
+            return var4 != null && var5 != null && !var5.isBlank() && this.runtimeCatalogItem(var4) != null;
+         }
+      } else {
+         return false;
+      }
+   }
+
+   private boolean hasOfficialArtifactIngredient(ItemStack[] var1) {
+      if (var1 == null) {
+         return false;
+      } else {
+         for (ItemStack var5 : var1) {
+            if (this.isOfficialArtifactItem(var5)) {
+               return true;
+            }
+         }
+
+         return false;
+      }
+   }
+
+   private boolean isBlockedArtifactProcessingInventory(Inventory var1) {
+      if (var1 == null) {
+         return false;
+      } else {
+         return switch (var1.getType()) {
+            case CRAFTING, WORKBENCH, CRAFTER, FURNACE, BLAST_FURNACE, SMOKER, BREWING, SMITHING, ANVIL, GRINDSTONE, STONECUTTER, HOPPER, DROPPER, DISPENSER, LOOM, CARTOGRAPHY, ENCHANTING, MERCHANT -> true;
+            default -> false;
+         };
+      }
+   }
+
+   private boolean shouldBlockOfficialArtifactInsertion(InventoryClickEvent var1) {
+      Inventory var2 = var1.getView().getTopInventory();
+      if (!this.isBlockedArtifactProcessingInventory(var2)) {
+         return false;
+      } else {
+         int var3 = var1.getRawSlot();
+         int var4 = var2.getSize();
+         boolean var5 = var3 >= 0 && var3 < var4;
+         ItemStack var6 = var1.getCursor();
+         ItemStack var7 = var1.getCurrentItem();
+         Inventory var8 = var1.getClickedInventory();
+         if (var5 && this.isOfficialArtifactItem(var6)) {
+            return true;
+         } else if (var1.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+            && var8 != null
+            && var8.equals(var1.getView().getBottomInventory())
+            && this.isOfficialArtifactItem(var7)) {
+            return true;
+         } else if (var1.getAction() == InventoryAction.COLLECT_TO_CURSOR && this.isOfficialArtifactItem(var6)) {
+            return true;
+         } else if ((var1.getAction() == InventoryAction.HOTBAR_SWAP || var1.getAction() == InventoryAction.HOTBAR_MOVE_AND_READD)
+            && this.isOfficialArtifactItem(var7)) {
+            return true;
+         } else {
+            if (var5 && var1.getClick() == ClickType.NUMBER_KEY) {
+               int var9 = var1.getHotbarButton();
+               if (var9 >= 0 && var9 < 9) {
+                  ItemStack var10 = var1.getWhoClicked().getInventory().getItem(var9);
+                  if (this.isOfficialArtifactItem(var10)) {
+                     return true;
+                  }
+               }
+            }
+
+            if (var5 && var1.getClick() == ClickType.SWAP_OFFHAND) {
+               ItemStack var11 = var1.getWhoClicked().getInventory().getItemInOffHand();
+               if (this.isOfficialArtifactItem(var11)) {
+                  return true;
+               }
+            }
+
+            return false;
+         }
+      }
+   }
+
+   private CopiMineArtifacts.CatalogItem authenticCatalogItem(ItemStack var1, Player var2, String var3) {
+      if (var1 != null && var1.getType() != Material.AIR && var1.hasItemMeta()) {
+         ItemMeta var4 = var1.getItemMeta();
+         PersistentDataContainer var5 = var4.getPersistentDataContainer();
+         String var6 = (String)var5.get(this.keyItemId, PersistentDataType.STRING);
+         String var7 = (String)var5.get(this.keyUniqueItemId, PersistentDataType.STRING);
+         if (var6 != null && var7 != null) {
+            CopiMineArtifacts.CatalogItem var8 = this.runtimeCatalogItem(var6);
+            Integer var9 = var4.hasCustomModelData() ? var4.getCustomModelData() : null;
+            boolean var10 = var8 != null && var8.customModelData() > 0 && !Objects.equals(var9, var8.customModelData());
+            String var11 = (String)var5.get(this.keyOwnerUuid, PersistentDataType.STRING);
+            String var12 = this.firstNonBlank(var11, "");
+            CopiMineArtifacts.OfficialInstanceBinding var13 = this.instanceBindings.get(var7);
+            boolean var14 = var2 != null
+               && (
+                  !var12.equalsIgnoreCase(var2.getUniqueId().toString()) || var13 == null || !var13.ownerUuid().equalsIgnoreCase(var2.getUniqueId().toString())
+               );
+            boolean var15 = var13 == null || !var13.itemId().equalsIgnoreCase(var6) || !var13.ownerUuid().equalsIgnoreCase(var12);
+            String var16 = (String)var5.get(this.keyItemType, PersistentDataType.STRING);
+            String var17 = (String)var5.get(this.keySource, PersistentDataType.STRING);
+            boolean var18 = this.isDonationCatalogItem(var6)
+               && (!"DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(var16, "")) || !"DONATION_SHOP".equalsIgnoreCase(this.firstNonBlank(var17, "")));
+            boolean var19 = this.isArCatalogItem(var6)
+               && (!this.firstNonBlank(var16, "").isBlank() || !this.firstNonBlank(var17, "").isBlank())
+               && (!"AR_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(var16, "")) || !"AR_SHOP".equalsIgnoreCase(this.firstNonBlank(var17, "")));
+            if (this.provisionalDonationInstanceIds.contains(var7)) {
+               return null;
+            }
+            // instanceToItem.containsKey(uniqueItemId)
+            if (var8 != null && this.instanceToItem.containsKey(var7) && !var15 && !var10 && !var14 && !var18 && !var19) {
+               return var8;
+            } else {
+               String var20 = var2.getUniqueId() + ":" + var7 + ":" + var3;
+               if (this.suspiciousSeen.add(var20)) {
+                  this.runAsync(() -> this.logSuspicious(var2, var3, "itemId=" + var6 + " unique=" + var7 + " model=" + var9));
+               }
+
+               var2.sendMessage(
+                  this.color(
+                     "&c\u0420\u045f\u0420\u0455\u0420\u0491\u0420\u0455\u0420\u00b7\u0421\u0402\u0420\u0451\u0421\u201a\u0420\u00b5\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a CopiMineArtifacts \u0420\u00b7\u0420\u00b0\u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0420\u0405."
+                  )
+               );
+               return null;
+            }
+         } else {
             return null;
-        }
-        return catalog;
-    }
+         }
+      } else {
+         return null;
+      }
+   }
 
-    private ItemStack createOfficialItem(CatalogItem item, String uniqueItemId, UUID owner, String purchaseId) {
-        ItemStack stack = new ItemStack(item.material());
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) return stack;
-        meta.setDisplayName(color(item.name()));
-        List<String> lore = new ArrayList<>();
-        for (String line : item.lore()) lore.add(color(line));
-        if (item.customModelData() > 0) {
-            meta.setCustomModelData(item.customModelData());
-        }
-        lore.add(color("&8Редкость: " + item.rarity()));
-        meta.setLore(lore);
-        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE);
-        meta.getPersistentDataContainer().set(keyItemId, PersistentDataType.STRING, item.itemId());
-        meta.getPersistentDataContainer().set(keyUniqueItemId, PersistentDataType.STRING, uniqueItemId);
-        meta.getPersistentDataContainer().set(keyCategory, PersistentDataType.STRING, item.category().name());
-        meta.getPersistentDataContainer().set(keyRarity, PersistentDataType.STRING, item.rarity());
-        meta.getPersistentDataContainer().set(keyOwnerUuid, PersistentDataType.STRING, owner.toString());
-        meta.getPersistentDataContainer().set(keyPurchaseId, PersistentDataType.STRING, purchaseId);
-        stack.setItemMeta(meta);
-        return stack;
-    }
+   private ItemStack createOfficialItem(CopiMineArtifacts.CatalogItem var1, String var2, UUID var3, String var4) {
+      ItemStack var5 = new ItemStack(var1.material());
+      ItemMeta var6 = var5.getItemMeta();
+      if (var6 == null) {
+         return var5;
+      } else {
+         var6.setDisplayName(this.color(var1.name()));
+         ArrayList var7 = new ArrayList();
 
-    private long repairPrice(ItemStack item, CatalogItem catalog) {
-        if (!(item.getItemMeta() instanceof Damageable damageable)) return Math.max(10L, catalog.priceAr() / 10L);
-        int max = item.getType().getMaxDurability();
-        if (max <= 0) return Math.max(10L, catalog.priceAr() / 10L);
-        double ratio = Math.max(0.1D, (double) damageable.getDamage() / (double) max);
-        return Math.max(10L, Math.round(catalog.priceAr() * 0.25D * ratio));
-    }
+         for (String var9 : var1.lore()) {
+            var7.add(this.color(var9));
+         }
 
-    private void persistRepair(Player player, CatalogItem catalog, ItemStack item, String repairId, long price, String txId) throws SQLException {
-        String uniqueItemId = Objects.requireNonNull(item.getItemMeta()).getPersistentDataContainer().get(keyUniqueItemId, PersistentDataType.STRING);
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement repair = c.prepareStatement("""
-                INSERT INTO artifact_repairs(repair_id,unique_item_id,player_uuid,player_name,item_id,repair_cost_ar,bank_tx_id,status,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?)
-            """);
-                 PreparedStatement update = c.prepareStatement("UPDATE artifact_item_instances SET repaired_count=repaired_count+1,updated_at=? WHERE unique_item_id=?")) {
-                long now = now();
-                repair.setString(1, repairId);
-                repair.setString(2, uniqueItemId);
-                repair.setString(3, player.getUniqueId().toString());
-                repair.setString(4, player.getName());
-                repair.setString(5, catalog.itemId());
-                repair.setLong(6, price);
-                repair.setString(7, txId);
-                repair.setString(8, "COMPLETED");
-                repair.setLong(9, now);
-                repair.executeUpdate();
-                update.setLong(1, now);
-                update.setString(2, uniqueItemId);
-                update.executeUpdate();
-                c.commit();
-            } catch (SQLException e) {
-                c.rollback();
-                throw e;
+         if (var1.customModelData() > 0) {
+            // meta.setCustomModelData(item.customModelData())
+            var6.setCustomModelData(var1.customModelData());
+         }
+
+         var7.add(this.color("&8\u0420\u00a0\u0420\u00b5\u0420\u0491\u0420\u0454\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a: " + var1.rarity()));
+         var6.setLore(var7);
+         var6.addItemFlags(new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE});
+         var6.getPersistentDataContainer().set(this.keyItemId, PersistentDataType.STRING, var1.itemId());
+         var6.getPersistentDataContainer().set(this.keyUniqueItemId, PersistentDataType.STRING, var2);
+         var6.getPersistentDataContainer().set(this.keyCategory, PersistentDataType.STRING, var1.category().name());
+         var6.getPersistentDataContainer().set(this.keyRarity, PersistentDataType.STRING, var1.rarity());
+         var6.getPersistentDataContainer().set(this.keyOwnerUuid, PersistentDataType.STRING, var3.toString());
+         var6.getPersistentDataContainer().set(this.keyOwnerName, PersistentDataType.STRING, this.firstNonBlank(Bukkit.getOfflinePlayer(var3).getName(), ""));
+         var6.getPersistentDataContainer().set(this.keyPurchaseId, PersistentDataType.STRING, var4);
+         if (this.isDonationCatalogItem(var1.itemId())) {
+            var6.getPersistentDataContainer().set(this.keyItemType, PersistentDataType.STRING, "DONATION_SHOP_ITEM");
+            var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "DONATION_SHOP");
+            var6.getPersistentDataContainer().set(this.keyBound, PersistentDataType.BYTE, (byte)1);
+            var6.getPersistentDataContainer().set(this.keyReclaimable, PersistentDataType.BYTE, (byte)1);
+         } else if (this.isArCatalogItem(var1.itemId())) {
+            var6.getPersistentDataContainer().set(this.keyItemType, PersistentDataType.STRING, "AR_SHOP_ITEM");
+            var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "AR_SHOP");
+         }
+
+         var5.setItemMeta(var6);
+         return var5;
+      }
+   }
+
+   private long repairPrice(ItemStack var1, CopiMineArtifacts.CatalogItem var2) {
+      if (var1.getItemMeta() instanceof Damageable var3) {
+         short var7 = var1.getType().getMaxDurability();
+         if (var7 <= 0) {
+            return Math.max(10L, var2.priceAr() / 10L);
+         } else {
+            double var5 = Math.max(0.1, (double)var3.getDamage() / (double)var7);
+            return Math.max(10L, Math.round((double)var2.priceAr() * 0.25 * var5));
+         }
+      } else {
+         return Math.max(10L, var2.priceAr() / 10L);
+      }
+   }
+
+   private void persistRepair(Player var1, CopiMineArtifacts.CatalogItem var2, ItemStack var3, String var4, long var5, String var7) throws SQLException {
+      String var8 = (String)Objects.requireNonNull(var3.getItemMeta()).getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
+      Connection var9 = this.pgPool.acquire();
+
+      try {
+         var9.setAutoCommit(false);
+
+         try (
+            PreparedStatement var10 = var9.prepareStatement(
+               "    INSERT INTO artifact_repairs(repair_id,unique_item_id,player_uuid,player_name,item_id,repair_cost_ar,bank_tx_id,status,created_at)\n    VALUES(?,?,?,?,?,?,?,?,?)\n"
+            );
+            PreparedStatement var11 = var9.prepareStatement(
+               "UPDATE artifact_item_instances SET repaired_count=repaired_count+1,updated_at=? WHERE unique_item_id=?"
+            );
+         ) {
+            long var12 = this.now();
+            var10.setString(1, var4);
+            var10.setString(2, var8);
+            var10.setString(3, var1.getUniqueId().toString());
+            var10.setString(4, var1.getName());
+            var10.setString(5, var2.itemId());
+            var10.setLong(6, var5);
+            var10.setString(7, var7);
+            var10.setString(8, "COMPLETED");
+            var10.setLong(9, var12);
+            var10.executeUpdate();
+            var11.setLong(1, var12);
+            var11.setString(2, var8);
+            var11.executeUpdate();
+            var9.commit();
+         } catch (SQLException var29) {
+            var9.rollback();
+            throw var29;
+         }
+      } finally {
+         try {
+            var9.setAutoCommit(true);
+         } catch (SQLException var24) {
+         }
+
+         this.pgPool.release(var9);
+      }
+   }
+
+   private void saveShop(CopiMineArtifacts.Shop var1) throws SQLException {
+      Connection var2 = this.pgPool.acquire();
+
+      try (PreparedStatement var3 = var2.prepareStatement(
+            "    INSERT INTO artifact_shops(shop_id,world_name,block_x,block_y,block_z,title,enabled,created_at,updated_at)\n    VALUES(?,?,?,?,?,?,?,?,?)\n"
+         )) {
+         long var4 = this.now();
+         var3.setString(1, var1.shopId());
+         var3.setString(2, var1.world());
+         var3.setInt(3, var1.x());
+         var3.setInt(4, var1.y());
+         var3.setInt(5, var1.z());
+         var3.setString(6, var1.title());
+         var3.setBoolean(7, var1.enabled());
+         var3.setLong(8, var4);
+         var3.setLong(9, var4);
+         var3.executeUpdate();
+      } finally {
+         this.pgPool.release(var2);
+      }
+   }
+
+   private void deleteShop(String var1) throws SQLException {
+      Connection var2 = this.pgPool.acquire();
+
+      try (PreparedStatement var3 = var2.prepareStatement("DELETE FROM artifact_shops WHERE shop_id=?")) {
+         var3.setString(1, var1);
+         var3.executeUpdate();
+      } finally {
+         this.pgPool.release(var2);
+      }
+   }
+
+   private void createPendingDelivery(Player var1, CopiMineArtifacts.PurchaseContext var2) throws SQLException {
+      Connection var3 = this.pgPool.acquire();
+
+      try {
+         var3.setAutoCommit(false);
+
+         try (
+            PreparedStatement var4 = var3.prepareStatement(
+               "    INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at)\n    VALUES(?,?,?,?,?,?,?,?)\n"
+            );
+            PreparedStatement var5 = var3.prepareStatement(
+               "UPDATE artifact_purchases SET status='PENDING_DELIVERY',delivery_mode='PENDING',updated_at=? WHERE purchase_id=?"
+            );
+            PreparedStatement var6 = var3.prepareStatement("UPDATE artifact_item_instances SET status='PENDING_DELIVERY',updated_at=? WHERE unique_item_id=?");
+         ) {
+            String var7 = UUID.randomUUID().toString();
+            long var8 = this.now();
+            var4.setString(1, var7);
+            var4.setString(2, var2.purchaseId());
+            var4.setString(3, var2.uniqueItemId());
+            var4.setString(4, var1.getUniqueId().toString());
+            var4.setString(5, var2.item().itemId());
+            var4.setString(6, "PENDING");
+            var4.setLong(7, var8);
+            var4.setLong(8, var8);
+            var4.executeUpdate();
+            var5.setLong(1, var8);
+            var5.setString(2, var2.purchaseId());
+            var5.executeUpdate();
+            var6.setLong(1, var8);
+            var6.setString(2, var2.uniqueItemId());
+            var6.executeUpdate();
+            var3.commit();
+         } catch (SQLException var29) {
+            var3.rollback();
+            throw var29;
+         }
+      } finally {
+         try {
+            var3.setAutoCommit(true);
+         } catch (SQLException var22) {
+         }
+
+         this.pgPool.release(var3);
+      }
+   }
+
+   private void markPurchaseDelivered(String var1, String var2, String var3) throws SQLException {
+      Connection var4 = this.pgPool.acquire();
+
+      try {
+         var4.setAutoCommit(false);
+
+         try (
+            PreparedStatement var5 = var4.prepareStatement("UPDATE artifact_purchases SET status='DELIVERED',updated_at=? WHERE purchase_id=?");
+            PreparedStatement var6 = var4.prepareStatement("UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? WHERE unique_item_id=?");
+         ) {
+            long var7 = this.now();
+            var5.setLong(1, var7);
+            var5.setString(2, var1);
+            var5.executeUpdate();
+            var6.setLong(1, var7);
+            var6.setString(2, var2);
+            var6.executeUpdate();
+            var4.commit();
+            // cacheOfficialBinding(uniqueItemId, itemId, readOwnerUuidForInstance(c, uniqueItemId));
+            this.cacheOfficialBinding(var2, var3, this.readOwnerUuidForInstance(var4, var2));
+         } catch (SQLException var24) {
+            var4.rollback();
+            throw var24;
+         }
+      } finally {
+         try {
+            var4.setAutoCommit(true);
+         } catch (SQLException var19) {
+         }
+
+         this.pgPool.release(var4);
+      }
+   }
+
+   private void markArtifactPurchaseCancelled(String var1, String var2) throws SQLException {
+      Connection var3 = this.pgPool.acquire();
+
+      try {
+         var3.setAutoCommit(false);
+
+         try (
+            PreparedStatement var4 = var3.prepareStatement("UPDATE artifact_purchases SET status='CANCELLED',updated_at=? WHERE purchase_id=?");
+            PreparedStatement var5 = var3.prepareStatement("UPDATE artifact_item_instances SET status='DELETED_AS_INVALID',updated_at=? WHERE unique_item_id=?");
+         ) {
+            long var6 = this.now();
+            var4.setLong(1, var6);
+            var4.setString(2, var1);
+            var4.executeUpdate();
+            var5.setLong(1, var6);
+            var5.setString(2, var2);
+            var5.executeUpdate();
+            var3.commit();
+            this.removeOfficialBinding(var2);
+         } catch (SQLException var23) {
+            var3.rollback();
+            throw var23;
+         }
+      } finally {
+         try {
+            var3.setAutoCommit(true);
+         } catch (SQLException var18) {
+         }
+
+         this.pgPool.release(var3);
+      }
+   }
+
+   private void markArtifactPurchaseReview(String var1, String var2) throws SQLException {
+      Connection var3 = this.pgPool.acquire();
+
+      try {
+         var3.setAutoCommit(false);
+
+         try (
+            PreparedStatement var4 = var3.prepareStatement("UPDATE artifact_purchases SET status='DELIVERY_REVIEW',updated_at=? WHERE purchase_id=?");
+            PreparedStatement var5 = var3.prepareStatement("UPDATE artifact_item_instances SET status='DELIVERY_REVIEW',updated_at=? WHERE unique_item_id=?");
+         ) {
+            long var6 = this.now();
+            var4.setLong(1, var6);
+            var4.setString(2, var1);
+            var4.executeUpdate();
+            var5.setLong(1, var6);
+            var5.setString(2, var2);
+            var5.executeUpdate();
+            var3.commit();
+         } catch (SQLException var23) {
+            var3.rollback();
+            throw var23;
+         }
+      } finally {
+         try {
+            var3.setAutoCommit(true);
+         } catch (SQLException var18) {
+         }
+
+         this.pgPool.release(var3);
+      }
+   }
+
+   private void markPendingClaimed(String var1, String var2, String var3, String var4) throws SQLException {
+      Connection var5 = this.pgPool.acquire();
+
+      try {
+         var5.setAutoCommit(false);
+
+         try (
+            PreparedStatement var6 = var5.prepareStatement(
+               "UPDATE artifact_pending_deliveries SET status='CLAIMED',updated_at=? WHERE delivery_id=? AND status='DELIVERING'"
+            );
+            PreparedStatement var7 = var5.prepareStatement("UPDATE artifact_purchases SET status='DELIVERED',updated_at=? WHERE purchase_id=?");
+            PreparedStatement var8 = var5.prepareStatement("UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? WHERE unique_item_id=?");
+         ) {
+            long var9 = this.now();
+            var6.setLong(1, var9);
+            var6.setString(2, var1);
+            if (var6.executeUpdate() <= 0) {
+               throw new SQLException("Pending delivery is no longer in DELIVERING state.");
             }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
 
-    private void saveShop(Shop shop) throws SQLException {
-        Connection c = pgPool.acquire();
-        try (PreparedStatement ps = c.prepareStatement("""
-            INSERT INTO artifact_shops(shop_id,world_name,block_x,block_y,block_z,title,enabled,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?)
-        """)) {
-            long now = now();
-            ps.setString(1, shop.shopId());
-            ps.setString(2, shop.world());
-            ps.setInt(3, shop.x());
-            ps.setInt(4, shop.y());
-            ps.setInt(5, shop.z());
-            ps.setString(6, shop.title());
-            ps.setBoolean(7, shop.enabled());
-            ps.setLong(8, now);
-            ps.setLong(9, now);
-            ps.executeUpdate();
-        } finally {
-            pgPool.release(c);
-        }
-    }
+            var7.setLong(1, var9);
+            var7.setString(2, var2);
+            var7.executeUpdate();
+            var8.setLong(1, var9);
+            var8.setString(2, var3);
+            var8.executeUpdate();
+            var5.commit();
+            // cacheOfficialBinding(uniqueItemId, itemId, readOwnerUuidForInstance(c, uniqueItemId));
+            this.cacheOfficialBinding(var3, var4, this.readOwnerUuidForInstance(var5, var3));
+         } catch (SQLException var30) {
+            var5.rollback();
+            throw var30;
+         }
+      } finally {
+         try {
+            var5.setAutoCommit(true);
+         } catch (SQLException var23) {
+         }
 
-    private void deleteShop(String shopId) throws SQLException {
-        Connection c = pgPool.acquire();
-        try (PreparedStatement ps = c.prepareStatement("DELETE FROM artifact_shops WHERE shop_id=?")) {
-            ps.setString(1, shopId);
-            ps.executeUpdate();
-        } finally {
-            pgPool.release(c);
-        }
-    }
+         this.pgPool.release(var5);
+      }
+   }
 
-    private void createPendingDelivery(Player player, PurchaseContext context) throws SQLException {
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement pending = c.prepareStatement("""
-                INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at)
-                VALUES(?,?,?,?,?,?,?,?)
-            """);
-                 PreparedStatement purchase = c.prepareStatement("UPDATE artifact_purchases SET status='PENDING_DELIVERY',delivery_mode='PENDING',updated_at=? WHERE purchase_id=?");
-                 PreparedStatement instance = c.prepareStatement("UPDATE artifact_item_instances SET status='PENDING_DELIVERY',updated_at=? WHERE unique_item_id=?")) {
-                String deliveryId = UUID.randomUUID().toString();
-                long now = now();
-                pending.setString(1, deliveryId);
-                pending.setString(2, context.purchaseId());
-                pending.setString(3, context.uniqueItemId());
-                pending.setString(4, player.getUniqueId().toString());
-                pending.setString(5, context.item().itemId());
-                pending.setString(6, "PENDING");
-                pending.setLong(7, now);
-                pending.setLong(8, now);
-                pending.executeUpdate();
-                purchase.setLong(1, now);
-                purchase.setString(2, context.purchaseId());
-                purchase.executeUpdate();
-                instance.setLong(1, now);
-                instance.setString(2, context.uniqueItemId());
-                instance.executeUpdate();
-                c.commit();
-            } catch (SQLException e) {
-                c.rollback();
-                throw e;
+   private CompletableFuture<Boolean> reservePendingDeliveryAsync(UUID var1, String var2) {
+      return CompletableFuture.supplyAsync(
+         () -> {
+            if (var1 != null && !this.firstNonBlank(var2, "").isBlank()) {
+               Connection var3 = null;
+
+               Boolean var13;
+               try {
+                  var3 = this.pgPool.acquire();
+                  var3.setAutoCommit(false);
+
+                  try (
+                     PreparedStatement var4 = var3.prepareStatement(
+                        "    SELECT purchase_id,unique_item_id\n    FROM artifact_pending_deliveries\n    WHERE delivery_id=?\n      AND player_uuid=?\n      AND status='PENDING'\n    FOR UPDATE\n"
+                     );
+                     PreparedStatement var5 = var3.prepareStatement(
+                        "UPDATE artifact_pending_deliveries SET status='DELIVERING',updated_at=? WHERE delivery_id=?"
+                     );
+                     PreparedStatement var6 = var3.prepareStatement("UPDATE artifact_purchases SET status='DELIVERING',updated_at=? WHERE purchase_id=?");
+                     PreparedStatement var7 = var3.prepareStatement(
+                        "UPDATE artifact_item_instances SET status='DELIVERING',updated_at=? WHERE unique_item_id=?"
+                     );
+                  ) {
+                     var4.setString(1, var2);
+                     var4.setString(2, var1.toString());
+
+                     try (ResultSet var8 = var4.executeQuery()) {
+                        if (!var8.next()) {
+                           var3.rollback();
+                           return false;
+                        }
+
+                        String var9 = var8.getString(1);
+                        String var10 = var8.getString(2);
+                        long var11 = this.now();
+                        var5.setLong(1, var11);
+                        var5.setString(2, var2);
+                        var5.executeUpdate();
+                        var6.setLong(1, var11);
+                        var6.setString(2, var9);
+                        var6.executeUpdate();
+                        var7.setLong(1, var11);
+                        var7.setString(2, var10);
+                        var7.executeUpdate();
+                        var3.commit();
+                        var13 = true;
+                     }
+                  } catch (SQLException var44) {
+                     var3.rollback();
+                     throw new CompletionException(var44);
+                  }
+               } catch (SQLException var45) {
+                  throw new CompletionException(var45);
+               } finally {
+                  if (var3 != null) {
+                     try {
+                        var3.setAutoCommit(true);
+                     } catch (SQLException var33) {
+                     }
+
+                     this.pgPool.release(var3);
+                  }
+               }
+
+               return var13;
+            } else {
+               return false;
             }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
+         },
+         this.dbExecutor
+      );
+   }
 
-    private void markPurchaseDelivered(String purchaseId, String uniqueItemId) throws SQLException {
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement purchase = c.prepareStatement("UPDATE artifact_purchases SET status='DELIVERED',updated_at=? WHERE purchase_id=?");
-                 PreparedStatement instance = c.prepareStatement("UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? WHERE unique_item_id=?")) {
-                long now = now();
-                purchase.setLong(1, now);
-                purchase.setString(2, purchaseId);
-                purchase.executeUpdate();
-                instance.setLong(1, now);
-                instance.setString(2, uniqueItemId);
-                instance.executeUpdate();
-                c.commit();
-            } catch (SQLException e) {
-                c.rollback();
-                throw e;
-            }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
+   private CompletableFuture<Boolean> releasePendingDeliveryAsync(UUID var1, String var2) {
+      return CompletableFuture.supplyAsync(
+         () -> {
+            if (var1 != null && !this.firstNonBlank(var2, "").isBlank()) {
+               Connection var3 = null;
 
-    private void markPendingClaimed(String deliveryId, String purchaseId, String uniqueItemId) throws SQLException {
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement pending = c.prepareStatement("UPDATE artifact_pending_deliveries SET status='CLAIMED',updated_at=? WHERE delivery_id=?");
-                 PreparedStatement purchase = c.prepareStatement("UPDATE artifact_purchases SET status='DELIVERED',updated_at=? WHERE purchase_id=?");
-                 PreparedStatement instance = c.prepareStatement("UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? WHERE unique_item_id=?")) {
-                long now = now();
-                pending.setLong(1, now);
-                pending.setString(2, deliveryId);
-                pending.executeUpdate();
-                purchase.setLong(1, now);
-                purchase.setString(2, purchaseId);
-                purchase.executeUpdate();
-                instance.setLong(1, now);
-                instance.setString(2, uniqueItemId);
-                instance.executeUpdate();
-                c.commit();
-            } catch (SQLException e) {
-                c.rollback();
-                throw e;
+               Boolean var13;
+               try {
+                  var3 = this.pgPool.acquire();
+                  var3.setAutoCommit(false);
+
+                  try (
+                     PreparedStatement var4 = var3.prepareStatement(
+                        "    SELECT purchase_id,unique_item_id\n    FROM artifact_pending_deliveries\n    WHERE delivery_id=?\n      AND player_uuid=?\n      AND status='DELIVERING'\n    FOR UPDATE\n"
+                     );
+                     PreparedStatement var5 = var3.prepareStatement("UPDATE artifact_pending_deliveries SET status='PENDING',updated_at=? WHERE delivery_id=?");
+                     PreparedStatement var6 = var3.prepareStatement("UPDATE artifact_purchases SET status='PENDING_DELIVERY',updated_at=? WHERE purchase_id=?");
+                     PreparedStatement var7 = var3.prepareStatement(
+                        "UPDATE artifact_item_instances SET status='PENDING_DELIVERY',updated_at=? WHERE unique_item_id=?"
+                     );
+                  ) {
+                     var4.setString(1, var2);
+                     var4.setString(2, var1.toString());
+
+                     try (ResultSet var8 = var4.executeQuery()) {
+                        if (!var8.next()) {
+                           var3.rollback();
+                           return false;
+                        }
+
+                        String var9 = var8.getString(1);
+                        String var10 = var8.getString(2);
+                        long var11 = this.now();
+                        var5.setLong(1, var11);
+                        var5.setString(2, var2);
+                        var5.executeUpdate();
+                        var6.setLong(1, var11);
+                        var6.setString(2, var9);
+                        var6.executeUpdate();
+                        var7.setLong(1, var11);
+                        var7.setString(2, var10);
+                        var7.executeUpdate();
+                        var3.commit();
+                        var13 = true;
+                     }
+                  } catch (SQLException var44) {
+                     var3.rollback();
+                     throw new CompletionException(var44);
+                  }
+               } catch (SQLException var45) {
+                  throw new CompletionException(var45);
+               } finally {
+                  if (var3 != null) {
+                     try {
+                        var3.setAutoCommit(true);
+                     } catch (SQLException var33) {
+                     }
+
+                     this.pgPool.release(var3);
+                  }
+               }
+
+               return var13;
+            } else {
+               return false;
             }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
+         },
+         this.dbExecutor
+      );
+   }
+
+   private void lockDonationInstanceEntitlement(Connection var1, UUID var2, String var3) throws SQLException {
+      if (var1 != null && var2 != null && !this.firstNonBlank(var3, "").isBlank()) {
+         try (PreparedStatement var4 = var1.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+            var4.setString(1, "artifact-donation-entitlement:" + var2 + ":" + var3.toLowerCase(Locale.ROOT));
+            var4.execute();
+         }
+      }
+   }
+
+   private void lockArtifactPurchaseConstraints(Connection var1, String var2, String var3) throws SQLException {
+      if (var1 != null && !this.firstNonBlank(var3, "").isBlank()) {
+         try (PreparedStatement var4 = var1.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+            var4.setString(1, "artifact-purchase-supply:" + var3.toLowerCase(Locale.ROOT));
+            var4.execute();
+         }
+
+         if (!this.firstNonBlank(var2, "").isBlank()) {
+            try (PreparedStatement var11 = var1.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+               var11.setString(1, "artifact-purchase-player:" + var2.toLowerCase(Locale.ROOT) + ":" + var3.toLowerCase(Locale.ROOT));
+               var11.execute();
+            }
+         }
+      }
+   }
 
     private void persistDonationInstances(UUID ownerUuid, String purchaseId, String itemId, List<String> uniqueItemIds) throws SQLException {
-        if (uniqueItemIds == null || uniqueItemIds.isEmpty()) {
-            throw new SQLException("Donation delivery has no item instances to persist.");
-        }
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement instance = c.prepareStatement("""
-                INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at)
-                VALUES(?,?,?,?,?,?,?,?)
-            """)) {
-                long current = now();
-                for (String uniqueItemId : uniqueItemIds) {
-                    instance.setString(1, uniqueItemId);
-                    instance.setString(2, itemId);
-                    instance.setString(3, ownerUuid == null ? "" : ownerUuid.toString());
-                    instance.setString(4, purchaseId);
-                    instance.setString(5, "DONATION_DELIVERING");
-                    instance.setInt(6, 0);
-                    instance.setLong(7, current);
-                    instance.setLong(8, current);
-                    instance.addBatch();
-                }
-                instance.executeBatch();
-                c.commit();
-                for (String uniqueItemId : uniqueItemIds) {
-                    instanceToItem.put(uniqueItemId, itemId);
-                }
-            } catch (SQLException error) {
-                c.rollback();
-                throw error;
+      if (uniqueItemIds != null && !uniqueItemIds.isEmpty()) {
+         Connection var5 = this.pgPool.acquire();
+
+         try {
+            var5.setAutoCommit(false);
+
+            try (
+               PreparedStatement var6 = var5.prepareStatement(
+                  "    SELECT unique_item_id\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND item_id=?\n      AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')\n    FOR UPDATE\n"
+               );
+               PreparedStatement var7 = var5.prepareStatement(
+                  "    INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at)\n    VALUES(?,?,?,?,?,?,?,?)\n"
+               );
+            ) {
+               // lockDonationInstanceEntitlement(c, ownerUuid, itemId);
+               this.lockDonationInstanceEntitlement(var5, ownerUuid, itemId);
+               var6.setString(1, ownerUuid == null ? "" : ownerUuid.toString());
+               var6.setString(2, itemId);
+
+               try (ResultSet var8 = var6.executeQuery()) {
+                  if (var8.next()) {
+                     throw new SQLException("Donation entitlement already has an active instance.");
+                  }
+               }
+
+               long var33 = this.now();
+
+               for (String var11 : uniqueItemIds) {
+                  var7.setString(1, var11);
+                  var7.setString(2, itemId);
+                  var7.setString(3, ownerUuid == null ? "" : ownerUuid.toString());
+                  var7.setString(4, purchaseId);
+                  var7.setString(5, "DELIVERING");
+                  var7.setInt(6, 0);
+                  var7.setLong(7, var33);
+                  var7.setLong(8, var33);
+                  var7.addBatch();
+               }
+
+               var7.executeBatch();
+               var5.commit();
+            } catch (SQLException var31) {
+               var5.rollback();
+               throw var31;
             }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
-
-    private void markDonationInstancesDelivered(List<String> uniqueItemIds) throws SQLException {
-        if (uniqueItemIds == null || uniqueItemIds.isEmpty()) {
-            return;
-        }
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement instance = c.prepareStatement("UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? WHERE unique_item_id=?")) {
-                long current = now();
-                for (String uniqueItemId : uniqueItemIds) {
-                    instance.setLong(1, current);
-                    instance.setString(2, uniqueItemId);
-                    instance.addBatch();
-                }
-                instance.executeBatch();
-                c.commit();
-            } catch (SQLException error) {
-                c.rollback();
-                throw error;
-            }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
-
-    private void markDonationInstancesFailed(List<String> uniqueItemIds) throws SQLException {
-        if (uniqueItemIds == null || uniqueItemIds.isEmpty()) {
-            return;
-        }
-        Connection c = pgPool.acquire();
-        try {
-            c.setAutoCommit(false);
-            try (PreparedStatement instance = c.prepareStatement("UPDATE artifact_item_instances SET status='FAILED_DELIVERY',updated_at=? WHERE unique_item_id=?")) {
-                long current = now();
-                for (String uniqueItemId : uniqueItemIds) {
-                    instance.setLong(1, current);
-                    instance.setString(2, uniqueItemId);
-                    instance.addBatch();
-                }
-                instance.executeBatch();
-                c.commit();
-                for (String uniqueItemId : uniqueItemIds) {
-                    instanceToItem.remove(uniqueItemId);
-                }
-            } catch (SQLException error) {
-                c.rollback();
-                throw error;
-            }
-        } finally {
-            try { c.setAutoCommit(true); } catch (SQLException ignored) {}
-            pgPool.release(c);
-        }
-    }
-
-    private List<String> readRecentPurchases(String uuid) {
-        Connection c = null;
-        try {
-            c = pgPool.acquire();
-            try (PreparedStatement ps = c.prepareStatement("SELECT item_id,status,created_at FROM artifact_purchases WHERE player_uuid=? ORDER BY created_at DESC LIMIT 18")) {
-                ps.setString(1, uuid);
-                try (ResultSet rs = ps.executeQuery()) {
-                    List<String> rows = new ArrayList<>();
-                    while (rs.next()) {
-                        rows.add(rs.getString(1) + " | " + rs.getString(2) + " | " + Instant.ofEpochSecond(rs.getLong(3)));
-                    }
-                    return rows;
-                }
-            }
-        } catch (SQLException e) {
-            getLogger().log(Level.WARNING, "Artifacts purchase history read failed", e);
-            return List.of("DB_ERROR: logged");
-        } finally {
-            if (c != null) pgPool.release(c);
-        }
-    }
-
-    private List<PendingDeliveryRow> readPending(String uuid) {
-        Connection c = null;
-        try {
-            c = pgPool.acquire();
-            try (PreparedStatement ps = c.prepareStatement("SELECT delivery_id,purchase_id,unique_item_id,item_id FROM artifact_pending_deliveries WHERE player_uuid=? AND status='PENDING' ORDER BY created_at DESC LIMIT 18")) {
-                ps.setString(1, uuid);
-                try (ResultSet rs = ps.executeQuery()) {
-                    List<PendingDeliveryRow> rows = new ArrayList<>();
-                    while (rs.next()) {
-                        rows.add(new PendingDeliveryRow(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)));
-                    }
-                    return rows;
-                }
-            }
-        } catch (SQLException e) {
-            return List.of();
-        } finally {
-            if (c != null) pgPool.release(c);
-        }
-    }
-
-    private int pendingCount(String uuid) {
-        Connection c = null;
-        try {
-            c = pgPool.acquire();
-            try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM artifact_pending_deliveries WHERE player_uuid=? AND status='PENDING'")) {
-                ps.setString(1, uuid);
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getInt(1) : 0;
-                }
-            }
-        } catch (SQLException e) {
-            return 0;
-        } finally {
-            if (c != null) pgPool.release(c);
-        }
-    }
-
-    private int purchasedCount(String itemId) {
-        Connection c = null;
-        try {
-            c = pgPool.acquire();
-            try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM artifact_purchases WHERE item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')")) {
-                ps.setString(1, itemId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getInt(1) : 0;
-                }
-            }
-        } catch (SQLException e) {
-            return 0;
-        } finally {
-            if (c != null) pgPool.release(c);
-        }
-    }
-
-    private int playerPurchasedCount(String playerUuid, String itemId) {
-        Connection c = null;
-        try {
-            c = pgPool.acquire();
-            try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM artifact_purchases WHERE player_uuid=? AND item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')")) {
-                ps.setString(1, playerUuid);
-                ps.setString(2, itemId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getInt(1) : 0;
-                }
-            }
-        } catch (SQLException e) {
-            return 0;
-        } finally {
-            if (c != null) pgPool.release(c);
-        }
-    }
-
-    private void logSuspicious(Player player, String eventType, String details) {
-        Connection c = null;
-        try {
-            c = pgPool.acquire();
-            try (PreparedStatement ps = c.prepareStatement("""
-                INSERT INTO artifact_suspicious_events(event_id,player_uuid,player_name,event_type,details,created_at)
-                VALUES(?,?,?,?,?,?)
-            """)) {
-                ps.setString(1, UUID.randomUUID().toString());
-                ps.setString(2, player.getUniqueId().toString());
-                ps.setString(3, player.getName());
-                ps.setString(4, eventType);
-                ps.setString(5, details);
-                ps.setLong(6, now());
-                ps.executeUpdate();
-            }
-        } catch (SQLException ignored) {
-        } finally {
-            if (c != null) pgPool.release(c);
-        }
-    }
-
-    private void audit(String actor, String action, String targetId, String details) {
-        Connection c = null;
-        try {
-            c = pgPool.acquire();
-            try (PreparedStatement ps = c.prepareStatement("""
-                INSERT INTO artifact_audit_log(audit_id,actor,action,target_id,details,created_at)
-                VALUES(?,?,?,?,?,?)
-            """)) {
-                ps.setString(1, UUID.randomUUID().toString());
-                ps.setString(2, actor);
-                ps.setString(3, action);
-                ps.setString(4, targetId);
-                ps.setString(5, details);
-                ps.setLong(6, now());
-                ps.executeUpdate();
-            }
-        } catch (SQLException ignored) {
-        } finally {
-            if (c != null) pgPool.release(c);
-        }
-    }
-
-    private void tickPendingHints() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            runAsync(() -> {
-                int count = pendingCount(player.getUniqueId().toString());
-                if (count > 0) {
-                    runSync(() -> player.sendActionBar(color("&eCopiMineArtifacts: отложенная выдача x" + count)));
-                }
-            });
-        }
-    }
-
-    private Shop currentShop(SessionState state) {
-        if (state.shopId == null || state.shopId.isBlank()) return shopsByLocation.values().stream().findFirst().orElse(null);
-        for (Shop shop : shopsByLocation.values()) if (shop.shopId().equals(state.shopId)) return shop;
-        return shopsByLocation.values().stream().findFirst().orElse(null);
-    }
-
-    private SessionState session(Player player) {
-        return sessions.computeIfAbsent(player.getUniqueId(), k -> new SessionState());
-    }
-
-    private SessionState freshSession(Player player) {
-        SessionState state = session(player);
-        state.sessionId = UUID.randomUUID();
-        state.shopId = "";
-        state.viewType = ViewType.MAIN;
-        state.currentCategory = "";
-        state.currentItemId = "";
-        state.page = 0;
-        state.pinBuffer = "";
-        if (state.purchaseInFlightId.isBlank()) {
-            state.actions.clear();
-        }
-        state.lastActionAt = System.currentTimeMillis();
-        return state;
-    }
-
-    private Inventory createMenu(Player player, SessionState state, ViewType viewType, int size, String title) {
-        state.viewType = viewType;
-        state.actions.clear();
-        state.lastActionAt = System.currentTimeMillis();
-        MenuHolder holder = new MenuHolder(state, player.getUniqueId());
-        Inventory inv = Bukkit.createInventory(holder, size, color(title));
-        holder.setInventory(inv);
-        debugGui("open player=" + player.getName() + " screen=" + viewType + " shop=" + state.shopId + " category=" + state.currentCategory + " item=" + state.currentItemId + " page=" + state.page + " session=" + state.sessionId);
-        return inv;
-    }
-
-    private boolean isArtifactsAdmin(Player player) {
-        return player.isOp() || player.hasPermission("copimine.artifacts.admin");
-    }
-
-    private boolean hasArtifactPermission(Player player, String permission) {
-        return isArtifactsAdmin(player) || player.hasPermission(permission);
-    }
-
-    private void noPermission(Player player) {
-        player.sendMessage(color("&cУ вас нет прав для этой команды."));
-    }
-
-    private void sendPlayerShopHelp(Player player) {
-        player.sendMessage(color("&aЛавка артефактов открывается кликом по блоку лавки."));
-        player.sendMessage(color("&7Найдите лавку на спавне или в специальных местах сервера."));
-    }
-
-    private void debugGui(String message) {
-        if (debugGui) {
-            getLogger().info("[gui] " + message);
-        }
-    }
-
-    private void setAction(Inventory inv, SessionState state, int slot, ItemStack item, String action) {
-        inv.setItem(slot, item);
-        state.actions.put(slot, action);
-    }
-
-    private Set<String> artifactCombatEffects() {
-        return Set.of("LIGHTNING", "DRAGON_PUNISHMENT", "WATCH_GLOW", "DEBT_SNARE", "SMUGGLER_MARK", "ZMEI_GORYNYCH_POOP");
-    }
-
-    private Set<String> artifactToolEffects() {
-        return Set.of("HASTE_BURST", "MINER_PULSE", "FORESTER_FOCUS", "SURVEYOR_TOUCH", "CRAFTSMAN_CHECK");
-    }
-
-    private String categoryTitle(Category category) {
-        return switch (category) {
-            case WEAPON -> "Боевые артефакты";
-            case ARMOR -> "Защитные артефакты";
-            case TOOL -> "Рабочие артефакты";
-            case RP -> "RP-предметы";
-        };
-    }
-
-    private String categoryHint(Category category) {
-        return switch (category) {
-            case WEAPON -> "&7Оружие с короткими контролируемыми эффектами.";
-            case ARMOR -> "&7Броня и экипировка для выживания.";
-            case TOOL -> "&7Инструменты без vein-miner и массовых сканов.";
-            case RP -> "&7Обычная RP-вкладка без активных товаров.";
-        };
-    }
-
-    private Material categoryMaterial(Category category) {
-        return switch (category) {
-            case WEAPON -> Material.NETHERITE_SWORD;
-            case ARMOR -> Material.DIAMOND_CHESTPLATE;
-            case TOOL -> Material.DIAMOND_PICKAXE;
-            case RP -> Material.NAME_TAG;
-        };
-    }
-
-    private ItemStack categoryIcon(Category category) {
-        return switch (category) {
-            case WEAPON -> button(Material.NETHERITE_SWORD, "&bБоевые артефакты", List.of("&7Клинки, топоры и луки.", "&8Короткие эффекты, общая перезарядка."));
-            case ARMOR -> button(Material.DIAMOND_CHESTPLATE, "&aЗащитные артефакты", List.of("&7Экипировка для шахты, патруля и доставки."));
-            case TOOL -> button(Material.DIAMOND_PICKAXE, "&eРабочие артефакты", List.of("&7Кирки, топоры, лопаты и ремесло.", "&8Без массовых проверок мира."));
-            case RP -> button(Material.PAPER, "&eПока пусто", List.of("&7Сейчас в этой категории нет доступных товаров."));
-        };
-    }
-
-    private ItemStack previewIcon(CatalogItem item) {
-        List<String> lore = new ArrayList<>();
-        lore.add(color("&7Цена: &f" + item.priceAr() + " AR"));
-        lore.add(color("&7Редкость: &f" + item.rarity()));
-        if (item.cooldownSeconds() > 0) lore.add(color("&7Перезарядка: &f" + item.cooldownSeconds() + " сек."));
-        if (item.effectChancePercent() > 0 && item.effectChancePercent() < 100) lore.add(color("&7Шанс эффекта: &f" + item.effectChancePercent() + "%"));
-        lore.addAll(item.lore().stream().map(this::color).toList());
-        ItemStack stack = button(item.material(), item.name(), lore);
-        ItemMeta meta = stack.getItemMeta();
-        if (meta != null && item.customModelData() > 0) {
-            meta.setCustomModelData(item.customModelData());
-            stack.setItemMeta(meta);
-        }
-        return stack;
-    }
-
-    private ItemStack soonIcon(String name, String line) {
-        return button(Material.CLOCK, name, List.of(line, "&7Сейчас эта витрина пустая."));
-    }
-
-    private ItemStack button(Material material, String name, List<String> lore) {
-        ItemStack stack = new ItemStack(material);
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) return stack;
-        meta.setDisplayName(color(name));
-        meta.setLore(lore.stream().map(this::color).toList());
-        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS);
-        stack.setItemMeta(meta);
-        return stack;
-    }
-
-    private boolean customBlockVisualsEnabled() {
-        return getConfig().getBoolean("custom-block-visuals.enabled", true);
-    }
-
-    private double customBlockScale(String kind) {
-        return getConfig().getDouble("custom-block-visuals.models." + kind + ".scale", 1.01D);
-    }
-
-    private double customBlockOffsetY(String kind) {
-        return getConfig().getDouble("custom-block-visuals.models." + kind + ".offset-y", 0.5D);
-    }
-
-    private String first(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
-    }
-
-    private void spawnOrReplaceProtectedBlockVisual(Location blockLocation, String kind, String linkedId, Material baseMaterial, int customModelData, String modelId) throws Exception {
-        if (!customBlockVisualsEnabled() || blockLocation == null || blockLocation.getWorld() == null || linkedId == null || linkedId.isBlank()) return;
-        runAsync(() -> {
+         } finally {
             try {
-                Map<String, Object> currentRow = fetchProtectedBlockVisualRow(kind, linkedId);
-                runSync(() -> {
-                    try {
-                        cleanupProtectedBlockVisualEntities(blockLocation, kind, linkedId, currentRow);
-                        Location displayLocation = blockLocation.clone().add(0.5D, customBlockOffsetY(kind), 0.5D);
-                        ItemStack visualItem = new ItemStack(baseMaterial);
-                        ItemMeta meta = visualItem.getItemMeta();
-                        if (meta != null) {
-                            meta.setDisplayName(color("&f" + modelId));
-                            meta.setCustomModelData(customModelData);
-                            meta.addItemFlags(ItemFlag.values());
-                            visualItem.setItemMeta(meta);
-                        }
-                        float scale = (float) customBlockScale(kind);
-                        ItemDisplay display = blockLocation.getWorld().spawn(displayLocation, ItemDisplay.class, entity -> {
-                            entity.setItemStack(visualItem);
-                            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
-                            entity.setPersistent(true);
-                            entity.setGravity(false);
-                            entity.setInvulnerable(true);
-                            entity.setBillboard(Display.Billboard.FIXED);
-                            entity.getPersistentDataContainer().set(visualEntityTypeKey, PersistentDataType.STRING, "PROTECTED_BLOCK_VISUAL");
-                            entity.getPersistentDataContainer().set(visualKindKey, PersistentDataType.STRING, kind);
-                            entity.getPersistentDataContainer().set(visualLinkedIdKey, PersistentDataType.STRING, linkedId);
-                            entity.getPersistentDataContainer().set(visualModelIdKey, PersistentDataType.STRING, modelId);
-                            entity.setTransformation(new Transformation(new Vector3f(), new AxisAngle4f(), new Vector3f(scale, scale, scale), new AxisAngle4f()));
-                        });
-                        saveProtectedBlockVisualAsync(blockLocation, kind, linkedId, baseMaterial, customModelData, modelId, display.getUniqueId().toString());
-                    } catch (Exception error) {
-                        getLogger().log(Level.WARNING, "Artifact shop visual spawn failed", error);
-                    }
-                });
-            } catch (Exception error) {
-                getLogger().log(Level.WARNING, "Artifact shop visual fetch failed", error);
+               var5.setAutoCommit(true);
+            } catch (SQLException var24) {
             }
-        });
-    }
 
-    private void cleanupProtectedBlockVisuals(String kind, String linkedId) throws Exception {
-        if (linkedId == null || linkedId.isBlank()) return;
-        runAsync(() -> {
+            this.pgPool.release(var5);
+         }
+      } else {
+         throw new SQLException("Donation delivery has no item instances to persist.");
+      }
+   }
+
+    private void markDonationInstancesDelivered(String var1, List<String> var2) throws SQLException {
+      if (var2 != null && !var2.isEmpty()) {
+         Connection var3 = this.pgPool.acquire();
+
+         try {
+            var3.setAutoCommit(false);
+
+            try (PreparedStatement var4 = var3.prepareStatement("UPDATE artifact_item_instances SET status='ACTIVE',updated_at=? WHERE unique_item_id=? AND status='DELIVERING'")) {
+               long var5 = this.now();
+
+               for (String var8 : var2) {
+                  var4.setLong(1, var5);
+                  var4.setString(2, var8);
+                  var4.addBatch();
+               }
+
+               int[] var22 = var4.executeBatch();
+               for (int var9 : var22) {
+                  if (var9 != 1 && var9 != Statement.SUCCESS_NO_INFO) {
+                     throw new SQLException("Donation instance delivery finalization lost DELIVERING state.");
+                  }
+               }
+               var3.commit();
+
+               for (String var23 : var2) {
+                  // cacheOfficialBinding(uniqueItemId, itemId, readOwnerUuidForInstance(c, uniqueItemId));
+                  this.cacheOfficialBinding(var23, var1, this.readOwnerUuidForInstance(var3, var23));
+               }
+               this.removeProvisionalDonationInstances(var2);
+            } catch (SQLException var20) {
+               var3.rollback();
+               throw var20;
+            }
+         } finally {
             try {
-                Map<String, Object> row = fetchProtectedBlockVisualRow(kind, linkedId);
-                Location baseLocation = visualBaseLocation(row);
-                runSync(() -> cleanupProtectedBlockVisualEntities(baseLocation, kind, linkedId, row));
-                markProtectedBlockVisualInactive(kind, linkedId);
-            } catch (Exception error) {
-                getLogger().log(Level.WARNING, "Artifact shop visual cleanup failed", error);
+               var3.setAutoCommit(true);
+            } catch (SQLException var17) {
             }
-        });
-    }
 
-    private void repairProtectedBlockVisuals() throws Exception {
-        if (!customBlockVisualsEnabled()) return;
-        List<String> loadedChunks = new ArrayList<>();
-        for (World world : Bukkit.getWorlds()) {
-            for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
-                loadedChunks.add(world.getName() + ":" + chunk.getX() + ":" + chunk.getZ());
-            }
-        }
-        runAsync(() -> {
-            for (String entry : loadedChunks) {
-                String[] parts = entry.split(":");
-                if (parts.length != 3) continue;
-                try {
-                    repairProtectedBlockVisuals(parts[0], Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
-                } catch (Exception error) {
-                    getLogger().log(Level.WARNING, "Artifact startup visual repair failed", error);
-                }
-            }
-        });
-    }
+            this.pgPool.release(var3);
+         }
+      }
+   }
 
-    private void repairProtectedBlockVisuals(String worldName, int chunkX, int chunkZ) throws Exception {
-        if (!customBlockVisualsEnabled()) return;
-        runAsync(() -> {
+   private void markDonationInstancesFailed(List<String> var1) throws SQLException {
+      if (var1 != null && !var1.isEmpty()) {
+         Connection var2 = this.pgPool.acquire();
+
+         try {
+            var2.setAutoCommit(false);
+
+            try (PreparedStatement var3 = var2.prepareStatement(
+                  "UPDATE artifact_item_instances SET status='DELETED_AS_INVALID',updated_at=? WHERE unique_item_id=? AND status='DELIVERING'"
+               )) {
+               long var4 = this.now();
+
+               for (String var7 : var1) {
+                  var3.setLong(1, var4);
+                  var3.setString(2, var7);
+                  var3.addBatch();
+               }
+
+               int[] var17 = var3.executeBatch();
+               for (int var8 : var17) {
+                  if (var8 != 1 && var8 != Statement.SUCCESS_NO_INFO) {
+                     throw new SQLException("Donation instance failure cleanup lost DELIVERING state.");
+                  }
+               }
+               var2.commit();
+
+               for (String var22 : var1) {
+                  this.removeOfficialBinding(var22);
+               }
+               this.removeProvisionalDonationInstances(var1);
+            } catch (SQLException var19) {
+               var2.rollback();
+               throw var19;
+            }
+         } finally {
             try {
-                List<Shop> chunkShops = shopsByLocation.values().stream()
-                        .filter(shop -> shop.world().equals(worldName) && (shop.x() >> 4) == chunkX && (shop.z() >> 4) == chunkZ && shop.enabled())
-                        .toList();
-                Connection c = pgPool.acquire();
-                try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT linked_id,entity_uuid,model_id,custom_model_data FROM protected_block_visuals WHERE kind='ARTIFACT_SHOP' AND active=1 AND linked_id = ANY (?)"
+               var2.setAutoCommit(true);
+            } catch (SQLException var16) {
+            }
+
+            this.pgPool.release(var2);
+         }
+      }
+   }
+
+    private DonationReclaimContext prepareDonationReclaim(UUID ownerUuid, ReclaimableDonationRow row) throws SQLException {
+      if (ownerUuid != null && row != null) {
+         Connection var3 = this.pgPool.acquire();
+
+         CopiMineArtifacts.DonationReclaimContext var13;
+         try {
+            var3.setAutoCommit(false);
+
+            try (
+               PreparedStatement var4 = var3.prepareStatement(
+                  "    SELECT status,purchase_id,item_id\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n    FOR UPDATE\n"
+               );
+               PreparedStatement var5 = var3.prepareStatement(
+                  "    SELECT unique_item_id\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND item_id=?\n      AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')\n    FOR UPDATE\n"
+               );
+               PreparedStatement var6 = var3.prepareStatement(
+                  "    UPDATE artifact_item_instances\n    SET status='REPLACED_AFTER_LOSS',updated_at=?\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n"
+               );
+               PreparedStatement var7 = var3.prepareStatement(
+                  "    INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at)\n    VALUES(?,?,?,?, 'DELIVERING', 0, ?, ?)\n"
+               );
+            ) {
+               // lockDonationInstanceEntitlement(c, ownerUuid, row.itemId());
+               this.lockDonationInstanceEntitlement(var3, ownerUuid, row.itemId());
+               var4.setString(1, ownerUuid.toString());
+               var4.setString(2, row.uniqueItemId());
+
+               String var8;
+               String var9;
+               try (ResultSet var10 = var4.executeQuery()) {
+                  if (!var10.next()) {
+                     throw new SQLException("Donation reclaim target is missing.");
+                  }
+
+                  String var11 = this.firstNonBlank(var10.getString(1), "");
+                  if (!"LOST_RECLAIMABLE".equalsIgnoreCase(var11)) {
+                     throw new SQLException("Donation reclaim target is not reclaimable anymore.");
+                  }
+
+                  var8 = this.firstNonBlank(var10.getString(2), row.purchaseId());
+                  var9 = this.firstNonBlank(var10.getString(3), row.itemId());
+               }
+
+               var5.setString(1, ownerUuid.toString());
+               var5.setString(2, var9);
+
+               try (ResultSet var48 = var5.executeQuery()) {
+                  if (var48.next()) {
+                     throw new SQLException("Donation reclaim blocked because an active instance already exists.");
+                  }
+               }
+
+               long var49 = this.now();
+               String var12 = UUID.randomUUID().toString();
+               var6.setLong(1, var49);
+               var6.setString(2, ownerUuid.toString());
+               var6.setString(3, row.uniqueItemId());
+               var6.executeUpdate();
+               var7.setString(1, var12);
+               var7.setString(2, var9);
+               var7.setString(3, ownerUuid.toString());
+               var7.setString(4, var8);
+               var7.setLong(5, var49);
+               var7.setLong(6, var49);
+               var7.executeUpdate();
+               var3.commit();
+               var13 = new CopiMineArtifacts.DonationReclaimContext(row.uniqueItemId(), var12, var8, var9);
+            } catch (SQLException var46) {
+               var3.rollback();
+               throw var46;
+            }
+         } finally {
+            try {
+               var3.setAutoCommit(true);
+            } catch (SQLException var33) {
+            }
+
+            this.pgPool.release(var3);
+         }
+
+         return var13;
+      } else {
+         throw new SQLException("Donation reclaim context is incomplete.");
+      }
+   }
+
+    private void completeDonationReclaim(UUID var1, CopiMineArtifacts.DonationReclaimContext var2) throws SQLException {
+      if (var1 != null && var2 != null) {
+         Connection var3 = this.pgPool.acquire();
+
+         try {
+            var3.setAutoCommit(false);
+
+            try (PreparedStatement var4 = var3.prepareStatement(
+                  "    UPDATE artifact_item_instances\n    SET status='ACTIVE',updated_at=?\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n"
+                     + "      AND status='DELIVERING'\n"
                 )) {
-                    Array ids = c.createArrayOf("text", chunkShops.stream().map(Shop::shopId).toArray(String[]::new));
-                    ps.setArray(1, ids);
-                    Map<String, Map<String, Object>> visuals = new HashMap<>();
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            Map<String, Object> row = new HashMap<>();
-                            row.put("entity_uuid", rs.getString("entity_uuid"));
-                            row.put("model_id", rs.getString("model_id"));
-                            row.put("custom_model_data", rs.getInt("custom_model_data"));
-                            visuals.put(rs.getString("linked_id"), row);
+               long var5 = this.now();
+               var4.setLong(1, var5);
+               var4.setString(2, var1.toString());
+               var4.setString(3, var2.newUniqueItemId());
+               if (var4.executeUpdate() != 1) {
+                  throw new SQLException("Donation reclaim completion lost DELIVERING state.");
+               }
+               var3.commit();
+               this.cacheOfficialBinding(var2.newUniqueItemId(), var2.itemId(), var1);
+               this.removeProvisionalDonationInstances(List.of(var2.newUniqueItemId()));
+            } catch (SQLException var18) {
+               var3.rollback();
+               throw var18;
+            }
+         } finally {
+            try {
+               var3.setAutoCommit(true);
+            } catch (SQLException var15) {
+            }
+
+            this.pgPool.release(var3);
+         }
+      }
+   }
+
+   private void rollbackDonationReclaim(UUID var1, CopiMineArtifacts.DonationReclaimContext var2) throws SQLException {
+      if (var1 != null && var2 != null) {
+         Connection var3 = this.pgPool.acquire();
+
+         try {
+            var3.setAutoCommit(false);
+
+            try (
+                PreparedStatement var4 = var3.prepareStatement(
+                   "    UPDATE artifact_item_instances\n    SET status='DELETED_AS_INVALID',updated_at=?\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n      AND status='DELIVERING'\n"
+                );
+               PreparedStatement var5 = var3.prepareStatement(
+                  "    UPDATE artifact_item_instances\n    SET status='LOST_RECLAIMABLE',updated_at=?\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n      AND status='REPLACED_AFTER_LOSS'\n"
+               );
+            ) {
+               long var6 = this.now();
+               var4.setLong(1, var6);
+               var4.setString(2, var1.toString());
+               var4.setString(3, var2.newUniqueItemId());
+                if (var4.executeUpdate() != 1) {
+                   throw new SQLException("Donation reclaim rollback lost DELIVERING state.");
+                }
+               var5.setLong(1, var6);
+               var5.setString(2, var1.toString());
+               var5.setString(3, var2.oldUniqueItemId());
+               var5.executeUpdate();
+               var3.commit();
+               this.removeOfficialBinding(var2.newUniqueItemId());
+               this.removeProvisionalDonationInstances(List.of(var2.newUniqueItemId()));
+            } catch (SQLException var23) {
+               var3.rollback();
+               throw var23;
+            }
+         } finally {
+            try {
+               var3.setAutoCommit(true);
+            } catch (SQLException var18) {
+            }
+
+            this.pgPool.release(var3);
+         }
+      }
+   }
+
+   private void rollbackStrandedDonationReclaim(UUID var1, CopiMineArtifacts.DeliveringInstanceRow var2) throws SQLException {
+      if (var1 != null && var2 != null && !this.firstNonBlank(var2.uniqueItemId(), "").isBlank()) {
+         Connection var3 = this.pgPool.acquire();
+
+         try {
+            var3.setAutoCommit(false);
+
+            try (
+               PreparedStatement var4 = var3.prepareStatement(
+                  "    SELECT item_id,status\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n    FOR UPDATE\n"
+               );
+               PreparedStatement var5 = var3.prepareStatement(
+                  "    SELECT unique_item_id\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND item_id=?\n      AND status='REPLACED_AFTER_LOSS'\n    ORDER BY updated_at DESC\n    LIMIT 1\n    FOR UPDATE\n"
+               );
+               PreparedStatement var6 = var3.prepareStatement(
+                  "    UPDATE artifact_item_instances\n    SET status='DELETED_AS_INVALID',updated_at=?\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n      AND status='DELIVERING'\n"
+               );
+               PreparedStatement var7 = var3.prepareStatement(
+                  "    UPDATE artifact_item_instances\n    SET status='LOST_RECLAIMABLE',updated_at=?\n    WHERE owner_uuid=?\n      AND unique_item_id=?\n      AND status='REPLACED_AFTER_LOSS'\n"
+               );
+            ) {
+               var4.setString(1, var1.toString());
+               var4.setString(2, var2.uniqueItemId());
+
+               String var8;
+               try (ResultSet var9 = var4.executeQuery()) {
+                  if (!var9.next()) {
+                     var3.rollback();
+                     return;
+                  }
+
+                  if (!"DELIVERING".equalsIgnoreCase(this.firstNonBlank(var9.getString("status"), ""))) {
+                     var3.rollback();
+                     return;
+                  }
+
+                  var8 = this.firstNonBlank(var9.getString("item_id"), var2.itemId());
+               }
+
+               var5.setString(1, var1.toString());
+               var5.setString(2, var8);
+
+               String var49;
+               try (ResultSet var10 = var5.executeQuery()) {
+                  if (!var10.next()) {
+                     var3.rollback();
+                     return;
+                  }
+
+                  var49 = var10.getString("unique_item_id");
+               }
+
+               long var50 = this.now();
+               var6.setLong(1, var50);
+               var6.setString(2, var1.toString());
+               var6.setString(3, var2.uniqueItemId());
+               var6.executeUpdate();
+               var7.setLong(1, var50);
+               var7.setString(2, var1.toString());
+               var7.setString(3, var49);
+               var7.executeUpdate();
+               var3.commit();
+               this.removeOfficialBinding(var2.uniqueItemId());
+            } catch (SQLException var47) {
+               var3.rollback();
+               throw var47;
+            }
+         } finally {
+            try {
+               var3.setAutoCommit(true);
+            } catch (SQLException var34) {
+            }
+
+            this.pgPool.release(var3);
+         }
+      }
+   }
+
+   private List<String> readRecentPurchases(String var1) {
+      Connection var2 = null;
+
+      List var4;
+      try {
+         var2 = this.pgPool.acquire();
+
+         try (PreparedStatement var3 = var2.prepareStatement(
+               "SELECT item_id,status,created_at FROM artifact_purchases WHERE player_uuid=? ORDER BY created_at DESC LIMIT 18"
+            )) {
+            var3.setString(1, var1);
+
+            try (ResultSet var20 = var3.executeQuery()) {
+               ArrayList var5 = new ArrayList();
+
+               while (var20.next()) {
+                  var5.add(var20.getString(1) + " | " + var20.getString(2) + " | " + Instant.ofEpochSecond(var20.getLong(3)));
+               }
+
+               return var5;
+            }
+         }
+      } catch (SQLException var18) {
+         this.getLogger().log(Level.WARNING, "Artifacts purchase history read failed", (Throwable)var18);
+         var4 = List.of("DB_ERROR: logged");
+      } finally {
+         if (var2 != null) {
+            this.pgPool.release(var2);
+         }
+      }
+
+      return var4;
+   }
+
+   private List<CopiMineArtifacts.PendingDeliveryRow> readPending(String var1) {
+      return this.readPendingByStatus(var1, "PENDING");
+   }
+
+   private List<CopiMineArtifacts.PendingDeliveryRow> readPendingByStatus(String var1, String var2) {
+      Connection var3 = null;
+
+      List var5;
+      try {
+         var3 = this.pgPool.acquire();
+
+         try (PreparedStatement var4 = var3.prepareStatement(
+               "SELECT delivery_id,purchase_id,unique_item_id,item_id FROM artifact_pending_deliveries WHERE player_uuid=? AND status=? ORDER BY created_at DESC LIMIT 18"
+            )) {
+            var4.setString(1, var1);
+            var4.setString(2, this.firstNonBlank(var2, "PENDING"));
+
+            try (ResultSet var21 = var4.executeQuery()) {
+               ArrayList var6 = new ArrayList();
+
+               while (var21.next()) {
+                  var6.add(new CopiMineArtifacts.PendingDeliveryRow(var21.getString(1), var21.getString(2), var21.getString(3), var21.getString(4)));
+               }
+
+               return var6;
+            }
+         }
+      } catch (SQLException var19) {
+         var5 = List.of();
+      } finally {
+         if (var3 != null) {
+            this.pgPool.release(var3);
+         }
+      }
+
+      return var5;
+   }
+
+   private List<CopiMineArtifacts.DeliveringInstanceRow> readDeliveringInstances(String var1) {
+      Connection var2 = null;
+
+      List var4;
+      try {
+         var2 = this.pgPool.acquire();
+
+         try (PreparedStatement var3 = var2.prepareStatement(
+               "    SELECT unique_item_id,purchase_id,item_id\n    FROM artifact_item_instances\n    WHERE owner_uuid=?\n      AND status='DELIVERING'\n    ORDER BY updated_at DESC\n    LIMIT 32\n"
+            )) {
+            var3.setString(1, var1);
+
+            try (ResultSet var20 = var3.executeQuery()) {
+               ArrayList var5 = new ArrayList();
+
+               while (var20.next()) {
+                  var5.add(new CopiMineArtifacts.DeliveringInstanceRow(var20.getString(1), var20.getString(2), var20.getString(3)));
+               }
+
+               return var5;
+            }
+         }
+      } catch (SQLException var18) {
+         this.getLogger().log(Level.WARNING, "Delivering instance recovery lookup failed", (Throwable)var18);
+         var4 = List.of();
+      } finally {
+         if (var2 != null) {
+            this.pgPool.release(var2);
+         }
+      }
+
+      return var4;
+   }
+
+   private int pendingCount(String var1) {
+      Connection var2 = null;
+
+      byte var4;
+      try {
+         var2 = this.pgPool.acquire();
+
+         try (PreparedStatement var3 = var2.prepareStatement("SELECT COUNT(*) FROM artifact_pending_deliveries WHERE player_uuid=? AND status='PENDING'")) {
+            var3.setString(1, var1);
+
+            try (ResultSet var20 = var3.executeQuery()) {
+               return var20.next() ? var20.getInt(1) : 0;
+            }
+         }
+      } catch (SQLException var18) {
+         var4 = 0;
+      } finally {
+         if (var2 != null) {
+            this.pgPool.release(var2);
+         }
+      }
+
+      return var4;
+   }
+
+   private int purchasedCount(String var1) {
+      Connection var2 = null;
+
+      byte var4;
+      try {
+         var2 = this.pgPool.acquire();
+         return this.purchasedCount(var2, var1);
+      } catch (SQLException var8) {
+         var4 = 0;
+      } finally {
+         if (var2 != null) {
+            this.pgPool.release(var2);
+         }
+      }
+
+      return var4;
+   }
+
+   private int purchasedCount(Connection var1, String var2) throws SQLException {
+      int var5;
+      try (PreparedStatement var3 = var1.prepareStatement(
+            "SELECT COUNT(*) FROM artifact_purchases WHERE item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')"
+         )) {
+         var3.setString(1, var2);
+
+         try (ResultSet var4 = var3.executeQuery()) {
+            var5 = var4.next() ? var4.getInt(1) : 0;
+         }
+      }
+
+      return var5;
+   }
+
+   private int playerPurchasedCount(String var1, String var2) {
+      Connection var3 = null;
+
+      byte var5;
+      try {
+         var3 = this.pgPool.acquire();
+         return this.playerPurchasedCount(var3, var1, var2);
+      } catch (SQLException var9) {
+         var5 = 0;
+      } finally {
+         if (var3 != null) {
+            this.pgPool.release(var3);
+         }
+      }
+
+      return var5;
+   }
+
+   private int playerPurchasedCount(Connection var1, String var2, String var3) throws SQLException {
+      int var6;
+      try (PreparedStatement var4 = var1.prepareStatement(
+            "SELECT COUNT(*) FROM artifact_purchases WHERE player_uuid=? AND item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')"
+         )) {
+         var4.setString(1, var2);
+         var4.setString(2, var3);
+
+         try (ResultSet var5 = var4.executeQuery()) {
+            var6 = var5.next() ? var5.getInt(1) : 0;
+         }
+      }
+
+      return var6;
+   }
+
+   private void logSuspicious(Player var1, String var2, String var3) {
+      Connection var4 = null;
+
+      try {
+         var4 = this.pgPool.acquire();
+
+         try (PreparedStatement var5 = var4.prepareStatement(
+               "    INSERT INTO artifact_suspicious_events(event_id,player_uuid,player_name,event_type,details,created_at)\n    VALUES(?,?,?,?,?,?)\n"
+            )) {
+            var5.setString(1, UUID.randomUUID().toString());
+            var5.setString(2, var1.getUniqueId().toString());
+            var5.setString(3, var1.getName());
+            var5.setString(4, var2);
+            var5.setString(5, var3);
+            var5.setLong(6, this.now());
+            var5.executeUpdate();
+         }
+      } catch (SQLException var15) {
+      } finally {
+         if (var4 != null) {
+            this.pgPool.release(var4);
+         }
+      }
+   }
+
+   private void audit(String var1, String var2, String var3, String var4) {
+      Connection var5 = null;
+
+      try {
+         var5 = this.pgPool.acquire();
+
+         try (PreparedStatement var6 = var5.prepareStatement(
+               "    INSERT INTO artifact_audit_log(audit_id,actor,action,target_id,details,created_at)\n    VALUES(?,?,?,?,?,?)\n"
+            )) {
+            var6.setString(1, UUID.randomUUID().toString());
+            var6.setString(2, var1);
+            var6.setString(3, var2);
+            var6.setString(4, var3);
+            var6.setString(5, var4);
+            var6.setLong(6, this.now());
+            var6.executeUpdate();
+         }
+      } catch (SQLException var16) {
+      } finally {
+         if (var5 != null) {
+            this.pgPool.release(var5);
+         }
+      }
+   }
+
+   private void tickPendingHints() {
+      for (Player var2 : Bukkit.getOnlinePlayers()) {
+         this.runAsync(
+            () -> {
+               int var2x = this.pendingCount(var2.getUniqueId().toString());
+               if (var2x > 0) {
+                  this.runSync(
+                     () -> var2.sendActionBar(
+                           this.color(
+                              "&eCopiMineArtifacts: \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 x"
+                                 + var2x
+                           )
+                        )
+                  );
+               }
+            }
+         );
+      }
+   }
+
+   private CopiMineArtifacts.Shop currentShop(CopiMineArtifacts.SessionState var1) {
+      if (var1.shopId != null && !var1.shopId.isBlank()) {
+         for (CopiMineArtifacts.Shop var3 : this.shopsByLocation.values()) {
+            if (var3.shopId().equals(var1.shopId)) {
+               return var3;
+            }
+         }
+
+         return this.shopsByLocation.values().stream().findFirst().orElse(null);
+      } else {
+         return this.shopsByLocation.values().stream().findFirst().orElse(null);
+      }
+   }
+
+   private CopiMineArtifacts.SessionState session(Player player) {
+      return this.sessions.computeIfAbsent(player.getUniqueId(), var0 -> new CopiMineArtifacts.SessionState());
+   }
+
+   private CopiMineArtifacts.SessionState freshSession(Player var1) {
+      CopiMineArtifacts.SessionState var2 = this.session(var1);
+      var2.sessionId = UUID.randomUUID();
+      var2.shopId = "";
+      var2.viewType = CopiMineArtifacts.ViewType.MAIN;
+      var2.currentCategory = "";
+      var2.currentItemId = "";
+      var2.page = 0;
+      var2.pinBuffer = "";
+      if (var2.purchaseInFlightId.isBlank()) {
+         var2.actions.clear();
+      }
+
+      var2.lastActionAt = System.currentTimeMillis();
+      return var2;
+   }
+
+   private Inventory createMenu(Player var1, CopiMineArtifacts.SessionState var2, CopiMineArtifacts.ViewType var3, int var4, String var5) {
+      var2.viewType = var3;
+      var2.actions.clear();
+      var2.lastActionAt = System.currentTimeMillis();
+      CopiMineArtifacts.MenuHolder var6 = new CopiMineArtifacts.MenuHolder(var2, var1.getUniqueId());
+      // Inventory inv = Bukkit.createInventory
+      Inventory var7 = Bukkit.createInventory(var6, var4, this.color(var5));
+      var6.setInventory(var7);
+      this.debugGui(
+         "open player="
+            + var1.getName()
+            + " screen="
+            + var3
+            + " shop="
+            + var2.shopId
+            + " category="
+            + var2.currentCategory
+            + " item="
+            + var2.currentItemId
+            + " page="
+            + var2.page
+            + " session="
+            + var2.sessionId
+      );
+      return var7;
+   }
+
+   private boolean isArtifactsAdmin(Player var1) {
+      return var1.isOp() || var1.hasPermission("copimine.artifacts.admin");
+   }
+
+   private boolean hasArtifactPermission(Player var1, String var2) {
+      return this.isArtifactsAdmin(var1) || var1.hasPermission(var2);
+   }
+
+   private void noPermission(Player var1) {
+      var1.sendMessage(
+         this.color(
+            "&c\u0420\u0408 \u0420\u0406\u0420\u00b0\u0421\u0403 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b0\u0420\u0406 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u0455\u0420\u0458\u0420\u00b0\u0420\u0405\u0420\u0491\u0421\u2039."
+         )
+      );
+   }
+
+   private void sendPlayerShopHelp(Player var1) {
+      var1.sendMessage(
+         this.color(
+            "&a\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u0455\u0420\u0458 \u0420\u0457\u0420\u0455 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0421\u0453 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+         )
+      );
+      var1.sendMessage(
+         this.color(
+            "&7\u0420\u045c\u0420\u00b0\u0420\u2116\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b5 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u0457\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u00b5 \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0406 \u0421\u0403\u0420\u0457\u0420\u00b5\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u2026 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0."
+         )
+      );
+   }
+
+   private String donationWebsiteBaseUrl() {
+      return this.firstNonBlank(this.getConfig().getString("donation.website-base-url"), "https://admin.copimine.ru").replaceAll("/+$", "");
+   }
+
+   private String donationPurchaseUrl(String var1) {
+      return this.donationWebsiteBaseUrl() + "/#donation-shop?item=" + this.firstNonBlank(var1, "").toLowerCase(Locale.ROOT);
+   }
+
+   private String donationPaymentUrl(String var1) {
+      return this.donationWebsiteBaseUrl() + "/#donation-balance?session=" + this.firstNonBlank(var1, "");
+   }
+
+   private String donationQrFallbackMessage() {
+      return this.firstNonBlank(
+         this.getConfig().getString("donation.qr-fallback-message"),
+         "\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0420\u00b0 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5 CopiMine. \u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u2116 \u0421\u0403\u0421\u0403\u0421\u2039\u0420\u00bb\u0420\u0454\u0421\u0453 \u0420\u0451 \u0420\u0451\u0421\u0403\u0420\u0457\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u00b7\u0421\u0453\u0420\u2116 \u0420\u0454\u0420\u0455\u0420\u0491 \u0421\u0403\u0420\u00b5\u0421\u0403\u0421\u0403\u0420\u0451\u0420\u0451."
+      );
+   }
+
+   private List<Long> donationFixedPacks() {
+      List<?> raw = getConfig().getList("donation.fixed-packs", List.of(50, 100, 250, 500, 1000));
+      ArrayList<Long> packs = new ArrayList<>();
+
+      for (Object var4 : raw) {
+         long var5 = this.parseLong(String.valueOf(var4), 0L);
+         if (var5 > 0L) {
+            packs.add(var5);
+         }
+      }
+
+      if (packs.isEmpty()) {
+         packs.addAll(List.of(50L, 100L, 250L, 500L, 1000L));
+      }
+
+      return packs.stream().distinct().sorted().toList();
+   }
+
+   private void debugGui(String message) {
+      if (this.debugGui) {
+         this.getLogger().info("[gui] " + message);
+      }
+   }
+
+   private boolean tryFarmerSweep(Player var1, Block var2, ItemStack var3) {
+      if (var2 != null && var2.getType() != Material.AIR) {
+         Block var4 = this.isHarvestableCrop(var2) ? var2 : var2.getRelative(BlockFace.UP);
+         if (!this.isHarvestableCrop(var4)) {
+            return false;
+         } else {
+            for (int var5 = -2; var5 <= 2; var5++) {
+               for (int var6 = -2; var6 <= 2; var6++) {
+                  this.harvestAndReplantCrop(var4.getRelative(var5, 0, var6), var1, var3);
+               }
+            }
+
+            var1.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, var4.getLocation().add(0.5, 0.8, 0.5), 18, 1.2, 0.2, 1.2, 0.02);
+            return true;
+         }
+      } else {
+         return false;
+      }
+   }
+
+   private boolean isHarvestableCrop(Block var1) {
+      if (var1 != null && var1.getBlockData() instanceof Ageable var2) {
+         return var1.getType() != Material.WHEAT
+               && var1.getType() != Material.CARROTS
+               && var1.getType() != Material.POTATOES
+               && var1.getType() != Material.BEETROOTS
+               && var1.getType() != Material.NETHER_WART
+            ? false
+            : var2.getAge() >= var2.getMaximumAge();
+      } else {
+         return false;
+      }
+   }
+
+   private void harvestAndReplantCrop(Block var1, Player var2, ItemStack var3) {
+      if (this.isHarvestableCrop(var1)) {
+         ArrayList<ItemStack> var4 = new ArrayList<>(var1.getDrops(var3, var2));
+
+         Material var5 = switch (var1.getType()) {
+            case WHEAT -> Material.WHEAT_SEEDS;
+            case BEETROOTS -> Material.BEETROOT_SEEDS;
+            case CARROTS -> Material.CARROT;
+            case POTATOES -> Material.POTATO;
+            case NETHER_WART -> Material.NETHER_WART;
+            default -> null;
+         };
+         if (var5 != null) {
+            this.removeOneFromDrops(var4, var5);
+         }
+
+         var1.setType(var1.getType(), false);
+         if (var1.getBlockData() instanceof Ageable var6) {
+            var6.setAge(0);
+            var1.setBlockData(var6, false);
+         }
+
+         World var10 = var1.getWorld();
+         Location var11 = var1.getLocation().add(0.5, 0.5, 0.5);
+
+         for (ItemStack var9 : var4) {
+            if (var9 != null && var9.getType() != Material.AIR && var9.getAmount() > 0) {
+               var10.dropItemNaturally(var11, var9);
+            }
+         }
+      }
+   }
+
+   private void removeOneFromDrops(List<ItemStack> var1, Material var2) {
+      for (int var3 = 0; var3 < var1.size(); var3++) {
+         ItemStack var4 = (ItemStack)var1.get(var3);
+         if (var4 != null && var4.getType() == var2 && var4.getAmount() > 0) {
+            if (var4.getAmount() == 1) {
+               var1.remove(var3);
+            } else {
+               var4.setAmount(var4.getAmount() - 1);
+            }
+
+            return;
+         }
+      }
+   }
+
+   private void tryForesterChain(Player var1, Block var2, ItemStack var3) {
+      if (var2 != null && Tag.LOGS.isTagged(var2.getType())) {
+         ArrayDeque<Block> var4 = new ArrayDeque<>();
+         HashSet<String> var5 = new HashSet<>();
+         ArrayList<Block> var6 = new ArrayList<>();
+         var4.add(var2);
+         var5.add(this.blockKey(var2.getLocation()));
+
+         while (!var4.isEmpty() && var5.size() < 96) {
+            Block var7 = (Block)var4.removeFirst();
+
+            for (int var8 = -1; var8 <= 1; var8++) {
+               for (int var9 = 0; var9 <= 1; var9++) {
+                  for (int var10 = -1; var10 <= 1; var10++) {
+                     if (var8 != 0 || var9 != 0 || var10 != 0) {
+                        Block var11 = var7.getRelative(var8, var9, var10);
+                        String var12 = this.blockKey(var11.getLocation());
+                        if (var5.add(var12) && Tag.LOGS.isTagged(var11.getType())) {
+                           var4.addLast(var11);
+                           if (!var11.getLocation().equals(var2.getLocation())) {
+                              var6.add(var11);
+                           }
                         }
-                    }
-                    runSync(() -> {
-                        try {
-                            applyProtectedBlockVisualRepairs(worldName, chunkX, chunkZ, chunkShops, visuals);
-                        } catch (Exception e) {
-                            getLogger().log(Level.WARNING, "Artifact shop visual apply failed", e);
-                        }
-                    });
-                } finally {
-                    pgPool.release(c);
-                }
-            } catch (Exception e) {
-                getLogger().log(Level.WARNING, "Artifact shop visual fetch failed", e);
+                     }
+                  }
+               }
             }
-        });
-    }
+         }
 
-    private void applyProtectedBlockVisualRepairs(String worldName, int chunkX, int chunkZ, List<Shop> chunkShops, Map<String, Map<String, Object>> visuals) throws Exception {
-        World world = Bukkit.getWorld(worldName);
-        if (world == null || !world.isChunkLoaded(chunkX, chunkZ)) return;
-        for (Shop shop : chunkShops) {
-            repairProtectedBlockVisual(shop, visuals.getOrDefault(shop.shopId(), Map.of()));
-        }
-    }
+         for (Block var14 : var6) {
+            this.chainedTreeBreaks.add(this.blockKey(var14.getLocation()));
+            var14.breakNaturally(var3);
+         }
 
-    private void repairProtectedBlockVisual(Shop shop, Map<String, Object> row) throws Exception {
-        World world = Bukkit.getWorld(shop.world());
-        if (world == null) return;
-        Location location = new Location(world, shop.x(), shop.y(), shop.z());
-        String expectedEntityUuid = first(String.valueOf(row.getOrDefault("entity_uuid", "")), "");
-        Entity entity = null;
-        if (!expectedEntityUuid.isBlank()) {
+         var1.getWorld()
+            .spawnParticle(
+               Particle.BLOCK, var2.getLocation().add(0.5, 1.0, 0.5), Math.min(24, Math.max(8, var6.size() * 2)), 0.6, 1.0, 0.6, var2.getBlockData()
+            );
+      }
+   }
+
+   private void grantTrenchBonus(Player var1, Block var2) {
+      if (var2 != null && (var2.getType() == Material.SAND || var2.getType() == Material.GRAVEL)) {
+         Material var3 = switch (this.random.nextInt(3)) {
+            case 0 -> Material.DIAMOND;
+            case 1 -> Material.EMERALD;
+            default -> Material.GOLD_INGOT;
+         };
+         var2.getWorld().dropItemNaturally(var2.getLocation().add(0.5, 0.5, 0.5), new ItemStack(var3, 1));
+         var1.sendMessage(
+            this.color(
+               "&a\u0420\u203a\u0420\u0455\u0420\u0457\u0420\u00b0\u0421\u201a\u0420\u00b0 \u0420\u0406\u0421\u2039\u0420\u00b1\u0420\u0451\u0420\u00bb\u0420\u00b0 \u0420\u00b1\u0420\u0455\u0420\u0405\u0421\u0453\u0421\u0403\u0420\u0405\u0421\u2039\u0420\u2116 \u0421\u0402\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403: &f"
+                  + var3.name()
+            )
+         );
+      }
+   }
+
+   private boolean cleanseAllowedDebuff(Player var1) {
+      for (PotionEffectType var4 : List.of(
+         PotionEffectType.POISON, PotionEffectType.WEAKNESS, PotionEffectType.SLOWNESS, PotionEffectType.GLOWING, PotionEffectType.HUNGER
+      )) {
+         if (var1.hasPotionEffect(var4)) {
+            var1.removePotionEffect(var4);
+            var1.getWorld().spawnParticle(Particle.WAX_OFF, var1.getLocation().add(0.0, 1.0, 0.0), 10, 0.25, 0.4, 0.25, 0.02);
+            return true;
+         }
+      }
+
+      return false;
+   }
+
+   private void showTaxClockStatus(Player var1) {
+      var1.sendMessage(
+         this.color(
+            "&6\u0420\u045c\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u0455\u0420\u0406\u0421\u2039\u0420\u2116 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 CopiMine"
+         )
+      );
+      var1.sendMessage(
+         this.color(
+            "&7\u0420\u045f\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0491\u0420\u00b5\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0451\u0420\u00b7\u0420\u00b0\u0421\u2020\u0420\u0451\u0421\u040f \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0451 ElectionCore."
+         )
+      );
+      var1.sendMessage(
+         this.color(
+            "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451 \u0420\u0405\u0420\u00b5 \u0420\u0455\u0420\u00b1\u0421\u2026\u0420\u0455\u0420\u0491\u0420\u0451\u0421\u201a PIN/\u0420\u0405\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u0451."
+         )
+      );
+   }
+
+   private boolean pointCompassToLastDeath(Player var1, ItemStack var2) {
+      Location var3 = this.lastDeathLocations.get(var1.getUniqueId());
+      if (var3 != null && var3.getWorld() != null) {
+         if ((var2 == null ? null : var2.getItemMeta()) instanceof CompassMeta var5) {
+            var5.setLodestone(var3);
+            var5.setLodestoneTracked(false);
+            var2.setItemMeta(var5);
+         }
+
+         var1.setCompassTarget(var3);
+         var1.sendMessage(
+            this.color(
+               "&a\u0420\u0459\u0420\u0455\u0420\u0458\u0420\u0457\u0420\u00b0\u0421\u0403 \u0420\u0455\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u0405\u0420\u00b0 \u0420\u0406\u0420\u00b0\u0421\u20ac\u0421\u0453 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0421\u040b\u0421\u040b \u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0421\u0453 \u0421\u0403\u0420\u0458\u0420\u00b5\u0421\u0402\u0421\u201a\u0420\u0451."
+            )
+         );
+         return true;
+      } else {
+         var1.sendMessage(
+            this.color(
+               "&e\u0420\u045f\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0421\u040f\u0421\u040f \u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b0 \u0421\u0403\u0420\u0458\u0420\u00b5\u0421\u0402\u0421\u201a\u0420\u0451 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b5 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0."
+            )
+         );
+         return false;
+      }
+   }
+
+   private boolean triggerEternalBoost(Player var1) {
+      if (!var1.isGliding()) {
+         var1.sendMessage(
+            this.color(
+               "&e\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0421\u201e\u0420\u00b5\u0420\u2116\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454 \u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u00b0\u0420\u00b5\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0406\u0420\u0455 \u0420\u0406\u0421\u0402\u0420\u00b5\u0420\u0458\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u00bb\u0421\u2018\u0421\u201a\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u040c\u0420\u00bb\u0420\u0451\u0421\u201a\u0421\u0402\u0420\u00b0\u0421\u2026."
+            )
+         );
+         return false;
+      } else {
+         var1.setVelocity(var1.getLocation().getDirection().normalize().multiply(1.35).add(var1.getVelocity().multiply(0.35)));
+         var1.getWorld().spawnParticle(Particle.FIREWORK, var1.getLocation().add(0.0, 0.5, 0.0), 12, 0.25, 0.25, 0.25, 0.02);
+         return true;
+      }
+   }
+
+   private void applyTemporaryCobwebSnare(LivingEntity var1) {
+      if (var1 != null) {
+         Block var2 = var1.getLocation().getBlock();
+         if (var2.getType() == Material.AIR) {
+            var2.setType(Material.COBWEB, false);
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+               if (var2.getType() == Material.COBWEB) {
+                  var2.setType(Material.AIR, false);
+               }
+            }, 40L);
+         }
+      }
+   }
+
+   private void healPlayerCapped(Player var1, double var2) {
+      if (var1 != null && !(var2 <= 0.0)) {
+         var1.setHealth(Math.min(var1.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue(), var1.getHealth() + var2));
+      }
+   }
+
+   private void setAction(Inventory var1, CopiMineArtifacts.SessionState var2, int var3, ItemStack var4, String var5) {
+      var1.setItem(var3, var4);
+      var2.actions.put(var3, var5);
+   }
+
+   private Set<String> artifactCombatEffects() {
+      return Set.of(
+         "LIGHTNING",
+         "DRAGON_PUNISHMENT",
+         "WATCH_GLOW",
+         "DEBT_SNARE",
+         "SMUGGLER_MARK",
+         "ZMEI_GORYNYCH_POOP",
+         "BATIN_REMEN",
+         "NAKOPAL_PICKAXE",
+         "NALOGOVAYA_KOSA",
+         "DUTY_ARGUMENT"
+      );
+   }
+
+   private Set<String> artifactToolEffects() {
+      return Set.of("HASTE_BURST", "MINER_PULSE", "FORESTER_FOCUS", "SURVEYOR_TOUCH", "CRAFTSMAN_CHECK", "FORESTER_CHAIN", "TRENCH_BONUS");
+   }
+
+   private Set<String> artifactInteractEffects() {
+      return Set.of("HASTE_BURST_LONG", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST");
+   }
+
+   private Set<String> artifactDefenseEffects() {
+      return Set.of("PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD");
+   }
+
+   private String categoryTitle(CopiMineArtifacts.Category var1) {
+      return switch (var1) {
+         case WEAPON -> "\u0420\u2018\u0420\u0455\u0420\u00b5\u0420\u0406\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039";
+         case ARMOR -> "\u0420\u2014\u0420\u00b0\u0421\u2030\u0420\u0451\u0421\u201a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039";
+         case TOOL -> "\u0420\u00a0\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039";
+         case RP -> "RP-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039";
+      };
+   }
+
+   private String categoryHint(CopiMineArtifacts.Category var1) {
+      return switch (var1) {
+         case WEAPON -> "&7\u0420\u045b\u0421\u0402\u0421\u0453\u0420\u00b6\u0420\u0451\u0420\u00b5 \u0421\u0403 \u0420\u0454\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u0451\u0420\u0458\u0420\u0451 \u0420\u0454\u0420\u0455\u0420\u0405\u0421\u201a\u0421\u0402\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u0402\u0421\u0453\u0420\u00b5\u0420\u0458\u0421\u2039\u0420\u0458\u0420\u0451 \u0421\u040c\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a\u0420\u00b0\u0420\u0458\u0420\u0451.";
+         case ARMOR -> "&7\u0420\u2018\u0421\u0402\u0420\u0455\u0420\u0405\u0421\u040f \u0420\u0451 \u0421\u040c\u0420\u0454\u0420\u0451\u0420\u0457\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u00b6\u0420\u0451\u0420\u0406\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f.";
+         case TOOL -> "&7\u0420\u0098\u0420\u0405\u0421\u0403\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u201a\u0421\u2039 \u0420\u00b1\u0420\u00b5\u0420\u00b7 vein-miner \u0420\u0451 \u0420\u0458\u0420\u00b0\u0421\u0403\u0421\u0403\u0420\u0455\u0420\u0406\u0421\u2039\u0421\u2026 \u0421\u0403\u0420\u0454\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406.";
+         case RP -> "&7\u0420\u045b\u0420\u00b1\u0421\u2039\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f RP-\u0420\u0406\u0420\u0454\u0420\u00bb\u0420\u00b0\u0420\u0491\u0420\u0454\u0420\u00b0 \u0420\u00b1\u0420\u00b5\u0420\u00b7 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406.";
+      };
+   }
+
+   private Material categoryMaterial(CopiMineArtifacts.Category var1) {
+      return switch (var1) {
+         case WEAPON -> Material.NETHERITE_SWORD;
+         case ARMOR -> Material.DIAMOND_CHESTPLATE;
+         case TOOL -> Material.DIAMOND_PICKAXE;
+         case RP -> Material.NAME_TAG;
+      };
+   }
+
+   private ItemStack categoryIcon(CopiMineArtifacts.Category var1) {
+      return switch (var1) {
+         case WEAPON -> this.button(
+         Material.NETHERITE_SWORD,
+         "&b\u0420\u2018\u0420\u0455\u0420\u00b5\u0420\u0406\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039",
+         List.of(
+            "&7\u0420\u0459\u0420\u00bb\u0420\u0451\u0420\u0405\u0420\u0454\u0420\u0451, \u0421\u201a\u0420\u0455\u0420\u0457\u0420\u0455\u0421\u0402\u0421\u2039 \u0420\u0451 \u0420\u00bb\u0421\u0453\u0420\u0454\u0420\u0451.",
+            "&8\u0420\u0459\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u0451\u0420\u00b5 \u0421\u040c\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a\u0421\u2039, \u0420\u0455\u0420\u00b1\u0421\u2030\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0421\u0402\u0421\u040f\u0420\u0491\u0420\u0454\u0420\u00b0."
+         )
+      );
+         case ARMOR -> this.button(
+         Material.DIAMOND_CHESTPLATE,
+         "&a\u0420\u2014\u0420\u00b0\u0421\u2030\u0420\u0451\u0421\u201a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039",
+         List.of(
+            "&7\u0420\u00ad\u0420\u0454\u0420\u0451\u0420\u0457\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u20ac\u0420\u00b0\u0421\u2026\u0421\u201a\u0421\u2039, \u0420\u0457\u0420\u00b0\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u00bb\u0421\u040f \u0420\u0451 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+         )
+      );
+         case TOOL -> this.button(
+         Material.DIAMOND_PICKAXE,
+         "&e\u0420\u00a0\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039",
+         List.of(
+            "&7\u0420\u0459\u0420\u0451\u0421\u0402\u0420\u0454\u0420\u0451, \u0421\u201a\u0420\u0455\u0420\u0457\u0420\u0455\u0421\u0402\u0421\u2039, \u0420\u00bb\u0420\u0455\u0420\u0457\u0420\u00b0\u0421\u201a\u0421\u2039 \u0420\u0451 \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u00b5\u0421\u0403\u0420\u00bb\u0420\u0455.",
+            "&8\u0420\u2018\u0420\u00b5\u0420\u00b7 \u0420\u0458\u0420\u00b0\u0421\u0403\u0421\u0403\u0420\u0455\u0420\u0406\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0455\u0420\u0454 \u0420\u0458\u0420\u0451\u0421\u0402\u0420\u00b0."
+         )
+      );
+         case RP -> this.button(
+         Material.PAPER,
+         "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+         List.of(
+            "&7\u0420\u040e\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0406 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+         )
+      );
+      };
+   }
+
+   private ItemStack previewIcon(CopiMineArtifacts.CatalogItem var1) {
+      ArrayList var2 = new ArrayList();
+      var2.add(this.color("&7\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: &f" + var1.priceAr() + " AR"));
+      var2.add(this.color("&7\u0420\u00a0\u0420\u00b5\u0420\u0491\u0420\u0454\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a: &f" + var1.rarity()));
+      if (var1.cooldownSeconds() > 0) {
+         var2.add(
+            this.color(
+               "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0421\u0402\u0421\u040f\u0420\u0491\u0420\u0454\u0420\u00b0: &f"
+                  + var1.cooldownSeconds()
+                  + " \u0421\u0403\u0420\u00b5\u0420\u0454."
+            )
+         );
+      }
+
+      if (var1.effectChancePercent() > 0 && var1.effectChancePercent() < 100) {
+         var2.add(
+            this.color(
+               "&7\u0420\u0401\u0420\u00b0\u0420\u0405\u0421\u0403 \u0421\u040c\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a\u0420\u00b0: &f"
+                  + var1.effectChancePercent()
+                  + "%"
+            )
+         );
+      }
+
+      var2.addAll(var1.lore().stream().map(this::color).toList());
+      ItemStack var3 = this.button(var1.material(), var1.name(), var2);
+      ItemMeta var4 = var3.getItemMeta();
+      if (var4 != null && var1.customModelData() > 0) {
+         // meta.setCustomModelData(item.customModelData())
+         var4.setCustomModelData(var1.customModelData());
+         var3.setItemMeta(var4);
+      }
+
+      return var3;
+   }
+
+   private ItemStack soonIcon(String var1, String var2) {
+      return this.button(
+         Material.CLOCK,
+         var1,
+         List.of(
+            var2,
+            "&7\u0420\u040e\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0421\u040c\u0421\u201a\u0420\u00b0 \u0420\u0406\u0420\u0451\u0421\u201a\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u040f."
+         )
+      );
+   }
+
+   private ItemStack button(Material var1, String var2, List<String> var3) {
+      ItemStack var4 = new ItemStack(var1);
+      ItemMeta var5 = var4.getItemMeta();
+      if (var5 == null) {
+         return var4;
+      } else {
+         var5.setDisplayName(this.color(var2));
+         var5.setLore(var3.stream().map(this::color).toList());
+         var5.addItemFlags(new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS});
+         var4.setItemMeta(var5);
+         return var4;
+      }
+   }
+
+   private boolean customBlockVisualsEnabled() {
+      return this.getConfig().getBoolean("custom-block-visuals.enabled", true);
+   }
+
+   private double customBlockScale(String var1) {
+      return this.getConfig().getDouble("custom-block-visuals.models." + var1 + ".scale", 1.01);
+   }
+
+   private double customBlockOffsetY(String var1) {
+      return this.getConfig().getDouble("custom-block-visuals.models." + var1 + ".offset-y", 0.5);
+   }
+
+   private String first(String var1, String var2) {
+      return var1 != null && !var1.isBlank() ? var1 : var2;
+   }
+
+   private void spawnOrReplaceProtectedBlockVisual(Location var1, String var2, String var3, Material var4, int var5, String var6) throws Exception {
+      if (this.customBlockVisualsEnabled() && var1 != null && var1.getWorld() != null && var3 != null && !var3.isBlank()) {
+         this.runAsync(() -> {
             try {
-                entity = Bukkit.getEntity(UUID.fromString(expectedEntityUuid));
-            } catch (Exception ignored) {
+               Map var7 = this.fetchProtectedBlockVisualRow(var2, var3);
+               this.runSync(() -> {
+                  try {
+                     this.cleanupProtectedBlockVisualEntities(var1, var2, var3, var7);
+                     Location var8x = var1.clone().add(0.5, this.customBlockOffsetY(var2), 0.5);
+                     ItemStack var9 = new ItemStack(var4);
+                     ItemMeta var10 = var9.getItemMeta();
+                     if (var10 != null) {
+                        var10.setDisplayName(this.color("&f" + var6));
+                        var10.setCustomModelData(var5);
+                        var10.addItemFlags(ItemFlag.values());
+                        var9.setItemMeta(var10);
+                     }
+
+                     float var11 = (float)this.customBlockScale(var2);
+                     ItemDisplay var12 = (ItemDisplay)var1.getWorld().spawn(var8x, ItemDisplay.class, var6xxx -> {
+                        var6xxx.setItemStack(var9);
+                        var6xxx.setItemDisplayTransform(ItemDisplayTransform.FIXED);
+                        var6xxx.setPersistent(true);
+                        var6xxx.setGravity(false);
+                        var6xxx.setInvulnerable(true);
+                        var6xxx.setBillboard(Billboard.FIXED);
+                        var6xxx.getPersistentDataContainer().set(this.visualEntityTypeKey, PersistentDataType.STRING, "PROTECTED_BLOCK_VISUAL");
+                        var6xxx.getPersistentDataContainer().set(this.visualKindKey, PersistentDataType.STRING, var2);
+                        var6xxx.getPersistentDataContainer().set(this.visualLinkedIdKey, PersistentDataType.STRING, var3);
+                        var6xxx.getPersistentDataContainer().set(this.visualModelIdKey, PersistentDataType.STRING, var6);
+                        var6xxx.setTransformation(new Transformation(new Vector3f(), new AxisAngle4f(), new Vector3f(var11, var11, var11), new AxisAngle4f()));
+                     });
+                     this.saveProtectedBlockVisualAsync(var1, var2, var3, var4, var5, var6, var12.getUniqueId().toString());
+                  } catch (Exception var13) {
+                     this.getLogger().log(Level.WARNING, "Artifact shop visual spawn failed", (Throwable)var13);
+                  }
+               });
+            } catch (Exception var8) {
+               this.getLogger().log(Level.WARNING, "Artifact shop visual fetch failed", (Throwable)var8);
             }
-        }
-        boolean validEntity = isOwnedProtectedVisualEntity(entity, "ARTIFACT_SHOP", shop.shopId(), "artifact_shop_marker", MODEL_ARTIFACT_SHOP_MARKER);
-        cleanupNearbyProtectedVisualDuplicates(location, "ARTIFACT_SHOP", shop.shopId(), validEntity ? entity.getUniqueId().toString() : "");
-        if (!validEntity) {
-            spawnOrReplaceProtectedBlockVisual(location, "ARTIFACT_SHOP", shop.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker");
-        }
-    }
+         });
+      }
+   }
 
-    private void cleanupNearbyProtectedVisuals(Location blockLocation, String kind, String linkedId) {
-        if (blockLocation == null || blockLocation.getWorld() == null) return;
-        for (Entity entity : blockLocation.getWorld().getNearbyEntities(blockLocation.clone().add(0.5D, customBlockOffsetY(kind), 0.5D), 0.9D, 0.9D, 0.9D)) {
-            removeOwnedProtectedVisualEntity(entity, kind, linkedId);
-        }
-    }
-
-    private void cleanupNearbyProtectedVisualDuplicates(Location blockLocation, String kind, String linkedId, String keepEntityUuid) {
-        if (blockLocation == null || blockLocation.getWorld() == null) return;
-        for (Entity entity : blockLocation.getWorld().getNearbyEntities(blockLocation.clone().add(0.5D, customBlockOffsetY(kind), 0.5D), 0.9D, 0.9D, 0.9D)) {
-            if (!isOwnedProtectedVisualEntity(entity, kind, linkedId, "artifact_shop_marker", MODEL_ARTIFACT_SHOP_MARKER)) continue;
-            if (!keepEntityUuid.isBlank() && keepEntityUuid.equals(entity.getUniqueId().toString())) continue;
-            entity.remove();
-        }
-    }
-
-    private void removeOwnedProtectedVisualEntity(Entity entity, String kind, String linkedId) {
-        if (!isOwnedProtectedVisualEntity(entity, kind, linkedId, "artifact_shop_marker", MODEL_ARTIFACT_SHOP_MARKER)) return;
-        entity.remove();
-    }
-
-    private boolean isOwnedProtectedVisualEntity(Entity entity, String kind, String linkedId, String modelId, int customModelData) {
-        if (!(entity instanceof ItemDisplay display)) return false;
-        PersistentDataContainer pdc = display.getPersistentDataContainer();
-        if (!"PROTECTED_BLOCK_VISUAL".equals(pdc.get(visualEntityTypeKey, PersistentDataType.STRING))) return false;
-        if (!kind.equals(first(pdc.get(visualKindKey, PersistentDataType.STRING), ""))) return false;
-        if (!linkedId.equals(first(pdc.get(visualLinkedIdKey, PersistentDataType.STRING), ""))) return false;
-        if (!modelId.equals(first(pdc.get(visualModelIdKey, PersistentDataType.STRING), ""))) return false;
-        ItemStack stack = display.getItemStack();
-        if (stack == null || stack.getType() != Material.PAPER) return false;
-        ItemMeta meta = stack.getItemMeta();
-        return meta != null && meta.hasCustomModelData() && meta.getCustomModelData() == customModelData;
-    }
-
-    private Map<String, Object> fetchProtectedBlockVisualRow(String kind, String linkedId) throws Exception {
-        Connection c = pgPool.acquire();
-        try (PreparedStatement select = c.prepareStatement("SELECT entity_uuid,world,x,y,z FROM protected_block_visuals WHERE kind=? AND linked_id=? AND active=1 ORDER BY updated_at DESC LIMIT 1")) {
-            select.setString(1, kind);
-            select.setString(2, linkedId);
-            try (ResultSet rs = select.executeQuery()) {
-                if (!rs.next()) {
-                    return Map.of();
-                }
-                Map<String, Object> row = new HashMap<>();
-                row.put("entity_uuid", rs.getString("entity_uuid"));
-                row.put("world", rs.getString("world"));
-                row.put("x", rs.getInt("x"));
-                row.put("y", rs.getInt("y"));
-                row.put("z", rs.getInt("z"));
-                return row;
-            }
-        } finally {
-            pgPool.release(c);
-        }
-    }
-
-    private Location visualBaseLocation(Map<String, Object> row) {
-        if (row == null || row.isEmpty()) return null;
-        World world = Bukkit.getWorld(first(String.valueOf(row.getOrDefault("world", "")), ""));
-        if (world == null) return null;
-        return new Location(world, parseInt(String.valueOf(row.get("x")), 0), parseInt(String.valueOf(row.get("y")), 0), parseInt(String.valueOf(row.get("z")), 0));
-    }
-
-    private void cleanupProtectedBlockVisualEntities(Location baseLocation, String kind, String linkedId, Map<String, Object> row) {
-        if (row != null && !row.isEmpty()) {
-            String entityUuid = first(String.valueOf(row.getOrDefault("entity_uuid", "")), "");
-            if (!entityUuid.isBlank()) {
-                try {
-                    removeOwnedProtectedVisualEntity(Bukkit.getEntity(UUID.fromString(entityUuid)), kind, linkedId);
-                } catch (Exception ignored) {
-                }
-            }
-        }
-        if (baseLocation != null) {
-            cleanupNearbyProtectedVisuals(baseLocation, kind, linkedId);
-        }
-    }
-
-    private void markProtectedBlockVisualInactive(String kind, String linkedId) {
-        runAsync(() -> {
+   private void cleanupProtectedBlockVisuals(String var1, String var2) throws Exception {
+      if (var2 != null && !var2.isBlank()) {
+         this.runAsync(() -> {
             try {
-                Connection c = pgPool.acquire();
-                try (PreparedStatement ps = c.prepareStatement("UPDATE protected_block_visuals SET active=0,updated_at=? WHERE kind=? AND linked_id=? AND active=1")) {
-                    ps.setLong(1, now());
-                    ps.setString(2, kind);
-                    ps.setString(3, linkedId);
-                    ps.executeUpdate();
-                } finally {
-                    pgPool.release(c);
-                }
-            } catch (Exception error) {
-                getLogger().log(Level.WARNING, "Artifact visual deactivate failed", error);
+               Map var3 = this.fetchProtectedBlockVisualRow(var1, var2);
+               Location var4 = this.visualBaseLocation(var3);
+               this.runSync(() -> this.cleanupProtectedBlockVisualEntities(var4, var1, var2, var3));
+               this.markProtectedBlockVisualInactive(var1, var2);
+            } catch (Exception var5) {
+               this.getLogger().log(Level.WARNING, "Artifact shop visual cleanup failed", (Throwable)var5);
             }
-        });
-    }
+         });
+      }
+   }
 
-    private void saveProtectedBlockVisualAsync(Location blockLocation, String kind, String linkedId, Material baseMaterial, int customModelData, String modelId, String entityUuid) {
-        String visualId = "pbv-" + UUID.randomUUID();
-        long createdAt = now();
-        double offsetY = customBlockOffsetY(kind);
-        double scale = customBlockScale(kind);
-        runAsync(() -> {
+   private void repairProtectedBlockVisuals() throws Exception {
+      if (this.customBlockVisualsEnabled()) {
+         for (World var1 : Bukkit.getWorlds()) {
+            for (Chunk var5 : var1.getLoadedChunks()) {
+               this.enqueueProtectedBlockVisualRepair(var1.getName(), var5.getX(), var5.getZ());
+            }
+         }
+      }
+   }
+
+   private void repairProtectedBlockVisuals(String var1, int var2, int var3) throws Exception {
+      if (this.customBlockVisualsEnabled()) {
+         this.enqueueProtectedBlockVisualRepair(var1, var2, var3);
+      }
+   }
+
+   private void enqueueProtectedBlockVisualRepair(String var1, int var2, int var3) {
+      if (this.customBlockVisualsEnabled() && var1 != null && !var1.isBlank()) {
+         String var4 = this.visualRepairChunkKey(var1, var2, var3);
+         if (this.pendingVisualRepairChunks.add(var4)) {
+            this.visualRepairQueue.offer(var4);
+            this.drainProtectedBlockVisualRepairs();
+         }
+      }
+   }
+
+   private void drainProtectedBlockVisualRepairs() {
+      if (this.customBlockVisualsEnabled() && this.visualRepairDrainRunning.compareAndSet(false, true)) {
+         this.runAsync(() -> {
             try {
-                Connection c = pgPool.acquire();
-                try (PreparedStatement delete = c.prepareStatement("DELETE FROM protected_block_visuals WHERE kind=? AND linked_id=?");
-                     PreparedStatement insert = c.prepareStatement("""
-                         INSERT INTO protected_block_visuals(
-                             id,kind,linked_id,world,x,y,z,entity_uuid,base_material,custom_model_data,model_id,
-                             offset_x,offset_y,offset_z,scale_x,scale_y,scale_z,yaw,pitch,created_at,updated_at,active
-                         ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
-                     """)) {
-                    delete.setString(1, kind);
-                    delete.setString(2, linkedId);
-                    delete.executeUpdate();
-                    insert.setString(1, visualId);
-                    insert.setString(2, kind);
-                    insert.setString(3, linkedId);
-                    insert.setString(4, blockLocation.getWorld().getName());
-                    insert.setInt(5, blockLocation.getBlockX());
-                    insert.setInt(6, blockLocation.getBlockY());
-                    insert.setInt(7, blockLocation.getBlockZ());
-                    insert.setString(8, entityUuid);
-                    insert.setString(9, baseMaterial.name());
-                    insert.setInt(10, customModelData);
-                    insert.setString(11, modelId);
-                    insert.setDouble(12, 0.5D);
-                    insert.setDouble(13, offsetY);
-                    insert.setDouble(14, 0.5D);
-                    insert.setDouble(15, scale);
-                    insert.setDouble(16, scale);
-                    insert.setDouble(17, scale);
-                    insert.setDouble(18, 0D);
-                    insert.setDouble(19, 0D);
-                    insert.setLong(20, createdAt);
-                    insert.setLong(21, createdAt);
-                    insert.executeUpdate();
-                } finally {
-                    pgPool.release(c);
-                }
-            } catch (Exception error) {
-                getLogger().log(Level.WARNING, "Artifact visual save failed", error);
+               int var1 = 0;
+
+               while (var1 < VISUAL_REPAIR_BATCH_SIZE) {
+                  String var2 = this.visualRepairQueue.poll();
+                  if (var2 == null) {
+                     break;
+                  }
+
+                  this.pendingVisualRepairChunks.remove(var2);
+                  String[] var3 = var2.split(":");
+                  if (var3.length == 3) {
+                     try {
+                        this.repairProtectedBlockVisualChunk(var3[0], Integer.parseInt(var3[1]), Integer.parseInt(var3[2]));
+                     } catch (Exception var5) {
+                        this.getLogger().log(Level.WARNING, "Artifact visual repair queue failed for " + var2, (Throwable)var5);
+                     }
+                  }
+
+                  ++var1;
+               }
+            } finally {
+               this.visualRepairDrainRunning.set(false);
+               if (!this.visualRepairQueue.isEmpty()) {
+                  this.drainProtectedBlockVisualRepairs();
+               }
             }
-        });
-    }
+         });
+      }
+   }
 
-    private void runAsync(Runnable runnable) {
-        dbExecutor.submit(runnable);
-    }
+   private String visualRepairChunkKey(String var1, int var2, int var3) {
+      return var1 + ":" + var2 + ":" + var3;
+   }
 
-    private void runSync(Runnable runnable) {
-        Bukkit.getScheduler().runTask(this, runnable);
-    }
+   private void repairProtectedBlockVisualChunk(String var1, int var2, int var3) throws Exception {
+      List<CopiMineArtifacts.Shop> var4 = this.shopsByLocation
+         .values()
+         .stream()
+         .filter(var3xx -> var3xx.world().equals(var1) && var3xx.x() >> 4 == var2 && var3xx.z() >> 4 == var3 && var3xx.enabled())
+         .toList();
+      if (var4.isEmpty()) {
+         return;
+      }
 
-    private String blockKey(Location location) {
-        return location.getWorld().getName() + ":" + location.getBlockX() + ":" + location.getBlockY() + ":" + location.getBlockZ();
-    }
+      Connection var5 = this.pgPool.acquire();
 
-    private long now() {
-        return Instant.now().getEpochSecond();
-    }
+      try (PreparedStatement var6 = var5.prepareStatement(
+            "SELECT linked_id,entity_uuid,model_id,custom_model_data FROM protected_block_visuals WHERE kind='ARTIFACT_SHOP' AND active=1 AND linked_id = ANY (?)"
+         )) {
+         Array var7 = var5.createArrayOf("text", var4.stream().map(CopiMineArtifacts.Shop::shopId).toArray(String[]::new));
+         var6.setArray(1, var7);
+         HashMap<String, Map<String, Object>> var8 = new HashMap<>();
 
-    private Category parseCategory(String raw) {
-        try { return Category.valueOf(raw.toUpperCase(Locale.ROOT)); }
-        catch (Exception e) { return Category.RP; }
-    }
+         try (ResultSet var9 = var6.executeQuery()) {
+            while (var9.next()) {
+               HashMap<String, Object> var10 = new HashMap<>();
+               var10.put("entity_uuid", var9.getString("entity_uuid"));
+               var10.put("model_id", var9.getString("model_id"));
+               var10.put("custom_model_data", var9.getInt("custom_model_data"));
+               var8.put(var9.getString("linked_id"), var10);
+            }
+         }
 
-    private String color(String text) {
-        return ChatColor.translateAlternateColorCodes('&', text == null ? "" : text);
-    }
-
-    private String strip(String text) {
-        return ChatColor.stripColor(color(text));
-    }
-
-    private int artifactModelData(String itemId) {
-        return ARTIFACT_MODEL_DATA.getOrDefault(itemId, 0);
-    }
-
-    private int artifactEffectChance(String itemId) {
-        return ARTIFACT_EFFECT_CHANCE.getOrDefault(itemId, 100);
-    }
-
-    private String artifactVisualEffect(String itemId) {
-        return ARTIFACT_VISUAL_EFFECTS.getOrDefault(itemId, "");
-    }
-
-    private int normalizeChance(int value) {
-        return Math.max(0, Math.min(100, value));
-    }
-
-    private boolean rollEffectChance(CatalogItem item) {
-        int chance = normalizeChance(item.effectChancePercent());
-        if (chance >= 100) return true;
-        if (chance <= 0) return false;
-        return random.nextInt(100) < chance;
-    }
-
-    private String maskedPin(String pin) {
-        if (pin == null || pin.isEmpty()) return "• • • •";
-        return "*".repeat(pin.length());
-    }
-
-    private String nice(String key) {
-        return Arrays.stream(key.split("_")).map(s -> s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1)).collect(Collectors.joining(" "));
-    }
-
-    private String shortId(String id) {
-        return id == null ? "" : id.substring(0, Math.min(8, id.length()));
-    }
-
-    private int parseInt(String raw, int fallback) {
-        try { return Integer.parseInt(raw); } catch (Exception e) { return fallback; }
-    }
-
-    private long parseLong(String raw, long fallback) {
-        try { return Long.parseLong(raw); } catch (Exception e) { return fallback; }
-    }
-
-    private String str(Object value) {
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    private List<String> asStringList(Object value) {
-        if (value instanceof List<?> list) {
-            return list.stream().map(String::valueOf).toList();
-        }
-        return List.of();
-    }
-
-    private String toJson(List<String> values) {
-        return "[" + values.stream().map(v -> "\"" + v.replace("\"", "\\\"") + "\"").collect(Collectors.joining(",")) + "]";
-    }
-
-    private String safeErr(Throwable t) {
-        String m = t.getMessage();
-        return m == null ? t.getClass().getSimpleName() : m;
-    }
-
-    private String safeBridgeCode(String code) {
-        if (code == null || code.isBlank()) return "BRIDGE_REJECTED";
-        String normalized = code.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9_\\-]", "_");
-        return normalized.length() > 48 ? normalized.substring(0, 48) : normalized;
-    }
-
-    private List<String> prefix(List<String> options, String prefix) {
-        String p = prefix == null ? "" : prefix.toLowerCase(Locale.ROOT);
-        return options.stream().filter(x -> x.startsWith(p)).toList();
-    }
-
-    private final class ArtifactBridgeAdapter {
-        private CopiMineEconomyCore.ArtifactsBridge resolveBridge() {
-            Plugin plugin = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
-            if (!(plugin instanceof CopiMineEconomyCore main) || !plugin.isEnabled()) return null;
+         this.runSync(() -> {
             try {
-                return main.artifactsBridge();
-            } catch (Exception e) {
-                if (bridgeWarned.compareAndSet(false, true)) {
-                    getLogger().warning("Artifacts bridge is unavailable: " + safeErr(e));
-                }
-                return null;
+               this.applyProtectedBlockVisualRepairs(var1, var2, var3, var4, var8);
+            } catch (Exception var7x) {
+               this.getLogger().log(Level.WARNING, "Artifact shop visual apply failed", (Throwable)var7x);
             }
-        }
+         });
+      } finally {
+         this.pgPool.release(var5);
+      }
+   }
 
-        boolean isAvailable() {
-            return resolveBridge() != null;
-        }
+   private void applyProtectedBlockVisualRepairs(String var1, int var2, int var3, List<CopiMineArtifacts.Shop> var4, Map<String, Map<String, Object>> var5) throws Exception {
+      World var6 = Bukkit.getWorld(var1);
+      if (var6 != null && var6.isChunkLoaded(var2, var3)) {
+         for (CopiMineArtifacts.Shop var8 : var4) {
+            // repairProtectedBlockVisual(shop, visuals.getOrDefault(shop.shopId(), Map.of()))
+            this.repairProtectedBlockVisual(var8, var5.getOrDefault(var8.shopId(), Map.of()));
+         }
+      }
+   }
 
-        BridgeHealthSnapshot health(Player player, String context) {
-            CopiMineEconomyCore.ArtifactsBridge bridge = resolveBridge();
-            if (bridge == null) return new BridgeHealthSnapshot(false, false, false, 0L, context, "BRIDGE_UNAVAILABLE");
+   private void repairProtectedBlockVisual(CopiMineArtifacts.Shop var1, Map<String, Object> var2) throws Exception {
+      World var3 = Bukkit.getWorld(var1.world());
+      if (var3 != null) {
+         Location var4 = new Location(var3, (double)var1.x(), (double)var1.y(), (double)var1.z());
+         String var5 = this.first(String.valueOf(var2.getOrDefault("entity_uuid", "")), "");
+         Entity var6 = null;
+         if (!var5.isBlank()) {
             try {
-                CopiMineEconomyCore.Health value = bridge.health(player == null ? null : player.getUniqueId(), context);
-                return new BridgeHealthSnapshot(value.bridgeReady, value.postgresReady, value.pinReady, value.balance, value.context, value.lastError);
-            } catch (Exception e) {
-                return new BridgeHealthSnapshot(false, false, false, 0L, context, safeErr(e));
+               var6 = Bukkit.getEntity(UUID.fromString(var5));
+            } catch (Exception var8) {
             }
-        }
+         }
 
-        BridgePinStatus pinStatus(Player player) {
-            CopiMineEconomyCore.ArtifactsBridge bridge = resolveBridge();
-            if (bridge == null) return new BridgePinStatus(false, false, 0L);
+         boolean var7 = this.isOwnedProtectedVisualEntity(var6, "ARTIFACT_SHOP", var1.shopId(), "artifact_shop_marker", 14004);
+         this.cleanupNearbyProtectedVisualDuplicates(var4, "ARTIFACT_SHOP", var1.shopId(), var7 ? var6.getUniqueId().toString() : "");
+         if (!var7) {
+            this.spawnOrReplaceProtectedBlockVisual(var4, "ARTIFACT_SHOP", var1.shopId(), Material.PAPER, 14004, "artifact_shop_marker");
+         }
+      }
+   }
+
+   private void cleanupNearbyProtectedVisuals(Location var1, String var2, String var3) {
+      if (var1 != null && var1.getWorld() != null) {
+         for (Entity var5 : var1.getWorld().getNearbyEntities(var1.clone().add(0.5, this.customBlockOffsetY(var2), 0.5), 0.9, 0.9, 0.9)) {
+            this.removeOwnedProtectedVisualEntity(var5, var2, var3);
+         }
+      }
+   }
+
+   private void cleanupNearbyProtectedVisualDuplicates(Location var1, String var2, String var3, String var4) {
+      if (var1 != null && var1.getWorld() != null) {
+         for (Entity var6 : var1.getWorld().getNearbyEntities(var1.clone().add(0.5, this.customBlockOffsetY(var2), 0.5), 0.9, 0.9, 0.9)) {
+            if (this.isOwnedProtectedVisualEntity(var6, var2, var3, "artifact_shop_marker", 14004)
+               && (var4.isBlank() || !var4.equals(var6.getUniqueId().toString()))) {
+               var6.remove();
+            }
+         }
+      }
+   }
+
+   private void removeOwnedProtectedVisualEntity(Entity var1, String var2, String var3) {
+      if (this.isOwnedProtectedVisualEntity(var1, var2, var3, "artifact_shop_marker", 14004)) {
+         var1.remove();
+      }
+   }
+
+   private boolean isOwnedProtectedVisualEntity(Entity var1, String var2, String var3, String var4, int var5) {
+      if (!(var1 instanceof ItemDisplay var6)) {
+         return false;
+      } else {
+         PersistentDataContainer var7 = var6.getPersistentDataContainer();
+         if (!"PROTECTED_BLOCK_VISUAL".equals(var7.get(this.visualEntityTypeKey, PersistentDataType.STRING))) {
+            return false;
+         } else if (!var2.equals(this.first((String)var7.get(this.visualKindKey, PersistentDataType.STRING), ""))) {
+            return false;
+         } else if (!var3.equals(this.first((String)var7.get(this.visualLinkedIdKey, PersistentDataType.STRING), ""))) {
+            return false;
+         } else if (!var4.equals(this.first((String)var7.get(this.visualModelIdKey, PersistentDataType.STRING), ""))) {
+            return false;
+         } else {
+            ItemStack var8 = var6.getItemStack();
+            if (var8 != null && var8.getType() == Material.PAPER) {
+               ItemMeta var9 = var8.getItemMeta();
+               return var9 != null && var9.hasCustomModelData() && var9.getCustomModelData() == var5;
+            } else {
+               return false;
+            }
+         }
+      }
+   }
+
+   private Map<String, Object> fetchProtectedBlockVisualRow(String var1, String var2) throws Exception {
+      Connection var3 = this.pgPool.acquire();
+
+      HashMap var7;
+      try (PreparedStatement var4 = var3.prepareStatement(
+            "SELECT entity_uuid,world,x,y,z FROM protected_block_visuals WHERE kind=? AND linked_id=? AND active=1 ORDER BY updated_at DESC LIMIT 1"
+         )) {
+         var4.setString(1, var1);
+         var4.setString(2, var2);
+
+         try (ResultSet var5 = var4.executeQuery()) {
+            if (!var5.next()) {
+               return Map.of();
+            }
+
+            HashMap var19 = new HashMap();
+            var19.put("entity_uuid", var5.getString("entity_uuid"));
+            var19.put("world", var5.getString("world"));
+            var19.put("x", var5.getInt("x"));
+            var19.put("y", var5.getInt("y"));
+            var19.put("z", var5.getInt("z"));
+            var7 = var19;
+         }
+      } finally {
+         this.pgPool.release(var3);
+      }
+
+      return var7;
+   }
+
+   private Location visualBaseLocation(Map<String, Object> var1) {
+      if (var1 != null && !var1.isEmpty()) {
+         World var2 = Bukkit.getWorld(this.first(String.valueOf(var1.getOrDefault("world", "")), ""));
+         return var2 == null
+            ? null
+            : new Location(
+               var2,
+               (double)this.parseInt(String.valueOf(var1.get("x")), 0),
+               (double)this.parseInt(String.valueOf(var1.get("y")), 0),
+               (double)this.parseInt(String.valueOf(var1.get("z")), 0)
+            );
+      } else {
+         return null;
+      }
+   }
+
+   private void cleanupProtectedBlockVisualEntities(Location var1, String var2, String var3, Map<String, Object> var4) {
+      if (var4 != null && !var4.isEmpty()) {
+         String var5 = this.first(String.valueOf(var4.getOrDefault("entity_uuid", "")), "");
+         if (!var5.isBlank()) {
             try {
-                CopiMineEconomyCore.PinStatus value = bridge.pinStatus(player.getUniqueId());
-                return new BridgePinStatus(value.configured, value.mustChange, value.lockedSeconds);
-            } catch (Exception e) {
-                return new BridgePinStatus(false, false, 0L);
+               this.removeOwnedProtectedVisualEntity(Bukkit.getEntity(UUID.fromString(var5)), var2, var3);
+            } catch (Exception var7) {
             }
-        }
+         }
+      }
 
-        BridgeTxnResult charge(Player player, long amount, String pin, String idempotencyKey, String action, String details) {
-            return invokeTxn("charge", player, amount, pin, idempotencyKey, action, details);
-        }
+      if (var1 != null) {
+         this.cleanupNearbyProtectedVisuals(var1, var2, var3);
+      }
+   }
 
-        BridgeTxnResult refund(Player player, long amount, String idempotencyKey, String action, String details) {
-            return invokeTxn("refund", player, amount, "", idempotencyKey, action, details);
-        }
-
-        private BridgeTxnResult invokeTxn(String method, Player player, long amount, String pin, String idempotencyKey, String action, String details) {
-            CopiMineEconomyCore.ArtifactsBridge bridge = resolveBridge();
-            if (bridge == null) return new BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+   private void markProtectedBlockVisualInactive(String var1, String var2) {
+      this.runAsync(
+         () -> {
             try {
-                CopiMineEconomyCore.TxnResult value;
-                if ("charge".equals(method)) {
-                    value = bridge.charge(player.getUniqueId(), player.getName(), amount, pin, idempotencyKey, action, details);
-                } else {
-                    value = bridge.refund(player.getUniqueId(), player.getName(), amount, idempotencyKey, action, details);
-                }
-                return new BridgeTxnResult(value.ok, value.code, value.message, value.balanceAfter, value.txId);
-            } catch (Exception e) {
-                return new BridgeTxnResult(false, "BRIDGE_ERROR", safeErr(e), 0L, "");
+               Connection var3 = this.pgPool.acquire();
+
+               try (PreparedStatement var4 = var3.prepareStatement(
+                     "UPDATE protected_block_visuals SET active=0,updated_at=? WHERE kind=? AND linked_id=? AND active=1"
+                  )) {
+                  var4.setLong(1, this.now());
+                  var4.setString(2, var1);
+                  var4.setString(3, var2);
+                  var4.executeUpdate();
+               } finally {
+                  this.pgPool.release(var3);
+               }
+            } catch (Exception var15) {
+               this.getLogger().log(Level.WARNING, "Artifact visual deactivate failed", (Throwable)var15);
             }
-        }
-    }
+         }
+      );
+   }
+
+   private void saveProtectedBlockVisualAsync(Location var1, String var2, String var3, Material var4, int var5, String var6, String var7) {
+      String var8 = "pbv-" + UUID.randomUUID();
+      long var9 = this.now();
+      double var11 = this.customBlockOffsetY(var2);
+      double var13 = this.customBlockScale(var2);
+      this.runAsync(
+         () -> {
+            try {
+               Connection var15 = this.pgPool.acquire();
+
+               try (
+                  PreparedStatement var16 = var15.prepareStatement("DELETE FROM protected_block_visuals WHERE kind=? AND linked_id=?");
+                  PreparedStatement var17 = var15.prepareStatement(
+                     "    INSERT INTO protected_block_visuals(\n        id,kind,linked_id,world,x,y,z,entity_uuid,base_material,custom_model_data,model_id,\n        offset_x,offset_y,offset_z,scale_x,scale_y,scale_z,yaw,pitch,created_at,updated_at,active\n    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)\n"
+                  );
+               ) {
+                  var16.setString(1, var2);
+                  var16.setString(2, var3);
+                  var16.executeUpdate();
+                  var17.setString(1, var8);
+                  var17.setString(2, var2);
+                  var17.setString(3, var3);
+                  var17.setString(4, var1.getWorld().getName());
+                  var17.setInt(5, var1.getBlockX());
+                  var17.setInt(6, var1.getBlockY());
+                  var17.setInt(7, var1.getBlockZ());
+                  var17.setString(8, var7);
+                  var17.setString(9, var4.name());
+                  var17.setInt(10, var5);
+                  var17.setString(11, var6);
+                  var17.setDouble(12, 0.5);
+                  var17.setDouble(13, var11);
+                  var17.setDouble(14, 0.5);
+                  var17.setDouble(15, var13);
+                  var17.setDouble(16, var13);
+                  var17.setDouble(17, var13);
+                  var17.setDouble(18, 0.0);
+                  var17.setDouble(19, 0.0);
+                  var17.setLong(20, var9);
+                  var17.setLong(21, var9);
+                  var17.executeUpdate();
+               } finally {
+                  this.pgPool.release(var15);
+               }
+            } catch (Exception var32) {
+               this.getLogger().log(Level.WARNING, "Artifact visual save failed", (Throwable)var32);
+            }
+         }
+      );
+   }
+
+   private void runAsync(Runnable var1) {
+      this.dbExecutor.submit(var1);
+   }
+
+   private void runSync(Runnable var1) {
+      Bukkit.getScheduler().runTask(this, var1);
+   }
+
+   private String blockKey(Location var1) {
+      return var1.getWorld().getName() + ":" + var1.getBlockX() + ":" + var1.getBlockY() + ":" + var1.getBlockZ();
+   }
+
+   private long now() {
+      return Instant.now().getEpochSecond();
+   }
+
+   private CopiMineArtifacts.Category parseCategory(String var1) {
+      try {
+         return CopiMineArtifacts.Category.valueOf(var1.toUpperCase(Locale.ROOT));
+      } catch (Exception var3) {
+         return CopiMineArtifacts.Category.RP;
+      }
+   }
+
+   private String color(String var1) {
+      return ChatColor.translateAlternateColorCodes('&', var1 == null ? "" : var1);
+   }
+
+   private String strip(String var1) {
+      return ChatColor.stripColor(this.color(var1));
+   }
+
+   private int artifactModelData(String var1) {
+      return ARTIFACT_MODEL_DATA.getOrDefault(var1, 0);
+   }
+
+   private int artifactEffectChance(String var1) {
+      return ARTIFACT_EFFECT_CHANCE.getOrDefault(var1, 100);
+   }
+
+   private String artifactVisualEffect(String var1) {
+      return ARTIFACT_VISUAL_EFFECTS.getOrDefault(var1, "");
+   }
+
+   private int normalizeChance(int var1) {
+      return Math.max(0, Math.min(100, var1));
+   }
+
+   private boolean rollEffectChance(CopiMineArtifacts.CatalogItem var1) {
+      int var2 = this.normalizeChance(var1.effectChancePercent());
+      if (var2 >= 100) {
+         return true;
+      } else {
+         return var2 <= 0 ? false : this.random.nextInt(100) < var2;
+      }
+   }
+
+   private String maskedPin(String var1) {
+      return var1 != null && !var1.isEmpty() ? "*".repeat(var1.length()) : "\u0432\u0402\u045e \u0432\u0402\u045e \u0432\u0402\u045e \u0432\u0402\u045e";
+   }
+
+   private String nice(String var1) {
+      return Arrays.stream(var1.split("_"))
+         .map(var0 -> (CharSequence)(var0.isEmpty() ? var0 : Character.toUpperCase(var0.charAt(0)) + var0.substring(1)))
+         .collect(Collectors.joining(" "));
+   }
+
+   private String shortId(String var1) {
+      return var1 == null ? "" : var1.substring(0, Math.min(8, var1.length()));
+   }
+
+   private int parseInt(String var1, int var2) {
+      try {
+         return Integer.parseInt(var1);
+      } catch (Exception var4) {
+         return var2;
+      }
+   }
+
+   private long parseLong(String var1, long var2) {
+      try {
+         return Long.parseLong(var1);
+      } catch (Exception var5) {
+         return var2;
+      }
+   }
+
+   private double parseDouble(String var1, double var2) {
+      try {
+         return Double.parseDouble(var1);
+      } catch (Exception var5) {
+         return var2;
+      }
+   }
+
+   private boolean parseBoolean(Object var1, boolean var2) {
+      if (var1 == null) {
+         return var2;
+      } else {
+         String var3 = String.valueOf(var1).trim();
+         if (var3.isEmpty()) {
+            return var2;
+         } else if ("true".equalsIgnoreCase(var3) || "yes".equalsIgnoreCase(var3) || "1".equals(var3)) {
+            return true;
+         } else {
+            return !"false".equalsIgnoreCase(var3) && !"no".equalsIgnoreCase(var3) && !"0".equals(var3) ? var2 : false;
+         }
+      }
+   }
+
+   private double clampProcChance(double var1) {
+      return !Double.isNaN(var1) && !Double.isInfinite(var1) ? Math.max(0.0, Math.min(1.0, var1)) : 0.0;
+   }
+
+   private String firstNonBlank(String var1, String var2) {
+      return var1 != null && !var1.isBlank() ? var1 : var2;
+   }
+
+   private String str(Object var1) {
+      return var1 == null ? "" : String.valueOf(var1);
+   }
+
+   private List<String> asStringList(Object var1) {
+      return var1 instanceof List var2 ? var2.stream().map(String::valueOf).toList() : List.of();
+   }
+
+   private String toJson(List<String> var1) {
+      return "[" + var1.stream().map(var0 -> "\"" + var0.replace("\"", "\\\"") + "\"").collect(Collectors.joining(",")) + "]";
+   }
+
+   private String safeErr(Throwable var1) {
+      String var2 = var1.getMessage();
+      return var2 == null ? var1.getClass().getSimpleName() : var2;
+   }
+
+   private String safeBridgeCode(String var1) {
+      if (var1 != null && !var1.isBlank()) {
+         String var2 = var1.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9_\\-]", "_");
+         return var2.length() > 48 ? var2.substring(0, 48) : var2;
+      } else {
+         return "BRIDGE_REJECTED";
+      }
+   }
+
+   private List<String> prefix(List<String> var1, String var2) {
+      String var3 = var2 == null ? "" : var2.toLowerCase(Locale.ROOT);
+      return var1.stream().filter(var1x -> var1x.startsWith(var3)).toList();
+   }
+
+   private final class ArtifactBridgeAdapter {
+      private ArtifactsBridge resolveBridge() {
+         Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
+         if (var1 instanceof CopiMineEconomyCore var2 && var1.isEnabled()) {
+            try {
+               return var2.artifactsBridge();
+            } catch (Exception var4) {
+               if (CopiMineArtifacts.this.bridgeWarned.compareAndSet(false, true)) {
+                  CopiMineArtifacts.this.getLogger().warning("Artifacts bridge is unavailable: " + CopiMineArtifacts.this.safeErr(var4));
+               }
+
+               return null;
+            }
+         }
+
+         return null;
+      }
+
+      boolean isAvailable() {
+         return this.resolveBridge() != null;
+      }
+
+      CopiMineArtifacts.BridgeHealthSnapshot health(Player var1, String var2) {
+         return this.health(var1 == null ? null : var1.getUniqueId(), var2);
+      }
+
+      CopiMineArtifacts.BridgeHealthSnapshot health(UUID var1, String var2) {
+         ArtifactsBridge var3 = this.resolveBridge();
+         if (var3 == null) {
+            return new CopiMineArtifacts.BridgeHealthSnapshot(false, false, false, 0L, var2, "BRIDGE_UNAVAILABLE");
+         } else {
+            try {
+               Health var4 = var3.health(var1, var2);
+               return new CopiMineArtifacts.BridgeHealthSnapshot(
+                  var4.bridgeReady, var4.postgresReady, var4.pinReady, var4.balance, var4.context, var4.lastError
+               );
+            } catch (Exception var5) {
+               return new CopiMineArtifacts.BridgeHealthSnapshot(false, false, false, 0L, var2, CopiMineArtifacts.this.safeErr(var5));
+            }
+         }
+      }
+
+      CopiMineArtifacts.BridgePinStatus pinStatus(Player var1) {
+         ArtifactsBridge var2 = this.resolveBridge();
+         if (var2 == null) {
+            return new CopiMineArtifacts.BridgePinStatus(false, false, 0L);
+         } else {
+            try {
+               PinStatus var3 = var2.pinStatus(var1.getUniqueId());
+               return new CopiMineArtifacts.BridgePinStatus(var3.configured, var3.mustChange, var3.lockedSeconds);
+            } catch (Exception var4) {
+               return new CopiMineArtifacts.BridgePinStatus(false, false, 0L);
+            }
+         }
+      }
+
+      CompletableFuture<CopiMineArtifacts.BridgePinStatus> pinStatusAsync(UUID var1) {
+         ArtifactsBridge var2 = this.resolveBridge();
+         if (var2 == null) {
+            return CompletableFuture.completedFuture(new CopiMineArtifacts.BridgePinStatus(false, false, 0L));
+         } else {
+            try {
+               return var2.pinStatusAsync(var1)
+                  .thenApply(var0 -> new CopiMineArtifacts.BridgePinStatus(var0.configured, var0.mustChange, var0.lockedSeconds))
+                  .exceptionally(var0 -> new CopiMineArtifacts.BridgePinStatus(false, false, 0L));
+            } catch (Exception var4) {
+               return CompletableFuture.completedFuture(new CopiMineArtifacts.BridgePinStatus(false, false, 0L));
+            }
+         }
+      }
+
+      CopiMineArtifacts.BridgeTxnResult charge(Player var1, long var2, String var4, String var5, String var6, String var7) {
+         return this.invokeTxn("charge", var1, var2, var4, var5, var6, var7);
+      }
+
+      CopiMineArtifacts.BridgeTxnResult refund(Player var1, long var2, String var4, String var5, String var6) {
+         return this.invokeTxn("refund", var1, var2, "", var4, var5, var6);
+      }
+
+      CopiMineArtifacts.BridgeTxnResult credit(UUID var1, String var2, long var3, String var5, String var6, String var7) {
+         ArtifactsBridge var8 = this.resolveBridge();
+         if (var8 == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         } else {
+            try {
+               TxnResult var9 = var8.credit(var1, var2, var3, var5, var6, var7);
+               return new CopiMineArtifacts.BridgeTxnResult(var9.ok, var9.code, var9.message, var9.balanceAfter, var9.txId);
+            } catch (Exception var10) {
+               return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(var10), 0L, "");
+            }
+         }
+      }
+
+      CopiMineArtifacts.BridgeTxnResult creditAccount(String var1, String var2, String var3, long var4, String var6, String var7, String var8) {
+         ArtifactsBridge var9 = this.resolveBridge();
+         if (var9 == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         } else {
+            try {
+               TxnResult var10 = var9.creditAccount(var1, var2, var3, var4, var6, var7, var8);
+               return new CopiMineArtifacts.BridgeTxnResult(var10.ok, var10.code, var10.message, var10.balanceAfter, var10.txId);
+            } catch (Exception var11) {
+               return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(var11), 0L, "");
+            }
+         }
+      }
+
+      CopiMineArtifacts.BridgeTxnResult transferToAccount(Player var1, String var2, String var3, String var4, String var5, long var6, String var8, String var9, String var10) {
+         ArtifactsBridge var11 = this.resolveBridge();
+         if (var11 == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         } else {
+            try {
+               TxnResult var12 = var11.transferToAccount(var1.getUniqueId(), var1.getName(), var2, var3, var4, var5, var6, var8, var9, var10);
+               return new CopiMineArtifacts.BridgeTxnResult(var12.ok, var12.code, var12.message, var12.balanceAfter, var12.txId);
+            } catch (Exception var13) {
+               return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(var13), 0L, "");
+            }
+         }
+      }
+
+      CopiMineArtifacts.BridgeTxnResult transferFromAccount(String var1, String var2, String var3, UUID var4, String var5, long var6, String var8, String var9, String var10) {
+         ArtifactsBridge var11 = this.resolveBridge();
+         if (var11 == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         } else {
+            try {
+               TxnResult var12 = var11.transferFromAccount(var1, var2, var3, var4, var5, var6, var8, var9, var10);
+               return new CopiMineArtifacts.BridgeTxnResult(var12.ok, var12.code, var12.message, var12.balanceAfter, var12.txId);
+            } catch (Exception var13) {
+               return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(var13), 0L, "");
+            }
+         }
+      }
+
+      private CopiMineArtifacts.BridgeTxnResult invokeTxn(String var1, Player var2, long var3, String var5, String var6, String var7, String var8) {
+         ArtifactsBridge var9 = this.resolveBridge();
+         if (var9 == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         } else {
+            try {
+               TxnResult var10;
+               if ("charge".equals(var1)) {
+                  var10 = var9.charge(var2.getUniqueId(), var2.getName(), var3, var5, var6, var7, var8);
+               } else {
+                  var10 = var9.refund(var2.getUniqueId(), var2.getName(), var3, var6, var7, var8);
+               }
+
+               return new CopiMineArtifacts.BridgeTxnResult(var10.ok, var10.code, var10.message, var10.balanceAfter, var10.txId);
+            } catch (Exception var11) {
+               return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(var11), 0L, "");
+            }
+         }
+      }
+   }
+
+   private static record BridgeHealthSnapshot(boolean bridgeReady, boolean postgresReady, boolean pinReady, long balance, String context, String lastError) {
+   }
+
+   private static record BridgePinStatus(boolean configured, boolean mustChange, long lockedSeconds) {
+   }
+
+   private static record BridgeTxnResult(boolean ok, String code, String message, long balanceAfter, String txId) {
+   }
+
+   private static record CatalogItem(
+      String itemId,
+      CopiMineArtifacts.Category category,
+      Material material,
+      String name,
+      String rarity,
+      long priceAr,
+      int supplyLimit,
+      int perPlayerLimit,
+      int cooldownSeconds,
+      String effect,
+      int customModelData,
+      int effectChancePercent,
+      String visualEffectId,
+      List<String> lore
+   ) {
+   }
+
+   private static enum Category {
+      WEAPON,
+      ARMOR,
+      TOOL,
+      RP;
+   }
+
+   private static record DeliveringInstanceRow(String uniqueItemId, String purchaseId, String itemId) {
+   }
+
+   private static record DonationCatalogItem(
+      String itemId,
+      String displayName,
+      Material baseMaterial,
+      long priceDonation,
+      boolean enabled,
+      String source,
+      boolean ownerBound,
+      String reclaimPolicy,
+      String consumePolicy,
+      String effectProfileId,
+      String effectDescription,
+      int cooldownSeconds,
+      double procChance,
+      int maxStack,
+      boolean repairable,
+      boolean customTextureModeAllowed,
+      int customModelData,
+      String visualEffectId,
+      List<String> lore
+   ) {
+   }
+
+   private static record DonationClaimRow(String claimId, String purchaseId, String itemId, long amount, String status) {
+   }
+
+   private static record DonationDeliveryContext(String purchaseId, CopiMineArtifacts.CatalogItem item, List<String> uniqueItemIds) {
+   }
+
+   private static record DonationLossJournalEntry(long createdAt, String ownerUuid, String uniqueItemId, String itemId, String reason) {
+   }
+
+   private static record DonationOwnershipSnapshot(
+      Set<String> activeItemIds,
+      Set<String> claimableItemIds,
+      Set<String> reclaimableItemIds,
+      List<CopiMineArtifacts.ReclaimableDonationRow> reclaimableRows,
+      int claimPendingCount
+   ) {
+   }
+
+   private static record DonationReclaimContext(String oldUniqueItemId, String newUniqueItemId, String purchaseId, String itemId) {
+   }
+
+   private static final class MenuHolder implements InventoryHolder {
+      final UUID sessionId;
+      final UUID playerUuid;
+      final String shopId;
+      final CopiMineArtifacts.ViewType viewType;
+      final String category;
+      final String itemId;
+      final int page;
+      private Inventory inventory;
+
+      MenuHolder(CopiMineArtifacts.SessionState var1, UUID var2) {
+         this.sessionId = var1.sessionId;
+         this.playerUuid = var2;
+         this.shopId = var1.shopId == null ? "" : var1.shopId;
+         this.viewType = var1.viewType;
+         this.category = var1.currentCategory == null ? "" : var1.currentCategory;
+         this.itemId = var1.currentItemId == null ? "" : var1.currentItemId;
+         this.page = var1.page;
+      }
+
+      void setInventory(Inventory var1) {
+         this.inventory = var1;
+      }
+
+      public Inventory getInventory() {
+         return this.inventory;
+      }
+   }
+
+   private static record OfficialDonationRef(String uniqueItemId, String itemId, UUID ownerUuid, String purchaseId) {
+   }
+
+   private static record OfficialInstanceBinding(String itemId, String ownerUuid) {
+   }
+
+   private static record PendingDeliveryRow(String deliveryId, String purchaseId, String uniqueItemId, String itemId) {
+   }
+
+   private static final class PgPool {
+      private final CopiMineArtifacts.PgSettings settings;
+      private final Deque<Connection> idle = new ArrayDeque<>();
+      private final int max;
+      private int total;
+
+      PgPool(CopiMineArtifacts.PgSettings var1, int var2) {
+         this.settings = var1;
+         this.max = Math.max(2, var2);
+      }
+
+      synchronized Connection acquire() throws SQLException {
+         long deadline = System.currentTimeMillis() + 1500L;
+
+         while (true) {
+            while (this.idle.isEmpty()) {
+               if (this.total < this.max) {
+                  this.total++;
+                  Connection var7 = DriverManager.getConnection(this.settings.jdbcUrl(), this.settings.user, this.settings.password);
+                  var7.setAutoCommit(true);
+                  return var7;
+               }
+
+               long remaining = deadline - System.currentTimeMillis();
+               if (remaining <= 0L) {
+                  throw new SQLException("Artifact PostgreSQL pool timed out while waiting for a free connection.");
+               }
+
+               try {
+                  this.wait(Math.min(remaining, 250L));
+               } catch (InterruptedException var6) {
+                  Thread.currentThread().interrupt();
+                  throw new SQLException("Artifact PostgreSQL pool wait interrupted.", var6);
+               }
+            }
+
+            Connection var8 = this.idle.pop();
+            if (var8 != null && !var8.isClosed()) {
+               return var8;
+            }
+
+            this.total--;
+         }
+      }
+
+      synchronized void release(Connection var1) {
+         if (var1 != null) {
+            try {
+               if (var1.isClosed()) {
+                  this.total--;
+               } else {
+                  this.idle.push(var1);
+               }
+            } catch (SQLException var3) {
+               this.total--;
+            }
+
+            this.notifyAll();
+         }
+      }
+
+      synchronized void close() {
+         for (Connection var2 : this.idle) {
+            try {
+               var2.close();
+            } catch (SQLException var4) {
+            }
+         }
+
+         this.idle.clear();
+         this.total = 0;
+      }
+   }
+
+   private static final class PgSettings {
+      final String host;
+      final int port;
+      final String db;
+      final String schema;
+      final String user;
+      final String password;
+
+      PgSettings(String var1, int var2, String var3, String var4, String var5, String var6) {
+         this.host = var1;
+         this.port = var2;
+         this.db = var3;
+         this.schema = var4;
+         this.user = var5;
+         this.password = var6;
+      }
+
+      String jdbcUrl() {
+         return "jdbc:postgresql://" + this.host + ":" + this.port + "/" + this.db + "?currentSchema=" + this.schema;
+      }
+   }
+
+   private static record PurchaseContext(
+      String purchaseId,
+      String uniqueItemId,
+      CopiMineArtifacts.CatalogItem item,
+      CopiMineArtifacts.Shop shop,
+      String pin,
+      CopiMineArtifacts.ShopRevenueRecipient revenueRecipient
+   ) {
+   }
+
+   private static record ShopRevenueRecipient(UUID presidentUuid, String presidentName, String termId, String budgetAccountId) {
+   }
+
+   private static record ReclaimableDonationRow(String uniqueItemId, String purchaseId, String itemId, long updatedAt) {
+   }
+
+   private static final class SessionState {
+      UUID sessionId = UUID.randomUUID();
+      String shopId = "";
+      CopiMineArtifacts.ViewType viewType = CopiMineArtifacts.ViewType.MAIN;
+      String currentCategory = "";
+      String currentItemId = "";
+      int page = 0;
+      String pinBuffer = "";
+      String purchaseInFlightId = "";
+      long lastClickAt = 0L;
+      long lastActionAt = 0L;
+      final Map<Integer, String> actions = new HashMap<>();
+   }
+
+   private static record Shop(String shopId, String title, String world, int x, int y, int z, boolean enabled) {
+      String locationKey() {
+         return this.world + ":" + this.x + ":" + this.y + ":" + this.z;
+      }
+   }
+
+   private static enum ViewType {
+      MAIN,
+      CATEGORY,
+      DETAIL,
+      CONFIRM,
+      PIN,
+      PURCHASES,
+      PENDING_DELIVERY,
+      HELP,
+      REPAIR,
+      SUCCESS,
+      ERROR,
+      DONATION_ROOT,
+      DONATION_BALANCE,
+      DONATION_CATALOG,
+      DONATION_OWNED,
+      DONATION_RECLAIM,
+      ADMIN_MAIN,
+      ADMIN_SHOPS,
+      ADMIN_CATALOG,
+      ADMIN_DIAGNOSTICS;
+   }
+
+   private static final class VisualEffectService {
+      private final JavaPlugin plugin;
+
+      VisualEffectService(JavaPlugin var1) {
+         this.plugin = var1;
+      }
+
+      void applyTo(LivingEntity var1, String var2, int var3) {
+         if (var1 != null && var2 != null && !var2.isBlank()) {
+            int var4 = Math.max(20, var3 * 20);
+            Location var5 = var1.getLocation().add(0.0, 1.0, 0.0);
+            World var6 = var5.getWorld();
+            if (var6 != null) {
+               String var7 = var2.toUpperCase(Locale.ROOT);
+               switch (var7) {
+                  case "INVERTED_SCREEN":
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, var4, 0, false, false, true));
+                     if (var1 instanceof Player var9) {
+                        var9.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, Math.min(var4, 80), 0, false, false, true));
+                     }
+
+                     var6.spawnParticle(Particle.REVERSE_PORTAL, var5, 24, 0.45, 0.45, 0.45, 0.02);
+                     break;
+                  case "DARK_PULSE":
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, Math.min(var4, 160), 0, false, false, true));
+                     var6.spawnParticle(Particle.SMOKE, var5, 18, 0.4, 0.3, 0.4, 0.03);
+                     break;
+                  case "MOON_GLOW":
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, var4, 0, false, false, true));
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, var4, 0, false, false, true));
+                     var6.spawnParticle(Particle.END_ROD, var5, 22, 0.4, 0.5, 0.4, 0.01);
+                     break;
+                  case "AMBER_WARP":
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, var4, 0, false, false, true));
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, var4, 0, false, false, true));
+                     var6.spawnParticle(Particle.WAX_ON, var5, 24, 0.45, 0.45, 0.45, 0.02);
+                     break;
+                  case "COLD_FOG":
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, var4, 0, false, false, true));
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, var4, 0, false, false, true));
+                     var6.spawnParticle(Particle.CLOUD, var5, 26, 0.55, 0.35, 0.55, 0.02);
+                     break;
+                  case "PIXEL_WAVE":
+                     var6.spawnParticle(Particle.WAX_OFF, var5, 20, 0.4, 0.4, 0.4, 0.01);
+                     break;
+                  case "CHROMATIC_SHIFT":
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, Math.min(var4, 240), 0, false, false, true));
+                     var6.spawnParticle(Particle.ENTITY_EFFECT, var5, 20, 0.4, 0.4, 0.4, 1.0);
+                     break;
+                  case "STATIC_NOISE":
+                     var6.spawnParticle(Particle.ASH, var5, 18, 0.4, 0.5, 0.4, 0.02);
+                     break;
+                  case "TUNNEL_VISION":
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, Math.min(var4, 60), 0, false, false, true));
+                     var1.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, Math.min(var4, 120), 0, false, false, true));
+                     var6.spawnParticle(Particle.TRIAL_OMEN, var5, 16, 0.25, 0.25, 0.25, 0.0);
+                     break;
+                  default:
+                     this.plugin.getLogger().fine("Unknown visual effect id: " + var2);
+               }
+            }
+         }
+      }
+   }
 }

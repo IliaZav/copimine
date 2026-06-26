@@ -31,9 +31,15 @@ if (-not $sources) {
 Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
 javac -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
+if ($LASTEXITCODE -ne 0) {
+  throw "javac failed for CopiMineEconomyCore with exit code $LASTEXITCODE."
+}
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
 jar --create --file $jar -C $classes .
+if ($LASTEXITCODE -ne 0) {
+  throw "jar packaging failed for CopiMineEconomyCore with exit code $LASTEXITCODE."
+}
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 Write-Host "Built $jar"
 Write-Host "Copied $serverJar"

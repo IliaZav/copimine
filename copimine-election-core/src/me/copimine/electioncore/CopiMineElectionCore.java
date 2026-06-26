@@ -90,6 +90,7 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -319,11 +320,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return;
             }
             if (isChairForStation(player, station)) {
-                if (!hasUsableActiveSeal(player, protectedInfo.linkedId())) {
-                    issueOrRefreshSeal(player, protectedInfo.linkedId(), player.getName(), true);
-                    player.sendMessage(color("&aПечать ЦИК выдана."));
-                    return;
-                }
                 openChairStationMenu(player, protectedInfo.linkedId(), 0);
                 return;
             }
@@ -725,29 +721,28 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("apply:tax:set:")) {
-            int amount = parseInt(action.substring("apply:tax:set:".length()), 0);
-            setPresidentTax(player.getName(), amount);
-            refreshSnapshotAndPush();
+            player.sendMessage(color("&eПрезидентский налог отключён. Доход президента теперь идёт из лавки AR."));
             openPresidentAdminMenu(player);
             return;
         }
         if (action.equals("apply:tax:create-office")) {
-            createTaxOfficeFromTarget(player);
-            refreshSnapshotAndPush();
+            player.sendMessage(color("&eНалоговая отключена. Создание новых налоговых больше недоступно."));
             openPresidentAdminMenu(player);
             return;
         }
         if (action.startsWith("apply:mandate:tax:")) {
-            int amount = parseInt(action.substring("apply:mandate:tax:".length()), 0);
-            setPresidentTax(player.getName(), amount);
-            refreshSnapshotAndPush();
+            player.sendMessage(color("&eПрезидентский налог отключён. Доход президента теперь идёт из лавки AR."));
             openPresidentMandateMenu(player);
             return;
         }
         if (action.startsWith("apply:chair:annul-ballot:")) {
-            annulBallot(action.substring("apply:chair:annul-ballot:".length()), player.getName(), "chair-gui");
-            refreshSnapshotAndPush();
-            openChairBallotsMenu(player, holder.contextId(), 0);
+            String payload = action.substring("apply:chair:annul-ballot:".length());
+            int marker = payload.indexOf(':');
+            if (marker > 0) {
+                annulBallot(payload.substring(marker + 1), payload.substring(0, marker), player, "chair-gui");
+                refreshSnapshotAndPush();
+                openChairBallotsMenu(player, holder.contextId(), 0);
+            }
             return;
         }
         if (action.startsWith("apply:vote:confirm:")) {
@@ -974,18 +969,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("tax:set:")) {
-            int amount = parseInt(action.substring("tax:set:".length()), 0);
-            openConfirmationMenu(player, "&6Установить налог", List.of(
-                    "&7Новый размер налога: &f" + Math.max(0, Math.min(50, amount)) + " AR",
-                    "&7Игроки смогут платить его частями."
-            ), "apply:tax:set:" + amount, "open:president");
+            player.sendMessage(color("&e\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d. \u0414\u043e\u0445\u043e\u0434 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u0438\u0434\u0451\u0442 \u0438\u0437 \u043b\u0430\u0432\u043a\u0438 AR."));
+            openPresidentAdminMenu(player);
             return;
         }
         if (action.equals("tax:create-office")) {
-            openConfirmationMenu(player, "&6Создать налоговую", List.of(
-                    "&7Налоговая появится на выбранном блоке.",
-                    "&7Блок сразу получит защиту."
-            ), "apply:tax:create-office", "open:president");
+            player.sendMessage(color("&e\u041d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u043d\u043e\u0432\u044b\u0445 \u043d\u0430\u043b\u043e\u0433\u043e\u0432\u044b\u0445 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e."));
+            openPresidentAdminMenu(player);
             return;
         }
         if (action.equals("live:refresh")) {
@@ -1035,12 +1025,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             openChairStationMenu(player, action.substring("chair:station:".length()), 0);
             return;
         }
+        if (action.startsWith("chair:issue-seal:")) {
+            String stationId = action.substring("chair:issue-seal:".length());
+            requireChairAccess(player, stationId);
+            issueOrRefreshSeal(player, stationId, player.getName(), true);
+            player.sendMessage(color("&aПечать ЦИК обновлена и снова привязана к тебе."));
+            openChairStationMenu(player, stationId, 0);
+            return;
+        }
         if (action.startsWith("chair:annul-ballot:")) {
             String ballotId = action.substring("chair:annul-ballot:".length());
             openConfirmationMenu(player, "&cАннулировать бюллетень", List.of(
                     "&7Старый бюллетень больше не сможет быть сдан в участок.",
                     "&7После этого председатель сможет выдать новый бюллетень."
-            ), "apply:chair:annul-ballot:" + ballotId, "chair:ballots:" + holder.contextId() + ":0");
+            ), "apply:chair:annul-ballot:" + holder.contextId() + ":" + ballotId, "chair:ballots:" + holder.contextId() + ":0");
             return;
         }
         if (action.startsWith("vote:confirm:")) {
@@ -1100,12 +1098,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("taxpay:cash:")) {
-            String taxId = action.substring("taxpay:cash:".length());
-            payTaxWithInventory(player, taxId, Long.MAX_VALUE);
+            openTaxOfficeMenu(player, action.substring("taxpay:cash:".length()), "", null);
             return;
         }
         if (action.startsWith("taxpin:")) {
-            handleTaxPinAction(player, action, holder);
+            openTaxOfficeMenu(player, holder.contextId(), "", null);
             return;
         }
     }
@@ -1360,7 +1357,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             setButton(holder, slots[i], Material.BOOK, "&f" + first(string(row.get("player_name")), "Игрок"), List.of(
                     "&7Участок: &f" + shortId(string(row.get("station_id"))),
                     "&7ЦИК: &f" + humanRecommendation(string(row.get("chair_recommendation"))),
-                    "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
+                    "&7Админ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
                     "&7Нажми, чтобы открыть."
             ), "application:view:" + id);
         }
@@ -1380,7 +1377,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         setStatic(inv, 4, infoItem(Material.BOOK, "&f" + first(string(app.get("player_name")), "Игрок"), List.of(
                 "&7Участок: &f" + shortId(string(app.get("station_id"))),
                 "&7ЦИК: &f" + humanRecommendation(string(app.get("chair_recommendation"))),
-                "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
+                "&7Админ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
                 "&7Сдана: &f" + formatTs(longValue(app.get("submitted_at")))
         )));
         setButton(holder, 20, Material.WRITTEN_BOOK, "&eОткрыть книгу", List.of("&7Посмотреть ответы кандидата."), "vote:view-program:" + applicationId);
@@ -1422,74 +1419,68 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void openPresidentAdminMenu(Player player) {
         LiveSnapshot snap = snapshot.get();
         MenuHolder holder = new MenuHolder("president-admin", "");
-        Inventory inv = holder.create(54, color("&dПрезидент"));
-        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
-                "&7Текущий: &f" + first(snap.presidentName(), "нет"),
-                "&7Срок: &f" + snap.termDays() + " дн.",
-                "&7Активных законов: &f" + snap.laws().size(),
-                "&7Налог: &f" + snap.taxAmount() + " AR"
+        Inventory inv = holder.create(54, color("&d\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442"));
+        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&f\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442", List.of(
+                "&7\u0422\u0435\u043a\u0443\u0449\u0438\u0439: &f" + first(snap.presidentName(), "\u043d\u0435\u0442"),
+                "&7\u0421\u0440\u043e\u043a: &f" + snap.termDays() + " \u0434\u043d.",
+                "&7\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u0437\u0430\u043a\u043e\u043d\u043e\u0432: &f" + snap.laws().size(),
+                "&7\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u0434\u043e\u0445\u043e\u0434\u0430: &fAR-\u043b\u0430\u0432\u043a\u0430 CopiMine"
         )));
-        setButton(holder, 10, Material.BOOK, "&eОткрыть мандат президента", List.of("&7Открыть интерфейс президента."), "president:open-mandate");
-        setButton(holder, 12, Material.BARRIER, "&cСнять президента", List.of("&7Прервать текущий президентский срок."), "president:remove");
-        setButton(holder, 14, Material.EMERALD_BLOCK, "&aСоздать налоговую", List.of("&7Смотри на блок и нажми кнопку."), "tax:create-office");
+        setButton(holder, 10, Material.BOOK, "&e\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0430\u043d\u0434\u0430\u0442 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430", List.of("&7\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430."), "president:open-mandate");
+        setButton(holder, 12, Material.BARRIER, "&c\u0421\u043d\u044f\u0442\u044c \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430", List.of("&7\u041f\u0440\u0435\u0440\u0432\u0430\u0442\u044c \u0442\u0435\u043a\u0443\u0449\u0438\u0439 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u0441\u0440\u043e\u043a."), "president:remove");
+        setStatic(inv, 14, infoItem(Material.GOLD_INGOT, "&6\u041d\u0430\u043b\u043e\u0433\u0438 \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u044b", List.of("&7\u0414\u043e\u0445\u043e\u0434 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u0438\u0434\u0451\u0442", "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0447\u0435\u0440\u0435\u0437 AR-\u043b\u0430\u0432\u043a\u0443.")));
         int lawSlot = 19;
         for (Map<String, Object> law : pendingLaws()) {
             String lawId = string(law.get("id"));
             int slot = lawSlot++;
             setButton(holder, slot, Material.PAPER, "&f" + shortText(string(law.get("text")), 40), List.of(
-                    "&7Президент: &f" + first(string(law.get("president_uuid")), "—"),
-                    "&7Статус: &f" + string(law.get("status")),
-                    "&7ЛКМ: одобрить",
-                    "&7ПКМ: отклонить"
+                    "&7\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442: &f" + first(string(law.get("president_uuid")), "\u2014"),
+                    "&7\u0421\u0442\u0430\u0442\u0443\u0441: &f" + string(law.get("status")),
+                    "&7\u041b\u041a\u041c: \u043e\u0434\u043e\u0431\u0440\u0438\u0442\u044c",
+                    "&7\u041f\u041a\u041c: \u043e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c"
             ), "law:approve:" + lawId);
             holder.rightActions().put(slot, "law:reject:" + lawId);
         }
-        int taxSlot = 37;
-        for (int value : List.of(0, 5, 10, 15, 20, 25, 30, 40, 50)) {
-            setButton(holder, taxSlot++, Material.GOLD_NUGGET, "&f" + value + " AR", List.of("&7Установить еженедельный налог."), "tax:set:" + value);
-        }
-        setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:root");
+        setButton(holder, 40, Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0437\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443", "&7\u043e\u0442 AR-\u043b\u0430\u0432\u043a\u0438 CopiMine."), "mandate:payments");
+        setButton(holder, 49, Material.ARROW, "&a\u041d\u0430\u0437\u0430\u0434", List.of("&7\u041a \u0440\u0430\u0437\u0434\u0435\u043b\u0443 \u0432\u044b\u0431\u043e\u0440\u043e\u0432."), "open:root");
         player.openInventory(inv);
     }
 
     private void openPresidentMandateMenu(Player player) {
         LiveSnapshot snap = snapshot.get();
         MenuHolder holder = new MenuHolder("president-mandate", "");
-        Inventory inv = holder.create(45, color("&dМандат президента"));
-        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
-                "&7Действующий президент: &f" + first(snap.presidentName(), "нет"),
-                "&7Законов: &f" + snap.laws().size(),
-                "&7Налог: &f" + snap.taxAmount() + " AR"
+        Inventory inv = holder.create(45, color("&d\u041c\u0430\u043d\u0434\u0430\u0442 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430"));
+        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&f\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442", List.of(
+                "&7\u0414\u0435\u0439\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442: &f" + first(snap.presidentName(), "\u043d\u0435\u0442"),
+                "&7\u0417\u0430\u043a\u043e\u043d\u043e\u0432: &f" + snap.laws().size(),
+                "&7\u0414\u043e\u0445\u043e\u0434: &fAR-\u043b\u0430\u0432\u043a\u0430 CopiMine"
         )));
-        setButton(holder, 10, Material.BOOK, "&eПредложить закон", List.of("&7Текст будет отправлен на проверку администрации."), "mandate:law");
+        setButton(holder, 10, Material.BOOK, "&e\u041f\u0440\u0435\u0434\u043b\u043e\u0436\u0438\u0442\u044c \u0437\u0430\u043a\u043e\u043d", List.of("&7\u0422\u0435\u043a\u0441\u0442 \u0431\u0443\u0434\u0435\u0442 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043d\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0443 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438."), "mandate:law");
         int replaceSlot = 11;
         for (Map<String, Object> law : publishedLaws()) {
-            setButton(holder, replaceSlot++, Material.PAPER, "&fЗаменить: " + shortText(string(law.get("text")), 22), List.of("&7Замена доступна не чаще раза в 3 дня."), "mandate:replace-law:" + string(law.get("id")));
+            setButton(holder, replaceSlot++, Material.PAPER, "&f\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c: " + shortText(string(law.get("text")), 22), List.of("&7\u0417\u0430\u043c\u0435\u043d\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u043d\u0435 \u0447\u0430\u0449\u0435 \u0440\u0430\u0437\u0430 \u0432 3 \u0434\u043d\u044f."), "mandate:replace-law:" + string(law.get("id")));
         }
-        setButton(holder, 19, Material.PAPER, "&eОбращение в чат", List.of("&7Отправить игрокам через чат."), "mandate:broadcast:chat");
-        setButton(holder, 20, Material.BELL, "&eОбращение на экран", List.of("&7Показать игрокам на экране."), "mandate:broadcast:title");
-        setButton(holder, 21, Material.CLOCK, "&eОбращение в ActionBar", List.of("&7Показать сообщение в action bar."), "mandate:broadcast:actionbar");
-        int taxSlot = 28;
-        for (int value : List.of(0, 5, 10, 15, 20, 25, 30, 40, 50)) {
-            setButton(holder, taxSlot++, Material.GOLD_NUGGET, "&fНалог " + value + " AR", List.of("&7Установить размер еженедельного налога."), "mandate:tax:" + value);
-        }
-        setButton(holder, 40, Material.BOOKSHELF, "&aОплаты налога", List.of("&7Кто оплатил и кто ещё должен."), "mandate:payments");
-        setButton(holder, 44, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
+        setButton(holder, 19, Material.PAPER, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 \u0447\u0430\u0442", List.of("&7\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0438\u0433\u0440\u043e\u043a\u0430\u043c \u0447\u0435\u0440\u0435\u0437 \u0447\u0430\u0442."), "mandate:broadcast:chat");
+        setButton(holder, 20, Material.BELL, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u043d\u0430 \u044d\u043a\u0440\u0430\u043d", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0438\u0433\u0440\u043e\u043a\u0430\u043c \u043d\u0430 \u044d\u043a\u0440\u0430\u043d\u0435."), "mandate:broadcast:title");
+        setButton(holder, 21, Material.CLOCK, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 ActionBar", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0432 action bar."), "mandate:broadcast:actionbar");
+        setStatic(inv, 31, infoItem(Material.GOLD_INGOT, "&6\u041d\u0430\u043b\u043e\u0433\u0438 \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u044b", List.of("&7\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442 \u043f\u043e\u043b\u0443\u0447\u0430\u0435\u0442 \u0432\u044b\u0440\u0443\u0447\u043a\u0443", "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0438\u0437 AR-\u043b\u0430\u0432\u043a\u0438.")));
+        setButton(holder, 40, Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0437\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443."), "mandate:payments");
+        setButton(holder, 44, Material.BARRIER, "&c\u0417\u0430\u043a\u0440\u044b\u0442\u044c", List.of("&7\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e."), "close");
         player.openInventory(inv);
     }
 
     private void openPresidentPaymentsMenu(Player player, int page) {
         List<Map<String, Object>> rows = currentTaxPayments();
         MenuHolder holder = new MenuHolder("president-payments", "");
-        Inventory inv = holder.create(54, color("&aОплаты налога"));
+        Inventory inv = holder.create(54, color("&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438"));
         int start = Math.max(0, page) * 21;
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
         for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
             Map<String, Object> row = rows.get(start + i);
-            setStatic(inv, slots[i], infoItem(Material.GOLD_INGOT, "&f" + first(string(row.get("player_name")), "Игрок"), List.of(
-                    "&7Сумма: &f" + longValue(row.get("amount")) + " AR",
-                    "&7Источник: &f" + string(row.get("source")),
-                    "&7Время: &f" + formatTs(longValue(row.get("created_at")))
+            setStatic(inv, slots[i], infoItem(Material.GOLD_INGOT, "&f" + first(string(row.get("player_name")), "\u0418\u0433\u0440\u043e\u043a"), List.of(
+                    "&7\u0421\u0443\u043c\u043c\u0430: &f" + longValue(row.get("amount")) + " AR",
+                    "&7\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a: &f" + string(row.get("source")),
+                    "&7\u0412\u0440\u0435\u043c\u044f: &f" + formatTs(longValue(row.get("created_at")))
             )));
         }
         pageButtons(holder, inv, page, rows.size(), 21, "president:payments:" + (page - 1), "president:payments:" + (page + 1), "president:open-mandate");
@@ -1537,6 +1528,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Inventory inv = holder.create(45, color("&bУчасток председателя ЦИК"));
         setButton(holder, 11, Material.BOOK, "&eЗаявки участка", List.of("&7Открыть заявки этого участка."), "chair:applications:" + stationId);
         setButton(holder, 15, Material.PAPER, "&eБюллетени участка", List.of("&7Технический статус бюллетеней без раскрытия выбора."), "chair:ballots:" + stationId);
+        boolean hasSeal = hasUsableActiveSeal(player, stationId);
+        setButton(holder, 31, hasSeal ? Material.HONEYCOMB_BLOCK : Material.HONEYCOMB, hasSeal ? "&aОбновить печать ЦИК" : "&eПолучить печать ЦИК", List.of(
+                hasSeal ? "&7Перевыпустить личную печать этого участка." : "&7Выдать личную печать этого участка себе.",
+                "&7Печать выдается только явным действием из меню."
+        ), "chair:issue-seal:" + stationId);
         setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
         player.openInventory(inv);
     }
@@ -1557,7 +1553,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             setButton(holder, slots[i], Material.WRITTEN_BOOK, "&f" + first(string(row.get("player_name")), "Игрок"), List.of(
                     "&7Сдана: &f" + formatTs(longValue(row.get("submitted_at"))),
                     "&7ЦИК: &f" + humanRecommendation(string(row.get("chair_recommendation"))),
-                    "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
+                    "&7Админ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
                     "&7Нажми, чтобы открыть карточку."
             ), "chair:application:view:" + stationId + ":" + applicationId);
         }
@@ -1578,7 +1574,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         setStatic(inv, 4, infoItem(Material.BOOK, "&f" + first(string(app.get("player_name")), "Игрок"), List.of(
                 "&7Участок: &f" + shortId(stationId),
                 "&7ЦИК: &f" + humanRecommendation(string(app.get("chair_recommendation"))),
-                "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
+                "&7Админ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
                 "&7Сдана: &f" + formatTs(longValue(app.get("submitted_at")))
         )));
         setButton(holder, 20, Material.WRITTEN_BOOK, "&eОткрыть книгу", List.of("&7Посмотреть ответы кандидата."), "vote:view-program:" + applicationId);
@@ -1676,33 +1672,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openTaxOfficeMenu(Player player, String taxId, String mode, String pinBuffer) {
-        try {
-        Map<String, Object> tax = activeTax();
-        if (tax == null) {
-            player.sendMessage(color("&eНалог сейчас не установлен."));
-            return;
-        }
-        long due = dueTaxAmount(player.getUniqueId().toString());
-        long paid = paidTaxAmount(player.getUniqueId().toString(), string(tax.get("id")));
-        MenuHolder holder = new MenuHolder("tax-office", string(tax.get("id")));
-        holder.data().put("pin", first(pinBuffer, ""));
-        Inventory inv = holder.create(54, color("&6Налоговая"));
-        setStatic(inv, 4, infoItem(Material.GOLD_INGOT, "&fНалог", List.of(
-                "&7К оплате: &f" + due + " AR",
-                "&7Уже оплачено: &f" + paid + " AR",
-                "&7Остаток: &f" + Math.max(0L, due - paid) + " AR"
+        MenuHolder holder = new MenuHolder("tax-office", first(taxId, ""));
+        Inventory inv = holder.create(27, color("&6\u041d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430"));
+        setStatic(inv, 11, infoItem(Material.GOLD_INGOT, "&f\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u0443\u0431\u0440\u0430\u043d", List.of(
+                "&7\u042d\u0442\u0430 \u043c\u0435\u0445\u0430\u043d\u0438\u043a\u0430 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442\u0441\u044f.",
+                "&7\u0414\u043e\u0445\u043e\u0434 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u043f\u043e\u0441\u0442\u0443\u043f\u0430\u0435\u0442",
+                "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0438\u0437 AR-\u043b\u0430\u0432\u043a\u0438 CopiMine."
         )));
-        setButton(holder, 20, Material.ENDER_CHEST, "&aОплатить со счёта", List.of("&7Требуется PIN."), "taxpay:bank:" + string(tax.get("id")));
-        setButton(holder, 24, Material.DIAMOND_ORE, "&aОплатить AR из инвентаря", List.of("&7Без PIN, только официальным AR."), "taxpay:cash:" + string(tax.get("id")));
-        if ("BANK_PIN".equals(mode)) {
-            renderPinPad(holder, inv, first(pinBuffer, ""));
-        }
-        setButton(holder, 49, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть налоговую."), "close");
+        setButton(holder, 15, Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0437\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443."), "mandate:payments");
+        setButton(holder, 22, Material.BARRIER, "&c\u0417\u0430\u043a\u0440\u044b\u0442\u044c", List.of("&7\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u044d\u0442\u043e \u043c\u0435\u043d\u044e."), "close");
         player.openInventory(inv);
-        } catch (Exception error) {
-            player.sendMessage(color("&cНе удалось открыть налоговую."));
-            getLogger().warning("tax office menu: " + safeError(error));
-        }
     }
 
     private void renderPinPad(MenuHolder holder, Inventory inv, String pin) {
@@ -1831,31 +1810,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void createTaxOfficeFromTarget(Player player) throws Exception {
-        Block target = player.getTargetBlockExact(8);
-        if (target == null) {
-            player.sendMessage(color("&cСмотри на блок налоговой."));
-            return;
-        }
-        if (protectedBlockInfo(target) != null) {
-            player.sendMessage(color("&eЭтот блок уже защищён."));
-            return;
-        }
-        Map<String, Object> tax = activeTax();
-        if (tax == null) {
-            player.sendMessage(color("&cСначала установи налог."));
-            return;
-        }
-        String linkedId = string(tax.get("id"));
-        long t = now();
-        tx(connection -> {
-            upsertProtectedBlock(connection, "TAX_OFFICE", target.getLocation(), linkedId, t);
-            logPluginEvent(connection, "election_core", "tax_office_created", player.getName(), linkedId, "world=" + target.getWorld().getName());
-            return null;
-        });
-        spawnOrReplaceTextDisplay(target.getLocation(), "Налоговая", "TAX_LABEL", linkedId);
-        spawnOrReplaceProtectedBlockVisual(target.getLocation(), "TAX_OFFICE", linkedId, Material.PAPER, MODEL_TAX_OFFICE_MARKER, "tax_office_marker");
-        reloadProtectedBlocks();
-        player.sendMessage(color("&aНалоговая создана."));
+        player.sendMessage(color("&e\u041d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u041d\u043e\u0432\u044b\u0435 \u043d\u0430\u043b\u043e\u0433\u043e\u0432\u044b\u0435 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0441\u043e\u0437\u0434\u0430\u044e\u0442\u0441\u044f."));
     }
 
     private void spawnOrReplaceTextDisplay(Location blockLocation, String text, String kind, String linkedId) throws Exception {
@@ -2285,6 +2240,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (target == null || issuer == null || sealContext == null) {
             return;
         }
+        ensureCanReceiveIssuedElectionItem(target, "книгу заявки");
         String applicationId = "application_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         tx(connection -> {
@@ -2312,7 +2268,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             logPluginEvent(connection, "election_core", "application_issued", issuer.getName(), target.getName(), "station=" + sealContext.stationId());
             return null;
         });
-        target.getInventory().addItem(createApplicationBook(applicationId, sealContext.electionId(), sealContext.stationId(), target.getUniqueId().toString()));
+        ItemStack applicationBook = createApplicationBook(applicationId, sealContext.electionId(), sealContext.stationId(), target.getUniqueId().toString());
+        giveIssuedElectionItemOrRollback(target, applicationBook,
+                () -> rollbackIssuedApplicationBook(applicationId, issuer.getName()),
+                "Не удалось выдать книгу заявки. Выдача отменена.");
         issuer.sendMessage(color("&aЗаявка выдана игроку &f" + target.getName()));
     }
 
@@ -2389,6 +2348,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (target == null || issuer == null || sealContext == null) {
             return;
         }
+        ensureCanReceiveIssuedElectionItem(target, "бюллетень");
         String ballotId = "ballot_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         AtomicInteger roundRef = new AtomicInteger(1);
@@ -2408,6 +2368,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             int round = currentRoundFromDb(connection, context.electionId());
             roundRef.set(round);
+            long roundCandidates = scalarLong(connection,
+                    "SELECT COUNT(*) FROM round_candidates WHERE election_id=? AND round_no=? AND active=1",
+                    context.electionId(), round);
+            if (roundCandidates < 2) {
+                throw new IllegalStateException("Текущий тур ещё не подготовлен для выдачи бюллетеней.");
+            }
+            if (context.stage() == ElectionStage.SECOND_ROUND && round < 2) {
+                throw new IllegalStateException("Второй тур ещё не подготовлен.");
+            }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
                 // hasApplicationInElection guard stays mandatory for the current election.
@@ -2430,13 +2399,86 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             logPluginEvent(connection, "election_core", "ballot_issued", issuer.getName(), target.getName(), "station=" + sealContext.stationId() + " round=" + round);
             return null;
         });
-        target.getInventory().addItem(createBallotItem(ballotId, sealContext.electionId(), sealContext.stationId(), roundRef.get(), target.getUniqueId().toString(), target.getName(), false, "", ""));
+        ItemStack ballot = createBallotItem(ballotId, sealContext.electionId(), sealContext.stationId(), roundRef.get(), target.getUniqueId().toString(), target.getName(), false, "", "");
+        giveIssuedElectionItemOrRollback(target, ballot,
+                () -> rollbackIssuedBallot(ballotId, issuer.getName()),
+                "Не удалось выдать бюллетень. Выдача отменена.");
         issuer.sendMessage(color("&aБюллетень выдан игроку &f" + target.getName()));
     }
 
     private void issueBallot(Player target, Player issuer) throws Exception {
         requireActiveElectionId();
         throw new IllegalStateException("Выдача бюллетеня без проверенной печати ЦИК отключена.");
+    }
+
+    private void ensureCanReceiveIssuedElectionItem(Player target, String itemName) {
+        if (target == null) {
+            return;
+        }
+        if (target.getInventory().firstEmpty() < 0) {
+            throw new IllegalStateException("Освободи хотя бы один слот, чтобы получить " + itemName + ".");
+        }
+    }
+
+    private void giveIssuedElectionItemOrRollback(Player target, ItemStack stack, CheckedSqlAction rollback, String failureMessage) throws Exception {
+        if (target == null || stack == null || stack.getType().isAir()) {
+            return;
+        }
+        Map<Integer, ItemStack> leftovers = target.getInventory().addItem(stack);
+        if (leftovers.isEmpty()) {
+            return;
+        }
+        target.getInventory().removeItem(stack);
+        rollback.run();
+        throw new IllegalStateException(failureMessage);
+    }
+
+    private void rollbackIssuedApplicationBook(String applicationId, String actor) throws Exception {
+        if (applicationId == null || applicationId.isBlank()) {
+            return;
+        }
+        long t = now();
+        tx(connection -> {
+            Map<String, Object> row = queryOne(connection,
+                    "SELECT station_id,status,submitted_at FROM candidate_applications WHERE id=? FOR UPDATE",
+                    applicationId);
+            if (row == null || !"ISSUED".equalsIgnoreCase(string(row.get("status"))) || longValue(row.get("submitted_at")) > 0) {
+                return null;
+            }
+            update(connection, "DELETE FROM candidate_applications WHERE id=?", applicationId);
+            String stationId = string(row.get("station_id"));
+            if (!stationId.isBlank()) {
+                update(connection,
+                        "UPDATE polling_stations SET applications_issued=GREATEST(applications_issued-1,0),updated_at=? WHERE id=?",
+                        t, stationId);
+            }
+            logPluginEvent(connection, "election_core", "application_issue_rollback", actor, applicationId, "delivery_failed");
+            return null;
+        });
+    }
+
+    private void rollbackIssuedBallot(String ballotId, String actor) throws Exception {
+        if (ballotId == null || ballotId.isBlank()) {
+            return;
+        }
+        long t = now();
+        tx(connection -> {
+            Map<String, Object> row = queryOne(connection,
+                    "SELECT station_id,status,submitted_at FROM ballots WHERE id=? FOR UPDATE",
+                    ballotId);
+            if (row == null || !"ISSUED".equalsIgnoreCase(string(row.get("status"))) || longValue(row.get("submitted_at")) > 0) {
+                return null;
+            }
+            update(connection, "DELETE FROM ballots WHERE id=?", ballotId);
+            String stationId = string(row.get("station_id"));
+            if (!stationId.isBlank()) {
+                update(connection,
+                        "UPDATE polling_stations SET ballots_issued=GREATEST(ballots_issued-1,0),updated_at=? WHERE id=?",
+                        t, stationId);
+            }
+            logPluginEvent(connection, "election_core", "ballot_issue_rollback", actor, ballotId, "delivery_failed");
+            return null;
+        });
     }
 
     private void confirmBallotChoice(Player player, String ballotId, String candidateUuid) throws Exception {
@@ -2469,6 +2511,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             if (!"ISSUED".equalsIgnoreCase(string(ballot.get("status")))) {
                 throw new IllegalStateException("Этот бюллетень уже нельзя изменить.");
+            }
+            if (candidateUuid.equals(string(ballot.get("player_uuid")))) {
+                throw new IllegalStateException("Кандидат не может голосовать сам за себя.");
             }
             Map<String, Object> candidate = queryOne(connection,
                     "SELECT rc.candidate_name,COALESCE(c.active,0) AS candidate_active,COALESCE(a.admin_status,'') AS admin_status " +
@@ -2560,12 +2605,21 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         player.sendTitle("", color("&aГолос принят"), 5, 40, 10);
     }
 
-    private void annulBallot(String ballotId, String actor, String reason) throws Exception {
+    private void annulBallot(String ballotId, String stationId, Player actor, String reason) throws Exception {
         long t = now();
         tx(connection -> {
             Map<String, Object> ballot = queryOne(connection, "SELECT player_uuid,station_id,status FROM ballots WHERE id=? FOR UPDATE", ballotId);
             if (ballot == null) {
                 return null;
+            }
+            if (!stationId.equals(string(ballot.get("station_id")))) {
+                throw new IllegalStateException("Бюллетень не относится к этому участку.");
+            }
+            Map<String, Object> chair = queryOne(connection,
+                    "SELECT station_id FROM cik_chairs WHERE station_id=? AND player_uuid=? AND active=1 LIMIT 1",
+                    stationId, actor.getUniqueId().toString());
+            if (chair == null) {
+                throw new IllegalStateException("У тебя нет доступа к аннулированию бюллетеней этого участка.");
             }
             String status = string(ballot.get("status")).toUpperCase(Locale.ROOT);
             if ("DEPOSITED".equals(status)) {
@@ -2574,9 +2628,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (!"ISSUED".equals(status) && !"CONFIRMED".equals(status)) {
                 throw new IllegalStateException("Этот бюллетень уже закрыт.");
             }
-            update(connection, "UPDATE ballots SET status='ANNULLED',annulled_at=?,annulled_by=?,annul_reason=? WHERE id=?", t, actor, reason, ballotId);
+            update(connection, "UPDATE ballots SET status='ANNULLED',annulled_at=?,annulled_by=?,annul_reason=? WHERE id=?", t, actor.getName(), reason, ballotId);
             update(connection, "UPDATE polling_stations SET ballots_annulled=ballots_annulled+1,updated_at=? WHERE id=?", t, string(ballot.get("station_id")));
-            logPluginEvent(connection, "election_core", "ballot_annulled", actor, ballotId, reason);
+            logPluginEvent(connection, "election_core", "ballot_annulled", actor.getName(), ballotId, reason);
             return null;
         });
         Player online = playerByBallot(ballotId);
@@ -2651,10 +2705,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 throw new IllegalStateException("Эта заявка уже рассмотрена или ещё не сдана.");
             }
             Map<String, Object> lockedElection = queryOne(connection,
-                    "SELECT candidate_limit,current_round FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
+                    "SELECT candidate_limit,current_round,current_stage FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
                     electionId);
             if (lockedElection == null) {
                 throw new IllegalStateException("Выборы для этой заявки уже не активны.");
+            }
+            if (ElectionStage.safeValue(string(lockedElection.get("current_stage"))) != ElectionStage.REVIEW) {
+                throw new IllegalStateException("Финальное решение по кандидату доступно только на этапе проверки.");
             }
             long lockedActiveCount = scalarLong(connection, "SELECT COUNT(*) FROM candidates WHERE election_id=? AND active=1", electionId);
             int lockedLimit = intValue(lockedElection.get("candidate_limit"));
@@ -2676,13 +2733,22 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         long t = now();
         tx(connection -> {
             Map<String, Object> lockedApp = queryOne(connection,
-                    "SELECT admin_status,submitted_at FROM candidate_applications WHERE id=? FOR UPDATE",
+                    "SELECT election_id,admin_status,submitted_at FROM candidate_applications WHERE id=? FOR UPDATE",
                     applicationId);
             if (lockedApp == null) {
                 return null;
             }
             if (!"PENDING".equalsIgnoreCase(string(lockedApp.get("admin_status"))) || longValue(lockedApp.get("submitted_at")) <= 0) {
                 throw new IllegalStateException("Эта заявка уже рассмотрена или ещё не сдана.");
+            }
+            Map<String, Object> lockedElection = queryOne(connection,
+                    "SELECT current_stage FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
+                    string(lockedApp.get("election_id")));
+            if (lockedElection == null) {
+                throw new IllegalStateException("Выборы для этой заявки уже не активны.");
+            }
+            if (ElectionStage.safeValue(string(lockedElection.get("current_stage"))) != ElectionStage.REVIEW) {
+                throw new IllegalStateException("Финальное решение по кандидату доступно только на этапе проверки.");
             }
             update(connection, "UPDATE candidate_applications SET admin_status='REJECTED',status='REJECTED',reviewed_at=?,reviewed_by=? WHERE id=?", t, actor, applicationId);
             logPluginEvent(connection, "election_core", "application_rejected", actor, applicationId, "");
@@ -2888,13 +2954,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         long t = now();
         tx(connection -> {
+            if ("APPROVED".equalsIgnoreCase(decision) && string(law.get("replaced_law_id")).isBlank()
+                    && scalarLong(connection, "SELECT COUNT(*) FROM president_laws WHERE term_id=? AND status='PUBLISHED'", string(law.get("term_id"))) >= 5) {
+                throw new IllegalStateException("У президента уже 5 законов. Используй замену.");
+            }
             update(connection, "INSERT INTO president_law_reviews(law_id,reviewer,decision,note,created_at) VALUES(?,?,?,?,?)", lawId, actor, decision, note, t);
             if ("APPROVED".equals(decision)) {
                 String replaced = string(law.get("replaced_law_id"));
                 int slot = nextLawSlot(connection, string(law.get("term_id")));
                 if (!replaced.isBlank()) {
+                    if (t - longValue(term.get("last_law_replace_at")) < PRESIDENT_LAW_REPLACE_COOLDOWN_MS) {
+                        throw new IllegalStateException("Закон можно заменять не чаще одного раза в 3 дня.");
+                    }
                     Map<String, Object> replacedLaw = queryOne(connection,
-                            "SELECT id,slot_no,status,term_id FROM president_laws WHERE id=? LIMIT 1",
+                            "SELECT id,slot_no,status,term_id FROM president_laws WHERE id=? FOR UPDATE",
                             replaced);
                     if (replacedLaw == null
                             || !string(law.get("term_id")).equals(string(replacedLaw.get("term_id")))
@@ -3064,7 +3137,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void reviewLawStrict(String lawId, String decision, String actor, String note) throws Exception {
         long t = now();
         tx(connection -> {
-            Map<String, Object> term = queryOne(connection, "SELECT id FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1 FOR UPDATE");
+            Map<String, Object> term = queryOne(connection,
+                    "SELECT id,last_law_replace_at FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1 FOR UPDATE");
             if (term == null) {
                 throw new IllegalStateException("Нет активного президентского срока.");
             }
@@ -3079,7 +3153,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if ("APPROVED".equalsIgnoreCase(decision)) {
                 String replaced = string(law.get("replaced_law_id"));
                 int slot = nextLawSlot(connection, string(law.get("term_id")));
+                if (replaced.isBlank()
+                        && scalarLong(connection, "SELECT COUNT(*) FROM president_laws WHERE term_id=? AND status='PUBLISHED'", string(law.get("term_id"))) >= 5) {
+                    throw new IllegalStateException("У президента уже 5 законов. Используй замену.");
+                }
                 if (!replaced.isBlank()) {
+                    if (t - longValue(term.get("last_law_replace_at")) < PRESIDENT_LAW_REPLACE_COOLDOWN_MS) {
+                        throw new IllegalStateException("Закон можно заменять не чаще одного раза в 3 дня.");
+                    }
                     Map<String, Object> replacedLaw = queryOne(connection,
                             "SELECT id,slot_no,status,term_id FROM president_laws WHERE id=? FOR UPDATE",
                             replaced);
@@ -3128,194 +3209,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void setPresidentTax(String actor, int amount) throws Exception {
-        Map<String, Object> term = activeTerm();
-        if (term == null) {
-            throw new IllegalStateException("Нет активного президентского срока.");
-        }
-        long t = now();
-        String taxId = "tax_" + UUID.randomUUID().toString().replace("-", "");
-        tx(connection -> {
-            update(connection, "UPDATE president_taxes SET status='ARCHIVED' WHERE status='ACTIVE'");
-            update(connection, "INSERT INTO president_taxes(id,term_id,amount,status,created_at,created_by) VALUES(?,?,?,'ACTIVE',?,?)",
-                    taxId, string(term.get("id")), Math.max(0, Math.min(50, amount)), t, actor);
-            logPluginEvent(connection, "election_core", "tax_updated", actor, taxId, "amount=" + amount);
-            return null;
-        });
+        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
     }
+
 
     private void payTaxWithInventory(Player player, String taxId, long desired) throws Exception {
-        ItemStack[] snapshot = cloneInventoryContents(player.getInventory());
-        int available = countOfficialAr(player.getInventory());
-        if (available <= 0) {
-            player.sendMessage(color("&cВ инвентаре нет официальных AR для оплаты налога."));
-            return;
-        }
-        player.sendMessage(color("&7Обрабатываем оплату налога..."));
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
-            String operationId = "taxop_" + UUID.randomUUID().toString().replace("-", "");
-            boolean reserved = false;
-            int toTake = 0;
-            try {
-                long due = Math.max(0L, Math.min(desired, dueTaxAmount(player.getUniqueId().toString())));
-                if (due <= 0) {
-                    Bukkit.getScheduler().runTask(this, () -> {
-                        player.sendMessage(color("&aНалог уже оплачен."));
-                        openTaxOfficeMenu(player, taxId, "", null);
-                    });
-                    return;
-                }
-                toTake = (int) Math.min(due, available);
-                TaxRecipient recipient = tx(connection -> taxRecipient(connection, taxId));
-                createTaxPaymentOperation(operationId, taxId, player.getUniqueId().toString(), player.getName(), toTake, "INVENTORY_AR", operationId, "inventory:" + player.getUniqueId());
-                markTaxPaymentOperation(operationId, "ECONOMY_STARTED", "", "");
-                int reserveAmount = toTake;
-                CompletableFuture<Boolean> reserveFuture = new CompletableFuture<>();
-                Bukkit.getScheduler().runTask(this, () -> {
-                    if (!player.isOnline()) {
-                        reserveFuture.complete(false);
-                        return;
-                    }
-                    if (countOfficialAr(player.getInventory()) < reserveAmount) {
-                        reserveFuture.complete(false);
-                        return;
-                    }
-                    removeOfficialAr(player.getInventory(), reserveAmount);
-                    player.updateInventory();
-                    reserveFuture.complete(true);
-                });
-                reserved = reserveFuture.join();
-                if (!reserved) {
-                    markTaxPaymentOperation(operationId, "FAILED", "", "inventory_changed");
-                    Bukkit.getScheduler().runTask(this, () -> {
-                        player.sendMessage(color("&cИнвентарь изменился. Повторите оплату налога."));
-                        openTaxOfficeMenu(player, taxId, "", null);
-                    });
-                    return;
-                }
-                CopiMineEconomyCore.TxnResult result = requireEconomyBankService().credit(
-                        UUID.fromString(recipient.presidentUuid()),
-                        recipient.presidentName(),
-                        toTake,
-                        operationId,
-                        "PRESIDENT_TAX_INVENTORY",
-                        "tax_id=" + taxId + ";payer=" + player.getUniqueId()
-                );
-                if (!result.ok) {
-                    markTaxPaymentOperation(operationId, "FAILED", "", first(result.message, "inventory_credit_failed"));
-                    Bukkit.getScheduler().runTask(this, () -> {
-                        restoreInventorySnapshot(player, snapshot);
-                        player.sendMessage(color("&c" + first(result.message, "Не удалось оплатить налог.")));
-                        openTaxOfficeMenu(player, taxId, "", null);
-                    });
-                    return;
-                }
-                markTaxPaymentOperation(operationId, "ECONOMY_CONFIRMED", result.txId, "");
-                completeTaxPaymentOperation(operationId, result.txId);
-                Bukkit.getScheduler().runTask(this, () -> {
-                    player.sendMessage(color("&aНалог оплачен из инвентаря: &f" + reserveAmount + " AR"));
-                    refreshSnapshotAndPush();
-                    openTaxOfficeMenu(player, taxId, "", null);
-                });
-            } catch (Exception error) {
-                try {
-                    markTaxPaymentOperation(operationId, "RECONCILE_REQUIRED", "", safeError(error));
-                    reconcileTaxPaymentOperation(operationId);
-                } catch (Exception ignored) {
-                }
-                boolean completed = false;
-                try {
-                    completed = isTaxPaymentOperationCompleted(operationId);
-                } catch (Exception ignored) {
-                }
-                boolean finalReserved = reserved;
-                int finalToTake = toTake;
-                boolean finalCompleted = completed;
-                Bukkit.getScheduler().runTask(this, () -> {
-                    if (finalReserved && !finalCompleted) {
-                        restoreInventorySnapshot(player, snapshot);
-                    }
-                    if (finalCompleted) {
-                        player.sendMessage(color("&aНалог оплачен из инвентаря: &f" + finalToTake + " AR"));
-                        refreshSnapshotAndPush();
-                    } else {
-                        player.sendMessage(color("&cНе удалось завершить оплату налога."));
-                    }
-                    openTaxOfficeMenu(player, taxId, "", null);
-                });
-                getLogger().warning("tax inventory payment: " + safeError(error));
-            }
-        });
+        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
     }
 
+
     private void payTaxFromBank(Player player, String taxId, String pin) throws Exception {
-        String normalizedPin = pin == null ? "" : pin.trim();
-        normalizePin(normalizedPin);
-        player.sendMessage(color("&7Обрабатываем оплату налога..."));
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
-            String operationId = "taxop_" + UUID.randomUUID().toString().replace("-", "");
-            try {
-                long due = Math.max(0L, dueTaxAmount(player.getUniqueId().toString()));
-                if (due <= 0) {
-                    Bukkit.getScheduler().runTask(this, () -> {
-                        player.sendMessage(color("&aНалог уже оплачен."));
-                        openTaxOfficeMenu(player, taxId, "", null);
-                    });
-                    return;
-                }
-                TaxRecipient recipient = tx(connection -> taxRecipient(connection, taxId));
-                createTaxPaymentOperation(operationId, taxId, player.getUniqueId().toString(), player.getName(), due, "BANK", operationId, "bank");
-                markTaxPaymentOperation(operationId, "ECONOMY_STARTED", "", "");
-                CopiMineEconomyCore.TxnResult result = requireEconomyBankService().transferWithPin(
-                        player.getUniqueId(),
-                        player.getName(),
-                        UUID.fromString(recipient.presidentUuid()),
-                        recipient.presidentName(),
-                        due,
-                        normalizedPin,
-                        operationId,
-                        "PRESIDENT_TAX_BANK",
-                        "tax_id=" + taxId
-                );
-                if (!result.ok) {
-                    markTaxPaymentOperation(operationId, "FAILED", "", first(result.message, "bank_transfer_failed"));
-                    Bukkit.getScheduler().runTask(this, () -> {
-                        player.sendMessage(color("&c" + first(result.message, "Не удалось оплатить налог со счёта.")));
-                        openTaxOfficeMenu(player, taxId, "", null);
-                    });
-                    return;
-                }
-                markTaxPaymentOperation(operationId, "ECONOMY_CONFIRMED", result.txId, "");
-                completeTaxPaymentOperation(operationId, result.txId);
-                Bukkit.getScheduler().runTask(this, () -> {
-                    player.sendMessage(color("&aНалог оплачен со счёта."));
-                    refreshSnapshotAndPush();
-                    openTaxOfficeMenu(player, taxId, "", null);
-                });
-            } catch (Exception error) {
-                try {
-                    markTaxPaymentOperation(operationId, "RECONCILE_REQUIRED", "", safeError(error));
-                    reconcileTaxPaymentOperation(operationId);
-                } catch (Exception ignored) {
-                }
-                boolean completed = false;
-                try {
-                    completed = isTaxPaymentOperationCompleted(operationId);
-                } catch (Exception ignored) {
-                }
-                boolean finalCompleted = completed;
-                Bukkit.getScheduler().runTask(this, () -> {
-                    if (finalCompleted) {
-                        player.sendMessage(color("&aНалог оплачен со счёта."));
-                        refreshSnapshotAndPush();
-                    } else {
-                        player.sendMessage(color("&cНе удалось завершить оплату налога."));
-                    }
-                    openTaxOfficeMenu(player, taxId, "", null);
-                });
-                getLogger().warning("tax bank payment: " + safeError(error));
-            }
-        });
+        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
     }
+
 
     private CopiMineEconomyCore.BankService requireEconomyBankService() {
         if (!(Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore") instanceof CopiMineEconomyCore economy) || !economy.isEnabled()) {
@@ -3324,21 +3230,29 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return economy.bankService();
     }
 
-    private ItemStack[] cloneInventoryContents(Inventory inventory) {
-        ItemStack[] contents = inventory.getContents();
-        ItemStack[] copy = new ItemStack[contents.length];
-        for (int i = 0; i < contents.length; i++) {
-            copy[i] = contents[i] == null ? null : contents[i].clone();
+    private Map<String, Object> requireActiveTaxRecord(String taxId) throws Exception {
+        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
+    }
+
+
+    private ItemStack[] captureInventorySnapshot(Player player) {
+        if (player == null) {
+            return null;
         }
-        return copy;
+        ItemStack[] contents = player.getInventory().getContents();
+        return Arrays.stream(contents)
+                .map(stack -> stack == null ? null : stack.clone())
+                .toArray(ItemStack[]::new);
     }
 
     private void restoreInventorySnapshot(Player player, ItemStack[] snapshot) {
-        ItemStack[] copy = new ItemStack[snapshot.length];
-        for (int i = 0; i < snapshot.length; i++) {
-            copy[i] = snapshot[i] == null ? null : snapshot[i].clone();
+        if (player == null || !player.isOnline() || snapshot == null) {
+            return;
         }
-        player.getInventory().setContents(copy);
+        ItemStack[] restored = Arrays.stream(snapshot)
+                .map(stack -> stack == null ? null : stack.clone())
+                .toArray(ItemStack[]::new);
+        player.getInventory().setContents(restored);
         player.updateInventory();
     }
 
@@ -3489,7 +3403,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 laws,
                 intValue(election.get("candidate_limit")),
                 intValue(election.get("president_term_days")),
-                intValue(activeTax() == null ? 0 : activeTax().get("amount")),
+                0,
                 deposited,
                 stations,
                 intValue(election.get("second_round_needed")) > 0
@@ -4042,9 +3956,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private int countTiedLeaders(Connection connection, String electionId, int round) throws Exception {
         List<Map<String, Object>> rows = queryList(connection,
-                "SELECT v.candidate_uuid,COUNT(v.id) AS votes " +
-                        "FROM votes v WHERE v.election_id=? AND v.round_no=? " +
-                        "GROUP BY v.candidate_uuid ORDER BY votes DESC",
+                "SELECT rc.candidate_uuid,COUNT(v.id) AS votes " +
+                        "FROM round_candidates rc " +
+                        "LEFT JOIN votes v ON v.election_id=rc.election_id AND v.round_no=rc.round_no AND v.candidate_uuid=rc.candidate_uuid " +
+                        "WHERE rc.election_id=? AND rc.round_no=? AND rc.active=1 " +
+                        "GROUP BY rc.candidate_uuid ORDER BY votes DESC",
                 electionId, round);
         if (rows.isEmpty()) {
             return 0;
@@ -4067,29 +3983,33 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return queryOne("SELECT * FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1");
     }
 
-    private Map<String, Object> activeTax() throws Exception {
-        Map<String, Object> term = activeTerm();
-        if (term == null) {
-            return null;
+    public Map<String, Object> activePresidentRevenueProfile() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("term_id", "");
+        payload.put("president_uuid", "");
+        payload.put("president_name", "Президентская казна");
+        payload.put("budget_account_id", "PRESIDENT_BUDGET");
+        try {
+            Map<String, Object> term = activeTerm();
+            if (term != null) {
+                payload.put("term_id", string(term.get("id")));
+                payload.put("president_uuid", string(term.get("president_uuid")));
+                payload.put("president_name", first(string(term.get("president_name")), "Президентская казна"));
+            }
+        } catch (Exception ignored) {
         }
-        return queryOne("SELECT * FROM president_taxes WHERE term_id=? AND status='ACTIVE' ORDER BY created_at DESC LIMIT 1", string(term.get("id")));
+        return payload;
     }
 
-    private TaxRecipient taxRecipient(Connection connection, String taxId) throws Exception {
-        Map<String, Object> row = queryOne(
-                connection,
-                "SELECT pt.president_uuid,pt.president_name FROM president_taxes t " +
-                        "JOIN president_terms pt ON pt.id=t.term_id " +
-                        "WHERE t.id=? LIMIT 1",
-                taxId
-        );
-        if (row == null || string(row.get("president_uuid")).isBlank()) {
-            throw new IllegalStateException("Не найден получатель налога.");
-        }
-        TaxRecipient recipient = new TaxRecipient(string(row.get("president_uuid")), first(string(row.get("president_name")), "Президент CopiMine"));
-        ensureBankAccount(connection, recipient.presidentUuid(), recipient.presidentName());
-        return recipient;
+    private Map<String, Object> activeTax() throws Exception {
+        return null;
     }
+
+
+    private TaxRecipient taxRecipient(Connection connection, String taxId) throws Exception {
+        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
+    }
+
 
     private List<Map<String, Object>> pendingLaws() {
         try {
@@ -4117,29 +4037,28 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private List<Map<String, Object>> currentTaxPayments() {
         try {
-            Map<String, Object> tax = activeTax();
-            if (tax == null) {
-                return List.of();
-            }
-            return queryList("SELECT * FROM president_tax_payments WHERE tax_id=? ORDER BY created_at DESC", string(tax.get("id")));
+            return queryList(
+                    "SELECT buyer_name AS player_name, amount_ar AS amount, 'ARTIFACT_SHOP' AS source, created_at FROM artifact_revenue_payouts WHERE recipient_account_id='PRESIDENT_BUDGET' AND status='CREDITED' ORDER BY created_at DESC"
+            );
         } catch (Exception error) {
             return List.of();
         }
     }
 
     private long paidTaxAmount(String playerUuid, String taxId) throws Exception {
-        return scalarLong("SELECT COALESCE(SUM(amount),0) FROM president_tax_payments WHERE tax_id=? AND player_uuid=?", taxId, playerUuid);
+        return 0L;
     }
 
+
     private long dueTaxAmount(String playerUuid) throws Exception {
-        Map<String, Object> tax = activeTax();
-        if (tax == null) {
-            return 0;
-        }
-        long amount = longValue(tax.get("amount"));
-        long paid = paidTaxAmount(playerUuid, string(tax.get("id")));
-        return Math.max(0L, amount - paid);
+        return 0L;
     }
+
+
+    private long dueTaxAmount(String playerUuid, String taxId, Map<String, Object> tax) throws Exception {
+        return 0L;
+    }
+
 
     private int nextLawSlot() throws Exception {
         Map<String, Object> term = activeTerm();
@@ -4180,7 +4099,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     string(row.get("player_uuid")),
                     first(string(row.get("player_name")), "Кандидат"),
                     votes,
-                    "в–€".repeat(Math.max(1, Math.min(10, barCount)))
+                    "█".repeat(Math.max(1, Math.min(10, barCount)))
             ));
         }
         return results;
@@ -4330,8 +4249,65 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.sendMessage(color("&cМир участка не найден."));
             return;
         }
-        Location location = new Location(world, intValue(station.get("x")) + 0.5, intValue(station.get("y")) + 1.1, intValue(station.get("z")) + 0.5);
+        Location location = safeStationTeleportLocation(world, intValue(station.get("x")), intValue(station.get("y")), intValue(station.get("z")));
+        if (location == null) {
+            player.sendMessage(color("&cНе удалось найти безопасную точку рядом с участком."));
+            return;
+        }
         player.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN);
+    }
+
+    private Location safeStationTeleportLocation(World world, int baseX, int baseY, int baseZ) {
+        for (int radius = 0; radius <= 2; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (radius > 0 && Math.abs(dx) != radius && Math.abs(dz) != radius) {
+                        continue;
+                    }
+                    Location safe = safeStationTeleportLocationAt(world, baseX + dx, baseY + 1, baseZ + dz);
+                    if (safe != null) {
+                        return safe;
+                    }
+                }
+            }
+        }
+        int highestY = Math.max(world.getMinHeight() + 1, world.getHighestBlockYAt(baseX, baseZ) + 1);
+        return safeStationTeleportLocationAt(world, baseX, highestY, baseZ);
+    }
+
+    private Location safeStationTeleportLocationAt(World world, int x, int y, int z) {
+        int minY = world.getMinHeight() + 1;
+        int maxY = world.getMaxHeight() - 2;
+        int from = Math.max(minY, Math.min(maxY, y + 2));
+        int to = Math.max(minY, Math.min(maxY, y - 4));
+        for (int currentY = from; currentY >= to; currentY--) {
+            if (isSafeStationStandingLocation(world, x, currentY, z)) {
+                return new Location(world, x + 0.5D, currentY, z + 0.5D);
+            }
+        }
+        return null;
+    }
+
+    private boolean isSafeStationStandingLocation(World world, int x, int y, int z) {
+        if (y <= world.getMinHeight() || y >= world.getMaxHeight() - 1) {
+            return false;
+        }
+        Material feet = world.getBlockAt(x, y, z).getType();
+        Material head = world.getBlockAt(x, y + 1, z).getType();
+        Material ground = world.getBlockAt(x, y - 1, z).getType();
+        return !feet.isSolid() && !head.isSolid() && ground.isSolid()
+                && !isUnsafeTeleportMaterial(feet)
+                && !isUnsafeTeleportMaterial(head)
+                && !isUnsafeTeleportMaterial(ground);
+    }
+
+    private boolean isUnsafeTeleportMaterial(Material material) {
+        return switch (material) {
+            case LAVA, FIRE, SOUL_FIRE, CAMPFIRE, SOUL_CAMPFIRE, CACTUS, MAGMA_BLOCK,
+                    END_PORTAL, END_PORTAL_FRAME, NETHER_PORTAL, POWDER_SNOW, SWEET_BERRY_BUSH,
+                    WITHER_ROSE, VOID_AIR -> true;
+            default -> false;
+        };
     }
 
     private List<String> stationLore(Map<String, Object> station, String stationId) {
@@ -4440,6 +4416,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         lore.add(color("&7Участок: &f" + shortId(stationId)));
         lore.add(color("&7Игрок: &f" + playerName));
         lore.add(color(confirmed ? "&7Выбор: &f" + first(candidateName, "подтверждён") : "&7ПКМ в голосование откроет список кандидатов."));
+        if (confirmed && !lore.isEmpty()) {
+            lore.set(lore.size() - 1, color("&7Статус: &aВыбор подтверждён"));
+        }
         meta.setLore(lore);
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(itemTypeKey, PersistentDataType.STRING, "BALLOT");
@@ -4518,7 +4497,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private boolean isProtectedOfficialItem(ItemStack stack) {
-        return isCikSeal(stack) || isPresidentMandate(stack);
+        return isBallot(stack) || isCikSeal(stack) || isPresidentMandate(stack);
     }
 
     private boolean isConfirmedBallot(ItemStack stack) {
@@ -4636,6 +4615,27 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return;
             }
         }
+    }
+
+    private ItemStack createOfficialAr(int amount) {
+        ItemStack stack = new ItemStack(Material.DIAMOND_ORE, Math.max(1, amount));
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) {
+            return stack;
+        }
+        meta.setDisplayName(color("&b&lAR &8| &fОфициальная руда"));
+        meta.setLore(List.of(
+                color("&7Владелец: &fГосударственный возврат"),
+                color("&7Источник: &fpresident_tax_refund")
+        ));
+        meta.addItemFlags(ItemFlag.values());
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        pdc.set(new NamespacedKey("copiminear", "type"), PersistentDataType.STRING, "certified");
+        pdc.set(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING, "");
+        pdc.set(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING, "Государственный возврат");
+        pdc.set(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING, "president_tax_refund");
+        stack.setItemMeta(meta);
+        return stack;
     }
 
     private boolean isOfficialAr(ItemStack stack) {
@@ -5282,10 +5282,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     yield StageTransitionResult.deny("После подсчёта можно перейти только ко второму туру или к президентскому сроку.");
                 }
                 case SECOND_ROUND -> {
+                    if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING) {
+                        yield StageTransitionResult.allow();
+                    }
                     if (tiedLeaders < 2) {
                         yield StageTransitionResult.deny("Второй тур доступен только для кандидатов с равным максимумом голосов.");
                     }
-                    if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING || to == ElectionStage.COUNTING) {
+                    if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING) {
                         yield StageTransitionResult.allow();
                     }
                     yield StageTransitionResult.deny("Из второго тура можно перейти только к дебатам, голосованию или подсчёту.");
@@ -5333,6 +5336,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private record PromptContext(PromptKind kind, String value1, String value2, boolean keepOnClose) {
+    }
+
+    @FunctionalInterface
+    private interface CheckedSqlAction {
+        void run() throws Exception;
     }
 
     @FunctionalInterface

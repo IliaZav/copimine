@@ -1,12 +1,23 @@
 ﻿const $ = (id) => document.getElementById(id);
 
+function parseHashRoute(hashValue) {
+  const raw = String(hashValue || "").replace(/^#/, "");
+  const [tabRaw = "", queryRaw = ""] = raw.split("?", 2);
+  return {
+    tab: tabRaw || "dashboard",
+    params: new URLSearchParams(queryRaw || "")
+  };
+}
+
+const initialHashRoute = parseHashRoute(location.hash);
+
 const state = {
   token: "",
   role: localStorage.getItem("copimineRole") || "",
   authRole: localStorage.getItem("copimineLastRole") || "admin",
   authAction: "login",
   cookieAuth: false,
-  tab: (location.hash || "#dashboard").slice(1) || "dashboard",
+  tab: initialHashRoute.tab || "dashboard",
   user: null,
   config: null,
   selectedPlayer: "",
@@ -17,7 +28,11 @@ const state = {
   liveLastEvent: 0,
   playerLinkRequest: null,
   publicStatus: null,
-  publicConfig: null
+  publicConfig: null,
+  donationSessionId: initialHashRoute.params.get("session") || localStorage.getItem("copimineDonationSessionId") || "",
+  donationFocusItemId: String(initialHashRoute.params.get("item") || "").trim().toLowerCase(),
+  donationBusy: false,
+  playerBankScope: localStorage.getItem("copiminePlayerBankScope") || "PERSONAL"
 };
 
 const CONFIRM_HEADER = "X-Copimine-Confirm";
@@ -48,6 +63,12 @@ const publicFeatures = {
     title: "Лавки с официальными предметами",
     text: "Оружие, броня и инструменты покупаются за AR. Каждый предмет имеет PDC-защиту, ремонт и историю покупки.",
     icon: "/assets/mc-icons/item/netherite_sword.png"
+  },
+  donation: {
+    kicker: "Донат",
+    title: "Отдельный donation-баланс и owner-bound предметы",
+    text: "Пополнение идёт только через mock SBP foundation, а предметы покупаются на сайте и забираются в игре через лавку.",
+    icon: "/assets/mc-icons/item/nether_star.png"
   }
 };
 
@@ -95,6 +116,9 @@ const playerNavGroups = [
     items: [
       ["cabinet", "Личный кабинет", "Аккаунт и статус", "Л"],
       ["bank", "Банк AR", "Баланс, PIN и переводы", "Б"],
+      ["donation-balance", "Донат-баланс", "Пакеты, QR и история пополнений", "D"],
+      ["donation-shop", "Донат-лавка", "Каталог и покупка предметов", "Д"],
+      ["donation-items", "Мои донат-предметы", "Выдачи, активные экземпляры и возврат", "И"],
       ["history", "История", "Банк, лавка и события", ""],
       ["settings", "Настройки", "Профиль и интерфейс", "Н"],
       ["security", "Безопасность", "Пароль, PIN и сессии", "Б"],
@@ -108,6 +132,42 @@ const playerNavGroups = [
 const playerPageMeta = Object.fromEntries(
   playerNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );
+
+const juniorNavGroups = [
+  {
+    title: "Контроль",
+    items: [
+      ["dashboard", "Обзор", "Сводка сервера", "О"],
+      ["players", "Игроки", "Профили и история без опасных действий", ""],
+      ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
+      ["inventories", "Инвентари", "Снимки и сравнение", "С"],
+      ["investigations", "Расследования", "CoreProtect", "Р"],
+      ["anticheat", "Античит", "GrimAC и нарушения", "А"],
+      ["logs", "Логи", "Сервер и события", "Л"],
+      ["audit", "Аудит", "Действия команды", "А"]
+    ]
+  }
+];
+
+const juniorPageMeta = Object.fromEntries(
+  juniorNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
+);
+
+function isPlayerRole(role = state.role) {
+  return role === "player";
+}
+
+function isJuniorAdminRole(role = state.role) {
+  return role === "junior_admin";
+}
+
+function isPanelAdminRole(role = state.role) {
+  return Boolean(role) && role !== "player";
+}
+
+function hasFullAdminAccess(role = state.role) {
+  return role === "admin" || role === "owner";
+}
 
 const playerActions = [
   ["kick", "Кик"],
@@ -199,6 +259,20 @@ function statusLabel(value, fallback = "-") {
     running: "Идут",
     scheduled: "Запланированы",
     pending: "Ожидают",
+    created: "Создана",
+    paid: "Оплачено",
+    cancelled: "Отменено",
+    expired: "Истекла",
+    claim_pending: "Ждёт выдачи",
+    unclaimed: "Можно забрать",
+    reserved: "Резервируется",
+    delivering: "Выдаётся",
+    delivery_review: "Нужна проверка",
+    lost_reclaimable: "Можно вернуть",
+    replaced_after_loss: "Заменён после потери",
+    broken: "Сломан",
+    consumed: "Израсходован",
+    deleted_as_invalid: "Недействителен",
     finished: "Завершены",
     closed: "Закрыты",
     not_connected: "Нет связи",
@@ -207,6 +281,10 @@ function statusLabel(value, fallback = "-") {
     none: "Пауза"
   };
   return labels[raw] || (raw ? cleanText(value).replaceAll("_", " ") : fallback);
+}
+
+function donationSessionKey(session) {
+  return String(session?.session_id || session?.id || "");
 }
 
 function sourceLabel(value) {
@@ -377,6 +455,22 @@ function toast(message, bad = false) {
   setTimeout(() => el.remove(), 5200);
 }
 
+function randomActionKey(prefix = "cm") {
+  if (globalThis.crypto?.randomUUID) return `${prefix}-${globalThis.crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function copyText(value, okMessage = "Скопировано") {
+  const text = String(value || "").trim();
+  if (!text) return;
+  try {
+    await navigator.clipboard?.writeText(text);
+    toast(okMessage);
+  } catch {
+    toast(text);
+  }
+}
+
 function authHeaders(extra = {}) {
   const headers = { ...extra };
   if (!headers["Content-Type"] && !(extra instanceof FormData)) headers["Content-Type"] = "application/json";
@@ -428,8 +522,27 @@ function setLoading(title = "Загрузка данных") {
   $("view").innerHTML = `<div class="loading">${esc(title)}...</div>`;
 }
 
+function applyDynamicViewStyles(root = $("view")) {
+  if (!root) return;
+  root.querySelectorAll(".readiness-ring[data-ring-offset][data-ring-value]").forEach((el) => {
+    const offset = number(el.dataset.ringOffset, 0);
+    const value = number(el.dataset.ringValue, 0);
+    el.style.setProperty("--ring-offset", String(offset));
+    el.style.setProperty("--ring-value", String(value));
+  });
+  root.querySelectorAll(".mini-bar[data-bar]").forEach((el) => {
+    const width = Math.max(0, Math.min(100, number(el.dataset.bar, 0)));
+    el.style.setProperty("--bar", `${width}%`);
+  });
+  root.querySelectorAll(".candidate-progress-fill[data-width], .bar-fill[data-width]").forEach((el) => {
+    const width = Math.max(0, Math.min(100, number(el.dataset.width, 0)));
+    el.style.width = `${width}%`;
+  });
+}
+
 function setView(html) {
   $("view").innerHTML = html;
+  applyDynamicViewStyles($("view"));
   $("lastUpdate").textContent = `обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
 }
 
@@ -501,7 +614,7 @@ function readinessRing(percent, label = "готовность") {
   const circumference = 283;
   const offset = Math.round(circumference - (circumference * value / 100));
   return `
-    <div class="readiness-ring" style="--ring-offset:${offset};--ring-value:${value}">
+    <div class="readiness-ring" data-ring-offset="${offset}" data-ring-value="${value}">
       <svg viewBox="0 0 110 110" role="img" aria-label="${esc(label)} ${value}%">
         <circle class="ring-bg" cx="55" cy="55" r="45"></circle>
         <circle class="ring-fg" cx="55" cy="55" r="45"></circle>
@@ -537,7 +650,7 @@ function miniBarChart(items) {
   return `
     <div class="mini-bars">
       ${rows.map(row => `
-        <div class="mini-bar" style="--bar:${Math.max(8, Math.round(row.value / max * 100))}%">
+        <div class="mini-bar" data-bar="${Math.max(8, Math.round(row.value / max * 100))}">
           <span>${esc(row.label)}</span>
           <strong>${esc(row.value)}</strong>
         </div>
@@ -731,7 +844,7 @@ function kv(rows) {
 }
 
 function formatValue(value) {
-  if (value === true) return pill("РґР°", "good");
+  if (value === true) return pill("да", "good");
   if (value === false) return pill("нет", "bad");
   if (value == null || value === "") return "—";
   if (typeof value === "number") return esc(value);
@@ -959,7 +1072,7 @@ function candidateCards(rows) {
             </div>
           </div>
           <div class="candidate-progress">
-            <div class="candidate-progress-fill" style="width:${Math.max(8, Math.round((row.votes / maxVotes) * 100))}%"></div>
+            <div class="candidate-progress-fill" data-width="${Math.max(8, Math.round((row.votes / maxVotes) * 100))}"></div>
           </div>
         </article>
       `).join("")}
@@ -1212,15 +1325,19 @@ window.exportTable = (id, type) => {
 };
 
 function currentNavGroups() {
-  return state.role === "player" ? playerNavGroups : navGroups;
+  if (isPlayerRole()) return playerNavGroups;
+  if (isJuniorAdminRole()) return juniorNavGroups;
+  return navGroups;
 }
 
 function currentPageMeta() {
-  return state.role === "player" ? playerPageMeta : pageMeta;
+  if (isPlayerRole()) return playerPageMeta;
+  if (isJuniorAdminRole()) return juniorPageMeta;
+  return pageMeta;
 }
 
 function defaultTab() {
-  return state.role === "player" ? "cabinet" : "dashboard";
+  return isPlayerRole() ? "cabinet" : "dashboard";
 }
 
 function setMobileNav(open) {
@@ -1256,6 +1373,7 @@ function renderNav() {
 function setTab(tab) {
   const metaMap = currentPageMeta();
   state.tab = metaMap[tab] ? tab : defaultTab();
+  if (state.tab !== "donation-shop") state.donationFocusItemId = "";
   location.hash = state.tab;
   const meta = metaMap[state.tab];
   $("pageTitle").textContent = meta.title;
@@ -1376,6 +1494,7 @@ function publicOnlineRows(players = []) {
 function renderPublicStatus(status = {}, config = {}) {
   const server = status.server || {};
   const elections = status.elections || {};
+  const treasury = status.treasury || {};
   const statusGrid = $("publicStatusGrid");
   const onlineBoard = $("publicOnlineBoard");
   if (statusGrid) {
@@ -1383,7 +1502,8 @@ function renderPublicStatus(status = {}, config = {}) {
       publicStatusMetric("", server.online ? "" : "", server.online ? ` ${server.latencyMs ?? "?"} ` : "   ", server.online ? "good" : "bad"),
       publicStatusMetric("Игроки", String(server.playersOnline || 0), server.playerCap ? `из ${server.playerCap}` : (server.playerListAvailable ? "публичный список доступен" : "публичный список недоступен"), server.playersOnline ? "good" : "neutral"),
       publicStatusMetric("Выборы", elections.active ? "идут" : "пауза", elections.active ? `${elections.candidates || 0} кандидатов · ${elections.votes || 0} голосов` : "Сейчас нет активного этапа голосования", elections.active ? "good" : "warn"),
-      publicStatusMetric("Президент", elections.president || "не выбран", elections.president ? "Данные пришли из ElectionCore" : "Активный срок пока не подтверждён", elections.president ? "good" : "neutral")
+      publicStatusMetric("Президент", elections.president || "не выбран", elections.president ? "Данные пришли из ElectionCore" : "Активный срок пока не подтверждён", elections.president ? "good" : "neutral"),
+      publicStatusMetric("Казна", formatAr(treasury.balance || 0), treasury.ownerName ? `Ведёт ${treasury.ownerName}` : "Публичный бюджет сервера", Number(treasury.balance || 0) > 0 ? "good" : "neutral")
     ].join("");
   }
   if (onlineBoard) {
@@ -1398,6 +1518,14 @@ function renderPublicStatus(status = {}, config = {}) {
           <div class="top-note"><strong>Личный кабинет</strong><span>Регистрация, привязка ника, банк AR и история операций.</span></div>
           <div class="top-note"><strong>Выборы</strong><span>${esc(elections.active ? "Активная стадия видна в панели и в игре." : "Сейчас нет активного голосования, но ЦИК и участки остаются частью системы.")}</span></div>
           <div class="top-note"><strong>Донат</strong><span>${config.donationEnabled ? "Состояние донат-системы включено." : "Реальные платежи сейчас отключены. Доступны только безопасные test/mock сценарии для администрации."}</span></div>
+        </div>
+      </article>
+      <article class="top-board">
+        <h3>Президентская казна</h3>
+        <div class="top-note-list">
+          <div class="top-note"><strong>Баланс</strong><span>${esc(formatAr(treasury.balance || 0))}</span></div>
+          <div class="top-note"><strong>Управление</strong><span>Только президент и полные админы. Обычные игроки видят только публичную историю и общий баланс.</span></div>
+          <div class="top-note"><strong>Последние события</strong><span>${esc(asArray(treasury.history).slice(0, 3).map((row) => row.label || row.type || "операция").join(" • ") || "Пока без новых записей")}</span></div>
         </div>
       </article>
     `;
@@ -1453,8 +1581,8 @@ function renderPublicAuthState() {
     if (!button) return;
     const authed = Boolean(state.role || state.cookieAuth);
     button.classList.toggle("hidden", !authed);
-    const username = state.user?.username || (state.role === "player" ? "игрок" : "команда");
-    button.textContent = state.role === "admin" ? `Открыть кабинет (${username})` : `Личный кабинет (${username})`;
+    const username = state.user?.username || (isPlayerRole() ? "игрок" : "команда");
+    button.textContent = isPanelAdminRole() ? `Открыть кабинет (${username})` : `Личный кабинет (${username})`;
   }
 
 function showGuestPages() {
@@ -1590,14 +1718,14 @@ async function logout(call = true) {
 }
 
 async function resolveAuthSession() {
-  const order = state.role === "player" ? ["player", "admin"] : ["admin", "player"];
+  const order = isPlayerRole() ? ["player", "admin"] : ["admin", "player"];
   let lastError = new Error("Authentication is required");
   for (const role of order) {
     try {
       if (role === "admin") {
         const me = await api("/api/auth/me", { skipAuthReset: true });
         const config = await safeApi("/api/config", {});
-        return { role: "admin", user: me, config };
+        return { role: me.role || "admin", user: me, config };
       }
       const me = await api("/api/player/me", { skipAuthReset: true });
       return { role: "player", user: me.account || {}, config: {} };
@@ -1619,8 +1747,10 @@ async function bootAuthed(options = {}) {
     localStorage.setItem("copimineRole", state.role);
     const cookieAuth = Boolean(state.config.features?.cookieAuth || state.config.cookieAuth || state.cookieAuth);
     state.cookieAuth = cookieAuth;
-    const username = state.role === "player" ? (state.user.username || "player") : (state.user.username || "admin");
-    $("userBadge").textContent = state.role === "player" ? `${username} · игрок` : `${username}${cookieAuth ? " · cookieAuth" : ""}`;
+    const username = isPlayerRole() ? (state.user.username || "player") : (state.user.username || "admin");
+    $("userBadge").textContent = isPlayerRole()
+      ? `${username} · игрок`
+      : `${username}${isJuniorAdminRole() ? " · младший админ" : ""}${cookieAuth ? " · cookieAuth" : ""}`;
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
     logout(false);
@@ -1630,7 +1760,7 @@ async function bootAuthed(options = {}) {
   renderNav();
   setTab(state.tab);
   clearInterval(state.refreshTimer);
-  if (state.role === "admin") {
+  if (isPanelAdminRole()) {
     startLivePanelStream();
     state.refreshTimer = setInterval(() => {
       if (!document.hidden && ["dashboard", "server"].includes(state.tab)) loadCurrent(true);
@@ -1740,7 +1870,7 @@ function resultBars(rows, nameKeys = ["name", "display_name"], valueKeys = ["tot
   return `<div class="bars">${mapped.map(item => `
     <div class="bar-row">
       <div class="bar-head"><span>${esc(item.name)}</span><span>${esc(item.value)}</span></div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(4, Math.round(item.value / max * 100))}%"></div></div>
+      <div class="bar-track"><div class="bar-fill" data-width="${Math.max(4, Math.round(item.value / max * 100))}"></div></div>
     </div>
   `).join("")}</div>`;
 }
@@ -1810,7 +1940,7 @@ async function loadDashboard(silent = false) {
           ${metric("  ", economy.totalKnownInPlayerData ?? 0, "     ", "good")}
           ${metric("Связь с сервером", status.rconOk ? "Есть" : "Нет", status.rconOk ? "живые действия доступны" : "часть быстрых действий недоступна", status.rconOk ? "good" : "warn")}
         </div>
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${players.length ? table("dash-online", players.map(name => ({ player: name })), [{ key: "player", label: "Игрок онлайн" }], { pageSize: 8 }) : empty("Игроков онлайн не найдено", "Если игрок скрыт vanish/hidden, сервер может не отдавать его в /list.")}
       `)}
       ${panel("Последние события", "Аудит панели и события плагинов", timeline(eventRows))}
@@ -1895,10 +2025,17 @@ async function playerDetailsHtml(player) {
   ]);
   const live = liveInventory.latest || inventory.live;
   const actionButtons = playerActions.map(([action, label]) => `<button class="btn btn-secondary btn-small" data-click="playerAction('${esc(player)}','${action}')">${esc(label)}</button>`).join("");
+  const quickActions = hasFullAdminAccess()
+    ? `<div class="action-strip">${actionButtons}</div>`
+    : `<div class="notice">Младший админ может просматривать профиль, инвентарь и историю, но не выполнять опасные действия.</div>`;
   const site = profile.siteAccount || {};
   const bank = profile.bank || {};
   const pin = profile.pin || {};
   const pinState = bankPinState(pin);
+  const canManagePins = hasFullAdminAccess();
+  const pinButtons = site.id && canManagePins
+    ? `<div class="action-strip"><button class="btn btn-secondary btn-small" data-click="playerResetBankPin('${esc(player)}')">Сбросить PIN</button><button class="btn btn-secondary btn-small" data-click="playerRandomizeBankPin('${esc(player)}')">Случайный PIN</button><button class="btn btn-secondary btn-small" data-click="playerSetBankPinAdmin('${esc(player)}')">Задать PIN</button></div>`
+    : (site.id && !canManagePins ? `<div class="notice">Младший админ видит статус PIN, но не может раскрывать, сбрасывать или задавать его.</div>` : "");
   return `
     <div class="panel-header">
       <div>
@@ -1914,7 +2051,7 @@ async function playerDetailsHtml(player) {
       ${metric("XP", profile.xpLevel ?? "", profile.dimension || " ")}
       ${metric("", number(profile.ar?.inventory) + number(profile.ar?.enderChest), ` ${profile.ar?.inventory ?? 0}   ${profile.ar?.enderChest ?? 0}`, "good")}
     </div>
-    <div style="height:12px"></div>
+    <div class="spacer-12"></div>
     ${panel("Сайт и банк", "Привязка кабинета, баланс игрока и статус PIN без лишней техники.", kv([
       ["Аккаунт сайта", site.username || "Не привязан"],
       ["Кабинет привязан", Boolean(site.id)],
@@ -1922,18 +2059,19 @@ async function playerDetailsHtml(player) {
       ["Счёт", bank.accountId ? "Открыт" : "Не открыт"],
       ["Баланс банка", formatAr(bank.balance || 0)],
       ["Состояние PIN", pinState],
+      ["Текущий PIN", canManagePins ? (pin.visiblePin || "Скрыт / не задан") : "Скрыт"],
       ["PIN заблокирован", Boolean(pin.locked)],
       ["Временный PIN истекает", pin.temporaryExpiresAt ? dt(pin.temporaryExpiresAt) : "--"]
-    ]), site.id ? `<button class="btn btn-secondary btn-small" data-click="playerResetBankPin('${esc(player)}')">Сбросить PIN</button>` : "")}
-    ${panel("Быстрые действия", "Все действия записываются в журнал и требуют серверные права.", `<div class="action-strip">${actionButtons}</div>`)}
+    ]), pinButtons)}
+    ${panel("Быстрые действия", "Все действия записываются в журнал и требуют серверные права.", quickActions)}
     ${panel("Текущий инвентарь", "Если игрок онлайн, первым берётся свежий игровой снимок.", `
       ${inventorySummary(live)}
-      <div style="height:12px"></div>
+      <div class="spacer-12"></div>
       ${inventoryGrid(firstArray(live?.inventory, inventory.inventory, []), 18)}
     `)}
     ${panel("Эндер-сундук и свежие снимки", "Последние игровые снимки помогают разбирать спорные ситуации без ручного поиска по файлам.", `
       ${inventoryGrid(firstArray(live?.enderChest, inventory.enderChest, []), 18)}
-      <div style="height:12px"></div>
+      <div class="spacer-12"></div>
       ${table("player-live-history", asArray(liveInventory.onlineSnapshots).map(x => ({ createdAt: x.createdAt, source: x.source, inventory: asArray(x.inventory).length, ender: asArray(x.enderChest).length, ar: number(x.arInInventory) + number(x.arInEnderChest), world: x.world })), [
         { key: "createdAt", label: "Время", render: v => dt(v) },
         { key: "source", label: "сточник" },
@@ -2040,7 +2178,7 @@ function openInventoryModal(snapshot) {
           ${metric("  ", snapshot.arInInventory ?? 0, "", "good")}
           ${metric("  ", snapshot.arInEnderChest ?? 0, "", "good")}
         </section>
-        <div style="height:14px"></div>
+        <div class="spacer-14"></div>
         ${panel("нвентарь", "", inventoryGrid(inv))}
         ${panel("Эндер-сундук", "", inventoryGrid(ender))}
       </div>
@@ -2152,19 +2290,32 @@ async function loadElections() {
         "Сайт показывает статусы, книги кандидатов, законы и оплату налога.",
         "Опасные действия здесь не дублируются."
       ]))}
+      ${panel("Пульт цикла", "Сайт больше не дублирует опасные election actions. Управление идёт только через игровые GUI CopiMineElectionCore.", `
+        <div class="book-status-strip">
+          ${pill("Только просмотр", "warn")}
+          ${pill("Игровой GUI обязателен", "neutral")}
+          ${pill("Аудит сохраняется в игре", "good")}
+        </div>
+        <div class="spacer-12"></div>
+        ${siteBulletList([
+          "Открывай /cadm -> Выборы для запуска этапов, подсчёта и выбора победителя.",
+          "Сайт оставляет только обзор, книги кандидатов, законы и оплату налога.",
+          "Legacy emergency buttons здесь больше не публикуются."
+        ])}
+      `)}
       ${panel("Заявки кандидатов", "Главный рабочий экран для просмотра кандидатов: книга, статусы комиссии и решение админа.", `
         ${electionApplicationCards(applicationRows)}
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${pendingLawRows.length ? `<div class="book-status-strip">${pendingLawRows.slice(0, 5).map((row) => pill(`Закон на проверке · ${short(row.text || "", 42)}`, "warn")).join("")}</div>` : ""}
       `)}
       ${panel("Кандидаты и результаты", "После одобрения кандидаты попадают в список, а голоса складываются в понятный рейтинг.", `
         ${candidateCards(candidateRows)}
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${resultBars(candidateRows, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}
       `)}
       ${panel("Участки и ЦИК", "Участки, комиссии и приём бюллетеней видны без погружения в служебный реестр.", `
         ${stationCardsHtml(pollingStations, voteDeposits)}
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${kv([
           [" ", summary.activePollingStations ?? pollingStations.length],
           [" ", summary.voteDeposits ?? voteDeposits.reduce((sum, row) => sum + number(row.votes), 0)],
@@ -2175,7 +2326,7 @@ async function loadElections() {
     <section class="layout-grid grid-2">
       ${panel("Президент и законы", "Победитель выборов, опубликованные законы и новые тексты на проверке.", `
         ${lawCards(lawRows)}
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${pendingLawRows.length ? `<div class="law-stack">${pendingLawRows.slice(0, 5).map((row) => `
           <article class="law-pending-row">
             <strong>${esc(short(row.text || "", 88) || "Без текста")}</strong>
@@ -2211,11 +2362,13 @@ async function loadElections() {
 
 async function loadEconomy() {
   setLoading("Загружаю экономику");
-  const [data, history, ledger, donation] = await Promise.all([
+  const [data, history, ledger, donation, donationCatalog, treasury] = await Promise.all([
     safeApi("/api/economy/ares/overview", {}),
     safeApi("/api/economy/ares/history?limit=40", { snapshots: [], changes: [] }),
     safeApi("/api/economy/ares/ledger?limit=500", { events: [], balances: [], transactions: [], assets: [], scans: [], snapshots: [], summary: {} }),
-    safeApi("/api/admin/donation/overview?limit=120", { summary: {}, balances: [], ledger: [], claims: [], sessions: [] })
+    safeApi("/api/admin/donation/overview?limit=120", { summary: {}, balances: [], ledger: [], claims: [], sessions: [] }),
+    safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0, updatedAt: 0 }),
+    safeApi("/api/admin/economy/treasury", { account: {}, pin: {}, ledger: [], ownerName: "" })
   ]);
   const players = asArray(ledger.balances).length ? asArray(ledger.balances).map((x) => ({
     player: x.name,
@@ -2242,7 +2395,7 @@ async function loadEconomy() {
           <button class="btn btn-primary" data-click="createEconomySnapshot()">Создать снимок</button>
           <button class="btn btn-secondary" data-click="scanAresWorld()">Скан предметов AR</button>
         </div>
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${kv([
           ["ID AR-предметов", asArray(data.itemIds).join(", ") || "не настроены"],
           ["История снимков", history.count ? `${history.count} записей` : "пока пусто"],
@@ -2288,10 +2441,10 @@ async function loadEconomy() {
       ${panel("История снимков", "Снимки состояния AR для аудита и расследований", table("economy-snapshots", asArray(ledger.snapshots), null, { pageSize: 12 }))}
     </section>
     <section class="layout-grid grid-4">
-      ${metric("-", donationSummary.accounts ?? 0, "  AR  ", "good")}
-      ${metric("-", formatDonate(donationSummary.totalBalance ?? 0), "   donation accounts", donationSummary.totalBalance ? "good" : "neutral")}
-      ${metric("", donationSummary.unclaimedItems ?? 0, "    claim-flow", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
-      ${metric(" ", donationSummary.openSessions ?? 0, "Mock donation workflow", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
+      ${metric("Счета Donation", donationSummary.accounts ?? 0, "Отдельно от AR-экономики", "good")}
+      ${metric("Баланс Donation", formatDonate(donationSummary.totalBalance ?? 0), "Сумма по всем donation accounts", donationSummary.totalBalance ? "good" : "neutral")}
+      ${metric("Выдачи в работе", donationSummary.unclaimedItems ?? 0, "UNCLAIMED / RESERVED / DELIVERING / REVIEW", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
+      ${metric("Открытые сессии", donationSummary.openSessions ?? 0, "Mock SBP workflow без реального провайдера", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
     </section>
     <section class="layout-grid grid-2">
       ${panel("Донат-счёта", "Баланс игроков, который не смешивается с AR.", table("donation-balances", asArray(donation.balances), [
@@ -2308,20 +2461,83 @@ async function loadEconomy() {
       ], { pageSize: 12 }))}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Claims предметов", "Что уже оплачено и ждёт выдачи игроку.", table("donation-claims", asArray(donation.claims), [
+      ${panel("Выдачи предметов", "Что уже оплачено и ждёт выдачи игроку.", table("donation-claims", asArray(donation.claims), [
         { key: "created_at", label: "Создан", render: value => dt(value) },
         { key: "player_uuid", label: "Игрок" },
-        { key: "item_id", label: "Предмет" },
+        { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
         { key: "amount", label: "Кол-во" },
         { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
       ], { pageSize: 12 }))}
       ${panel("Платёжные сессии", "Mock-сессии без реального SBP и без связи с AR.", table("donation-sessions", asArray(donation.sessions), [
         { key: "created_at", label: "Создана", render: value => dt(value) },
-        { key: "player_uuid", label: "Игрок" },
+        { key: "player_name", label: "Игрок", render: (value, row) => esc(value || row.player_uuid || "—") },
         { key: "provider", label: "Провайдер" },
         { key: "amount", label: "Сумма", render: value => formatDonate(value || 0) },
-        { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
+        { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
+        { key: "id", label: "Управление", render: (value, row) => {
+          const status = String(row.status || "").toUpperCase();
+          if (status === "PAID") {
+            return `<span class="btn btn-secondary btn-small disabled">Оплачено</span>`;
+          }
+          if (status === "CANCELLED") {
+            return `<span class="btn btn-secondary btn-small disabled">Отменена</span>`;
+          }
+          if (status === "EXPIRED") {
+            return `<span class="btn btn-secondary btn-small disabled">Истекла</span>`;
+          }
+          return `<div class="action-strip"><button class="btn btn-primary btn-small" data-click="adminDonationMarkPaid('${row.id}')">PAID</button><button class="btn btn-secondary btn-small" data-click="adminDonationCancelSession('${row.id}')">Отменить</button></div>`;
+        } }
       ], { pageSize: 12 }))}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Donation Balance", "Ручное тестовое пополнение для QA и mock-сценариев. Баланс всё равно отделён от AR.", `
+        <div class="form-grid">
+          <input id="donationAdminUuid" placeholder="Minecraft UUID" />
+          <input id="donationAdminName" placeholder="Minecraft-ник" />
+          <input id="donationAdminAmount" type="number" min="1" step="1" placeholder="Сумма Donation" />
+          <input id="donationAdminReason" class="full" placeholder="Причина, например qa-topup" />
+          <button class="btn btn-primary full" data-click="adminDonationAddBalance()">Пополнить вручную</button>
+        </div>
+      `)}
+      ${panel("Казна", "Отдельный казначейский счёт. Его не видят обычные игроки; доступ только у президента и админов.", `
+        ${kv([
+          ["Счёт", treasury.account?.account_id || treasury.account?.accountId || "—"],
+          ["Владелец", treasury.ownerName || "—"],
+          ["Баланс", formatAr(treasury.account?.balance || 0)],
+          ["PIN казны", treasury.pin?.visiblePin || "не задан"]
+        ])}
+        <div class="spacer-12"></div>
+        <div class="form-grid">
+          <input id="treasuryNewPin" type="password" inputmode="numeric" placeholder="Новый PIN казны, 4-8 цифр" />
+          <button class="btn btn-secondary full" data-click="adminSetTreasuryPin()">Сменить PIN казны</button>
+        </div>
+      `)}
+      ${panel("Provider Settings", "Активный provider: MOCK_SBP. Здесь нет секретов, только текущий режим и будущий слот интеграции.", kv([
+        ["Текущий provider", "MOCK_SBP"],
+        ["Реальный webhook", "не подключён"],
+        ["Курс", "1 ₽ = 1 Donation"],
+        ["Пакеты", "50 / 100 / 250 / 500 / 1000"],
+        ["Каталог", `${asArray(donationCatalog.items).length} предметов, версия ${donationCatalog.catalogVersion || 0}`]
+      ]))}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Donation Shop", "Каталог сайта с фиксированным item_id и price_donation.", table("admin-donation-catalog", asArray(donationCatalog.items), [
+        { key: "item_id", label: "ID" },
+        { key: "display_name", label: "Название" },
+        { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
+        { key: "effect_profile_id", label: "Профиль" },
+        { key: "enabled", label: "Статус", render: value => value ? pill("вкл", "good") : pill("off", "bad") }
+      ], { pageSize: 10 }))}
+      ${panel("Выдачи и test purchase", "Тестовая покупка сразу создаёт CLAIM_PENDING, а физическая выдача всё равно идёт только в игре.", `
+        <div class="form-grid">
+          <input id="donationTestUuid" placeholder="Minecraft UUID" />
+          <input id="donationTestName" placeholder="Minecraft-ник" />
+          <input id="donationTestItemId" placeholder="item_id из каталога" />
+          <button class="btn btn-secondary full" data-click="adminDonationTestPurchase()">Создать test purchase</button>
+        </div>
+        <div class="spacer-12"></div>
+        <div class="notice">Если payment session уже создана, mark-paid начисляет баланс только один раз благодаря idempotency.</div>
+      `)}
     </section>
     ${panel("Скан мира", "AR в контейнерах и подозрительных местах", table("economy-scans", asArray(ledger.scans), null, { pageSize: 12 }))}
   `);
@@ -2337,11 +2553,142 @@ window.scanAresWorld = async () => {
   catch (err) { toast(err.message, true); }
 };
 
+window.adminDonationAddBalance = async () => {
+  try {
+    const headers = dangerConfirm(`Пополнить donation-баланс игрока ${$("donationAdminName")?.value?.trim() || $("donationAdminUuid")?.value?.trim()}`, "DONATION_ADD_BALANCE");
+    if (!headers) return;
+    await api("/api/admin/donation/add-balance", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        minecraft_uuid: $("donationAdminUuid")?.value?.trim() || "",
+        minecraft_name: $("donationAdminName")?.value?.trim() || "",
+        amount: number($("donationAdminAmount")?.value || 0),
+        reason: $("donationAdminReason")?.value?.trim() || "admin-topup",
+        idempotency_key: randomActionKey("don-admin-topup")
+      })
+    });
+    toast("Donation-баланс пополнен");
+    loadEconomy();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
+  if (!player) return toast("Игрок не выбран", true);
+  const headers = dangerConfirm(`Назначить новый случайный постоянный PIN для ${player}?`, "PLAYER_BANK_PIN_RANDOMIZE");
+  if (!headers) return;
+  try {
+    const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/randomize`, {
+      method: "POST",
+      headers,
+      body: "{}"
+    });
+    toast(`Новый PIN для ${player}: ${result.pin}`);
+    if (state.tab === "players") $("playerDetails").innerHTML = await playerDetailsHtml(player);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
+  if (!player) return toast("Игрок не выбран", true);
+  const pin = prompt(`Новый PIN для ${player} (4-8 цифр)`, "") || "";
+  if (!pin.trim()) return;
+  const headers = dangerConfirm(`Задать новый PIN для ${player}? Старый PIN перестанет работать сразу.`, "PLAYER_BANK_PIN_SET");
+  if (!headers) return;
+  try {
+    const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/set`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ new_pin: pin.trim() })
+    });
+    toast(`PIN для ${player} обновлён: ${result.pin}`);
+    if (state.tab === "players") $("playerDetails").innerHTML = await playerDetailsHtml(player);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.adminDonationTestPurchase = async () => {
+  try {
+    const headers = dangerConfirm(`Создать test purchase ${$("donationTestItemId")?.value?.trim() || "item"} для ${$("donationTestName")?.value?.trim() || $("donationTestUuid")?.value?.trim()}`, "DONATION_TEST_PURCHASE");
+    if (!headers) return;
+    await api("/api/admin/donation/test-purchase", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        minecraft_uuid: $("donationTestUuid")?.value?.trim() || "",
+        minecraft_name: $("donationTestName")?.value?.trim() || "",
+        item_id: $("donationTestItemId")?.value?.trim() || ""
+      })
+    });
+    toast("Test purchase создан");
+    loadEconomy();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.adminDonationMarkPaid = async (sessionId) => {
+  try {
+    const headers = dangerConfirm(`Отметить session ${sessionId} как PAID?`, "DONATION_MARK_PAID");
+    if (!headers) return;
+    await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/mark-paid`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ note: "admin mark paid" })
+    });
+    toast("Сессия отмечена как PAID");
+    loadEconomy();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.adminDonationCancelSession = async (sessionId) => {
+  try {
+    const headers = dangerConfirm(`Отменить session ${sessionId}?`, "DONATION_CANCEL_SESSION");
+    if (!headers) return;
+    await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/cancel`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ note: "admin cancel" })
+    });
+    toast("Сессия отменена");
+    loadEconomy();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.adminSetTreasuryPin = async () => {
+  try {
+    const headers = dangerConfirm("Сменить PIN казны?", "TREASURY_PIN_SET");
+    if (!headers) return;
+    const result = await api("/api/admin/economy/treasury/pin", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        old_pin: "",
+        new_pin: $("treasuryNewPin")?.value || "",
+        account_scope: "TREASURY"
+      })
+    });
+    toast(`PIN казны обновлён: ${result.pin}`);
+    if ($("treasuryNewPin")) $("treasuryNewPin").value = "";
+    loadEconomy();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 function artifactStatusTone(status) {
   const value = String(status || "").toUpperCase();
   if (["DELIVERED", "CLAIMED", "COMPLETED", "ACTIVE", "PAID"].includes(value)) return "good";
-  if (["PENDING", "PENDING_DELIVERY"].includes(value)) return "warn";
-  if (["FAILED", "REFUNDED", "SUSPICIOUS", "BLOCKED"].includes(value)) return "bad";
+  if (["PENDING", "PENDING_DELIVERY", "UNCLAIMED", "RESERVED", "DELIVERING", "DELIVERY_REVIEW", "LOST_RECLAIMABLE", "CLAIM_PENDING", "CREATED"].includes(value)) return "warn";
+  if (["FAILED", "REFUNDED", "SUSPICIOUS", "BLOCKED", "CANCELLED", "BROKEN", "CONSUMED", "DELETED_AS_INVALID", "REPLACED_AFTER_LOSS", "EXPIRED"].includes(value)) return "bad";
   return "neutral";
 }
 
@@ -2599,12 +2946,12 @@ async function loadServer() {
           <button class="btn btn-secondary" data-click="serverControl('restart')">Перезапуск</button>
           <button class="btn btn-danger" data-click="serverControl('stop')">Остановить</button>
         </div>
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         <div class="toolbar">
           <input id="rconCommand" class="grow" placeholder="Безопасная команда сервера" />
           <button class="btn btn-primary" data-click="runSafeRcon()">Выполнить</button>
         </div>
-        <pre id="serverResponse" class="log-box" style="min-height:120px;max-height:220px">Ответ появится здесь</pre>
+        <pre id="serverResponse" class="log-box log-box-tall">Ответ появится здесь</pre>
       `)}
       ${panel("server.properties", "Основные параметры в режиме просмотра", kv([
         ["MOTD", props.properties?.motd],
@@ -2634,7 +2981,7 @@ async function loadServer() {
         <button class="btn btn-primary" data-click="createBackup(false)">Бэкап конфигов</button>
         <button class="btn btn-secondary" data-click="createBackup(true)">Бэкап с world data</button>
       </div>
-      <div style="height:12px"></div>
+      <div class="spacer-12"></div>
       ${table("backups", asArray(backups.backups), [
         { key: "name", label: "Архив", render: v => `<a href="/api/backups/${encodeURIComponent(v)}" target="_blank">${esc(v)}</a>` },
         { key: "size", label: "Размер", render: v => bytes(v) },
@@ -2769,12 +3116,234 @@ window.searchInvestigation = async () => {
   $("investigationResults").innerHTML = table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 });
 };
 
+function pluginRegistryFieldId(pluginId, key) {
+  return `plugin-registry-${String(pluginId || "").replace(/[^a-z0-9_-]/gi, "-")}-${String(key || "").replace(/[^a-z0-9_-]/gi, "-")}`;
+}
+
+function pluginRegistryFieldControl(pluginId, key, rules, value) {
+  const safeRules = rules || {};
+  const type = String(safeRules.type || "string").toLowerCase();
+  const inputId = pluginRegistryFieldId(pluginId, key);
+  const label = cleanText(key);
+  if (type === "bool") {
+    return `<label class="check-line full"><input id="${esc(inputId)}" type="checkbox" ${value ? "checked" : ""} /> ${esc(label)}</label>`;
+  }
+  if (type === "enum") {
+    const options = asArray(safeRules.allow).map((item) => {
+      const selected = String(item) === String(value ?? "") ? "selected" : "";
+      return `<option value="${esc(item)}" ${selected}>${esc(item)}</option>`;
+    }).join("");
+    return `<label class="full"><span>${esc(label)}</span><select id="${esc(inputId)}">${options}</select></label>`;
+  }
+  if (type === "int") {
+    const min = Number.isFinite(Number(safeRules.min)) ? `min="${esc(safeRules.min)}"` : "";
+    const max = Number.isFinite(Number(safeRules.max)) ? `max="${esc(safeRules.max)}"` : "";
+    return `<label><span>${esc(label)}</span><input id="${esc(inputId)}" type="number" step="1" ${min} ${max} value="${esc(value ?? "")}" /></label>`;
+  }
+  if (type === "int_list") {
+    const listValue = Array.isArray(value) ? value.join(", ") : "";
+    return `<label class="full"><span>${esc(label)}</span><input id="${esc(inputId)}" type="text" value="${esc(listValue)}" placeholder="Например: 50, 100, 250" /></label>`;
+  }
+  return `<label class="full"><span>${esc(label)}</span><input id="${esc(inputId)}" type="text" value="${esc(value ?? "")}" /></label>`;
+}
+
+function pluginRegistryCollectValues(pluginId, schema) {
+  const values = {};
+  for (const [key, rules] of Object.entries(schema || {})) {
+    const inputId = pluginRegistryFieldId(pluginId, key);
+    const element = $(inputId);
+    if (!element) continue;
+    const type = String(rules?.type || "string").toLowerCase();
+    if (type === "bool") {
+      values[key] = Boolean(element.checked);
+      continue;
+    }
+    if (type === "int") {
+      const parsed = Number(element.value);
+      if (!Number.isInteger(parsed)) {
+        throw new Error(`Поле ${key} должно быть целым числом`);
+      }
+      values[key] = parsed;
+      continue;
+    }
+    if (type === "int_list") {
+      const raw = String(element.value || "").trim();
+      const parts = raw ? raw.split(",").map((item) => item.trim()).filter(Boolean) : [];
+      const parsed = parts.map((item) => Number(item));
+      if (parsed.some((item) => !Number.isInteger(item))) {
+        throw new Error(`Поле ${key} должно содержать список целых чисел через запятую`);
+      }
+      values[key] = parsed;
+      continue;
+    }
+    values[key] = String(element.value || "");
+  }
+  return values;
+}
+
+async function loadPluginRegistryState(selectedPluginId = "") {
+  const registry = await safeApi("/api/admin/plugins/registry", { plugins: [], count: 0 });
+  const plugins = asArray(registry.plugins);
+  const selected = selectedPluginId || state.pluginRegistrySelected || plugins[0]?.pluginId || "";
+  let status = {};
+  let schema = {};
+  let config = { values: {} };
+  let audit = { audit: [] };
+  if (selected) {
+    [status, schema, config, audit] = await Promise.all([
+      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/status`, {}),
+      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/schema`, { editableKeys: {} }),
+      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/config`, { values: {} }),
+      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/audit?limit=40`, { audit: [] })
+    ]);
+  }
+  state.pluginRegistrySelected = selected;
+  state.pluginRegistryStatus = status || {};
+  state.pluginRegistrySchema = schema.editableKeys || {};
+  state.pluginRegistryConfigValues = config.values || {};
+  return { plugins, selected, status, schema, config, audit };
+}
+
+function pluginRegistryPanel(registryState) {
+  const plugins = asArray(registryState.plugins);
+  const selected = registryState.selected || "";
+  const status = registryState.status || {};
+  const schema = registryState.schema?.editableKeys || {};
+  const configValues = registryState.config?.values || {};
+  const auditRows = asArray(registryState.audit?.audit);
+  const hasConfigPath = Boolean(status.configPath);
+  const hasEditableKeys = Object.keys(schema).length > 0;
+  const canBackup = hasConfigPath;
+  const canApply = hasConfigPath && hasEditableKeys;
+  const canReload = String(status.reloadMode || "none") !== "none";
+  const validateLabel = hasEditableKeys ? "Validate" : "Validate недоступен";
+  const backupLabel = canBackup ? "Backup" : "Backup недоступен";
+  const applyLabel = canApply ? "Apply" : "Apply недоступен";
+  const reloadLabel = canReload ? "Reload" : "Reload недоступен";
+  return `
+    <section class="layout-grid grid-2">
+      ${panel("Plugin registry", "Allowlisted plugin config foundation: status, schema, validate, backup, apply и reload без raw file editing.", plugins.length ? table("plugin-registry", plugins, [
+        { key: "displayName", label: "Плагин" },
+        { key: "pluginId", label: "ID" },
+        { key: "reloadMode", label: "Reload" },
+        { key: "pluginId", label: "Открыть", render: (value, row) => `<button class="btn btn-secondary" data-click="pluginRegistrySelect('${esc(row.pluginId)}')">${row.pluginId === selected ? "Открыт" : "Открыть"}</button>` }
+      ], { pageSize: 8 }) : empty("Registry пуст", "Manifest пока не отдаёт plugins allowlist."))}
+      ${panel("Текущий плагин", selected ? `Сейчас открыт ${cleanText(status.displayName || selected)}.` : "Выбери плагин из списка слева.", selected ? `
+        ${kv([
+          ["Plugin ID", status.pluginId || selected],
+          ["Config", status.configExists ? "найден" : "не найден"],
+          ["Путь", status.configPath || "—"],
+          ["Reload mode", status.reloadMode || "none"],
+          ["Reload command", status.reloadCommand || "—"],
+          ["Editable keys", hasEditableKeys ? String(Object.keys(schema).length) : "нет"]
+        ])}
+        <div class="spacer-12"></div>
+        <div class="form-grid">
+          ${Object.keys(schema).length ? Object.entries(schema).map(([key, rules]) => pluginRegistryFieldControl(selected, key, rules, configValues[key])).join("") : '<div class="notice">Для этого плагина нет allowlisted editable keys.</div>'}
+        </div>
+        <div class="spacer-12"></div>
+        <div class="button-row">
+          <button class="btn btn-secondary ${hasEditableKeys ? "" : "disabled"}" ${hasEditableKeys ? `data-click="pluginRegistryValidate('${esc(selected)}')"` : "disabled"}>${validateLabel}</button>
+          <button class="btn btn-secondary ${canBackup ? "" : "disabled"}" ${canBackup ? `data-click="pluginRegistryBackup('${esc(selected)}')"` : "disabled"}>${backupLabel}</button>
+          <button class="btn btn-primary ${canApply ? "" : "disabled"}" ${canApply ? `data-click="pluginRegistryApply('${esc(selected)}')"` : "disabled"}>${applyLabel}</button>
+          <button class="btn btn-secondary ${canReload ? "" : "disabled"}" ${canReload ? `data-click="pluginRegistryReload('${esc(selected)}')"` : "disabled"}>${reloadLabel}</button>
+        </div>
+      ` : empty("Плагин не выбран", "Слева можно открыть allowlisted plugin и применить безопасные config changes."))}
+    </section>
+    ${panel("Plugin registry audit", "Каждое backup/apply/reload действие журналируется.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Аудит пуст", "После первых действий здесь появятся записи."))}
+  `;
+}
+
+window.pluginRegistrySelect = async (pluginId) => {
+  state.pluginRegistrySelected = String(pluginId || "");
+  await loadSources();
+};
+
+window.pluginRegistryValidate = async (pluginId) => {
+  try {
+    if (!Object.keys(state.pluginRegistrySchema || {}).length) {
+      toast("Для этого плагина нет allowlisted editable keys", true);
+      return;
+    }
+    const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
+    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/validate`, {
+      method: "POST",
+      body: JSON.stringify({ values })
+    });
+    toast(`Конфиг валиден: ${(result.validated ? Object.keys(result.validated).length : 0)} ключей`);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.pluginRegistryBackup = async (pluginId) => {
+  try {
+    if (!state.pluginRegistryStatus?.configPath) {
+      toast("У этого плагина нет allowlisted configPath", true);
+      return;
+    }
+    const headers = dangerConfirm(`Создать backup конфига ${pluginId}?`, "PLUGIN_REGISTRY_BACKUP");
+    if (!headers) return;
+    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/backup`, {
+      method: "POST",
+      headers,
+      body: "{}"
+    });
+    toast(`Backup создан: ${result.backup?.name || pluginId}`);
+    await loadSources();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.pluginRegistryApply = async (pluginId) => {
+  try {
+    if (!state.pluginRegistryStatus?.configPath || !Object.keys(state.pluginRegistrySchema || {}).length) {
+      toast("Для этого плагина недоступно apply изменений", true);
+      return;
+    }
+    const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
+    const headers = dangerConfirm(`Применить allowlisted config changes для ${pluginId}?`, "PLUGIN_REGISTRY_APPLY");
+    if (!headers) return;
+    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/apply`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ values })
+    });
+    toast(`Config обновлён: ${(result.updatedKeys || []).join(", ") || pluginId}`);
+    await loadSources();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.pluginRegistryReload = async (pluginId) => {
+  try {
+    if (String(state.pluginRegistryStatus?.reloadMode || "none") === "none") {
+      toast("Для этого плагина нет allowlisted reload flow", true);
+      return;
+    }
+    const headers = dangerConfirm(`Перезагрузить ${pluginId} через allowlisted reload flow?`, "PLUGIN_REGISTRY_RELOAD");
+    if (!headers) return;
+    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/reload`, {
+      method: "POST",
+      headers,
+      body: "{}"
+    });
+    toast(result.message || (result.reloaded ? "Reload выполнен" : "Reload пропущен"));
+    await loadSources();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 async function loadSources() {
   setLoading("Проверяю источники данных");
-  const [data, config, access] = await Promise.all([
+  const [data, config, access, registryState] = await Promise.all([
     safeApi("/api/data-sources", { sources: [] }),
     safeApi("/api/config", {}),
-    safeApi("/api/security/access", {})
+    safeApi("/api/security/access", {}),
+    loadPluginRegistryState()
   ]);
   setView(`
     ${panel("Источники данных", "Плагины, файлы и БД, на которых строится панель", table("sources", asArray(data.sources), [
@@ -2785,6 +3354,7 @@ async function loadSources() {
       { key: "message", label: "Комментарий" }
     ], { pageSize: 20 }))}
     ${dbPolicyPanel(config.dbWritePolicy || access.dbWritePolicy || {}, access)}
+    ${pluginRegistryPanel(registryState)}
   `);
 }
 
@@ -2821,6 +3391,7 @@ async function loadSecurity() {
     <section class="layout-grid grid-2">
       ${panel("Команда сервера", "Кто может входить в админ-панель и управлять сервером.", table("admins", asArray(admins.admins), [
         { key: "username", label: "Ник" },
+        { key: "role", label: "Роль", render: value => pill(value === "junior_admin" ? "младший админ" : (value || "admin"), value === "junior_admin" ? "neutral" : "good") },
         { key: "enabled", label: "Включён", render: v => v ? pill("да", "good") : pill("нет", "bad") },
         { key: "op", label: "OP", render: v => v ? pill("OP", "good") : pill("нет", "warn") },
         { key: "whitelisted", label: "Whitelist", render: v => v ? pill("есть", "good") : pill("нет", "warn") },
@@ -2840,7 +3411,7 @@ async function loadSecurity() {
           <input id="accessReason" class="full" placeholder="Причина" />
           <button class="btn btn-primary full" data-click="runAccessAction()">Выполнить</button>
         </div>
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${kv([
           ["Требуется OP для входа", access.requireOp],
           ["Нужен whitelist", access.requireWhitelist],
@@ -2871,6 +3442,10 @@ async function loadSecurity() {
         <div class="form-grid danger-zone">
           <input id="newAdminUsername" placeholder="Minecraft-ник" />
           <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
+          <select id="newAdminRole">
+            <option value="admin">Полный админ</option>
+            <option value="junior_admin">Младший админ</option>
+          </select>
           <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить доступ к серверу, если нужно</label>
           <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP, если политика входа требует</label>
           <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
@@ -2915,6 +3490,7 @@ window.createAdminUser = async () => {
       body: JSON.stringify({
         username,
         password,
+        role: $("newAdminRole")?.value || "admin",
         ensure_whitelist: Boolean($("newAdminWhitelist")?.checked),
         ensure_op: Boolean($("newAdminOp")?.checked)
       })
@@ -3030,7 +3606,7 @@ async function loadPlayerCabinet() {
         ["Обновлён", dt(whitelistRequest?.updatedAt || whitelistRequest?.createdAt || 0)],
         ["Комментарий", whitelistRequest?.note || "—"]
       ])}
-      <div style="height:12px"></div>
+      <div class="spacer-12"></div>
       ${!linked ? `<div class="notice">Сначала привяжи Minecraft-ник, затем появится кнопка whitelist-заявки.</div>` : ""}
       ${linked && !whitelisted && !whitelistRequest ? `<button class="btn btn-primary" data-click="playerRequestWhitelist()">Отправить whitelist-заявку</button>` : ""}
       ${linked && whitelistRequest?.status === "PENDING" ? `<div class="notice">Заявка уже отправлена и ждёт одобрения в Discord или админ-панели.</div>` : ""}
@@ -3040,8 +3616,8 @@ async function loadPlayerCabinet() {
       ["Статус", donation?.linked ? "доступен" : "ждёт привязки Minecraft"],
       ["Баланс", donation?.linked ? formatDonate(donationBalance) : "—"],
       ["Покупки", "через вкладку Артефакты / Донат"],
-      ["SBP", "донат в разработке"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('artifacts')">Открыть лавку</button>`)}
+      ["SBP", "MOCK_SBP active, пополнение через фиксированные пакеты"]
+    ]), `<button class="btn btn-secondary" data-click="setTab('donation-balance')">Открыть донат</button>`)}
     ${tempPin.code ? panel("Временный PIN", "Этот код выдан сбросом. спользуй его как текущий PIN и сразу замени.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
@@ -3054,10 +3630,10 @@ async function loadPlayerCabinet() {
         ["Оплачено", formatAr(electionTax?.paid || 0)],
         ["Остаток", formatAr(electionTax?.due || 0)]
       ])}
-      <div style="height:12px"></div>
+      <div class="spacer-12"></div>
       ${lawCards(asArray(electionTax?.laws))}
       ${number(electionTax?.due || 0) > 0 ? `
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         <div class="form-grid">
           <input id="cabinetTaxAmount" type="number" min="1" max="${esc(number(electionTax?.due || 0))}" value="${esc(number(electionTax?.due || 0))}" placeholder="Сумма" />
           <input id="cabinetTaxPin" type="password" inputmode="numeric" placeholder="PIN" />
@@ -3107,7 +3683,7 @@ async function loadPlayerLink() {
           <input id="linkMinecraftName" value="${esc(state.user.minecraftName || "")}" placeholder="Minecraft-ник на сервере" />
           <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
         </div>
-        <div style="height:12px"></div>
+        <div class="spacer-12"></div>
         ${playerLinkSummary(state.playerLinkRequest)}
       `)}
       ${panel("Подтвердить код", "Введи одноразовый код из Minecraft-чата.", `
@@ -3134,37 +3710,53 @@ async function loadPlayerBank() {
     return;
   }
   const bank = await api("/api/player/bank");
+  const accounts = asArray(bank.accounts);
+  if (!accounts.some((x) => String(x.scope || "").toUpperCase() === state.playerBankScope)) {
+    state.playerBankScope = "PERSONAL";
+  }
+  const selectedAccount = accounts.find((x) => String(x.scope || "").toUpperCase() === state.playerBankScope) || accounts[0] || {};
   const pin = bank.pin || {};
   const tempPin = bank.temporaryPin || {};
+  const treasuryPin = bank.treasuryPin || {};
   const transferLocked = Boolean(pin.mustChange || pin.status === "temporary-expired");
-  const ledger = asArray(bank.ledger);
-  $("miniHealth").innerHTML = `<strong>${esc(state.user.username || "игрок")}</strong><br>Банк AR: ${formatAr(bank.account?.balance || 0)}<br>PIN: ${bankPinState(pin)}`;
+  const ledger = asArray(selectedAccount.ledger || bank.ledger);
+  const usingTreasury = String(selectedAccount.scope || "").toUpperCase() === "TREASURY";
+  const selectedPinState = usingTreasury ? (treasuryPin.visiblePin ? "Настроен" : "Не задан") : bankPinState(pin);
+  const accountTabs = bank.canAccessTreasury ? `
+    <div class="segmented">
+      <button class="btn ${state.playerBankScope === "PERSONAL" ? "btn-primary" : "btn-secondary"}" data-click="selectPlayerBankScope('PERSONAL')">Личный счёт</button>
+      <button class="btn ${state.playerBankScope === "TREASURY" ? "btn-primary" : "btn-secondary"}" data-click="selectPlayerBankScope('TREASURY')">Казна</button>
+    </div>
+  ` : "";
+  $("miniHealth").innerHTML = `<strong>${esc(state.user.username || "игрок")}</strong><br>${esc(selectedAccount.label || "Банк AR")}: ${formatAr(selectedAccount.balance || bank.account?.balance || 0)}<br>PIN: ${esc(selectedPinState)}`;
   setView(`
     <section class="layout-grid grid-4">
-      ${metric("Баланс", formatAr(bank.account?.balance || 0), "Один счёт для сайта и игры", "good")}
+      ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казначейский AR-счёт президента и админов" : "Один личный счёт для сайта и игры", "good")}
       ${metric("Последние операции", ledger.length, "Показываем только подтверждённые движения", "neutral")}
-      ${metric("PIN", bankPinState(pin), pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов"), bankPinTone(pin))}
+      ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinTone(pin))}
       ${metric("Minecraft", state.user.minecraftName || "—", "Привязан к кабинету", "good")}
     </section>
+    ${accountTabs}
     ${safetyRail([
-      ["Банк", "Баланс один и тот же на сайте, в банкомате и в игровых оплатах.", "good"],
-      ["PIN", tempPin.code ? "Активен временный PIN. Замени его до переводов и ATM-действий." : (pin.set ? "Хранится только как хэш." : "Задай PIN перед переводами."), tempPin.code ? "warn" : (pin.set ? "good" : "warn")],
-      ["Блокировка", pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "Неверные попытки временно блокируют PIN.", pin.locked ? "bad" : "neutral"]
+      ["Банк", usingTreasury ? "Обычные игроки не видят казну. Этот счёт доступен только президенту и админам." : "Баланс один и тот же на сайте, в банкомате и в игровых оплатах.", "good"],
+      ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `Текущий PIN казны: ${treasuryPin.visiblePin}` : "Установи PIN казны, чтобы переводить AR из бюджета.") : (tempPin.code ? "Активен временный PIN. Замени его до переводов и ATM-действий." : (pin.set ? "Хранится как хэш и в sealed-форме для разрешённого recovery." : "Задай PIN перед переводами.")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
+      ["Блокировка", usingTreasury ? "Для казны действуют те же lockout-правила PIN." : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "Неверные попытки временно блокируют PIN."), pin.locked && !usingTreasury ? "bad" : "neutral"]
     ])}
-    ${tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([
+    ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
       ["стекает", dt(tempPin.expiresAt)]
     ])) : ""}
     <section class="layout-grid grid-2">
-      ${panel("Задать или изменить PIN", tempPin.code ? "Активен временный PIN. Введи его как текущий и замени сейчас." : "PIN нужен для переводов на сайте и защищённых операций банкомата.", `
+      ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "Президент и админ видят PIN казны и могут менять его прямо здесь." : (tempPin.code ? "Активен временный PIN. Введи его как текущий и замени сейчас." : "PIN нужен для переводов на сайте и защищённых операций банкомата."), `
         <div class="form-grid">
-          <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${tempPin.code ? "Текущий временный PIN" : "Текущий PIN, если уже задан"}" />
+          ${usingTreasury ? `<div class="notice full">Текущий PIN казны: <strong>${esc(treasuryPin.visiblePin || "не задан")}</strong></div>` : ""}
+          <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${usingTreasury ? "Текущий PIN казны, если уже задан" : (tempPin.code ? "Текущий временный PIN" : "Текущий PIN, если уже задан")}" />
           <input id="bankNewPin" type="password" inputmode="numeric" placeholder="Новый PIN, 4-8 цифр" />
           <button class="btn btn-primary full" data-click="playerSetPin()">Сохранить PIN</button>
         </div>
       `)}
-      ${panel("Перевести AR", transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : "Перевод отправит AR на другой счёт и сразу покажет результат в истории.", transferLocked ? `
+      ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Бюджетный перевод доступен только президенту и админам." : "Перевод отправит AR на другой счёт и сразу покажет результат в истории."), (!usingTreasury && transferLocked) ? `
         <div class="notice">${pin.status === "temporary-expired" ? "Временный PIN истёк. Попроси команду сервера сбросить его ещё раз." : "Сначала задай личный PIN. После этого переводы и ATM-операции откроются автоматически."}</div>
       ` : `
         <div class="form-grid">
@@ -3214,7 +3806,8 @@ window.playerSetPin = async () => {
       method: "POST",
       body: JSON.stringify({
         old_pin: $("bankOldPin")?.value || "",
-        new_pin: $("bankNewPin")?.value || ""
+        new_pin: $("bankNewPin")?.value || "",
+        account_scope: state.playerBankScope || "PERSONAL"
       })
     });
     toast("PIN обновлён.");
@@ -3234,7 +3827,8 @@ window.playerTransfer = async () => {
         recipient: $("bankRecipient")?.value?.trim() || "",
         amount: number($("bankAmount")?.value || 0),
         pin: $("bankPinInput")?.value || "",
-        note: $("bankNote")?.value?.trim() || ""
+        note: $("bankNote")?.value?.trim() || "",
+        from_account: state.playerBankScope || "PERSONAL"
       })
     });
     toast(`Переведено ${result.amount} AR получателю ${result.recipient}.`);
@@ -3262,12 +3856,258 @@ window.playerPayElectionTax = async () => {
   }
 };
 
+window.selectPlayerBankScope = async (scope = "PERSONAL") => {
+  state.playerBankScope = String(scope || "PERSONAL").toUpperCase();
+  localStorage.setItem("copiminePlayerBankScope", state.playerBankScope);
+  if (state.tab === "bank") {
+    await loadPlayerBank();
+  }
+};
+
+async function loadPlayerDonationBalance() {
+  setLoading("Загрузка donation-баланса");
+  const me = await api("/api/player/me");
+  state.user = me.account || {};
+  const linked = Boolean(state.user.linked);
+  if (!linked) {
+    setView(panel("Донат-баланс закрыт", "Сначала привяжи Minecraft-ник к кабинету.", `
+      <div class="notice">После привязки появятся пакеты 50 / 100 / 250 / 500 / 1000, история пополнений и mock SBP QR.</div>
+    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
+    return;
+  }
+  const [balance, packs, history] = await Promise.all([
+    safeApi("/api/player/donation/balance", { linked: true, balance: 0 }),
+    safeApi("/api/player/donation/packs", { packs: [], provider: "MOCK_SBP", rubPerUnit: 1 }),
+    safeApi("/api/player/donation/history", { history: [] })
+  ]);
+  let session = null;
+  if (state.donationSessionId) {
+    const result = await safeApi(`/api/player/donation/sbp/session/${encodeURIComponent(state.donationSessionId)}`, null);
+    session = result?.session || null;
+    if (!session) {
+      state.donationSessionId = "";
+      localStorage.removeItem("copimineDonationSessionId");
+    }
+  }
+  const packButtons = asArray(packs.packs).map((pack) => `
+    <button class="btn btn-primary" data-click="playerCreateDonationSession(${number(pack.amount || 0)})">${esc(`${pack.amount} Donation`)}</button>
+  `).join("");
+  const sessionPanel = session ? `
+    <div class="qr-block">
+      <img class="qr-image" src="/api/player/donation/sbp/session/${esc(donationSessionKey(session))}/qr.png?_fresh=${Date.now()}" alt="QR mock SBP" />
+      <div class="qr-copy">
+        ${kv([
+          ["Сессия", donationSessionKey(session)],
+          ["Код", session.session_code || short(donationSessionKey(session), 8)],
+          ["Сумма", formatDonate(session.amount || session.donation_units || 0)],
+          ["Статус", statusLabel(session.status || "created")],
+          ["Истекает", dt(session.expires_at)],
+          ["Провайдер", session.provider || "MOCK_SBP"]
+        ])}
+        <div class="action-strip">
+          <button class="btn btn-secondary" data-click="playerCopyDonationPaymentUrl()">Скопировать ссылку</button>
+          <button class="btn btn-secondary" data-click="playerCopyDonationSessionCode()">Скопировать код</button>
+          <button class="btn btn-secondary" data-click="playerRefreshDonationSession()">Обновить статус</button>
+          <button class="btn btn-secondary" data-click="playerForgetDonationSession()">Скрыть сессию</button>
+        </div>
+        <div class="notice">Баланс пополнится только после статуса PAID. Пока активен MOCK_SBP foundation, реальный провайдер не подключён.</div>
+      </div>
+    </div>
+  ` : `<div class="notice">Активной payment session пока нет. Выбери один из фиксированных пакетов, чтобы открыть mock SBP QR и ссылку оплаты.</div>`;
+  setView(`
+    <section class="layout-grid grid-4">
+      ${metric("Donation", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
+      ${metric("Курс", `${packs.rubPerUnit || 1} ₽ = 1 DC`, "Фиксированный для всех пакетов", "neutral")}
+      ${metric("Провайдер", packs.provider || "MOCK_SBP", "Реальный провайдер пока не подключён", "warn")}
+      ${metric("Сессия", session ? statusLabel(session.status || "created") : "нет", session ? `Код ${session.session_code || short(donationSessionKey(session), 8)}` : "Создай новую сессию", session ? "neutral" : "good")}
+    </section>
+    ${panel("Донат-баланс", "Этот баланс тратится только на donation shop и не смешивается с AR.", kv([
+      ["Статус", linked ? "привязан" : "нет привязки"],
+      ["Баланс", formatDonate(balance.balance || 0)],
+      ["Пополнение", "только через фиксированные пакеты"],
+      ["Выдачи", "предметы забираются только в игре"]
+    ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Мои донат-предметы</button>`)}
+    ${panel("Пополнить", "Создай payment session и оплати её через mock SBP foundation. Сайт остаётся канонической точкой оплаты.", `
+      <div class="action-strip wrap">${packButtons}</div>
+      <div class="spacer-12"></div>
+      <div class="notice">Пакеты фиксированы: 50 / 100 / 250 / 500 / 1000. Donation нельзя обменять на AR.</div>
+    `)}
+    ${panel("Mock SBP Session", "QR генерируется локально backend-ом. Если QR не нужен, можно использовать ссылку и код сессии.", sessionPanel)}
+    ${panel("История пополнений и списаний", "Только donation balance, без AR и без скрытых списаний.", table("player-donation-history", asArray(history.history), [
+      { key: "created_at", label: "Время", render: value => dt(value) },
+      { key: "delta", label: "Изменение", render: value => formatDonate(value || 0) },
+      { key: "balance_after", label: "После", render: value => formatDonate(value || 0) },
+      { key: "reason", label: "Причина", render: value => short(value || "", 80) },
+      { key: "source", label: "Источник", render: value => cleanText(value || "—") }
+    ], { pageSize: 12 }))}
+  `);
+}
+
+async function loadPlayerDonationShop() {
+  setLoading("Загрузка donation-лавки");
+  const me = await api("/api/player/me");
+  state.user = me.account || {};
+  const linked = Boolean(state.user.linked);
+  if (!linked) {
+    setView(panel("Донат-лавка закрыта", "Сначала привяжи Minecraft-ник.", `
+      <div class="notice">После привязки сайт сможет создавать purchase-intent и подсказывать, что предмет нужно забрать в игре.</div>
+    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
+    return;
+  }
+  const [catalog, balance] = await Promise.all([
+    safeApi("/api/player/shop/donation-items", { items: [], catalogVersion: 0 }),
+    safeApi("/api/player/donation/balance", { balance: 0 })
+  ]);
+  const rows = asArray(catalog.items).map((row) => {
+    const status = row.owned_active ? "Уже у тебя" : (row.claim_available ? "Можно забрать" : (row.enabled ? "Не куплен" : "Отключён"));
+    const action = row.owned_active
+      ? `<span class="btn btn-secondary btn-small disabled">Уже у тебя</span>`
+      : row.claim_available
+        ? `<button class="btn btn-secondary btn-small" data-click="setTab('donation-items')">Забрать в игре</button>`
+        : row.enabled
+          ? `<button class="btn btn-primary btn-small" data-click='playerBuyDonationItem(${JSON.stringify(String(row.item_id || ""))}, ${JSON.stringify(cleanText(row.display_name || "предмет"))}, ${number(row.price_donation || 0)})'>Купить</button>`
+          : `<span class="btn btn-secondary btn-small disabled">Отключён</span>`;
+    return {
+      ...row,
+      status_text: status,
+      action_html: action
+    };
+  });
+  const focusItemId = String(state.donationFocusItemId || "").trim().toLowerCase();
+  if (focusItemId) {
+    rows.sort((a, b) => {
+      const aMatch = String(a.item_id || "").toLowerCase() === focusItemId ? 0 : 1;
+      const bMatch = String(b.item_id || "").toLowerCase() === focusItemId ? 0 : 1;
+      return aMatch - bMatch;
+    });
+  }
+  setView(`
+    <section class="layout-grid grid-4">
+      ${metric("Баланс", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
+      ${metric("Каталог", asArray(catalog.items).length, `Версия ${catalog.catalogVersion || 0}`, "neutral")}
+      ${metric("Готово к claim", rows.filter(row => row.claim_available).length, "Предмет уже куплен и ждёт выдачи", rows.some(row => row.claim_available) ? "warn" : "good")}
+      ${metric("Активные", rows.filter(row => row.owned_active).length, "Предмет уже выдан и активен", rows.some(row => row.owned_active) ? "good" : "neutral")}
+    </section>
+    ${panel("Донатная лавка", "Покупка происходит только на сайте. После оплаты предмет нужно забрать в игре через лавку доната.", `
+      ${focusItemId ? `<div class="notice">Открыт товар по прямой ссылке: <strong>${esc(focusItemId)}</strong>.</div>` : ""}
+      ${table("player-donation-shop", rows, [
+      { key: "display_name", label: "Предмет", render: value => `<strong>${esc(cleanText(value || "Предмет"))}</strong>` },
+      { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
+      { key: "effect_description", label: "Эффект", render: value => short(value || "", 110) },
+      { key: "cooldown_seconds", label: "Кулдаун", render: value => value ? `${value} сек.` : "—" },
+      { key: "status_text", label: "Статус", render: (value, row) => pill(value, row.owned_active ? "good" : (row.claim_available ? "warn" : "neutral")) },
+      { key: "action_html", label: "Действие", render: value => value }
+    ], { pageSize: 10 })}
+    `)}
+    ${panel("Правила выдачи", "Игровой мир остаётся единственной точкой физической выдачи и возврата.", safetyRail([
+      ["Покупка", "После списания donation появится claim со статусом «Заберите предмет в игре».", "good"],
+      ["Выдача", "Физическая выдача идёт только через блок лавки в Minecraft.", "warn"],
+      ["Возврат", "Если предмет потерян внешне, бесплатный возврат идёт только через экран «Вернуть утерянные предметы».", "neutral"]
+    ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои донат-предметы</button>`)}
+  `);
+}
+
+async function loadPlayerDonationItems() {
+  setLoading("Загрузка донат-предметов");
+  const me = await api("/api/player/me");
+  state.user = me.account || {};
+  const linked = Boolean(state.user.linked);
+  if (!linked) {
+    setView(panel("Мои донат-предметы", "Сначала привяжи Minecraft-ник.", `
+      <div class="notice">Без привязки нельзя понять, какие claims и item instances принадлежат твоему игровому персонажу.</div>
+    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
+    return;
+  }
+  const owned = await safeApi("/api/player/shop/owned", { linked: true, claims: [], instances: [], summary: {} });
+  setView(`
+    <section class="layout-grid grid-4">
+      ${metric("Выдачи", asArray(owned.claims).length, "Ожидают или уже завершены", asArray(owned.claims).length ? "warn" : "neutral")}
+      ${metric("Active", owned.summary?.active || 0, "Сейчас у игрока", (owned.summary?.active || 0) ? "good" : "neutral")}
+      ${metric("Reclaimable", owned.summary?.reclaimable || 0, "Можно вернуть через лавку", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
+      ${metric("Ожидают выдачи", owned.summary?.claimPending || 0, "Выдача и review идут только в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
+    </section>
+    ${panel("Выдачи и покупки", "Сайт показывает статус, но физическая выдача идёт только через игровую лавку.", table("player-donation-owned-claims", asArray(owned.claims), [
+      { key: "purchase_created_at", label: "Покупка", render: value => dt(value) },
+      { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
+      { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
+      { key: "status", label: "Claim", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
+      { key: "purchase_status", label: "Покупка", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
+    ], { pageSize: 12 }))}
+    ${panel("Выданные экземпляры", "Только база статусов решает, является ли предмет активным, потерянным или недействительным.", table("player-donation-owned-instances", asArray(owned.instances), [
+      { key: "updated_at", label: "Обновлён", render: value => dt(value) },
+      { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
+      { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
+    ], { pageSize: 12 }))}
+    ${panel("Как это работает", "Возврат и anti-dupe проверяются только в игре и только через официальный workflow.", safetyRail([
+      ["Claim", "Если статус UNCLAIMED, предмет нужно забрать в игровой лавке.", "good"],
+      ["Reclaim", "LOST_RECLAIMABLE возвращается по одному предмету за раз.", "warn"],
+      ["Broken/Consumed", "BROKEN и CONSUMED бесплатно не возвращаются.", "bad"]
+    ]), `<button class="btn btn-secondary" data-click="setTab('donation-shop')">Вернуться в донат-лавку</button>`)}
+  `);
+}
+
+window.playerCreateDonationSession = async (amount) => {
+  if (state.donationBusy) return;
+  try {
+    state.donationBusy = true;
+    const result = await api("/api/player/donation/sbp/session", {
+      method: "POST",
+      body: JSON.stringify({ amount: number(amount || 0), idempotency_key: randomActionKey("don-session") })
+    });
+    state.donationSessionId = donationSessionKey(result?.session);
+    if (state.donationSessionId) localStorage.setItem("copimineDonationSessionId", state.donationSessionId);
+    toast(`Создана сессия на ${number(amount || 0)} Donation.`);
+    loadPlayerDonationBalance();
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    state.donationBusy = false;
+  }
+};
+
+window.playerRefreshDonationSession = async () => {
+  if (!state.donationSessionId) {
+    toast("Активной сессии нет.", true);
+    return;
+  }
+  await loadPlayerDonationBalance();
+};
+
+window.playerForgetDonationSession = () => {
+  state.donationSessionId = "";
+  localStorage.removeItem("copimineDonationSessionId");
+  loadPlayerDonationBalance();
+};
+
+window.playerCopyDonationSessionCode = async () => {
+  if (!state.donationSessionId) return;
+  await copyText(state.donationSessionId.slice(-8), "Код сессии скопирован");
+};
+
+window.playerCopyDonationPaymentUrl = async () => {
+  if (!state.donationSessionId) return;
+  await copyText(`${location.origin}/#donation-balance?session=${encodeURIComponent(state.donationSessionId)}`, "Ссылка оплаты скопирована");
+};
+
+window.playerBuyDonationItem = async (itemId, displayName = "предмет", price = 0) => {
+  try {
+    if (!window.confirm(`Списать ${number(price || 0)} Donation за «${cleanText(displayName || itemId || "предмет")}»?`)) {
+      return;
+    }
+    const result = await api("/api/player/shop/purchase-intent", {
+      method: "POST",
+      body: JSON.stringify({ item_id: String(itemId || ""), idempotency_key: randomActionKey("don-buy") })
+    });
+    toast(`Покупка создана. Предмет ${result.itemId} забирается в игре.`);
+    loadPlayerDonationShop();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 async function loadPlayerArtifacts() {
   setLoading("Загрузка предметов");
-  const [data, donation] = await Promise.all([
-    safeApi("/api/player/artifacts", { linked: false, purchases: [], pending: [], repairs: [] }),
-    safeApi("/api/player/donation/items", { linked: false, items: [] })
-  ]);
+  const data = await safeApi("/api/player/artifacts", { linked: false, purchases: [], pending: [], repairs: [] });
   if (!data.linked) {
     setView(panel("Артефакты", "Сначала привяжи Minecraft-аккаунт", empty("Minecraft-ник не привязан", "После привязки здесь появятся покупки, pending delivery и ремонт предметов.")));
     return;
@@ -3275,13 +4115,12 @@ async function loadPlayerArtifacts() {
   const purchases = asArray(data.purchases);
   const pending = asArray(data.pending);
   const repairs = asArray(data.repairs);
-  const donationItems = asArray(donation.items);
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Покупки", purchases.length, "Подтверждённые покупки артефактов", purchases.length ? "good" : "neutral")}
       ${metric("Ожидают выдачи", pending.length, "Предметы ещё не дошли до Minecraft", pending.length ? "warn" : "good")}
       ${metric("Ремонты", repairs.length, "История восстановления PDC-предметов")}
-      ${metric("Донат-claims", donationItems.length, "Оплаченные предметы ждут выдачи", donationItems.length ? "warn" : "neutral")}
+      ${metric("Донат", "в отдельном разделе", "Balance, shop и reclaim теперь вынесены отдельно", "neutral")}
     </section>
     <section class="layout-grid grid-2">
       ${panel("Мои покупки", "Что уже куплено в лавке артефактов.", table("player-artifact-purchases", purchases, [
@@ -3297,26 +4136,21 @@ async function loadPlayerArtifacts() {
         { key: "status", label: "Статус", render: v => pill(statusLabel(v || "pending"), artifactStatusTone(v)) }
       ], { pageSize: 12 }))}
     </section>
-    ${panel("Донат-предметы", "Оплаченные или тестовые донат-предметы, ещё не полученные в игровой лавке.", table("player-donation-items", donationItems, [
-      { key: "created_at", label: "Создано", render: v => dt(v) },
-      { key: "item_id", label: "Предмет" },
-      { key: "amount", label: "Кол-во" },
-      { key: "status", label: "Статус", render: v => pill(statusLabel(v || "pending"), artifactStatusTone(v)) }
-    ], { pageSize: 12 }))}
     ${panel("Ремонт", "В Minecraft можно восстановить официальный предмет в лавке или командой /cmartifacts repair.", table("player-artifact-repairs", repairs, [
       { key: "created_at", label: "Время", render: v => dt(v) },
       { key: "item_id", label: "Предмет" },
       { key: "repair_cost_ar", label: "AR" },
       { key: "status", label: "Статус", render: v => pill(statusLabel(v), artifactStatusTone(v)) }
-    ], { pageSize: 12 }))}
+    ], { pageSize: 12 }), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои донат-предметы</button>`)}
   `);
 }
 async function loadPlayerHistory() {
   setLoading("Загрузка истории игрока");
-  const [bank, artifacts, donation] = await Promise.all([
+  const [bank, artifacts, donation, owned] = await Promise.all([
     safeApi("/api/player/bank", { ledger: [] }),
     safeApi("/api/player/artifacts", { purchases: [], pending: [], repairs: [] }),
-    safeApi("/api/player/donation/history", { history: [] })
+    safeApi("/api/player/donation/history", { history: [] }),
+    safeApi("/api/player/shop/owned", { linked: false, claims: [], instances: [], summary: {} })
   ]);
   const rows = [
     ...asArray(bank.ledger).map((row) => ({
@@ -3344,12 +4178,26 @@ async function loadPlayerHistory() {
       title: `Донат: ${cleanText(row.reason || row.source || "операция")}`,
       time: row.created_at,
       amount: row.delta || 0,
-      details: row.actor || row.source || "donation",
+      details: cleanText(row.reason || "donation"),
       section: "Донат"
+    })),
+    ...asArray(owned.claims).map((row) => ({
+      title: `Выдача: ${cleanText(row.display_name || row.item_id || "донат-предмет")}`,
+      time: row.updated_at || row.created_at || row.purchase_created_at,
+      amount: row.price_donation || 0,
+      details: [statusLabel(row.status || "pending"), cleanText(row.purchase_source || "donation_shop")].filter(Boolean).join(" · "),
+      section: "Выдачи"
+    })),
+    ...asArray(owned.instances).map((row) => ({
+      title: `Экземпляр: ${cleanText(row.display_name || row.item_id || "донат-предмет")}`,
+      time: row.updated_at || row.created_at,
+      amount: 0,
+      details: statusLabel(row.status || "pending"),
+      section: "Инстансы"
     }))
   ].sort((a, b) => String(b.time || "").localeCompare(String(a.time || "")));
   setView(`
-    ${panel("История операций", "Банк, покупки, ремонт и донат собраны в одну хронологию.", rows.length ? `
+    ${panel("История операций", "Банк, покупки, ремонт, донат, claims и статусы экземпляров собраны в одну хронологию.", rows.length ? `
       <div class="transaction-feed">
         ${rows.map((row) => `
           <article class="transaction-row">
@@ -3449,13 +4297,16 @@ async function loadCurrent(silent = false) {
     cabinet: loadPlayerCabinet,
     link: loadPlayerLink,
     bank: loadPlayerBank,
+    "donation-balance": loadPlayerDonationBalance,
+    "donation-shop": loadPlayerDonationShop,
+    "donation-items": loadPlayerDonationItems,
     history: loadPlayerHistory,
     settings: loadPlayerSettings,
     security: loadPlayerSecurity,
     support: loadPlayerSupport,
     artifacts: loadPlayerArtifacts
   };
-  const loaders = state.role === "player" ? playerLoaders : adminLoaders;
+  const loaders = isPlayerRole() ? playerLoaders : adminLoaders;
   try {
     await (loaders[state.tab] || loaders[defaultTab()] || loadDashboard)(silent);
   } catch (err) {
@@ -3491,9 +4342,23 @@ function wire() {
     if (event.key === "Escape") setMobileNav(false);
   });
   window.addEventListener("hashchange", () => {
-    const next = (location.hash || "#dashboard").slice(1);
+    const route = parseHashRoute(location.hash);
+    const next = route.tab;
+    const sessionId = String(route.params.get("session") || "").trim();
+    const itemId = String(route.params.get("item") || "").trim().toLowerCase();
+    if (sessionId) {
+      state.donationSessionId = sessionId;
+      localStorage.setItem("copimineDonationSessionId", sessionId);
+    }
+    state.donationFocusItemId = itemId;
     if (!state.role && ["start", "about", "features", "join", "signin"].includes(next)) return;
-    if (next !== state.tab) setTab(next);
+    if (next !== state.tab) {
+      setTab(next);
+      return;
+    }
+    if (["donation-balance", "donation-shop", "donation-items"].includes(state.tab)) {
+      loadCurrent(true);
+    }
   });
   syncAuthUi();
 }
@@ -3505,5 +4370,6 @@ async function boot() {
 }
 
 boot();
+
 
 

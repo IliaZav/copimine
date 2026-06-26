@@ -20,24 +20,30 @@ if (-not $paperApi -or -not (Test-Path $paperApi)) {
 }
 
 $cp = @($paperApi)
-if (Test-Path (Join-Path $serverDir 'libraries')) {
-  $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
-}
 if (Test-Path (Join-Path $releaseRoot 'copimine-economy-core\CopiMineEconomyCore.jar')) {
   $cp += (Join-Path $releaseRoot 'copimine-economy-core\CopiMineEconomyCore.jar')
 }
 if (Test-Path (Join-Path $releaseRoot 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar')) {
   $cp += (Join-Path $releaseRoot 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar')
 }
+if (Test-Path (Join-Path $serverDir 'libraries')) {
+  $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
+}
 
 Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
 javac -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $src
+if ($LASTEXITCODE -ne 0) {
+  throw "javac failed for CopiMineArtifacts with exit code $LASTEXITCODE."
+}
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force
 Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Path $classes 'config.yml') -Force
 Copy-Item -LiteralPath (Join-Path $pluginDir 'items.yml') -Destination (Join-Path $classes 'items.yml') -Force
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
 jar --create --file $jar -C $classes .
+if ($LASTEXITCODE -ne 0) {
+  throw "jar packaging failed for CopiMineArtifacts with exit code $LASTEXITCODE."
+}
 Write-Host "Built $jar"
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 New-Item -ItemType Directory -Path $serverDataDir -Force | Out-Null

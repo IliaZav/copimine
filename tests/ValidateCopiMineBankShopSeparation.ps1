@@ -12,9 +12,10 @@ if (Test-Path $artifacts) {
   foreach ($bad in @('bank:deposit','bank:withdraw','deposit-hand','deposit-all','UPDATE cmv4_bank_accounts','INSERT INTO cmv4_bank_ledger')) {
     if ($java.Contains($bad)) { $errors.Add("Artifacts must not expose/write bank operation: $bad") }
   }
-  foreach ($marker in @('bridge.charge','BridgeTxnResult','artifact_purchase','idempotency')) {
+  foreach ($marker in @('BridgeTxnResult','artifact_purchase','idempotency')) {
     if (-not $java.Contains($marker)) { $errors.Add("Artifacts missing bridge purchase marker: $marker") }
   }
+  if ($java -notmatch 'bridge\s*\.\s*charge') { $errors.Add('Artifacts missing bridge purchase marker: bridge.charge') }
 }
 if (Test-Path $admin) {
   $java = Get-Content -Raw -Encoding UTF8 $admin

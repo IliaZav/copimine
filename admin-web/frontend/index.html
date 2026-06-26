@@ -89,6 +89,57 @@
       </div>
     </section>
 
+    <section id="presidentBudgetShowcase" class="public-section public-section-accent">
+      <div class="section-head">
+        <span>Президентская казна</span>
+        <h2>Отдельный бюджетный счёт сервера</h2>
+        <p>Доходы от AR-лавки и ремонта уходят в общую президентскую казну. Это не личный баланс президента и не часть donation-системы.</p>
+      </div>
+      <div class="treasury-hero-grid">
+        <article class="budget-counter-card">
+          <div class="budget-counter-head">
+            <span class="hero-kicker">Публичный бюджет</span>
+            <strong id="presidentBudgetOwner">Загрузка данных...</strong>
+          </div>
+          <div class="budget-counter-value">
+            <img src="/assets/mc-icons/item/emerald.png" alt="" />
+            <strong id="presidentBudgetCounter">0 AR</strong>
+          </div>
+          <p id="presidentBudgetDetail">Сайт ждёт ответ от backend и не показывает выдуманные суммы.</p>
+        </article>
+        <article class="president-card" id="presidentCardMount">
+          <div class="president-card-copy">
+            <span class="hero-kicker">Текущий президент</span>
+            <h3 id="presidentCardName">Президент пока не избран</h3>
+            <p id="presidentCardMeta">Как только ElectionCore подтвердит активный срок, карточка обновится автоматически.</p>
+          </div>
+          <div class="president-skin-shell hidden" id="presidentSkinShell">
+            <button class="skin-rotate skin-rotate-left" id="presidentSkinLeft" type="button" aria-label="Повернуть влево">‹</button>
+            <div class="president-skin-stage">
+              <div class="president-skin-tilt" id="presidentSkinTilt">
+                <img id="presidentSkinImage" alt="" />
+              </div>
+            </div>
+            <button class="skin-rotate skin-rotate-right" id="presidentSkinRight" type="button" aria-label="Повернуть вправо">›</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="treasuryHistorySection" class="public-section">
+      <div class="section-head">
+        <span>История казны</span>
+        <h2>Последние публичные операции</h2>
+        <p>Показываем только понятные события: доходы AR-лавки, ремонт и выплаты из казны. Внутренние id и служебные данные не публикуются.</p>
+      </div>
+      <div id="publicTreasuryHistory" class="treasury-history-grid">
+        <article class="showcase-card">
+          <strong>Загрузка истории</strong>
+          <p>Backend ещё не ответил. Если источник недоступен, здесь появится честное сообщение.</p>
+        </article>
+      </div>
+    </section>
+
     <section id="tops" class="public-section">
       <div class="section-head">
         <span>Состояние</span>
@@ -234,6 +285,6 @@
   </div>
 
   <div id="modalRoot"></div>
-  <script src="/assets/app.js"></script>
+  <script type="module" src="/assets/app.js"></script>
 </body>
 </html>

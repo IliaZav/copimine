@@ -9,9 +9,9 @@
   `CopiMineClient/src/main/resources/assets/copimineclient/textures/visuals`
 
 Статус:
-- internal CopiMine self-made assets
-- внешние лицензии не требуются
-- hotlink отсутствует
-- runtime external download отсутствует
+- internal CopiMine self-made assets;
+- внешние лицензии не требуются;
+- hotlink отсутствует;
+- runtime external download отсутствует.
 
 Файлы `noise.png`, `vignette.png`, `scanlines.png` тоже являются self-made вспомогательными текстурами для клиентского renderer.

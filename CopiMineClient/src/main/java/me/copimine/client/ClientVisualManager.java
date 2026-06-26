@@ -46,13 +46,23 @@ public final class ClientVisualManager {
             clearAll("replace");
         }
         String normalized = normalize(effectId);
-        active.put(seq, new ActiveVisual(seq, normalized, System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1000L), clamp(intensity)));
+        active.put(seq, new ActiveVisual(
+                seq,
+                normalized,
+                System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1000L),
+                clamp(intensity)
+        ));
         lastServerSeq = seq;
     }
 
     public void startLocalTest(String effectId, int seconds, float intensity) {
         clearAll("local-test");
-        active.put(-1L, new ActiveVisual(-1L, normalize(effectId), System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1000L), clamp(intensity)));
+        active.put(-1L, new ActiveVisual(
+                -1L,
+                normalize(effectId),
+                System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1000L),
+                clamp(intensity)
+        ));
     }
 
     public void stop(String effectId) {
@@ -101,13 +111,15 @@ public final class ClientVisualManager {
 
     public String statusLine() {
         if (active.isEmpty()) {
-            return "CopiMineClient: активных визуалов нет, render_when_hud_hidden=" + config.renderWhenHudHidden();
+            return "CopiMineClient: активных визуалов нет, render_when_hud_hidden=" + config.renderWhenHudHidden()
+                    + ", " + IrisCompat.statusLine();
         }
         ActiveVisual first = active.values().iterator().next();
         long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1000L);
         return "CopiMineClient: " + first.effectId() + " / " + secondsLeft + "с / active=" + active.size()
                 + " / lastSeq=" + lastServerSeq
-                + " / render_when_hud_hidden=" + config.renderWhenHudHidden();
+                + " / render_when_hud_hidden=" + config.renderWhenHudHidden()
+                + ", " + IrisCompat.statusLine();
     }
 
     public String activeSummary() {

@@ -1,0 +1,62 @@
+.president-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 24px;
+  min-height: 260px;
+}
+
+.president-card-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.president-card-copy h3 {
+  margin: 0;
+  font-size: 28px;
+  color: #183e1f;
+}
+
+.president-skin-shell {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  gap: 14px;
+  align-items: center;
+}
+
+.president-skin-stage {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  perspective: 1000px;
+}
+
+.president-skin-tilt {
+  transition: transform .28s ease;
+  transform-style: preserve-3d;
+}
+
+.president-skin-tilt img {
+  max-width: 230px;
+  max-height: 250px;
+  filter: drop-shadow(0 16px 34px rgba(14, 35, 17, .24));
+  image-rendering: pixelated;
+  user-select: none;
+  pointer-events: none;
+}
+
+.skin-rotate {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(41, 161, 90, .28);
+  border-radius: 999px;
+  background: rgba(217, 245, 223, .9);
+  color: #1d4424;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.skin-rotate:hover {
+  background: rgba(41, 161, 90, .18);
+}

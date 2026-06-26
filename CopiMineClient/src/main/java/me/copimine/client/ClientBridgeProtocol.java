@@ -100,7 +100,7 @@ public final class ClientBridgeProtocol {
         for (String effectId : SUPPORTED_EFFECTS) {
             supported.add(effectId.toUpperCase(Locale.ROOT));
         }
-        ClientPlayNetworking.send(BridgePayload.hello(sessionId, clientVersion, supported));
+        ClientPlayNetworking.send(BridgePayload.hello(sessionId, clientVersion, IrisCompat.shaderPackActive(), supported));
         helloSent = true;
         return helloSent;
     }
@@ -201,6 +201,7 @@ public final class ClientBridgeProtocol {
                 + ", lastHeartbeat=" + ageSeconds(lastHeartbeatSentAt)
                 + ", lastPing=" + ageSeconds(lastServerPingAt)
                 + ", lastAckSeq=" + lastAckSeq
+                + ", " + IrisCompat.statusLine()
                 + ", lastError=" + (lastError.isBlank() ? "-" : lastError);
     }
 

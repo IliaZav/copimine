@@ -52,7 +52,7 @@ public record BridgePayload(
         intensity = clampIntensity(intensity);
     }
 
-    public static BridgePayload hello(String sessionId, String version, Set<String> supportedEffects) {
+    public static BridgePayload hello(String sessionId, String version, boolean trueIrisShader, Set<String> supportedEffects) {
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_HELLO,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -63,7 +63,7 @@ public record BridgePayload(
                 true,
                 true,
                 true,
-                false,
+                trueIrisShader,
                 normalizeEffects(supportedEffects),
                 "",
                 0,

@@ -55,6 +55,11 @@ except Exception:  # pragma: no cover
     qrcode = None
 
 try:
+    import httpx  # type: ignore
+except Exception:  # pragma: no cover
+    httpx = None
+
+try:
     import yaml  # type: ignore
 except Exception:  # pragma: no cover
     yaml = None
@@ -3810,6 +3815,74 @@ def public_treasury_overview_sync(limit: int = 30) -> dict[str, Any]:
     }
 
 
+def sanitize_public_plain_text(value: Any, max_len: int = 160) -> str:
+    text = re.sub(r"[<>{}\r\n\t]+", " ", str(value or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_len]
+
+
+def public_president_budget_payload_sync() -> dict[str, Any]:
+    treasury = public_treasury_overview_sync(10)
+    return {
+        "balance_ar": int(treasury.get("balance") or 0),
+        "current_president_name": sanitize_public_plain_text(treasury.get("ownerName") or ""),
+        "current_president_uuid": sanitize_public_plain_text(treasury.get("ownerUuid") or "", 64),
+        "budget_locked": False,
+        "updated_at": donation_now_ms(),
+    }
+
+
+def public_president_budget_history_sync(limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    safe_limit = max(1, min(100, int(limit or 20)))
+    safe_offset = max(0, int(offset or 0))
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        rows = conn.execute(
+            """
+            SELECT tx_id,tx_type,amount,created_at,actor,details,counterparty_account_id
+            FROM cmv4_bank_ledger
+            WHERE account_id=%s
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            (TREASURY_ACCOUNT_ID, safe_limit, safe_offset),
+        ).fetchall()
+        conn.commit()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        tx_type = str(row["tx_type"] or "").upper()
+        label = {
+            "AR_SHOP_PURCHASE": "Доход AR-лавки",
+            "AR_ITEM_REPAIR": "Ремонт AR-предмета",
+            "PRESIDENT_PAYOUT": "Выплата из казны",
+            "TREASURY_WITHDRAW": "Снятие из казны",
+            "TREASURY_TRANSFER_OUT": "Перевод из казны",
+        }.get(tx_type, tx_type or "TREASURY_EVENT")
+        details = sanitize_public_plain_text(row["details"] or "")
+        actor_name = sanitize_public_plain_text(row["actor"] or "")
+        items.append({
+            "type": tx_type or "TREASURY_EVENT",
+            "label": label,
+            "amount_ar": int(row["amount"] or 0),
+            "public_actor_name": actor_name,
+            "public_target_name": "Президентская казна",
+            "item_name": details if tx_type in {"AR_SHOP_PURCHASE", "AR_ITEM_REPAIR"} else "",
+            "comment": details if tx_type not in {"AR_SHOP_PURCHASE", "AR_ITEM_REPAIR"} else "",
+            "created_at": int(row["created_at"] or 0),
+        })
+    return {"items": items, "limit": safe_limit, "offset": safe_offset}
+
+
+def public_president_profile_sync() -> dict[str, Any]:
+    payload = public_president_budget_payload_sync()
+    return {
+        "current_president_name": payload["current_president_name"],
+        "current_president_uuid": payload["current_president_uuid"],
+        "skin_body_url": f"/api/public/president/skin/body?uuid={quote(payload['current_president_uuid'])}" if payload["current_president_uuid"] else "",
+        "updated_at": payload["updated_at"],
+    }
+
+
 def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferIn) -> dict[str, Any]:
     if not account.get("minecraft_uuid"):
         raise HTTPException(status_code=409, detail="Minecraft account is not linked")
@@ -7081,6 +7154,52 @@ async def public_config() -> dict[str, Any]:
 @app.get("/api/public/status")
 async def public_status() -> dict[str, Any]:
     return {"ok": True, "data": await bg(public_site_status_sync)}
+
+
+@app.get("/api/public/president-budget")
+async def public_president_budget() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(public_president_budget_payload_sync)}
+
+
+@app.get("/api/public/president-budget/history")
+async def public_president_budget_history(limit: int = 20, offset: int = 0) -> dict[str, Any]:
+    return {"ok": True, "data": await bg(public_president_budget_history_sync, limit, offset)}
+
+
+@app.get("/api/public/president")
+async def public_president() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(public_president_profile_sync)}
+
+
+@app.get("/api/public/president/skin/body")
+async def public_president_skin_body(uuid: str = Query(default="")) -> Response:
+    safe_uuid = str(uuid or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f-]{32,36}", safe_uuid):
+        raise HTTPException(status_code=404, detail="Президентский скин недоступен")
+    if httpx is None:
+        raise HTTPException(status_code=503, detail="Skin proxy is unavailable")
+    urls = [
+        f"https://crafatar.com/renders/body/{safe_uuid}?overlay=true&scale=6",
+        f"https://mc-heads.net/body/{safe_uuid}/right",
+    ]
+    timeout = httpx.Timeout(8.0, connect=4.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        for source_url in urls:
+            try:
+                remote = await client.get(source_url)
+            except Exception:
+                continue
+            if remote.status_code != 200:
+                continue
+            content_type = remote.headers.get("content-type", "image/png")
+            if "image" not in content_type:
+                continue
+            return Response(
+                content=remote.content,
+                media_type=content_type,
+                headers={"Cache-Control": "public, max-age=600"},
+            )
+    raise HTTPException(status_code=404, detail="Президентский скин не найден")
 
 
 @app.get("/api/public/modpack")

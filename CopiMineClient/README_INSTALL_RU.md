@@ -3,7 +3,7 @@
 `CopiMineClient` — необязательный Fabric-клиент для визуальных эффектов `CopiMineNarcotics`.
 
 Что он делает:
-- рисует fullscreen overlay / shader-like эффекты прямо на клиенте;
+- рисует fullscreen overlay и shader-like эффекты прямо на клиенте;
 - принимает команды от сервера по каналу `copimine:client_bridge`;
 - подтверждает запуск эффекта через `visual_ack`;
 - сообщает о завершении эффекта через `visual_finished`;
@@ -18,15 +18,16 @@
 
 Совместимость:
 - `CopiMineClient` можно ставить вместе с Emotecraft;
-- `CopiMineClient` не занимает стандартное колесо эмоций Emotecraft;
-- `CopiMineClient` не переключает и не ломает Iris shaderpack.
+- мод не занимает стандартное колесо эмоций Emotecraft;
+- мод не переключает и не ломает Iris shaderpack, если он уже включён у игрока.
+- текущая сборка использует HUD callback из зафиксированной Fabric API проекта; для перехода на новый HUD registry нужен отдельный апгрейд зависимости.
 
 Как установить:
 1. Установить Fabric Loader для Minecraft `1.21.1`.
 2. Положить `CopiMineClient-<version>.jar` в папку `mods`.
-3. Для полного набора клиента положить рядом:
-   - `emotecraft-for-MC1.21.1-2.4.12-fabric.jar`
+3. Для полного клиентского набора положить рядом:
    - `fabric-api-0.116.12+1.21.1.jar`
+   - `emotecraft-for-MC1.21.1-2.4.12-fabric.jar`
 4. Запустить клиент с Fabric.
 5. Зайти на сервер CopiMine.
 

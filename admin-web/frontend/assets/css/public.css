@@ -1,0 +1,52 @@
+.budget-counter-card {
+  display: grid;
+  gap: 18px;
+  padding: 26px;
+  min-height: 260px;
+}
+
+.budget-counter-head {
+  display: grid;
+  gap: 8px;
+}
+
+.budget-counter-value {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.budget-counter-value img {
+  width: 56px;
+  height: 56px;
+  image-rendering: pixelated;
+}
+
+.budget-counter-value strong {
+  font-size: clamp(34px, 5vw, 56px);
+  line-height: 1;
+  color: #183e1f;
+}
+
+.treasury-history-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.treasury-history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.treasury-history-type {
+  color: #36503b;
+  font-weight: 700;
+}
+
+.treasury-history-date {
+  color: var(--muted);
+  font-size: 12px;
+}

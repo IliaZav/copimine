@@ -40,7 +40,7 @@ permissions:
     description: Управление режимом текстур и миграцией официальных предметов
     default: op
   copimine.narcotics.visuals:
-    description: Управление визуальным runtime, fallback и client bridge
+    description: Управление visual runtime, fallback и client bridge
     default: op
   copimine.narcotics.selfcheck:
     description: Проверка состояния плагина и resource pack

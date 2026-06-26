@@ -1,0 +1,8 @@
+@media (prefers-reduced-motion: reduce) {
+  .president-skin-tilt,
+  .skin-rotate,
+  .budget-counter-value strong {
+    transition: none !important;
+    animation: none !important;
+  }
+}

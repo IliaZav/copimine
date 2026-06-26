@@ -140,7 +140,7 @@ items:
       - type:WITHER,amplifier:0,duration_seconds:40
 
   sbp:
-    display_name: "&6Сбп"
+    display_name: "&6СБП"
     material: GOLD_NUGGET
     texture_key: narcotic_sbp
     custom_model_data: 810004

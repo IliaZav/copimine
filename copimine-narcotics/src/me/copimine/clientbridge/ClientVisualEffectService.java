@@ -282,7 +282,7 @@ public final class ClientVisualEffectService {
                         command.seconds(),
                         command.intensity(),
                         command.source(),
-                    "no-ack"
+                        "no-ack"
                 );
             }
             lastErrorByPlayer.put(command.playerUuid(), command.effectId() + ":no-ack");
@@ -298,6 +298,17 @@ public final class ClientVisualEffectService {
         for (ClientVisualCommand command : staleRunning) {
             runningCommands.remove(command.seq());
             activeSeqByPlayer.remove(command.playerUuid(), command.seq());
+            Player player = Bukkit.getPlayer(command.playerUuid());
+            if (player != null && player.isOnline() && command.fallbackHandler() != null) {
+                command.fallbackHandler().onFallback(
+                        command.playerUuid(),
+                        command.effectId(),
+                        command.seconds(),
+                        command.intensity(),
+                        command.source(),
+                        "client-unavailable"
+                );
+            }
             lastFinishedByPlayer.put(command.playerUuid(), command.effectId() + ":client-unavailable");
         }
     }

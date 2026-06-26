@@ -105,7 +105,7 @@ public final class ClientCapabilityService {
                 + ", clientVisuals=" + state.clientModVisuals()
                 + ", clientOverlay=" + state.clientOverlay()
                 + ", clientShaderLike=" + state.clientShaderLike()
-                + ", trueIrisShader=" + state.trueIrisShader()
+                + ", irisShaderPackActive=" + state.trueIrisShader()
                 + ", heartbeatAgo=" + secondsSinceHeartbeat + "s"
                 + ", effects=" + state.supportedEffects().stream().sorted(String::compareToIgnoreCase).toList();
     }
@@ -120,6 +120,7 @@ public final class ClientCapabilityService {
         if (!state.clientModVisuals()) {
             return "client-no-visuals";
         }
-        return state.supportedEffects().contains(normalized) ? "client-ready" : "unsupported-effect";
+        String irisSuffix = state.trueIrisShader() ? "+iris-shaderpack" : "";
+        return state.supportedEffects().contains(normalized) ? "client-ready" + irisSuffix : "unsupported-effect" + irisSuffix;
     }
 }

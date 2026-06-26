@@ -21,7 +21,7 @@ public final class CopiMineClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ClientBridgeProtocol.registerNetworking(visualManager);
-        HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> visualManager.render(drawContext));
+        HudRenderCallback.EVENT.register((graphics, ignoredTickCounter) -> visualManager.render(graphics));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
             ClientBridgeProtocol.tickNetwork(client);
@@ -50,16 +50,18 @@ public final class CopiMineClient implements ClientModInitializer {
                             return 1;
                         }))
                 .then(ClientCommandManager.literal("debug")
-                        .then(ClientCommandManager.literal("on").executes(context -> {
-                            config.setDebugOverlay(true);
-                            context.getSource().sendFeedback(Text.literal("CopiMineClient: debug включён"));
-                            return 1;
-                        }))
-                        .then(ClientCommandManager.literal("off").executes(context -> {
-                            config.setDebugOverlay(false);
-                            context.getSource().sendFeedback(Text.literal("CopiMineClient: debug выключен"));
-                            return 1;
-                        })))
+                        .then(ClientCommandManager.literal("on")
+                                .executes(context -> {
+                                    config.setDebugOverlay(true);
+                                    context.getSource().sendFeedback(Text.literal("CopiMineClient: debug включён"));
+                                    return 1;
+                                }))
+                        .then(ClientCommandManager.literal("off")
+                                .executes(context -> {
+                                    config.setDebugOverlay(false);
+                                    context.getSource().sendFeedback(Text.literal("CopiMineClient: debug выключен"));
+                                    return 1;
+                                })))
                 .then(ClientCommandManager.literal("reload")
                         .executes(context -> {
                             config.reload();
@@ -91,7 +93,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                                             visualManager.startLocalTest(effectId, seconds, intensity);
                                                             context.getSource().sendFeedback(Text.literal("Локальный тест запущен: " + effectId + " / " + seconds + "с / intensity=" + intensity));
                                                             return 1;
-                                                        }))))))
+                                                        })))))
                         .then(ClientCommandManager.literal("stop")
                                 .then(ClientCommandManager.argument("effectId", StringArgumentType.word())
                                         .executes(context -> {
@@ -100,11 +102,11 @@ public final class CopiMineClient implements ClientModInitializer {
                                             context.getSource().sendFeedback(Text.literal("Остановлено: " + effectId));
                                             return 1;
                                         })))
-                .then(ClientCommandManager.literal("clear")
-                        .executes(context -> {
-                            visualManager.clearAll("manual");
-                            context.getSource().sendFeedback(Text.literal("Визуалы очищены"));
-                            return 1;
-                        })));
+                        .then(ClientCommandManager.literal("clear")
+                                .executes(context -> {
+                                    visualManager.clearAll("manual");
+                                    context.getSource().sendFeedback(Text.literal("Визуалы очищены"));
+                                    return 1;
+                                }))));
     }
 }

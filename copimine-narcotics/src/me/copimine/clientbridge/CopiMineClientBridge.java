@@ -122,7 +122,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                 return;
             }
             if (!capabilities.hasCopiMineClient(player)) {
-                player.kickPlayer(ChatColor.RED + "Для полной версии CopiMine нужен клиентский мод CopiMineClient. Установи мод из сборки сервера.");
+                player.kickPlayer(ChatColor.RED + "Для полной версии CopiMine нужен клиентский мод CopiMineClient. Установите мод из сборки сервера.");
             }
         }, Math.max(20L, configService.handshakeTimeoutSeconds() * 20L));
     }
@@ -240,10 +240,16 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                 sender.sendMessage(ChatColor.YELLOW + "У игрока нет поддержки CopiMineClient для эффекта " + effectId + ".");
                 return true;
             }
-            visuals.sendVisualStart(target, effectId, seconds, intensity, "ADMIN_TEST",
+            visuals.sendVisualStart(
+                    target,
+                    effectId,
+                    seconds,
+                    intensity,
+                    "ADMIN_TEST",
                     (playerUuid, effect, fallbackSeconds, fallbackIntensity, source, reason) -> fallbackTest.accept(target, effect + ":" + fallbackSeconds),
                     (playerUuid, effect, source, reason) -> {
-                    });
+                    }
+            );
             sender.sendMessage(ChatColor.GREEN + "Клиентский visual test отправлен: " + target.getName() + " / " + effectId);
             return true;
         }

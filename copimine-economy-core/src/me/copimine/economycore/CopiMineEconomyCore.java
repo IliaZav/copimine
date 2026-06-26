@@ -719,12 +719,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private void openBankAtm(Player player, String atmId) {
         if (hasTreasuryAccess(player)) {
             MenuHolder holder = new MenuHolder("economy:atm-select", atmId);
-            Inventory inventory = holder.create(27, color("&b&lР‘Р°РЅРє CopiMine"));
-            button(holder, inventory, 11, Material.PLAYER_HEAD, "&bР›РёС‡РЅС‹Р№ С‡С‘С‚",
-                    List.of("&7РћР±С‹С‡РЅС‹Р№ Р±Р°РЅРєРѕРІСЃРєРёР№ С‡РµРє Рё Р»РёС‡РЅС‹Р№ PIN."), "atm:account:" + atmId + ":PERSONAL");
-            button(holder, inventory, 15, Material.GOLD_BLOCK, "&6РљР°Р·РЅР°",
-                    List.of("&7РћС‚РґРµР»СЊРЅС‹Р№ С‡РµРє РєР°Р·РЅС‹.", "&7Р”РѕСЃС‚СѓРї С‚РѕР»СЊРєРѕ Сѓ РїСЂРµР·РёРґРµРЅС‚Р° Рё Р°РґРјРёРЅРѕРІ."), "atm:account:" + atmId + ":TREASURY");
-            button(holder, inventory, 22, Material.ARROW, "&aРљ Р±Р°РЅРєРѕРјР°С‚Р°Рј", List.of(), "nav:atms");
+            Inventory inventory = holder.create(27, color("&b&lБанк CopiMine"));
+            button(holder, inventory, 11, Material.PLAYER_HEAD, "&bЛичный счёт",
+                    List.of("&7Обычный банковский счёт и личный PIN."), "atm:account:" + atmId + ":PERSONAL");
+            button(holder, inventory, 15, Material.GOLD_BLOCK, "&6Казна",
+                    List.of("&7Отдельный счёт казны.", "&7Доступ только у президента и админов."), "atm:account:" + atmId + ":TREASURY");
+            button(holder, inventory, 22, Material.ARROW, "&aК банкоматам", List.of(), "nav:atms");
             player.openInventory(inventory);
             return;
         }
@@ -745,7 +745,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             Map<String, Object> treasury = tx(this::ensureTreasuryAccount);
             Map<String, Object> payload = new HashMap<>();
             payload.put("scope", "TREASURY");
-            payload.put("name", first(string(rows.getFirst().get("name")), "Р‘Р°РЅРєРѕРјР°С‚"));
+            payload.put("name", first(string(rows.getFirst().get("name")), "Банкомат"));
             payload.put("balance", longValue(treasury.get("balance")));
             return payload;
         }).whenComplete((payload, error) -> Bukkit.getScheduler().runTask(this, () -> {
@@ -753,26 +753,26 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (error != null) {
-                player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ Р±Р°РЅРєРѕРјР°С‚."));
+                player.sendMessage(color("&cНе удалось открыть банкомат."));
                 getLogger().warning("treasury ATM open: " + safeError(error));
                 return;
             }
             if (payload == null) {
-                player.sendMessage(color("&cР‘Р°РЅРєРѕРјР°С‚ Р±РѕР»СЊС€Рµ РЅРµ Р°РєС‚РёРІРµРЅ."));
+                player.sendMessage(color("&cБанкомат больше не активен."));
                 return;
             }
             MenuHolder holder = new MenuHolder("economy:atm", atmId);
             holder.data.put("scope", "TREASURY");
-            Inventory inventory = holder.create(54, color("&b&lР‘Р°РЅРє CopiMine"));
-            button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Р‘Р°РЅРєРѕРјР°С‚"),
-                    List.of("&7РЎС‡С‘С‚: &fРљР°Р·РЅР° CopiMine", "&7Р‘Р°Р»Р°РЅСЃ: &f" + payload.get("balance") + " AR"), "");
-            button(holder, inventory, 10, Material.DIAMOND_ORE, "&aР’РЅРµСЃС‚Рё РїСЂРµРґРјРµС‚ РёР· СЂСѓРєРё", List.of("&7Р‘РµСЂС‘С‚ РѕС„РёС†РёР°Р»СЊРЅС‹Р№ AR РёР· РѕСЃРЅРѕРІРЅРѕР№ СЂСѓРєРё.", "&7PIN РЅРµ С‚СЂРµР±СѓРµС‚СЃСЏ."), "atm:deposit-hand:" + atmId + ":TREASURY");
-            button(holder, inventory, 12, Material.CHEST, "&aР’РЅРµСЃС‚Рё РІРµСЃСЊ AR", List.of("&7Р‘РµСЂС‘С‚ РІРµСЃСЊ РѕС„РёС†РёР°Р»СЊРЅС‹Р№ AR РёР· РёРЅРІРµРЅС‚Р°СЂСЏ.", "&7PIN РЅРµ С‚СЂРµР±СѓРµС‚СЃСЏ."), "atm:deposit-all:" + atmId + ":TREASURY");
-            button(holder, inventory, 14, Material.PLAYER_HEAD, "&bРџРµСЂРµРІРµСЃС‚Рё РёРіСЂРѕРєСѓ", List.of("&7Р‘Р°РЅРєРѕРІСЃРєРёР№ РїРµСЂРµРІРѕРґ СЃ РїСЂРѕРІРµСЂРєРѕР№ PIN РєР°Р·РЅС‹."), "atm:targets:" + atmId + ":TREASURY");
-            button(holder, inventory, 28, Material.EMERALD, "&eРЎРЅСЏС‚СЊ 1 AR", List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "atm:withdraw:" + atmId + ":TREASURY:1");
-            button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eРЎРЅСЏС‚СЊ 16 AR", List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "atm:withdraw:" + atmId + ":TREASURY:16");
-            button(holder, inventory, 32, Material.DIAMOND_ORE, "&eРЎРЅСЏС‚СЊ 64 AR", List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "atm:withdraw:" + atmId + ":TREASURY:64");
-            button(holder, inventory, 49, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of(), "atm:open:" + atmId);
+            Inventory inventory = holder.create(54, color("&b&lБанк CopiMine"));
+            button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Банкомат"),
+                    List.of("&7Счёт: &fКазна CopiMine", "&7Баланс: &f" + payload.get("balance") + " AR"), "");
+            button(holder, inventory, 10, Material.DIAMOND_ORE, "&aВнести предмет из руки", List.of("&7Берёт официальный AR из основной руки.", "&7PIN не требуется."), "atm:deposit-hand:" + atmId + ":TREASURY");
+            button(holder, inventory, 12, Material.CHEST, "&aВнести весь AR", List.of("&7Берёт весь официальный AR из инвентаря.", "&7PIN не требуется."), "atm:deposit-all:" + atmId + ":TREASURY");
+            button(holder, inventory, 14, Material.PLAYER_HEAD, "&bПеревести игроку", List.of("&7Банковский перевод с проверкой PIN казны."), "atm:targets:" + atmId + ":TREASURY");
+            button(holder, inventory, 28, Material.EMERALD, "&eСнять 1 AR", List.of("&7Потребуется PIN казны."), "atm:withdraw:" + atmId + ":TREASURY:1");
+            button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eСнять 16 AR", List.of("&7Потребуется PIN казны."), "atm:withdraw:" + atmId + ":TREASURY:16");
+            button(holder, inventory, 32, Material.DIAMOND_ORE, "&eСнять 64 AR", List.of("&7Потребуется PIN казны."), "atm:withdraw:" + atmId + ":TREASURY:64");
+            button(holder, inventory, 49, Material.ARROW, "&aНазад", List.of(), "atm:open:" + atmId);
             player.openInventory(inventory);
         }));
     }
@@ -827,16 +827,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         MenuHolder holder = new MenuHolder("economy:targets", atmId);
         holder.data.put("scope", scope);
-        Inventory inventory = holder.create(54, color("&b&lРљРѕРјСѓ РїРµСЂРµРІРµСЃС‚Рё AR"));
+        Inventory inventory = holder.create(54, color("&b&lКому перевести AR"));
         int slot = 10;
         for (Player target : Bukkit.getOnlinePlayers().stream().sorted(Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER)).toList()) {
             if (target.getUniqueId().equals(player.getUniqueId()) || slot >= 44) {
                 continue;
             }
             button(holder, inventory, slot++, Material.PLAYER_HEAD, "&b" + target.getName(),
-                    List.of("&7РћРЅР»Р°Р№РЅ: &fРґР°", "&7UUID: &f" + shortId(target.getUniqueId().toString())), "atm:target:" + atmId + ":" + scope + ":" + target.getUniqueId());
+                    List.of("&7Онлайн: &fда", "&7UUID: &f" + shortId(target.getUniqueId().toString())), "atm:target:" + atmId + ":" + scope + ":" + target.getUniqueId());
         }
-        button(holder, inventory, 49, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of(), "atm:account:" + atmId + ":" + scope);
+        button(holder, inventory, 49, Material.ARROW, "&aНазад", List.of(), "atm:account:" + atmId + ":" + scope);
         player.openInventory(inventory);
     }
 
@@ -863,13 +863,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         MenuHolder holder = new MenuHolder("economy:amount", atmId);
         holder.data.put("scope", scope);
-        Inventory inventory = holder.create(27, color("&b&lРЎСѓРјРјР° РїРµСЂРµРІРѕРґР°"));
+        Inventory inventory = holder.create(27, color("&b&lСумма перевода"));
         String targetName = bankTargetName(targetUuid);
-        button(holder, inventory, 4, Material.PLAYER_HEAD, "&b" + first(targetName, targetUuid), List.of("&7РџРѕС‚СЂРµР±СѓРµС‚СЃСЏ PIN РєР°Р·РЅС‹."), "");
-        button(holder, inventory, 11, Material.EMERALD, "&eРџРµСЂРµРІРµСЃС‚Рё 1 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":1");
-        button(holder, inventory, 13, Material.EMERALD_BLOCK, "&eРџРµСЂРµРІРµСЃС‚Рё 16 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":16");
-        button(holder, inventory, 15, Material.DIAMOND_ORE, "&eРџРµСЂРµРІРµСЃС‚Рё 64 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":64");
-        button(holder, inventory, 22, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of(), "atm:targets:" + atmId + ":" + scope);
+        button(holder, inventory, 4, Material.PLAYER_HEAD, "&b" + first(targetName, targetUuid), List.of("&7Потребуется PIN казны."), "");
+        button(holder, inventory, 11, Material.EMERALD, "&eПеревести 1 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":1");
+        button(holder, inventory, 13, Material.EMERALD_BLOCK, "&eПеревести 16 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":16");
+        button(holder, inventory, 15, Material.DIAMOND_ORE, "&eПеревести 64 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":64");
+        button(holder, inventory, 22, Material.ARROW, "&aНазад", List.of(), "atm:targets:" + atmId + ":" + scope);
         player.openInventory(inventory);
     }
 

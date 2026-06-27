@@ -1,0 +1,291 @@
+.public-site {
+  position: relative;
+  overflow-x: clip;
+}
+
+.public-site::before,
+.public-site::after {
+  content: "";
+  position: fixed;
+  inset: auto;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(22px);
+  opacity: 0.46;
+}
+
+.public-site::before {
+  top: 110px;
+  left: -120px;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(53, 240, 127, 0.18), transparent 70%);
+}
+
+.public-site::after {
+  right: -120px;
+  bottom: 120px;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 233, 255, 0.14), transparent 72%);
+}
+
+.public-site > * {
+  position: relative;
+  z-index: 1;
+}
+
+.public-nav {
+  backdrop-filter: blur(18px);
+  border-radius: 999px;
+  padding: 10px 14px;
+}
+
+.public-hero-light {
+  background:
+    radial-gradient(circle at top left, rgba(53, 240, 127, 0.14), transparent 28%),
+    radial-gradient(circle at right center, rgba(124, 233, 255, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(6, 17, 11, 0.92), rgba(8, 20, 12, 0.98)) !important;
+}
+
+.public-hero-light .public-hero-content {
+  gap: 18px;
+}
+
+.public-hero-light h1 {
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: -0.05em;
+}
+
+.public-hero-light p {
+  max-width: 720px;
+}
+
+.hero-mini-card {
+  grid-template-columns: 46px 1fr;
+  border-radius: 20px;
+}
+
+.section-head h2,
+.page-heading h1,
+.feature-panel h3,
+.budget-counter-value strong,
+.modpack-summary-card h3 {
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.showcase-card,
+.step-card,
+.budget-counter-card,
+.president-card,
+.treasury-history-card,
+.feature-panel,
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.cabinet-role-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.showcase-card::before,
+.step-card::before,
+.budget-counter-card::before,
+.president-card::before,
+.treasury-history-card::before,
+.feature-panel::before,
+.modpack-summary-card::before,
+.modpack-file-card::before,
+.modpack-note-card::before,
+.cabinet-role-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(91, 255, 149, 0.56), transparent);
+}
+
+.modpack-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.modpack-summary-card {
+  display: grid;
+  gap: 20px;
+  padding: 26px;
+  min-height: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(180deg, rgba(11, 24, 16, 0.9), rgba(8, 20, 12, 0.96)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.08), transparent 48%);
+  box-shadow: var(--shadow);
+}
+
+.modpack-summary-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.modpack-summary-copy h3 {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.02;
+}
+
+.modpack-summary-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.modpack-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.modpack-stat {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(124, 255, 167, 0.16);
+  border-radius: 16px;
+  background: rgba(7, 18, 11, 0.6);
+}
+
+.modpack-stat span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.modpack-stat strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.modpack-file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.modpack-file-card,
+.modpack-note-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(11, 24, 16, 0.84);
+  box-shadow: var(--shadow-soft);
+}
+
+.modpack-file-badge,
+.cabinet-role-pill {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(53, 240, 127, 0.12);
+  color: #9cffbf;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.modpack-file-card strong,
+.modpack-note-card strong,
+.cabinet-role-card strong {
+  font-size: 20px;
+}
+
+.modpack-file-card p,
+.modpack-note-card p,
+.cabinet-role-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.modpack-file-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.modpack-file-meta span,
+.cabinet-role-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.modpack-note-grid,
+.cabinet-zone-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.cabinet-role-card {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(11, 24, 16, 0.88), rgba(8, 20, 12, 0.96)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 55%);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cabinet-role-card:hover,
+.cabinet-role-card.cabinet-role-active {
+  transform: translateY(-3px);
+  border-color: rgba(124, 255, 167, 0.34);
+  box-shadow: var(--shadow);
+}
+
+.cabinet-role-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 1080px) {
+  .modpack-shell,
+  .modpack-note-grid,
+  .cabinet-zone-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modpack-file-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .modpack-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}

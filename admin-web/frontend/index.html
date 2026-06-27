@@ -20,8 +20,10 @@
       <nav aria-label="Главные разделы">
         <a href="#start">Главная</a>
         <a href="#servers">Как начать</a>
+        <a href="#mods">Моды</a>
         <a href="#tops">Состояние</a>
         <a href="#features">Системы</a>
+        <a href="#cabinet-zones">Кабинеты</a>
         <a href="#rules">Правила</a>
         <a href="#help">Помощь</a>
         <a href="#signin">Войти</a>
@@ -53,8 +55,8 @@
         <img src="/assets/copimine-scene.png" alt="" />
         <div class="hero-mini-card">
           <img src="/assets/mc-icons/item/emerald.png" alt="" />
-          <strong>AR-банк</strong>
-          <span>Баланс, PIN, переводы и налог в одном кабинете.</span>
+          <strong id="heroMiniTitle">Клиент и моды</strong>
+          <span id="heroMiniText">Архив модов собирается локально и скачивается прямо с сайта без внешних зеркал.</span>
         </div>
       </div>
     </section>
@@ -191,6 +193,82 @@
       </div>
     </section>
 
+    <section id="mods" class="public-section">
+      <div class="section-head">
+        <span>Клиент</span>
+        <h2>Архив модов без внешних лаунчеров</h2>
+        <p>Сайт показывает состав клиентского архива по реальным данным: версия Minecraft, загрузчик, список jar и служебные примечания.</p>
+      </div>
+      <div class="modpack-shell">
+        <article class="modpack-summary-card">
+          <div class="modpack-summary-copy">
+            <span class="hero-kicker">CopiMineMods.zip</span>
+            <h3>Готовый архив для первого входа</h3>
+            <p id="modpackSummaryLead">Проверяем, доступен ли архив модов и что именно в него входит.</p>
+          </div>
+          <div id="modpackMetaGrid" class="modpack-meta-grid">
+            <article class="modpack-stat">
+              <span>Версия</span>
+              <strong>ожидание</strong>
+            </article>
+          </div>
+        </article>
+        <div id="modpackFileGrid" class="modpack-file-grid">
+          <article class="modpack-file-card">
+            <span class="modpack-file-badge">mods</span>
+            <strong>Загрузка списка</strong>
+            <p>Когда backend ответит, здесь появятся реальные client jars из архива.</p>
+          </article>
+        </div>
+      </div>
+      <div id="modpackNotes" class="modpack-note-grid">
+        <article class="modpack-note-card">
+          <strong>Пока без заметок</strong>
+          <p>Если в manifest есть служебные заметки, они появятся в этом блоке автоматически.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="cabinet-zones" class="public-section public-band">
+      <div class="section-head">
+        <span>Кабинеты</span>
+        <h2>Разделы сайта по роли</h2>
+        <p>Обычный игрок, президент, младший админ и старшая команда видят разные рабочие зоны. Роуты уже разделены на уровне auth и backend-проверок.</p>
+      </div>
+      <div id="cabinetZoneGrid" class="cabinet-zone-grid">
+        <article class="cabinet-role-card" data-cabinet-role="player">
+          <span class="cabinet-role-pill">Игрок</span>
+          <strong>Личный кабинет</strong>
+          <p>Банк AR, личный счёт, казна при доступе, налоги, донат-баланс, покупки, история и игровые привязки.</p>
+          <div class="cabinet-role-list">
+            <span>Банк и PIN</span>
+            <span>Донат и AR-лавка</span>
+            <span>История и предметы</span>
+          </div>
+        </article>
+        <article class="cabinet-role-card" data-cabinet-role="junior_admin">
+          <span class="cabinet-role-pill">Младший админ</span>
+          <strong>Ограниченная панель</strong>
+          <p>Доступ к хабу, игрокам и части мониторинга без опасных операций по безопасности, владельцам и критическим настройкам.</p>
+          <div class="cabinet-role-list">
+            <span>Профили игроков</span>
+            <span>Служебные обзоры</span>
+            <span>Без критичных действий</span>
+          </div>
+        </article>
+        <article class="cabinet-role-card" data-cabinet-role="admin">
+          <span class="cabinet-role-pill">Админ</span>
+          <strong>Операционный центр</strong>
+          <p>Commerce, treasury, plugin registry, resource pack и управляемые backend-инструменты с audit trail и CSRF-защитой.</p>
+          <div class="cabinet-role-list">
+            <span>Commerce и treasury</span>
+            <span>Whitelist и доступы</span>
+            <span>Plugin registry</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section id="help" class="public-section">
       <div class="section-head">
         <span>Помощь</span>
@@ -201,7 +279,7 @@
         <article class="showcase-card"><strong>Нужны моды клиента</strong><p>Скачай CopiMineMods.zip с сайта. Внутри только клиентские jar: CopiMineClient, Emotecraft и Fabric API.</p></article>
         <article class="showcase-card"><strong>Лавка артефактов не открылась</strong><p>Обычный игрок открывает лавку только кликом по зарегистрированному блоку лавки.</p></article>
         <article class="showcase-card"><strong>Предмет не выдался</strong><p>Если инвентарь был полон, товар ждёт в отложенной выдаче в игре и кабинете.</p></article>
-        <article class="showcase-card"><strong>Донат</strong><p>Реальные платежи сейчас отключены. AR не продаётся за реальные деньги.</p></article>
+        <article class="showcase-card"><strong>Донат и покупки</strong><p>Платежи проходят только через donation-баланс. AR за реальные деньги не продаётся и не смешивается с donation currency.</p></article>
       </div>
     </section>
 
@@ -226,7 +304,7 @@
 
         <div class="login-copy">
           <strong>Вход для команды сервера и игроков</strong>
-          <span>Логины сайта и пароли хранятся в PostgreSQL auth-хранилище CopiMine. После входа доступны банк, налог, история операций и привязка Minecraft-ника.</span>
+          <span>Логины сайта и пароли хранятся в PostgreSQL auth-хранилище CopiMine. После входа открываются только те разделы, которые разрешены твоей ролью: игрок, младший админ, админ или владелец.</span>
         </div>
 
         <label for="username">Логин сайта</label>

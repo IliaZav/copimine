@@ -3,26 +3,26 @@ import { makeElement, replaceChildrenSafe } from "../shared/dom.js";
 const publicFeatures = {
   bank: {
     kicker: "Банк AR",
-    title: "Один счёт для банкомата, сайта и игровых оплат",
-    text: "Баланс, переводы, PIN, личный счёт и доступ к казне у президента работают через единый безопасный banking-flow.",
+    title: "Один счёт для банкомата, сайта и игровых переводов",
+    text: "Баланс, переводы, PIN, личный счёт и доступ к казне у президента работают через единый безопасный банковский контур без ручных обходов.",
     icon: "/assets/mc-icons/item/emerald_block.png",
   },
   elections: {
     kicker: "Выборы",
-    title: "Игровая политика без лишних команд",
-    text: "Заявки, участки, бюллетени, подсчёт и результаты проходят через реальные игровые workflow, а сайт только показывает подтверждённые данные.",
+    title: "Игровая политика без ручного хаоса",
+    text: "Заявки, участки, бюллетени, подсчёт и результаты проходят через реальные игровые сценарии, а сайт показывает только подтверждённые данные.",
     icon: "/assets/mc-icons/item/writable_book.png",
   },
   president: {
-    kicker: "Президент",
-    title: "Казна и публичная ответственность",
-    text: "Президент и админы видят отдельный бюджетный счёт. Игроки получают только честную публичную витрину баланса и истории казны.",
+    kicker: "Казна",
+    title: "Отдельный бюджетный счёт сервера",
+    text: "Президент и админы работают с отдельным счётом казны. Игроки видят только публичную витрину баланса и истории, без служебных реквизитов.",
     icon: "/assets/mc-icons/item/nether_star.png",
   },
   artifacts: {
     kicker: "Лавки",
     title: "AR-предметы и защищённая выдача",
-    text: "Артефакты покупаются и чинятся по реальной экономике AR. Сайт не рисует фейковые статусы и не скрывает ошибки выдачи.",
+    text: "Артефакты покупаются и чинятся по реальной экономике AR. Сайт не рисует фейковые статусы и честно показывает, если выдача или получение требуют внимания.",
     icon: "/assets/mc-icons/item/netherite_sword.png",
   },
 };
@@ -53,6 +53,37 @@ function formatPlayers(server = {}) {
   return `${online} / ${cap} игроков`;
 }
 
+function formatMegabytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!Number.isFinite(value) || value <= 0) return "0 МБ";
+  return `${(value / (1024 * 1024)).toFixed(2)} МБ`;
+}
+
+function shortSha(value) {
+  const sha = String(value || "").trim();
+  if (!sha) return "нет";
+  return sha.length > 12 ? `${sha.slice(0, 12)}…` : sha;
+}
+
+function roleRoute(role) {
+  return role === "player" ? "#cabinet" : "#dashboard";
+}
+
+function roleLabel(role) {
+  switch (String(role || "")) {
+    case "player":
+      return "Личный кабинет";
+    case "junior_admin":
+      return "Панель младшего админа";
+    case "owner":
+      return "Панель владельца";
+    case "admin":
+      return "Админ-панель";
+    default:
+      return "Личный кабинет";
+  }
+}
+
 function cardStrong(title, value, note = "") {
   const card = makeElement("article", "showcase-card");
   card.append(
@@ -62,6 +93,15 @@ function cardStrong(title, value, note = "") {
   if (note) {
     card.append(makeElement("span", "treasury-history-date", note));
   }
+  return card;
+}
+
+function buildModpackMeta(label, value) {
+  const card = makeElement("article", "modpack-stat");
+  card.append(
+    makeElement("span", "", label),
+    makeElement("strong", "", value),
+  );
   return card;
 }
 
@@ -85,6 +125,13 @@ export function createHomepageRenderer() {
   const statusGrid = document.getElementById("publicStatusGrid");
   const onlineBoard = document.getElementById("publicOnlineBoard");
   const cabinetButton = document.getElementById("publicCabinetBtn");
+  const heroMiniTitle = document.getElementById("heroMiniTitle");
+  const heroMiniText = document.getElementById("heroMiniText");
+  const modpackSummaryLead = document.getElementById("modpackSummaryLead");
+  const modpackMetaGrid = document.getElementById("modpackMetaGrid");
+  const modpackFileGrid = document.getElementById("modpackFileGrid");
+  const modpackNotes = document.getElementById("modpackNotes");
+  const cabinetRoleCards = Array.from(document.querySelectorAll("[data-cabinet-role]"));
 
   let currentBudgetValue = 0;
   let currentRotation = -16;
@@ -159,6 +206,102 @@ export function createHomepageRenderer() {
     renderFeaturePanel(currentFeature);
   }
 
+  function renderModpack(modpack = {}, config = {}) {
+    const manifest = modpack && typeof modpack === "object" ? (modpack.manifest || {}) : {};
+    const files = Array.isArray(manifest.files) ? manifest.files : [];
+    const notes = Array.isArray(manifest.notes) ? manifest.notes : [];
+    const available = Boolean(modpack.available);
+    const downloadUrl = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
+
+    if (heroMiniTitle) {
+      heroMiniTitle.textContent = available
+        ? `${manifest.loader || "Клиент"} ${manifest.minecraftVersion || config.serverVersion || ""}`.trim()
+        : "Клиент и моды";
+    }
+    if (heroMiniText) {
+      heroMiniText.textContent = available
+        ? `В архиве ${files.length || 0} client jars. SHA1: ${shortSha(modpack.sha1)}.`
+        : "Архив модов пока не опубликован или backend ещё не подтвердил его доступность.";
+    }
+
+    if (modpackSummaryLead) {
+      modpackSummaryLead.textContent = available
+        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов к скачиванию. Он собирается локально и отдаётся сайтом без внешних CDN и сторонних генераторов.`
+        : "Архив модов пока недоступен. Сайт не рисует фейковый статус и честно ждёт готовую сборку.";
+    }
+
+    if (modpackMetaGrid) {
+      const metaCards = [
+        buildModpackMeta("Minecraft", manifest.minecraftVersion || config.serverVersion || "1.21.1"),
+        buildModpackMeta("Loader", manifest.loader || "Fabric"),
+        buildModpackMeta("Файлов", String(files.length || 0)),
+        buildModpackMeta("Размер", formatMegabytes(modpack.size || 0)),
+        buildModpackMeta("SHA1", shortSha(modpack.sha1)),
+        buildModpackMeta("Обновлён", modpack.modified ? formatDate(modpack.modified * 1000) : "нет данных"),
+      ];
+      replaceChildrenSafe(modpackMetaGrid, metaCards);
+    }
+
+    if (modpackFileGrid) {
+      if (!available || !files.length) {
+        replaceChildrenSafe(modpackFileGrid, [
+          (() => {
+            const card = makeElement("article", "modpack-file-card");
+            card.append(
+              makeElement("span", "modpack-file-badge", "mods"),
+              makeElement("strong", "", "Архив пока недоступен"),
+              makeElement("p", "", "Как только backend увидит готовый zip и manifest, список client jars появится здесь автоматически."),
+            );
+            return card;
+          })(),
+        ]);
+      } else {
+        const cards = files.map((file) => {
+          const card = makeElement("article", "modpack-file-card");
+          const badge = makeElement("span", "modpack-file-badge", "mods");
+          const title = makeElement("strong", "", String(file.component || file.path || "Мод"));
+          const copy = makeElement(
+            "p",
+            "",
+            `${String(file.version || "без версии")} · ${String(file.license || "лицензия не указана")}`,
+          );
+          const meta = makeElement("div", "modpack-file-meta");
+          meta.append(
+            makeElement("span", "", String(file.path || "mods/unknown.jar")),
+          );
+          if (file.source) {
+            const sourceChip = makeElement("span", "", "есть source");
+            sourceChip.title = String(file.source);
+            meta.append(sourceChip);
+          }
+          card.append(badge, title, copy, meta);
+          return card;
+        });
+        replaceChildrenSafe(modpackFileGrid, cards);
+      }
+    }
+
+    if (modpackNotes) {
+      const noteCards = (notes.length ? notes : [
+        available
+          ? "Manifest не вернул дополнительных заметок. Это допустимо, если архив уже собран и проверен."
+          : "После появления архива здесь отобразятся примечания по клиентской сборке и опциональным модам.",
+      ]).map((note) => {
+        const card = makeElement("article", "modpack-note-card");
+        card.append(
+          makeElement("strong", "", "Примечание"),
+          makeElement("p", "", String(note)),
+        );
+        return card;
+      });
+      replaceChildrenSafe(modpackNotes, noteCards);
+    }
+
+    if (downloadModsBtn && available) {
+      downloadModsBtn.href = downloadUrl;
+    }
+  }
+
   function renderServerHero(config = {}, status = {}, modpack = {}) {
     const server = status.server || {};
     const serverAddress = String(config.serverAddress || "").trim();
@@ -179,18 +322,19 @@ export function createHomepageRenderer() {
     }
     if (downloadModsBtn) {
       if (modpack.available) {
-        const sizeMb = modpack.size ? `${(Number(modpack.size) / (1024 * 1024)).toFixed(2)} МБ` : "архив готов";
+        const sizeText = formatMegabytes(modpack.size || 0);
         downloadModsBtn.href = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
-        downloadModsBtn.textContent = `Скачать моды (${sizeMb})`;
+        downloadModsBtn.textContent = `Скачать моды (${sizeText})`;
         downloadModsBtn.classList.remove("btn-disabled");
         downloadModsBtn.removeAttribute("aria-disabled");
       } else {
-        downloadModsBtn.href = "#help";
+        downloadModsBtn.href = "#mods";
         downloadModsBtn.textContent = "Архив модов готовится";
         downloadModsBtn.classList.add("btn-disabled");
         downloadModsBtn.setAttribute("aria-disabled", "true");
       }
     }
+    renderModpack(modpack, config);
   }
 
   function renderStatus(status = {}, config = {}) {
@@ -306,12 +450,21 @@ export function createHomepageRenderer() {
   }
 
   function renderAuthState(auth = {}) {
-    if (!cabinetButton) return;
-    const authed = Boolean(auth.role || auth.cookieAuth);
-    cabinetButton.classList.toggle("hidden", !authed);
-    cabinetButton.dataset.routeTarget = authed
-      ? auth.role === "player" ? "#cabinet" : "#dashboard"
-      : "";
+    const role = String(auth.role || "");
+    const authed = Boolean(role || auth.cookieAuth);
+    if (cabinetButton) {
+      cabinetButton.classList.toggle("hidden", !authed);
+      cabinetButton.dataset.routeTarget = authed ? roleRoute(role) : "";
+      cabinetButton.textContent = roleLabel(role);
+    }
+    cabinetRoleCards.forEach((card) => {
+      const cardRole = String(card.getAttribute("data-cabinet-role") || "");
+      const active = Boolean(
+        role &&
+        (role === cardRole || (role === "owner" && cardRole === "admin")),
+      );
+      card.classList.toggle("cabinet-role-active", active);
+    });
   }
 
   function renderUnavailableState() {
@@ -320,6 +473,9 @@ export function createHomepageRenderer() {
     }
     if (serverPulseText) {
       serverPulseText.textContent = "Публичный backend временно не ответил. Сайт не показывает выдуманные данные.";
+    }
+    if (modpackSummaryLead) {
+      modpackSummaryLead.textContent = "Публичный backend не вернул сведения по модпаку. Сайт не подменяет это фейковыми карточками.";
     }
   }
 
@@ -363,5 +519,6 @@ export function createHomepageRenderer() {
     renderFeaturePanel,
     renderAuthState,
     renderUnavailableState,
+    renderModpack,
   };
 }

@@ -28,11 +28,18 @@
 - `GET /api/player/bank`
 - `POST /api/player/bank/pin`
 - `POST /api/player/bank/transfer`
-- `POST /api/player/election-tax/pay`
+- `GET /api/player/elections/tax`
+- `POST /api/player/elections/tax/pay`
 - `GET /api/player/donation/balance`
-- `POST /api/player/donation/session`
-- `GET /api/player/donation/session/{session_id}`
-- `POST /api/player/donation/purchase-intent`
+- `GET /api/player/donation/packs`
+- `POST /api/player/donation/sbp/session`
+- `GET /api/player/donation/sbp/session/{session_id}`
+- `GET /api/player/donation/sbp/session/{session_id}/qr.png`
+- `POST /api/player/shop/purchase-intent`
+- `POST /api/player/donation/claim`
+- `GET /api/player/shop/donation-items`
+- `GET /api/player/shop/ar-items`
+- `GET /api/player/shop/owned`
 - `GET /api/player/donation/items`
 - `GET /api/player/artifacts`
 
@@ -43,17 +50,17 @@
 - `GET /api/admin/donation/overview`
 - `POST /api/admin/donation/add-balance`
 - `POST /api/admin/donation/test-purchase`
-- `POST /api/admin/donation/session/{session_id}/mark-paid`
-- `POST /api/admin/donation/session/{session_id}/cancel`
-- `GET /api/admin/plugin-registry`
-- `GET /api/admin/plugin-registry/{plugin_id}/status`
-- `GET /api/admin/plugin-registry/{plugin_id}/schema`
-- `GET /api/admin/plugin-registry/{plugin_id}/config`
-- `POST /api/admin/plugin-registry/{plugin_id}/validate`
-- `POST /api/admin/plugin-registry/{plugin_id}/backup`
-- `POST /api/admin/plugin-registry/{plugin_id}/apply`
-- `POST /api/admin/plugin-registry/{plugin_id}/reload`
-- `GET /api/admin/plugin-registry/{plugin_id}/audit`
+- `POST /api/admin/donation/sbp/session/{session_id}/mark-paid`
+- `POST /api/admin/donation/sbp/session/{session_id}/cancel`
+- `GET /api/admin/plugins/registry`
+- `GET /api/admin/plugins/{plugin_id}/status`
+- `GET /api/admin/plugins/{plugin_id}/schema`
+- `GET /api/admin/plugins/{plugin_id}/config`
+- `POST /api/admin/plugins/{plugin_id}/validate`
+- `POST /api/admin/plugins/{plugin_id}/backup`
+- `POST /api/admin/plugins/{plugin_id}/apply`
+- `POST /api/admin/plugins/{plugin_id}/reload`
+- `GET /api/admin/plugins/{plugin_id}/audit`
 
 ## Public shell checks
 
@@ -89,3 +96,10 @@
 2. No inline `onclick=`, `oninput=`, `onsubmit=` in HTML or bundled frontend source.
 3. No refresh/access token persistence in browser storage.
 4. No fake success or placeholder copy in guest, player or admin UI.
+
+## Modpack archive checks
+
+1. `GET /api/public/modpack` returns `available=true`, size, SHA1 and manifest when the archive exists.
+2. The public "Архив модов без внешних лаунчеров" section lists real jars from `modpack_manifest.json`.
+3. `thirdparty/CopiMineMods.zip` contains `CopiMineClient`, `Emotecraft`, `Fabric API`, `checksums.txt`, `modpack_manifest.json`, `README_RU.txt`.
+4. The hero download button and the modpack section both point to the same archive URL.

@@ -2832,6 +2832,33 @@ def require_owner(request: Request, authorization: str = Header(default="")) -> 
     return str(context.get("username") or "")
 
 
+def admin_role_for_username(username: str) -> str:
+    real_username, meta = resolve_admin_user(username)
+    if not real_username or not meta:
+        return ""
+    return normalize_admin_role(meta.get("role"))
+
+
+def ensure_admin_account_create_allowed(actor_username: str, target_username: str, requested_role: str) -> None:
+    actor_role = admin_role_for_username(actor_username)
+    existing_target_role = admin_role_for_username(target_username)
+    target_role = normalize_admin_role(requested_role)
+    if not is_full_admin_role(actor_role):
+        raise HTTPException(status_code=403, detail="Нужны полные права администратора")
+    if target_role == "owner" and actor_role != "owner":
+        raise HTTPException(status_code=403, detail="Только владелец панели может создавать owner-аккаунты")
+    if existing_target_role == "owner" and actor_role != "owner":
+        raise HTTPException(status_code=403, detail="Только владелец панели может изменять существующий owner-аккаунт")
+
+
+def ensure_admin_account_owner_mutation_allowed(actor_username: str, target_username: str, requested_role: Optional[str] = None) -> None:
+    actor_role = admin_role_for_username(actor_username)
+    target_role = admin_role_for_username(target_username)
+    next_role = normalize_admin_role(requested_role) if requested_role is not None else target_role
+    if (target_role == "owner" or next_role == "owner") and actor_role != "owner":
+        raise HTTPException(status_code=403, detail="Только владелец панели может менять или отключать owner-аккаунты")
+
+
 def valid_site_username(username: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_]{3,32}", username or ""))
 
@@ -9019,9 +9046,11 @@ async def security_admins(_: str = Depends(require_admin)) -> dict[str, Any]:
 
 
 @app.post("/api/security/admins")
-async def security_add_admin(data: AdminAccessIn, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
+async def security_add_admin(data: AdminAccessIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    actor_username = username
     require_sensitive_confirm(request, "ADMIN_CREATE")
     username = data.username.strip()
+    ensure_admin_account_create_allowed(actor_username, username, data.role)
     if not valid_minecraft_name(username):
         raise HTTPException(status_code=400, detail="Ник должен быть обычным Minecraft-ником 3-16 символов: A-Z, 0-9, _")
     ok, msg = password_policy_ok(data.password)
@@ -9036,13 +9065,13 @@ async def security_add_admin(data: AdminAccessIn, request: Request, owner: str =
         "role": normalize_admin_role(data.role),
         "enabled": True,
         "createdAt": meta.get("createdAt", now),
-        "createdBy": meta.get("createdBy", owner),
+        "createdBy": meta.get("createdBy", actor_username),
         "updatedAt": now,
-        "updatedBy": owner,
+        "updatedBy": actor_username,
     })
     save_admin_user(username, meta)
-    audit_event(owner, "security.admin.create", target=username, details={"ensureOp": data.ensure_op, "ensureWhitelist": data.ensure_whitelist})
-    append_panel_event("admin-panel", "admin_access_created", actor=owner, target=username, tags=["security"])
+    audit_event(actor_username, "security.admin.create", target=username, details={"ensureOp": data.ensure_op, "ensureWhitelist": data.ensure_whitelist, "role": normalize_admin_role(data.role)})
+    append_panel_event("admin-panel", "admin_access_created", actor=actor_username, target=username, tags=["security"])
     return {"ok": True, "admin": admin_public_row(username, meta), "minecraft": mc}
 
 
@@ -9055,6 +9084,7 @@ async def security_update_admin(username: str, data: AdminUpdateIn, request: Req
     if not found:
         raise HTTPException(status_code=404, detail="Админ не найден")
     username = real_username
+    ensure_admin_account_owner_mutation_allowed(owner, username, data.role)
     meta = dict(found)
     if data.enabled is not None:
         if username == owner and data.enabled is False:
@@ -9079,6 +9109,7 @@ async def security_update_admin(username: str, data: AdminUpdateIn, request: Req
 @app.delete("/api/security/admins/{username}")
 async def security_delete_admin(username: str, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_DISABLE")
+    ensure_admin_account_owner_mutation_allowed(owner, username)
     result = await bg(remove_or_disable_admin_user, username, owner)
     audit_event(owner, "security.admin.delete", target=username)
     append_panel_event("admin-panel", "admin_access_deleted", actor=owner, target=username, tags=["security"])

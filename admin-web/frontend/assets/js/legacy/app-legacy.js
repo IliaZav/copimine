@@ -228,6 +228,7 @@ const navGroups = [
     title: "Система",
     items: [
       ["server", "Сервер", "Связь с миром и службами", "S"],
+      ["admins", "Админы", "Аккаунты команды и вход в панель", "А"],
       ["security", "Доступ", "Команда и права доступа", "Д"],
       ["sources", "Источники", "Плагины и файлы", ""],
       ["settings", "Настройки", "Конфигурация", "Н"]
@@ -3247,8 +3248,7 @@ async function loadAudit() {
 
 async function loadSecurity() {
   setLoading("Загружаю доступы");
-  const [admins, access, lists, whitelist, ipAlerts] = await Promise.all([
-    safeApi("/api/security/admins", { admins: [], whitelistCandidates: [] }),
+  const [access, lists, whitelist, ipAlerts] = await Promise.all([
     safeApi("/api/security/access", {}),
     safeApi("/api/minecraft/access-lists", {}),
     safeApi("/api/admin/whitelist/requests?limit=60", { requests: [], count: 0 }),
@@ -3258,10 +3258,10 @@ async function loadSecurity() {
   const alertRows = asArray(ipAlerts.alerts);
   setView(`
     <section class="layout-grid grid-4">
-      ${metric("Команда", asArray(admins.admins).length, "Пользователи рабочего кабинета")}
       ${metric("Whitelist", asArray(lists.whitelist).length, "Игроки с доступом к серверу")}
       ${metric("Заявки", whitelistRows.filter(row => String(row.status || "").toUpperCase() === "PENDING").length, "Ждут Discord или web approval", whitelistRows.some(row => String(row.status || "").toUpperCase() === "PENDING") ? "warn" : "good")}
       ${metric("IP-alerts", alertRows.length, "Подозрительные регистрации и лимиты", alertRows.length ? "warn" : "good")}
+      ${metric("Подтверждения", CONFIRM_HEADER, "Нужны для опасных действий", "neutral")}
     </section>
     ${safetyRail([
       ["Вход в панель", access.cookieAuth ? "сессия защищена и работает" : "проверь вход в панель", access.cookieAuth ? "good" : "warn"],
@@ -3270,14 +3270,14 @@ async function loadSecurity() {
       ["Minecraft-доступ", "права и допуск меняются только через журналируемые действия", "good"]
     ])}
     <section class="layout-grid grid-2">
-      ${panel("Команда сервера", "Кто может входить в админ-панель и управлять сервером.", table("admins", asArray(admins.admins), [
-        { key: "username", label: "Ник" },
-        { key: "role", label: "Роль", render: value => pill(value === "junior_admin" ? "младший админ" : (value || "admin"), value === "junior_admin" ? "neutral" : "good") },
-        { key: "enabled", label: "Включён", render: v => v ? pill("да", "good") : pill("нет", "bad") },
-        { key: "op", label: "OP", render: v => v ? pill("OP", "good") : pill("нет", "warn") },
-        { key: "whitelisted", label: "Whitelist", render: v => v ? pill("есть", "good") : pill("нет", "warn") },
-        { key: "canLogin", label: "Вход", render: v => v ? pill("может", "good") : pill("нельзя", "bad") }
-      ]))}
+      ${panel("Команда панели", "Состав админов и отдельная регистрация новых аккаунтов перенесены во вкладку «Админы».", `
+        <div class="stack gap-12">
+          <p class="muted">Здесь остаётся только безопасность входа, whitelist и контроль Minecraft-доступа.</p>
+          ${isJuniorAdminRole()
+            ? '<div class="notice">Младший админ не может создавать или менять админ-аккаунты.</div>'
+            : '<button class="btn btn-secondary full" data-click="openAdminsTab()">Открыть вкладку «Админы»</button>'}
+        </div>
+      `)}
       ${panel("Minecraft-доступ", "Выдай доступ, права или ограничение без лишних команд.", `
         <div class="form-grid">
           <input id="accessPlayer" placeholder="Ник игрока" />
@@ -3296,7 +3296,7 @@ async function loadSecurity() {
         ${kv([
           ["Требуется OP для входа", access.requireOp],
           ["Нужен whitelist", access.requireWhitelist],
-          ["зменения через сайт", access.dbWriteEnabled ? "разрешены только готовые действия" : "только через серверный runtime"]
+          ["Изменения через сайт", access.dbWriteEnabled ? "разрешены только готовые действия" : "только через серверный runtime"]
         ])}
       `)}
     </section>
@@ -3318,9 +3318,62 @@ async function loadSecurity() {
         { key: "status", label: "Статус" }
       ], { pageSize: 12 }) : empty("IP-alerts пока нет", "Подозрительные регистрации и лимиты появятся здесь автоматически."))}
     </section>
-    <section id="admin-create-panel" class="layout-grid grid-2">
-      ${state.owner
-        ? panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
+    <section class="layout-grid grid-2">
+      ${panel("Защита входа", "Короткая сводка по доступу в админку и подтверждениям.", kv([
+        ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
+        ["Хранилище входа", access.authDb || "основное"],
+        ["Готовность хранилища", access.authDbExists ? "готово" : "проверить"],
+        ["Код подтверждения", CONFIRM_HEADER]
+      ]))}
+      ${panel("Права ролей", "Кто что может делать в админке.", safetyRail([
+        ["Младший админ", "может работать в панели без опасных действий и без управления админами", "neutral"],
+        ["Полный админ", "может создавать новые admin/junior_admin аккаунты и управлять рабочими разделами", "good"],
+        ["Владелец", "дополнительно меняет owner-аккаунты и owner-only настройки", "warn"]
+      ]))}
+    </section>
+  `);
+}
+
+async function loadAdmins() {
+  setLoading("Загружаю команду панели");
+  const [admins, access] = await Promise.all([
+    safeApi("/api/security/admins", { admins: [], whitelistCandidates: [] }),
+    safeApi("/api/security/access", {})
+  ]);
+  const rows = asArray(admins.admins);
+  const activeRows = rows.filter(row => row.enabled);
+  const fullAdmins = activeRows.filter(row => String(row.role || "").toLowerCase() === "admin" || String(row.role || "").toLowerCase() === "owner");
+  const juniorAdmins = activeRows.filter(row => String(row.role || "").toLowerCase() === "junior_admin");
+  setView(`
+    <section class="layout-grid grid-4">
+      ${metric("Команда", rows.length, "Все аккаунты админ-панели")}
+      ${metric("Активные", activeRows.length, "Могут войти прямо сейчас", activeRows.length ? "good" : "warn")}
+      ${metric("Полные админы", fullAdmins.length, "admin и owner", fullAdmins.length ? "good" : "neutral")}
+      ${metric("Младшие", juniorAdmins.length, "junior_admin", juniorAdmins.length ? "neutral" : "good")}
+    </section>
+    ${safetyRail([
+      ["Создание", "Новый аккаунт получает отдельный логин в панель и не делит пароль с существующими админами.", "good"],
+      ["Ограничения", "Owner-аккаунты, отключение и правка существующих админов остаются только у владельца панели.", "warn"],
+      ["Minecraft-доступ", "По желанию сразу открывается whitelist и OP для рабочего входа в игру.", "good"],
+      ["Подтверждение", `Создание требует код ${CONFIRM_HEADER}.`, "warn"]
+    ])}
+    <section class="layout-grid grid-2">
+      ${panel("Команда сервера", "Кто уже имеет доступ к рабочему кабинету.", table("admins", rows, [
+        { key: "username", label: "Ник" },
+        { key: "role", label: "Роль", render: value => pill(value === "junior_admin" ? "младший админ" : (value || "admin"), value === "junior_admin" ? "neutral" : "good") },
+        { key: "enabled", label: "Включён", render: v => v ? pill("да", "good") : pill("нет", "bad") },
+        { key: "op", label: "OP", render: v => v ? pill("OP", "good") : pill("нет", "warn") },
+        { key: "whitelisted", label: "Whitelist", render: v => v ? pill("есть", "good") : pill("нет", "warn") },
+        { key: "canLogin", label: "Вход", render: v => v ? pill("может", "good") : pill("нельзя", "bad") }
+      ], { pageSize: 14 }))}
+      ${isJuniorAdminRole()
+        ? panel("Регистрация админов", "Для младшего админа эта вкладка только обзорная.", `
+            <div class="empty-state compact">
+              <strong>Только просмотр</strong>
+              <span>Создавать новые admin/junior_admin аккаунты могут только полный админ или владелец панели.</span>
+            </div>
+          `)
+        : panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
             <div class="form-grid danger-zone">
               <input id="newAdminUsername" placeholder="Minecraft-ник" />
               <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
@@ -3328,22 +3381,24 @@ async function loadSecurity() {
                 <option value="admin">Полный админ</option>
                 <option value="junior_admin">Младший админ</option>
               </select>
-              <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить доступ к серверу, если нужно</label>
-              <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP, если политика входа требует</label>
+              <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Сразу открыть доступ к серверу</label>
+              <label class="check-line"><input id="newAdminOp" type="checkbox" /> Сразу выдать OP, если это нужно</label>
               <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
             </div>
-          `)
-        : panel("Управление администраторами", "Создание и изменение учётных записей админов доступно только владельцу панели.", `
-            <div class="empty-state compact">
-              <strong>Owner-only раздел</strong>
-              <span>Полный админ может просматривать состояние безопасности и whitelist, но не менять состав админов.</span>
-            </div>
+            <div class="notice">Этот экран создаёт только admin и junior_admin. Owner-аккаунты и изменение существующих учёток остаются у владельца панели.</div>
           `)}
+    </section>
+    <section class="layout-grid grid-2">
       ${panel("Защита входа", "Короткая сводка по доступу в админку и подтверждениям.", kv([
         ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
         ["Хранилище входа", access.authDb || "основное"],
         ["Готовность хранилища", access.authDbExists ? "готово" : "проверить"],
         ["Код подтверждения", CONFIRM_HEADER]
+      ]))}
+      ${panel("Что дальше", "Как работать с новыми аккаунтами после регистрации.", safetyRail([
+        ["1. Создай учётку", "Выдай временный пароль и при необходимости сразу добавь whitelist/OP.", "neutral"],
+        ["2. Передай доступ сотруднику", "После первого входа он сможет сменить пароль и работать только в разрешённых разделах.", "good"],
+        ["3. Изменения ролей", "Отключение и глубокое редактирование текущих админов остаётся у владельца панели.", "warn"]
       ]))}
     </section>
   `);
@@ -3369,7 +3424,7 @@ window.createAdminUser = async () => {
   const password = $("newAdminPassword")?.value || "";
   if (!isMinecraftName(username)) return toast("Ник должен быть 3-16 символов: A-Z, 0-9 или _.", true);
   if (password.length < 8) return toast("Пароль должен быть не короче 8 символов.", true);
-    const headers = await dangerConfirm(`Создать админа панели: ${username}`, "ADMIN_CREATE");
+  const headers = await dangerConfirm(`Создать админа панели: ${username}`, "ADMIN_CREATE");
   if (!headers) return;
   try {
     await api("/api/security/admins", {
@@ -3383,13 +3438,16 @@ window.createAdminUser = async () => {
         ensure_op: Boolean($("newAdminOp")?.checked)
       })
     });
+    $("newAdminUsername").value = "";
     $("newAdminPassword").value = "";
     toast("Админ создан");
-    loadSecurity();
+    loadAdmins();
   } catch (err) {
     toast(err.message, true);
   }
 };
+
+window.openAdminsTab = () => setTab("admins");
 
 window.runAccessAction = async () => {
   try {
@@ -4056,6 +4114,7 @@ async function loadCurrent(silent = false) {
     investigations: loadInvestigations,
     sources: loadSources,
     settings: loadSettings,
+    admins: loadAdmins,
     security: loadSecurity,
     audit: loadAudit
   };

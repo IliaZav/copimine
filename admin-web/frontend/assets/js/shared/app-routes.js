@@ -12,6 +12,7 @@ export const APP_ROUTE_FILES = Object.freeze({
   logs: "/cabinet/logs.html",
   audit: "/cabinet/audit.html",
   server: "/cabinet/server.html",
+  admins: "/cabinet/admins.html",
   security: "/cabinet/security.html",
   sources: "/cabinet/sources.html",
   settings: "/cabinet/settings.html",

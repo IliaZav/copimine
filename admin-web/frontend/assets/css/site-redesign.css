@@ -98,6 +98,8 @@ body {
   display: inline-block;
   line-height: 1;
   white-space: nowrap;
+  font-weight: 900;
+  letter-spacing: -0.03em;
 }
 
 .public-hero {
@@ -392,10 +394,34 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.hero-media-art.brand-title-stage {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(124, 233, 255, 0.18), transparent 26%),
+    radial-gradient(circle at 80% 72%, rgba(53, 240, 127, 0.16), transparent 30%),
+    linear-gradient(180deg, #182038 0%, #11172a 58%, #0b1020 100%);
+}
+
+:root[data-theme="dark"] .hero-media-art.brand-title-stage {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(124, 233, 255, 0.2), transparent 26%),
+    radial-gradient(circle at 80% 72%, rgba(53, 240, 127, 0.18), transparent 30%),
+    linear-gradient(180deg, #1b2444 0%, #11182d 58%, #09111f 100%);
+}
+
 .hero-media-art img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.hero-media-art.brand-title-stage img {
+  width: min(100%, 620px);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 24px 36px rgba(0, 0, 0, 0.34));
 }
 
 .hero-media-copy,
@@ -435,6 +461,76 @@ body {
 .hero-side-card {
   display: grid;
   gap: 12px;
+}
+
+.brand-banner-card {
+  display: grid;
+  gap: 14px;
+  align-items: center;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(248, 242, 233, 0.98)),
+    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 60%);
+  box-shadow: var(--shadow-soft);
+}
+
+:root[data-theme="dark"] .brand-banner-card {
+  background:
+    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+}
+
+.brand-banner-card.brand-banner-inline {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.brand-banner-card img {
+  display: block;
+}
+
+.brand-banner-mark {
+  width: 78px;
+  height: 78px;
+  border-radius: 24px;
+  object-fit: cover;
+  box-shadow: 0 14px 26px rgba(9, 22, 14, 0.14);
+}
+
+.brand-banner-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brand-banner-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand-banner-copy strong {
+  margin: 0;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(28px, 3.6vw, 42px);
+  line-height: 0.94;
+  letter-spacing: -0.04em;
+}
+
+.brand-banner-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.brand-title-banner {
+  width: min(100%, 700px);
+  height: auto;
+  justify-self: center;
+  filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.16));
 }
 
 .hero-check-list {

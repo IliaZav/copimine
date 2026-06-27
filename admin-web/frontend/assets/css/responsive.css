@@ -179,6 +179,20 @@
     aspect-ratio: 4 / 3;
   }
 
+  .brand-banner-card.brand-banner-inline {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .brand-banner-mark {
+    width: 72px;
+    height: 72px;
+  }
+
+  .brand-title-banner {
+    width: 100%;
+  }
+
   .public-stage-card,
   .gateway-card,
   .info-card {

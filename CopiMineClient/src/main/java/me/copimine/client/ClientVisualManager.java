@@ -128,15 +128,17 @@ public final class ClientVisualManager {
     public String statusLine() {
         boolean irisActive = IrisCompat.shaderPackActive();
         if (active.isEmpty()) {
-            return "CopiMineClient: активных визуалов нет, render_when_hud_hidden=" + config.renderWhenHudHidden()
+            return "CopiMineClient: active visuals = none, render_when_hud_hidden=" + config.renderWhenHudHidden()
+                    + ", allow_when_iris_shaderpack_active=" + yesNo(config.allowVisualsWhenIrisShaderpackActive())
                     + ", irisShaderPackActive=" + yesNo(irisActive)
                     + ", route=fullscreen-hud-overlay/no-shader-injection";
         }
         ActiveVisual first = active.values().iterator().next();
         long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1000L);
-        return "CopiMineClient: " + first.effectId() + " / " + secondsLeft + "с / active=" + active.size()
+        return "CopiMineClient: " + first.effectId() + " / " + secondsLeft + "s / active=" + active.size()
                 + " / lastSeq=" + lastServerSeq
                 + " / render_when_hud_hidden=" + config.renderWhenHudHidden()
+                + " / allow_when_iris_shaderpack_active=" + yesNo(config.allowVisualsWhenIrisShaderpackActive())
                 + " / irisShaderPackActive=" + yesNo(irisActive)
                 + " / route=fullscreen-hud-overlay/no-shader-injection";
     }
@@ -158,6 +160,10 @@ public final class ClientVisualManager {
 
     public boolean serverVisualsAllowed() {
         return config.allowServerVisuals();
+    }
+
+    public boolean allowVisualsWhenIrisShaderpackActive() {
+        return config.allowVisualsWhenIrisShaderpackActive();
     }
 
     private void drawEffect(DrawContext context, int width, int height, ActiveVisual visual, float pulse, float routeAlphaMultiplier) {
@@ -223,7 +229,7 @@ public final class ClientVisualManager {
     }
 
     private float effectiveAlphaMultiplier() {
-        return IrisCompat.shaderPackActive() ? IRIS_ALPHA_MULTIPLIER : 1.0F;
+        return IrisCompat.shaderPackActive() ? Math.min(IRIS_ALPHA_MULTIPLIER, config.irisOverlayAlphaMultiplier()) : 1.0F;
     }
 
     private int alpha(int rgb, float alpha) {

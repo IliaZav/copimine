@@ -65,6 +65,16 @@ const CONFIRM_HEADER = "X-Copimine-Confirm";
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
 
+document.addEventListener("error", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement)) return;
+  if (target.closest(".avatar-badge")) {
+    target.remove();
+    return;
+  }
+  target.style.display = "none";
+}, true);
+
 const publicFeatures = {
   bank: {
     kicker: "Банк AR",
@@ -1001,7 +1011,7 @@ function avatarBadge(name, size = "md") {
   return `
     <span class="avatar-badge avatar-${size}" aria-hidden="true">
       <b>${esc(initials(name))}</b>
-      <img src="${esc(avatarUrl(name, px))}" alt="" loading="lazy" onerror="this.remove()" />
+      <img src="${esc(avatarUrl(name, px))}" alt="" loading="lazy" />
     </span>
   `;
 }
@@ -2295,7 +2305,7 @@ function inventoryGrid(items, limit = 120) {
   if (!items.length) return empty("Предметов нет", "Источник инвентаря пуст или NBT parser недоступен.");
   return `<div class="inventory-grid">${items.map(item => `
     <div class="slot" title="${esc(item.id || item.displayName || "")}">
-      <img src="${esc(item.iconUrl || `/assets/mc-icons/item/${item.icon || "barrier"}.png`)}" alt="" onerror="this.style.display='none'" />
+      <img src="${esc(item.iconUrl || `/assets/mc-icons/item/${item.icon || "barrier"}.png`)}" alt="" />
       <b>${esc(short(item.displayName || item.id || "item", 18))}</b>
       <span>x${esc(item.Count ?? item.count ?? 1)}  slot ${esc(item.Slot ?? item.slot ?? "")}</span>
     </div>

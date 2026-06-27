@@ -2836,10 +2836,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
     }
 
-    private void reviewLaw(String lawId, String decision, String actor, String note) throws Exception {
-        reviewLawStrict(lawId, decision, actor, note);
-    }
-
     private void countCurrentRoundStrict(String actor) throws Exception {
         String electionId = currentElectionId();
         if (electionId == null) {
@@ -2982,7 +2978,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
     }
 
-    private void reviewLawStrict(String lawId, String decision, String actor, String note) throws Exception {
+    private void reviewLaw(String lawId, String decision, String actor, String note) throws Exception {
         long t = now();
         tx(connection -> {
             Map<String, Object> term = queryOne(connection,

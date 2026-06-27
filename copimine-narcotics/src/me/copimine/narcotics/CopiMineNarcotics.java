@@ -587,7 +587,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.serverOverlaySupportReason());
             sender.sendMessage(ChatColor.GRAY + "Server fallback поддерживается: " + visualRuntime.supportsServerParticleFallback());
             sender.sendMessage(ChatColor.GRAY + "Клиентский visual runtime поддерживается: " + visualRuntime.supportsClientShaderLikeRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Статус клиентского visual runtime: " + visualRuntime.clientShaderLikeSupportReason());
+            sender.sendMessage(ChatColor.GRAY + "Причина клиентского visual runtime: " + visualRuntime.clientShaderLikeSupportReason());
             sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
             sender.sendMessage(ChatColor.GRAY + "Причина true shader runtime: " + visualRuntime.shaderSupportReason());
             sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты на месте: " + !report.overlayTextures().isEmpty());
@@ -595,9 +595,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Только серверный fallback: " + (!visualRuntime.supportsServerOverlayRuntime() && !visualRuntime.supportsClientShaderLikeRuntime()));
             sender.sendMessage(ChatColor.GRAY + "Включённые эффекты: " + configService.visualEffectIds().stream().filter(configService::isVisualEffectEnabled).sorted().toList());
             String sampleEffect = configService.visualEffectIds().stream().sorted().findFirst().orElse("CHAOS");
-            sender.sendMessage(ChatColor.GRAY + "Итоговый маршрут (" + sampleEffect + "): " + visualRuntime.resolvedModeFor(sampleEffect));
+            sender.sendMessage(ChatColor.GRAY + "Маршрут эффекта (" + sampleEffect + "): " + visualRuntime.resolvedModeFor(sampleEffect));
             if (!report.ok()) {
-                sender.sendMessage(ChatColor.RED + "Проблемы resource pack: " + report.summary());
+                sender.sendMessage(ChatColor.RED + "Проблема resource pack: " + report.summary());
             }
             return true;
         }
@@ -656,7 +656,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             visualRuntime.apply(target, effectId, seconds, false);
             database.auditAsync(sender.getName(), "visual_test", target.getName() + "," + effectId + "," + seconds);
-            sender.sendMessage(ChatColor.GREEN + "Тест визуала отправлен: " + target.getName());
+            sender.sendMessage(ChatColor.GREEN + "Тест визуала запущен для: " + target.getName());
             return true;
         }
         sendHelpV2(sender);
@@ -735,59 +735,28 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GRAY + "Client visual runtime reason: " + visualRuntime.clientShaderLikeSupportReason());
         sender.sendMessage(ChatColor.GRAY + "True shader runtime supported: " + visualRuntime.supportsShaderRuntime());
         sender.sendMessage(ChatColor.GRAY + "True shader runtime reason: " + visualRuntime.shaderSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "Рецептов: " + configService.items().size());
+        sender.sendMessage(ChatColor.GRAY + "Предметов: " + configService.items().size());
         sender.sendMessage(ChatColor.GRAY + "Режим текстур: " + configService.textureMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Режим визуала: " + configService.visualMode().name());
+        sender.sendMessage(ChatColor.GRAY + "Режим визуалов: " + configService.visualMode().name());
         sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Кэш варки: " + cauldronService.cachedStateCount());
-        sender.sendMessage(ChatColor.GRAY + "Модели предметов: " + report.itemModels().size());
-        sender.sendMessage(ChatColor.GRAY + "Текстуры предметов: " + report.itemTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты: " + report.overlayTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Shader-профили: " + report.shaderProfiles().size());
+        sender.sendMessage(ChatColor.GRAY + "Кэш котлов: " + cauldronService.cachedStateCount());
+        sender.sendMessage(ChatColor.GRAY + "Моделей предметов: " + report.itemModels().size());
+        sender.sendMessage(ChatColor.GRAY + "Текстур предметов: " + report.itemTextures().size());
+        sender.sendMessage(ChatColor.GRAY + "Overlay-ассетов: " + report.overlayTextures().size());
+        sender.sendMessage(ChatColor.GRAY + "Shader-профилей: " + report.shaderProfiles().size());
         sender.sendMessage(ChatColor.GRAY + "Font manifest: " + report.fontManifestPresent());
         sender.sendMessage(ChatColor.GRAY + "Документ сторонних ассетов: " + report.thirdPartyDocPresent());
         sender.sendMessage(ChatColor.GRAY + "Документ лицензий: " + report.licensesDocPresent());
         sender.sendMessage(ChatColor.GRAY + "Без hotlink: " + report.noHotlinks());
         sender.sendMessage(ChatColor.GRAY + "Без runtime download: " + report.noRuntimeDownloads());
         sender.sendMessage(ChatColor.GRAY + "SHA1 pack: " + (report.zipSha1() == null ? "missing" : report.zipSha1()));
-        sender.sendMessage(ChatColor.GRAY + "Хэш синхронизирован: " + report.hashSynced());
-        sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблемы resource pack: " + report.summary());
+        sender.sendMessage(ChatColor.GRAY + "SHA1 синхронизирован: " + report.hashSynced());
+        sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблема resource pack: " + report.summary());
         return true;
     }
 
     private boolean handleSelfCheck(CommandSender sender) {
-        if (!hasPermission(sender, "copimine.narcotics.selfcheck")) {
-            sender.sendMessage(message("no_permission"));
-            return true;
-        }
-        NarcoticsResourcePackAudit.Report report = resourcePackAudit.inspect();
-        sender.sendMessage(message("selfcheck_ok"));
-        sender.sendMessage(ChatColor.GRAY + "Client bridge enabled: " + configService.clientBridgeEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Client visuals allowed: " + configService.allowClientModVisuals());
-        sender.sendMessage(ChatColor.GRAY + "Server overlay supported: " + visualRuntime.supportsServerOverlayRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Server fallback supported: " + visualRuntime.supportsServerParticleFallback());
-        sender.sendMessage(ChatColor.GRAY + "Client visual runtime supported: " + visualRuntime.supportsClientShaderLikeRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Client visual runtime reason: " + visualRuntime.clientShaderLikeSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "True shader runtime supported: " + visualRuntime.supportsShaderRuntime());
-        sender.sendMessage(ChatColor.GRAY + "True shader runtime reason: " + visualRuntime.shaderSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "Рецептов: " + configService.items().size());
-        sender.sendMessage(ChatColor.GRAY + "Режим текстур: " + configService.textureMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Режим визуала: " + configService.visualMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Кэш варки: " + cauldronService.cachedStateCount());
-        sender.sendMessage(ChatColor.GRAY + "Модели предметов: " + report.itemModels().size());
-        sender.sendMessage(ChatColor.GRAY + "Текстуры предметов: " + report.itemTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты: " + report.overlayTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Shader-профили: " + report.shaderProfiles().size());
-        sender.sendMessage(ChatColor.GRAY + "Font manifest: " + report.fontManifestPresent());
-        sender.sendMessage(ChatColor.GRAY + "Документ сторонних ассетов: " + report.thirdPartyDocPresent());
-        sender.sendMessage(ChatColor.GRAY + "Документ лицензий: " + report.licensesDocPresent());
-        sender.sendMessage(ChatColor.GRAY + "Без hotlink: " + report.noHotlinks());
-        sender.sendMessage(ChatColor.GRAY + "Без runtime download: " + report.noRuntimeDownloads());
-        sender.sendMessage(ChatColor.GRAY + "SHA1 pack: " + (report.zipSha1() == null ? "missing" : report.zipSha1()));
-        sender.sendMessage(ChatColor.GRAY + "Хэш синхронизирован: " + report.hashSynced());
-        sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблемы resource pack: " + report.summary());
-        return true;
+        return handleSelfCheckV2(sender);
     }
 
     private boolean handleInfo(CommandSender sender, String[] args) {

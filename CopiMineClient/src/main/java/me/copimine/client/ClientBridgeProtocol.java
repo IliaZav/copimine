@@ -73,6 +73,10 @@ public final class ClientBridgeProtocol {
                         sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
                         return;
                     }
+                    if (IrisCompat.shaderPackActive() && !managerAllowsVisualsWhenIrisShaderpackActive(manager)) {
+                        sendVisualError(payload.seq(), payload.effectId(), "iris-shaderpack-active");
+                        return;
+                    }
                     manager.start(payload.effectId(), payload.seq(), payload.durationSeconds(), payload.intensity(), payload.clearPolicy());
                     sendVisualAck(payload.seq(), payload.effectId(), "STARTED");
                 });
@@ -240,5 +244,9 @@ public final class ClientBridgeProtocol {
 
     private static boolean managerStatusAllowsServerVisuals(ClientVisualManager manager) {
         return manager != null && manager.serverVisualsAllowed();
+    }
+
+    private static boolean managerAllowsVisualsWhenIrisShaderpackActive(ClientVisualManager manager) {
+        return manager == null || manager.allowVisualsWhenIrisShaderpackActive();
     }
 }

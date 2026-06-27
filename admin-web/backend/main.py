@@ -99,6 +99,23 @@ DONATION_PROVIDER = "MOCK_SBP"
 DONATION_SESSION_TTL_SECONDS = int(os.getenv("DONATION_SESSION_TTL_SECONDS", str(15 * 60)))
 DONATION_SESSION_TTL_MS = DONATION_SESSION_TTL_SECONDS * 1000
 DONATION_EPOCH_MS_THRESHOLD = 100_000_000_000
+MANAGED_RESOURCEPACK_URL = os.getenv(
+    "COPIMINE_RESOURCEPACK_URL",
+    "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip",
+).strip()
+MANAGED_RESOURCEPACK_ZIP = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
+MANAGED_RESOURCEPACK_SHA1_FILE = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.sha1"
+OWNER_ONLY_SERVER_PROPERTY_KEYS = {
+    "resource-pack",
+    "resource-pack-sha1",
+    "require-resource-pack",
+    "resource-pack-prompt",
+    "enable-rcon",
+    "rcon.port",
+    "server-port",
+    "online-mode",
+    "enable-command-block",
+}
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PLUGIN_REGISTRY_MANIFEST = APP_ROOT / "backend" / "plugin_registry_manifest.json"
 
@@ -5791,6 +5808,35 @@ def read_server_properties() -> dict[str, str]:
     return result
 
 
+def sha1_file_hex(path: Path) -> str:
+    digest = hashlib.sha1()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def read_managed_resourcepack_sha1() -> str:
+    if MANAGED_RESOURCEPACK_SHA1_FILE.exists():
+        saved = MANAGED_RESOURCEPACK_SHA1_FILE.read_text(encoding="utf-8", errors="replace").strip().lower()
+        if saved:
+            return saved
+    if not MANAGED_RESOURCEPACK_ZIP.exists():
+        raise HTTPException(status_code=404, detail="Локальный CopiMineResourcePack.zip не найден")
+    return sha1_file_hex(MANAGED_RESOURCEPACK_ZIP)
+
+
+def validate_managed_resourcepack_apply(url: str, sha1: str) -> tuple[str, str]:
+    normalized_url = (url or "").strip() or MANAGED_RESOURCEPACK_URL
+    if normalized_url != MANAGED_RESOURCEPACK_URL:
+        raise HTTPException(status_code=400, detail="Разрешён только официальный URL CopiMine resource pack")
+    managed_sha1 = read_managed_resourcepack_sha1()
+    requested_sha1 = (sha1 or "").strip().lower()
+    if requested_sha1 and requested_sha1 != managed_sha1:
+        raise HTTPException(status_code=400, detail="SHA1 не совпадает с локально собранным CopiMineResourcePack.zip")
+    return normalized_url, managed_sha1
+
+
 def public_site_config_sync() -> dict[str, Any]:
     public_host = MC_PUBLIC_ADDRESS or ("" if MC_HOST in {"127.0.0.1", "localhost", "::1"} else MC_HOST)
     props = read_server_properties()
@@ -7625,7 +7671,17 @@ async def server_properties(_: str = Depends(require_admin)) -> dict[str, Any]:
 
 
 @app.patch("/api/server/properties")
-async def patch_server_properties(data: PropertiesPatchIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+async def patch_server_properties(
+    data: PropertiesPatchIn,
+    request: Request,
+    context: dict[str, Any] = Depends(require_panel_admin_context),
+) -> dict[str, Any]:
+    if not bool(context.get("fullAccess")):
+        raise HTTPException(status_code=403, detail="Нужны полные права администратора")
+    keys = {str(key) for key in data.values.keys()}
+    if keys & OWNER_ONLY_SERVER_PROPERTY_KEYS and normalize_admin_role(context.get("role")) != "owner":
+        raise HTTPException(status_code=403, detail="Эти ключи server.properties доступны только владельцу панели")
+    username = str(context.get("username") or "")
     require_sensitive_confirm(request, "SERVER_PROPERTIES")
     result = await bg(write_server_properties, data.values)
     audit_event(username, "server.properties.patch", target="server.properties", details={"keys": sorted(data.values.keys())})
@@ -9035,22 +9091,33 @@ def resourcepack_status_sync() -> dict[str, Any]:
     url = props.get("resource-pack", "")
     sha1 = props.get("resource-pack-sha1", "")
     required = props.get("require-resource-pack", "false")
-    local_exists = False
-    local_path = ""
-    if "/resourcepacks/" in url:
-        filename = url.rsplit("/", 1)[-1]
-        p = Path("/var/www/copimine-admin/resourcepacks") / filename
-        local_path = str(p)
-        local_exists = p.exists()
-    return {"url": url, "sha1": sha1, "required": required, "localPath": local_path, "localExists": local_exists}
+    local_exists = MANAGED_RESOURCEPACK_ZIP.exists()
+    local_path = str(MANAGED_RESOURCEPACK_ZIP)
+    local_sha1 = ""
+    if local_exists:
+        try:
+            local_sha1 = read_managed_resourcepack_sha1()
+        except HTTPException:
+            local_sha1 = ""
+    return {
+        "url": url,
+        "sha1": sha1,
+        "required": required,
+        "localPath": local_path,
+        "localExists": local_exists,
+        "managedUrl": MANAGED_RESOURCEPACK_URL,
+        "managedSha1": local_sha1,
+        "sha1MatchesServerProperties": bool(local_sha1) and sha1.lower() == local_sha1.lower(),
+    }
 
 
 def apply_resourcepack_sync(url: str, sha1: str, required: bool, prompt: str) -> dict[str, Any]:
+    managed_url, managed_sha1 = validate_managed_resourcepack_apply(url, sha1)
     values = {
-        "resource-pack": url.strip(),
-        "resource-pack-sha1": sha1.strip(),
+        "resource-pack": managed_url,
+        "resource-pack-sha1": managed_sha1,
         "require-resource-pack": "true" if required else "false",
-        "resource-pack-prompt": json.dumps({"text": prompt, "color": "gray"}, ensure_ascii=False),
+        "resource-pack-prompt": json.dumps({"text": (prompt or "CopiMine resource pack").strip()[:160], "color": "gray"}, ensure_ascii=False),
     }
     return write_server_properties(values)
 
@@ -9132,7 +9199,7 @@ async def resourcepack_status(_: str = Depends(require_admin)) -> dict[str, Any]
 
 
 @app.post("/api/resourcepack/apply")
-async def resourcepack_apply(data: ResourcePackApplyIn, username: str = Depends(require_admin)) -> dict[str, Any]:
+async def resourcepack_apply(data: ResourcePackApplyIn, username: str = Depends(require_owner)) -> dict[str, Any]:
     result = await bg(apply_resourcepack_sync, data.url, data.sha1, data.required, data.prompt)
     audit_event(username, "resourcepack.apply", target="server.properties", details={"urlConfigured": bool(data.url), "sha1Configured": bool(data.sha1), "required": data.required})
     append_panel_event("admin-panel", "resourcepack_changed", actor=username, metadata={"required": data.required}, tags=["server"])

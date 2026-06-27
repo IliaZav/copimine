@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class ClientVisualEffectService {
     private static final long ACK_TIMEOUT_MILLIS = 2_000L;
+    private static final long RUNNING_TIMEOUT_GRACE_MILLIS = 2_000L;
     private static final int MAX_SEND_ATTEMPTS = 3;
 
     private final CopiMineNarcotics plugin;
@@ -284,7 +285,8 @@ public final class ClientVisualEffectService {
         for (ClientVisualCommand command : runningCommands.values()) {
             Player player = Bukkit.getPlayer(command.playerUuid());
             ClientCapabilityState state = player == null ? null : capabilities.state(player);
-            if (player == null || !player.isOnline() || state == null || !state.sessionId().equals(command.sessionId())) {
+            boolean expired = now > (command.createdAtMillis() + (command.seconds() * 1_000L) + RUNNING_TIMEOUT_GRACE_MILLIS);
+            if (expired || player == null || !player.isOnline() || state == null || !state.sessionId().equals(command.sessionId())) {
                 staleRunning.add(command);
             }
         }
@@ -292,6 +294,17 @@ public final class ClientVisualEffectService {
             runningCommands.remove(command.seq());
             activeSeqByPlayer.remove(command.playerUuid(), command.seq());
             Player player = Bukkit.getPlayer(command.playerUuid());
+            boolean commandExpired = now > (command.createdAtMillis() + (command.seconds() * 1_000L) + RUNNING_TIMEOUT_GRACE_MILLIS);
+            if (commandExpired) {
+                if (player != null && player.isOnline()) {
+                    sendVisualStop(player, command.effectId(), "timeout-cleanup");
+                }
+                if (command.finishHandler() != null) {
+                    command.finishHandler().onFinished(command.playerUuid(), command.effectId(), command.source(), "timeout-cleanup");
+                }
+                lastFinishedByPlayer.put(command.playerUuid(), command.effectId() + ":timeout-cleanup");
+                continue;
+            }
             if (player != null && player.isOnline() && command.fallbackHandler() != null) {
                 command.fallbackHandler().onFallback(
                         command.playerUuid(),

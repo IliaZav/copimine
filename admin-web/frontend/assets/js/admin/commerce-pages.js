@@ -156,7 +156,7 @@ export function createAdminCommercePages(deps) {
         ], { pageSize: 12 }))}
       </section>
       <section class="layout-grid grid-2">
-        ${panel("Донат-баланс", "Ручное тестовое пополнение для проверки платёжного контура. Баланс всё равно полностью отделён от AR.", `
+        ${panel("Донат-баланс", "Ручное пополнение для тестов. Donation остаётся полностью отдельным от AR.", `
           <div class="form-grid">
             <input id="donationAdminUuid" placeholder="Minecraft UUID" />
             <input id="donationAdminName" placeholder="Minecraft-ник" />
@@ -187,14 +187,14 @@ export function createAdminCommercePages(deps) {
         ]))}
       </section>
       <section class="layout-grid grid-2">
-        ${panel("Donation Shop", "Каталог сайта с фиксированными ID товаров и ценами donation.", table("admin-donation-catalog", asArray(donationCatalog.items), [
+        ${panel("Donation-лавка", "Каталог donation-предметов и цены.", table("admin-donation-catalog", asArray(donationCatalog.items), [
           { key: "item_id", label: "ID" },
           { key: "display_name", label: "Название" },
           { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
           { key: "effect_profile_id", label: "Профиль" },
           { key: "enabled", label: "Статус", render: value => value ? pill("вкл", "good") : pill("off", "bad") }
         ], { pageSize: 10 }))}
-        ${panel("Выдачи и тестовая покупка", "Тестовая покупка создаёт ожидающую выдачу запись, а физическая выдача всё равно остаётся только в игре.", `
+        ${panel("Выдачи и тестовая покупка", "Тестовая покупка создаёт выдачу, а забрать предмет всё равно нужно в игре.", `
           <div class="form-grid">
             <input id="donationTestUuid" placeholder="Minecraft UUID" />
             <input id="donationTestName" placeholder="Minecraft-ник" />
@@ -202,7 +202,7 @@ export function createAdminCommercePages(deps) {
             <button class="btn btn-secondary full" data-click="adminDonationTestPurchase()">Создать тестовую покупку</button>
           </div>
           <div class="spacer-12"></div>
-          <div class="notice">Если payment session уже создана, mark-paid начисляет баланс только один раз благодаря idempotency.</div>
+          <div class="notice">Повторное подтверждение одной и той же сессии не начислит баланс второй раз.</div>
         `)}
       </section>
       ${panel("Скан мира", "AR в контейнерах и подозрительных местах", table("economy-scans", asArray(ledger.scans), null, { pageSize: 12 }))}

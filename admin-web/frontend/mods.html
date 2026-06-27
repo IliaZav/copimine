@@ -34,8 +34,8 @@
             <span class="hero-kicker">Клиент</span>
             <span class="route-chip">Моды</span>
           </div>
-          <h1>Архив модов и клиентских файлов.</h1>
-          <p>Версия Minecraft, состав архива и список файлов лежат здесь отдельно.</p>
+          <h1>Клиент и моды на отдельной странице.</h1>
+          <p>Здесь лежит только архив клиента, его состав, версия и контрольная сумма. Никаких лишних блоков из других разделов.</p>
           <div class="public-actions">
             <a id="downloadModsBtn" class="btn btn-primary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
             <a class="btn btn-secondary" href="/server.html">Открыть статус сервера</a>
@@ -48,9 +48,35 @@
           <ul class="hero-check-list">
             <li>Готовность архива.</li>
             <li>Версия Minecraft и loader.</li>
-            <li>Список клиентских jar.</li>
+            <li>Список файлов в архиве.</li>
           </ul>
         </aside>
+      </section>
+
+      <section class="public-section">
+        <div class="section-head">
+          <span>Порядок</span>
+          <h2>Как подготовить клиент.</h2>
+          <p>На этой странице только архив и проверка его состава. Дальше остаётся разложить файлы по месту и зайти на сервер.</p>
+        </div>
+
+        <div class="public-stage-grid">
+          <article class="public-stage-card">
+            <span>1</span>
+            <strong>Скачай архив</strong>
+            <p>Сначала забери актуальный пакет и сверяйся с SHA1, если сервер попросит проверить целостность.</p>
+          </article>
+          <article class="public-stage-card">
+            <span>2</span>
+            <strong>Проверь состав</strong>
+            <p>Ниже видны версия Minecraft, loader и список файлов, которые реально входят в сборку.</p>
+          </article>
+          <article class="public-stage-card">
+            <span>3</span>
+            <strong>Запусти клиент</strong>
+            <p>После распаковки достаточно войти на сервер. Отдельные лаунчеры и лишние инструкции не нужны.</p>
+          </article>
+        </div>
       </section>
 
       <section class="public-section">
@@ -59,8 +85,8 @@
             <div class="modpack-summary-copy">
               <span class="hero-kicker">CopiMineMods.zip</span>
               <h3 id="heroMiniTitle">Архив модов</h3>
-              <p id="heroMiniText">Сводка по архиву модов и клиентской сборке.</p>
-              <p id="modpackSummaryLead">Здесь показываются статус архива, список файлов и контрольная сумма.</p>
+              <p id="heroMiniText">Сборка клиента CopiMine.</p>
+              <p id="modpackSummaryLead">Статус архива, состав и контрольная сумма.</p>
             </div>
             <div id="modpackMetaGrid" class="modpack-meta-grid">
               <article class="modpack-stat">
@@ -75,7 +101,7 @@
               <article class="modpack-file-card">
                 <span class="modpack-file-badge">mods</span>
                 <strong>Загружаем список</strong>
-                <p>После ответа сервера здесь появятся реальные jar из текущего архива.</p>
+                <p>Список файлов появится после загрузки.</p>
               </article>
             </div>
 

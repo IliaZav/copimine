@@ -1979,15 +1979,15 @@ function syncAuthUi() {
   if (lead) lead.textContent = isRegister ? "Регистрация игрока" : "Один вход для игрока и команды сервера";
   if (support) support.textContent = isRegister
     ? "Здесь создаётся только обычный кабинет игрока. Роль команды сервера назначается отдельно и определяется сервером уже после входа."
-    : "Сайт сам проверяет логин и пароль и открывает нужный кабинет. Переключателя роли на клиенте больше нет.";
+    : "Введите логин и пароль, чтобы открыть свой кабинет.";
   if (usernameLabel) usernameLabel.textContent = "Логин сайта";
   if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
   if ($("username")) $("username").placeholder = isRegister ? "Придумай логин" : "Введи логин";
   if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введи пароль";
   if (submit) submit.textContent = isRegister ? "Создать кабинет" : "Войти";
   if (note) note.textContent = isRegister
-    ? "Через регистрацию создаётся только игрок. Служебные роли выдаются отдельно и через эту форму не открываются."
-    : "После входа сайт сам отправит тебя в личный кабинет игрока или в служебную панель, если такая роль есть.";
+    ? "Регистрация создаёт обычный аккаунт игрока. Служебные роли выдаются отдельно."
+    : "После входа откроется кабинет, доступный для этого аккаунта.";
 }
 
 async function login(event) {
@@ -2169,7 +2169,7 @@ function activityTimeline(rows) {
 
 function ledgerRows(rows, className = "ledger") {
   rows = asArray(rows).slice(0, 120);
-  if (!rows.length) return empty("Записей пока нет", "Журнал появится после действий игроков или админов.");
+  if (!rows.length) return empty("Записей пока нет", "Новые записи появятся здесь позже.");
   return `<div class="${esc(className)}">${rows.map(row => `
     <article class="ledger-row">
       <div>
@@ -2201,7 +2201,7 @@ function inventorySummary(snapshot) {
 
 function resultBars(rows, nameKeys = ["name", "display_name"], valueKeys = ["total", "votes", "raw_votes", "amount"]) {
   rows = asArray(rows).slice(0, 8);
-  if (!rows.length) return empty("Нет данных для графика", "График появится после появления кандидатов, голосов или АР-строк.");
+  if (!rows.length) return empty("Нет данных для графика", "Когда накопятся данные, график появится здесь.");
   const mapped = rows.map(row => {
     const name = nameKeys.map(k => row[k]).find(Boolean) || row.uuid || row.player || row.table || "строка";
     const value = valueKeys.map(k => row[k]).find(v => Number.isFinite(Number(v))) ?? 0;
@@ -2442,7 +2442,7 @@ async function playerDetailsHtml(player) {
       { key: "enderChest", label: "Слоты эндера" },
       { key: "ar", label: "АР" }
     ], { pageSize: 8 }))}
-    ${panel("Лента действий", "Проверки, АР и игровые события собраны в одну понятную ленту.", `<div class="player-actions-log">${activityTimeline(timelineData.rows)}</div>`)}
+    ${panel("Лента действий", "Проверки, AR и игровые события по времени.", `<div class="player-actions-log">${activityTimeline(timelineData.rows)}</div>`)}
     ${panel("Последние действия CoreProtect", "Контекст для проверки игрока", table("player-actions", asArray(actions.rows), null, { pageSize: 12 }))}
   `;
 }
@@ -2690,7 +2690,7 @@ async function loadElections() {
         <div class="spacer-12"></div>
         ${resultBars(candidateRows, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}
       `)}
-      ${panel("Участки и ЦИК", "Участки, комиссии и приём бюллетеней видны без погружения в служебный реестр.", `
+      ${panel("Участки и ЦИК", "Участки, комиссии и приём бюллетеней на одной странице.", `
         ${stationCardsHtml(pollingStations, voteDeposits)}
         <div class="spacer-12"></div>
         ${kv([
@@ -2718,7 +2718,7 @@ async function loadElections() {
         ["Публичность", "без раскрытия плательщиков"]
       ]))}
     </section>
-    ${panel("Журнал цикла", "Смена этапов, книги кандидатов, законы и выбор президента собраны в одну понятную ленту.", `
+    ${panel("Журнал цикла", "Этапы выборов, книги кандидатов, законы и выбор президента.", `
       <div class="ledger election-ledger">
         ${auditRows.length ? auditRows.slice(0, 40).map((row) => `
           <article class="ledger-row">
@@ -3477,7 +3477,7 @@ async function loadPlayerCabinet() {
       ["Создан", dt(state.user.createdAt)],
       ["Последний вход", dt(state.user.lastLoginAt)]
     ]))}
-    ${linked ? panel("Банк", "Деньги, переводы и покупки собраны в одном месте.", kv([
+    ${linked ? panel("Банк", "Баланс, переводы и история счёта.", kv([
       ["Счёт", bank?.account?.accountId ? "открыт" : "не открыт"],
       ["Баланс", formatAr(balance)],
       ["PIN задан", pin.set],
@@ -3606,15 +3606,15 @@ async function loadPlayerBank() {
   ]);
   setView(`
     <section class="layout-grid grid-4">
-      ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казначейский AR-счёт президента и админов" : "Один личный счёт для сайта и игры", "good")}
-      ${metric("Последние операции", ledger.length, "Показываем только подтверждённые движения", "neutral")}
+      ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна президента и админов" : "Личный счёт для сайта и игры", "good")}
+      ${metric("Последние операции", ledger.length, "Только подтверждённые записи", "neutral")}
       ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinTone(pin))}
       ${metric("Minecraft", state.user.minecraftName || "—", "Привязан к кабинету", "good")}
     </section>
     ${accountTabs}
     ${safetyRail([
       ["Банк", usingTreasury ? "Обычные игроки не видят казну. Этот счёт доступен только президенту и админам." : "Баланс один и тот же на сайте, в банкомате и в игровых оплатах.", "good"],
-      ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `Текущий PIN казны: ${treasuryPin.visiblePin}` : "Установи PIN казны, чтобы переводить AR из бюджета.") : (tempPin.code ? "Активен временный PIN. Замени его до переводов и ATM-действий." : (pin.set ? "Хранится как хэш и в sealed-форме для разрешённого recovery." : "Задай PIN перед переводами.")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
+      ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `Текущий PIN казны: ${treasuryPin.visiblePin}` : "Установите PIN казны для переводов.") : (tempPin.code ? "Сейчас действует временный PIN. Замените его перед переводами." : (pin.set ? "PIN уже задан." : "Задайте PIN перед переводами.")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
       ["Блокировка", usingTreasury ? "Для казны действуют те же lockout-правила PIN." : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "Неверные попытки временно блокируют PIN."), pin.locked && !usingTreasury ? "bad" : "neutral"]
     ])}
     ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([
@@ -3948,7 +3948,7 @@ async function loadPlayerArtifacts() {
       { key: "effect_description", label: "Эффект", render: (value) => short(value || "", 110) || "Без отдельного описания" },
       { key: "cooldown_text", label: "Кулдаун" },
       { key: "limit_text", label: "Лимит" },
-    ], { pageSize: 10 }), `<div class="notice">Покупка и ремонт проходят только через Minecraft-лавку и CopiMineEconomyCore. Сайт здесь ничего не списывает и не выдаёт физический предмет.</div>`)}
+    ], { pageSize: 10 }), `<div class="notice">Покупка и ремонт проходят через игровую лавку. На сайте можно посмотреть каталог и историю.</div>`)}
     ${panel("Ремонт", "В Minecraft можно восстановить официальный предмет в лавке или командой /cmartifacts repair.", table("player-artifact-repairs", repairs, [
       { key: "created_at", label: "Время", render: v => dt(v) },
       { key: "item_id", label: "Предмет" },
@@ -4010,7 +4010,7 @@ async function loadPlayerHistory() {
     }))
   ].sort((a, b) => String(b.time || "").localeCompare(String(a.time || "")));
   setView(`
-    ${panel("История операций", "Банк, покупки, ремонт, донат, claims и статусы экземпляров собраны в одну хронологию.", rows.length ? `
+    ${panel("История операций", "Все движения по счёту и покупкам по времени.", rows.length ? `
       <div class="transaction-feed">
         ${rows.map((row) => `
           <article class="transaction-row">
@@ -4086,6 +4086,9 @@ function wire() {
   wirePublicSite();
   $("loginForm")?.addEventListener("submit", login);
   $("logout")?.addEventListener("click", () => logout(true));
+  if ($("guestPagesBtn")) {
+    $("guestPagesBtn").textContent = "Сайт";
+  }
   $("guestPagesBtn")?.addEventListener("click", showGuestPages);
   $("refreshBtn")?.addEventListener("click", () => loadCurrent());
   if ($("mobileNavToggle")) {

@@ -69,15 +69,15 @@ export function createPlayerTreasuryPages(deps) {
 
     setView(`
       <section class="layout-grid grid-4">
-        ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казначейский AR-счёт президента и админов" : "Один личный счёт для сайта и игры", "good")}
-        ${metric("Последние операции", ledger.length, "Показываем только подтверждённые движения", "neutral")}
+        ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна президента и админов" : "Личный счёт для сайта и игры", "good")}
+        ${metric("Последние операции", ledger.length, "Только подтверждённые записи", "neutral")}
         ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinStateTone(pin))}
         ${metric("Minecraft", state.user.minecraftName || "—", "Привязан к кабинету", "good")}
       </section>
       ${accountTabs}
       ${safetyRail([
         ["Банк", usingTreasury ? "Обычные игроки не видят казну. Этот счёт доступен только президенту и админам." : "Баланс один и тот же на сайте, в банкомате и в игровых оплатах.", "good"],
-        ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `Текущий PIN казны: ${treasuryPin.visiblePin}` : "Установи PIN казны, чтобы переводить AR из бюджета.") : (tempPin.code ? "Активен временный PIN. Замени его до переводов и ATM-действий." : (pin.set ? "Хранится как хэш и в sealed-форме для разрешённого recovery." : "Задай PIN перед переводами.")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
+        ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `Текущий PIN казны: ${treasuryPin.visiblePin}` : "Установите PIN казны для переводов.") : (tempPin.code ? "Сейчас действует временный PIN. Замените его перед переводами." : (pin.set ? "PIN уже задан." : "Задайте PIN перед переводами.")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
         ["Блокировка", usingTreasury ? "Для казны действуют те же ограничения по неверным попыткам PIN." : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "Неверные попытки временно блокируют PIN."), pin.locked && !usingTreasury ? "bad" : "neutral"],
       ])}
       ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([

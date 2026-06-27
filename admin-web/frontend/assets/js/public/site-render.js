@@ -212,13 +212,13 @@ export function createHomepageRenderer() {
     if (arShopMount) {
       const cards = Array.isArray(arCatalog.items) && arCatalog.items.length
         ? arCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "ar"))
-        : [cardStrong("AR-каталог временно недоступен", "Попробуйте обновить страницу чуть позже")];
+        : [cardStrong("AR-лавка временно недоступна", "Попробуйте открыть страницу позже.")];
       replaceChildrenSafe(arShopMount, cards);
     }
     if (donationShopMount) {
       const cards = Array.isArray(donationCatalog.items) && donationCatalog.items.length
         ? donationCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "donation"))
-        : [cardStrong("Donation-каталог временно недоступен", "Попробуйте обновить страницу чуть позже")];
+        : [cardStrong("Donation-лавка временно недоступна", "Попробуйте открыть страницу позже.")];
       replaceChildrenSafe(donationShopMount, cards);
     }
   }
@@ -237,7 +237,7 @@ export function createHomepageRenderer() {
     }
     if (heroMiniText) {
       heroMiniText.textContent = available
-        ? `В архиве ${files.length || 0} клиентских jar. SHA1: ${shortSha(modpack.sha1)}.`
+        ? `В архиве ${files.length || 0} клиентских файлов. SHA1: ${shortSha(modpack.sha1)}.`
         : "Архив модов пока не опубликован.";
     }
     if (modpackSummaryLead) {
@@ -332,7 +332,7 @@ export function createHomepageRenderer() {
     const elections = status.elections || {};
     replaceChildrenSafe(statusGrid, [
       cardStrong("Сервер", server.online ? "Онлайн" : "Нет ответа", formatLatency(server.latencyMs)),
-      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Публичный список доступен" : "Публичный список временно скрыт"),
+      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков открыт" : "Список игроков временно скрыт"),
       cardStrong("Выборы", elections.active ? "Активны" : "Пауза", elections.active ? `${Number(elections.candidates || 0)} кандидатов` : "Сейчас нет активной кампании"),
       cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Ресурспак обязателен" : "Ресурспак опционален"),
     ]);
@@ -358,7 +358,7 @@ export function createHomepageRenderer() {
     const rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
       replaceChildrenSafe(historyMount, [
-        cardStrong("История пока пустая", "Публичные операции казны появятся здесь."),
+        cardStrong("История пока пустая", "Здесь появятся последние движения по казне."),
       ]);
       return;
     }
@@ -387,13 +387,13 @@ export function createHomepageRenderer() {
     const uuid = String(president.current_president_uuid || president.ownerUuid || "").trim();
     if (!name) {
       presidentName.textContent = "Президент пока не избран";
-      presidentMeta.textContent = "Карточка появится после подтверждения активного срока.";
+      presidentMeta.textContent = "Когда на сервере будет действующий президент, карточка появится здесь.";
       skinShell?.classList.add("hidden");
       if (skinImage) skinImage.removeAttribute("src");
       return;
     }
     presidentName.textContent = name;
-    presidentMeta.textContent = "Публичная карточка президента сервера.";
+    presidentMeta.textContent = "Действующий президент сервера.";
     if (!uuid || !skinImage || !skinShell) {
       skinShell?.classList.add("hidden");
       return;
@@ -414,7 +414,7 @@ export function createHomepageRenderer() {
     if (budgetDetail) {
       budgetDetail.textContent = payload.updated_at || payload.updatedAt
         ? `Обновлено ${formatDate(payload.updated_at || payload.updatedAt)}`
-        : "Публичный баланс казны сервера";
+        : "Текущий баланс казны.";
     }
     animateCounter(balance);
     renderPresidentCard(payload);
@@ -451,19 +451,19 @@ export function createHomepageRenderer() {
       cabinetButton.textContent = roleLabel(role);
     }
     if (openArShopBtn) {
-      openArShopBtn.textContent = authed ? "Открыть AR-лавку" : "Войти и открыть AR-лавку";
+      openArShopBtn.textContent = authed ? "Открыть AR-лавку" : "AR-лавка";
     }
     if (openDonationShopBtn) {
-      openDonationShopBtn.textContent = authed ? "Открыть донат-лавку" : "Войти и открыть донат-лавку";
+      openDonationShopBtn.textContent = authed ? "Открыть донат-лавку" : "Донат-лавка";
     }
   }
 
   function renderUnavailableState() {
     if (budgetDetail) {
-      budgetDetail.textContent = "Сводка по казне временно недоступна.";
+      budgetDetail.textContent = "Данные по казне временно недоступны.";
     }
     if (serverPulseText) {
-      serverPulseText.textContent = "Сервер ещё не прислал свежую сводку.";
+      serverPulseText.textContent = "Свежие данные о сервере ещё не пришли.";
     }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = "Сведения по архиву модов временно недоступны.";

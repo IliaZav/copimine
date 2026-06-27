@@ -16,6 +16,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .public-stage-grid {
+    grid-template-columns: 1fr;
+  }
+
   .public-panel,
   .public-panel-wide {
     grid-column: auto;
@@ -45,6 +49,7 @@
     width: min(100%, calc(100vw - 24px));
   }
 
+  .public-stage-grid,
   .public-dashboard-grid,
   .modpack-file-grid,
   .modpack-note-grid,
@@ -60,7 +65,9 @@
   .public-nav {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+    gap: 10px;
     padding: 12px;
+    width: min(100%, calc(100vw - 16px));
   }
 
   .public-nav .public-brand {
@@ -144,6 +151,17 @@
     grid-template-columns: 1fr;
   }
 
+  .modpack-shell,
+  .modpack-side-stack,
+  .modpack-meta-grid,
+  .modpack-file-grid,
+  .modpack-note-grid,
+  .public-stage-grid,
+  .gateway-grid,
+  .info-card-grid {
+    min-width: 0;
+  }
+
   .modpack-summary-card,
   .modpack-file-card,
   .modpack-note-card,
@@ -159,6 +177,12 @@
 
   .hero-media-art {
     aspect-ratio: 4 / 3;
+  }
+
+  .public-stage-card,
+  .gateway-card,
+  .info-card {
+    min-height: 0;
   }
 
   .signin-grid {

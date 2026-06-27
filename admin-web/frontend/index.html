@@ -34,11 +34,11 @@
           <span class="hero-kicker">CopiMine</span>
           <span class="route-chip">Главная</span>
         </div>
-        <h1>Главная страница CopiMine.</h1>
-        <p>Здесь только быстрые переходы: сервер, лавки, моды и кабинет.</p>
+        <h1>CopiMine. Всё разложено по отдельным страницам.</h1>
+        <p>Статус сервера, лавки, клиент и кабинет больше не смешаны на одном экране. Открой нужный раздел и работай только с ним.</p>
         <div class="public-actions">
-          <a class="btn btn-primary" href="/server.html">Статус сервера</a>
-          <a class="btn btn-secondary" href="/shops.html">Лавки</a>
+          <a class="btn btn-primary" href="/server.html">Открыть сервер</a>
+          <a class="btn btn-secondary" href="/shops.html">Открыть лавки</a>
           <a class="btn btn-secondary" href="/mods.html">Моды и клиент</a>
           <a class="btn btn-ghost public-ghost" href="/signin.html">Войти в кабинет</a>
           <button id="copyIpBtn" class="btn btn-ghost public-ghost" type="button">Скопировать IP</button>
@@ -62,17 +62,17 @@
           </div>
           <div class="hero-media-copy">
             <span class="hero-kicker">Клиент</span>
-            <strong id="heroMiniTitle">Архив модов и лаунчеров</strong>
-            <p id="heroMiniText">Сайт покажет актуальный архив, его вес и состояние, а не длинную свалку блоков прямо на главной.</p>
+            <strong id="heroMiniTitle">Архив модов для входа на сервер</strong>
+            <p id="heroMiniText">На отдельной странице лежит архив клиента, список файлов и контрольная сумма.</p>
           </div>
         </article>
 
         <article class="hero-side-card">
-          <span class="hero-kicker">Быстро</span>
+          <span class="hero-kicker">Маршрут</span>
           <ul class="hero-check-list">
-            <li>Сервер и казна открываются на отдельной странице.</li>
-            <li>Лавки собраны на отдельной витрине.</li>
-            <li>Вход и регистрация открываются отдельно.</li>
+            <li>Сначала проверь статус сервера и адрес.</li>
+            <li>Покупки и баланс открывай уже после входа в кабинет.</li>
+            <li>Клиент и моды скачиваются на отдельной странице.</li>
           </ul>
           <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
         </article>
@@ -81,37 +81,63 @@
 
     <section class="public-section">
       <div class="section-head">
+        <span>Как пользоваться</span>
+        <h2>Три коротких шага без лишних экранов.</h2>
+        <p>Главная больше не пытается показать всё сразу. Ниже только маршрут, чтобы быстро попасть в нужный раздел.</p>
+      </div>
+
+      <div class="public-stage-grid">
+        <article class="public-stage-card">
+          <span>1</span>
+          <strong>Проверь сервер</strong>
+          <p>На странице сервера есть адрес, онлайн, президент и казна.</p>
+        </article>
+        <article class="public-stage-card">
+          <span>2</span>
+          <strong>Открой нужную лавку</strong>
+          <p>AR и donation идут отдельно, с разными балансами и разными правилами.</p>
+        </article>
+        <article class="public-stage-card">
+          <span>3</span>
+          <strong>Войди в кабинет</strong>
+          <p>После проверки логина сайт сам откроет нужный кабинет без выбора роли на экране.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="public-section">
+      <div class="section-head">
         <span>Куда дальше</span>
         <h2>Основные разделы сайта.</h2>
-        <p>Открой нужную страницу и работай только с ней.</p>
+        <p>У каждого раздела теперь своя страница, своя задача и свой короткий сценарий.</p>
       </div>
 
       <div class="gateway-grid">
         <article class="gateway-card">
           <span class="hero-kicker">Сервер</span>
-          <strong>Казна, президент и онлайн</strong>
-          <p>Онлайн, IP, президент и последние движения казны.</p>
+          <strong>Онлайн, президент и казна</strong>
+          <p>IP, отклик, список игроков и текущая казна собраны в одном месте.</p>
           <a class="btn btn-secondary" href="/server.html">Открыть страницу сервера</a>
         </article>
 
         <article class="gateway-card">
           <span class="hero-kicker">Лавки</span>
-          <strong>AR и donation без смешивания валют</strong>
-          <p>AR-предметы и donation-предметы на одной витрине, но с разными правилами покупки.</p>
+          <strong>AR и donation раздельно</strong>
+          <p>Каталог, цены и правила выдачи без смешивания игровых и донатных денег.</p>
           <a class="btn btn-secondary" href="/shops.html">Открыть лавки</a>
         </article>
 
         <article class="gateway-card">
           <span class="hero-kicker">Клиент</span>
-          <strong>Архив модов на одной странице</strong>
-          <p>Архив модов, версия клиента и файлы сборки.</p>
+          <strong>Архив модов и клиентских файлов</strong>
+          <p>Состав архива, версия и контрольная сумма лежат на отдельной странице.</p>
           <a class="btn btn-secondary" href="/mods.html">Открыть страницу модов</a>
         </article>
 
         <article class="gateway-card">
           <span class="hero-kicker">Кабинет</span>
-          <strong>Вход, банк и личные покупки</strong>
-          <p>Отдельные страницы входа и регистрации. После входа сайт сам откроет нужный кабинет.</p>
+          <strong>Личный кабинет</strong>
+          <p>Банк, переводы, donation, история и игровые выдачи открываются уже после входа.</p>
           <a class="btn btn-primary" href="/signin.html">Открыть вход</a>
         </article>
       </div>

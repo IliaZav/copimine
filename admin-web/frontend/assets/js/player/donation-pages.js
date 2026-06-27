@@ -84,7 +84,7 @@ export function createPlayerDonationPages(deps) {
             <button class="btn btn-secondary" data-click="playerRefreshDonationSession()">Обновить статус</button>
             <button class="btn btn-secondary" data-click="playerForgetDonationSession()">Скрыть сессию</button>
           </div>
-          <div class="notice">Баланс пополнится только после статуса PAID. Пока сервер работает в тестовом режиме оплаты без реального провайдера.</div>
+          <div class="notice">Баланс изменится после подтверждения оплаты. Сейчас включён тестовый провайдер.</div>
         </div>
       </div>
     ` : `<div class="notice">Активной платёжной сессии пока нет. Выбери фиксированный пакет, чтобы открыть QR, ссылку и код оплаты.</div>`;
@@ -107,7 +107,7 @@ export function createPlayerDonationPages(deps) {
         <div class="spacer-12"></div>
         <div class="notice">Пакеты фиксированы: 50 / 100 / 250 / 500 / 1000. Donation нельзя обменять на AR.</div>
       `)}
-      ${panel("Платёжная сессия", "QR генерируется локально на сервере. Если QR не нужен, можно использовать ссылку и короткий код сессии.", sessionPanel)}
+      ${panel("Платёжная сессия", "QR можно открыть прямо здесь, а при желании использовать ссылку и короткий код.", sessionPanel)}
       ${panel("История пополнений и списаний", "Здесь только движения donation-баланса без примеси AR-операций.", table("player-donation-history", asArray(history.history), [
         { key: "created_at", label: "Время", render: (value) => dt(value) },
         { key: "delta", label: "Изменение", render: (value) => formatDonate(value || 0) },

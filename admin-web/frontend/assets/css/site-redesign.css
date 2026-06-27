@@ -257,6 +257,64 @@ body {
   padding-inline: 16px;
 }
 
+.public-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.public-stage-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-height: 196px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(248, 242, 233, 0.98)),
+    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 60%);
+  box-shadow: var(--shadow-soft);
+}
+
+:root[data-theme="dark"] .public-stage-card {
+  background:
+    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+}
+
+.public-stage-card span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+:root[data-theme="dark"] .public-stage-card span {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.public-stage-card strong {
+  margin: 0;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+}
+
+.public-stage-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
 .hero-inline-status {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -395,6 +453,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 34px;
   background: rgba(255, 250, 243, 0.7);
+  backdrop-filter: blur(12px);
 }
 
 .gateway-grid,
@@ -408,6 +467,8 @@ body {
 .info-card {
   display: grid;
   gap: 12px;
+  align-content: start;
+  min-height: 280px;
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 24px;
@@ -443,6 +504,7 @@ body {
 .gateway-card .btn,
 .info-card .btn {
   width: fit-content;
+  margin-top: auto;
 }
 
 :root[data-theme="dark"] .public-section {
@@ -573,6 +635,7 @@ body {
 .commerce-panel {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .commerce-panel-head {
@@ -615,6 +678,7 @@ body {
 .modpack-note-grid {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .modpack-summary-copy {
@@ -649,6 +713,21 @@ body {
 .modpack-file-grid,
 .modpack-note-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.modpack-stat {
+  overflow: hidden;
+}
+
+.modpack-summary-copy h3,
+.modpack-file-card strong,
+.modpack-note-card strong,
+.modpack-file-card p,
+.modpack-note-card p {
+  overflow-wrap: anywhere;
 }
 
 .modpack-file-badge {

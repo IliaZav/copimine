@@ -1,0 +1,744 @@
+.public-site {
+  position: relative;
+  overflow-x: clip;
+  padding: 0 0 56px;
+  background:
+    radial-gradient(circle at top left, rgba(153, 194, 151, 0.14), transparent 20%),
+    radial-gradient(circle at top right, rgba(107, 147, 129, 0.12), transparent 18%),
+    linear-gradient(180deg, #f7f2e8 0%, #efe7d8 45%, #ece4d7 100%);
+}
+
+.public-site,
+body {
+  overflow-x: hidden;
+}
+
+:root[data-theme="dark"] .public-site {
+  background:
+    radial-gradient(circle at top left, rgba(53, 240, 127, 0.14), transparent 20%),
+    radial-gradient(circle at top right, rgba(124, 233, 255, 0.12), transparent 18%),
+    linear-gradient(180deg, #07110b 0%, #09150e 44%, #050d08 100%);
+}
+
+.public-site > * {
+  position: relative;
+  z-index: 1;
+}
+
+.public-nav,
+.public-hero,
+.public-section {
+  width: min(1220px, calc(100vw - 32px));
+  margin-inline: auto;
+}
+
+.public-nav {
+  position: sticky;
+  top: 14px;
+  z-index: 20;
+  left: auto;
+  right: auto;
+  min-height: 0;
+  transform: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: rgba(251, 247, 239, 0.84);
+  box-shadow: 0 18px 44px rgba(78, 72, 54, 0.09);
+}
+
+:root[data-theme="dark"] .public-nav {
+  background: rgba(8, 18, 12, 0.88);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.public-nav nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.public-nav a:not(.public-brand),
+.public-nav .btn {
+  min-height: 40px;
+  border-radius: 999px;
+}
+
+.public-nav a:not(.public-brand) {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 14px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+:root[data-theme="dark"] .public-nav a:not(.public-brand) {
+  color: var(--ink);
+}
+
+.public-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.public-brand strong {
+  display: inline-block;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.public-hero {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 22px;
+  align-items: stretch;
+  margin-top: 18px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 36px;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(246, 239, 228, 0.98)),
+    linear-gradient(135deg, rgba(45, 125, 63, 0.06), transparent 60%);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+
+.public-site-compact {
+  padding-bottom: 40px;
+}
+
+.public-hero-slim {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+  padding: 24px 26px;
+}
+
+.public-hero-slim .public-hero-copy h1 {
+  max-width: 12ch;
+  font-size: clamp(38px, 4.8vw, 62px);
+}
+
+.public-hero-slim .public-hero-copy p {
+  max-width: 60ch;
+}
+
+.public-page-shell {
+  display: grid;
+  gap: 24px;
+}
+
+.page-kicker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.route-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="dark"] .route-chip {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.public-nav a[aria-current="page"] {
+  background: rgba(45, 125, 63, 0.12);
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] .public-nav a[aria-current="page"] {
+  background: rgba(53, 240, 127, 0.12);
+  color: var(--accent);
+}
+
+:root[data-theme="dark"] .public-hero {
+  background:
+    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+}
+
+.public-hero::after {
+  display: none !important;
+  content: none !important;
+}
+
+.public-hero-copy,
+.public-hero-side,
+.hero-media-card,
+.hero-side-card,
+.public-panel,
+.commerce-panel,
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.login-card,
+.signin-note-card {
+  min-width: 0;
+}
+
+.public-hero-copy {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.public-hero-copy h1 {
+  margin: 0;
+  max-width: 11ch;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(48px, 6vw, 82px);
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+
+.public-hero-copy p,
+.section-head p,
+.commerce-panel-head p,
+.modpack-summary-copy p,
+.modpack-file-card p,
+.modpack-note-card p,
+.login-copy span,
+.login-note,
+.signin-note-card p,
+.treasury-history-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.public-hero-copy h1,
+.hero-media-copy strong,
+.hero-side-card,
+.hero-check-list {
+  color: var(--ink);
+}
+
+.hero-media-copy p {
+  color: var(--muted);
+}
+
+.public-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.public-actions .btn {
+  min-height: 48px;
+  border-radius: 18px;
+  padding-inline: 16px;
+}
+
+.hero-inline-status {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hero-inline-card,
+.hero-media-card,
+.hero-side-card,
+.public-panel,
+.commerce-panel,
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.login-card,
+.signin-note-card {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(248, 242, 233, 0.98)),
+    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 60%);
+  box-shadow: var(--shadow-soft);
+}
+
+:root[data-theme="dark"] .hero-inline-card,
+:root[data-theme="dark"] .hero-media-card,
+:root[data-theme="dark"] .hero-side-card,
+:root[data-theme="dark"] .public-panel,
+:root[data-theme="dark"] .commerce-panel,
+:root[data-theme="dark"] .modpack-summary-card,
+:root[data-theme="dark"] .modpack-file-card,
+:root[data-theme="dark"] .modpack-note-card,
+:root[data-theme="dark"] .login-card,
+:root[data-theme="dark"] .signin-note-card {
+  background:
+    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+}
+
+.hero-inline-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+}
+
+.hero-inline-card span,
+.modpack-stat span,
+.auth-meta-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-inline-card strong,
+.modpack-stat strong {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.public-hero-side {
+  display: grid;
+  gap: 16px;
+}
+
+.hero-media-card {
+  display: grid;
+  overflow: hidden;
+}
+
+.hero-media-art {
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.hero-media-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-media-copy,
+.hero-side-card,
+.public-panel,
+.commerce-panel,
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.login-card,
+.signin-note-card {
+  padding: 22px;
+}
+
+.hero-media-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.hero-media-copy strong,
+.section-head h2,
+.commerce-panel-head h3,
+.modpack-summary-copy h3,
+.public-panel-head h3,
+.login-copy strong,
+.signin-note-card strong {
+  margin: 0;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.hero-media-copy strong {
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 0.98;
+}
+
+.hero-side-card {
+  display: grid;
+  gap: 12px;
+}
+
+.hero-check-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.public-section {
+  display: grid;
+  gap: 22px;
+  margin-top: 24px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: 34px;
+  background: rgba(255, 250, 243, 0.7);
+}
+
+.gateway-grid,
+.info-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.gateway-card,
+.info-card {
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(248, 242, 233, 0.98)),
+    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 60%);
+  box-shadow: var(--shadow-soft);
+}
+
+:root[data-theme="dark"] .gateway-card,
+:root[data-theme="dark"] .info-card {
+  background:
+    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+}
+
+.gateway-card strong,
+.info-card strong {
+  margin: 0;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+}
+
+.gateway-card p,
+.info-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.gateway-card .btn,
+.info-card .btn {
+  width: fit-content;
+}
+
+:root[data-theme="dark"] .public-section {
+  background: rgba(7, 18, 11, 0.72);
+}
+
+.section-head {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.section-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section-head h2 {
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.public-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.public-panel {
+  display: grid;
+  gap: 16px;
+  grid-column: span 4;
+}
+
+.public-panel-wide {
+  grid-column: span 8;
+}
+
+.public-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.public-panel-head h3 {
+  font-size: clamp(24px, 3.2vw, 34px);
+  line-height: 0.98;
+}
+
+.public-status-grid,
+.top-grid,
+.treasury-history-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.public-status-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.showcase-card,
+.treasury-history-card,
+.shop-item-chip {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] .showcase-card,
+:root[data-theme="dark"] .treasury-history-card,
+:root[data-theme="dark"] .shop-item-chip {
+  background: rgba(11, 24, 16, 0.88);
+}
+
+.budget-counter-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.budget-counter-value {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.budget-counter-value img {
+  width: 46px;
+  height: 46px;
+  image-rendering: pixelated;
+}
+
+.budget-counter-value strong {
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 0.96;
+}
+
+.president-panel {
+  align-content: space-between;
+}
+
+.president-card-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.president-card-copy h3 {
+  margin: 0;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(26px, 3.2vw, 36px);
+  line-height: 0.98;
+}
+
+.commerce-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.commerce-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.commerce-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.commerce-panel-head h3 {
+  font-size: clamp(28px, 3.5vw, 40px);
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.shop-rail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.shop-item-chip {
+  min-height: 144px;
+}
+
+.commerce-panel-accent {
+  border-color: rgba(47, 107, 156, 0.18);
+}
+
+.modpack-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.modpack-summary-card,
+.modpack-side-stack,
+.modpack-file-grid,
+.modpack-note-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.modpack-summary-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.modpack-summary-copy h3 {
+  font-size: clamp(32px, 4.2vw, 46px);
+  line-height: 0.96;
+}
+
+.modpack-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.modpack-stat {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+:root[data-theme="dark"] .modpack-stat {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.modpack-file-grid,
+.modpack-note-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.modpack-file-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-2);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.signin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.signin-page-grid {
+  display: grid;
+  gap: 20px;
+}
+
+.signin-page-grid .signin-grid {
+  gap: 20px;
+}
+
+.login-card {
+  display: grid;
+  gap: 16px;
+  border-radius: 30px;
+}
+
+.auth-meta-row {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-inline-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.auth-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-link:hover,
+.auth-link.active {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.auth-link-subtle {
+  min-height: 0;
+}
+
+.login-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.login-copy strong {
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 0.98;
+}
+
+.signin-side {
+  display: grid;
+  gap: 14px;
+}
+
+.signin-note-card {
+  display: grid;
+  gap: 10px;
+}
+
+.public-site .hidden {
+  display: none !important;
+}

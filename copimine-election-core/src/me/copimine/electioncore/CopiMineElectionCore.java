@@ -2757,118 +2757,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void countCurrentRound(String actor) throws Exception {
-        if (useStrictElectionRuntime()) {
-            countCurrentRoundStrict(actor);
-            return;
-        }
-        String electionId = currentElectionId();
-        if (electionId == null) {
-            return;
-        }
-        int round = currentRoundNumber();
-        List<CandidateResult> results = loadCandidateResults(electionId, round);
-        int maxVotes = results.stream().mapToInt(CandidateResult::votes).max().orElse(0);
-        List<CandidateResult> leaders = results.stream().filter(row -> row.votes() == maxVotes).toList();
-        long t = now();
-        tx(connection -> {
-            ElectionContext context = requireActiveElectionContext(connection);
-            if (!electionId.equals(context.electionId()) || context.stage() != ElectionStage.VOTING) {
-                throw new IllegalStateException("Подсчёт доступен только после этапа голосования.");
-            }
-            update(connection, "UPDATE elections SET current_stage=?,updated_at=? WHERE id=?", ElectionStage.COUNTING.name(), t, electionId);
-            update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
-                    electionId, ElectionStage.COUNTING.name(), round, actor, t, "Подсчёт бюллетеней");
-            for (CandidateResult result : results) {
-                update(connection, "UPDATE candidates SET last_result=? WHERE election_id=? AND player_uuid=?", result.votes(), electionId, result.uuid());
-            }
-            if (results.isEmpty()) {
-                update(connection, "UPDATE rounds SET status='COUNTED',ended_at=?,winner_uuid='',winner_name='' WHERE election_id=? AND round_no=?", t, electionId, round);
-                update(connection, "UPDATE elections SET second_round_needed=0,manual_winner_uuid='',manual_winner_name='',updated_at=? WHERE id=?", t, electionId);
-                logPluginEvent(connection, "election_core", "round_counted", actor, electionId, "round=" + round + ";candidates=0");
-                return null;
-            }
-            if (leaders.size() > 1) {
-                update(connection, "UPDATE rounds SET status='COUNTED',ended_at=?,winner_uuid='',winner_name='' WHERE election_id=? AND round_no=?", t, electionId, round);
-                update(connection, "UPDATE elections SET second_round_needed=1,manual_winner_uuid='',manual_winner_name='',updated_at=? WHERE id=?", t, electionId);
-                logPluginEvent(connection, "election_core", "round_tied", actor, electionId, "round=" + round);
-            } else {
-                update(connection, "UPDATE rounds SET status='COUNTED',ended_at=?,winner_uuid=?,winner_name=? WHERE election_id=? AND round_no=?",
-                        t, leaders.getFirst().uuid(), leaders.getFirst().name(), electionId, round);
-                update(connection, "UPDATE elections SET second_round_needed=0,manual_winner_uuid=?,manual_winner_name=?,updated_at=? WHERE id=?",
-                        leaders.getFirst().uuid(), leaders.getFirst().name(), t, electionId);
-                logPluginEvent(connection, "election_core", "round_winner", actor, leaders.getFirst().uuid(), "round=" + round);
-            }
-            return null;
-        });
+        countCurrentRoundStrict(actor);
     }
 
     private void startSecondRound(String actor) throws Exception {
-        if (useStrictElectionRuntime()) {
-            startSecondRoundStrict(actor);
-            return;
-        }
-        String electionId = currentElectionId();
-        if (electionId == null) {
-            return;
-        }
-        int round = currentRoundNumber();
-        List<CandidateResult> results = loadCandidateResults(electionId, round);
-        int maxVotes = results.stream().mapToInt(CandidateResult::votes).max().orElse(0);
-        List<CandidateResult> leaders = results.stream().filter(row -> row.votes() == maxVotes).toList();
-        if (leaders.size() < 2) {
-            throw new IllegalStateException("Для второго тура нужна ничья лидеров.");
-        }
-        int nextRound = round + 1;
-        long t = now();
-        tx(connection -> {
-            ElectionStage from = currentStageFromDb(connection, electionId);
-            StageTransitionResult transition = validateStageTransition(connection, electionId, from, ElectionStage.SECOND_ROUND);
-            if (!transition.allowed()) {
-                throw new IllegalStateException(transition.message());
-            }
-            update(connection, "UPDATE ballots SET status='VOID' WHERE election_id=? AND round_no<? AND status IN ('ISSUED','CONFIRMED')", electionId, nextRound);
-            update(connection, "UPDATE rounds SET status='FINISHED',ended_at=CASE WHEN ended_at=0 THEN ? ELSE ended_at END WHERE election_id=? AND round_no=?", t, electionId, round);
-            update(connection, "INSERT INTO rounds(id,election_id,round_no,status,started_at,ended_at,winner_uuid,winner_name) VALUES(?,?,?,?,?,0,'','')",
-                    "round_" + electionId + "_" + nextRound, electionId, nextRound, "ACTIVE", t);
-            update(connection, "DELETE FROM round_candidates WHERE election_id=? AND round_no=?", electionId, nextRound);
-            for (CandidateResult leader : leaders) {
-                update(connection, "INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) VALUES(?,?,?,?,1,?,?)",
-                        electionId, nextRound, leader.uuid(), leader.name(), t, actor);
-            }
-            update(connection, "UPDATE elections SET current_round=?,current_stage=?,second_round_needed=0,updated_at=? WHERE id=?",
-                    nextRound, ElectionStage.SECOND_ROUND.name(), t, electionId);
-            update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
-                    electionId, ElectionStage.SECOND_ROUND.name(), nextRound, actor, t, "Старт второго тура");
-            logPluginEvent(connection, "election_core", "second_round_started", actor, electionId, "round=" + nextRound);
-            return null;
-        });
+        startSecondRoundStrict(actor);
     }
 
     private void chooseWinner(String candidateUuid, String actor) throws Exception {
-        if (useStrictElectionRuntime()) {
-            chooseWinnerStrict(candidateUuid, actor);
-            return;
-        }
-        String electionId = currentElectionId();
-        if (electionId == null) {
-            return;
-        }
-        int round = currentRoundNumber();
-        Map<String, Object> candidate = queryOne(
-                "SELECT candidate_name FROM round_candidates WHERE election_id=? AND round_no=? AND candidate_uuid=? AND active=1",
-                electionId, round, candidateUuid
-        );
-        if (candidate == null) {
-            return;
-        }
-        long t = now();
-        tx(connection -> {
-            update(connection, "UPDATE rounds SET status='COUNTED',ended_at=CASE WHEN ended_at=0 THEN ? ELSE ended_at END,winner_uuid=?,winner_name=? WHERE election_id=? AND round_no=?",
-                    t, candidateUuid, string(candidate.get("candidate_name")), electionId, round);
-            assignPresident(connection, electionId, candidateUuid, string(candidate.get("candidate_name")), actor, t);
-            logPluginEvent(connection, "election_core", "winner_manual", actor, candidateUuid, "");
-            return null;
-        });
+        chooseWinnerStrict(candidateUuid, actor);
     }
 
     private void assignPresident(Connection connection, String electionId, String presidentUuid, String presidentName, String actor, long t) throws Exception {
@@ -2937,59 +2834,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             logPluginEvent(connection, "election_core", "law_pending", player.getName(), string(term.get("id")), text);
             return null;
         });
-    }
-
-    private void reviewLaw(String lawId, String decision, String actor, String note) throws Exception {
-        if (useStrictElectionRuntime()) {
-            reviewLawStrict(lawId, decision, actor, note);
-            return;
-        }
-        Map<String, Object> law = queryOne("SELECT * FROM president_laws WHERE id=?", lawId);
-        if (law == null) {
-            return;
-        }
-        Map<String, Object> term = activeTerm();
-        if (term == null || !string(term.get("id")).equals(string(law.get("term_id")))) {
-            throw new IllegalStateException("Этот закон уже не относится к текущему сроку.");
-        }
-        long t = now();
-        tx(connection -> {
-            if ("APPROVED".equalsIgnoreCase(decision) && string(law.get("replaced_law_id")).isBlank()
-                    && scalarLong(connection, "SELECT COUNT(*) FROM president_laws WHERE term_id=? AND status='PUBLISHED'", string(law.get("term_id"))) >= 5) {
-                throw new IllegalStateException("У президента уже 5 законов. Используй замену.");
-            }
-            update(connection, "INSERT INTO president_law_reviews(law_id,reviewer,decision,note,created_at) VALUES(?,?,?,?,?)", lawId, actor, decision, note, t);
-            if ("APPROVED".equals(decision)) {
-                String replaced = string(law.get("replaced_law_id"));
-                int slot = nextLawSlot(connection, string(law.get("term_id")));
-                if (!replaced.isBlank()) {
-                    if (t - longValue(term.get("last_law_replace_at")) < PRESIDENT_LAW_REPLACE_COOLDOWN_MS) {
-                        throw new IllegalStateException("Закон можно заменять не чаще одного раза в 3 дня.");
-                    }
-                    Map<String, Object> replacedLaw = queryOne(connection,
-                            "SELECT id,slot_no,status,term_id FROM president_laws WHERE id=? FOR UPDATE",
-                            replaced);
-                    if (replacedLaw == null
-                            || !string(law.get("term_id")).equals(string(replacedLaw.get("term_id")))
-                            || !"PUBLISHED".equalsIgnoreCase(string(replacedLaw.get("status")))) {
-                        throw new IllegalStateException("Этот закон уже нельзя заменить.");
-                    }
-                    slot = Math.max(1, intValue(replacedLaw.get("slot_no")));
-                    update(connection, "UPDATE president_laws SET status='REPLACED' WHERE id=?", replaced);
-                    update(connection, "UPDATE president_terms SET last_law_replace_at=? WHERE id=?", t, string(law.get("term_id")));
-                }
-                update(connection, "UPDATE president_laws SET status='PUBLISHED',published_at=?,slot_no=? WHERE id=?", t, slot, lawId);
-                logPluginEvent(connection, "election_core", "law_published", actor, lawId, string(law.get("text")));
-            } else {
-                update(connection, "UPDATE president_laws SET status='REJECTED' WHERE id=?", lawId);
-                logPluginEvent(connection, "election_core", "law_rejected", actor, lawId, string(law.get("text")));
-            }
-            return null;
-        });
-    }
-
-    private boolean useStrictElectionRuntime() {
-        return true;
     }
 
     private void countCurrentRoundStrict(String actor) throws Exception {
@@ -3134,7 +2978,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
     }
 
-    private void reviewLawStrict(String lawId, String decision, String actor, String note) throws Exception {
+    private void reviewLaw(String lawId, String decision, String actor, String note) throws Exception {
         long t = now();
         tx(connection -> {
             Map<String, Object> term = queryOne(connection,
@@ -3987,14 +3831,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("term_id", "");
         payload.put("president_uuid", "");
-        payload.put("president_name", "Президентская казна");
+        payload.put("president_name", "Казна CopiMine");
         payload.put("budget_account_id", "PRESIDENT_BUDGET");
         try {
             Map<String, Object> term = activeTerm();
             if (term != null) {
                 payload.put("term_id", string(term.get("id")));
                 payload.put("president_uuid", string(term.get("president_uuid")));
-                payload.put("president_name", first(string(term.get("president_name")), "Президентская казна"));
             }
         } catch (Exception ignored) {
         }
@@ -4099,7 +3942,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     string(row.get("player_uuid")),
                     first(string(row.get("player_name")), "Кандидат"),
                     votes,
-                    "█".repeat(Math.max(1, Math.min(10, barCount)))
+                    "в–€".repeat(Math.max(1, Math.min(10, barCount)))
             ));
         }
         return results;
@@ -4393,9 +4236,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         meta.setTitle("Заявка кандидата");
         meta.setAuthor("CopiMine");
         meta.setPages(List.of(
-                "1. Почему ты хочешь стать президентом?\n\n2. Что ты изменишь на сервере?",
-                "3. Как ты будешь развивать экономику?\n\n4. Как ты будешь решать конфликты игроков?",
-                "5. Какие законы хочешь предложить?\n\nПодпиши книгу и сдай её через свой участок."
+                "1. Почему ты хочешь стать президентом?\\n\\n2. Что ты изменишь на сервере?",
+                "3. Как ты будешь развивать экономику?\\n\\n4. Как ты будешь решать конфликты игроков?",
+                "5. Какие законы хочешь предложить?\\n\\nПодпиши книгу и сдай её через свой участок."
         ));
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(itemTypeKey, PersistentDataType.STRING, "APPLICATION_BOOK");
@@ -5066,7 +4909,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private String shortId(String id) {
         if (id == null || id.isBlank()) {
-            return "—";
+            return "вЂ”";
         }
         return id.length() <= 10 ? id : id.substring(0, 10);
     }
@@ -5076,11 +4919,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (clean.length() <= max) {
             return clean;
         }
-        return clean.substring(0, Math.max(0, max - 1)) + "…";
+        return clean.substring(0, Math.max(0, max - 1)) + "вЂ¦";
     }
 
     private String formatTs(long ts) {
-        return ts <= 0 ? "—" : Instant.ofEpochMilli(ts).toString();
+        return ts <= 0 ? "вЂ”" : Instant.ofEpochMilli(ts).toString();
     }
 
     private record DbSettings(String host, int port, String database, String user, String password, String schema, Path envFile) {
@@ -5282,13 +5125,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     yield StageTransitionResult.deny("После подсчёта можно перейти только ко второму туру или к президентскому сроку.");
                 }
                 case SECOND_ROUND -> {
-                    if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING) {
-                        yield StageTransitionResult.allow();
-                    }
                     if (tiedLeaders < 2) {
                         yield StageTransitionResult.deny("Второй тур доступен только для кандидатов с равным максимумом голосов.");
                     }
-                    if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING) {
+                    if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING || to == ElectionStage.COUNTING) {
                         yield StageTransitionResult.allow();
                     }
                     yield StageTransitionResult.deny("Из второго тура можно перейти только к дебатам, голосованию или подсчёту.");

@@ -36,6 +36,7 @@ public record BridgePayload(
 ) implements CustomPayload {
     public static final CustomPayload.Id<BridgePayload> ID = new CustomPayload.Id<>(Identifier.of("copimine", "client_bridge"));
     public static final PacketCodec<RegistryByteBuf, BridgePayload> CODEC = CustomPayload.codecOf(BridgePayload::write, BridgePayload::read);
+    private static final int MAX_SUPPORTED_EFFECTS = 64;
 
     public BridgePayload {
         type = safe(type);
@@ -52,7 +53,7 @@ public record BridgePayload(
         intensity = clampIntensity(intensity);
     }
 
-    public static BridgePayload hello(String sessionId, String version, boolean trueIrisShader, Set<String> supportedEffects) {
+    public static BridgePayload hello(String sessionId, String version, Set<String> supportedEffects, boolean irisShaderPackActive) {
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_HELLO,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -63,7 +64,31 @@ public record BridgePayload(
                 true,
                 true,
                 true,
-                trueIrisShader,
+                irisShaderPackActive,
+                normalizeEffects(supportedEffects),
+                "",
+                0,
+                0.0F,
+                "CLIENT_MOD",
+                "",
+                "SYSTEM",
+                "",
+                ""
+        );
+    }
+
+    public static BridgePayload capabilitiesUpdate(String sessionId, String version, Set<String> supportedEffects, boolean irisShaderPackActive) {
+        return new BridgePayload(
+                ClientBridgeProtocol.TYPE_CAPABILITIES_UPDATE,
+                ClientBridgeProtocol.PROTOCOL_VERSION,
+                0L,
+                System.currentTimeMillis(),
+                sessionId,
+                version,
+                true,
+                true,
+                true,
+                irisShaderPackActive,
                 normalizeEffects(supportedEffects),
                 "",
                 0,
@@ -224,8 +249,11 @@ public record BridgePayload(
             boolean clientShaderLike = in.readBoolean();
             boolean trueIrisShader = in.readBoolean();
             int count = Math.max(0, in.readInt());
+            if (count > MAX_SUPPORTED_EFFECTS) {
+                throw new IllegalArgumentException("Too many supported effects: " + count);
+            }
             Set<String> supportedEffects = new LinkedHashSet<>();
-            for (int index = 0; index < count && index < 64; index++) {
+            for (int index = 0; index < count; index++) {
                 supportedEffects.add(normalizeEffectId(in.readUTF()));
             }
             String effectId = normalizeEffectId(in.readUTF());
@@ -271,10 +299,7 @@ public record BridgePayload(
             return "";
         }
         String normalized = effectId.trim().toUpperCase(Locale.ROOT);
-        if (normalized.length() > 48) {
-            return normalized.substring(0, 48);
-        }
-        return normalized;
+        return ClientBridgeProtocol.SUPPORTED_EFFECTS.contains(normalized) ? normalized : "CHAOS";
     }
 
     private static float clampIntensity(float value) {
@@ -293,7 +318,7 @@ public record BridgePayload(
         if (supportedEffects != null) {
             for (String effectId : supportedEffects) {
                 String effect = normalizeEffectId(effectId);
-                if (!effect.isBlank() && ClientBridgeProtocol.SUPPORTED_EFFECTS.contains(effect)) {
+                if (!effect.isBlank()) {
                     normalized.add(effect);
                 }
             }

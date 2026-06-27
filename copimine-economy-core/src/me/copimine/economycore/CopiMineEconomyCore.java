@@ -50,6 +50,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -78,7 +79,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private static final long PIN_LOCK_SECONDS = 900L;
     private static final long PIN_ATTEMPT_WINDOW_SECONDS = 900L;
     private static final int MODEL_ATM_TERMINAL = 12002;
+    // Preserve the legacy id for compatibility with existing rows and ledgers.
     private static final String TREASURY_ACCOUNT_ID = "PRESIDENT_BUDGET";
+    private static final String TREASURY_ACCOUNT_LABEL = "Казна CopiMine";
     private static final String TREASURY_ACCOUNT_TYPE = "TREASURY";
     private static final Set<Long> DONATION_PACKS = Set.of(50L, 100L, 250L, 500L, 1000L);
     private static final long DONATION_SESSION_TTL_MS = 15L * 60L * 1000L;
@@ -1228,19 +1231,24 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return;
         }
         dbAsync("repair atm visuals startup", () -> {
+            List<AtmVisualRepairBatch> batches = new ArrayList<>();
             for (String entry : chunks) {
                 String[] parts = entry.split(":");
                 if (parts.length != 3) {
                     continue;
                 }
+                int chunkX = parseInt(parts[1], 0);
+                int chunkZ = parseInt(parts[2], 0);
                 List<Map<String, Object>> rows = loadAtmVisualRepairRows(parts[0], parseInt(parts[1], 0), parseInt(parts[2], 0));
                 if (rows.isEmpty()) {
                     continue;
                 }
-                int chunkX = parseInt(parts[1], 0);
-                int chunkZ = parseInt(parts[2], 0);
-                Bukkit.getScheduler().runTask(this, () -> applyAtmVisualRepairs(parts[0], chunkX, chunkZ, rows));
+                batches.add(new AtmVisualRepairBatch(parts[0], chunkX, chunkZ, List.copyOf(rows)));
             }
+            if (batches.isEmpty()) {
+                return;
+            }
+            Bukkit.getScheduler().runTask(this, () -> drainAtmVisualRepairQueue(batches));
         });
     }
 
@@ -1280,6 +1288,23 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 getLogger().warning("ATM visual repair row: " + safeError(error));
             }
         }
+    }
+
+    private void drainAtmVisualRepairQueue(List<AtmVisualRepairBatch> batches) {
+        if (batches == null || batches.isEmpty()) {
+            return;
+        }
+        ArrayDeque<AtmVisualRepairBatch> queue = new ArrayDeque<>(batches);
+        Bukkit.getScheduler().runTaskTimer(this, task -> {
+            int remaining = 8;
+            while (remaining-- > 0 && !queue.isEmpty()) {
+                AtmVisualRepairBatch batch = queue.removeFirst();
+                applyAtmVisualRepairs(batch.worldName(), batch.chunkX(), batch.chunkZ(), batch.rows());
+            }
+            if (queue.isEmpty()) {
+                task.cancel();
+            }
+        }, 1L, 1L);
     }
 
     private boolean isOwnedProtectedVisualEntity(Entity entity, String kind, String linkedId, String modelId, int customModelData) {
@@ -1487,9 +1512,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private Map<String, Object> ensureTreasuryAccount(Connection connection) throws Exception {
         long t = now();
-        Map<String, Object> term = activePresidentTerm(connection);
-        String ownerUuid = term == null ? "" : string(term.get("president_uuid"));
-        String ownerName = first(term == null ? "" : string(term.get("president_name")), "Казна CopiMine");
+        String ownerUuid = "";
+        String ownerName = TREASURY_ACCOUNT_LABEL;
         update(connection, "INSERT INTO cmv4_bank_accounts(account_id,owner_uuid,owner_name,account_type,currency,balance,status,version,created_at,updated_at) VALUES(?,?,?,?,'AR',0,'ACTIVE',0,?,?) ON CONFLICT(account_id) DO UPDATE SET owner_uuid=excluded.owner_uuid,owner_name=excluded.owner_name,updated_at=excluded.updated_at",
                 treasuryAccountId(), ownerUuid, ownerName, TREASURY_ACCOUNT_TYPE, t, t);
         return queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", treasuryAccountId());
@@ -2291,6 +2315,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return "\"" + schema.replace("\"", "\"\"") + "\"";
         }
     }
+
+    private record AtmVisualRepairBatch(String worldName, int chunkX, int chunkZ, List<Map<String, Object>> rows) {}
 
     private record AtmPinSession(String atmId, String accountScope, String action, int amount, String pin, String targetUuid, String targetName) {}
 

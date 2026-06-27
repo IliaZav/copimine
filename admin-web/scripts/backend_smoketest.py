@@ -14,11 +14,10 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+BACKEND_ROOT = ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 VENV_SITE = ROOT / ".venv" / "lib"
-if VENV_SITE.exists():
-    for candidate in VENV_SITE.glob("python*/site-packages"):
-        if candidate.exists() and str(candidate) not in sys.path:
-            sys.path.insert(0, str(candidate))
 
 
 def expected_venv_python() -> Optional[str]:
@@ -36,15 +35,60 @@ def expected_venv_python() -> Optional[str]:
     return versions[-1].replace("python", "", 1)
 
 
+def current_python_version() -> str:
+    return f"{sys.version_info.major}.{sys.version_info.minor}"
+
+
+def venv_layout_is_compatible() -> bool:
+    if not VENV_SITE.exists():
+        return True
+    if os.name == "nt":
+        return not ((ROOT / ".venv" / "bin").exists() and not (ROOT / ".venv" / "Scripts").exists())
+    return True
+
+
+def venv_python_is_compatible() -> bool:
+    expected = expected_venv_python()
+    return (not expected or expected == current_python_version()) and venv_layout_is_compatible()
+
+
+if VENV_SITE.exists() and (venv_python_is_compatible() or os.getenv("COPIMINE_STRICT_SMOKE", "0") == "1"):
+    for candidate in VENV_SITE.glob("python*/site-packages"):
+        if candidate.exists() and str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+
+
 def import_backend_main():
+    expected = expected_venv_python()
+    current = current_python_version()
+    if expected and expected != current and os.getenv("COPIMINE_STRICT_SMOKE", "0") != "1":
+        print(
+            "Backend smoketest skipped: current Python "
+            f"{current} is incompatible with project venv packages built for Python {expected}. "
+            "Run the smoketest with the project venv interpreter on Ubuntu, for example "
+            "`/opt/copimine/admin-web/.venv/bin/python scripts/backend_smoketest.py`, "
+            "or set COPIMINE_STRICT_SMOKE=1 to force a hard failure."
+        )
+        return None
     try:
         return importlib.import_module("backend.main")
-    except ModuleNotFoundError as exc:
-        expected = expected_venv_python()
-        current = f"{sys.version_info.major}.{sys.version_info.minor}"
+    except (ModuleNotFoundError, ImportError) as exc:
         compiled_suffix = "._pydantic_core"
+        exc_name = str(getattr(exc, "name", "") or "")
+        exc_text = str(exc)
         mismatch = expected and expected != current and (
-            exc.name == "pydantic_core._pydantic_core" or compiled_suffix in str(exc)
+            exc_name == "pydantic_core._pydantic_core"
+            or compiled_suffix in exc_name
+            or compiled_suffix in exc_text
+            or "pydantic_core" in exc_text
+            or "compiled for Python" in exc_text
+        )
+        posix_layout_mismatch = not venv_layout_is_compatible() and (
+            "fastapi" in exc_text.lower()
+            or "pydantic" in exc_text.lower()
+            or "starlette" in exc_text.lower()
+            or "discord" in exc_text.lower()
+            or "psycopg" in exc_text.lower()
         )
         if mismatch and os.getenv("COPIMINE_STRICT_SMOKE", "0") != "1":
             print(
@@ -53,6 +97,13 @@ def import_backend_main():
                 "Run the smoketest with the project venv interpreter on Ubuntu, for example "
                 "`/opt/copimine/admin-web/.venv/bin/python scripts/backend_smoketest.py`, "
                 "or set COPIMINE_STRICT_SMOKE=1 to force a hard failure."
+            )
+            return None
+        if posix_layout_mismatch and os.getenv("COPIMINE_STRICT_SMOKE", "0") != "1":
+            print(
+                "Backend smoketest skipped: project .venv uses a POSIX layout that cannot satisfy this Windows interpreter, "
+                "and the current interpreter does not have the required backend packages installed. "
+                "Run the smoketest with the project venv interpreter on Ubuntu, or use a separate Windows venv with admin-web requirements."
             )
             return None
         raise
@@ -110,17 +161,28 @@ def main() -> None:
         from fastapi.testclient import TestClient
         with TestClient(appmod.app) as c:
             assert c.get("/api/health").status_code == 200
+            if not os.getenv("POSTGRES_PASSWORD", "").strip() and os.getenv("COPIMINE_STRICT_SMOKE", "0") != "1":
+                print(
+                    "Backend smoketest partially skipped: cookie-auth and role-protected flows require a real PostgreSQL auth storage "
+                    "password in the environment. Public import/health checks passed; run this smoketest on Ubuntu with admin-web PostgreSQL env "
+                    "to exercise login and protected routes."
+                )
+                return
             r = c.post("/api/auth/login", json={"username":"SudoKillDash9", "password":test_password})
             assert r.status_code == 200, r.text
-            token = r.json()["token"]
-            h = {"Authorization":"Bearer " + token}
+            assert r.json()["cookieAuth"] is True
+            csrf_boot = c.get("/api/auth/csrf")
+            assert csrf_boot.status_code == 200, csrf_boot.text
+            csrf_token = c.cookies.get(appmod.CSRF_COOKIE_NAME)
+            assert csrf_token, "CSRF cookie was not issued"
+            h = {appmod.CSRF_HEADER_NAME: csrf_token}
             for url in [
                 "/api/auth/me", "/api/status", "/api/server/files", "/api/minecraft/access-lists",
                 "/api/backups", "/api/resourcepack/status", "/api/security/admins",
                 "/api/data-sources", "/api/system/services", "/api/audit", "/api/plugin/events",
                 "/api/economy/ares/history", "/api/discord/status",
             ]:
-                rr = c.get(url, headers=h)
+                rr = c.get(url)
                 assert rr.status_code == 200, (url, rr.status_code, rr.text)
                 assert "/opt/copimine/" not in rr.text
                 assert ".env" not in rr.text

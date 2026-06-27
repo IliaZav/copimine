@@ -1,0 +1,54 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>CopiMine - Мои донат-предметы</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body data-page-kind="cabinet" data-app-route="donation-items">
+  <div id="toast" class="toast-root" aria-live="polite"></div>
+
+  <div id="app" class="app">
+    <aside class="sidebar">
+      <div class="side-brand">
+        <div class="brand-mark brand-mark-small">CM</div>
+        <div>
+          <strong>CopiMine</strong>
+          <span id="userBadge">загрузка</span>
+        </div>
+      </div>
+      <nav id="nav" class="side-nav" aria-label="Разделы кабинета"></nav>
+      <div class="side-footer">
+        <div id="miniHealth" class="mini-health">Проверка статуса...</div>
+        <button id="logout" class="btn btn-ghost btn-wide" type="button">Выйти</button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">☰</button>
+        <div class="page-heading">
+          <h1 id="pageTitle">Загрузка</h1>
+          <p id="pageSubtitle">Проверяем доступ и собираем данные</p>
+        </div>
+        <div class="top-actions">
+          <button class="btn btn-ghost theme-toggle app-theme-toggle" data-theme-toggle="true" type="button">Тема</button>
+          <button id="guestPagesBtn" class="btn btn-secondary" type="button">Гостевые страницы</button>
+          <div id="liveBadge" class="status-chip status-neutral">...</div>
+          <div id="lastUpdate" class="last-update">нет данных</div>
+          <button id="refreshBtn" class="btn btn-secondary" type="button">Обновить</button>
+        </div>
+      </header>
+
+      <section id="view" class="view" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>

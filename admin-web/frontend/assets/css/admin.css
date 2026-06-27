@@ -1,1 +1,307 @@
-/* Admin panel-specific overrides live here. */
+:root {
+  --copimine-admin-ink: var(--ink);
+  --copimine-admin-muted: var(--muted);
+  --copimine-admin-line: var(--line);
+  --copimine-admin-strong-line: var(--line-strong);
+  --copimine-admin-panel: var(--surface);
+  --copimine-admin-panel-strong: var(--surface-strong);
+  --copimine-admin-panel-soft: var(--surface-soft);
+  --copimine-admin-glow: var(--shadow);
+  --copimine-admin-grid:
+    linear-gradient(rgba(45, 125, 63, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 125, 63, 0.08) 1px, transparent 1px);
+  --copimine-admin-app-bg: var(--body-gradient);
+  --copimine-admin-workspace-bg: var(--section-surface);
+  --copimine-admin-nav-bg: var(--panel-translucent);
+  --copimine-admin-nav-hover-bg: var(--surface-strong);
+  --copimine-admin-nav-active-bg: var(--feature-card-bg);
+  --copimine-admin-input-bg: var(--surface);
+  --copimine-admin-table-head-bg: var(--surface-strong);
+  --copimine-admin-table-row-alt: var(--surface-soft);
+  --copimine-admin-table-row-hover: var(--accent-2);
+}
+
+body.panel-admin-mode,
+body.junior-admin-mode {
+  color: var(--copimine-admin-ink);
+}
+
+body.panel-admin-mode .app,
+body.junior-admin-mode .app {
+  background: var(--copimine-admin-app-bg);
+}
+
+body.panel-admin-mode .sidebar,
+body.junior-admin-mode .sidebar {
+  border-right: 1px solid var(--copimine-admin-line);
+  box-shadow: inset -1px 0 0 var(--sidebar-inset);
+}
+
+body.panel-admin-mode .workspace,
+body.junior-admin-mode .workspace {
+  padding: 22px;
+  background: var(--copimine-admin-workspace-bg);
+}
+
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 22;
+  margin-bottom: 8px;
+  border: 1px solid var(--copimine-admin-line);
+  border-radius: 24px;
+  padding: 16px 18px;
+  background: var(--copimine-admin-panel-strong);
+  box-shadow: var(--copimine-admin-glow);
+}
+
+body.panel-admin-mode .page-heading h1,
+body.junior-admin-mode .page-heading h1,
+body.panel-admin-mode .panel-title,
+body.junior-admin-mode .panel-title,
+body.panel-admin-mode .metric-value,
+body.junior-admin-mode .metric-value {
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI Variable Text", sans-serif;
+}
+
+body.panel-admin-mode .page-heading h1,
+body.junior-admin-mode .page-heading h1 {
+  letter-spacing: -0.04em;
+}
+
+body.panel-admin-mode .page-heading p,
+body.junior-admin-mode .page-heading p,
+body.panel-admin-mode .last-update,
+body.junior-admin-mode .last-update,
+body.panel-admin-mode .panel-subtitle,
+body.junior-admin-mode .panel-subtitle {
+  color: var(--copimine-admin-muted);
+}
+
+body.panel-admin-mode .nav-group-title,
+body.junior-admin-mode .nav-group-title {
+  color: var(--accent);
+  letter-spacing: 0.12em;
+}
+
+body.panel-admin-mode .nav-item,
+body.junior-admin-mode .nav-item {
+  border-color: var(--copimine-admin-line);
+  background: var(--copimine-admin-nav-bg);
+  transition: transform 0.16s ease, border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+body.panel-admin-mode .nav-item:hover,
+body.junior-admin-mode .nav-item:hover {
+  transform: translateX(3px);
+  border-color: var(--copimine-admin-strong-line);
+  background: var(--copimine-admin-nav-hover-bg);
+  box-shadow: var(--shadow-soft);
+}
+
+body.panel-admin-mode .nav-item.active {
+  border-color: var(--copimine-admin-strong-line);
+  background: var(--copimine-admin-nav-active-bg);
+  box-shadow: var(--shadow);
+}
+
+body.panel-admin-mode .nav-item.active .nav-icon {
+  color: var(--ink);
+}
+
+body.junior-admin-mode .nav-item.active {
+  border-color: rgba(124, 233, 255, 0.28);
+  background: linear-gradient(180deg, var(--blue-2), var(--surface));
+  box-shadow: var(--shadow-soft);
+}
+
+body.panel-admin-mode .view,
+body.junior-admin-mode .view {
+  width: min(1620px, 100%);
+  margin: 0 auto;
+  gap: 20px;
+}
+
+body.panel-admin-mode .layout-grid,
+body.junior-admin-mode .layout-grid {
+  gap: 18px;
+}
+
+body.panel-admin-mode .panel,
+body.panel-admin-mode .metric,
+body.panel-admin-mode .table-wrap,
+body.panel-admin-mode .visual-card,
+body.panel-admin-mode .dashboard-hero,
+body.junior-admin-mode .panel,
+body.junior-admin-mode .metric,
+body.junior-admin-mode .table-wrap,
+body.junior-admin-mode .visual-card,
+body.junior-admin-mode .dashboard-hero {
+  border: 1px solid var(--copimine-admin-line);
+  background: var(--copimine-admin-panel);
+  box-shadow: var(--shadow);
+}
+
+body.panel-admin-mode .panel,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .panel,
+body.junior-admin-mode .metric {
+  position: relative;
+  overflow: hidden;
+}
+
+body.panel-admin-mode .panel::before,
+body.panel-admin-mode .metric::before,
+body.junior-admin-mode .panel::before,
+body.junior-admin-mode .metric::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  pointer-events: none;
+}
+
+body.panel-admin-mode .dashboard-hero,
+body.junior-admin-mode .dashboard-hero {
+  background:
+    var(--copimine-admin-grid),
+    var(--copimine-admin-panel-strong);
+  background-size: 22px 22px, 22px 22px, auto;
+}
+
+body.panel-admin-mode .visual-card,
+body.junior-admin-mode .visual-card,
+body.panel-admin-mode .hero-tile,
+body.junior-admin-mode .hero-tile {
+  background: var(--copimine-admin-panel-soft);
+}
+
+body.panel-admin-mode .hero-scene-card,
+body.junior-admin-mode .hero-scene-card {
+  border-color: var(--copimine-admin-line);
+  background: var(--surface-soft);
+}
+
+body.panel-admin-mode .mini-health,
+body.junior-admin-mode .mini-health {
+  border: 1px solid var(--copimine-admin-line);
+  border-radius: 18px;
+  padding: 14px 15px;
+  background: var(--copimine-admin-panel-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+body.panel-admin-mode .mini-health strong,
+body.junior-admin-mode .mini-health strong {
+  color: var(--copimine-admin-ink);
+}
+
+body.panel-admin-mode input,
+body.panel-admin-mode select,
+body.panel-admin-mode textarea,
+body.junior-admin-mode input,
+body.junior-admin-mode select,
+body.junior-admin-mode textarea {
+  min-height: 46px;
+  border-radius: 16px;
+  border-color: var(--copimine-admin-line);
+  background: var(--copimine-admin-input-bg);
+}
+
+body.panel-admin-mode input:focus,
+body.panel-admin-mode select:focus,
+body.panel-admin-mode textarea:focus,
+body.junior-admin-mode input:focus,
+body.junior-admin-mode select:focus,
+body.junior-admin-mode textarea:focus {
+  border-color: var(--copimine-admin-strong-line);
+  box-shadow: 0 0 0 4px var(--accent-2);
+}
+
+body.panel-admin-mode .action-strip,
+body.junior-admin-mode .action-strip {
+  gap: 10px;
+}
+
+body.panel-admin-mode .btn-primary,
+body.junior-admin-mode .btn-primary {
+  box-shadow: 0 16px 30px rgba(14, 70, 36, 0.24);
+}
+
+body.panel-admin-mode .table-wrap,
+body.junior-admin-mode .table-wrap {
+  overflow: hidden;
+}
+
+body.panel-admin-mode table thead th,
+body.junior-admin-mode table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--copimine-admin-table-head-bg) !important;
+  color: var(--ink);
+}
+
+body.panel-admin-mode table tbody tr:nth-child(odd) td,
+body.junior-admin-mode table tbody tr:nth-child(odd) td {
+  background: var(--copimine-admin-table-row-alt);
+}
+
+body.panel-admin-mode table tbody tr:hover td,
+body.junior-admin-mode table tbody tr:hover td {
+  background: var(--copimine-admin-table-row-hover) !important;
+}
+
+body.panel-admin-mode .status-chip,
+body.junior-admin-mode .status-chip {
+  border-color: var(--copimine-admin-line);
+}
+
+body.panel-admin-mode[data-copimine-tab="economy"] .metric,
+body.panel-admin-mode[data-copimine-tab="artifacts"] .metric,
+body.panel-admin-mode[data-copimine-tab="sources"] .metric {
+  border-color: var(--copimine-admin-strong-line);
+  background:
+    linear-gradient(180deg, var(--surface-strong), var(--surface)),
+    radial-gradient(circle at top right, rgba(124, 233, 255, 0.08), transparent 52%);
+}
+
+body.panel-admin-mode[data-copimine-tab="sources"] .panel,
+body.panel-admin-mode[data-copimine-tab="settings"] .panel {
+  border-color: rgba(124, 233, 255, 0.22);
+}
+
+body.panel-admin-mode[data-copimine-tab="sources"] .form-grid,
+body.panel-admin-mode[data-copimine-tab="settings"] .form-grid {
+  gap: 12px;
+}
+
+body.junior-admin-mode .panel,
+body.junior-admin-mode .metric {
+  border-color: rgba(124, 233, 255, 0.2);
+}
+
+body.junior-admin-mode .page-heading h1::after {
+  content: " · safe mode";
+  color: var(--blue);
+  font-size: 0.38em;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+@media (max-width: 1120px) {
+  body.panel-admin-mode .workspace,
+  body.junior-admin-mode .workspace {
+    padding: 18px 16px 24px;
+  }
+
+  body.panel-admin-mode .topbar,
+  body.junior-admin-mode .topbar {
+    border-radius: 20px;
+    padding: 14px 15px;
+  }
+}

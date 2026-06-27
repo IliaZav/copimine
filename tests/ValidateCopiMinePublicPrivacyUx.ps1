@@ -58,24 +58,9 @@ if (-not [string]::IsNullOrWhiteSpace($publicEmbed)) {
 Require-Text 'Private station chat helper' $java 'private void sendPollingStationCitizenInfo'
 $onInteract = Slice-Between $java 'public void onInteract(PlayerInteractEvent e)' '@EventHandler(priority=EventPriority.HIGHEST) public void onPlace'
 if ([string]::IsNullOrWhiteSpace($onInteract)) {
-  $errors.Add('Could not isolate onInteract station click handler.')
+    $errors.Add('Could not isolate onInteract station click handler.')
 } else {
-  $depositIdx = $onInteract.IndexOf('depositSealedBallotAtStation')
-  $citizenIdx = $onInteract.IndexOf('sendPollingStationCitizenInfo')
-  $hubIdx = $onInteract.IndexOf('openPollingStationHub')
-  $roleIssueIdx = $onInteract.IndexOf('giveRoleOfficialItemsAtStation')
-  if ($depositIdx -lt 0 -or $citizenIdx -lt 0 -or $hubIdx -lt 0) {
-    $errors.Add('Station click handler must contain deposit, citizen info, and role hub branches.')
-  }
-  if ($roleIssueIdx -ge 0 -and ($roleIssueIdx -lt $depositIdx -or $roleIssueIdx -lt $citizenIdx)) {
-    $errors.Add('Station click must not issue role official items before sealed ballot deposit and ordinary citizen info.')
-  }
-  if ($depositIdx -ge 0 -and $citizenIdx -ge 0 -and $depositIdx -gt $citizenIdx) {
-    $errors.Add('Station click must try sealed ballot deposit before ordinary citizen info.')
-  }
-  if ($citizenIdx -ge 0 -and $hubIdx -ge 0 -and $citizenIdx -gt $hubIdx) {
-    $errors.Add('Station click must send ordinary citizen info before opening any role/admin hub.')
-  }
+  Reject-Regex 'Legacy station click flow must stay disabled in AdminPlus onInteract' $onInteract 'depositSealedBallotAtStation|sendPollingStationCitizenInfo|openPollingStationHub|giveRoleOfficialItemsAtStation'
 }
 
 $stationInfo = Slice-Between $java 'private void sendPollingStationCitizenInfo' 'private void openCandidateDecision'

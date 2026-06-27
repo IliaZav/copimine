@@ -14,7 +14,7 @@
 .president-card-copy h3 {
   margin: 0;
   font-size: 28px;
-  color: #183e1f;
+  color: var(--ink);
 }
 
 .president-skin-shell {
@@ -39,7 +39,7 @@
 .president-skin-tilt img {
   max-width: 230px;
   max-height: 250px;
-  filter: drop-shadow(0 16px 34px rgba(14, 35, 17, .24));
+  filter: drop-shadow(0 16px 34px rgba(14, 35, 17, 0.18));
   image-rendering: pixelated;
   user-select: none;
   pointer-events: none;
@@ -48,15 +48,15 @@
 .skin-rotate {
   width: 42px;
   height: 42px;
-  border: 1px solid rgba(41, 161, 90, .28);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: rgba(217, 245, 223, .9);
-  color: #1d4424;
+  background: var(--surface);
+  color: var(--ink);
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
 }
 
 .skin-rotate:hover {
-  background: rgba(41, 161, 90, .18);
+  background: var(--accent-2);
 }

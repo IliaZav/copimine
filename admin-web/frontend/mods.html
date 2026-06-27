@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>CopiMine - Моды и клиент</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body data-page-kind="public-mods">
+  <main class="public-site public-site-compact">
+    <header class="public-nav">
+      <a class="public-brand" href="/index.html" aria-label="CopiMine">
+        <span class="brand-mark brand-mark-small">CM</span>
+        <strong>CopiMine</strong>
+      </a>
+      <nav aria-label="Разделы сайта">
+        <a href="/index.html">Главная</a>
+        <a href="/server.html">Сервер</a>
+        <a href="/shops.html">Лавки</a>
+        <a href="/mods.html" aria-current="page">Моды</a>
+        <a href="/signin.html">Вход</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Открыть кабинет</button>
+        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
+      </nav>
+    </header>
+
+    <div class="public-page-shell">
+      <section class="public-hero public-hero-slim">
+        <div class="public-hero-copy">
+          <div class="page-kicker-row">
+            <span class="hero-kicker">Клиент</span>
+            <span class="route-chip">Моды</span>
+          </div>
+          <h1>Архив модов и клиентских файлов.</h1>
+          <p>Версия Minecraft, состав архива и список файлов лежат здесь отдельно.</p>
+          <div class="public-actions">
+            <a id="downloadModsBtn" class="btn btn-primary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
+            <a class="btn btn-secondary" href="/server.html">Открыть статус сервера</a>
+            <a class="btn btn-ghost public-ghost" href="/signin.html">Перейти в кабинет</a>
+          </div>
+        </div>
+
+        <aside class="hero-side-card">
+          <span class="hero-kicker">На странице</span>
+          <ul class="hero-check-list">
+            <li>Готовность архива.</li>
+            <li>Версия Minecraft и loader.</li>
+            <li>Список клиентских jar.</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section class="public-section">
+        <div class="modpack-shell">
+          <article class="modpack-summary-card">
+            <div class="modpack-summary-copy">
+              <span class="hero-kicker">CopiMineMods.zip</span>
+              <h3 id="heroMiniTitle">Архив модов</h3>
+              <p id="heroMiniText">Сводка по архиву модов и клиентской сборке.</p>
+              <p id="modpackSummaryLead">Здесь показываются статус архива, список файлов и контрольная сумма.</p>
+            </div>
+            <div id="modpackMetaGrid" class="modpack-meta-grid">
+              <article class="modpack-stat">
+                <span>Minecraft</span>
+                <strong>ожидание</strong>
+              </article>
+            </div>
+          </article>
+
+          <div class="modpack-side-stack">
+            <div id="modpackFileGrid" class="modpack-file-grid">
+              <article class="modpack-file-card">
+                <span class="modpack-file-badge">mods</span>
+                <strong>Загружаем список</strong>
+                <p>После ответа сервера здесь появятся реальные jar из текущего архива.</p>
+              </article>
+            </div>
+
+            <div id="modpackNotes" class="modpack-note-grid">
+              <article class="modpack-note-card">
+                <strong>Примечание</strong>
+                <p>Здесь появятся важные заметки по текущей клиентской сборке.</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="/assets/js/public/public-page.js"></script>
+</body>
+</html>

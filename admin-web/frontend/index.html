@@ -1,290 +1,123 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
-  <title>CopiMine - RP сервер и кабинет</title>
+  <meta name="color-scheme" content="light dark" />
+  <title>CopiMine - Главная</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
   <link rel="stylesheet" href="/assets/style.css" />
 </head>
-<body>
-  <div id="toast" class="toast-root" aria-live="polite"></div>
-
-  <section id="login" class="public-site">
+<body data-page-kind="public-home">
+  <main class="public-site public-site-compact">
     <header class="public-nav">
-      <a class="public-brand" href="#start" aria-label="CopiMine">
+      <a class="public-brand" href="/index.html" aria-label="CopiMine">
         <span class="brand-mark brand-mark-small">CM</span>
         <strong>CopiMine</strong>
       </a>
-      <nav aria-label="Главные разделы">
-        <a href="#start">Главная</a>
-        <a href="#servers">Как начать</a>
-        <a href="#tops">Состояние</a>
-        <a href="#features">Системы</a>
-        <a href="#rules">Правила</a>
-        <a href="#help">Помощь</a>
-        <a href="#signin">Войти</a>
-        <a class="public-nav-cta" href="#join">Начать играть</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+      <button id="mobileNavToggle" class="btn icon-btn mobile-only hidden" type="button" aria-hidden="true" tabindex="-1">☰</button>
+      <nav aria-label="Разделы сайта">
+        <a href="/index.html" aria-current="page">Главная</a>
+        <a href="/server.html">Сервер</a>
+        <a href="/shops.html">Лавки</a>
+        <a href="/mods.html">Моды</a>
+        <a href="/signin.html">Вход</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Открыть кабинет</button>
+        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
       </nav>
     </header>
 
-    <section id="start" class="public-hero public-hero-light">
-      <div class="public-hero-content">
-        <span class="hero-kicker">CopiMine</span>
-        <h1>CopiMine</h1>
-        <p>Minecraft RP-сервер с экономикой AR, выборами игроков, банком, артефактами и личным кабинетом. Сайт показывает только реальные данные сервера или честно пишет, если источник временно недоступен.</p>
+    <section class="public-hero">
+      <div class="public-hero-copy">
+        <div class="page-kicker-row">
+          <span class="hero-kicker">CopiMine</span>
+          <span class="route-chip">Главная</span>
+        </div>
+        <h1>Главная страница CopiMine.</h1>
+        <p>Здесь только быстрые переходы: сервер, лавки, моды и кабинет.</p>
         <div class="public-actions">
-          <a class="btn btn-primary" href="#join">Начать играть</a>
-          <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
-          <a class="btn btn-secondary" href="#features">Системы сервера</a>
+          <a class="btn btn-primary" href="/server.html">Статус сервера</a>
+          <a class="btn btn-secondary" href="/shops.html">Лавки</a>
+          <a class="btn btn-secondary" href="/mods.html">Моды и клиент</a>
+          <a class="btn btn-ghost public-ghost" href="/signin.html">Войти в кабинет</a>
           <button id="copyIpBtn" class="btn btn-ghost public-ghost" type="button">Скопировать IP</button>
         </div>
-        <div class="public-status-row">
-          <div class="ip-card">
+        <div class="hero-inline-status">
+          <div class="hero-inline-card">
             <span>IP сервера</span>
-            <strong id="serverIpText">загружаем адрес...</strong>
+            <strong id="serverIpText">Загружаем адрес...</strong>
           </div>
-          <div class="server-pulse"><i></i><span id="serverPulseText">Проверяем онлайн и состояние мира...</span></div>
-        </div>
-      </div>
-      <div class="public-hero-art" aria-hidden="true">
-        <img src="/assets/copimine-scene.png" alt="" />
-        <div class="hero-mini-card">
-          <img src="/assets/mc-icons/item/emerald.png" alt="" />
-          <strong>AR-банк</strong>
-          <span>Баланс, PIN, переводы и налог в одном кабинете.</span>
-        </div>
-      </div>
-    </section>
-
-    <section id="servers" class="public-section public-band">
-      <div class="section-head">
-        <span>Сервер</span>
-        <h2>Один мир, понятные игровые системы</h2>
-        <p>Игрок сразу видит, где открыть банк, как участвовать в выборах и где работают лавки артефактов. Всё объяснено коротко и по делу.</p>
-      </div>
-      <div class="showcase-grid">
-        <article class="showcase-card">
-          <img src="/assets/mc-icons/item/grass_block_side.png" alt="" />
-          <strong>Основной мир</strong>
-          <p>Город, роли, экономика AR и игровые события для долгой RP-сессии.</p>
-        </article>
-        <article class="showcase-card">
-          <img src="/assets/mc-icons/item/emerald_block.png" alt="" />
-          <strong>Банк и AR</strong>
-          <p>Единый счёт, PIN, переводы, налог и понятная история операций.</p>
-        </article>
-        <article class="showcase-card">
-          <img src="/assets/mc-icons/item/writable_book.png" alt="" />
-          <strong>Выборы игроков</strong>
-          <p>Заявки, бюллетени, участки, ЦИК и прозрачный подсчёт результатов.</p>
-        </article>
-        <article class="showcase-card">
-          <img src="/assets/mc-icons/item/netherite_sword.png" alt="" />
-          <strong>Артефакты</strong>
-          <p>Официальные предметы выдаются только через защищённую игровую механику.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="presidentBudgetShowcase" class="public-section public-section-accent">
-      <div class="section-head">
-        <span>Президентская казна</span>
-        <h2>Отдельный бюджетный счёт сервера</h2>
-        <p>Доходы от AR-лавки и ремонта уходят в общую президентскую казну. Это не личный баланс президента и не часть donation-системы.</p>
-      </div>
-      <div class="treasury-hero-grid">
-        <article class="budget-counter-card">
-          <div class="budget-counter-head">
-            <span class="hero-kicker">Публичный бюджет</span>
-            <strong id="presidentBudgetOwner">Загрузка данных...</strong>
-          </div>
-          <div class="budget-counter-value">
-            <img src="/assets/mc-icons/item/emerald.png" alt="" />
-            <strong id="presidentBudgetCounter">0 AR</strong>
-          </div>
-          <p id="presidentBudgetDetail">Сайт ждёт ответ от backend и не показывает выдуманные суммы.</p>
-        </article>
-        <article class="president-card" id="presidentCardMount">
-          <div class="president-card-copy">
-            <span class="hero-kicker">Текущий президент</span>
-            <h3 id="presidentCardName">Президент пока не избран</h3>
-            <p id="presidentCardMeta">Как только ElectionCore подтвердит активный срок, карточка обновится автоматически.</p>
-          </div>
-          <div class="president-skin-shell hidden" id="presidentSkinShell">
-            <button class="skin-rotate skin-rotate-left" id="presidentSkinLeft" type="button" aria-label="Повернуть влево">‹</button>
-            <div class="president-skin-stage">
-              <div class="president-skin-tilt" id="presidentSkinTilt">
-                <img id="presidentSkinImage" alt="" />
-              </div>
-            </div>
-            <button class="skin-rotate skin-rotate-right" id="presidentSkinRight" type="button" aria-label="Повернуть вправо">›</button>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section id="treasuryHistorySection" class="public-section">
-      <div class="section-head">
-        <span>История казны</span>
-        <h2>Последние публичные операции</h2>
-        <p>Показываем только понятные события: доходы AR-лавки, ремонт и выплаты из казны. Внутренние id и служебные данные не публикуются.</p>
-      </div>
-      <div id="publicTreasuryHistory" class="treasury-history-grid">
-        <article class="showcase-card">
-          <strong>Загрузка истории</strong>
-          <p>Backend ещё не ответил. Если источник недоступен, здесь появится честное сообщение.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="tops" class="public-section">
-      <div class="section-head">
-        <span>Состояние</span>
-        <h2>Только реальные данные сервера</h2>
-        <p>Без фейковых топов и выдуманной статистики. Если источник данных не отвечает, сайт так и пишет.</p>
-      </div>
-      <div id="publicStatusGrid" class="public-status-grid"></div>
-      <div id="publicOnlineBoard" class="top-grid"></div>
-    </section>
-
-    <section id="features" class="public-section public-band">
-      <div class="section-head">
-        <span>Системы</span>
-        <h2>Выбери нужный раздел</h2>
-        <p>Короткие карточки объясняют основные механики ещё до входа в кабинет.</p>
-      </div>
-      <div class="feature-switch" id="publicFeatureTabs">
-        <button type="button" class="feature-tab active" data-public-tab="bank">Банк AR</button>
-        <button type="button" class="feature-tab" data-public-tab="elections">Выборы</button>
-        <button type="button" class="feature-tab" data-public-tab="president">Президент</button>
-        <button type="button" class="feature-tab" data-public-tab="artifacts">Артефакты</button>
-      </div>
-      <div class="feature-panel" id="publicFeaturePanel"></div>
-    </section>
-
-    <section id="rules" class="public-section">
-      <div class="section-head">
-        <span>Правила</span>
-        <h2>Коротко и по делу</h2>
-      </div>
-      <div class="rules-grid">
-        <article class="rule-card"><b>01</b><strong>Играем честно</strong><span>Без читов, дюпов, подделки предметов и обхода игровых ограничений.</span></article>
-        <article class="rule-card"><b>02</b><strong>Экономика через AR</strong><span>Операции проходят через банк AR. Обходные схемы считаются нарушением.</span></article>
-        <article class="rule-card"><b>03</b><strong>Уважение к RP</strong><span>Роли, выборы и события работают, когда игроки не ломают чужую игру.</span></article>
-        <article class="rule-card"><b>04</b><strong>Спорные ситуации</strong><span>Собери факты и создай обращение в кабинете. Команда сервера проверит логи.</span></article>
-      </div>
-    </section>
-
-    <section id="join" class="public-section public-band">
-      <div class="section-head">
-        <span>Первый вход</span>
-        <h2>Как начать играть</h2>
-      </div>
-      <div class="steps-grid">
-        <div class="step-card"><b>1</b><strong>Скачай моды</strong><span>Возьми архив CopiMineMods.zip с сайта и распакуй клиентские jar в папку mods.</span></div>
-        <div class="step-card"><b>2</b><strong>Скопируй IP</strong><span>Нажми кнопку выше или возьми адрес из блока состояния сервера.</span></div>
-        <div class="step-card"><b>3</b><strong>Зайди в Minecraft</strong><span>Подключись к версии 1.21.1 через Fabric. Iris можно оставить, он не обязателен.</span></div>
-        <div class="step-card"><b>4</b><strong>Открой кабинет</strong><span>Создай отдельный сайт-логин, привяжи ник и настрой PIN.</span></div>
-      </div>
-    </section>
-
-    <section id="help" class="public-section">
-      <div class="section-head">
-        <span>Помощь</span>
-        <h2>Что делать, если что-то не получается</h2>
-      </div>
-      <div class="help-grid">
-        <article class="showcase-card"><strong>Не открывается банк</strong><p>Сначала войди в кабинет игрока, привяжи Minecraft-ник и задай PIN.</p></article>
-        <article class="showcase-card"><strong>Нужны моды клиента</strong><p>Скачай CopiMineMods.zip с сайта. Внутри только клиентские jar: CopiMineClient, Emotecraft и Fabric API.</p></article>
-        <article class="showcase-card"><strong>Лавка артефактов не открылась</strong><p>Обычный игрок открывает лавку только кликом по зарегистрированному блоку лавки.</p></article>
-        <article class="showcase-card"><strong>Предмет не выдался</strong><p>Если инвентарь был полон, товар ждёт в отложенной выдаче в игре и кабинете.</p></article>
-        <article class="showcase-card"><strong>Донат</strong><p>Реальные платежи сейчас отключены. AR не продаётся за реальные деньги.</p></article>
-      </div>
-    </section>
-
-    <section id="signin" class="public-section signin-section">
-      <form id="loginForm" class="login-card" autocomplete="on">
-        <div class="auth-switch" id="authRoleSwitch">
-          <button type="button" class="btn auth-toggle active" data-auth-role="admin">Команда сервера</button>
-          <button type="button" class="btn auth-toggle" data-auth-role="player">Игрок</button>
-        </div>
-
-        <div id="authActionRow" class="auth-switch hidden">
-          <button type="button" class="btn auth-toggle active" data-auth-action="login">Войти</button>
-          <button type="button" class="btn auth-toggle" data-auth-action="register">Регистрация</button>
-        </div>
-        <div class="login-brand">
-          <div class="brand-mark">CM</div>
-          <div>
-            <h2>Вход в CopiMine</h2>
-            <p>Рабочий кабинет сервера</p>
+          <div class="hero-inline-card">
+            <span>Отклик</span>
+            <strong id="serverPulseText">Проверяем статус...</strong>
           </div>
         </div>
+      </div>
 
-        <div class="login-copy">
-          <strong>Вход для команды сервера и игроков</strong>
-          <span>Логины сайта и пароли хранятся в PostgreSQL auth-хранилище CopiMine. После входа доступны банк, налог, история операций и привязка Minecraft-ника.</span>
-        </div>
+      <aside class="public-hero-side">
+        <article class="hero-media-card">
+          <div class="hero-media-art">
+            <img src="/assets/copimine-scene.png" alt="" />
+          </div>
+          <div class="hero-media-copy">
+            <span class="hero-kicker">Клиент</span>
+            <strong id="heroMiniTitle">Архив модов и лаунчеров</strong>
+            <p id="heroMiniText">Сайт покажет актуальный архив, его вес и состояние, а не длинную свалку блоков прямо на главной.</p>
+          </div>
+        </article>
 
-        <label for="username">Логин сайта</label>
-        <input id="username" autocomplete="username" spellcheck="false" placeholder="Например, cells_admin" />
-
-        <label for="password">Пароль</label>
-        <input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" />
-
-        <button type="submit" class="btn btn-primary btn-wide">Войти</button>
-        <div id="minecraftNameGroup" class="hidden">
-          <label for="playerMinecraftName">Minecraft-ник на сервере</label>
-          <input id="playerMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Например, Cells" />
-        </div>
-
-        <div id="loginError" class="form-error"></div>
-        <p class="login-note">Если доступ не открывается, проверь логин и пароль, затем обратись к старшей команде сервера.</p>
-      </form>
+        <article class="hero-side-card">
+          <span class="hero-kicker">Быстро</span>
+          <ul class="hero-check-list">
+            <li>Сервер и казна открываются на отдельной странице.</li>
+            <li>Лавки собраны на отдельной витрине.</li>
+            <li>Вход и регистрация открываются отдельно.</li>
+          </ul>
+          <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
+        </article>
+      </aside>
     </section>
-  </section>
 
-  <div id="app" class="app hidden">
-    <aside class="sidebar">
-      <div class="side-brand">
-        <div class="brand-mark brand-mark-small">CM</div>
-        <div>
-          <strong>CopiMine</strong>
-          <span id="userBadge">пользователь</span>
-        </div>
+    <section class="public-section">
+      <div class="section-head">
+        <span>Куда дальше</span>
+        <h2>Основные разделы сайта.</h2>
+        <p>Открой нужную страницу и работай только с ней.</p>
       </div>
 
-      <nav id="nav" class="side-nav" aria-label="Разделы кабинета"></nav>
+      <div class="gateway-grid">
+        <article class="gateway-card">
+          <span class="hero-kicker">Сервер</span>
+          <strong>Казна, президент и онлайн</strong>
+          <p>Онлайн, IP, президент и последние движения казны.</p>
+          <a class="btn btn-secondary" href="/server.html">Открыть страницу сервера</a>
+        </article>
 
-      <div class="side-footer">
-        <div id="miniHealth" class="mini-health">Проверка статуса...</div>
-        <button id="logout" class="btn btn-ghost btn-wide">Выйти</button>
+        <article class="gateway-card">
+          <span class="hero-kicker">Лавки</span>
+          <strong>AR и donation без смешивания валют</strong>
+          <p>AR-предметы и donation-предметы на одной витрине, но с разными правилами покупки.</p>
+          <a class="btn btn-secondary" href="/shops.html">Открыть лавки</a>
+        </article>
+
+        <article class="gateway-card">
+          <span class="hero-kicker">Клиент</span>
+          <strong>Архив модов на одной странице</strong>
+          <p>Архив модов, версия клиента и файлы сборки.</p>
+          <a class="btn btn-secondary" href="/mods.html">Открыть страницу модов</a>
+        </article>
+
+        <article class="gateway-card">
+          <span class="hero-kicker">Кабинет</span>
+          <strong>Вход, банк и личные покупки</strong>
+          <p>Отдельные страницы входа и регистрации. После входа сайт сам откроет нужный кабинет.</p>
+          <a class="btn btn-primary" href="/signin.html">Открыть вход</a>
+        </article>
       </div>
-    </aside>
+    </section>
+  </main>
 
-    <main class="workspace">
-      <header class="topbar">
-        <button id="mobileNavToggle" class="btn icon-btn mobile-only" aria-label="Открыть меню">☰</button>
-        <div class="page-heading">
-          <h1 id="pageTitle">Главная</h1>
-          <p id="pageSubtitle">Операционный центр сервера</p>
-        </div>
-        <div class="top-actions">
-          <button id="guestPagesBtn" class="btn btn-secondary" type="button">Гостевые страницы</button>
-          <div id="liveBadge" class="status-chip status-neutral">live</div>
-          <div id="lastUpdate" class="last-update">нет данных</div>
-          <button id="refreshBtn" class="btn btn-secondary">Обновить</button>
-        </div>
-      </header>
-
-      <section id="view" class="view" aria-live="polite"></section>
-    </main>
-  </div>
-
-  <div id="modalRoot"></div>
-  <script type="module" src="/assets/app.js"></script>
+  <script type="module" src="/assets/js/public/public-page.js"></script>
 </body>
 </html>

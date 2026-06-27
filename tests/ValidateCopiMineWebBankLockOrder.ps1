@@ -16,7 +16,11 @@ $taxBody = Method-Body $mainPy 'def pay_player_election_tax_sync(account: dict[s
 if (-not $taxBody) {
   $errors.Add('Missing pay_player_election_tax_sync in admin-web backend.')
 } else {
-  Require-Contains $taxBody 'lock_bank_accounts_ordered(conn, str(bank["account_id"]), str(president_bank["account_id"]))' 'Election tax payments must use ordered account locks.'
+  if ($taxBody -match 'HTTPException\(status_code=410') {
+    Require-Contains $taxBody 'status_code=410' 'Disabled election tax flow must stay explicitly disabled instead of silently mutating balances.'
+  } else {
+    Require-Contains $taxBody 'lock_bank_accounts_ordered(conn, str(bank["account_id"]), str(president_bank["account_id"]))' 'Election tax payments must use ordered account locks.'
+  }
 }
 
 Throw-IfErrors 'ValidateCopiMineWebBankLockOrder'

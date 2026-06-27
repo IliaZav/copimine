@@ -1,0 +1,168 @@
+const PUBLIC_FETCH_TIMEOUT_MS = 8000;
+
+async function fetchJson(path, fallback = {}) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), PUBLIC_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return fallback;
+    }
+    const payload = await response.json();
+    return payload && typeof payload === "object" ? payload : fallback;
+  } catch (_error) {
+    return fallback;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function fetchConfigPayload() {
+  return fetchJson("/api/public/config", { ok: false, data: {} });
+}
+
+async function fetchStatusPayload() {
+  return fetchJson("/api/public/status", { ok: false, data: {} });
+}
+
+async function fetchModpackPayload() {
+  return fetchJson("/api/public/modpack", { ok: false, data: {} });
+}
+
+async function fetchBudgetPayload() {
+  return fetchJson("/api/public/president-budget", { ok: false, data: {} });
+}
+
+async function fetchBudgetHistoryPayload(limit = 6) {
+  return fetchJson(`/api/public/president-budget/history?limit=${Number(limit) || 6}`, { ok: false, data: {} });
+}
+
+async function fetchPresidentPayload() {
+  return fetchJson("/api/public/president", { ok: false, data: {} });
+}
+
+async function fetchArCatalogPayload() {
+  return fetchJson("/api/public/shop/ar-items", { ok: false, data: { items: [] } });
+}
+
+async function fetchDonationCatalogPayload() {
+  return fetchJson("/api/public/shop/donation-items", { ok: false, data: { items: [] } });
+}
+
+export async function loadPublicHomePageData() {
+  const [configPayload, statusPayload, modpackPayload] = await Promise.all([
+    fetchConfigPayload(),
+    fetchStatusPayload(),
+    fetchModpackPayload(),
+  ]);
+
+  return {
+    config: configPayload?.data || {},
+    status: statusPayload?.data || {},
+    modpack: modpackPayload?.data || {},
+  };
+}
+
+export async function loadPublicServerPageData() {
+  const [
+    configPayload,
+    statusPayload,
+    budgetPayload,
+    historyPayload,
+    presidentPayload,
+  ] = await Promise.all([
+    fetchConfigPayload(),
+    fetchStatusPayload(),
+    fetchBudgetPayload(),
+    fetchBudgetHistoryPayload(6),
+    fetchPresidentPayload(),
+  ]);
+
+  return {
+    config: configPayload?.data || {},
+    status: statusPayload?.data || {},
+    budget: budgetPayload?.data || {},
+    history: historyPayload?.data || {},
+    president: presidentPayload?.data || {},
+  };
+}
+
+export async function loadPublicShopsPageData() {
+  const [arCatalogPayload, donationCatalogPayload] = await Promise.all([
+    fetchArCatalogPayload(),
+    fetchDonationCatalogPayload(),
+  ]);
+
+  return {
+    arCatalog: arCatalogPayload?.data || { items: [] },
+    donationCatalog: donationCatalogPayload?.data || { items: [] },
+  };
+}
+
+export async function loadPublicModsPageData() {
+  const [configPayload, modpackPayload] = await Promise.all([
+    fetchConfigPayload(),
+    fetchModpackPayload(),
+  ]);
+
+  return {
+    config: configPayload?.data || {},
+    modpack: modpackPayload?.data || {},
+  };
+}
+
+export async function loadPublicHomepageData() {
+  const [home, server, shops] = await Promise.all([
+    loadPublicHomePageData(),
+    loadPublicServerPageData(),
+    loadPublicShopsPageData(),
+  ]);
+
+  return {
+    config: home.config,
+    status: home.status,
+    modpack: home.modpack,
+    budget: server.budget,
+    history: server.history,
+    president: server.president,
+    arCatalog: shops.arCatalog,
+    donationCatalog: shops.donationCatalog,
+  };
+}
+
+export async function loadPublicAuthState() {
+  const session = await fetchJson("/api/session/me", {});
+  if (session && typeof session === "object" && session.kind === "panel" && session.role) {
+    return {
+      role: String(session.role || ""),
+      cookieAuth: true,
+      fullAccess: Boolean(session.fullAccess),
+      owner: Boolean(session.owner),
+    };
+  }
+  if (session && typeof session === "object" && session.kind === "player") {
+    return {
+      role: "player",
+      cookieAuth: true,
+      linked: Boolean(session.account?.linked),
+    };
+  }
+  return {
+    role: "",
+    cookieAuth: false,
+  };
+}
+
+export async function loadPublicTreasuryFallback() {
+  const { budget, history } = await loadPublicHomepageData();
+  return {
+    budgetPayload: { ok: true, data: budget },
+    historyPayload: { ok: true, data: history },
+  };
+}

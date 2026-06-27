@@ -1,4 +1,62 @@
-﻿const $ = (id) => document.getElementById(id);
+import { getStoredUiState, removeStoredUiState, setStoredUiState } from "../shared/browser-state.js";
+import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "../shared/dom.js";
+import { createAdminCommercePages } from "../admin/commerce-pages.js";
+import { createPluginRegistryPages } from "../admin/plugin-registry-pages.js";
+import { createPlayerAccountPages } from "../player/account-pages.js";
+import { createPlayerDonationPages } from "../player/donation-pages.js";
+import { createPlayerTreasuryPages } from "../player/treasury-pages.js";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, normalizeAppRoute, routeFromHref } from "../shared/app-routes.js";
+
+const $ = (id) => document.getElementById(id);
+
+function setClickAction(node, action) {
+  if (node && action) node.dataset.click = action;
+  return node;
+}
+
+function setAttributes(node, attrs = {}) {
+  if (!node) return node;
+  Object.entries(attrs).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === false) return;
+    if (value === true) {
+      node.setAttribute(key, "");
+      return;
+    }
+    node.setAttribute(key, String(value));
+  });
+  return node;
+}
+
+function appendChildren(node, children = []) {
+  if (!node) return node;
+  const normalized = Array.isArray(children) ? children : [children];
+  normalized.filter(Boolean).forEach((child) => node.append(child));
+  return node;
+}
+
+function makeButton(label, className, action, attrs = {}) {
+  const button = makeElement("button", className, label);
+  setAttributes(button, { type: "button", ...attrs });
+  return setClickAction(button, action);
+}
+
+function buildModalOverlay() {
+  return setClickAction(makeElement("div", "modal-overlay"), "if(event.target===this) closeModal()");
+}
+
+function buildModalShell(title, subtitle = "", options = {}) {
+  const modal = makeElement("div", options.wide ? "modal modal-wide" : "modal");
+  const head = makeElement("div", "modal-head");
+  const copy = makeElement("div");
+  copy.append(makeElement("h2", "", title));
+  if (subtitle) copy.append(makeElement("p", "", subtitle));
+  head.append(copy);
+  if (options.closeLabel) {
+    head.append(makeButton(options.closeLabel, "btn btn-secondary", "closeModal()"));
+  }
+  modal.append(head);
+  return modal;
+}
 
 function parseHashRoute(hashValue) {
   const raw = String(hashValue || "").replace(/^#/, "");
@@ -9,17 +67,54 @@ function parseHashRoute(hashValue) {
   };
 }
 
-const initialHashRoute = parseHashRoute(location.hash);
+function currentPageKind() {
+  return String(document.body?.dataset.pageKind || "").trim().toLowerCase() || "signin";
+}
+
+function currentAuthFlow() {
+  return String(document.body?.dataset.authFlow || "").trim().toLowerCase() || "login";
+}
+
+function isCabinetPage() {
+  return currentPageKind() === "cabinet";
+}
+
+function isAuthLandingPage() {
+  const kind = currentPageKind();
+  return kind === "signin" || kind === "register";
+}
+
+function isRegisterPage() {
+  return currentAuthFlow() === "register" || currentPageKind() === "register";
+}
+
+function parseInitialRouteState() {
+  const fromHash = parseHashRoute(location.hash);
+  const bodyRoute = normalizeAppRoute(document.body?.dataset.appRoute || routeFromHref(location.pathname), fromHash.tab || "dashboard");
+  const params = new URLSearchParams(window.location.search || "");
+  if (!params.has("session") && fromHash.params.get("session")) {
+    params.set("session", fromHash.params.get("session"));
+  }
+  if (!params.has("item") && fromHash.params.get("item")) {
+    params.set("item", fromHash.params.get("item"));
+  }
+  return {
+    tab: bodyRoute,
+    params,
+  };
+}
+
+const initialRouteState = parseInitialRouteState();
 
 const state = {
   token: "",
   role: "",
   fullAccess: false,
   owner: false,
-  authRole: localStorage.getItem("copimineLastRole") || "admin",
-  authAction: "login",
+  authRole: "",
+  authAction: isRegisterPage() ? "register" : "login",
   cookieAuth: false,
-  tab: initialHashRoute.tab || "dashboard",
+  tab: initialRouteState.tab || "dashboard",
   user: null,
   config: null,
   selectedPlayer: "",
@@ -33,11 +128,27 @@ const state = {
   publicStatus: null,
   publicConfig: null,
   modalResolver: null,
-  donationSessionId: initialHashRoute.params.get("session") || localStorage.getItem("copimineDonationSessionId") || "",
-  donationFocusItemId: String(initialHashRoute.params.get("item") || "").trim().toLowerCase(),
+  donationSessionId: initialRouteState.params.get("session") || getStoredUiState("copimineDonationSessionId", "") || "",
+  donationFocusItemId: String(initialRouteState.params.get("item") || "").trim().toLowerCase(),
   donationBusy: false,
-  playerBankScope: localStorage.getItem("copiminePlayerBankScope") || "PERSONAL"
+  playerBankScope: getStoredUiState("copiminePlayerBankScope", "PERSONAL") || "PERSONAL"
 };
+
+const PUBLIC_GUEST_HASH_ROUTES = new Set([
+  "start",
+  "features",
+  "rules",
+  "help",
+  "servers",
+  "join",
+  "signin",
+  "mods",
+  "shops",
+  "tops",
+  "presidentBudgetShowcase",
+  "treasuryHistorySection",
+  "cabinet-zones"
+]);
 
 const dataClickHandlers = Object.create(null);
 const dataInputHandlers = Object.create(null);
@@ -47,12 +158,22 @@ const CONFIRM_HEADER = "X-Copimine-Confirm";
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
 
+document.addEventListener("error", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement)) return;
+  if (target.closest(".avatar-badge")) {
+    target.remove();
+    return;
+  }
+  target.style.display = "none";
+}, true);
+
 const publicFeatures = {
   bank: {
     kicker: "Банк AR",
     title: "Один счёт для банкомата, сайта и игровых оплат",
-    text: "Баланс, переводы, налог и покупки собраны в одном месте. Если операция не подтверждена, деньги и предметы не списываются.",
-    icon: "/assets/mc-icons/item/emerald_block.png"
+    text: "Банк игрока, покупки и переводы сходятся в одном кабинете. Игровые действия подтверждаются отдельно и не смешиваются с витриной сайта.",
+    icon: "/assets/mc-icons/item/diamond_ore.png"
   },
   elections: {
     kicker: "Выборы",
@@ -75,7 +196,7 @@ const publicFeatures = {
   donation: {
     kicker: "Донат",
     title: "Отдельный donation-баланс и owner-bound предметы",
-    text: "Пополнение идёт только через mock SBP foundation, а предметы покупаются на сайте и забираются в игре через лавку.",
+    text: "Пополнение сейчас работает в тестовом платёжном режиме, а предметы покупаются на сайте и забираются уже в игре через лавку.",
     icon: "/assets/mc-icons/item/nether_star.png"
   }
 };
@@ -459,7 +580,7 @@ async function refreshCsrfCookie() {
 async function tryRefreshSession() {
   if (state.refreshPromise) return state.refreshPromise;
   state.refreshPromise = (async () => {
-    const endpoints = (state.role === "player" || state.authRole === "player")
+    const endpoints = state.role === "player"
       ? ["/api/player/refresh", "/api/auth/refresh"]
       : ["/api/auth/refresh", "/api/player/refresh"];
     const csrf = getCookie(CSRF_COOKIE);
@@ -481,7 +602,6 @@ async function tryRefreshSession() {
         state.fullAccess = Boolean(data.fullAccess ?? (state.role === "admin" || state.role === "owner"));
         state.owner = Boolean(data.owner ?? state.role === "owner");
         state.authRole = state.role === "player" ? "player" : "admin";
-        localStorage.setItem("copimineLastRole", state.authRole);
         if (data.account) state.user = data.account;
         if (data.username && !data.account) state.user = { ...(state.user || {}), username: data.username, role: data.role || state.role };
         return true;
@@ -561,7 +681,7 @@ async function api(url, opts = {}) {
 function resolveModal(result = null) {
   const resolver = state.modalResolver;
   state.modalResolver = null;
-  $("modalRoot").innerHTML = "";
+  replaceChildrenSafe($("modalRoot"), []);
   if (typeof resolver === "function") resolver(result);
 }
 
@@ -571,26 +691,17 @@ window.modalConfirmAccept = () => resolveModal(true);
 
 async function dangerConfirm(message, label = "CONFIRM") {
   if (state.modalResolver) resolveModal(false);
-  $("modalRoot").innerHTML = `
-    <div class="modal-overlay" data-click="if(event.target===this) closeModal()">
-      <div class="modal">
-        <div class="modal-head">
-          <div>
-            <h2>Подтверди действие</h2>
-            <p>${esc(message)}</p>
-          </div>
-          <button class="btn btn-secondary" data-click="closeModal()">Отмена</button>
-        </div>
-        <div class="notice">
-          Это действие пишет запись в аудит и выполняется только после явного подтверждения.
-        </div>
-        <div class="action-strip">
-          <button class="btn btn-secondary" data-click="modalConfirmCancel()">Отмена</button>
-          <button class="btn btn-danger" data-click="modalConfirmAccept()">Подтвердить</button>
-        </div>
-      </div>
-    </div>
-  `;
+  const overlay = buildModalOverlay();
+  const modal = buildModalShell("Подтверди действие", String(message || ""), { closeLabel: "Отмена" });
+  modal.append(makeElement("div", "notice", "Это действие пишет запись в аудит и выполняется только после явного подтверждения."));
+  const actions = makeElement("div", "action-strip");
+  appendChildren(actions, [
+    makeButton("Отмена", "btn btn-secondary", "modalConfirmCancel()"),
+    makeButton("Подтвердить", "btn btn-danger", "modalConfirmAccept()"),
+  ]);
+  modal.append(actions);
+  overlay.append(modal);
+  replaceChildrenSafe($("modalRoot"), [overlay]);
   const confirmed = await new Promise((resolve) => {
     state.modalResolver = resolve;
   });
@@ -607,7 +718,9 @@ async function safeApi(url, fallback = {}) {
 }
 
 function setLoading(title = "Загрузка данных") {
-  $("view").innerHTML = `<div class="loading">${esc(title)}...</div>`;
+  const view = $("view");
+  if (!view) return;
+  replaceChildrenSafe(view, [makeElement("div", "loading", `${title}...`)]);
 }
 
 function applyDynamicViewStyles(root = $("view")) {
@@ -628,9 +741,17 @@ function applyDynamicViewStyles(root = $("view")) {
   });
 }
 
-function setView(html) {
-  $("view").innerHTML = html;
-  applyDynamicViewStyles($("view"));
+function setView(content) {
+  const root = $("view");
+  if (!root) return;
+  if (content instanceof Node) {
+    replaceChildrenSafe(root, [content]);
+  } else if (Array.isArray(content)) {
+    replaceChildrenSafe(root, content.filter(Boolean));
+  } else {
+    replaceChildrenSafe(root, [fragmentFromHtml(content)]);
+  }
+  applyDynamicViewStyles(root);
   $("lastUpdate").textContent = `обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
 }
 
@@ -683,7 +804,7 @@ function dashboardHero(status, perf, electionOverview, economy, readyPercent) {
           <span>выборы</span>
         </div>
         <div class="hero-tile">
-          <img src="/assets/mc-icons/item/emerald.png" alt="" />
+          <img src="/assets/mc-icons/item/diamond.png" alt="" />
           <strong>${esc(economy.totalKnownInPlayerData ?? 0)}</strong>
           <span>АР в учёте</span>
         </div>
@@ -983,7 +1104,7 @@ function avatarBadge(name, size = "md") {
   return `
     <span class="avatar-badge avatar-${size}" aria-hidden="true">
       <b>${esc(initials(name))}</b>
-      <img src="${esc(avatarUrl(name, px))}" alt="" loading="lazy" onerror="this.remove()" />
+      <img src="${esc(avatarUrl(name, px))}" alt="" loading="lazy" />
     </span>
   `;
 }
@@ -1259,20 +1380,14 @@ function transactionFeed(rows, limit = 12) {
 window.openElectionApplicationBook = (applicationId) => {
   const row = state.electionApplications?.[applicationId];
   if (!row) return toast("Книга заявки не найдена", true);
-  $("modalRoot").innerHTML = `
-    <div class="modal-overlay" data-click="if(event.target===this) closeModal()">
-      <div class="modal modal-wide">
-        <div class="modal-head">
-          <div>
-            <h2>Заявка кандидата</h2>
-            <p>${esc(row.player_name || "Кандидат")} · ${row.submitted_at ? dt(row.submitted_at) : "книга ещё не сдана"}</p>
-          </div>
-          <button class="btn btn-secondary" data-click="closeModal()">Закрыть</button>
-        </div>
-        ${applicationBookPreview(row)}
-      </div>
-    </div>
-  `;
+  const overlay = buildModalOverlay();
+  const subtitle = `${cleanText(row.player_name || "Кандидат")} · ${row.submitted_at ? dt(row.submitted_at) : "книга ещё не сдана"}`;
+  const modal = buildModalShell("Заявка кандидата", subtitle, { wide: true, closeLabel: "Закрыть" });
+  const preview = document.createElement("div");
+  preview.append(fragmentFromHtml(applicationBookPreview(row)));
+  modal.append(preview);
+  overlay.append(modal);
+  replaceChildrenSafe($("modalRoot"), [overlay]);
 };
 
 function siteBulletList(items) {
@@ -1357,12 +1472,18 @@ function renderStoredTable(id) {
   `;
 }
 
+function rerenderStoredTable(id) {
+  const root = document.querySelector(`[data-table="${id}"]`);
+  if (!root) return;
+  replaceChildrenSafe(root, [fragmentFromHtml(renderStoredTable(id))]);
+}
+
 window.sortTable = (id, key) => {
   const t = state.tables[id];
   if (!t) return;
   if (t.sortKey === key) t.sortDir = t.sortDir === "asc" ? "desc" : "asc";
   else { t.sortKey = key; t.sortDir = "asc"; }
-  document.querySelector(`[data-table="${id}"]`).innerHTML = renderStoredTable(id);
+  rerenderStoredTable(id);
 };
 
 window.filterTable = (id, value) => {
@@ -1370,7 +1491,7 @@ window.filterTable = (id, value) => {
   if (!t) return;
   t.filter = value;
   t.page = 1;
-  document.querySelector(`[data-table="${id}"]`).innerHTML = renderStoredTable(id);
+  rerenderStoredTable(id);
 };
 
 window.filterPlayers = (value) => {
@@ -1385,7 +1506,7 @@ window.pageTable = (id, delta) => {
   const t = state.tables[id];
   if (!t) return;
   t.page += delta;
-  document.querySelector(`[data-table="${id}"]`).innerHTML = renderStoredTable(id);
+  rerenderStoredTable(id);
 };
 
 window.exportTable = (id, type) => {
@@ -1435,37 +1556,92 @@ function setMobileNav(open) {
   if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
-function renderNav() {
-  $("nav").innerHTML = currentNavGroups().map(group => `
-    <div class="nav-group">
-      <div class="nav-group-title">${esc(group.title)}</div>
-      ${group.items.map(([id, label, hint, icon]) => `
-        <button class="nav-item ${state.tab === id ? "active" : ""}" data-tab="${id}">
-          <span class="nav-icon">${esc(icon)}</span>
-          <span>
-            <span class="nav-label">${esc(label)}</span>
-            <span class="nav-hint">${esc(hint)}</span>
-          </span>
-        </button>
-      `).join("")}
-    </div>
-  `).join("");
-  document.querySelectorAll("[data-tab]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      setTab(btn.dataset.tab);
-      setMobileNav(false);
-    });
+function syncWorkspaceMode() {
+  const role = state.role || "guest";
+  const tab = state.tab || defaultTab();
+  const body = document.body;
+  const app = $("app");
+  document.documentElement.dataset.copimineRole = role;
+  document.documentElement.dataset.copimineTab = tab;
+  body.dataset.copimineRole = role;
+  body.dataset.copimineTab = tab;
+  body.classList.toggle("player-mode", isPlayerRole());
+  body.classList.toggle("junior-admin-mode", isJuniorAdminRole());
+  body.classList.toggle("panel-admin-mode", isPanelAdminRole() && !isJuniorAdminRole());
+  if (app) {
+    app.dataset.copimineRole = role;
+    app.dataset.copimineTab = tab;
+  }
+}
+
+function setMiniHealthSummary(title, lines = []) {
+  const root = $("miniHealth");
+  if (!root) return;
+  const nodes = [makeElement("strong", "", title)];
+  lines.filter((line) => String(line || "").trim()).forEach((line) => {
+    nodes.push(document.createElement("br"));
+    nodes.push(document.createTextNode(String(line)));
   });
+  replaceChildrenSafe(root, nodes);
+}
+
+function buildNavButton([id, label, hint, icon]) {
+  const button = makeElement("button", `nav-item ${state.tab === id ? "active" : ""}`);
+  button.type = "button";
+  button.dataset.tab = id;
+  const iconNode = makeElement("span", "nav-icon", icon);
+  const copy = makeElement("span");
+  copy.append(
+    makeElement("span", "nav-label", label),
+    makeElement("span", "nav-hint", hint),
+  );
+  button.append(iconNode, copy);
+  button.addEventListener("click", () => {
+    setTab(id);
+    setMobileNav(false);
+  });
+  return button;
+}
+
+function renderNav() {
+  const navRoot = $("nav");
+  if (!navRoot) return;
+  const groups = currentNavGroups().map((group) => {
+    const shell = makeElement("div", "nav-group");
+    shell.append(makeElement("div", "nav-group-title", group.title));
+    group.items.forEach((item) => {
+      shell.append(buildNavButton(item));
+    });
+    return shell;
+  });
+  replaceChildrenSafe(navRoot, groups);
+}
+
+function tabNavigationParams(tab) {
+  const params = {};
+  if (["donation-balance", "donation-shop", "donation-items"].includes(tab) && state.donationSessionId) {
+    params.session = state.donationSessionId;
+  }
+  if (tab === "donation-shop" && state.donationFocusItemId) {
+    params.item = state.donationFocusItemId;
+  }
+  return params;
 }
 
 function setTab(tab) {
   const metaMap = currentPageMeta();
-  state.tab = metaMap[tab] ? tab : defaultTab();
+  const nextTab = metaMap[tab] ? tab : defaultTab();
+  const currentRoute = normalizeAppRoute(document.body?.dataset.appRoute || routeFromHref(location.pathname), state.tab || defaultTab());
+  if (nextTab !== currentRoute) {
+    window.location.href = appRouteHref(nextTab, tabNavigationParams(nextTab));
+    return;
+  }
+  state.tab = nextTab;
   if (state.tab !== "donation-shop") state.donationFocusItemId = "";
-  location.hash = state.tab;
   const meta = metaMap[state.tab];
   $("pageTitle").textContent = meta.title;
   $("pageSubtitle").textContent = meta.subtitle;
+  syncWorkspaceMode();
   renderNav();
   loadCurrent();
 }
@@ -1475,11 +1651,10 @@ function updateGlobalStatus(status = {}) {
   const badge = $("liveBadge");
   badge.className = `status-chip ${ok ? "status-good" : status.minecraftOnline ? "status-warn" : "status-bad"}`;
   badge.textContent = ok ? "сервер онлайн" : status.minecraftOnline ? "частично" : "offline";
-  $("miniHealth").innerHTML = `
-    <strong>${ok ? "Сервер работает" : "Нужна проверка"}</strong><br>
-    TPS: ${esc(short(status.tps || "—", 26))}<br>
-    MSPT: ${esc(short(status.mspt || "—", 26))}
-  `;
+  setMiniHealthSummary(ok ? "Сервер работает" : "Нужна проверка", [
+    `TPS: ${short(status.tps || "—", 26)}`,
+    `MSPT: ${short(status.mspt || "—", 26)}`,
+  ]);
 }
 
 function startLivePanelStream() {
@@ -1528,7 +1703,6 @@ function stopLivePanelStream() {
 function setAuthRole(role) {
   state.authRole = role === "player" ? "player" : "admin";
   if (state.authRole !== "player") state.authAction = "login";
-  localStorage.setItem("copimineLastRole", state.authRole);
   syncAuthUi();
   renderPublicAuthState();
 }
@@ -1545,38 +1719,71 @@ function setPublicFeature(tab = "bank") {
   document.querySelectorAll("[data-public-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.publicTab === tab);
   });
-  panel.innerHTML = `
-    <div>
-      <span class="hero-kicker">${esc(feature.kicker)}</span>
-      <h3>${esc(feature.title)}</h3>
-      <p>${esc(feature.text)}</p>
-    </div>
-    <img src="${esc(feature.icon)}" alt="" />
-  `;
+  const copy = makeElement("div");
+  copy.append(
+    makeElement("span", "hero-kicker", feature.kicker),
+    makeElement("h3", "", feature.title),
+    makeElement("p", "", feature.text),
+  );
+  const art = makeElement("img");
+  art.src = feature.icon;
+  art.alt = "";
+  replaceChildrenSafe(panel, [copy, art]);
 }
 
 function publicStatusMetric(label, value, detail = "", tone = "neutral") {
-  return `
-    <article class="public-status-card ${tone}">
-      <span>${esc(label)}</span>
-      <strong>${esc(value)}</strong>
-      <p>${esc(detail || "Нет данных")}</p>
-    </article>
-  `;
+  const card = makeElement("article", `public-status-card ${tone}`);
+  card.append(
+    makeElement("span", "", label),
+    makeElement("strong", "", value),
+    makeElement("p", "", detail || "Нет данных"),
+  );
+  return card;
+}
+
+function buildAvatarBadgeNode(name, size = "sm") {
+  const px = size === "lg" ? 88 : size === "sm" ? 40 : 56;
+  const badge = makeElement("span", `avatar-badge avatar-${size}`);
+  badge.setAttribute("aria-hidden", "true");
+  const initialsNode = makeElement("b", "", initials(name));
+  const image = makeElement("img");
+  image.src = avatarUrl(name, px);
+  image.alt = "";
+  image.loading = "lazy";
+  badge.append(initialsNode, image);
+  return badge;
 }
 
 function publicOnlineRows(players = []) {
   if (!players.length) {
-    return `<div class="empty-public-state">Список игроков сейчас недоступен или сервер не отдал его публично.</div>`;
+    return [makeElement("div", "empty-public-state", "Список игроков сейчас недоступен или сервер не отдал его публично.")];
   }
-  return players.map((name, index) => `
-    <div class="top-row">
-      <b>${index + 1}</b>
-      ${avatarBadge(name, "sm")}
-      <span>${esc(name)}</span>
-      <strong>онлайн</strong>
-    </div>
-  `).join("");
+  return players.map((name, index) => {
+    const row = makeElement("div", "top-row");
+    row.append(
+      makeElement("b", "", String(index + 1)),
+      buildAvatarBadgeNode(name, "sm"),
+      makeElement("span", "", String(name)),
+      makeElement("strong", "", "онлайн"),
+    );
+    return row;
+  });
+}
+
+function buildTopNote(title, text) {
+  const row = makeElement("div", "top-note");
+  row.append(
+    makeElement("strong", "", title),
+    makeElement("span", "", text),
+  );
+  return row;
+}
+
+function buildTopBoard(title, children = []) {
+  const card = makeElement("article", "top-board");
+  card.append(makeElement("h3", "", title));
+  children.forEach((child) => card.append(child));
+  return card;
 }
 
 function renderPublicStatus(status = {}, config = {}) {
@@ -1586,37 +1793,33 @@ function renderPublicStatus(status = {}, config = {}) {
   const statusGrid = $("publicStatusGrid");
   const onlineBoard = $("publicOnlineBoard");
   if (statusGrid) {
-    statusGrid.innerHTML = [
+    replaceChildrenSafe(statusGrid, [
       publicStatusMetric("", server.online ? "" : "", server.online ? ` ${server.latencyMs ?? "?"} ` : "   ", server.online ? "good" : "bad"),
       publicStatusMetric("Игроки", String(server.playersOnline || 0), server.playerCap ? `из ${server.playerCap}` : (server.playerListAvailable ? "публичный список доступен" : "публичный список недоступен"), server.playersOnline ? "good" : "neutral"),
       publicStatusMetric("Выборы", elections.active ? "идут" : "пауза", elections.active ? `${elections.candidates || 0} кандидатов · ${elections.votes || 0} голосов` : "Сейчас нет активного этапа голосования", elections.active ? "good" : "warn"),
       publicStatusMetric("Президент", elections.president || "не выбран", elections.president ? "Данные пришли из ElectionCore" : "Активный срок пока не подтверждён", elections.president ? "good" : "neutral"),
       publicStatusMetric("Казна", formatAr(treasury.balance || 0), treasury.ownerName ? `Ведёт ${treasury.ownerName}` : "Публичный бюджет сервера", Number(treasury.balance || 0) > 0 ? "good" : "neutral")
-    ].join("");
+    ]);
   }
   if (onlineBoard) {
-    onlineBoard.innerHTML = `
-      <article class="top-board">
-        <h3>Кто сейчас в игре</h3>
-        ${publicOnlineRows(asArray(server.samplePlayers))}
-      </article>
-      <article class="top-board">
-        <h3>Что работает на сервере</h3>
-        <div class="top-note-list">
-          <div class="top-note"><strong>Личный кабинет</strong><span>Регистрация, привязка ника, банк AR и история операций.</span></div>
-          <div class="top-note"><strong>Выборы</strong><span>${esc(elections.active ? "Активная стадия видна в панели и в игре." : "Сейчас нет активного голосования, но ЦИК и участки остаются частью системы.")}</span></div>
-          <div class="top-note"><strong>Донат</strong><span>${config.donationEnabled ? "Состояние донат-системы включено." : "Реальные платежи сейчас отключены. Доступны только безопасные test/mock сценарии для администрации."}</span></div>
-        </div>
-      </article>
-      <article class="top-board">
-        <h3>Президентская казна</h3>
-        <div class="top-note-list">
-          <div class="top-note"><strong>Баланс</strong><span>${esc(formatAr(treasury.balance || 0))}</span></div>
-          <div class="top-note"><strong>Управление</strong><span>Только президент и полные админы. Обычные игроки видят только публичную историю и общий баланс.</span></div>
-          <div class="top-note"><strong>Последние события</strong><span>${esc(asArray(treasury.history).slice(0, 3).map((row) => row.label || row.type || "операция").join(" • ") || "Пока без новых записей")}</span></div>
-        </div>
-      </article>
-    `;
+    const onlineRows = publicOnlineRows(asArray(server.samplePlayers));
+    const runtimeNotes = makeElement("div", "top-note-list");
+    runtimeNotes.append(
+      buildTopNote("Личный кабинет", "Регистрация, привязка ника, банк AR и история операций."),
+      buildTopNote("Выборы", elections.active ? "Активная стадия видна в панели и в игре." : "Сейчас нет активного голосования, но ЦИК и участки остаются частью системы."),
+      buildTopNote("Донат", config.donationEnabled ? "Состояние донат-системы включено." : "Реальные платежи сейчас отключены. Доступны только безопасные test/mock сценарии для администрации."),
+    );
+    const treasuryNotes = makeElement("div", "top-note-list");
+    treasuryNotes.append(
+      buildTopNote("Баланс", formatAr(treasury.balance || 0)),
+      buildTopNote("Управление", "Только президент и полные админы. Обычные игроки видят только публичную историю и общий баланс."),
+      buildTopNote("Последние события", asArray(treasury.history).slice(0, 3).map((row) => row.label || row.type || "операция").join(" • ") || "Пока без новых записей"),
+    );
+    replaceChildrenSafe(onlineBoard, [
+      buildTopBoard("Кто сейчас в игре", onlineRows),
+      buildTopBoard("Что работает на сервере", [runtimeNotes]),
+      buildTopBoard("Президентская казна", [treasuryNotes]),
+    ]);
   }
   window.dispatchEvent(new CustomEvent("copimine:public-status", {
     detail: {
@@ -1666,7 +1869,7 @@ function updatePublicModpack(modpack = {}) {
   }
   button.classList.remove("hidden");
   button.classList.add("btn-disabled");
-  button.href = "#help";
+  button.href = "mods.html";
   button.textContent = "Архив модов готовится";
   button.setAttribute("aria-disabled", "true");
 }
@@ -1678,25 +1881,38 @@ function renderPublicAuthState() {
     button.classList.toggle("hidden", !authed);
     const username = state.user?.username || (isPlayerRole() ? "игрок" : "команда");
     button.textContent = isPanelAdminRole() ? `Открыть кабинет (${username})` : `Личный кабинет (${username})`;
+    window.dispatchEvent(new CustomEvent("copimine:auth-state", {
+      detail: {
+        role: state.role,
+        cookieAuth: state.cookieAuth,
+        username,
+      },
+    }));
+  }
+
+function roleHomeHref(role = state.role) {
+    return appRouteHref(defaultAppRouteForRole(role || ""));
+  }
+
+function redirectToRoleHome(replace = true) {
+    const target = roleHomeHref(state.role || "player");
+    if (replace) {
+      window.location.replace(target);
+      return;
+    }
+    window.location.href = target;
   }
 
 function showGuestPages() {
-    $("app").classList.add("hidden");
-    $("login").classList.remove("hidden");
-    stopLivePanelStream();
-    clearInterval(state.refreshTimer);
-    renderPublicAuthState();
-    loadPublicStatus();
-    if (!location.hash || location.hash === "#dashboard" || location.hash === "#cabinet") location.hash = "#start";
-    setTimeout(() => document.querySelector(location.hash || "#start")?.scrollIntoView({ block: "start" }), 0);
+    window.location.href = "index.html";
   }
 
 async function showCabinetFromPublic() {
     if (!state.role && !state.cookieAuth) {
-      location.hash = "#signin";
+      window.location.href = authLandingHref("signin");
       return;
     }
-    await bootAuthed({ quiet: true });
+    redirectToRoleHome(false);
   }
 
 function copyServerIp() {
@@ -1720,20 +1936,11 @@ function wirePublicSite() {
 }
 
 function syncAuthUi() {
-  const isPlayer = state.authRole === "player";
-  const isRegister = isPlayer && state.authAction === "register";
+  const isRegister = isRegisterPage();
   const loginCard = $("loginForm");
   if (!loginCard) return;
 
-  loginCard.querySelectorAll("[data-auth-role]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.authRole === state.authRole);
-  });
-  loginCard.querySelectorAll("[data-auth-action]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.authAction === state.authAction);
-  });
-
-  $("authActionRow").classList.toggle("hidden", !isPlayer);
-  $("minecraftNameGroup").classList.toggle("hidden", !isRegister);
+  $("minecraftNameGroup")?.classList.toggle("hidden", !isRegister);
 
   const brandText = loginCard.querySelector(".login-brand p");
   const lead = loginCard.querySelector(".login-copy strong");
@@ -1768,29 +1975,41 @@ function syncAuthUi() {
     if (submit) submit.textContent = "Войти";
     if (note) note.textContent = "Если доступ не открывается, проверь логин и обратись к старшей команде сервера.";
   }
+  if (brandText) brandText.textContent = isRegister ? "Новый кабинет игрока" : "Вход в CopiMine";
+  if (lead) lead.textContent = isRegister ? "Регистрация игрока" : "Один вход для игрока и команды сервера";
+  if (support) support.textContent = isRegister
+    ? "Здесь создаётся только обычный кабинет игрока. Роль команды сервера назначается отдельно и определяется сервером уже после входа."
+    : "Сайт сам проверяет логин и пароль и открывает нужный кабинет. Переключателя роли на клиенте больше нет.";
+  if (usernameLabel) usernameLabel.textContent = "Логин сайта";
+  if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
+  if ($("username")) $("username").placeholder = isRegister ? "Придумай логин" : "Введи логин";
+  if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введи пароль";
+  if (submit) submit.textContent = isRegister ? "Создать кабинет" : "Войти";
+  if (note) note.textContent = isRegister
+    ? "Через регистрацию создаётся только игрок. Служебные роли выдаются отдельно и через эту форму не открываются."
+    : "После входа сайт сам отправит тебя в личный кабинет игрока или в служебную панель, если такая роль есть.";
 }
 
 async function login(event) {
   event.preventDefault();
-  $("loginError").textContent = "";
+  if ($("loginError")) $("loginError").textContent = "";
   try {
-    const isPlayer = state.authRole === "player";
-    const isRegister = isPlayer && state.authAction === "register";
+    const isRegister = isRegisterPage();
     const payload = { username: $("username").value.trim(), password: $("password").value };
     if (isRegister) payload.minecraft_name = $("playerMinecraftName").value.trim();
-    const data = await api(isPlayer ? (isRegister ? "/api/player/register" : "/api/player/login") : "/api/auth/login", {
+    const data = await api(isRegister ? "/api/player/register" : "/api/session/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     state.token = "";
     state.cookieAuth = data.cookieAuth === true;
-    state.role = data.role || state.authRole;
-    localStorage.setItem("copimineLastRole", state.authRole);
+    state.role = data.role || "player";
+    state.authRole = state.role;
     state.user = data.account || { username: data.username, role: state.role };
-    await bootAuthed();
+    redirectToRoleHome(true);
   } catch (err) {
-    $("loginError").textContent = err.message;
+    if ($("loginError")) $("loginError").textContent = err.message;
   }
 }
 
@@ -1805,35 +2024,47 @@ async function logout(call = true) {
   state.cookieAuth = false;
   state.user = null;
   state.playerLinkRequest = null;
-  $("app").classList.add("hidden");
-  $("login").classList.remove("hidden");
+  state.donationSessionId = "";
+  state.donationFocusItemId = "";
+  state.donationBusy = false;
+  state.playerBankScope = "PERSONAL";
+  removeStoredUiState("copimineDonationSessionId");
+  removeStoredUiState("copiminePlayerBankScope");
+  $("app")?.classList.add("hidden");
+  $("login")?.classList.remove("hidden");
+  syncWorkspaceMode();
   stopLivePanelStream();
   clearInterval(state.refreshTimer);
   syncAuthUi();
+  if (isCabinetPage()) {
+    window.location.replace(authLandingHref("signin"));
+  }
 }
 
 async function resolveAuthSession() {
-  const order = state.authRole === "player" ? ["player", "admin"] : ["admin", "player"];
-  let lastError = new Error("Authentication is required");
-  for (const role of order) {
-    try {
-      if (role === "admin") {
-        const me = await api("/api/auth/me", { skipAuthReset: true });
-        const config = await safeApi("/api/config", {});
-        return { role: me.role || "admin", user: me, config, fullAccess: Boolean(me.fullAccess), owner: Boolean(me.owner) };
-      }
-      const me = await api("/api/player/me", { skipAuthReset: true });
-      return { role: "player", user: me.account || {}, config: {}, fullAccess: false, owner: false };
-    } catch (err) {
-      lastError = err;
-    }
+  const me = await api("/api/session/me", { skipAuthReset: true });
+  if (me.kind === "panel") {
+    const config = await safeApi("/api/config", {});
+    return {
+      role: me.role || "admin",
+      user: { username: me.username || "", role: me.role || "admin" },
+      config,
+      fullAccess: Boolean(me.fullAccess),
+      owner: Boolean(me.owner),
+    };
   }
-  throw lastError;
+  return {
+    role: "player",
+    user: me.account || { username: me.username || "", role: "player" },
+    config: {},
+    fullAccess: false,
+    owner: false,
+  };
 }
 
 async function bootAuthed(options = {}) {
-  $("login").classList.add("hidden");
-  $("app").classList.remove("hidden");
+  $("login")?.classList.add("hidden");
+  $("app")?.classList.remove("hidden");
   try {
     const session = await resolveAuthSession();
     state.role = session.role;
@@ -1843,15 +2074,26 @@ async function bootAuthed(options = {}) {
     state.config = session.config || {};
     const cookieAuth = Boolean(state.config.features?.cookieAuth || state.config.cookieAuth || state.cookieAuth);
     state.cookieAuth = cookieAuth;
+    state.authRole = state.role;
+    if (isAuthLandingPage()) {
+      renderPublicAuthState();
+      redirectToRoleHome(true);
+      return;
+    }
     const username = isPlayerRole() ? (state.user.username || "player") : (state.user.username || "admin");
     $("userBadge").textContent = isPlayerRole()
       ? `${username} · игрок`
       : `${username}${isJuniorAdminRole() ? " · младший админ" : (state.owner ? " · владелец" : "")}`;
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
+    if (isCabinetPage()) {
+      window.location.replace(authLandingHref("signin"));
+      return;
+    }
     logout(false);
     return;
   }
+  syncWorkspaceMode();
   renderPublicAuthState();
   renderNav();
   setTab(state.tab);
@@ -1865,7 +2107,10 @@ async function bootAuthed(options = {}) {
     stopLivePanelStream();
     $("liveBadge").className = "status-chip status-neutral";
     $("liveBadge").textContent = "игрок";
-    $("miniHealth").innerHTML = `<strong>Кабинет игрока</strong><br>Привязка: ${state.user?.linked ? "есть" : "нет"}<br>Банк: готов к работе`;
+    setMiniHealthSummary("Кабинет игрока", [
+      `Привязка: ${state.user?.linked ? "есть" : "нет"}`,
+      "Банк: готов к работе",
+    ]);
   }
 }
 
@@ -2094,10 +2339,16 @@ function playerListHtml(rows) {
   `).join("");
 }
 
+function renderPlayerList(rows) {
+  const root = $("playerList");
+  if (!root) return;
+  replaceChildrenSafe(root, [fragmentFromHtml(playerListHtml(rows))]);
+}
+
 window.filterPlayers = (query) => {
   const q = query.trim().toLowerCase();
   const rows = state.players.filter(row => JSON.stringify(row).toLowerCase().includes(q));
-  $("playerList").innerHTML = playerListHtml(rows);
+  renderPlayerList(rows);
 };
 
 window.selectPlayer = async (name) => {
@@ -2105,8 +2356,16 @@ window.selectPlayer = async (name) => {
   document.querySelectorAll(".player-row").forEach((button) => {
     button.classList.toggle("active", button.dataset.player === state.selectedPlayer);
   });
-  $("playerDetails").innerHTML = `<div class="loading">Загружаю профиль...</div>`;
-  $("playerDetails").innerHTML = await playerDetailsHtml(state.selectedPlayer);
+  const detailsRoot = $("playerDetails");
+  if (detailsRoot) {
+    replaceChildrenSafe(detailsRoot, [makeElement("div", "loading", "Загружаю профиль...")]);
+    replaceChildrenSafe(detailsRoot, [fragmentFromHtml(await playerDetailsHtml(state.selectedPlayer))]);
+    return;
+  }
+  const fallbackRoot = $("playerDetails");
+  if (!fallbackRoot) return;
+  replaceChildrenSafe(fallbackRoot, [makeElement("div", "loading", "Загружаю профиль...")]);
+  replaceChildrenSafe(fallbackRoot, [fragmentFromHtml(await playerDetailsHtml(state.selectedPlayer))]);
 };
 
 async function playerDetailsHtml(player) {
@@ -2217,7 +2476,7 @@ window.snapshotInventory = async (player = state.selectedPlayer) => {
     const snapshot = await api(`/api/players/${encodeURIComponent(player)}/inventory/snapshots`, { method: "POST", body: "{}" });
     openInventoryModal(snapshot);
     toast("Снимок инвентаря создан");
-    if (state.tab === "players") $("playerDetails").innerHTML = await playerDetailsHtml(player);
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
   }
@@ -2237,7 +2496,7 @@ window.playerResetBankPin = async (player = state.selectedPlayer) => {
       ? "Временный PIN также отправлен в Minecraft-чат."
       : "Игрок увидит временный PIN в личном кабинете.";
     toast(`Временный PIN выдан до ${dt(result.expiresAt)}. ${note}`);
-    if (state.tab === "players") $("playerDetails").innerHTML = await playerDetailsHtml(player);
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
   }
@@ -2248,7 +2507,7 @@ function inventoryGrid(items, limit = 120) {
   if (!items.length) return empty("Предметов нет", "Источник инвентаря пуст или NBT parser недоступен.");
   return `<div class="inventory-grid">${items.map(item => `
     <div class="slot" title="${esc(item.id || item.displayName || "")}">
-      <img src="${esc(item.iconUrl || `/assets/mc-icons/item/${item.icon || "barrier"}.png`)}" alt="" onerror="this.style.display='none'" />
+      <img src="${esc(item.iconUrl || `/assets/mc-icons/item/${item.icon || "barrier"}.png`)}" alt="" />
       <b>${esc(short(item.displayName || item.id || "item", 18))}</b>
       <span>x${esc(item.Count ?? item.count ?? 1)}  slot ${esc(item.Slot ?? item.slot ?? "")}</span>
     </div>
@@ -2258,7 +2517,31 @@ function inventoryGrid(items, limit = 120) {
 function openInventoryModal(snapshot) {
   const inv = asArray(snapshot.inventory);
   const ender = asArray(snapshot.enderChest);
-  $("modalRoot").innerHTML = `
+  {
+    const overlay = buildModalOverlay();
+    const subtitle = `${dt(snapshot.createdAt)} · ${cleanText(snapshot.world || "игровой мир")}`;
+    const modal = buildModalShell(`Снимок инвентаря: ${cleanText(snapshot.name || state.selectedPlayer || "игрок")}`, subtitle, { closeLabel: "Закрыть" });
+    const summary = document.createElement("section");
+    summary.className = "layout-grid grid-4";
+    summary.append(fragmentFromHtml([
+      metric("Слоты инвентаря", inv.length),
+      metric("Слоты эндера", ender.length),
+      metric("AR в инвентаре", snapshot.arInInventory ?? 0, "", "good"),
+      metric("AR в эндере", snapshot.arInEnderChest ?? 0, "", "good"),
+    ].join("")));
+    modal.append(summary);
+    modal.append(makeElement("div", "spacer-14"));
+    const inventoryPanel = document.createElement("div");
+    inventoryPanel.append(fragmentFromHtml(panel("Инвентарь", "", inventoryGrid(inv))));
+    const enderPanel = document.createElement("div");
+    enderPanel.append(fragmentFromHtml(panel("Эндер-сундук", "", inventoryGrid(ender))));
+    modal.append(inventoryPanel);
+    modal.append(enderPanel);
+    overlay.append(modal);
+    replaceChildrenSafe($("modalRoot"), [overlay]);
+    return;
+  }
+  /* legacy modal fallback removed
     <div class="modal-overlay" data-click="if(event.target===this) closeModal()">
       <div class="modal">
         <div class="modal-head">
@@ -2279,7 +2562,7 @@ function openInventoryModal(snapshot) {
         ${panel("Эндер-сундук", "", inventoryGrid(ender))}
       </div>
     </div>
-  `;
+  */
 }
 
 async function loadInventories() {
@@ -2365,7 +2648,7 @@ async function loadElections() {
           <span>активных участков</span>
         </div>
         <div class="hero-tile">
-          <img src="/assets/mc-icons/item/emerald.png" alt="" />
+          <img src="/assets/mc-icons/item/diamond.png" alt="" />
           <strong>${tax.amount ? formatAr(tax.amount) : "не назначен"}</strong>
           <span>налог президента</span>
         </div>
@@ -2455,219 +2738,14 @@ async function loadElections() {
 }
 
 async function loadEconomy() {
-  setLoading("Загружаю экономику");
-  const [data, history, ledger, donation, donationCatalog, treasury] = await Promise.all([
-    safeApi("/api/economy/ares/overview", {}),
-    safeApi("/api/economy/ares/history?limit=40", { snapshots: [], changes: [] }),
-    safeApi("/api/economy/ares/ledger?limit=500", { events: [], balances: [], transactions: [], assets: [], scans: [], snapshots: [], summary: {} }),
-    safeApi("/api/admin/donation/overview?limit=120", { summary: {}, balances: [], ledger: [], claims: [], sessions: [] }),
-    safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0, updatedAt: 0 }),
-    safeApi("/api/admin/economy/treasury", { account: {}, pin: {}, ledger: [], ownerName: "" })
-  ]);
-  const players = asArray(ledger.balances).length ? asArray(ledger.balances).map((x) => ({
-    player: x.name,
-    amount: x.balance,
-    inventory: x.inventory_balance,
-    enderChest: x.ender_balance,
-    uuid: x.uuid,
-    updatedAt: x.updated_at
-  })) : asArray(data.players);
-  const containers = asArray(data.worldContainers?.rows);
-  const econSummary = ledger.summary || {};
-  const donationSummary = donation.summary || {};
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("AR  ", econSummary.totalBalance ?? data.totalKnownInPlayerData ?? 0, "     ", "good")}
-      ${metric("  AR", econSummary.holders ?? players.length, "  ")}
-      ${metric(" AR", econSummary.transactions ?? asArray(ledger.transactions).length, `${econSummary.transfers ?? 0}   ${econSummary.smelts ?? 0} `)}
-      ${metric(" AR-", econSummary.activeAssets ?? asArray(ledger.assets).length, `${econSummary.events ?? 0}   ${econSummary.scans ?? 0} `)}
-    </section>
-    <section class="layout-grid grid-wide">
-      ${panel("Распределение AR", "Где сейчас сосредоточен баланс", resultBars(players, ["player"], ["amount"]))}
-      ${panel("Операции", "нструменты для снимков и аудита экономики", `
-        <div class="action-strip">
-          <button class="btn btn-primary" data-click="createEconomySnapshot()">Создать снимок</button>
-          <button class="btn btn-secondary" data-click="scanAresWorld()">Скан предметов AR</button>
-        </div>
-        <div class="spacer-12"></div>
-        ${kv([
-          ["ID AR-предметов", asArray(data.itemIds).join(", ") || "не настроены"],
-          ["История снимков", history.count ? `${history.count} записей` : "пока пусто"],
-          ["Источник журнала", ledger.source || "основной backend"],
-          ["AR  ", econSummary.inventoryBalance ?? ""],
-          ["AR  -", econSummary.enderBalance ?? ""],
-          ["", econSummary.transfers ?? ""],
-          ["", econSummary.smelts ?? ""],
-          ["Последний снимок", dt(data.lastSnapshotAt || data.createdAt)]
-        ])}
-      `)}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Игроки с AR", "Балансы, инвентари и эндер-сундуки", table("economy-players", players, [
-        { key: "player", label: "Игрок" },
-        { key: "amount", label: "Баланс" },
-        { key: "inventory", label: "Инвентарь" },
-        { key: "enderChest", label: "Эндер" }
-      ], { pageSize: 15 }))}
-      ${panel("Контейнеры мира", "Подозрительные или крупные хранилища", table("economy-containers", containers, null, { pageSize: 15 }))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Транзакции AR", "Переводы, переплавки и другие движения", `<div class="economy-transactions">${table("economy-transactions-table", asArray(ledger.transactions), [
-        { key: "time", label: "Время", render: value => dt(value) },
-        { key: "type", label: "Тип" },
-        { key: "from_name", label: "От" },
-        { key: "to_name", label: "Кому" },
-        { key: "amount", label: "Сумма" },
-        { key: "material", label: "Материал" },
-        { key: "details", label: "Детали", render: value => short(value || "", 90) }
-      ], { pageSize: 12 })}</div>`)}
-      ${panel("Активы AR", "Официальные предметы и их текущее состояние", `<div class="economy-assets">${table("economy-assets-table", asArray(ledger.assets), [
-        { key: "updated_at", label: "Обновлён", render: value => dt(value) },
-        { key: "owner_name", label: "Владелец" },
-        { key: "status", label: "Статус" },
-        { key: "material", label: "Материал" },
-        { key: "source", label: "Источник" },
-        { key: "asset_id", label: "Asset", render: value => short(value || "", 12) }
-      ], { pageSize: 12 })}</div>`)}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Журнал AR", "Все ключевые события экономики в одном потоке", `<div class="economy-ledger">${ledgerRows(asArray(ledger.events), "economy-ledger")}</div>`)}
-      ${panel("История снимков", "Снимки состояния AR для аудита и расследований", table("economy-snapshots", asArray(ledger.snapshots), null, { pageSize: 12 }))}
-    </section>
-    <section class="layout-grid grid-4">
-      ${metric("Счета Donation", donationSummary.accounts ?? 0, "Отдельно от AR-экономики", "good")}
-      ${metric("Баланс Donation", formatDonate(donationSummary.totalBalance ?? 0), "Сумма по всем donation accounts", donationSummary.totalBalance ? "good" : "neutral")}
-      ${metric("Выдачи в работе", donationSummary.unclaimedItems ?? 0, "UNCLAIMED / RESERVED / DELIVERING / REVIEW", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
-      ${metric("Открытые сессии", donationSummary.openSessions ?? 0, "Mock SBP workflow без реального провайдера", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Донат-счёта", "Баланс игроков, который не смешивается с AR.", table("donation-balances", asArray(donation.balances), [
-        { key: "player_name", label: "Игрок", render: (value, row) => esc(value || row.player_uuid || "—") },
-        { key: "balance", label: "DC", render: value => formatDonate(value || 0) },
-        { key: "updated_at", label: "Обновлён", render: value => dt(value) }
-      ], { pageSize: 12 }))}
-      ${panel("Журнал доната", "Пополнения и списания только по donation balance.", table("donation-ledger", asArray(donation.ledger), [
-        { key: "created_at", label: "Время", render: value => dt(value) },
-        { key: "player_uuid", label: "Игрок" },
-        { key: "delta", label: "Изменение", render: value => formatDonate(value || 0) },
-        { key: "balance_after", label: "После", render: value => formatDonate(value || 0) },
-        { key: "reason", label: "Причина", render: value => short(value || "", 90) }
-      ], { pageSize: 12 }))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Выдачи предметов", "Что уже оплачено и ждёт выдачи игроку.", table("donation-claims", asArray(donation.claims), [
-        { key: "created_at", label: "Создан", render: value => dt(value) },
-        { key: "player_uuid", label: "Игрок" },
-        { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
-        { key: "amount", label: "Кол-во" },
-        { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
-      ], { pageSize: 12 }))}
-      ${panel("Платёжные сессии", "Mock-сессии без реального SBP и без связи с AR.", table("donation-sessions", asArray(donation.sessions), [
-        { key: "created_at", label: "Создана", render: value => dt(value) },
-        { key: "player_name", label: "Игрок", render: (value, row) => esc(value || row.player_uuid || "—") },
-        { key: "provider", label: "Провайдер" },
-        { key: "amount", label: "Сумма", render: value => formatDonate(value || 0) },
-        { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
-        { key: "id", label: "Управление", render: (value, row) => {
-          const status = String(row.status || "").toUpperCase();
-          if (status === "PAID") {
-            return `<span class="btn btn-secondary btn-small disabled">Оплачено</span>`;
-          }
-          if (status === "CANCELLED") {
-            return `<span class="btn btn-secondary btn-small disabled">Отменена</span>`;
-          }
-          if (status === "EXPIRED") {
-            return `<span class="btn btn-secondary btn-small disabled">Истекла</span>`;
-          }
-          return `<div class="action-strip"><button class="btn btn-primary btn-small" data-click="adminDonationMarkPaid('${row.id}')">Подтвердить</button><button class="btn btn-secondary btn-small" data-click="adminDonationCancelSession('${row.id}')">Отменить</button></div>`;
-        } }
-      ], { pageSize: 12 }))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Донат-баланс", "Ручное тестовое пополнение для QA и mock-сценариев. Баланс всё равно отделён от AR.", `
-        <div class="form-grid">
-          <input id="donationAdminUuid" placeholder="Minecraft UUID" />
-          <input id="donationAdminName" placeholder="Minecraft-ник" />
-          <input id="donationAdminAmount" type="number" min="1" step="1" placeholder="Сумма Donation" />
-          <input id="donationAdminReason" class="full" placeholder="Причина, например qa-topup" />
-          <button class="btn btn-primary full" data-click="adminDonationAddBalance()">Пополнить вручную</button>
-        </div>
-      `)}
-      ${panel("Казна", "Отдельный казначейский счёт. Его не видят обычные игроки; доступ только у президента и админов.", `
-        ${kv([
-          ["Счёт", treasury.account?.account_id || treasury.account?.accountId || "—"],
-          ["Владелец", treasury.ownerName || "—"],
-          ["Баланс", formatAr(treasury.account?.balance || 0)],
-          ["PIN казны", treasury.pin?.visiblePin || "не задан"]
-        ])}
-        <div class="spacer-12"></div>
-        <div class="form-grid">
-          <input id="treasuryNewPin" type="password" inputmode="numeric" placeholder="Новый PIN казны, 4-8 цифр" />
-          <button class="btn btn-secondary full" data-click="adminSetTreasuryPin()">Сменить PIN казны</button>
-        </div>
-      `)}
-      ${panel("Provider Settings", "Активный provider: MOCK_SBP. Здесь нет секретов, только текущий режим и будущий слот интеграции.", kv([
-        ["Текущий provider", "MOCK_SBP"],
-        ["Реальный webhook", "не подключён"],
-        ["Курс", "1 ₽ = 1 Donation"],
-        ["Пакеты", "50 / 100 / 250 / 500 / 1000"],
-        ["Каталог", `${asArray(donationCatalog.items).length} предметов, версия ${donationCatalog.catalogVersion || 0}`]
-      ]))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Donation Shop", "Каталог сайта с фиксированным item_id и price_donation.", table("admin-donation-catalog", asArray(donationCatalog.items), [
-        { key: "item_id", label: "ID" },
-        { key: "display_name", label: "Название" },
-        { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
-        { key: "effect_profile_id", label: "Профиль" },
-        { key: "enabled", label: "Статус", render: value => value ? pill("вкл", "good") : pill("off", "bad") }
-      ], { pageSize: 10 }))}
-      ${panel("Выдачи и test purchase", "Тестовая покупка сразу создаёт CLAIM_PENDING, а физическая выдача всё равно идёт только в игре.", `
-        <div class="form-grid">
-          <input id="donationTestUuid" placeholder="Minecraft UUID" />
-          <input id="donationTestName" placeholder="Minecraft-ник" />
-          <input id="donationTestItemId" placeholder="item_id из каталога" />
-          <button class="btn btn-secondary full" data-click="adminDonationTestPurchase()">Создать test purchase</button>
-        </div>
-        <div class="spacer-12"></div>
-        <div class="notice">Если payment session уже создана, mark-paid начисляет баланс только один раз благодаря idempotency.</div>
-      `)}
-    </section>
-    ${panel("Скан мира", "AR в контейнерах и подозрительных местах", table("economy-scans", asArray(ledger.scans), null, { pageSize: 12 }))}
-  `);
+  return getAdminCommercePages().loadEconomy();
 }
 
-window.createEconomySnapshot = async () => {
-  try { await api("/api/economy/ares/snapshots", { method: "POST", body: "{}" }); toast("Снимок экономики создан"); loadEconomy(); }
-  catch (err) { toast(err.message, true); }
-};
+window.createEconomySnapshot = async () => getAdminCommercePages().createEconomySnapshot();
 
-window.scanAresWorld = async () => {
-  try { toast("Скан мира запущен"); await api("/api/economy/ares/scan-world", { method: "POST", body: "{}" }); toast("Скан мира завершён"); loadEconomy(); }
-  catch (err) { toast(err.message, true); }
-};
+window.scanAresWorld = async () => getAdminCommercePages().scanAresWorld();
 
-window.adminDonationAddBalance = async () => {
-  try {
-    const headers = await dangerConfirm(`Пополнить donation-баланс игрока ${$("donationAdminName")?.value?.trim() || $("donationAdminUuid")?.value?.trim()}`, "DONATION_ADD_BALANCE");
-    if (!headers) return;
-    await api("/api/admin/donation/add-balance", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        minecraft_uuid: $("donationAdminUuid")?.value?.trim() || "",
-        minecraft_name: $("donationAdminName")?.value?.trim() || "",
-        amount: number($("donationAdminAmount")?.value || 0),
-        reason: $("donationAdminReason")?.value?.trim() || "admin-topup",
-        idempotency_key: randomActionKey("don-admin-topup")
-      })
-    });
-    toast("Donation-баланс пополнен");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationAddBalance = async () => getAdminCommercePages().adminDonationAddBalance();
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
@@ -2680,7 +2758,7 @@ window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
       body: "{}"
     });
     toast(`Новый PIN для ${player}: ${result.pin}`);
-    if (state.tab === "players") $("playerDetails").innerHTML = await playerDetailsHtml(player);
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
   }
@@ -2699,84 +2777,19 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
       body: JSON.stringify({ new_pin: pin.trim() })
     });
     toast(`PIN для ${player} обновлён: ${result.pin}`);
-    if (state.tab === "players") $("playerDetails").innerHTML = await playerDetailsHtml(player);
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
   }
 };
 
-window.adminDonationTestPurchase = async () => {
-  try {
-    const headers = await dangerConfirm(`Создать test purchase ${$("donationTestItemId")?.value?.trim() || "item"} для ${$("donationTestName")?.value?.trim() || $("donationTestUuid")?.value?.trim()}`, "DONATION_TEST_PURCHASE");
-    if (!headers) return;
-    await api("/api/admin/donation/test-purchase", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        minecraft_uuid: $("donationTestUuid")?.value?.trim() || "",
-        minecraft_name: $("donationTestName")?.value?.trim() || "",
-        item_id: $("donationTestItemId")?.value?.trim() || ""
-      })
-    });
-    toast("Test purchase создан");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationTestPurchase = async () => getAdminCommercePages().adminDonationTestPurchase();
 
-window.adminDonationMarkPaid = async (sessionId) => {
-  try {
-    const headers = await dangerConfirm(`Отметить session ${sessionId} как PAID?`, "DONATION_MARK_PAID");
-    if (!headers) return;
-    await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/mark-paid`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ note: "admin mark paid" })
-    });
-    toast("Сессия отмечена как PAID");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationMarkPaid = async (sessionId) => getAdminCommercePages().adminDonationMarkPaid(sessionId);
 
-window.adminDonationCancelSession = async (sessionId) => {
-  try {
-    const headers = await dangerConfirm(`Отменить session ${sessionId}?`, "DONATION_CANCEL_SESSION");
-    if (!headers) return;
-    await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/cancel`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ note: "admin cancel" })
-    });
-    toast("Сессия отменена");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationCancelSession = async (sessionId) => getAdminCommercePages().adminDonationCancelSession(sessionId);
 
-window.adminSetTreasuryPin = async () => {
-  try {
-    const headers = await dangerConfirm("Сменить PIN казны?", "TREASURY_PIN_SET");
-    if (!headers) return;
-    const result = await api("/api/admin/economy/treasury/pin", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        old_pin: "",
-        new_pin: $("treasuryNewPin")?.value || "",
-        account_scope: "TREASURY"
-      })
-    });
-    toast(`PIN казны обновлён: ${result.pin}`);
-    if ($("treasuryNewPin")) $("treasuryNewPin").value = "";
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminSetTreasuryPin = async () => getAdminCommercePages().adminSetTreasuryPin();
 
 function artifactStatusTone(status) {
   const value = String(status || "").toUpperCase();
@@ -3207,250 +3220,24 @@ window.searchInvestigation = async () => {
   });
   ["x", "y", "z"].forEach(k => { if (!params.get(k)) params.delete(k); });
   const rows = await safeApi(`/api/investigations/block-logs?${params.toString()}`, { rows: [] });
-  $("investigationResults").innerHTML = table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 });
-};
-
-function pluginRegistryFieldId(pluginId, key) {
-  return `plugin-registry-${String(pluginId || "").replace(/[^a-z0-9_-]/gi, "-")}-${String(key || "").replace(/[^a-z0-9_-]/gi, "-")}`;
-}
-
-function pluginRegistryFieldControl(pluginId, key, rules, value) {
-  const safeRules = rules || {};
-  const type = String(safeRules.type || "string").toLowerCase();
-  const inputId = pluginRegistryFieldId(pluginId, key);
-  const label = cleanText(key);
-  if (type === "bool") {
-    return `<label class="check-line full"><input id="${esc(inputId)}" type="checkbox" ${value ? "checked" : ""} /> ${esc(label)}</label>`;
-  }
-  if (type === "enum") {
-    const options = asArray(safeRules.allow).map((item) => {
-      const selected = String(item) === String(value ?? "") ? "selected" : "";
-      return `<option value="${esc(item)}" ${selected}>${esc(item)}</option>`;
-    }).join("");
-    return `<label class="full"><span>${esc(label)}</span><select id="${esc(inputId)}">${options}</select></label>`;
-  }
-  if (type === "int") {
-    const min = Number.isFinite(Number(safeRules.min)) ? `min="${esc(safeRules.min)}"` : "";
-    const max = Number.isFinite(Number(safeRules.max)) ? `max="${esc(safeRules.max)}"` : "";
-    return `<label><span>${esc(label)}</span><input id="${esc(inputId)}" type="number" step="1" ${min} ${max} value="${esc(value ?? "")}" /></label>`;
-  }
-  if (type === "int_list") {
-    const listValue = Array.isArray(value) ? value.join(", ") : "";
-    return `<label class="full"><span>${esc(label)}</span><input id="${esc(inputId)}" type="text" value="${esc(listValue)}" placeholder="Например: 50, 100, 250" /></label>`;
-  }
-  return `<label class="full"><span>${esc(label)}</span><input id="${esc(inputId)}" type="text" value="${esc(value ?? "")}" /></label>`;
-}
-
-function pluginRegistryCollectValues(pluginId, schema) {
-  const values = {};
-  for (const [key, rules] of Object.entries(schema || {})) {
-    const inputId = pluginRegistryFieldId(pluginId, key);
-    const element = $(inputId);
-    if (!element) continue;
-    const type = String(rules?.type || "string").toLowerCase();
-    if (type === "bool") {
-      values[key] = Boolean(element.checked);
-      continue;
-    }
-    if (type === "int") {
-      const parsed = Number(element.value);
-      if (!Number.isInteger(parsed)) {
-        throw new Error(`Поле ${key} должно быть целым числом`);
-      }
-      values[key] = parsed;
-      continue;
-    }
-    if (type === "int_list") {
-      const raw = String(element.value || "").trim();
-      const parts = raw ? raw.split(",").map((item) => item.trim()).filter(Boolean) : [];
-      const parsed = parts.map((item) => Number(item));
-      if (parsed.some((item) => !Number.isInteger(item))) {
-        throw new Error(`Поле ${key} должно содержать список целых чисел через запятую`);
-      }
-      values[key] = parsed;
-      continue;
-    }
-    values[key] = String(element.value || "");
-  }
-  return values;
-}
-
-async function loadPluginRegistryState(selectedPluginId = "") {
-  const registry = await safeApi("/api/admin/plugins/registry", { plugins: [], count: 0 });
-  const plugins = asArray(registry.plugins);
-  const selected = selectedPluginId || state.pluginRegistrySelected || plugins[0]?.pluginId || "";
-  let status = {};
-  let schema = {};
-  let config = { values: {} };
-  let audit = { audit: [] };
-  if (selected) {
-    [status, schema, config, audit] = await Promise.all([
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/status`, {}),
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/schema`, { editableKeys: {} }),
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/config`, { values: {} }),
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/audit?limit=40`, { audit: [] })
-    ]);
-  }
-  state.pluginRegistrySelected = selected;
-  state.pluginRegistryStatus = status || {};
-  state.pluginRegistrySchema = schema.editableKeys || {};
-  state.pluginRegistryConfigValues = config.values || {};
-  return { plugins, selected, status, schema, config, audit };
-}
-
-function pluginRegistryPanel(registryState) {
-  const plugins = asArray(registryState.plugins);
-  const selected = registryState.selected || "";
-  const status = registryState.status || {};
-  const schema = registryState.schema?.editableKeys || {};
-  const configValues = registryState.config?.values || {};
-  const auditRows = asArray(registryState.audit?.audit);
-  const hasConfigPath = Boolean(status.configPath);
-  const hasEditableKeys = Object.keys(schema).length > 0;
-  const canBackup = hasConfigPath;
-  const canApply = hasConfigPath && hasEditableKeys;
-  const canReload = String(status.reloadMode || "none") !== "none";
-  const validateLabel = hasEditableKeys ? "Validate" : "Validate недоступен";
-  const backupLabel = canBackup ? "Backup" : "Backup недоступен";
-  const applyLabel = canApply ? "Apply" : "Apply недоступен";
-  const reloadLabel = canReload ? "Reload" : "Reload недоступен";
-  return `
-    <section class="layout-grid grid-2">
-      ${panel("Plugin registry", "Allowlisted plugin config foundation: status, schema, validate, backup, apply и reload без raw file editing.", plugins.length ? table("plugin-registry", plugins, [
-        { key: "displayName", label: "Плагин" },
-        { key: "pluginId", label: "ID" },
-        { key: "reloadMode", label: "Reload" },
-        { key: "pluginId", label: "Открыть", render: (value, row) => `<button class="btn btn-secondary" data-click="pluginRegistrySelect('${esc(row.pluginId)}')">${row.pluginId === selected ? "Открыт" : "Открыть"}</button>` }
-      ], { pageSize: 8 }) : empty("Registry пуст", "Manifest пока не отдаёт plugins allowlist."))}
-      ${panel("Текущий плагин", selected ? `Сейчас открыт ${cleanText(status.displayName || selected)}.` : "Выбери плагин из списка слева.", selected ? `
-        ${kv([
-          ["Plugin ID", status.pluginId || selected],
-          ["Config", status.configExists ? "найден" : "не найден"],
-          ["Путь", status.configPath || "—"],
-          ["Reload mode", status.reloadMode || "none"],
-          ["Reload command", status.reloadCommand || "—"],
-          ["Editable keys", hasEditableKeys ? String(Object.keys(schema).length) : "нет"]
-        ])}
-        <div class="spacer-12"></div>
-        <div class="form-grid">
-          ${Object.keys(schema).length ? Object.entries(schema).map(([key, rules]) => pluginRegistryFieldControl(selected, key, rules, configValues[key])).join("") : '<div class="notice">Для этого плагина нет allowlisted editable keys.</div>'}
-        </div>
-        <div class="spacer-12"></div>
-        <div class="button-row">
-          <button class="btn btn-secondary ${hasEditableKeys ? "" : "disabled"}" ${hasEditableKeys ? `data-click="pluginRegistryValidate('${esc(selected)}')"` : "disabled"}>${validateLabel}</button>
-          <button class="btn btn-secondary ${canBackup ? "" : "disabled"}" ${canBackup ? `data-click="pluginRegistryBackup('${esc(selected)}')"` : "disabled"}>${backupLabel}</button>
-          <button class="btn btn-primary ${canApply ? "" : "disabled"}" ${canApply ? `data-click="pluginRegistryApply('${esc(selected)}')"` : "disabled"}>${applyLabel}</button>
-          <button class="btn btn-secondary ${canReload ? "" : "disabled"}" ${canReload ? `data-click="pluginRegistryReload('${esc(selected)}')"` : "disabled"}>${reloadLabel}</button>
-        </div>
-      ` : empty("Плагин не выбран", "Слева можно открыть allowlisted plugin и применить безопасные config changes."))}
-    </section>
-    ${panel("Plugin registry audit", "Каждое backup/apply/reload действие журналируется.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Аудит пуст", "После первых действий здесь появятся записи."))}
-  `;
-}
-
-window.pluginRegistrySelect = async (pluginId) => {
-  state.pluginRegistrySelected = String(pluginId || "");
-  await loadSources();
-};
-
-window.pluginRegistryValidate = async (pluginId) => {
-  try {
-    if (!Object.keys(state.pluginRegistrySchema || {}).length) {
-      toast("Для этого плагина нет allowlisted editable keys", true);
-      return;
-    }
-    const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/validate`, {
-      method: "POST",
-      body: JSON.stringify({ values })
-    });
-    toast(`Конфиг валиден: ${(result.validated ? Object.keys(result.validated).length : 0)} ключей`);
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.pluginRegistryBackup = async (pluginId) => {
-  try {
-    if (!state.pluginRegistryStatus?.configPath) {
-      toast("У этого плагина нет allowlisted configPath", true);
-      return;
-    }
-    const headers = await dangerConfirm(`Создать backup конфига ${pluginId}?`, "PLUGIN_REGISTRY_BACKUP");
-    if (!headers) return;
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/backup`, {
-      method: "POST",
-      headers,
-      body: "{}"
-    });
-    toast(`Backup создан: ${result.backup?.name || pluginId}`);
-    await loadSources();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.pluginRegistryApply = async (pluginId) => {
-  try {
-    if (!state.pluginRegistryStatus?.configPath || !Object.keys(state.pluginRegistrySchema || {}).length) {
-      toast("Для этого плагина недоступно apply изменений", true);
-      return;
-    }
-    const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
-    const headers = await dangerConfirm(`Применить allowlisted config changes для ${pluginId}?`, "PLUGIN_REGISTRY_APPLY");
-    if (!headers) return;
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/apply`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ values })
-    });
-    toast(`Config обновлён: ${(result.updatedKeys || []).join(", ") || pluginId}`);
-    await loadSources();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.pluginRegistryReload = async (pluginId) => {
-  try {
-    if (String(state.pluginRegistryStatus?.reloadMode || "none") === "none") {
-      toast("Для этого плагина нет allowlisted reload flow", true);
-      return;
-    }
-    const headers = await dangerConfirm(`Перезагрузить ${pluginId} через allowlisted reload flow?`, "PLUGIN_REGISTRY_RELOAD");
-    if (!headers) return;
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/reload`, {
-      method: "POST",
-      headers,
-      body: "{}"
-    });
-    toast(result.message || (result.reloaded ? "Reload выполнен" : "Reload пропущен"));
-    await loadSources();
-  } catch (err) {
-    toast(err.message, true);
-  }
+  const resultsRoot = $("investigationResults");
+  if (!resultsRoot) return;
+  replaceChildrenSafe(resultsRoot, [fragmentFromHtml(table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 }))]);
 };
 
 async function loadSources() {
-  setLoading("Проверяю источники данных");
-  const [data, config, access, registryState] = await Promise.all([
-    safeApi("/api/data-sources", { sources: [] }),
-    safeApi("/api/config", {}),
-    safeApi("/api/security/access", {}),
-    loadPluginRegistryState()
-  ]);
-  setView(`
-    ${panel("Источники данных", "Плагины, файлы и БД, на которых строится панель", table("sources", asArray(data.sources), [
-      { key: "name", label: "Источник" },
-      { key: "type", label: "Тип" },
-      { key: "status", label: "Статус", render: v => pill(v, v === "connected" ? "good" : "warn") },
-      { key: "capabilities", label: "Данные", render: v => asArray(v).map(x => pill(x, "neutral")).join(" ") || "—" },
-      { key: "message", label: "Комментарий" }
-    ], { pageSize: 20 }))}
-    ${dbPolicyPanel(config.dbWritePolicy || access.dbWritePolicy || {}, access)}
-    ${pluginRegistryPanel(registryState)}
-  `);
+  return getPluginRegistryPages().loadSources();
 }
+
+window.pluginRegistrySelect = async (pluginId) => getPluginRegistryPages().pluginRegistrySelect(pluginId);
+
+window.pluginRegistryValidate = async (pluginId) => getPluginRegistryPages().pluginRegistryValidate(pluginId);
+
+window.pluginRegistryBackup = async (pluginId) => getPluginRegistryPages().pluginRegistryBackup(pluginId);
+
+window.pluginRegistryApply = async (pluginId) => getPluginRegistryPages().pluginRegistryApply(pluginId);
+
+window.pluginRegistryReload = async (pluginId) => getPluginRegistryPages().pluginRegistryReload(pluginId);
 
 async function loadAudit() {
   setLoading("Загружаю аудит");
@@ -3532,19 +3319,26 @@ async function loadSecurity() {
       ], { pageSize: 12 }) : empty("IP-alerts пока нет", "Подозрительные регистрации и лимиты появятся здесь автоматически."))}
     </section>
     <section id="admin-create-panel" class="layout-grid grid-2">
-      ${panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
-        <div class="form-grid danger-zone">
-          <input id="newAdminUsername" placeholder="Minecraft-ник" />
-          <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
-          <select id="newAdminRole">
-            <option value="admin">Полный админ</option>
-            <option value="junior_admin">Младший админ</option>
-          </select>
-          <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить доступ к серверу, если нужно</label>
-          <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP, если политика входа требует</label>
-          <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
-        </div>
-      `)}
+      ${state.owner
+        ? panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
+            <div class="form-grid danger-zone">
+              <input id="newAdminUsername" placeholder="Minecraft-ник" />
+              <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
+              <select id="newAdminRole">
+                <option value="admin">Полный админ</option>
+                <option value="junior_admin">Младший админ</option>
+              </select>
+              <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить доступ к серверу, если нужно</label>
+              <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP, если политика входа требует</label>
+              <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
+            </div>
+          `)
+        : panel("Управление администраторами", "Создание и изменение учётных записей админов доступно только владельцу панели.", `
+            <div class="empty-state compact">
+              <strong>Owner-only раздел</strong>
+              <span>Полный админ может просматривать состояние безопасности и whitelist, но не менять состав админов.</span>
+            </div>
+          `)}
       ${panel("Защита входа", "Короткая сводка по доступу в админку и подтверждениям.", kv([
         ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
         ["Хранилище входа", access.authDb || "основное"],
@@ -3654,9 +3448,7 @@ async function loadPlayerCabinet() {
   const me = await api("/api/player/me");
   state.user = me.account || {};
   let bank = null;
-  let electionTax = null;
   if (state.user.linked) bank = await safeApi("/api/player/bank", { account: null, pin: {}, ledger: [] });
-  if (state.user.linked) electionTax = await safeApi("/api/player/elections/tax", { linked: false, president: {}, laws: [], tax: null, paid: 0, due: 0, payments: [] });
   const donation = await safeApi("/api/player/donation/balance", { linked: false, balance: 0 });
   const linked = Boolean(state.user.linked);
   const whitelisted = Boolean(state.user.whitelisted);
@@ -3666,7 +3458,10 @@ async function loadPlayerCabinet() {
   const balance = linked ? number(bank?.account?.balance || 0) : 0;
   const donationBalance = donation?.linked ? number(donation.balance || 0) : 0;
   const whitelistStatus = whitelisted ? "одобрен" : (whitelistRequest?.status || (linked ? "не отправлен" : "нужна привязка"));
-  $("miniHealth").innerHTML = `<strong>${esc(state.user.username || "игрок")}</strong><br>Привязка: ${linked ? "есть" : "нет"}<br>Банк AR: ${formatAr(balance)}`;
+  setMiniHealthSummary(state.user.username || "игрок", [
+    `Привязка: ${linked ? "есть" : "нет"}`,
+    `Банк AR: ${formatAr(balance)}`,
+  ]);
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Логин сайта", state.user.username || "игрок", linked ? "Minecraft уже привязан" : "Нужна привязка", linked ? "good" : "warn")}
@@ -3717,24 +3512,6 @@ async function loadPlayerCabinet() {
       ["Выдан", dt(tempPin.createdAt)],
       ["Истекает", dt(tempPin.expiresAt)]
     ]), `<button class="btn btn-primary" data-click="setTab('bank')">Заменить PIN</button>`) : ""}
-    ${linked ? panel("Президент и налоги", "Президент сервера, действующие законы и оплата налога без выхода из кабинета.", `
-      ${kv([
-        ["Президент", electionTax?.president?.president_name || "—"],
-        ["Налог", electionTax?.tax ? formatAr(electionTax.tax.amount || 0) : "не установлен"],
-        ["Оплачено", formatAr(electionTax?.paid || 0)],
-        ["Остаток", formatAr(electionTax?.due || 0)]
-      ])}
-      <div class="spacer-12"></div>
-      ${lawCards(asArray(electionTax?.laws))}
-      ${number(electionTax?.due || 0) > 0 ? `
-        <div class="spacer-12"></div>
-        <div class="form-grid">
-          <input id="cabinetTaxAmount" type="number" min="1" max="${esc(number(electionTax?.due || 0))}" value="${esc(number(electionTax?.due || 0))}" placeholder="Сумма" />
-          <input id="cabinetTaxPin" type="password" inputmode="numeric" placeholder="PIN" />
-          <button class="btn btn-primary full" data-click="playerPayElectionTax()">Оплатить налог</button>
-        </div>
-      ` : ""}
-    `) : ""}
     ${panel("Запрос привязки", "Последний одноразовый код", playerLinkSummary(state.playerLinkRequest))}
   `);
 }
@@ -3792,6 +3569,7 @@ async function loadPlayerLink() {
 }
 
 async function loadPlayerBank() {
+  return getPlayerTreasuryPages().loadPlayerBank();
   setLoading("Загрузка банка AR");
   const me = await api("/api/player/me");
   state.user = me.account || {};
@@ -3822,7 +3600,10 @@ async function loadPlayerBank() {
       <button class="btn ${state.playerBankScope === "TREASURY" ? "btn-primary" : "btn-secondary"}" data-click="selectPlayerBankScope('TREASURY')">Казна</button>
     </div>
   ` : "";
-  $("miniHealth").innerHTML = `<strong>${esc(state.user.username || "игрок")}</strong><br>${esc(selectedAccount.label || "Банк AR")}: ${formatAr(selectedAccount.balance || bank.account?.balance || 0)}<br>PIN: ${esc(selectedPinState)}`;
+  setMiniHealthSummary(state.user.username || "игрок", [
+    `${selectedAccount.label || "Банк AR"}: ${formatAr(selectedAccount.balance || bank.account?.balance || 0)}`,
+    `PIN: ${selectedPinState}`,
+  ]);
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казначейский AR-счёт президента и админов" : "Один личный счёт для сайта и игры", "good")}
@@ -3888,13 +3669,14 @@ window.playerConfirmLinkCode = async () => {
     });
     state.user = result.account || state.user;
     toast("Minecraft-аккаунт привязан.");
-    loadPlayerBank();
+    getPlayerTreasuryPages().loadPlayerBank();
   } catch (err) {
     toast(err.message, true);
   }
 };
 
-window.playerSetPin = async () => {
+window.legacyPlayerSetPinDeprecated = async () => {
+  return getPlayerTreasuryPages().playerSetPin();
   try {
     await api("/api/player/bank/pin", {
       method: "POST",
@@ -3913,7 +3695,8 @@ window.playerSetPin = async () => {
   }
 };
 
-window.playerTransfer = async () => {
+window.legacyPlayerTransferDeprecated = async () => {
+  return getPlayerTreasuryPages().playerTransfer();
   try {
     const result = await api("/api/player/bank/transfer", {
       method: "POST",
@@ -3934,283 +3717,212 @@ window.playerTransfer = async () => {
 };
 
 window.playerPayElectionTax = async () => {
-  try {
-    const result = await api("/api/player/elections/tax/pay", {
-      method: "POST",
-      body: JSON.stringify({
-        amount: number($("cabinetTaxAmount")?.value || 0),
-        pin: $("cabinetTaxPin")?.value || ""
-      })
-    });
-    toast(`Налог оплачен: ${result.amount} AR.`);
-    if ($("cabinetTaxPin")) $("cabinetTaxPin").value = "";
-    loadPlayerCabinet();
-  } catch (err) {
-    toast(err.message, true);
-  }
+  toast("Президентский налог отключён.", true);
 };
 
-window.selectPlayerBankScope = async (scope = "PERSONAL") => {
+window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {
+  return getPlayerTreasuryPages().selectPlayerBankScope(scope);
   state.playerBankScope = String(scope || "PERSONAL").toUpperCase();
-  localStorage.setItem("copiminePlayerBankScope", state.playerBankScope);
+  setStoredUiState("copiminePlayerBankScope", state.playerBankScope);
   if (state.tab === "bank") {
     await loadPlayerBank();
   }
 };
 
+let playerDonationPages;
+let adminCommercePages;
+let pluginRegistryPages;
+let playerAccountPages;
+let playerTreasuryPages;
+
+function getAdminCommercePages() {
+  if (!adminCommercePages) {
+    adminCommercePages = createAdminCommercePages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      kv,
+      resultBars,
+      formatAr,
+      formatDonate,
+      asArray,
+      dt,
+      table,
+      pill,
+      artifactStatusTone,
+      statusLabel,
+      esc,
+      cleanText,
+      short,
+      ledgerRows,
+      dangerConfirm,
+      number,
+      randomActionKey,
+      toast,
+    });
+  }
+  return adminCommercePages;
+}
+
+function getPluginRegistryPages() {
+  if (!pluginRegistryPages) {
+    pluginRegistryPages = createPluginRegistryPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      table,
+      pill,
+      kv,
+      asArray,
+      esc,
+      cleanText,
+      empty,
+      dbPolicyPanel,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return pluginRegistryPages;
+}
+
+function getPlayerAccountPages() {
+  if (!playerAccountPages) {
+    playerAccountPages = createPlayerAccountPages({
+      state,
+      setLoading,
+      setView,
+      panel,
+      kv,
+      safetyRail,
+      safeApi,
+      api,
+      dt,
+      bankPinState,
+    });
+  }
+  return playerAccountPages;
+}
+
+function getPlayerTreasuryPages() {
+  if (!playerTreasuryPages) {
+    playerTreasuryPages = createPlayerTreasuryPages({
+      $,
+      state,
+      setLoading,
+      setView,
+      panel,
+      kv,
+      safetyRail,
+      api,
+      dt,
+      metric,
+      formatAr,
+      asArray,
+      bankPinState,
+      esc,
+      transactionFeed,
+      number,
+      toast,
+      setMiniHealthSummary,
+      setStoredUiState,
+    });
+  }
+  return playerTreasuryPages;
+}
+
+function getPlayerDonationPages() {
+  if (!playerDonationPages) {
+    playerDonationPages = createPlayerDonationPages({
+      state,
+      setLoading,
+      api,
+      safeApi,
+      setView,
+      panel,
+      metric,
+      kv,
+      dt,
+      esc,
+      short,
+      formatDonate,
+      asArray,
+      cleanText,
+      table,
+      safetyRail,
+      pill,
+      number,
+      donationSessionKey,
+      statusLabel,
+      artifactStatusTone,
+      randomActionKey,
+      setStoredUiState,
+      removeStoredUiState,
+      copyText,
+      toast,
+    });
+  }
+  return playerDonationPages;
+}
+
 async function loadPlayerDonationBalance() {
-  setLoading("Загрузка donation-баланса");
-  const me = await api("/api/player/me");
-  state.user = me.account || {};
-  const linked = Boolean(state.user.linked);
-  if (!linked) {
-    setView(panel("Донат-баланс закрыт", "Сначала привяжи Minecraft-ник к кабинету.", `
-      <div class="notice">После привязки появятся пакеты 50 / 100 / 250 / 500 / 1000, история пополнений и mock SBP QR.</div>
-    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
-    return;
-  }
-  const [balance, packs, history] = await Promise.all([
-    safeApi("/api/player/donation/balance", { linked: true, balance: 0 }),
-    safeApi("/api/player/donation/packs", { packs: [], provider: "MOCK_SBP", rubPerUnit: 1 }),
-    safeApi("/api/player/donation/history", { history: [] })
-  ]);
-  let session = null;
-  if (state.donationSessionId) {
-    const result = await safeApi(`/api/player/donation/sbp/session/${encodeURIComponent(state.donationSessionId)}`, null);
-    session = result?.session || null;
-    if (!session) {
-      state.donationSessionId = "";
-      localStorage.removeItem("copimineDonationSessionId");
-    }
-  }
-  const packButtons = asArray(packs.packs).map((pack) => `
-    <button class="btn btn-primary" data-click="playerCreateDonationSession(${number(pack.amount || 0)})">${esc(`${pack.amount} Donation`)}</button>
-  `).join("");
-  const sessionPanel = session ? `
-    <div class="qr-block">
-      <img class="qr-image" src="/api/player/donation/sbp/session/${esc(donationSessionKey(session))}/qr.png?_fresh=${Date.now()}" alt="QR mock SBP" />
-      <div class="qr-copy">
-        ${kv([
-          ["Сессия", donationSessionKey(session)],
-          ["Код", session.session_code || short(donationSessionKey(session), 8)],
-          ["Сумма", formatDonate(session.amount || session.donation_units || 0)],
-          ["Статус", statusLabel(session.status || "created")],
-          ["Истекает", dt(session.expires_at)],
-          ["Провайдер", session.provider || "MOCK_SBP"]
-        ])}
-        <div class="action-strip">
-          <button class="btn btn-secondary" data-click="playerCopyDonationPaymentUrl()">Скопировать ссылку</button>
-          <button class="btn btn-secondary" data-click="playerCopyDonationSessionCode()">Скопировать код</button>
-          <button class="btn btn-secondary" data-click="playerRefreshDonationSession()">Обновить статус</button>
-          <button class="btn btn-secondary" data-click="playerForgetDonationSession()">Скрыть сессию</button>
-        </div>
-        <div class="notice">Баланс пополнится только после статуса PAID. Пока активен MOCK_SBP foundation, реальный провайдер не подключён.</div>
-      </div>
-    </div>
-  ` : `<div class="notice">Активной payment session пока нет. Выбери один из фиксированных пакетов, чтобы открыть mock SBP QR и ссылку оплаты.</div>`;
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Donation", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
-      ${metric("Курс", `${packs.rubPerUnit || 1} ₽ = 1 DC`, "Фиксированный для всех пакетов", "neutral")}
-      ${metric("Провайдер", packs.provider || "MOCK_SBP", "Реальный провайдер пока не подключён", "warn")}
-      ${metric("Сессия", session ? statusLabel(session.status || "created") : "нет", session ? `Код ${session.session_code || short(donationSessionKey(session), 8)}` : "Создай новую сессию", session ? "neutral" : "good")}
-    </section>
-    ${panel("Донат-баланс", "Этот баланс тратится только на donation shop и не смешивается с AR.", kv([
-      ["Статус", linked ? "привязан" : "нет привязки"],
-      ["Баланс", formatDonate(balance.balance || 0)],
-      ["Пополнение", "только через фиксированные пакеты"],
-      ["Выдачи", "предметы забираются только в игре"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Мои донат-предметы</button>`)}
-    ${panel("Пополнить", "Создай payment session и оплати её через mock SBP foundation. Сайт остаётся канонической точкой оплаты.", `
-      <div class="action-strip wrap">${packButtons}</div>
-      <div class="spacer-12"></div>
-      <div class="notice">Пакеты фиксированы: 50 / 100 / 250 / 500 / 1000. Donation нельзя обменять на AR.</div>
-    `)}
-    ${panel("Mock SBP Session", "QR генерируется локально backend-ом. Если QR не нужен, можно использовать ссылку и код сессии.", sessionPanel)}
-    ${panel("История пополнений и списаний", "Только donation balance, без AR и без скрытых списаний.", table("player-donation-history", asArray(history.history), [
-      { key: "created_at", label: "Время", render: value => dt(value) },
-      { key: "delta", label: "Изменение", render: value => formatDonate(value || 0) },
-      { key: "balance_after", label: "После", render: value => formatDonate(value || 0) },
-      { key: "reason", label: "Причина", render: value => short(value || "", 80) },
-      { key: "source", label: "Источник", render: value => cleanText(value || "—") }
-    ], { pageSize: 12 }))}
-  `);
+  return getPlayerDonationPages().loadPlayerDonationBalance();
 }
 
 async function loadPlayerDonationShop() {
-  setLoading("Загрузка donation-лавки");
-  const me = await api("/api/player/me");
-  state.user = me.account || {};
-  const linked = Boolean(state.user.linked);
-  if (!linked) {
-    setView(panel("Донат-лавка закрыта", "Сначала привяжи Minecraft-ник.", `
-      <div class="notice">После привязки сайт сможет создавать purchase-intent и подсказывать, что предмет нужно забрать в игре.</div>
-    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
-    return;
-  }
-  const [catalog, balance] = await Promise.all([
-    safeApi("/api/player/shop/donation-items", { items: [], catalogVersion: 0 }),
-    safeApi("/api/player/donation/balance", { balance: 0 })
-  ]);
-  const rows = asArray(catalog.items).map((row) => {
-    const status = row.owned_active ? "Уже у тебя" : (row.claim_available ? "Можно забрать" : (row.enabled ? "Не куплен" : "Отключён"));
-    const action = row.owned_active
-      ? `<span class="btn btn-secondary btn-small disabled">Уже у тебя</span>`
-      : row.claim_available
-        ? `<button class="btn btn-secondary btn-small" data-click="setTab('donation-items')">Забрать в игре</button>`
-        : row.enabled
-          ? `<button class="btn btn-primary btn-small" data-click='playerBuyDonationItem(${JSON.stringify(String(row.item_id || ""))}, ${JSON.stringify(cleanText(row.display_name || "предмет"))}, ${number(row.price_donation || 0)})'>Купить</button>`
-          : `<span class="btn btn-secondary btn-small disabled">Отключён</span>`;
-    return {
-      ...row,
-      status_text: status,
-      action_html: action
-    };
-  });
-  const focusItemId = String(state.donationFocusItemId || "").trim().toLowerCase();
-  if (focusItemId) {
-    rows.sort((a, b) => {
-      const aMatch = String(a.item_id || "").toLowerCase() === focusItemId ? 0 : 1;
-      const bMatch = String(b.item_id || "").toLowerCase() === focusItemId ? 0 : 1;
-      return aMatch - bMatch;
-    });
-  }
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Баланс", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
-      ${metric("Каталог", asArray(catalog.items).length, `Версия ${catalog.catalogVersion || 0}`, "neutral")}
-      ${metric("Готово к claim", rows.filter(row => row.claim_available).length, "Предмет уже куплен и ждёт выдачи", rows.some(row => row.claim_available) ? "warn" : "good")}
-      ${metric("Активные", rows.filter(row => row.owned_active).length, "Предмет уже выдан и активен", rows.some(row => row.owned_active) ? "good" : "neutral")}
-    </section>
-    ${panel("Донатная лавка", "Покупка происходит только на сайте. После оплаты предмет нужно забрать в игре через лавку доната.", `
-      ${focusItemId ? `<div class="notice">Открыт товар по прямой ссылке: <strong>${esc(focusItemId)}</strong>.</div>` : ""}
-      ${table("player-donation-shop", rows, [
-      { key: "display_name", label: "Предмет", render: value => `<strong>${esc(cleanText(value || "Предмет"))}</strong>` },
-      { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
-      { key: "effect_description", label: "Эффект", render: value => short(value || "", 110) },
-      { key: "cooldown_seconds", label: "Кулдаун", render: value => value ? `${value} сек.` : "—" },
-      { key: "status_text", label: "Статус", render: (value, row) => pill(value, row.owned_active ? "good" : (row.claim_available ? "warn" : "neutral")) },
-      { key: "action_html", label: "Действие", render: value => value }
-    ], { pageSize: 10 })}
-    `)}
-    ${panel("Правила выдачи", "Игровой мир остаётся единственной точкой физической выдачи и возврата.", safetyRail([
-      ["Покупка", "После списания donation появится claim со статусом «Заберите предмет в игре».", "good"],
-      ["Выдача", "Физическая выдача идёт только через блок лавки в Minecraft.", "warn"],
-      ["Возврат", "Если предмет потерян внешне, бесплатный возврат идёт только через экран «Вернуть утерянные предметы».", "neutral"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои донат-предметы</button>`)}
-  `);
+  return getPlayerDonationPages().loadPlayerDonationShop();
 }
 
 async function loadPlayerDonationItems() {
-  setLoading("Загрузка донат-предметов");
-  const me = await api("/api/player/me");
-  state.user = me.account || {};
-  const linked = Boolean(state.user.linked);
-  if (!linked) {
-    setView(panel("Мои донат-предметы", "Сначала привяжи Minecraft-ник.", `
-      <div class="notice">Без привязки нельзя понять, какие claims и item instances принадлежат твоему игровому персонажу.</div>
-    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
-    return;
-  }
-  const owned = await safeApi("/api/player/shop/owned", { linked: true, claims: [], instances: [], summary: {} });
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Выдачи", asArray(owned.claims).length, "Ожидают или уже завершены", asArray(owned.claims).length ? "warn" : "neutral")}
-      ${metric("Активные", owned.summary?.active || 0, "Сейчас у игрока", (owned.summary?.active || 0) ? "good" : "neutral")}
-      ${metric("Reclaimable", owned.summary?.reclaimable || 0, "Можно вернуть через лавку", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
-      ${metric("Ожидают выдачи", owned.summary?.claimPending || 0, "Выдача и review идут только в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
-    </section>
-    ${panel("Выдачи и покупки", "Сайт показывает статус, но физическая выдача идёт только через игровую лавку.", table("player-donation-owned-claims", asArray(owned.claims), [
-      { key: "purchase_created_at", label: "Покупка", render: value => dt(value) },
-      { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
-      { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
-      { key: "status", label: "Claim", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
-      { key: "purchase_status", label: "Покупка", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
-    ], { pageSize: 12 }))}
-    ${panel("Выданные экземпляры", "Только база статусов решает, является ли предмет активным, потерянным или недействительным.", table("player-donation-owned-instances", asArray(owned.instances), [
-      { key: "updated_at", label: "Обновлён", render: value => dt(value) },
-      { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
-      { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
-    ], { pageSize: 12 }))}
-    ${panel("Как это работает", "Возврат и anti-dupe проверяются только в игре и только через официальный workflow.", safetyRail([
-      ["Claim", "Если статус UNCLAIMED, предмет нужно забрать в игровой лавке.", "good"],
-      ["Reclaim", "LOST_RECLAIMABLE возвращается по одному предмету за раз.", "warn"],
-      ["Broken/Consumed", "BROKEN и CONSUMED бесплатно не возвращаются.", "bad"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('donation-shop')">Вернуться в донат-лавку</button>`)}
-  `);
+  return getPlayerDonationPages().loadPlayerDonationItems();
 }
 
-window.playerCreateDonationSession = async (amount) => {
-  if (state.donationBusy) return;
-  try {
-    state.donationBusy = true;
-    const result = await api("/api/player/donation/sbp/session", {
-      method: "POST",
-      body: JSON.stringify({ amount: number(amount || 0), idempotency_key: randomActionKey("don-session") })
-    });
-    state.donationSessionId = donationSessionKey(result?.session);
-    if (state.donationSessionId) localStorage.setItem("copimineDonationSessionId", state.donationSessionId);
-    toast(`Создана сессия на ${number(amount || 0)} Donation.`);
-    loadPlayerDonationBalance();
-  } catch (err) {
-    toast(err.message, true);
-  } finally {
-    state.donationBusy = false;
-  }
-};
+async function legacyLoadPlayerBankDeprecated() {
+  return getPlayerTreasuryPages().loadPlayerBank();
+}
 
-window.playerRefreshDonationSession = async () => {
-  if (!state.donationSessionId) {
-    toast("Активной сессии нет.", true);
-    return;
-  }
-  await loadPlayerDonationBalance();
-};
-
-window.playerForgetDonationSession = () => {
-  state.donationSessionId = "";
-  localStorage.removeItem("copimineDonationSessionId");
-  loadPlayerDonationBalance();
-};
-
-window.playerCopyDonationSessionCode = async () => {
-  if (!state.donationSessionId) return;
-  await copyText(state.donationSessionId.slice(-8), "Код сессии скопирован");
-};
-
-window.playerCopyDonationPaymentUrl = async () => {
-  if (!state.donationSessionId) return;
-  await copyText(`${location.origin}/#donation-balance?session=${encodeURIComponent(state.donationSessionId)}`, "Ссылка оплаты скопирована");
-};
-
-window.playerBuyDonationItem = async (itemId, displayName = "предмет", price = 0) => {
-  try {
-    if (!window.confirm(`Списать ${number(price || 0)} Donation за «${cleanText(displayName || itemId || "предмет")}»?`)) {
-      return;
-    }
-    const result = await api("/api/player/shop/purchase-intent", {
-      method: "POST",
-      body: JSON.stringify({ item_id: String(itemId || ""), idempotency_key: randomActionKey("don-buy") })
-    });
-    toast(`Покупка создана. Предмет ${result.itemId} забирается в игре.`);
-    loadPlayerDonationShop();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.playerCreateDonationSession = async (amount) => getPlayerDonationPages().playerCreateDonationSession(amount);
+window.playerRefreshDonationSession = async () => getPlayerDonationPages().playerRefreshDonationSession();
+window.playerForgetDonationSession = () => getPlayerDonationPages().playerForgetDonationSession();
+window.playerCopyDonationSessionCode = async () => getPlayerDonationPages().playerCopyDonationSessionCode();
+window.playerCopyDonationPaymentUrl = async () => getPlayerDonationPages().playerCopyDonationPaymentUrl();
+window.playerBuyDonationItem = async (itemId, displayName = "предмет", price = 0) =>
+  getPlayerDonationPages().playerBuyDonationItem(itemId, displayName, price);
+window.playerSetPin = async () => getPlayerTreasuryPages().playerSetPin();
+window.playerTransfer = async () => getPlayerTreasuryPages().playerTransfer();
+window.selectPlayerBankScope = async (scope = "PERSONAL") => getPlayerTreasuryPages().selectPlayerBankScope(scope);
 
 async function loadPlayerArtifacts() {
   setLoading("Загрузка предметов");
-  const data = await safeApi("/api/player/artifacts", { linked: false, purchases: [], pending: [], repairs: [] });
+  const [data, catalogPayload] = await Promise.all([
+    safeApi("/api/player/artifacts", { linked: false, purchases: [], pending: [], repairs: [] }),
+    safeApi("/api/player/shop/ar-items", { items: [] })
+  ]);
   if (!data.linked) {
     setView(panel("Артефакты", "Сначала привяжи Minecraft-аккаунт", empty("Minecraft-ник не привязан", "После привязки здесь появятся покупки, pending delivery и ремонт предметов.")));
     return;
   }
+  const catalog = asArray(catalogPayload.items);
   const purchases = asArray(data.purchases);
   const pending = asArray(data.pending);
   const repairs = asArray(data.repairs);
+  const catalogRows = catalog.map((row) => ({
+    ...row,
+    limit_text: row.per_player_limit > 0 ? `${number(row.per_player_limit)} на игрока` : "без лимита",
+    cooldown_text: row.cooldown_seconds ? `${number(row.cooldown_seconds)} сек.` : "—",
+  }));
+  const catalogMetric = metric("AR catalog", catalog.length, "Backend catalog prices and limits", catalog.length ? "good" : "neutral");
   setView(`
     <section class="layout-grid grid-4">
+      ${catalogMetric}
       ${metric("Покупки", purchases.length, "Подтверждённые покупки артефактов", purchases.length ? "good" : "neutral")}
       ${metric("Ожидают выдачи", pending.length, "Предметы ещё не дошли до Minecraft", pending.length ? "warn" : "good")}
       ${metric("Ремонты", repairs.length, "История восстановления PDC-предметов")}
@@ -4230,6 +3942,13 @@ async function loadPlayerArtifacts() {
         { key: "status", label: "Статус", render: v => pill(statusLabel(v || "pending"), artifactStatusTone(v)) }
       ], { pageSize: 12 }))}
     </section>
+    ${panel("Каталог AR-лавки", "Сайт показывает те же цены, лимиты и описания, которые backend отдаёт из актуального каталога.", table("player-artifact-catalog", catalogRows, [
+      { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
+      { key: "price_ar", label: "AR" },
+      { key: "effect_description", label: "Эффект", render: (value) => short(value || "", 110) || "Без отдельного описания" },
+      { key: "cooldown_text", label: "Кулдаун" },
+      { key: "limit_text", label: "Лимит" },
+    ], { pageSize: 10 }), `<div class="notice">Покупка и ремонт проходят только через Minecraft-лавку и CopiMineEconomyCore. Сайт здесь ничего не списывает и не выдаёт физический предмет.</div>`)}
     ${panel("Ремонт", "В Minecraft можно восстановить официальный предмет в лавке или командой /cmartifacts repair.", table("player-artifact-repairs", repairs, [
       { key: "created_at", label: "Время", render: v => dt(v) },
       { key: "item_id", label: "Предмет" },
@@ -4310,62 +4029,15 @@ async function loadPlayerHistory() {
   `);
 }
 async function loadPlayerSettings() {
-  setLoading("Загрузка настроек");
-  const me = await safeApi("/api/player/me", { account: state.user || {} });
-  const account = me.account || state.user || {};
-  setView(`
-    <section class="layout-grid grid-2">
-      ${panel("Профиль", "Основные данные аккаунта игрока.", kv([
-        ["Логин", account.username || "игрок"],
-        ["Minecraft-ник", account.minecraftName || "не привязан"],
-        ["Email", account.email || "не указан"],
-        ["Создан", dt(account.createdAt)]
-      ]), `<button class="btn btn-secondary" data-click="setTab('link')">Настроить Minecraft</button>`)}
-      ${panel("Что можно настроить", "В кабинете доступны только реальные действия без декоративных переключателей.", safetyRail([
-        ["Привязка", "Свяжи кабинет с Minecraft-ником и открой банк.", account.minecraftName ? "good" : "warn"],
-        ["Безопасность", "Смени пароль и проверь PIN банка.", "neutral"],
-        ["История", "Здесь же можно посмотреть переводы, покупки и налог.", "good"]
-      ]))}
-    </section>
-  `);
+  return getPlayerAccountPages().loadPlayerSettings();
 }
 
 async function loadPlayerSecurity() {
-    setLoading("Загрузка безопасности");
-    const bank = await safeApi("/api/player/bank", { pin: {}, ledger: [] });
-    const pin = bank.pin || {};
-    setView(`
-      <section class="layout-grid grid-2">
-        ${panel("PIN банка", "PIN используется для переводов и защищённых операций", kv([
-          ["PIN задан", pin.set || false],
-          ["Статус", bankPinState(pin)],
-          ["Заблокирован", pin.locked || false],
-          ["Нужна замена", pin.mustChange || false]
-        ]), `<button class="btn btn-primary" data-click="setTab('bank')">Открыть банк</button>`)}
-        ${panel("Сессии", "Базовые действия безопасности", `
-          <div class="notice">Если заметил подозрительную активность, смени пароль и PIN, затем выйди из аккаунта на всех устройствах.</div>
-          <button class="btn btn-secondary full" data-click="logout(true)">Выйти из текущей сессии</button>
-        `)}
-      </section>
-    `);
-  }
+  return getPlayerAccountPages().loadPlayerSecurity();
+}
 
 async function loadPlayerSupport() {
-  setLoading("Загрузка поддержки");
-  setView(`
-    <section class="layout-grid grid-2">
-      ${panel("Как обратиться за помощью", "В этом патче не показываем неработающие формы. Доступны только реальные способы связи.", safetyRail([
-        ["/report в игре", "Если проблема произошла на сервере, отправь сообщение через игровую команду /report.", "good"],
-        ["Команда сервера", "Для банка, привязки и налогов можно обратиться к администрации напрямую.", "neutral"],
-        ["Не присылай PIN", "Никогда не отправляй пароль или PIN в сообщениях.", "warn"]
-      ]))}
-      ${panel("Частые вопросы", "Короткие ответы по самым частым ситуациям.", safetyRail([
-        ["Банк", "Сначала привяжи Minecraft-ник и задай PIN.", "good"],
-        ["Артефакты", "Лавка открывается кликом по игровому блоку.", "neutral"],
-        ["Выдача", "Если инвентарь был полон, предмет ждёт в отложенной выдаче.", "warn"]
-      ]))}
-    </section>
-  `);
+  return getPlayerAccountPages().loadPlayerSupport();
 }
 
 async function loadCurrent(silent = false) {
@@ -4390,7 +4062,7 @@ async function loadCurrent(silent = false) {
   const playerLoaders = {
     cabinet: loadPlayerCabinet,
     link: loadPlayerLink,
-    bank: loadPlayerBank,
+    bank: () => getPlayerTreasuryPages().loadPlayerBank(),
     "donation-balance": loadPlayerDonationBalance,
     "donation-shop": loadPlayerDonationShop,
     "donation-items": loadPlayerDonationItems,
@@ -4412,23 +4084,19 @@ function wire() {
   wireDataClickDelegation();
   wireDataInputDelegation();
   wirePublicSite();
-  $("loginForm").addEventListener("submit", login);
-  document.querySelectorAll("[data-auth-role]").forEach((button) => {
-    button.addEventListener("click", () => setAuthRole(button.dataset.authRole || "admin"));
-  });
-  document.querySelectorAll("[data-auth-action]").forEach((button) => {
-    button.addEventListener("click", () => setAuthAction(button.dataset.authAction || "login"));
-  });
-  $("logout").addEventListener("click", () => logout(true));
+  $("loginForm")?.addEventListener("submit", login);
+  $("logout")?.addEventListener("click", () => logout(true));
   $("guestPagesBtn")?.addEventListener("click", showGuestPages);
-  $("refreshBtn").addEventListener("click", () => loadCurrent());
-  $("mobileNavToggle").setAttribute("aria-expanded", "false");
-  $("mobileNavToggle").addEventListener("click", (event) => {
-    event.stopPropagation();
-    setMobileNav(!$("app").classList.contains("nav-open"));
-  });
+  $("refreshBtn")?.addEventListener("click", () => loadCurrent());
+  if ($("mobileNavToggle")) {
+    $("mobileNavToggle").setAttribute("aria-expanded", "false");
+    $("mobileNavToggle").addEventListener("click", (event) => {
+      event.stopPropagation();
+      setMobileNav(!$("app")?.classList.contains("nav-open"));
+    });
+  }
   document.addEventListener("click", (event) => {
-    if (!$("app").classList.contains("nav-open")) return;
+    if (!$("app")?.classList.contains("nav-open")) return;
     if (event.target.closest(".sidebar") || event.target.closest("#mobileNavToggle")) return;
     setMobileNav(false);
   });
@@ -4442,10 +4110,10 @@ function wire() {
     const itemId = String(route.params.get("item") || "").trim().toLowerCase();
     if (sessionId) {
       state.donationSessionId = sessionId;
-      localStorage.setItem("copimineDonationSessionId", sessionId);
+      setStoredUiState("copimineDonationSessionId", sessionId);
     }
     state.donationFocusItemId = itemId;
-    if (!state.role && ["start", "about", "features", "join", "signin"].includes(next)) return;
+    if (!state.role && PUBLIC_GUEST_HASH_ROUTES.has(next)) return;
     if (next !== state.tab) {
       setTab(next);
       return;
@@ -4523,6 +4191,3 @@ Object.assign(dataInputHandlers, {
 });
 
 boot();
-
-
-

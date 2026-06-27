@@ -20,49 +20,31 @@ if (-not (Test-Path -LiteralPath $service)) {
 $botText = Get-Content -Raw -Encoding UTF8 $bot
 $serviceText = Get-Content -Raw -Encoding UTF8 $service
 
-$requiredTables = @(
-  'cmv7_president_state',
-  'cmv7_ar_balances',
-  'cmv7_ballot_issues',
-  'cmv731_votes',
-  'cmv7_player_checks'
-)
-
-foreach ($table in $requiredTables) {
-  if ($botText -notmatch [regex]::Escape($table)) {
-    throw "Discord bot does not know the new AdminPlus table: $table"
-  }
-}
-
-if ($botText -match 'plus_ar_balances') {
-  throw 'Discord bot still references legacy plus_ar_balances instead of cmv7_ar_balances.'
-}
-
-if ($botText -notmatch 'def election_overview_snapshot\(') {
-  throw 'Discord bot is missing an election overview snapshot for the new elections flow.'
-}
-
-if ($botText -notmatch 'DISCORD_ELECTIONS_STATUS_CHANNEL_ID') {
-  throw 'Discord bot is missing configurable elections status channel support.'
-}
-
-if ($botText -notmatch 'DISCORD_ADMIN_ALERTS_CHANNEL_ID') {
-  throw 'Discord bot is missing admin-only alerts channel support.'
-}
-
-$requiredV4SyncMarkers = @(
+$requiredMarkers = @(
+  'ALLOW_LEGACY_ELECTION_FALLBACK = False',
+  'def election_overview_snapshot(',
+  'def election_overview_snapshot_v2(',
+  'ELECTIONS_STATUS_CHANNEL_ID',
+  'ADMIN_ALERTS_CHANNEL_ID',
   'discord_status_state',
   'bridge_events',
   'status_channel_snapshots',
-  'discord_notifications_log',
   'save_state_sync',
   'load_runtime_state'
 )
 
-foreach ($marker in $requiredV4SyncMarkers) {
+foreach ($marker in $requiredMarkers) {
   if ($botText -notmatch [regex]::Escape($marker)) {
-    throw "Discord bot is missing V4 sync marker: $marker"
+    throw "Discord bot missing marker: $marker"
   }
+}
+
+if ($botText -match 'ALLOW_LEGACY_ELECTION_FALLBACK\s*=\s*True') {
+  throw 'Discord bot must keep legacy election fallback disabled by default.'
+}
+
+if ($botText -match 'voter_name|voter_uuid|ballot_id[\s\S]{0,200}candidate_name') {
+  throw 'Discord bot must not publish voter/candidate/ballot secrecy leaks.'
 }
 
 if (($botText | Select-String -Pattern 'STATUS_OFFLINE_CONFIRM_SECONDS\s*=' -AllMatches).Matches.Count -ne 1) {
@@ -77,4 +59,4 @@ if ($serviceText -notmatch 'ExecStart=/opt/copimine/admin-web/.venv/bin/python -
   throw 'Discord bot service must execute backend.discord_bot from admin-web venv.'
 }
 
-Write-Host 'Discord integration validation passed: active admin-web and bot support new AdminPlus election/economy/admin tables.'
+Write-Host 'Discord integration validation passed: admin-web bot remains active, legacy election fallback is disabled, and runtime state markers are present.'

@@ -8,11 +8,15 @@ $targets = @(
 
 foreach ($file in $targets) {
     $text = Get-Content $file -Raw
-    $match = [regex]::Match($text, '(?s)private void repairProtectedBlockVisuals\(\).*?\{(.*?)\n    \}')
-    if (-not $match.Success) {
+    $start = $text.IndexOf('private void repairProtectedBlockVisuals()')
+    if ($start -lt 0) {
         throw "repairProtectedBlockVisuals() not found in $file"
     }
-    $body = $match.Groups[1].Value
+    $nextMethod = $text.IndexOf('private void repairProtectedBlockVisuals(', $start + 1)
+    if ($nextMethod -lt 0) {
+        $nextMethod = [Math]::Min($text.Length, $start + 4000)
+    }
+    $body = $text.Substring($start, $nextMethod - $start)
     if ($body -notmatch 'loadedChunks') {
         throw "repairProtectedBlockVisuals() in $file does not batch loaded chunks"
     }

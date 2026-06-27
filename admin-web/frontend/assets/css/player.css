@@ -1,1 +1,253 @@
-/* Player cabinet-specific overrides live here. */
+:root {
+  --copimine-player-ink: var(--ink);
+  --copimine-player-muted: var(--muted);
+  --copimine-player-line: var(--line);
+  --copimine-player-strong-line: var(--line-strong);
+  --copimine-player-panel: var(--surface);
+  --copimine-player-panel-strong: var(--surface-strong);
+  --copimine-player-panel-soft: var(--surface-soft);
+  --copimine-player-surface: var(--panel-translucent);
+  --copimine-player-highlight: var(--accent-2);
+  --copimine-player-app-bg: var(--body-gradient);
+  --copimine-player-workspace-bg: var(--section-surface);
+  --copimine-player-nav-bg: var(--panel-translucent);
+  --copimine-player-nav-hover-bg: var(--surface-strong);
+  --copimine-player-nav-active-bg: var(--feature-card-bg);
+  --copimine-player-input-bg: var(--surface);
+  --copimine-player-table-head-bg: var(--surface-strong);
+  --copimine-player-table-row-alt: var(--surface-soft);
+  --copimine-player-table-row-hover: var(--accent-2);
+}
+
+body.player-mode {
+  color: var(--copimine-player-ink);
+}
+
+body.player-mode .app {
+  background: var(--copimine-player-app-bg);
+}
+
+body.player-mode .sidebar {
+  border-right: 1px solid var(--copimine-player-line);
+  box-shadow: inset -1px 0 0 var(--sidebar-inset);
+}
+
+body.player-mode .nav-group-title {
+  color: var(--accent);
+  letter-spacing: 0.12em;
+}
+
+body.player-mode .nav-item {
+  border-color: var(--copimine-player-line);
+  background: var(--copimine-player-nav-bg);
+  transition: transform 0.16s ease, border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+body.player-mode .nav-item:hover {
+  transform: translateX(3px);
+  border-color: var(--copimine-player-strong-line);
+  background: var(--copimine-player-nav-hover-bg);
+  box-shadow: var(--shadow-soft);
+}
+
+body.player-mode .nav-item.active {
+  border-color: var(--copimine-player-strong-line);
+  background: var(--copimine-player-nav-active-bg);
+  box-shadow: var(--shadow);
+}
+
+body.player-mode .nav-item.active .nav-icon {
+  color: var(--ink);
+}
+
+body.player-mode .workspace {
+  padding: 22px 22px 28px;
+  background: var(--copimine-player-workspace-bg);
+}
+
+body.player-mode .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin-bottom: 8px;
+  border: 1px solid var(--copimine-player-line);
+  border-radius: 24px;
+  padding: 16px 18px;
+  background: var(--copimine-player-panel-strong);
+  box-shadow: var(--shadow);
+}
+
+body.player-mode .page-heading h1,
+body.player-mode .panel-title,
+body.player-mode .metric-value {
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI Variable Text", sans-serif;
+}
+
+body.player-mode .page-heading h1 {
+  letter-spacing: -0.03em;
+}
+
+body.player-mode .page-heading p,
+body.player-mode .last-update,
+body.player-mode .metric-detail,
+body.player-mode .panel-subtitle {
+  color: var(--copimine-player-muted);
+}
+
+body.player-mode .mini-health {
+  border: 1px solid var(--copimine-player-line);
+  border-radius: 18px;
+  padding: 14px 15px;
+  background: var(--copimine-player-panel-strong);
+  box-shadow: var(--shadow-soft);
+  color: var(--copimine-player-muted);
+}
+
+body.player-mode .mini-health strong {
+  color: var(--copimine-player-ink);
+}
+
+body.player-mode .view {
+  width: min(1560px, 100%);
+  margin: 0 auto;
+  gap: 20px;
+}
+
+body.player-mode .layout-grid {
+  gap: 18px;
+}
+
+body.player-mode .metric,
+body.player-mode .panel,
+body.player-mode .table-wrap {
+  border: 1px solid var(--copimine-player-line);
+  background: var(--copimine-player-panel);
+  box-shadow: var(--shadow);
+}
+
+body.player-mode .metric {
+  position: relative;
+  overflow: hidden;
+}
+
+body.player-mode .metric::before,
+body.player-mode .panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  pointer-events: none;
+}
+
+body.player-mode .metric.good,
+body.player-mode .metric.warn,
+body.player-mode .metric.bad {
+  background: var(--copimine-player-panel);
+}
+
+body.player-mode .panel-header {
+  gap: 10px;
+}
+
+body.player-mode .panel-title {
+  color: var(--copimine-player-ink);
+  letter-spacing: -0.02em;
+}
+
+body.player-mode .notice,
+body.player-mode .safety-step,
+body.player-mode .top-note,
+body.player-mode .law-pending-row {
+  border-color: var(--copimine-player-line);
+  background: var(--copimine-player-panel-soft);
+}
+
+body.player-mode .action-strip {
+  gap: 10px;
+}
+
+body.player-mode .form-grid {
+  gap: 12px;
+}
+
+body.player-mode input,
+body.player-mode select,
+body.player-mode textarea {
+  min-height: 46px;
+  border-radius: 16px;
+  border-color: var(--copimine-player-line);
+  background: var(--copimine-player-input-bg);
+}
+
+body.player-mode input:focus,
+body.player-mode select:focus,
+body.player-mode textarea:focus {
+  border-color: var(--copimine-player-strong-line);
+  box-shadow: 0 0 0 4px var(--accent-2);
+}
+
+body.player-mode .table-wrap {
+  overflow: hidden;
+}
+
+body.player-mode table thead th {
+  background: var(--copimine-player-table-head-bg) !important;
+  color: var(--ink);
+}
+
+body.player-mode table tbody tr:nth-child(odd) td {
+  background: var(--copimine-player-table-row-alt);
+}
+
+body.player-mode table tbody tr:hover td {
+  background: var(--copimine-player-table-row-hover) !important;
+}
+
+body.player-mode .qr-block {
+  align-items: stretch;
+  padding: 16px;
+  border: 1px solid var(--copimine-player-line);
+  border-radius: 22px;
+  background: var(--copimine-player-panel-strong);
+}
+
+body.player-mode .qr-image {
+  align-self: center;
+  border-radius: 22px;
+  border-color: var(--copimine-player-line);
+}
+
+body.player-mode .qr-copy {
+  align-content: start;
+}
+
+body.player-mode[data-copimine-tab="donation-balance"] .metric,
+body.player-mode[data-copimine-tab="donation-shop"] .metric,
+body.player-mode[data-copimine-tab="donation-items"] .metric {
+  border-color: rgba(124, 233, 255, 0.24);
+  background:
+    linear-gradient(180deg, var(--blue-2), var(--surface)),
+    radial-gradient(circle at top right, rgba(124, 233, 255, 0.08), transparent 52%);
+}
+
+body.player-mode[data-copimine-tab="bank"] .metric,
+body.player-mode[data-copimine-tab="history"] .metric {
+  border-color: var(--copimine-player-strong-line);
+}
+
+body.player-mode[data-copimine-tab="cabinet"] .panel:first-child,
+body.player-mode[data-copimine-tab="bank"] .panel:first-child {
+  box-shadow: 0 24px 40px rgba(7, 27, 15, 0.18);
+}
+
+@media (max-width: 980px) {
+  body.player-mode .workspace {
+    padding: 18px 16px 24px;
+  }
+
+  body.player-mode .topbar {
+    border-radius: 20px;
+    padding: 14px 15px;
+  }
+}

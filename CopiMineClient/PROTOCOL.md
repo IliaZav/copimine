@@ -1,111 +1,84 @@
 # CopiMineClient Protocol v2
 
-Канал:
+Channel:
 - `copimine:client_bridge`
 
-Версия протокола:
+Protocol version:
 - `2`
 
-Идея:
-- сервер выбирает конкретного игрока, конкретный `effectId`, длительность и intensity;
-- `CopiMineClient` запускает visual только у этого игрока;
-- если клиента нет или он не подтверждает запуск, сервер автоматически уходит в fallback.
+Transport model:
+- optional client mod bridge over plugin messaging;
+- server never requires Iris or OptiFine;
+- if the client mod is missing or stops responding, the server falls back to server overlay or particle visuals;
+- if the player already runs an Iris shaderpack, CopiMineClient does not inject into that shaderpack and does not replace it: the mod uses its own fullscreen HUD overlay renderer.
 
-## Client -> Server
+Message envelope:
+1. `type:string`
+2. `protocol:int`
+3. `seq:long`
+4. `timestampMillis:long`
+5. `sessionId:string`
+6. `clientVersion:string`
+7. `clientVisuals:boolean`
+8. `clientOverlay:boolean`
+9. `clientShaderLike:boolean`
+10. `trueIrisShader:boolean`
+11. `supportedEffectsCount:int`
+12. `supportedEffectIds:string[]`
+13. `effectId:string`
+14. `durationMillis:int`
+15. `intensity:float`
+16. `mode:string`
+17. `clearPolicy:string`
+18. `source:string`
+19. `reason:string`
+20. `status:string`
 
-`hello`
-- `protocol`
-- `sessionId`
-- `clientVersion`
-- `supportedEffects[]`
-- `clientVisuals=true`
-- `clientOverlay=true`
-- `clientShaderLike=true`
-- `trueIrisShader=false`
+Client -> Server:
+- `hello`
+  - announces protocol `2`, current `sessionId`, client version, capabilities, supported effects
+- `heartbeat`
+  - keeps capability state alive for the current `sessionId`
+- `visual_ack`
+  - acknowledges `visual_start`, `visual_stop`, or `visual_clear_all`
+  - statuses used now: `STARTED`, `STOPPED`, `CLEARED`, `ERROR`
+- `visual_finished`
+  - client-side effect finished normally or was cleared locally
+- `visual_error`
+  - client-side effect could not start or continue
 
-`heartbeat`
-- `protocol`
-- `sessionId`
+Server -> Client:
+- `ping`
+  - handshake acknowledgement and liveness probe
+- `visual_start`
+  - starts a specific visual effect for the current `sessionId`
+  - fields used: `seq`, `effectId`, `durationMillis`, `intensity`, `source`, `clearPolicy`
+- `visual_stop`
+  - stops one specific effect id for the current session
+- `visual_clear_all`
+  - clears all active client visuals for the current session
 
-`visual_ack`
-- `protocol`
-- `sessionId`
-- `seq`
-- `effectId`
-- `status`
+Session and reliability rules:
+- the client generates a fresh `sessionId` on join;
+- `hello` is retried until a server `ping` is received or retry budget is exhausted;
+- heartbeats start only after the handshake is acknowledged;
+- server commands are tracked by `seq`;
+- if the server does not receive `visual_ack` in time, it falls back automatically;
+- if session ids stop matching, the server drops stale client messages.
 
-Allowed statuses:
-- `STARTED`
-- `STOPPED`
-- `CLEARED`
+Supported effect ids:
+- `DESATURATE`
+- `COLOR_CONVOLVE`
+- `SCAN_PINCUSHION`
+- `GREEN_NOISE`
+- `INVERT`
+- `WOBBLE`
+- `BLOBS`
+- `PENCIL`
+- `CHAOS`
 
-`visual_finished`
-- `protocol`
-- `sessionId`
-- `seq`
-- `effectId`
-- `reason`
-
-`visual_error`
-- `protocol`
-- `sessionId`
-- `seq`
-- `effectId`
-- `reason`
-
-## Server -> Client
-
-`ping`
-- `protocol`
-- `sessionId`
-
-`visual_start`
-- `protocol`
-- `sessionId`
-- `seq`
-- `effectId`
-- `durationSeconds`
-- `intensity`
-- `clearPolicy=REPLACE_ALL_FULLSCREEN`
-- `source`
-
-`visual_stop`
-- `protocol`
-- `sessionId`
-- `seq`
-- `effectId`
-- `reason`
-
-`visual_clear_all`
-- `protocol`
-- `sessionId`
-- `seq`
-- `reason`
-
-## ACK lifecycle
-
-1. Сервер отправляет `visual_start`.
-2. Клиент запускает visual.
-3. Клиент отвечает `visual_ack STARTED`.
-4. После окончания времени клиент отвечает `visual_finished`.
-5. Если сервер отправляет `visual_stop`, клиент отвечает `visual_ack STOPPED`.
-6. Если сервер отправляет `visual_clear_all`, клиент отвечает `visual_ack CLEARED`.
-
-## Retry / fallback
-
-- если сервер не получает `visual_ack` за 2 секунды, он повторяет команду;
-- максимум 3 попытки;
-- после этого сервер помечает client route как failed и переключается на fallback;
-- fallback не требует `CopiMineClient`.
-
-## Heartbeat
-
-- клиент отправляет heartbeat каждые 10 секунд;
-- если heartbeat устарел, сервер перестаёт считать клиента доступным для следующего visual route;
-- если route уже работал и клиент пропал, сервер обязан перевести эффект в server fallback.
-
-## Ограничения
-
-- протокол не зависит от Iris, OptiFine или отдельного shaderpack;
-- Paper-сервер не force-включает true client shaders;
-- fullscreen shader-like visuals реализуются внутри `CopiMineClient.jar`.
+Notes:
+- `supports_true_iris_shader=false` is intentional: the mod uses its own fullscreen overlay / shader-like rendering path and does not depend on an external shaderpack;
+- without the client mod, gameplay still works; only the visual route degrades to server fallback;
+- Paper cannot force true per-player post-processing shaders through a normal server resource pack, so "shader-like" here means an optional client-side fullscreen overlay runtime rather than a forced Iris/OptiFine shader.
+- On the current Fabric `1.21.1` target the client overlay route is rendered through `HudRenderCallback`, so it may temporarily overlap some HUD layers such as chat or title, but it does not replace or break the player's active Iris shaderpack.

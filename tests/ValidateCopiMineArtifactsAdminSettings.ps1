@@ -8,7 +8,8 @@ foreach ($path in @($app, $backend, $guide)) {
   if (-not (Test-Path -LiteralPath $path)) { $errors.Add("Missing file: $path") }
 }
 if (Test-Path $app) {
-  $js = Get-Content -Raw -Encoding UTF8 $app
+  . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
+  $js = Read-FrontendBundle
   foreach ($marker in @('loadArtifacts','/api/artifacts/health','/api/artifacts/catalog','/api/artifacts/shops','/api/artifacts/purchases','/api/artifacts/pending','/api/artifacts/repairs','/api/artifacts/suspicious','artifact-catalog','artifact-shops','artifact-purchases','artifact-pending','artifact-repairs','artifact-suspicious')) {
     if (-not $js.Contains($marker)) { $errors.Add("Artifacts admin UI missing marker: $marker") }
   }

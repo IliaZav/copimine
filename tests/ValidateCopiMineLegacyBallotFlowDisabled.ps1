@@ -10,6 +10,17 @@ if (-not $onInteract.Success) {
 if ($onInteract.Value -match 'openBallotCandidateHub|openCitizenElectionHub') {
     throw "Legacy ballot or citizen election flow is still active in onInteract"
 }
+if ($onInteract.Value -notmatch 'legacyElectionRuntimeDisabled\(\)\s*&&\s*isDelegatedElectionRuntimeItem\(e\.getItem\(\),officialType\)') {
+    throw "onInteract does not bypass delegated ElectionCore ballot/seal/mandate items before legacy handlers"
+}
+
+$onProtectedEntityDisplay = [regex]::Match($text, '(?s)public void onProtectedEntityDisplay\(PlayerInteractEntityEvent e\)\{.*?\n    \}')
+if (-not $onProtectedEntityDisplay.Success) {
+    throw "onProtectedEntityDisplay not found"
+}
+if ($onProtectedEntityDisplay.Value -notmatch 'legacyElectionRuntimeDisabled\(\)\s*&&\s*isDelegatedElectionRuntimeItem\(hand,officialTypeForStack\(hand\)\)') {
+    throw "onProtectedEntityDisplay does not bypass delegated ElectionCore seal interactions before legacy handlers"
+}
 
 $handle = [regex]::Match($text, '(?s)private void handle\(Player p, ClickType click, String a, String menuId\) throws Exception \{.*?\n    \}')
 if (-not $handle.Success) {

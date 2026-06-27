@@ -135,7 +135,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                     && recipeService.isRecognizedIngredient(inHand);
             if (official != null || brewingAttempt) {
                 event.setCancelled(true);
-                player.sendMessage(ChatColor.YELLOW + "РќР°СЂРєРѕС‚РёРєРё РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРЅС‹: РёРґС‘С‚ СЃР±СЂРѕСЃ СЃРѕСЃС‚РѕСЏРЅРёСЏ.");
+                player.sendMessage(ChatColor.YELLOW + "Наркотики временно недоступны: идёт сброс состояния.");
             }
             return;
         }
@@ -324,7 +324,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             };
         } catch (Exception error) {
             getLogger().warning(command.getName() + " failed: " + error.getMessage());
-            sender.sendMessage(ChatColor.RED + "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РєРѕРјР°РЅРґСѓ.");
+            sender.sendMessage(ChatColor.RED + "Не удалось выполнить команду.");
             return true;
         }
     }
@@ -420,7 +420,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             sender.sendMessage(message("all_given", target.getName()));
             if (dropped > 0) {
-                sender.sendMessage(ChatColor.YELLOW + "Р§Р°СЃС‚СЊ РїСЂРµРґРјРµС‚РѕРІ Р±С‹Р»Р° РІС‹Р±СЂРѕС€РµРЅР° СЂСЏРґРѕРј СЃ РёРіСЂРѕРєРѕРј: " + dropped);
+                sender.sendMessage(ChatColor.YELLOW + "Часть предметов была выброшена рядом с игроком: " + dropped);
             }
             database.auditAsync(sender.getName(), "give_all", "target=" + target.getName() + ",dropped=" + dropped);
             return true;
@@ -433,7 +433,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         int dropped = deliverOfficialItem(target, definition);
         sender.sendMessage(message("item_given", definition.plainDisplayName(), target.getName()));
         if (dropped > 0) {
-            sender.sendMessage(ChatColor.YELLOW + "РџСЂРµРґРјРµС‚ РЅРµ РІР»РµР· РІ РёРЅРІРµРЅС‚Р°СЂСЊ Рё Р±С‹Р» РІС‹Р±СЂРѕС€РµРЅ СЂСЏРґРѕРј СЃ РёРіСЂРѕРєРѕРј.");
+            sender.sendMessage(ChatColor.YELLOW + "Предмет не влез в инвентарь и был выброшен рядом с игроком.");
         }
         database.auditAsync(sender.getName(), "give", "target=" + target.getName() + ",item=" + definition.id() + ",dropped=" + dropped);
         return true;
@@ -467,7 +467,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return true;
         }
         if (resetInProgress) {
-            sender.sendMessage(ChatColor.YELLOW + "РЎР±СЂРѕСЃ СѓР¶Рµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ.");
+            sender.sendMessage(ChatColor.YELLOW + "Сброс уже выполняется.");
             return true;
         }
         resetInProgress = true;
@@ -475,7 +475,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             if (error != null) {
                 getLogger().warning("Narcotics reset failed: " + error.getMessage());
                 resetInProgress = false;
-                sender.sendMessage(ChatColor.RED + "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‡РёСЃС‚РёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РЅР°СЂРєРѕС‚РёРєРѕРІ.");
+                sender.sendMessage(ChatColor.RED + "Не удалось очистить состояние наркотиков.");
                 return;
             }
             cauldronService.clearCache();
@@ -506,7 +506,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         overdoseService.forceClearOverdose(target);
         database.auditAsync(sender.getName(), "clearoverdose", "target=" + target.getName());
-        sender.sendMessage(ChatColor.GREEN + "РЎРѕСЃС‚РѕСЏРЅРёРµ РѕС‡РёС‰РµРЅРѕ: " + target.getName());
+        sender.sendMessage(ChatColor.GREEN + "Состояние очищено: " + target.getName());
         return true;
     }
 
@@ -526,7 +526,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             String mode = args[2].toUpperCase(Locale.ROOT);
             if (!VALID_TEXTURE_MODES.contains(mode)) {
-                sender.sendMessage(ChatColor.RED + "РќРµРІРµСЂРЅС‹Р№ СЂРµР¶РёРј С‚РµРєСЃС‚СѓСЂ. Р”РѕСЃС‚СѓРїРЅРѕ: VANILLA РёР»Рё CUSTOM.");
+                sender.sendMessage(ChatColor.RED + "Неверный режим текстур. Доступно: VANILLA или CUSTOM.");
                 return true;
             }
             configService.setTextureMode(mode);
@@ -557,11 +557,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 updated += itemFactory.migrateOfficialItems(player);
                 updated += migrateNearbyStorageInventories(player, 12);
             } else {
-                sender.sendMessage(ChatColor.RED + "РќРµРІРµСЂРЅС‹Р№ СЂРµР¶РёРј РјРёРіСЂР°С†РёРё. Р”РѕСЃС‚СѓРїРЅРѕ: online РёР»Рё nearby.");
+                sender.sendMessage(ChatColor.RED + "Неверный режим миграции. Доступно: online или nearby.");
                 return true;
             }
             database.auditAsync(sender.getName(), "texture_migrate", args[2] + ",updated=" + updated);
-            sender.sendMessage(ChatColor.GREEN + "РћР±РЅРѕРІР»РµРЅРѕ РїСЂРµРґРјРµС‚РѕРІ: " + updated);
+            sender.sendMessage(ChatColor.GREEN + "Обновлено предметов: " + updated);
             return true;
         }
         sendHelpV2(sender);
@@ -587,7 +587,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.serverOverlaySupportReason());
             sender.sendMessage(ChatColor.GRAY + "Server fallback поддерживается: " + visualRuntime.supportsServerParticleFallback());
             sender.sendMessage(ChatColor.GRAY + "Клиентский visual runtime поддерживается: " + visualRuntime.supportsClientShaderLikeRuntime());
-            sender.sendMessage(ChatColor.GRAY + "Статус клиентского visual runtime: " + visualRuntime.clientShaderLikeSupportReason());
+            sender.sendMessage(ChatColor.GRAY + "Причина клиентского visual runtime: " + visualRuntime.clientShaderLikeSupportReason());
             sender.sendMessage(ChatColor.GRAY + "True shader runtime поддерживается: " + visualRuntime.supportsShaderRuntime());
             sender.sendMessage(ChatColor.GRAY + "Причина true shader runtime: " + visualRuntime.shaderSupportReason());
             sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты на месте: " + !report.overlayTextures().isEmpty());
@@ -595,9 +595,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Только серверный fallback: " + (!visualRuntime.supportsServerOverlayRuntime() && !visualRuntime.supportsClientShaderLikeRuntime()));
             sender.sendMessage(ChatColor.GRAY + "Включённые эффекты: " + configService.visualEffectIds().stream().filter(configService::isVisualEffectEnabled).sorted().toList());
             String sampleEffect = configService.visualEffectIds().stream().sorted().findFirst().orElse("CHAOS");
-            sender.sendMessage(ChatColor.GRAY + "Итоговый маршрут (" + sampleEffect + "): " + visualRuntime.resolvedModeFor(sampleEffect));
+            sender.sendMessage(ChatColor.GRAY + "Маршрут эффекта (" + sampleEffect + "): " + visualRuntime.resolvedModeFor(sampleEffect));
             if (!report.ok()) {
-                sender.sendMessage(ChatColor.RED + "Проблемы resource pack: " + report.summary());
+                sender.sendMessage(ChatColor.RED + "Проблема resource pack: " + report.summary());
             }
             return true;
         }
@@ -611,7 +611,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             String effectId = args[2].toUpperCase(Locale.ROOT);
             if (!"ALL".equals(effectId) && !configService.visualEffectIds().contains(effectId)) {
-                sender.sendMessage(ChatColor.RED + "РќРµРёР·РІРµСЃС‚РЅС‹Р№ visual effect id.");
+                sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
                 return true;
             }
             if ("ALL".equals(effectId)) {
@@ -647,7 +647,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             String effectId = args[3].toUpperCase(Locale.ROOT);
             if (!configService.visualEffectIds().contains(effectId)) {
-                sender.sendMessage(ChatColor.RED + "РќРµРёР·РІРµСЃС‚РЅС‹Р№ visual effect id.");
+                sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
                 return true;
             }
             Integer seconds = parseBoundedInt(sender, args.length >= 5 ? args[4] : "30", "duration", 1, 600, false);
@@ -656,7 +656,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             visualRuntime.apply(target, effectId, seconds, false);
             database.auditAsync(sender.getName(), "visual_test", target.getName() + "," + effectId + "," + seconds);
-            sender.sendMessage(ChatColor.GREEN + "РўРµСЃС‚ РІРёР·СѓР°Р»Р° РѕС‚РїСЂР°РІР»РµРЅ: " + target.getName());
+            sender.sendMessage(ChatColor.GREEN + "Тест визуала запущен для: " + target.getName());
             return true;
         }
         sendHelpV2(sender);
@@ -690,7 +690,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         String mode = args[1].toUpperCase(Locale.ROOT);
         if (!VALID_VISUAL_MODES.contains(mode)) {
-            sender.sendMessage(ChatColor.RED + "РќРµРІРµСЂРЅС‹Р№ visual mode. Р”РѕСЃС‚СѓРїРЅРѕ: AUTO, CLIENT_MOD, SERVER_OVERLAY, SERVER_FALLBACK.");
+            sender.sendMessage(ChatColor.RED + "Неверный visual mode. Доступно: AUTO, CLIENT_MOD, SERVER_OVERLAY, SERVER_FALLBACK.");
             return true;
         }
         configService.setVisualMode(mode);
@@ -710,7 +710,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         String effectId = args[1].toUpperCase(Locale.ROOT);
         if (!configService.visualEffectIds().contains(effectId)) {
-            sender.sendMessage(ChatColor.RED + "РќРµРёР·РІРµСЃС‚РЅС‹Р№ visual effect id.");
+            sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
             return true;
         }
         boolean enabled = "on".equalsIgnoreCase(args[2]);
@@ -735,59 +735,28 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GRAY + "Client visual runtime reason: " + visualRuntime.clientShaderLikeSupportReason());
         sender.sendMessage(ChatColor.GRAY + "True shader runtime supported: " + visualRuntime.supportsShaderRuntime());
         sender.sendMessage(ChatColor.GRAY + "True shader runtime reason: " + visualRuntime.shaderSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "Рецептов: " + configService.items().size());
+        sender.sendMessage(ChatColor.GRAY + "Предметов: " + configService.items().size());
         sender.sendMessage(ChatColor.GRAY + "Режим текстур: " + configService.textureMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Режим визуала: " + configService.visualMode().name());
+        sender.sendMessage(ChatColor.GRAY + "Режим визуалов: " + configService.visualMode().name());
         sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Кэш варки: " + cauldronService.cachedStateCount());
-        sender.sendMessage(ChatColor.GRAY + "Модели предметов: " + report.itemModels().size());
-        sender.sendMessage(ChatColor.GRAY + "Текстуры предметов: " + report.itemTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты: " + report.overlayTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Shader-профили: " + report.shaderProfiles().size());
+        sender.sendMessage(ChatColor.GRAY + "Кэш котлов: " + cauldronService.cachedStateCount());
+        sender.sendMessage(ChatColor.GRAY + "Моделей предметов: " + report.itemModels().size());
+        sender.sendMessage(ChatColor.GRAY + "Текстур предметов: " + report.itemTextures().size());
+        sender.sendMessage(ChatColor.GRAY + "Overlay-ассетов: " + report.overlayTextures().size());
+        sender.sendMessage(ChatColor.GRAY + "Shader-профилей: " + report.shaderProfiles().size());
         sender.sendMessage(ChatColor.GRAY + "Font manifest: " + report.fontManifestPresent());
         sender.sendMessage(ChatColor.GRAY + "Документ сторонних ассетов: " + report.thirdPartyDocPresent());
         sender.sendMessage(ChatColor.GRAY + "Документ лицензий: " + report.licensesDocPresent());
         sender.sendMessage(ChatColor.GRAY + "Без hotlink: " + report.noHotlinks());
         sender.sendMessage(ChatColor.GRAY + "Без runtime download: " + report.noRuntimeDownloads());
         sender.sendMessage(ChatColor.GRAY + "SHA1 pack: " + (report.zipSha1() == null ? "missing" : report.zipSha1()));
-        sender.sendMessage(ChatColor.GRAY + "Хэш синхронизирован: " + report.hashSynced());
-        sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблемы resource pack: " + report.summary());
+        sender.sendMessage(ChatColor.GRAY + "SHA1 синхронизирован: " + report.hashSynced());
+        sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблема resource pack: " + report.summary());
         return true;
     }
 
     private boolean handleSelfCheck(CommandSender sender) {
-        if (!hasPermission(sender, "copimine.narcotics.selfcheck")) {
-            sender.sendMessage(message("no_permission"));
-            return true;
-        }
-        NarcoticsResourcePackAudit.Report report = resourcePackAudit.inspect();
-        sender.sendMessage(message("selfcheck_ok"));
-        sender.sendMessage(ChatColor.GRAY + "Client bridge enabled: " + configService.clientBridgeEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Client visuals allowed: " + configService.allowClientModVisuals());
-        sender.sendMessage(ChatColor.GRAY + "Server overlay supported: " + visualRuntime.supportsServerOverlayRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Server fallback supported: " + visualRuntime.supportsServerParticleFallback());
-        sender.sendMessage(ChatColor.GRAY + "Client visual runtime supported: " + visualRuntime.supportsClientShaderLikeRuntime());
-        sender.sendMessage(ChatColor.GRAY + "Client visual runtime reason: " + visualRuntime.clientShaderLikeSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "True shader runtime supported: " + visualRuntime.supportsShaderRuntime());
-        sender.sendMessage(ChatColor.GRAY + "True shader runtime reason: " + visualRuntime.shaderSupportReason());
-        sender.sendMessage(ChatColor.GRAY + "Рецептов: " + configService.items().size());
-        sender.sendMessage(ChatColor.GRAY + "Режим текстур: " + configService.textureMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Режим визуала: " + configService.visualMode().name());
-        sender.sendMessage(ChatColor.GRAY + "Визуалы включены: " + configService.visualsEnabled());
-        sender.sendMessage(ChatColor.GRAY + "Кэш варки: " + cauldronService.cachedStateCount());
-        sender.sendMessage(ChatColor.GRAY + "Модели предметов: " + report.itemModels().size());
-        sender.sendMessage(ChatColor.GRAY + "Текстуры предметов: " + report.itemTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Overlay-ассеты: " + report.overlayTextures().size());
-        sender.sendMessage(ChatColor.GRAY + "Shader-профили: " + report.shaderProfiles().size());
-        sender.sendMessage(ChatColor.GRAY + "Font manifest: " + report.fontManifestPresent());
-        sender.sendMessage(ChatColor.GRAY + "Документ сторонних ассетов: " + report.thirdPartyDocPresent());
-        sender.sendMessage(ChatColor.GRAY + "Документ лицензий: " + report.licensesDocPresent());
-        sender.sendMessage(ChatColor.GRAY + "Без hotlink: " + report.noHotlinks());
-        sender.sendMessage(ChatColor.GRAY + "Без runtime download: " + report.noRuntimeDownloads());
-        sender.sendMessage(ChatColor.GRAY + "SHA1 pack: " + (report.zipSha1() == null ? "missing" : report.zipSha1()));
-        sender.sendMessage(ChatColor.GRAY + "Хэш синхронизирован: " + report.hashSynced());
-        sender.sendMessage(report.ok() ? ChatColor.GREEN + "Проверка resource pack пройдена" : ChatColor.RED + "Проблемы resource pack: " + report.summary());
-        return true;
+        return handleSelfCheckV2(sender);
     }
 
     private boolean handleInfo(CommandSender sender, String[] args) {
@@ -805,7 +774,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return true;
         }
         OverdoseService.PlayerState state = overdoseService.state(target.getUniqueId());
-        sender.sendMessage(ChatColor.GRAY + "РРіСЂРѕРє: " + target.getName());
+        sender.sendMessage(ChatColor.GRAY + "Игрок: " + target.getName());
         sender.sendMessage(ChatColor.GRAY + "Scale: " + state.currentScale());
         sender.sendMessage(ChatColor.GRAY + "Last item: " + state.lastItemId());
         sender.sendMessage(ChatColor.GRAY + "Overdose until: " + state.overdoseUntil());
@@ -837,7 +806,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         recipeService.reload(configService);
         itemFactory.reload(configService);
         overdoseService.reload(configService);
-        sender.sendMessage(ChatColor.GREEN + "Р’РµСЃ РѕР±РЅРѕРІР»С‘РЅ: " + itemId);
+        sender.sendMessage(ChatColor.GREEN + "Вес обновлён: " + itemId);
         database.auditAsync(sender.getName(), "setweight", itemId + "=" + weight);
         return true;
     }
@@ -857,7 +826,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         configService.setOverdoseThreshold(threshold);
         overdoseService.reload(configService);
-        sender.sendMessage(ChatColor.GREEN + "РџРѕСЂРѕРі РѕР±РЅРѕРІР»С‘РЅ: " + configService.overdoseThreshold());
+        sender.sendMessage(ChatColor.GREEN + "Порог обновлён: " + configService.overdoseThreshold());
         database.auditAsync(sender.getName(), "setthreshold", String.valueOf(configService.overdoseThreshold()));
         return true;
     }
@@ -877,7 +846,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         configService.setUsageWindowSeconds(window);
         overdoseService.reload(configService);
-        sender.sendMessage(ChatColor.GREEN + "РћРєРЅРѕ РѕР±РЅРѕРІР»РµРЅРѕ: " + configService.usageWindowSeconds());
+        sender.sendMessage(ChatColor.GREEN + "Окно обновлено: " + configService.usageWindowSeconds());
         database.auditAsync(sender.getName(), "setwindow", String.valueOf(configService.usageWindowSeconds()));
         return true;
     }
@@ -897,7 +866,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         configService.setDurationOverrideSeconds(duration);
         overdoseService.reload(configService);
-        sender.sendMessage(ChatColor.GREEN + "Override-РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ: " + configService.durationOverrideSeconds());
+        sender.sendMessage(ChatColor.GREEN + "Override-длительность: " + configService.durationOverrideSeconds());
         database.auditAsync(sender.getName(), "setduration", String.valueOf(configService.durationOverrideSeconds()));
         return true;
     }
@@ -978,11 +947,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     }
 
     private void sendHelpV2(CommandSender sender) {
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics give <РёРіСЂРѕРє> <item|all>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics give <игрок> <item|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics reload");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics reset confirm");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics clearoverdose <РёРіСЂРѕРє>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics info <РёРіСЂРѕРє>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics clearoverdose <игрок>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics info <игрок>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics setweight <id> <value>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics setthreshold <value>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics setwindow <seconds>");
@@ -993,20 +962,20 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <РёРіСЂРѕРє> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient check <РёРіСЂРѕРє>");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <РёРіСЂРѕРє> <effectId> [seconds]");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <РёРіСЂРѕРє> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <игрок> <effectId> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmclient require client <true|false>");
     }
 
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics give <РёРіСЂРѕРє> <item|all>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics give <игрок> <item|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics reload");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics reset confirm");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics clearoverdose <РёРіСЂРѕРє>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics info <РёРіСЂРѕРє>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics clearoverdose <игрок>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics info <игрок>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics setweight <id> <value>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics setthreshold <value>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics setwindow <seconds>");
@@ -1017,11 +986,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <РёРіСЂРѕРє> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient check <РёРіСЂРѕРє>");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <РёРіСЂРѕРє> <effectId> [seconds]");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <РёРіСЂРѕРє> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <игрок> <effectId> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmclient require client <true|false>");
     }
 
@@ -1037,7 +1006,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (sender instanceof Player player) {
             return player;
         }
-        sender.sendMessage(ChatColor.RED + "Р­С‚Р° РєРѕРјР°РЅРґР° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РёРіСЂРѕРєСѓ.");
+        sender.sendMessage(ChatColor.RED + "Эта команда доступна только игроку.");
         return null;
     }
 
@@ -1058,14 +1027,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         try {
             parsed = Integer.parseInt(raw);
         } catch (Exception ignored) {
-            sender.sendMessage(ChatColor.RED + "РќРµРєРѕСЂСЂРµРєС‚РЅРѕРµ С‡РёСЃР»Рѕ РґР»СЏ " + label + ".");
+            sender.sendMessage(ChatColor.RED + "Некорректное число для " + label + ".");
             return null;
         }
         if (allowZero && parsed == 0) {
             return 0;
         }
         if (parsed < min || parsed > max) {
-            sender.sendMessage(ChatColor.RED + "Р—РЅР°С‡РµРЅРёРµ " + label + " РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РІ РґРёР°РїР°Р·РѕРЅРµ " + min + ".." + max + (allowZero ? " РёР»Рё 0." : "."));
+            sender.sendMessage(ChatColor.RED + "Значение " + label + " должно быть в диапазоне " + min + ".." + max + (allowZero ? " или 0." : "."));
             return null;
         }
         return parsed;

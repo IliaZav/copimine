@@ -1738,6 +1738,7 @@ class Bot(discord.Client):
 
     def election_status_embed(self, snap: dict[str, Any]) -> discord.Embed:
         status = str(snap.get("status") or "NONE")
+        showcase_mode = PUBLIC_ELECTION_SHOWCASE_V3
         color = 0x57F287 if status == "PRESIDENT_TERM" else 0xFEE75C if status in {"VOTING", "COUNTING", "SECOND_ROUND"} else 0x5865F2
         e = discord.Embed(
             title="CopiMine Elections",
@@ -1751,7 +1752,6 @@ class Bot(discord.Client):
         )
         e.add_field(name="Президент", value=short(snap.get("president") or "—", 128), inline=True)
         e.add_field(name="Кандидаты", value=short(str(snap.get("candidates") or 0), 32), inline=True)
-        e.add_field(name="Бюллетени в урнах", value=short(str(snap.get("votes") or 0), 32), inline=True)
         top_candidates = snap.get("top_candidates") or []
         public_apps = candidate_application_summaries_v2(str(snap.get("election_id") or ""), top_candidates, 8)
         if public_apps:
@@ -1764,31 +1764,7 @@ class Bot(discord.Client):
         laws = [short(x, 80) for x in (snap.get("laws") or []) if str(x or "").strip()]
         if laws:
             e.add_field(name="Законы президента", value="\n".join(f"• {law}" for law in laws[:5]), inline=False)
-        e.set_footer(text="CopiMine • Discord показывает только публичные данные выборов")
-        return e
-        title = "CopiMine elections • PUBLIC_ELECTION_SHOWCASE_V3"
-        status = str(snap.get("status") or "NO_ELECTION")
-        color = 0x57F287 if status == "ACTIVE" else 0xFEE75C if status == "PAUSED" else 0x5865F2
-        e = discord.Embed(
-            title=title,
-            description=(
-                "Публичная витрина выборов для игроков.\n"
-                f"Состояние: **{short(status, 80)}**\n"
-                "Здесь показываются только кандидаты и опубликованные ЦИК заявки."
-            ),
-            color=color,
-            timestamp=discord.utils.utcnow(),
-        )
-        top_candidates = snap.get("top_candidates") or []
-        public_apps = candidate_application_summaries_v2(str(snap.get("election_id") or ""), top_candidates, 8)
-        if public_apps:
-            for i, row in enumerate(public_apps, 1):
-                name = short(row.get("name") or "Кандидат", 80)
-                statement = short(row.get("statement") or "Заявка кандидата пока не опубликована ЦИК.", 850)
-                e.add_field(name=f"{i}. {name}", value=statement, inline=False)
-        else:
-            e.add_field(name="Кандидаты", value="ЦИК ещё не опубликовал список кандидатов.", inline=False)
-        e.set_footer(text="CopiMine • игрокам видны только кандидаты и публичные заявки")
+        e.set_footer(text=f"CopiMine • Discord показывает только публичные данные выборов • {showcase_mode}")
         return e
 
     async def update_elections_status_channel(self) -> None:

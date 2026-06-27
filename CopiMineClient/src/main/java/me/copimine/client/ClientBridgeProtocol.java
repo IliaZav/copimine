@@ -14,6 +14,7 @@ public final class ClientBridgeProtocol {
     public static final int PROTOCOL_VERSION = 2;
     public static final String TYPE_HELLO = "hello";
     public static final String TYPE_HEARTBEAT = "heartbeat";
+    public static final String TYPE_CAPABILITIES_UPDATE = "capabilities_update";
     public static final String TYPE_VISUAL_ACK = "visual_ack";
     public static final String TYPE_VISUAL_FINISHED = "visual_finished";
     public static final String TYPE_VISUAL_ERROR = "visual_error";
@@ -39,7 +40,7 @@ public final class ClientBridgeProtocol {
 
     private static int helloAttempts;
     private static boolean helloSent;
-    private static boolean helloConfirmed;
+    private static boolean helloAcknowledged;
     private static boolean connected;
     private static long lastHelloAttemptAt;
     private static long lastHeartbeatSentAt;
@@ -48,6 +49,8 @@ public final class ClientBridgeProtocol {
     private static String lastError = "";
     private static String sessionId = "";
     private static String clientVersion = "0.1.0";
+    private static boolean irisShaderPackActive;
+    private static boolean lastReportedIrisShaderPackActive;
 
     private ClientBridgeProtocol() {
     }
@@ -62,17 +65,16 @@ public final class ClientBridgeProtocol {
             }
             switch (payload.type()) {
                 case TYPE_PING -> {
-                    helloConfirmed = true;
                     lastServerPingAt = System.currentTimeMillis();
+                    helloAcknowledged = true;
                 }
                 case TYPE_VISUAL_START -> context.client().execute(() -> {
                     if (!managerStatusAllowsServerVisuals(manager)) {
                         sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
                         return;
                     }
-                    String effectId = payload.effectId() == null ? "" : payload.effectId().trim().toUpperCase(Locale.ROOT);
-                    if (!SUPPORTED_EFFECTS.contains(effectId)) {
-                        sendVisualError(payload.seq(), effectId, "unsupported-effect");
+                    if (IrisCompat.shaderPackActive() && !managerAllowsVisualsWhenIrisShaderpackActive(manager)) {
+                        sendVisualError(payload.seq(), payload.effectId(), "iris-shaderpack-active");
                         return;
                     }
                     manager.start(payload.effectId(), payload.seq(), payload.durationSeconds(), payload.intensity(), payload.clearPolicy());
@@ -96,17 +98,24 @@ public final class ClientBridgeProtocol {
         if (!ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return false;
         }
-        Set<String> supported = new LinkedHashSet<>();
-        for (String effectId : SUPPORTED_EFFECTS) {
-            supported.add(effectId.toUpperCase(Locale.ROOT));
-        }
-        ClientPlayNetworking.send(BridgePayload.hello(sessionId, clientVersion, IrisCompat.shaderPackActive(), supported));
+        irisShaderPackActive = IrisCompat.shaderPackActive();
+        ClientPlayNetworking.send(BridgePayload.hello(sessionId, clientVersion, supportedEffects(), irisShaderPackActive));
         helloSent = true;
-        return helloSent;
+        lastReportedIrisShaderPackActive = irisShaderPackActive;
+        return true;
+    }
+
+    public static void sendCapabilitiesUpdate() {
+        if (!connected || !helloSent || !helloAcknowledged || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
+            return;
+        }
+        irisShaderPackActive = IrisCompat.shaderPackActive();
+        ClientPlayNetworking.send(BridgePayload.capabilitiesUpdate(sessionId, clientVersion, supportedEffects(), irisShaderPackActive));
+        lastReportedIrisShaderPackActive = irisShaderPackActive;
     }
 
     public static void sendHeartbeat() {
-        if (!connected || !helloSent || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
+        if (!connected || !helloSent || !helloAcknowledged || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return;
         }
         ClientPlayNetworking.send(BridgePayload.heartbeat(sessionId));
@@ -141,40 +150,48 @@ public final class ClientBridgeProtocol {
         sessionId = UUID.randomUUID().toString();
         helloAttempts = 0;
         helloSent = false;
-        helloConfirmed = false;
+        helloAcknowledged = false;
         lastHelloAttemptAt = 0L;
         lastHeartbeatSentAt = 0L;
         lastServerPingAt = 0L;
         lastAckSeq = 0L;
         lastError = "";
+        irisShaderPackActive = false;
+        lastReportedIrisShaderPackActive = false;
     }
 
     public static void onDisconnect() {
         connected = false;
         helloAttempts = 0;
         helloSent = false;
-        helloConfirmed = false;
+        helloAcknowledged = false;
         lastHelloAttemptAt = 0L;
         lastHeartbeatSentAt = 0L;
         lastServerPingAt = 0L;
         lastAckSeq = 0L;
         lastError = "";
         sessionId = "";
+        irisShaderPackActive = false;
+        lastReportedIrisShaderPackActive = false;
     }
 
     public static void tickNetwork(MinecraftClient client) {
         tickHelloRetry(client);
-        if (!connected || client.getNetworkHandler() == null || !helloConfirmed) {
+        if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;
         }
         long now = System.currentTimeMillis();
+        irisShaderPackActive = IrisCompat.shaderPackActive();
+        if (irisShaderPackActive != lastReportedIrisShaderPackActive) {
+            sendCapabilitiesUpdate();
+        }
         if (lastHeartbeatSentAt == 0L || now - lastHeartbeatSentAt >= HEARTBEAT_INTERVAL_MS) {
             sendHeartbeat();
         }
     }
 
     public static void tickHelloRetry(MinecraftClient client) {
-        if (!connected || helloConfirmed || client.getNetworkHandler() == null || helloAttempts >= MAX_HELLO_ATTEMPTS) {
+        if (!connected || helloAcknowledged || client.getNetworkHandler() == null || helloAttempts >= MAX_HELLO_ATTEMPTS) {
             return;
         }
         if (!ClientPlayNetworking.canSend(BridgePayload.ID)) {
@@ -196,13 +213,26 @@ public final class ClientBridgeProtocol {
         return "protocol=" + PROTOCOL_VERSION
                 + ", session=" + (sessionId.isBlank() ? "-" : sessionId)
                 + ", helloSent=" + (helloSent ? "yes" : "no")
-                + ", helloConfirmed=" + (helloConfirmed ? "yes" : "no")
+                + ", helloAck=" + (helloAcknowledged ? "yes" : "no")
                 + ", attempts=" + helloAttempts + "/" + MAX_HELLO_ATTEMPTS
                 + ", lastHeartbeat=" + ageSeconds(lastHeartbeatSentAt)
                 + ", lastPing=" + ageSeconds(lastServerPingAt)
                 + ", lastAckSeq=" + lastAckSeq
-                + ", " + IrisCompat.statusLine()
+                + ", irisShaderPackActive=" + (irisShaderPackActive ? "yes" : "no")
+                + ", renderer=fullscreen-hud-overlay/no-shader-injection"
                 + ", lastError=" + (lastError.isBlank() ? "-" : lastError);
+    }
+
+    public static boolean isIrisShaderPackActive() {
+        return irisShaderPackActive;
+    }
+
+    private static Set<String> supportedEffects() {
+        Set<String> supported = new LinkedHashSet<>();
+        for (String effectId : SUPPORTED_EFFECTS) {
+            supported.add(effectId.toUpperCase(Locale.ROOT));
+        }
+        return supported;
     }
 
     private static String ageSeconds(long timestampMillis) {
@@ -214,5 +244,9 @@ public final class ClientBridgeProtocol {
 
     private static boolean managerStatusAllowsServerVisuals(ClientVisualManager manager) {
         return manager != null && manager.serverVisualsAllowed();
+    }
+
+    private static boolean managerAllowsVisualsWhenIrisShaderpackActive(ClientVisualManager manager) {
+        return manager == null || manager.allowVisualsWhenIrisShaderpackActive();
     }
 }

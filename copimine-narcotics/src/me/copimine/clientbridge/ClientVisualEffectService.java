@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class ClientVisualEffectService {
     private static final long ACK_TIMEOUT_MILLIS = 2_000L;
+    private static final long RUNNING_TIMEOUT_GRACE_MILLIS = 2_000L;
     private static final int MAX_SEND_ATTEMPTS = 3;
 
     private final CopiMineNarcotics plugin;
@@ -193,12 +194,11 @@ public final class ClientVisualEffectService {
     }
 
     private void handleAck(Player player, ClientBridgePayloads.Message message) {
-        ClientVisualCommand pending = pendingAcks.remove(message.seq());
-        if (pending == null) {
+        ClientVisualCommand pending = pendingAcks.get(message.seq());
+        if (!commandMatchesPlayerSession(player, message, pending)) {
             return;
         }
-        if (!player.getUniqueId().equals(pending.playerUuid())) {
-            activeSeqByPlayer.remove(pending.playerUuid(), pending.seq());
+        if (!pendingAcks.remove(message.seq(), pending)) {
             return;
         }
         String status = message.status().toUpperCase(Locale.ROOT);
@@ -216,10 +216,7 @@ public final class ClientVisualEffectService {
     }
 
     private void handleFinished(Player player, ClientBridgePayloads.Message message) {
-        ClientVisualCommand command = runningCommands.remove(message.seq());
-        if (command == null) {
-            command = pendingAcks.remove(message.seq());
-        }
+        ClientVisualCommand command = popOwnedCommand(player, message);
         if (command == null) {
             return;
         }
@@ -231,10 +228,7 @@ public final class ClientVisualEffectService {
     }
 
     private void handleError(Player player, ClientBridgePayloads.Message message) {
-        ClientVisualCommand command = runningCommands.remove(message.seq());
-        if (command == null) {
-            command = pendingAcks.remove(message.seq());
-        }
+        ClientVisualCommand command = popOwnedCommand(player, message);
         if (command == null) {
             return;
         }
@@ -291,7 +285,8 @@ public final class ClientVisualEffectService {
         for (ClientVisualCommand command : runningCommands.values()) {
             Player player = Bukkit.getPlayer(command.playerUuid());
             ClientCapabilityState state = player == null ? null : capabilities.state(player);
-            if (player == null || !player.isOnline() || state == null || !state.sessionId().equals(command.sessionId())) {
+            boolean expired = now > (command.createdAtMillis() + (command.seconds() * 1_000L) + RUNNING_TIMEOUT_GRACE_MILLIS);
+            if (expired || player == null || !player.isOnline() || state == null || !state.sessionId().equals(command.sessionId())) {
                 staleRunning.add(command);
             }
         }
@@ -299,6 +294,17 @@ public final class ClientVisualEffectService {
             runningCommands.remove(command.seq());
             activeSeqByPlayer.remove(command.playerUuid(), command.seq());
             Player player = Bukkit.getPlayer(command.playerUuid());
+            boolean commandExpired = now > (command.createdAtMillis() + (command.seconds() * 1_000L) + RUNNING_TIMEOUT_GRACE_MILLIS);
+            if (commandExpired) {
+                if (player != null && player.isOnline()) {
+                    sendVisualStop(player, command.effectId(), "timeout-cleanup");
+                }
+                if (command.finishHandler() != null) {
+                    command.finishHandler().onFinished(command.playerUuid(), command.effectId(), command.source(), "timeout-cleanup");
+                }
+                lastFinishedByPlayer.put(command.playerUuid(), command.effectId() + ":timeout-cleanup");
+                continue;
+            }
             if (player != null && player.isOnline() && command.fallbackHandler() != null) {
                 command.fallbackHandler().onFallback(
                         command.playerUuid(),
@@ -319,5 +325,25 @@ public final class ClientVisualEffectService {
             pendingAcks.remove(activeSeq);
             runningCommands.remove(activeSeq);
         }
+    }
+
+    private ClientVisualCommand popOwnedCommand(Player player, ClientBridgePayloads.Message message) {
+        ClientVisualCommand running = runningCommands.get(message.seq());
+        if (commandMatchesPlayerSession(player, message, running)) {
+            return runningCommands.remove(message.seq(), running) ? running : null;
+        }
+        ClientVisualCommand pending = pendingAcks.get(message.seq());
+        if (commandMatchesPlayerSession(player, message, pending)) {
+            return pendingAcks.remove(message.seq(), pending) ? pending : null;
+        }
+        return null;
+    }
+
+    private boolean commandMatchesPlayerSession(Player player, ClientBridgePayloads.Message message, ClientVisualCommand command) {
+        return player != null
+                && message != null
+                && command != null
+                && player.getUniqueId().equals(command.playerUuid())
+                && command.sessionId().equals(message.sessionId());
     }
 }

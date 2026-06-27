@@ -279,6 +279,13 @@ public final class NarcoticsResourcePackAudit {
             if (zip.size() == 0) {
                 errors.add("Built resource pack zip is empty.");
             }
+            zip.entries().asIterator().forEachRemaining(entry -> {
+                try (var stream = zip.getInputStream(entry)) {
+                    stream.transferTo(java.io.OutputStream.nullOutputStream());
+                } catch (IOException error) {
+                    errors.add("Built resource pack zip failed integrity read for " + entry.getName() + ": " + error.getMessage());
+                }
+            });
         } catch (IOException error) {
             errors.add("Failed to inspect resource pack zip: " + error.getMessage());
         }

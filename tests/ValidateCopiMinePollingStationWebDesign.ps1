@@ -1,10 +1,18 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$frontend = Join-Path $root 'admin-web\frontend\assets\app.js'
+$bootstrap = Join-Path $root 'admin-web\frontend\assets\app.js'
+$legacyFrontend = Join-Path $root 'admin-web\frontend\assets\js\legacy\app-legacy.js'
 $style = Join-Path $root 'admin-web\frontend\assets\style.css'
-$js = Get-Content -Raw -Encoding UTF8 $frontend
-$css = Get-Content -Raw -Encoding UTF8 $style
+$legacyStyle = Join-Path $root 'admin-web\frontend\assets\css\legacy.css'
+$js = @(
+  Get-Content -Raw -Encoding UTF8 $bootstrap
+  Get-Content -Raw -Encoding UTF8 $legacyFrontend
+) -join "`n"
+$css = @(
+  Get-Content -Raw -Encoding UTF8 $style
+  Get-Content -Raw -Encoding UTF8 $legacyStyle
+) -join "`n"
 $errors = New-Object System.Collections.Generic.List[string]
 
 function Require([string]$name, [string]$text, [string]$pattern) {

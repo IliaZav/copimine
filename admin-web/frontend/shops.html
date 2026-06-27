@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>CopiMine - Лавки</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body data-page-kind="public-shops">
+  <main class="public-site public-site-compact">
+    <header class="public-nav">
+      <a class="public-brand" href="/index.html" aria-label="CopiMine">
+        <span class="brand-mark brand-mark-small">CM</span>
+        <strong>CopiMine</strong>
+      </a>
+      <nav aria-label="Разделы сайта">
+        <a href="/index.html">Главная</a>
+        <a href="/server.html">Сервер</a>
+        <a href="/shops.html" aria-current="page">Лавки</a>
+        <a href="/mods.html">Моды</a>
+        <a href="/signin.html">Вход</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Открыть кабинет</button>
+        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
+      </nav>
+    </header>
+
+    <div class="public-page-shell">
+      <section class="public-hero public-hero-slim">
+        <div class="public-hero-copy">
+          <div class="page-kicker-row">
+            <span class="hero-kicker">Лавки</span>
+            <span class="route-chip">Лавки</span>
+          </div>
+          <h1>AR-лавка и donation-лавка.</h1>
+          <p>Здесь показаны обе витрины и краткие правила покупки для каждой.</p>
+          <div class="public-actions">
+            <button id="openArShopBtn" type="button" class="btn btn-secondary">Открыть AR-лавку</button>
+            <button id="openDonationShopBtn" type="button" class="btn btn-primary">Открыть donation-лавку</button>
+            <a class="btn btn-ghost public-ghost" href="/signin.html">Войти в кабинет</a>
+          </div>
+        </div>
+
+        <aside class="hero-side-card">
+          <span class="hero-kicker">Правила</span>
+          <ul class="hero-check-list">
+            <li>AR-предметы покупаются и чинятся только за AR.</li>
+            <li>Donation-предметы покупаются за отдельный баланс и привязываются к владельцу.</li>
+            <li>Возврат donation-предметов делается только в игре.</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section class="public-section">
+        <div class="section-head">
+          <span>Витрины</span>
+        <h2>Витрины магазинов.</h2>
+        <p>На сайте можно посмотреть состав и цены, а покупка продолжается уже в кабинете.</p>
+        </div>
+
+        <div class="commerce-grid">
+          <article class="commerce-panel">
+            <div class="commerce-panel-head">
+              <div>
+                <span class="hero-kicker">AR-лавка</span>
+                <h3>Официальные предметы за AR</h3>
+                <p>Игровые предметы за AR с ремонтом и ограничением на активный экземпляр.</p>
+              </div>
+              <button id="openArShopBtnMirror" type="button" class="btn btn-secondary">Открыть в кабинете</button>
+            </div>
+            <div id="publicArShopPreview" class="shop-rail">
+              <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
+            </div>
+          </article>
+
+          <article class="commerce-panel commerce-panel-accent">
+            <div class="commerce-panel-head">
+              <div>
+                <span class="hero-kicker">Donation-лавка</span>
+                <h3>Именные предметы за donation</h3>
+                <p>Пополнение и покупка идут через сайт, а выдача и возврат предметов происходят в игре.</p>
+              </div>
+              <button id="openDonationShopBtnMirror" type="button" class="btn btn-primary">Открыть в кабинете</button>
+            </div>
+            <div id="publicDonationShopPreview" class="shop-rail">
+              <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="public-section">
+        <div class="info-card-grid">
+          <article class="info-card">
+            <span class="hero-kicker">Покупка</span>
+            <strong>Покупка через кабинет</strong>
+            <p>Публичная витрина ничего не списывает. Она только переводит игрока в кабинет.</p>
+          </article>
+          <article class="info-card">
+            <span class="hero-kicker">Выдача</span>
+            <strong>Выдача только в игре</strong>
+            <p>После оплаты предмет выдаётся через игровой блок лавки.</p>
+          </article>
+          <article class="info-card">
+            <span class="hero-kicker">Возврат</span>
+            <strong>Возврат только по потере</strong>
+            <p>Если donation-предмет уничтожен внешне, его можно вернуть. Израсходованный или сломанный предмет бесплатно не восстанавливается.</p>
+          </article>
+          <article class="info-card">
+            <span class="hero-kicker">Разделение</span>
+            <strong>AR и donation разделены</strong>
+            <p>Игровая валюта и донатный баланс не смешиваются.</p>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="/assets/js/public/public-page.js"></script>
+</body>
+</html>

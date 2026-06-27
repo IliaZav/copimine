@@ -17,6 +17,7 @@ public final class ClientVisualManager {
     }
 
     private static final int OVERLAY_TEXTURE_SIZE = 256;
+    private static final float IRIS_ALPHA_MULTIPLIER = 0.82F;
     private static final Map<String, Identifier> OVERLAYS = Map.of(
             "DESATURATE", Identifier.of("copimineclient", "textures/visuals/desaturate_overlay.png"),
             "COLOR_CONVOLVE", Identifier.of("copimineclient", "textures/visuals/color_convolve_overlay.png"),
@@ -71,7 +72,21 @@ public final class ClientVisualManager {
     }
 
     public void clearAll(String reason) {
+        clearAll(null, reason);
+    }
+
+    public void clearAll(FinishedVisualHandler finishedHandler, String reason) {
+        List<ActiveVisual> cleared = new ArrayList<>(active.values());
         active.clear();
+        if (finishedHandler == null) {
+            return;
+        }
+        String finishReason = (reason == null || reason.isBlank()) ? "cleared" : reason;
+        for (ActiveVisual visual : cleared) {
+            if (visual.seq() > 0L) {
+                finishedHandler.onFinished(visual.seq(), visual.effectId(), finishReason);
+            }
+        }
     }
 
     public void tick(FinishedVisualHandler finishedHandler) {
@@ -100,9 +115,10 @@ public final class ClientVisualManager {
         int width = client.getWindow().getScaledWidth();
         int height = client.getWindow().getScaledHeight();
         long now = System.currentTimeMillis();
+        float routeAlphaMultiplier = effectiveAlphaMultiplier();
         for (ActiveVisual visual : active.values()) {
             float pulse = 0.6F + (float) ((Math.sin((now / 180.0D) + visual.effectId().hashCode()) + 1.0D) * 0.2D);
-            drawEffect(context, width, height, visual, pulse);
+            drawEffect(context, width, height, visual, pulse, routeAlphaMultiplier);
         }
         if (config.debugOverlay()) {
             context.drawText(client.textRenderer, statusLine(), 8, 8, 0xFFFFFFFF, true);
@@ -110,16 +126,21 @@ public final class ClientVisualManager {
     }
 
     public String statusLine() {
+        boolean irisActive = IrisCompat.shaderPackActive();
         if (active.isEmpty()) {
-            return "CopiMineClient: активных визуалов нет, render_when_hud_hidden=" + config.renderWhenHudHidden()
-                    + ", " + IrisCompat.statusLine();
+            return "CopiMineClient: active visuals = none, render_when_hud_hidden=" + config.renderWhenHudHidden()
+                    + ", allow_when_iris_shaderpack_active=" + yesNo(config.allowVisualsWhenIrisShaderpackActive())
+                    + ", irisShaderPackActive=" + yesNo(irisActive)
+                    + ", route=fullscreen-hud-overlay/no-shader-injection";
         }
         ActiveVisual first = active.values().iterator().next();
         long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1000L);
-        return "CopiMineClient: " + first.effectId() + " / " + secondsLeft + "с / active=" + active.size()
+        return "CopiMineClient: " + first.effectId() + " / " + secondsLeft + "s / active=" + active.size()
                 + " / lastSeq=" + lastServerSeq
                 + " / render_when_hud_hidden=" + config.renderWhenHudHidden()
-                + ", " + IrisCompat.statusLine();
+                + " / allow_when_iris_shaderpack_active=" + yesNo(config.allowVisualsWhenIrisShaderpackActive())
+                + " / irisShaderPackActive=" + yesNo(irisActive)
+                + " / route=fullscreen-hud-overlay/no-shader-injection";
     }
 
     public String activeSummary() {
@@ -141,9 +162,13 @@ public final class ClientVisualManager {
         return config.allowServerVisuals();
     }
 
-    private void drawEffect(DrawContext context, int width, int height, ActiveVisual visual, float pulse) {
+    public boolean allowVisualsWhenIrisShaderpackActive() {
+        return config.allowVisualsWhenIrisShaderpackActive();
+    }
+
+    private void drawEffect(DrawContext context, int width, int height, ActiveVisual visual, float pulse, float routeAlphaMultiplier) {
         float intensity = clamp(visual.intensity());
-        float alphaFactor = 0.18F + (0.82F * intensity);
+        float alphaFactor = (0.18F + (0.82F * intensity)) * routeAlphaMultiplier;
         float motionFactor = 0.15F + (0.85F * intensity);
         switch (visual.effectId()) {
             case "DESATURATE" -> {
@@ -203,21 +228,25 @@ public final class ClientVisualManager {
         context.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
+    private float effectiveAlphaMultiplier() {
+        return IrisCompat.shaderPackActive() ? Math.min(IRIS_ALPHA_MULTIPLIER, config.irisOverlayAlphaMultiplier()) : 1.0F;
+    }
+
     private int alpha(int rgb, float alpha) {
         int a = Math.max(0, Math.min(255, Math.round(255.0F * alpha)));
         return (a << 24) | (rgb & 0x00FFFFFF);
     }
 
     private String normalize(String effectId) {
-        if (effectId == null || effectId.isBlank()) {
-            return "CHAOS";
-        }
-        String normalized = effectId.toUpperCase(Locale.ROOT);
-        return OVERLAYS.containsKey(normalized) ? normalized : "CHAOS";
+        return effectId == null ? "CHAOS" : effectId.toUpperCase(Locale.ROOT);
     }
 
     private float clamp(float value) {
         return Math.max(0.0F, Math.min(1.0F, value));
+    }
+
+    private String yesNo(boolean value) {
+        return value ? "yes" : "no";
     }
 
     private record ActiveVisual(long seq, String effectId, long untilMillis, float intensity) {

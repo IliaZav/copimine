@@ -45,9 +45,9 @@ public final class OverdoseService {
     }
 
     public void preloadState(UUID playerUuid) {
-        long requestEpoch = stateEpoch.get();
+        long requestEpoch = stateEpoch.longValue();
         database.loadPlayerState(playerUuid).thenAccept(state -> {
-                    if (stateEpoch.get() != requestEpoch) {
+                    if (stateEpoch.longValue() != requestEpoch) {
                         return;
                     }
                     states.compute(playerUuid, (ignored, current) -> current == null || state.stateVersion() >= current.stateVersion() ? state : current);

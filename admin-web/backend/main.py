@@ -99,6 +99,23 @@ DONATION_PROVIDER = "MOCK_SBP"
 DONATION_SESSION_TTL_SECONDS = int(os.getenv("DONATION_SESSION_TTL_SECONDS", str(15 * 60)))
 DONATION_SESSION_TTL_MS = DONATION_SESSION_TTL_SECONDS * 1000
 DONATION_EPOCH_MS_THRESHOLD = 100_000_000_000
+MANAGED_RESOURCEPACK_URL = os.getenv(
+    "COPIMINE_RESOURCEPACK_URL",
+    "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip",
+).strip()
+MANAGED_RESOURCEPACK_ZIP = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
+MANAGED_RESOURCEPACK_SHA1_FILE = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.sha1"
+OWNER_ONLY_SERVER_PROPERTY_KEYS = {
+    "resource-pack",
+    "resource-pack-sha1",
+    "require-resource-pack",
+    "resource-pack-prompt",
+    "enable-rcon",
+    "rcon.port",
+    "server-port",
+    "online-mode",
+    "enable-command-block",
+}
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PLUGIN_REGISTRY_MANIFEST = APP_ROOT / "backend" / "plugin_registry_manifest.json"
 
@@ -135,6 +152,8 @@ PIN_LOCK_SECONDS = int(os.getenv("PIN_LOCK_SECONDS", "900"))
 PIN_ATTEMPT_WINDOW_SECONDS = int(os.getenv("PIN_ATTEMPT_WINDOW_SECONDS", "900"))
 TEMP_PIN_TTL_SECONDS = int(os.getenv("TEMP_PIN_TTL_SECONDS", str(60 * 60 * 24 * 7)))
 TEMP_PIN_LENGTH = int(os.getenv("TEMP_PIN_LENGTH", "6"))
+# Preserve the legacy account id for data compatibility while treating it as a
+# dedicated treasury account rather than a president-personal account.
 TREASURY_ACCOUNT_ID = "PRESIDENT_BUDGET"
 TREASURY_ACCOUNT_TYPE = "TREASURY"
 TREASURY_ACCOUNT_LABEL = "Казна CopiMine"
@@ -805,15 +824,18 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        response.headers.setdefault("Vary", "Origin, Sec-Fetch-Site")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    if request.url.scheme.lower() == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+        "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'",
     )
     return response
 
@@ -941,8 +963,8 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
 
 
 def clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
-    response.delete_cookie(AUTH_REFRESH_COOKIE_NAME, path="/")
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/", secure=AUTH_COOKIE_SECURE, samesite="lax", httponly=True)
+    response.delete_cookie(AUTH_REFRESH_COOKIE_NAME, path="/", secure=AUTH_COOKIE_SECURE, samesite="lax", httponly=True)
     clear_csrf_cookie(response)
 
 
@@ -3222,10 +3244,7 @@ def ensure_player_bank_account(conn: Any, minecraft_uuid: str, minecraft_name: s
 
 
 def current_treasury_owner(conn: Any) -> tuple[str, str]:
-    term = active_president_term(conn)
-    owner_uuid = str(term.get("president_uuid") or "")
-    owner_name = str(term.get("president_name") or "")
-    return owner_uuid, owner_name or TREASURY_ACCOUNT_LABEL
+    return "", TREASURY_ACCOUNT_LABEL
 
 
 def ensure_treasury_bank_account(conn: Any) -> dict[str, Any]:
@@ -3249,8 +3268,14 @@ def player_is_site_admin(account: dict[str, Any]) -> bool:
     username = str(account.get("username") or "").strip()
     if not username:
         return False
-    _, meta = resolve_admin_user(username)
-    return bool(meta)
+    real_username, meta = resolve_admin_user(username)
+    if not meta or not bool(meta.get("enabled", True)):
+        return False
+    role = normalize_admin_role(meta.get("role"))
+    if not is_panel_admin_role(role):
+        return False
+    access_ok, _ = minecraft_access_ok(real_username)
+    return access_ok
 
 
 def player_is_active_president(conn: Any, account: dict[str, Any]) -> bool:
@@ -4166,7 +4191,7 @@ def public_president_budget_history_sync(limit: int = 20, offset: int = 0) -> di
             "label": label,
             "amount_ar": int(row["amount"] or 0),
             "public_actor_name": actor_name,
-            "public_target_name": "Президентская казна",
+            "public_target_name": TREASURY_ACCOUNT_LABEL,
             "item_name": details if tx_type in {"AR_SHOP_PURCHASE", "AR_ITEM_REPAIR"} else "",
             "comment": details if tx_type not in {"AR_SHOP_PURCHASE", "AR_ITEM_REPAIR"} else "",
             "created_at": int(row["created_at"] or 0),
@@ -4243,132 +4268,20 @@ def active_president_term(conn: Any) -> dict[str, Any]:
 
 
 def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
-    if not account.get("minecraft_uuid"):
-        return {"linked": False, "president": {}, "laws": [], "tax": None, "paid": 0, "due": 0, "payments": []}
-    with auth_conn() as conn:
-        ensure_v4_schema(conn)
-        president = active_president_term(conn)
-        laws = [dict(r) for r in conn.execute(
-            """
-            SELECT id,text,status,published_at,slot_no
-            FROM president_laws
-            WHERE term_id=%s AND status='PUBLISHED'
-            ORDER BY slot_no ASC,published_at DESC
-            LIMIT 5
-            """,
-            (president.get("id") or "",),
-        ).fetchall()] if president else []
-        tax_row = conn.execute(
-            """
-            SELECT id,term_id,amount,status,created_at,created_by
-            FROM president_taxes
-            WHERE term_id=%s AND status='ACTIVE'
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (president.get("id") or "",),
-        ).fetchone() if president else None
-        tax = dict(tax_row) if tax_row else None
-        payments: list[dict[str, Any]] = []
-        paid = 0
-        due = 0
-        if tax:
-            payments = [dict(r) for r in conn.execute(
-                """
-                SELECT id,amount,source,created_at,details
-                FROM president_tax_payments
-                WHERE tax_id=%s AND player_uuid=%s
-                ORDER BY created_at DESC
-                LIMIT 30
-                """,
-                (tax["id"], account.get("minecraft_uuid") or ""),
-            ).fetchall()]
-            paid = sum(int(r.get("amount") or 0) for r in payments)
-            due = max(0, int(tax.get("amount") or 0) - paid)
-        conn.commit()
     return {
-        "linked": True,
-        "president": president,
-        "laws": laws,
-        "tax": tax,
-        "paid": paid,
-        "due": due,
-        "payments": payments,
+        "linked": bool(account.get("minecraft_uuid")),
+        "disabled": True,
+        "president": {},
+        "laws": [],
+        "tax": None,
+        "paid": 0,
+        "due": 0,
+        "payments": [],
     }
 
 
 def pay_player_election_tax_sync(account: dict[str, Any], data: PlayerElectionTaxPayIn) -> dict[str, Any]:
-    if not account.get("minecraft_uuid"):
-        raise HTTPException(status_code=409, detail="Minecraft account is not linked")
-    with auth_conn() as conn:
-        ensure_v4_schema(conn)
-        president = active_president_term(conn)
-        if not president or not president.get("president_uuid"):
-            raise HTTPException(status_code=409, detail="Сейчас нет активного президентского срока")
-        tax_row = conn.execute(
-            """
-            SELECT id,term_id,amount,status
-            FROM president_taxes
-            WHERE term_id=%s AND status='ACTIVE'
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (president["id"],),
-        ).fetchone()
-        if not tax_row:
-            raise HTTPException(status_code=409, detail="Президентский налог сейчас не установлен")
-        tax = dict(tax_row)
-        already_paid = conn.execute(
-            "SELECT COALESCE(SUM(amount),0) AS paid FROM president_tax_payments WHERE tax_id=%s AND player_uuid=%s",
-            (tax["id"], account.get("minecraft_uuid") or ""),
-        ).fetchone()
-        due = max(0, int(tax.get("amount") or 0) - int((already_paid or {}).get("paid") or 0))
-        if due <= 0:
-            raise HTTPException(status_code=409, detail="Налог уже оплачен")
-        verify_bank_pin(conn, account, data.pin)
-        president_bank = ensure_player_bank_account(
-            conn,
-            str(president.get("president_uuid") or ""),
-            str(president.get("president_name") or ""),
-        )
-        bank = ensure_player_bank_account(conn, str(account.get("minecraft_uuid") or ""), str(account.get("minecraft_name") or ""))
-        from_locked, president_locked = lock_bank_accounts_ordered(conn, str(bank["account_id"]), str(president_bank["account_id"]))
-        now = now_ts()
-        amount = min(int(data.amount), due, int(from_locked["balance"] or 0))
-        if amount <= 0:
-            raise HTTPException(status_code=409, detail="Недостаточно средств")
-        from_after = int(from_locked["balance"] or 0) - amount
-        president_after = int(president_locked["balance"] or 0) + amount
-        tx_id = secrets.token_hex(18)
-        note = json.dumps(
-            {
-                "scope": "president_tax",
-                "tax_id": tax["id"],
-                "term_id": president["id"],
-                "recipient_uuid": president.get("president_uuid") or "",
-            },
-            ensure_ascii=False,
-        )
-        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (from_after, now, from_locked["account_id"]))
-        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (president_after, now, president_locked["account_id"]))
-        conn.execute(
-            "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR','COMMITTED',%s,%s,%s)",
-            (tx_id, from_locked["account_id"], president_locked["account_id"], amount, now, account.get("username") or "", note),
-        )
-        conn.execute(
-            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'TAX_OUT',%s,%s,'COMMITTED',%s,%s,%s)",
-            (tx_id + ":out", from_locked["account_id"], president_locked["account_id"], account.get("minecraft_uuid") or "", amount, from_after, now, account.get("username") or "", note),
-        )
-        conn.execute(
-            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'TAX_IN',%s,%s,'COMMITTED',%s,%s,%s)",
-            (tx_id + ":in", president_locked["account_id"], from_locked["account_id"], account.get("minecraft_uuid") or "", amount, president_after, now, account.get("username") or "", note),
-        )
-        conn.execute(
-            "INSERT INTO president_tax_payments(id,tax_id,player_uuid,player_name,amount,source,created_at,details) VALUES(%s,%s,%s,%s,%s,'SITE_BANK',%s,%s)",
-            (f"site_tax_{secrets.token_hex(12)}", tax["id"], account.get("minecraft_uuid") or "", account.get("minecraft_name") or "", amount, now, note),
-        )
-        conn.commit()
-    return {"ok": True, "amount": amount, "balance": from_after, "remaining": max(0, due - amount), "taxId": tax["id"]}
+    raise HTTPException(status_code=410, detail="Президентский налог отключён")
 
 
 def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[str, Any]:
@@ -5425,7 +5338,6 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 active_term_id = str((president_rows[0] or {}).get("id") or "") if president_rows else ""
                 laws = [dict(r) for r in conn.execute("SELECT * FROM president_laws WHERE term_id=%s AND status='PUBLISHED' ORDER BY slot_no ASC,published_at DESC LIMIT %s", (active_term_id, limit)).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
                 pending_laws = [dict(r) for r in conn.execute("SELECT * FROM president_laws WHERE term_id=%s AND status='PENDING' ORDER BY created_at DESC LIMIT %s", (active_term_id, limit)).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
-                taxes = [dict(r) for r in conn.execute("SELECT * FROM president_taxes WHERE term_id=%s AND status='ACTIVE' ORDER BY created_at DESC LIMIT %s", (active_term_id, limit)).fetchall()] if active_term_id and pg_table_exists(conn, "president_taxes") else []
                 decrees = [dict(r) for r in conn.execute("SELECT * FROM election_decrees ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()]
                 petitions = [dict(r) for r in conn.execute("SELECT * FROM election_petitions ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()]
                 audit = [dict(r) for r in conn.execute("SELECT actor,action,created_at,details FROM admin_actions WHERE action ILIKE 'election.%' ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "admin_actions") else []
@@ -5448,7 +5360,7 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 "ballots_annulled": row.get("ballots_annulled"),
             } for row in polling_stations]
             return {
-                "source": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallback": admin_plugin_db_location(admin_plugin_db_path())},
+                "source": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallbackDisabled": True},
                 "connected": True,
                 "election": safe_election,
                 "settings": {},
@@ -5467,7 +5379,7 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 "audit": audit,
                 "laws": laws,
                 "pendingLaws": pending_laws,
-                "taxes": taxes,
+                "taxes": [],
                 "decrees": decrees,
                 "petitions": petitions,
                 "antiFraud": [],
@@ -5489,100 +5401,58 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                     "suspicious": 0,
                     "laws": len(laws),
                     "pendingLaws": len(pending_laws),
-                    "taxes": len(taxes),
+                    "taxes": 0,
                     "decrees": len(decrees),
                     "petitions": len(petitions),
                 },
             }
         except Exception:
             pass
-    path = admin_plugin_db_path()
-    if not admin_plugin_db_available(path):
-        return {"source": admin_plugin_db_location(path), "connected": False}
-    with open_sqlite_readonly(str(path)) as conn:
-        election = None
-        if sqlite_has_table(conn, "elections"):
-            active = safe_sqlite_rows(conn, "elections", "upper(coalesce(status,'')) in ('ACTIVE','PAUSED')", [], "coalesce(started_at,0) desc", 1)
-            latest = active or safe_sqlite_rows(conn, "elections", "", [], "coalesce(started_at,0) desc,rowid desc", 1)
-            election = latest[0] if latest else None
-        eid = str(election.get("id")) if election and election.get("id") is not None else ""
-        by_election = "election_id=?" if eid else ""
-        params = [eid] if eid else []
-        candidates = safe_sqlite_rows(conn, "candidates", by_election, params, "coalesce(removed,0) asc,(coalesce(raw_votes,0)+coalesce(admin_adjustment,0)) desc,name collate nocase asc", limit) if eid else []
-        sessions = safe_sqlite_rows(conn, "cmv731_vote_sessions", by_election, params, "updated_at desc", limit) if eid else []
-        ballots = safe_sqlite_rows(conn, "cmv7_ballot_issues", by_election, params, "issued_at desc", limit) if eid else []
-        applications = safe_sqlite_rows(conn, "applications", by_election, params, "submitted_at desc", limit) if eid else []
-        application_issues = safe_sqlite_rows(conn, "cmv7_application_issues", by_election, params, "issued_at desc", limit) if eid and sqlite_has_table(conn, "cmv7_application_issues") else []
-        curators = safe_sqlite_rows(conn, "cmv7_election_curators", by_election, params, "active desc,added_at desc", limit) if eid else []
-        settings_rows = safe_sqlite_rows(conn, "cmv7_election_settings", by_election, params, "", 1) if eid else []
-        settings = settings_rows[0] if settings_rows else {}
-        president = safe_sqlite_rows(conn, "cmv7_president_state", "active=1", [], "assigned_at desc,id desc", 1)
-        audit = safe_sqlite_rows(conn, "cmv7_audit", "", [], "time desc,id desc", limit)
-        polling_stations = safe_sqlite_rows(conn, "cmv7_polling_stations", by_election, params, "active desc,created_at desc,id desc", limit) if eid and sqlite_has_table(conn, "cmv7_polling_stations") else []
-        vote_deposits: list[dict[str, Any]] = []
-        if eid and sqlite_has_table(conn, "cmv731_votes"):
-            try:
-                vote_deposits = rows_to_dicts(conn.execute(
-                    "select coalesce(station_id,'inventory') as station_id, count(*) as votes, max(time) as last_time "
-                    "from cmv731_votes where election_id=? group by coalesce(station_id,'inventory') "
-                    "order by votes desc,last_time desc limit ?",
-                    [eid, max(1, min(limit, 1000))],
-                ).fetchall())
-            except Exception:
-                vote_deposits = []
-    total_votes = sum(int(x.get("raw_votes") or 0) + int(x.get("admin_adjustment") or 0) for x in candidates)
-    anti_fraud: list[dict[str, Any]] = []
-    safe_polling_stations = [{
-        "id": row.get("id"),
-        "world": row.get("world"),
-        "x": row.get("x"),
-        "y": row.get("y"),
-        "z": row.get("z"),
-        "active": row.get("active"),
-    } for row in polling_stations]
-    safe_election = sanitize_election_row_public_admin(election or {})
-    safe_president = sanitize_election_row_public_admin(president[0] if president else {})
-    safe_ballots = [sanitize_ballot_admin_row(row) for row in ballots]
-    safe_applications = [sanitize_application_admin_row(row) for row in applications]
     return {
-        "source": admin_plugin_db_location(path),
-        "connected": True,
-        "election": safe_election,
-        "settings": settings,
-        "president": safe_president,
-        "candidates": candidates,
-        "results": [{"name": x.get("name"), "votes": int(x.get("raw_votes") or 0) + int(x.get("admin_adjustment") or 0)} for x in candidates],
-        "turnout": {
-            "issued_ballots": len(ballots),
-            "confirmed_ballots": len([x for x in ballots if int(x.get("used") or 0) == 0]),
-            "deposited_ballots": sum(int(x.get("votes") or 0) for x in vote_deposits),
-        },
+        "source": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallbackDisabled": True},
+        "connected": False,
+        "election": {},
+        "settings": {},
+        "president": {},
+        "candidates": [],
+        "results": [],
+        "turnout": {"issued_ballots": 0, "confirmed_ballots": 0, "deposited_ballots": 0},
         "votes": [],
-        "sessions": sessions,
-        "ballots": safe_ballots,
-        "applications": safe_applications,
-        "applicationIssues": application_issues,
-        "curators": curators,
-        "pollingStations": safe_polling_stations,
-        "voteDeposits": vote_deposits,
-        "audit": audit,
-        "antiFraud": anti_fraud,
+        "sessions": [],
+        "ballots": [],
+        "applications": [],
+        "applicationIssues": [],
+        "curators": [],
+        "pollingStations": [],
+        "voteDeposits": [],
+        "audit": [],
+        "laws": [],
+        "pendingLaws": [],
+        "taxes": [],
+        "decrees": [],
+        "petitions": [],
+        "antiFraud": [],
         "summary": {
-            "electionId": eid,
-            "candidateCount": len(candidates),
-            "voteRows": sum(int(x.get("votes") or 0) for x in vote_deposits),
-            "ballotsIssued": len(safe_ballots),
-            "ballotsUsed": sum(1 for x in safe_ballots if int(x.get("submitted_at") or 0) > 0),
-            "applications": len(safe_applications),
-            "applicationIssues": len(application_issues),
-            "applicationIssuesOpen": len([x for x in application_issues if int(x.get("used") or 0) == 0 and int(x.get("annulled") or 0) == 0]),
-            "applicationIssuesAnnulled": len([x for x in application_issues if int(x.get("annulled") or 0) > 0]),
-            "curators": len([x for x in curators if int(x.get("active") or 0) > 0]),
-            "pollingStations": len(safe_polling_stations),
-            "activePollingStations": len([x for x in safe_polling_stations if int(x.get("active") or 0) > 0]),
-            "voteDeposits": sum(int(x.get("votes") or 0) for x in vote_deposits),
-            "totalVotes": total_votes,
-            "suspicious": len(anti_fraud),
+            "electionId": "",
+            "candidateCount": 0,
+            "voteRows": 0,
+            "ballotsIssued": 0,
+            "ballotsUsed": 0,
+            "applications": 0,
+            "applicationIssues": 0,
+            "applicationIssuesOpen": 0,
+            "applicationIssuesAnnulled": 0,
+            "curators": 0,
+            "pollingStations": 0,
+            "activePollingStations": 0,
+            "voteDeposits": 0,
+            "totalVotes": 0,
+            "suspicious": 0,
+            "laws": 0,
+            "pendingLaws": 0,
+            "taxes": 0,
+            "decrees": 0,
+            "petitions": 0,
         },
     }
 
@@ -5936,6 +5806,35 @@ def read_server_properties() -> dict[str, str]:
         k, v = line.split("=", 1)
         result[k] = v
     return result
+
+
+def sha1_file_hex(path: Path) -> str:
+    digest = hashlib.sha1()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def read_managed_resourcepack_sha1() -> str:
+    if MANAGED_RESOURCEPACK_SHA1_FILE.exists():
+        saved = MANAGED_RESOURCEPACK_SHA1_FILE.read_text(encoding="utf-8", errors="replace").strip().lower()
+        if saved:
+            return saved
+    if not MANAGED_RESOURCEPACK_ZIP.exists():
+        raise HTTPException(status_code=404, detail="Локальный CopiMineResourcePack.zip не найден")
+    return sha1_file_hex(MANAGED_RESOURCEPACK_ZIP)
+
+
+def validate_managed_resourcepack_apply(url: str, sha1: str) -> tuple[str, str]:
+    normalized_url = (url or "").strip() or MANAGED_RESOURCEPACK_URL
+    if normalized_url != MANAGED_RESOURCEPACK_URL:
+        raise HTTPException(status_code=400, detail="Разрешён только официальный URL CopiMine resource pack")
+    managed_sha1 = read_managed_resourcepack_sha1()
+    requested_sha1 = (sha1 or "").strip().lower()
+    if requested_sha1 and requested_sha1 != managed_sha1:
+        raise HTTPException(status_code=400, detail="SHA1 не совпадает с локально собранным CopiMineResourcePack.zip")
+    return normalized_url, managed_sha1
 
 
 def public_site_config_sync() -> dict[str, Any]:
@@ -7421,6 +7320,59 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
     }
 
 
+@app.post("/api/session/login")
+async def session_login(data: PlayerLoginIn, request: Request, response: Response) -> dict[str, Any]:
+    username = data.username.strip()
+    check_rate_limit(request, "session-login-ip", limit=20, window_seconds=300)
+    assert_not_locked(request, "session:" + username)
+
+    real_username, meta = resolve_admin_user(username)
+    if meta and bool(meta.get("enabled", True)) and verify_password_hash(str(meta.get("password_hash", "")), data.password):
+        access_ok, access_errors = minecraft_access_ok(real_username)
+        if not access_ok:
+            register_failed_login(request, "session:" + username)
+            audit_event(username, "auth.session_login", status="blocked", details={"reason": access_errors})
+            raise HTTPException(status_code=403, detail="Доступ запрещён: " + "; ".join(access_errors))
+        role = normalize_admin_role(meta.get("role"))
+        if not is_panel_admin_role(role):
+            register_failed_login(request, "session:" + username)
+            raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
+        clear_failed_login(request, "session:" + username)
+        access_token, refresh_token = issue_admin_auth_pair(real_username, role, request)
+        set_auth_cookies(response, access_token, refresh_token)
+        audit_event(real_username, "auth.session_login", status="ok", details={"role": role, "ip": get_client_ip(request)})
+        return {
+            "username": real_username,
+            "role": role,
+            "fullAccess": is_full_admin_role(role),
+            "owner": role == "owner",
+            "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
+            "cookieAuth": True,
+        }
+
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        account = player_account_by_username(conn, username)
+        if account and bool(int(account.get("enabled") or 0)) and verify_password_hash(str(account.get("password_hash") or ""), data.password):
+            conn.execute("UPDATE site_accounts SET last_login_at=%s WHERE id=%s", (now_ts(), account["id"]))
+            conn.execute(
+                "INSERT INTO auth_effects_disable_audit(actor,target_uuid,created_at,details) VALUES(%s,%s,%s,%s)",
+                (username, str(account.get("minecraft_uuid") or ""), now_ts(), "session login passed staged auth/runtime checks"),
+            )
+            conn.commit()
+            clear_failed_login(request, "session:" + username)
+            pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
+            access_token, refresh_token = issue_player_auth_pair(account, request)
+            set_auth_cookies(response, access_token, refresh_token)
+            account["last_login_at"] = now_ts()
+            audit_event(username, "auth.session_login", status="ok", details={"role": "player", "ip": get_client_ip(request)})
+            return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
+
+    register_failed_login(request, "session:" + username)
+    audit_event(username, "auth.session_login", status="failed", details={"ip": get_client_ip(request)})
+    raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+
+
 @app.get("/api/auth/csrf")
 async def auth_csrf(response: Response) -> dict[str, Any]:
     set_csrf_cookie(response)
@@ -7458,6 +7410,49 @@ async def logout(request: Request, response: Response, authorization: str = Head
     clear_auth_cookies(response)
     audit_event(actor or "unknown", "auth.logout")
     return {"ok": True}
+
+
+@app.get("/api/session/me")
+async def session_me(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
+    token = request_auth_token(request, authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Нужна авторизация")
+    payload = verify_token(token)
+    role = str(payload.get("role") or "").strip().lower()
+    if role == "player":
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            account = player_account_by_id(conn, str(payload.get("sub") or ""))
+            if not bool(int(account.get("enabled") or 0)):
+                raise HTTPException(status_code=403, detail="Аккаунт игрока отключён")
+            conn.commit()
+        return {
+            "authenticated": True,
+            "kind": "player",
+            "role": "player",
+            "username": str(account.get("username") or ""),
+            "homeRoute": "cabinet",
+            "account": public_player_account(account),
+        }
+    username = str(payload.get("sub") or "")
+    real_username, meta = resolve_admin_user(username)
+    if not meta or not bool(meta.get("enabled", True)):
+        raise HTTPException(status_code=403, detail="Доступ к админке отозван")
+    current_role = normalize_admin_role(meta.get("role"))
+    if not is_panel_admin_role(current_role):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
+    access_ok, access_errors = minecraft_access_ok(real_username)
+    if not access_ok:
+        raise HTTPException(status_code=403, detail="Minecraft-доступ отозван: " + "; ".join(access_errors))
+    return {
+        "authenticated": True,
+        "kind": "panel",
+        "role": current_role,
+        "username": real_username,
+        "homeRoute": "dashboard",
+        "fullAccess": is_full_admin_role(current_role),
+        "owner": current_role == "owner",
+    }
 
 
 @app.get("/api/auth/me")
@@ -7535,6 +7530,37 @@ async def public_president_skin_body(uuid: str = Query(default="")) -> Response:
 @app.get("/api/public/modpack")
 async def public_modpack() -> dict[str, Any]:
     return {"ok": True, "data": await bg(public_modpack_sync)}
+
+
+@app.get("/api/public/shop/ar-items")
+async def public_ar_shop_catalog() -> dict[str, Any]:
+    catalog = await bg(ar_catalog_snapshot_sync)
+    items: list[dict[str, Any]] = []
+    for row in catalog.get("items", [])[:12]:
+        item = dict(row)
+        item.pop("lore", None)
+        items.append(item)
+    return {"ok": True, "data": {"count": len(catalog.get("items", [])), "items": items}}
+
+
+@app.get("/api/public/shop/donation-items")
+async def public_donation_shop_catalog() -> dict[str, Any]:
+    catalog = await bg(donation_catalog_snapshot_sync)
+    items: list[dict[str, Any]] = []
+    for row in catalog.get("items", [])[:12]:
+        item = dict(row)
+        item["item_url"] = donation_item_page_url(str(item.get("item_id") or ""))
+        item.pop("lore", None)
+        items.append(item)
+    return {
+        "ok": True,
+        "data": {
+            "catalogVersion": catalog.get("catalogVersion", 0),
+            "updatedAt": catalog.get("updatedAt", 0),
+            "count": len(catalog.get("items", [])),
+            "items": items,
+        },
+    }
 
 
 @app.post("/api/player/register")
@@ -7671,12 +7697,12 @@ async def player_bank_treasury(account: dict[str, Any] = Depends(require_player)
 
 @app.get("/api/player/elections/tax")
 async def player_elections_tax(account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
-    return await bg(player_election_tax_profile_sync, account)
+    raise HTTPException(status_code=410, detail="Президентский налог отключён")
 
 
 @app.post("/api/player/elections/tax/pay")
 async def player_elections_tax_pay(data: PlayerElectionTaxPayIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
-    return await bg(pay_player_election_tax_sync, account, data)
+    raise HTTPException(status_code=410, detail="Президентский налог отключён")
 
 
 @app.get("/api/status")
@@ -7772,7 +7798,17 @@ async def server_properties(_: str = Depends(require_admin)) -> dict[str, Any]:
 
 
 @app.patch("/api/server/properties")
-async def patch_server_properties(data: PropertiesPatchIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+async def patch_server_properties(
+    data: PropertiesPatchIn,
+    request: Request,
+    context: dict[str, Any] = Depends(require_panel_admin_context),
+) -> dict[str, Any]:
+    if not bool(context.get("fullAccess")):
+        raise HTTPException(status_code=403, detail="Нужны полные права администратора")
+    keys = {str(key) for key in data.values.keys()}
+    if keys & OWNER_ONLY_SERVER_PROPERTY_KEYS and normalize_admin_role(context.get("role")) != "owner":
+        raise HTTPException(status_code=403, detail="Эти ключи server.properties доступны только владельцу панели")
+    username = str(context.get("username") or "")
     require_sensitive_confirm(request, "SERVER_PROPERTIES")
     result = await bg(write_server_properties, data.values)
     audit_event(username, "server.properties.patch", target="server.properties", details={"keys": sorted(data.values.keys())})
@@ -8983,7 +9019,7 @@ async def security_admins(_: str = Depends(require_admin)) -> dict[str, Any]:
 
 
 @app.post("/api/security/admins")
-async def security_add_admin(data: AdminAccessIn, request: Request, owner: str = Depends(require_admin)) -> dict[str, Any]:
+async def security_add_admin(data: AdminAccessIn, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_CREATE")
     username = data.username.strip()
     if not valid_minecraft_name(username):
@@ -9011,7 +9047,7 @@ async def security_add_admin(data: AdminAccessIn, request: Request, owner: str =
 
 
 @app.patch("/api/security/admins/{username}")
-async def security_update_admin(username: str, data: AdminUpdateIn, request: Request, owner: str = Depends(require_admin)) -> dict[str, Any]:
+async def security_update_admin(username: str, data: AdminUpdateIn, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_UPDATE")
     if not valid_minecraft_name(username):
         raise HTTPException(status_code=400, detail="Некорректный ник")
@@ -9041,7 +9077,7 @@ async def security_update_admin(username: str, data: AdminUpdateIn, request: Req
 
 
 @app.delete("/api/security/admins/{username}")
-async def security_delete_admin(username: str, request: Request, owner: str = Depends(require_admin)) -> dict[str, Any]:
+async def security_delete_admin(username: str, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_DISABLE")
     result = await bg(remove_or_disable_admin_user, username, owner)
     audit_event(owner, "security.admin.delete", target=username)
@@ -9182,22 +9218,33 @@ def resourcepack_status_sync() -> dict[str, Any]:
     url = props.get("resource-pack", "")
     sha1 = props.get("resource-pack-sha1", "")
     required = props.get("require-resource-pack", "false")
-    local_exists = False
-    local_path = ""
-    if "/resourcepacks/" in url:
-        filename = url.rsplit("/", 1)[-1]
-        p = Path("/var/www/copimine-admin/resourcepacks") / filename
-        local_path = str(p)
-        local_exists = p.exists()
-    return {"url": url, "sha1": sha1, "required": required, "localPath": local_path, "localExists": local_exists}
+    local_exists = MANAGED_RESOURCEPACK_ZIP.exists()
+    local_path = str(MANAGED_RESOURCEPACK_ZIP)
+    local_sha1 = ""
+    if local_exists:
+        try:
+            local_sha1 = read_managed_resourcepack_sha1()
+        except HTTPException:
+            local_sha1 = ""
+    return {
+        "url": url,
+        "sha1": sha1,
+        "required": required,
+        "localPath": local_path,
+        "localExists": local_exists,
+        "managedUrl": MANAGED_RESOURCEPACK_URL,
+        "managedSha1": local_sha1,
+        "sha1MatchesServerProperties": bool(local_sha1) and sha1.lower() == local_sha1.lower(),
+    }
 
 
 def apply_resourcepack_sync(url: str, sha1: str, required: bool, prompt: str) -> dict[str, Any]:
+    managed_url, managed_sha1 = validate_managed_resourcepack_apply(url, sha1)
     values = {
-        "resource-pack": url.strip(),
-        "resource-pack-sha1": sha1.strip(),
+        "resource-pack": managed_url,
+        "resource-pack-sha1": managed_sha1,
         "require-resource-pack": "true" if required else "false",
-        "resource-pack-prompt": json.dumps({"text": prompt, "color": "gray"}, ensure_ascii=False),
+        "resource-pack-prompt": json.dumps({"text": (prompt or "CopiMine resource pack").strip()[:160], "color": "gray"}, ensure_ascii=False),
     }
     return write_server_properties(values)
 
@@ -9279,7 +9326,7 @@ async def resourcepack_status(_: str = Depends(require_admin)) -> dict[str, Any]
 
 
 @app.post("/api/resourcepack/apply")
-async def resourcepack_apply(data: ResourcePackApplyIn, username: str = Depends(require_admin)) -> dict[str, Any]:
+async def resourcepack_apply(data: ResourcePackApplyIn, username: str = Depends(require_owner)) -> dict[str, Any]:
     result = await bg(apply_resourcepack_sync, data.url, data.sha1, data.required, data.prompt)
     audit_event(username, "resourcepack.apply", target="server.properties", details={"urlConfigured": bool(data.url), "sha1Configured": bool(data.sha1), "required": data.required})
     append_panel_event("admin-panel", "resourcepack_changed", actor=username, metadata={"required": data.required}, tags=["server"])
@@ -9333,7 +9380,7 @@ async def plugin_event_ingest(event: PluginEventIn) -> dict[str, Any]:
 
 
 @app.get("/api/events/stream")
-async def events_stream(_: str = Depends(require_admin)) -> StreamingResponse:
+async def events_stream(_: str = Depends(require_panel_admin)) -> StreamingResponse:
     async def generate():
         last_seen_id = ""
         while True:

@@ -1,0 +1,171 @@
+@media (max-width: 1180px) {
+  .public-hero,
+  .modpack-shell,
+  .signin-grid,
+  .commerce-grid,
+  .public-hero-slim {
+    grid-template-columns: 1fr;
+  }
+
+  .public-dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gateway-grid,
+  .info-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .public-panel,
+  .public-panel-wide {
+    grid-column: auto;
+  }
+
+  .modpack-file-grid,
+  .modpack-note-grid,
+  .shop-rail,
+  .public-status-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .top-actions {
+    justify-content: flex-start;
+  }
+
+  .theme-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .public-nav,
+  .public-hero,
+  .public-section {
+    width: min(100%, calc(100vw - 24px));
+  }
+
+  .public-dashboard-grid,
+  .modpack-file-grid,
+  .modpack-note-grid,
+  .shop-rail,
+  .public-status-grid,
+  .gateway-grid,
+  .info-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .public-nav {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 12px;
+  }
+
+  .public-nav .public-brand {
+    min-width: 0;
+  }
+
+  .public-nav .public-mobile-toggle {
+    display: inline-flex !important;
+    justify-self: end;
+  }
+
+  .public-nav nav {
+    display: none !important;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .public-nav.public-nav-open nav {
+    display: grid !important;
+  }
+
+  .public-nav nav > a,
+  .public-nav nav > button {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .public-nav nav > a,
+  .public-nav nav > button {
+    grid-column: 1 / -1;
+  }
+
+  .public-hero,
+  .public-hero-slim,
+  .public-section {
+    width: min(100%, calc(100vw - 20px));
+    padding: 18px;
+    border-radius: 26px;
+  }
+
+  .public-hero-copy h1,
+  .section-head h2,
+  .commerce-panel-head h3,
+  .modpack-summary-copy h3,
+  .public-panel-head h3,
+  .president-card-copy h3 {
+    max-width: none;
+    font-size: clamp(30px, 8.8vw, 44px);
+  }
+
+  .hero-inline-status,
+  .public-actions,
+  .auth-inline-links {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-inline-status {
+    display: grid;
+  }
+
+  .public-actions,
+  .join-aside-actions {
+    flex-direction: column;
+  }
+
+  .public-actions .btn,
+  .commerce-panel-head .btn,
+  .gateway-card .btn,
+  .info-card .btn {
+    width: 100%;
+  }
+
+  .commerce-panel-head {
+    flex-direction: column;
+  }
+
+  .modpack-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modpack-summary-card,
+  .modpack-file-card,
+  .modpack-note-card,
+  .public-panel,
+  .commerce-panel,
+  .login-card,
+  .signin-note-card,
+  .hero-inline-card,
+  .hero-media-copy,
+  .hero-side-card {
+    padding: 18px;
+  }
+
+  .hero-media-art {
+    aspect-ratio: 4 / 3;
+  }
+
+  .signin-grid {
+    gap: 14px;
+  }
+
+  .top-actions {
+    width: 100%;
+  }
+}

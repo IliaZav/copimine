@@ -16,6 +16,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .public-route-board,
+  .public-shop-board,
+  .public-brief-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .public-stage-grid {
     grid-template-columns: 1fr;
   }
@@ -56,7 +62,10 @@
   .shop-rail,
   .public-status-grid,
   .gateway-grid,
-  .info-card-grid {
+  .info-card-grid,
+  .public-route-board,
+  .public-shop-board,
+  .public-brief-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -154,6 +163,10 @@
   }
 
   .commerce-panel-head {
+    flex-direction: column;
+  }
+
+  .public-shop-card-head {
     flex-direction: column;
   }
 

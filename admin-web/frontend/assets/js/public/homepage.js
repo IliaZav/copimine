@@ -18,13 +18,13 @@ function bindCopyIpButton() {
   button.dataset.bound = "true";
   button.addEventListener("click", async () => {
     const ipNode = document.getElementById("serverIpText");
-    const ip = ipNode?.dataset.serverAddress?.trim() || ipNode?.textContent?.trim() || "";
+    const ip = ipNode?.dataset.serverAddress?.trim() || ipNode?.textContent?.trim() || "copimine.ru";
     if (!ip) return;
     try {
       await navigator.clipboard.writeText(ip);
-      button.textContent = "IP скопирован";
+      button.textContent = "Адрес скопирован";
       window.setTimeout(() => {
-        button.textContent = "Скопировать IP";
+        button.textContent = `Скопировать ${ip}`;
       }, 1400);
     } catch (_error) {
       button.textContent = ip;

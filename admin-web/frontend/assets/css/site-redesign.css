@@ -3,9 +3,9 @@
   overflow-x: clip;
   padding: 0 0 56px;
   background:
-    radial-gradient(circle at top left, rgba(153, 194, 151, 0.14), transparent 20%),
-    radial-gradient(circle at top right, rgba(107, 147, 129, 0.12), transparent 18%),
-    linear-gradient(180deg, #f7f2e8 0%, #efe7d8 45%, #ece4d7 100%);
+    radial-gradient(circle at top left, rgba(65, 162, 109, 0.1), transparent 24%),
+    radial-gradient(circle at 88% 8%, rgba(57, 92, 148, 0.12), transparent 20%),
+    linear-gradient(180deg, #eef3f8 0%, #f6f9fc 24%, #dde5ec 100%);
 }
 
 .public-site,
@@ -15,9 +15,9 @@ body {
 
 :root[data-theme="dark"] .public-site {
   background:
-    radial-gradient(circle at top left, rgba(53, 240, 127, 0.14), transparent 20%),
-    radial-gradient(circle at top right, rgba(124, 233, 255, 0.12), transparent 18%),
-    linear-gradient(180deg, #07110b 0%, #09150e 44%, #050d08 100%);
+    radial-gradient(circle at top left, rgba(53, 240, 127, 0.1), transparent 24%),
+    radial-gradient(circle at 86% 10%, rgba(73, 129, 255, 0.12), transparent 18%),
+    linear-gradient(180deg, #081019 0%, #0c1520 46%, #09111a 100%);
 }
 
 .public-site > * {
@@ -47,13 +47,13 @@ body {
   margin-top: 14px;
   padding: 12px 16px;
   border: 1px solid var(--line);
-  border-radius: 28px;
-  background: rgba(251, 247, 239, 0.84);
-  box-shadow: 0 18px 44px rgba(78, 72, 54, 0.09);
+  border-radius: 24px;
+  background: rgba(248, 251, 254, 0.84);
+  box-shadow: 0 18px 40px rgba(25, 41, 56, 0.1);
 }
 
 :root[data-theme="dark"] .public-nav {
-  background: rgba(8, 18, 12, 0.88);
+  background: rgba(9, 16, 26, 0.88);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
 }
 
@@ -112,10 +112,10 @@ body {
   margin-top: 18px;
   padding: 28px;
   border: 1px solid var(--line);
-  border-radius: 36px;
+  border-radius: 28px;
   background:
-    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(246, 239, 228, 0.98)),
-    linear-gradient(135deg, rgba(45, 125, 63, 0.06), transparent 60%);
+    linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(239, 245, 251, 0.98)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.08), transparent 58%);
   box-shadow: var(--shadow);
   color: var(--ink);
 }
@@ -158,7 +158,7 @@ body {
   padding: 6px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
@@ -171,7 +171,7 @@ body {
 }
 
 .public-nav a[aria-current="page"] {
-  background: rgba(45, 125, 63, 0.12);
+  background: rgba(57, 92, 148, 0.12);
   color: var(--accent);
 }
 
@@ -272,17 +272,17 @@ body {
   min-height: 196px;
   padding: 22px;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 20px;
   background:
-    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(248, 242, 233, 0.98)),
-    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 60%);
+    linear-gradient(180deg, rgba(249, 251, 254, 0.98), rgba(240, 245, 251, 0.98)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.06), transparent 58%);
   box-shadow: var(--shadow-soft);
 }
 
 :root[data-theme="dark"] .public-stage-card {
   background:
-    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
-    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+    linear-gradient(180deg, rgba(10, 20, 31, 0.96), rgba(11, 22, 32, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.1), transparent 56%);
 }
 
 .public-stage-card span {
@@ -334,10 +334,10 @@ body {
 .login-card,
 .signin-note-card {
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 20px;
   background:
-    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(248, 242, 233, 0.98)),
-    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 60%);
+    linear-gradient(180deg, rgba(249, 251, 254, 0.98), rgba(240, 245, 251, 0.98)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.06), transparent 58%);
   box-shadow: var(--shadow-soft);
 }
 
@@ -352,8 +352,8 @@ body {
 :root[data-theme="dark"] .login-card,
 :root[data-theme="dark"] .signin-note-card {
   background:
-    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
-    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+    linear-gradient(180deg, rgba(10, 20, 31, 0.96), rgba(11, 22, 32, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
 }
 
 .hero-inline-card {
@@ -399,9 +399,9 @@ body {
   place-items: center;
   padding: 24px;
   background:
-    radial-gradient(circle at 20% 20%, rgba(124, 233, 255, 0.18), transparent 26%),
-    radial-gradient(circle at 80% 72%, rgba(53, 240, 127, 0.16), transparent 30%),
-    linear-gradient(180deg, #182038 0%, #11172a 58%, #0b1020 100%);
+    radial-gradient(circle at 20% 18%, rgba(73, 129, 255, 0.22), transparent 26%),
+    radial-gradient(circle at 80% 72%, rgba(53, 240, 127, 0.16), transparent 28%),
+    linear-gradient(180deg, #0e1828 0%, #101a2b 58%, #132336 100%);
 }
 
 :root[data-theme="dark"] .hero-media-art.brand-title-stage {
@@ -545,11 +545,39 @@ body {
   display: grid;
   gap: 22px;
   margin-top: 24px;
-  padding: 30px;
+  padding: 28px;
   border: 1px solid var(--line);
-  border-radius: 34px;
-  background: color-mix(in srgb, var(--surface) 92%, white 8%);
-  box-shadow: 0 18px 40px rgba(12, 37, 24, 0.08);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, #05080d 0%, #090d14 100%),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
+  box-shadow: 0 26px 56px rgba(8, 14, 22, 0.26);
+}
+
+.public-ops-section {
+  position: relative;
+  overflow: hidden;
+}
+
+.public-ops-section::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  background: linear-gradient(180deg, rgba(47, 214, 107, 0.96), rgba(23, 50, 33, 0.7));
+  pointer-events: none;
+}
+
+.public-ops-notes {
+  background:
+    linear-gradient(180deg, #05080d 0%, #090d14 100%),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
+}
+
+:root[data-theme="dark"] .public-ops-notes {
+  background:
+    linear-gradient(180deg, #05080d 0%, #090d14 100%),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
 }
 
 .gateway-grid,
@@ -564,21 +592,21 @@ body {
   display: grid;
   gap: 12px;
   align-content: start;
-  min-height: 280px;
+  min-height: 240px;
   padding: 22px;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 20px;
   background:
-    linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(248, 242, 233, 0.98)),
-    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 60%);
+    linear-gradient(180deg, rgba(249, 251, 254, 0.98), rgba(240, 245, 251, 0.98)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.05), transparent 58%);
   box-shadow: var(--shadow-soft);
 }
 
 :root[data-theme="dark"] .gateway-card,
 :root[data-theme="dark"] .info-card {
   background:
-    linear-gradient(180deg, rgba(9, 20, 13, 0.96), rgba(10, 23, 14, 0.98)),
-    linear-gradient(135deg, rgba(53, 240, 127, 0.06), transparent 58%);
+    linear-gradient(180deg, rgba(10, 20, 31, 0.96), rgba(11, 22, 32, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
 }
 
 .gateway-card strong,
@@ -604,7 +632,9 @@ body {
 }
 
 :root[data-theme="dark"] .public-section {
-  background: rgba(7, 18, 11, 0.72);
+  background:
+    linear-gradient(180deg, #05080d 0%, #090d14 100%),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
 }
 
 .section-head {
@@ -614,7 +644,7 @@ body {
 }
 
 .section-head span {
-  color: var(--muted);
+  color: #8bd3ff;
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -625,6 +655,11 @@ body {
   font-size: clamp(30px, 4vw, 48px);
   line-height: 0.98;
   text-wrap: balance;
+  color: #f6fbff;
+}
+
+.section-head p {
+  color: rgba(234, 243, 251, 0.72);
 }
 
 .public-dashboard-grid {
@@ -671,6 +706,7 @@ body {
 .shop-item-chip {
   display: grid;
   gap: 10px;
+  min-width: 0;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -708,6 +744,26 @@ body {
 
 .president-panel {
   align-content: space-between;
+}
+
+body[data-page-kind="public-server"] .public-hero-copy h1 {
+  max-width: 11ch;
+}
+
+body[data-page-kind="public-server"] .public-dashboard-grid > .public-panel,
+body[data-page-kind="public-server"] .public-dashboard-grid > .president-panel,
+body[data-page-kind="public-server"] .public-dashboard-grid > .treasury-panel {
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(240, 245, 251, 0.99)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.08), transparent 55%);
+}
+
+:root[data-theme="dark"] body[data-page-kind="public-server"] .public-dashboard-grid > .public-panel,
+:root[data-theme="dark"] body[data-page-kind="public-server"] .public-dashboard-grid > .president-panel,
+:root[data-theme="dark"] body[data-page-kind="public-server"] .public-dashboard-grid > .treasury-panel {
+  background:
+    linear-gradient(180deg, rgba(10, 20, 31, 0.95), rgba(9, 17, 28, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.09), transparent 58%);
 }
 
 .president-card-copy {
@@ -1038,7 +1094,7 @@ body {
 
 .public-hero {
   box-shadow:
-    0 28px 70px rgba(57, 61, 41, 0.12),
+    0 28px 70px rgba(23, 37, 50, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
@@ -1070,13 +1126,13 @@ body {
 .treasury-history-card:hover,
 .shop-item-chip:hover {
   transform: translateY(-3px);
-  box-shadow: 0 20px 44px rgba(24, 36, 25, 0.11);
+  box-shadow: 0 20px 44px rgba(23, 37, 50, 0.11);
   border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
 }
 
 .public-actions .btn,
 .commerce-panel-head .btn {
-  box-shadow: 0 12px 22px rgba(24, 36, 25, 0.08);
+  box-shadow: 0 12px 22px rgba(23, 37, 50, 0.08);
 }
 
 .public-actions .btn:hover,
@@ -1088,14 +1144,14 @@ body {
   padding: clamp(20px, 2.4vw, 30px);
   border-radius: 28px;
   background:
-    radial-gradient(circle at 18% 18%, rgba(72, 164, 108, 0.18), transparent 24%),
-    linear-gradient(180deg, rgba(241, 247, 239, 0.94), rgba(231, 240, 232, 0.96));
+    radial-gradient(circle at 18% 18%, rgba(73, 129, 255, 0.18), transparent 24%),
+    linear-gradient(180deg, rgba(231, 238, 247, 0.96), rgba(217, 229, 241, 0.98));
 }
 
 .brand-banner-card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(243, 249, 242, 0.9)),
-    linear-gradient(135deg, rgba(45, 125, 63, 0.08), transparent 54%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(235, 243, 249, 0.92)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.08), transparent 54%);
 }
 
 .brand-banner-card img {
@@ -1118,17 +1174,508 @@ body {
 
 :root[data-theme="dark"] .public-nav a:not(.public-brand):hover,
 :root[data-theme="dark"] .public-nav a:not(.public-brand):focus-visible {
-  background: rgba(53, 240, 127, 0.08);
+  background: rgba(73, 129, 255, 0.12);
 }
 
 :root[data-theme="dark"] .hero-media-art.brand-title-stage {
   background:
-    radial-gradient(circle at 18% 18%, rgba(53, 240, 127, 0.16), transparent 24%),
-    linear-gradient(180deg, rgba(10, 24, 15, 0.9), rgba(8, 20, 13, 0.96));
+    radial-gradient(circle at 18% 18%, rgba(73, 129, 255, 0.2), transparent 24%),
+    linear-gradient(180deg, rgba(11, 20, 31, 0.94), rgba(10, 18, 27, 0.98));
 }
 
 :root[data-theme="dark"] .brand-banner-card {
   background:
-    linear-gradient(180deg, rgba(12, 27, 19, 0.88), rgba(10, 21, 15, 0.94)),
-    linear-gradient(135deg, rgba(53, 240, 127, 0.08), transparent 54%);
+    linear-gradient(180deg, rgba(13, 24, 37, 0.9), rgba(11, 20, 31, 0.96)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.1), transparent 54%);
+}
+
+.public-home-hero .public-hero-copy h1 {
+  max-width: 9ch;
+}
+
+.hero-media-card-title .hero-media-copy strong {
+  max-width: 14ch;
+}
+
+.hero-side-card-compact {
+  align-content: start;
+}
+
+.public-actions-tight {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.hero-side-note {
+  display: grid;
+  gap: 8px;
+}
+
+.hero-side-note strong {
+  margin: 0;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 0.96;
+  letter-spacing: -0.03em;
+}
+
+.hero-side-note p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.public-route-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.public-route-card,
+.public-shop-card,
+.public-brief-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(249, 251, 254, 0.98), rgba(240, 245, 251, 0.98)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.05), transparent 58%);
+  box-shadow: var(--shadow-soft);
+}
+
+:root[data-theme="dark"] .public-route-card,
+:root[data-theme="dark"] .public-shop-card,
+:root[data-theme="dark"] .public-brief-card {
+  background:
+    linear-gradient(180deg, rgba(10, 20, 31, 0.96), rgba(11, 22, 32, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
+}
+
+.public-route-card strong,
+.public-shop-card h3,
+.public-brief-card strong {
+  margin: 0;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-size: clamp(28px, 3.8vw, 40px);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.public-route-card p,
+.public-shop-card p,
+.public-brief-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.public-route-card .btn,
+.public-shop-card .btn {
+  width: fit-content;
+  margin-top: auto;
+}
+
+.public-route-card-server {
+  background:
+    linear-gradient(180deg, rgba(239, 246, 251, 0.98), rgba(230, 239, 248, 0.98)),
+    linear-gradient(135deg, rgba(52, 118, 191, 0.08), transparent 58%);
+}
+
+.public-route-card-shop {
+  background:
+    linear-gradient(180deg, rgba(244, 249, 246, 0.98), rgba(233, 242, 237, 0.98)),
+    linear-gradient(135deg, rgba(43, 142, 90, 0.08), transparent 58%);
+}
+
+.public-route-card-client {
+  background:
+    linear-gradient(180deg, rgba(238, 243, 250, 0.98), rgba(227, 235, 246, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 58%);
+}
+
+.public-route-card-auth {
+  background:
+    linear-gradient(180deg, rgba(247, 249, 252, 0.98), rgba(237, 242, 247, 0.98)),
+    linear-gradient(135deg, rgba(27, 38, 55, 0.06), transparent 58%);
+}
+
+.public-shop-board,
+.public-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.public-shop-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.public-shop-card-head > div {
+  display: grid;
+  gap: 10px;
+}
+
+.public-shop-card-ar {
+  background:
+    linear-gradient(180deg, rgba(240, 246, 252, 0.98), rgba(228, 236, 246, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 58%);
+}
+
+.public-shop-card-donation {
+  background:
+    linear-gradient(180deg, rgba(243, 249, 245, 0.98), rgba(232, 241, 236, 0.98)),
+    linear-gradient(135deg, rgba(43, 142, 90, 0.08), transparent 58%);
+}
+
+.public-brief-card {
+  min-height: 0;
+}
+
+.public-brief-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="dark"] .public-route-card-server,
+:root[data-theme="dark"] .public-route-card-shop,
+:root[data-theme="dark"] .public-route-card-client,
+:root[data-theme="dark"] .public-route-card-auth,
+:root[data-theme="dark"] .public-shop-card-ar,
+:root[data-theme="dark"] .public-shop-card-donation {
+  background:
+    linear-gradient(180deg, rgba(11, 20, 31, 0.96), rgba(10, 18, 27, 0.98)),
+    linear-gradient(135deg, rgba(73, 129, 255, 0.08), transparent 56%);
+}
+
+/* Direction override: bright foyer + dark stage sections */
+.public-site {
+  background:
+    radial-gradient(circle at 10% 6%, rgba(129, 168, 214, 0.22), transparent 22%),
+    radial-gradient(circle at 92% 18%, rgba(53, 239, 127, 0.12), transparent 18%),
+    linear-gradient(180deg, #e8eef5 0%, #f4f7fb 22%, #dfe7ef 100%);
+}
+
+.public-site .public-nav {
+  border-color: rgba(106, 126, 147, 0.14);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 20px 48px rgba(18, 28, 40, 0.1);
+}
+
+.public-site .public-hero {
+  border-color: rgba(106, 126, 147, 0.16);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(92, 145, 234, 0.12), transparent 24%),
+    radial-gradient(circle at 18% 100%, rgba(53, 239, 127, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(235, 242, 249, 0.98));
+  box-shadow:
+    0 34px 80px rgba(15, 24, 38, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.public-site .public-hero-copy h1 {
+  max-width: 9ch;
+  color: #14212b;
+  font-size: clamp(50px, 6vw, 88px);
+  letter-spacing: -0.065em;
+}
+
+.public-site .public-hero-copy p,
+.public-site .hero-media-copy p,
+.public-site .hero-side-note p,
+.public-site .hero-check-list,
+.public-site .hero-inline-card strong {
+  color: #50616f;
+}
+
+.public-site .hero-kicker,
+.public-site .route-chip,
+.public-site .hero-inline-card span,
+.public-site .brand-banner-copy span {
+  color: #556674;
+}
+
+.public-site .hero-inline-card,
+.public-site .hero-side-card,
+.public-site .brand-banner-card,
+.public-site .hero-media-card,
+.public-site .modpack-stat {
+  border-color: rgba(124, 145, 170, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(241, 246, 252, 0.92));
+}
+
+.public-site .hero-media-art.brand-title-stage {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(104, 148, 255, 0.22), transparent 24%),
+    radial-gradient(circle at 84% 78%, rgba(53, 239, 127, 0.12), transparent 26%),
+    linear-gradient(180deg, #edf3fb 0%, #dde7f3 100%);
+}
+
+.public-site .public-section {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(96, 117, 144, 0.18) !important;
+  background:
+    radial-gradient(circle at 88% 16%, rgba(98, 141, 233, 0.18), transparent 22%),
+    radial-gradient(circle at 0% 100%, rgba(53, 239, 127, 0.09), transparent 24%),
+    linear-gradient(180deg, #070b11 0%, #0e131d 100%) !important;
+  box-shadow: 0 28px 70px rgba(8, 12, 18, 0.34);
+}
+
+.public-site .public-section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.public-site .public-section::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 36%),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.02), transparent 42%);
+  pointer-events: none;
+}
+
+.public-site .section-head {
+  gap: 12px;
+  max-width: 720px;
+}
+
+.public-site .section-head span {
+  color: #89d2ff !important;
+}
+
+.public-site .section-head h2 {
+  color: #f7fbff !important;
+  text-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.public-site .section-head p {
+  color: rgba(229, 238, 246, 0.72) !important;
+}
+
+.public-site .public-route-card,
+.public-site .public-shop-card,
+.public-site .public-brief-card,
+.public-site .public-panel,
+.public-site .commerce-panel,
+.public-site .modpack-summary-card,
+.public-site .modpack-file-card,
+.public-site .modpack-note-card,
+.public-site .showcase-card,
+.public-site .treasury-history-card,
+.public-site .shop-item-chip {
+  border-color: rgba(126, 146, 171, 0.16) !important;
+  background:
+    linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(238, 244, 251, 0.99)) !important;
+  box-shadow:
+    0 18px 42px rgba(6, 10, 18, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.public-site .public-route-card strong,
+.public-site .public-shop-card h3,
+.public-site .public-brief-card strong,
+.public-site .public-panel h3,
+.public-site .public-panel strong,
+.public-site .modpack-summary-copy h3,
+.public-site .modpack-file-card strong,
+.public-site .modpack-note-card strong,
+.public-site .showcase-card strong,
+.public-site .shop-item-chip strong {
+  color: #101923;
+}
+
+.public-site .public-route-card p,
+.public-site .public-shop-card p,
+.public-site .public-brief-card p,
+.public-site .public-panel p,
+.public-site .modpack-summary-card p,
+.public-site .modpack-file-card p,
+.public-site .modpack-note-card p,
+.public-site .showcase-card p,
+.public-site .shop-item-chip p,
+.public-site .treasury-history-card p {
+  color: #5d6c79;
+}
+
+.public-site .public-route-card-server,
+.public-site .public-shop-card-ar,
+.public-site .public-panel.public-panel-wide {
+  background:
+    linear-gradient(180deg, rgba(246, 250, 255, 0.98), rgba(233, 241, 250, 0.99)) !important;
+}
+
+.public-site .public-route-card-shop,
+.public-site .public-shop-card-donation,
+.public-site .treasury-panel {
+  background:
+    linear-gradient(180deg, rgba(246, 251, 247, 0.98), rgba(232, 241, 236, 0.99)) !important;
+}
+
+.public-site .public-route-card-client,
+.public-site .modpack-summary-card,
+.public-site .modpack-file-card {
+  background:
+    linear-gradient(180deg, rgba(245, 248, 255, 0.98), rgba(232, 238, 250, 0.99)) !important;
+}
+
+.public-site .public-brief-card {
+  min-height: 220px;
+}
+
+.public-site .public-brief-card span {
+  color: #5cbcff;
+}
+
+.public-site .public-panel-head h3,
+.public-site .commerce-panel-head h3,
+.public-site .modpack-summary-copy h3 {
+  text-wrap: balance;
+}
+
+.public-site .public-panel,
+.public-site .commerce-panel {
+  gap: 18px;
+}
+
+.public-site .public-shop-card-head,
+.public-site .public-panel-head {
+  align-items: flex-start;
+}
+
+.public-site .modpack-shell {
+  align-items: stretch;
+}
+
+.public-site .modpack-side-stack {
+  grid-auto-rows: minmax(0, auto);
+}
+
+.public-site .public-route-card .btn,
+.public-site .public-shop-card .btn,
+.public-site .public-brief-card .btn {
+  align-self: end;
+}
+
+.public-site .public-actions .btn,
+.public-site .public-route-card .btn,
+.public-site .public-shop-card .btn,
+.public-site .public-brief-card .btn,
+.public-site .public-panel .btn {
+  min-height: 50px;
+  border-radius: 16px;
+}
+
+.public-site .public-actions .btn-primary {
+  box-shadow: 0 16px 30px rgba(34, 214, 103, 0.24);
+}
+
+body[data-page-kind="public-home"] .public-home-hero .public-hero-copy h1 {
+  max-width: 8ch;
+}
+
+body[data-page-kind="public-home"] .public-route-section {
+  margin-top: 18px;
+}
+
+body[data-page-kind="public-home"] .public-route-card {
+  min-height: 290px;
+}
+
+body[data-page-kind="public-shops"] .public-shop-card {
+  min-height: 0;
+}
+
+body[data-page-kind="public-server"] .public-ops-section {
+  background:
+    radial-gradient(circle at 86% 16%, rgba(98, 141, 233, 0.18), transparent 22%),
+    radial-gradient(circle at 8% 100%, rgba(255, 214, 102, 0.08), transparent 20%),
+    linear-gradient(180deg, #070b11 0%, #10161f 100%) !important;
+}
+
+body[data-page-kind="public-server"] .public-dashboard-grid {
+  align-items: start;
+}
+
+body[data-page-kind="public-server"] .public-panel {
+  min-height: 100%;
+}
+
+body[data-page-kind="public-mods"] .public-modpack-section {
+  background:
+    radial-gradient(circle at 88% 16%, rgba(98, 141, 233, 0.18), transparent 22%),
+    radial-gradient(circle at 10% 100%, rgba(53, 239, 127, 0.08), transparent 22%),
+    linear-gradient(180deg, #070b11 0%, #0f1521 100%) !important;
+}
+
+body[data-page-kind="public-mods"] .modpack-summary-card {
+  min-height: 100%;
+}
+
+body[data-page-kind="signin"] .auth-card-copy p,
+body[data-page-kind="register"] .auth-card-copy p {
+  color: #5d6c79;
+}
+
+@media (max-width: 900px) {
+  .public-site .public-section {
+    padding: 22px;
+    border-radius: 28px;
+  }
+
+  .public-site .public-route-card,
+  .public-site .public-shop-card,
+  .public-site .public-brief-card {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .public-site .public-nav {
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  .public-site .public-hero {
+    padding: 18px;
+    border-radius: 30px;
+  }
+
+  .public-site .public-hero-copy h1 {
+    font-size: clamp(38px, 11vw, 56px);
+    max-width: 8ch;
+  }
+
+  .public-site .public-section {
+    margin-top: 20px;
+    padding: 18px;
+  }
+
+  .public-site .section-head h2 {
+    font-size: clamp(28px, 9vw, 40px) !important;
+  }
+
+  .public-site .public-route-card,
+  .public-site .public-shop-card,
+  .public-site .public-brief-card,
+  .public-site .public-panel,
+  .public-site .commerce-panel,
+  .public-site .modpack-summary-card,
+  .public-site .modpack-file-card,
+  .public-site .modpack-note-card {
+    padding: 18px;
+    border-radius: 22px;
+  }
 }

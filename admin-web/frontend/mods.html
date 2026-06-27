@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <title>CopiMine - Моды и клиент</title>
+  <title>CopiMine - Клиент и моды</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
   <link rel="stylesheet" href="/assets/style.css" />
@@ -16,7 +16,7 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>сервер, кабинет и клиент</small>
+          <small>Сервер, кабинет и клиент</small>
         </span>
       </a>
       <nav aria-label="Разделы сайта">
@@ -31,73 +31,45 @@
     </header>
 
     <div class="public-page-shell">
-      <section class="public-hero public-hero-slim">
+      <section class="public-hero public-hero-slim public-mods-hero">
         <div class="public-hero-copy">
           <div class="page-kicker-row">
             <span class="hero-kicker">Клиент</span>
-            <span class="route-chip">Моды</span>
+            <span class="route-chip">Архив</span>
           </div>
-          <h1>Клиент и моды CopiMine.</h1>
-          <p>Здесь лежит готовый архив для входа на сервер: список модов, версия сборки, размер и контрольная сумма.</p>
+          <h1>Готовый клиентский архив для входа на CopiMine.</h1>
+          <p>Здесь лежит только то, что нужно для запуска: версия Minecraft, список модов, размер архива и контрольная сумма.</p>
           <div class="public-actions">
             <a id="downloadModsBtn" class="btn btn-primary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
-            <a class="btn btn-secondary" href="/server.html">Открыть статус сервера</a>
-            <a class="btn btn-ghost public-ghost" href="/signin.html">Перейти в кабинет</a>
+            <a class="btn btn-secondary" href="/server.html">Сервер</a>
+            <a class="btn btn-ghost public-ghost" href="/signin.html">Кабинет</a>
           </div>
         </div>
 
-        <aside class="hero-side-card">
-          <div class="brand-banner-card brand-banner-inline">
-            <img class="brand-banner-mark" src="/assets/brand/copimine-logo.png" alt="" />
-            <div class="brand-banner-copy">
-              <span>CopiMine</span>
-              <strong>Клиент сервера</strong>
-              <p>Готовый клиентский комплект для входа на CopiMine с модами, голосовым чатом и графическими улучшениями.</p>
-            </div>
-          </div>
-          <span class="hero-kicker">На странице</span>
+        <aside class="hero-side-card hero-side-card-compact">
+          <span class="hero-kicker">Внутри</span>
           <ul class="hero-check-list">
-            <li>Готовность архива.</li>
-            <li>Версия Minecraft и loader.</li>
-            <li>Список файлов в архиве.</li>
+            <li>CopiMineClient и базовые библиотеки.</li>
+            <li>Голосовой чат и клиентские улучшения.</li>
+            <li>Версия Minecraft, размер и SHA1.</li>
           </ul>
         </aside>
       </section>
 
-      <section class="public-section">
+      <section class="public-section public-modpack-section">
         <div class="section-head">
-          <span>Порядок</span>
-          <h2>Как поставить клиент.</h2>
-          <p>Скачай архив, проверь состав и разложи файлы по папке `mods`. После этого можно сразу заходить на сервер.</p>
+          <span>Архив</span>
+          <h2>Состав клиентской сборки.</h2>
+          <p>Слева лежит карточка архива, справа его содержимое, внешние моды и заметки по текущей версии.</p>
         </div>
 
-        <div class="public-stage-grid">
-          <article class="public-stage-card">
-            <span>1</span>
-            <strong>Скачай архив</strong>
-            <p>Сначала скачай свежий архив. Если нужно, рядом будет и контрольная сумма для проверки.</p>
-          </article>
-          <article class="public-stage-card">
-            <span>2</span>
-            <strong>Проверь состав</strong>
-            <p>Ниже видны версия Minecraft, loader и точный состав архива, чтобы было понятно, что именно ставится на клиент.</p>
-          </article>
-          <article class="public-stage-card">
-            <span>3</span>
-            <strong>Запусти клиент</strong>
-            <p>После распаковки осталось только запустить свой Fabric-клиент и подключиться к серверу.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="public-section">
         <div class="modpack-shell">
           <article class="modpack-summary-card">
             <div class="modpack-summary-copy">
               <span class="hero-kicker">CopiMineMods.zip</span>
               <h3 id="heroMiniTitle">Архив модов</h3>
-              <p id="heroMiniText">Сборка клиента CopiMine.</p>
-              <p id="modpackSummaryLead">Статус архива, состав и контрольная сумма.</p>
+              <p id="heroMiniText">Клиентская сборка CopiMine.</p>
+              <p id="modpackSummaryLead">Состояние архива, его размер и список файлов.</p>
             </div>
             <div id="modpackMetaGrid" class="modpack-meta-grid">
               <article class="modpack-stat">
@@ -112,25 +84,50 @@
               <article class="modpack-file-card">
                 <span class="modpack-file-badge">mods</span>
                 <strong>Загружаем список</strong>
-                <p>Список файлов появится после загрузки.</p>
+                <p>Состав архива появится после загрузки данных.</p>
               </article>
             </div>
 
             <div id="modpackExternalGrid" class="modpack-file-grid">
               <article class="modpack-file-card">
                 <span class="modpack-file-badge">official</span>
-                <strong>Проверяем внешние моды</strong>
-                <p>Если для сервера нужен отдельный мод с официальной страницы, он появится здесь.</p>
+                <strong>Внешние моды</strong>
+                <p>Если для входа нужен мод с отдельной официальной страницы, он появится здесь.</p>
               </article>
             </div>
 
             <div id="modpackNotes" class="modpack-note-grid">
               <article class="modpack-note-card">
                 <strong>Примечание</strong>
-                <p>Здесь появятся важные заметки по текущей клиентской сборке.</p>
+                <p>Здесь будут лежать важные замечания по текущей сборке клиента.</p>
               </article>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="public-section public-brief-section">
+        <div class="section-head">
+          <span>Установка</span>
+          <h2>Три шага до входа.</h2>
+        </div>
+
+        <div class="public-brief-grid">
+          <article class="public-brief-card">
+            <span>01</span>
+            <strong>Скачай архив</strong>
+            <p>Скачиваешь свежий архив и при необходимости сверяешь контрольную сумму.</p>
+          </article>
+          <article class="public-brief-card">
+            <span>02</span>
+            <strong>Проверь состав</strong>
+            <p>Проверяешь состав архива, чтобы понимать, что именно лежит внутри.</p>
+          </article>
+          <article class="public-brief-card">
+            <span>03</span>
+            <strong>Запусти клиент</strong>
+            <p>После распаковки в `mods` остаётся только зайти на `copimine.ru`.</p>
+          </article>
         </div>
       </section>
     </div>

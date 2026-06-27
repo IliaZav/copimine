@@ -16,7 +16,7 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>сервер, кабинет и клиент</small>
+          <small>Сервер, кабинет и клиент</small>
         </span>
       </a>
       <button id="mobileNavToggle" class="btn icon-btn mobile-only hidden" type="button" aria-hidden="true" tabindex="-1">☰</button>
@@ -31,117 +31,92 @@
       </nav>
     </header>
 
-    <section class="public-hero">
+    <section class="public-hero public-home-hero">
       <div class="public-hero-copy">
         <div class="page-kicker-row">
           <span class="hero-kicker">CopiMine</span>
-          <span class="route-chip">Главная</span>
+          <span class="route-chip">Маршрут</span>
         </div>
-        <h1>CopiMine. Быстрый вход в нужный раздел.</h1>
-        <p>На главной только самое нужное: сервер, лавки, клиент и вход в кабинет. Дальше каждая задача открывается на своей странице.</p>
+        <h1>Зашёл на сайт, выбрал маршрут и сразу двинулся дальше.</h1>
+        <p>На главной только самое нужное: адрес сервера, быстрые переходы, вход в кабинет и архив клиента.</p>
         <div class="public-actions">
-          <a class="btn btn-primary" href="/server.html">Открыть сервер</a>
-          <a class="btn btn-secondary" href="/shops.html">Открыть лавки</a>
-          <a class="btn btn-secondary" href="/mods.html">Моды и клиент</a>
-          <a class="btn btn-ghost public-ghost" href="/signin.html">Войти в кабинет</a>
-          <button id="copyIpBtn" class="btn btn-ghost public-ghost" type="button">Скопировать IP</button>
+          <a class="btn btn-primary" href="/server.html">Статус сервера</a>
+          <a class="btn btn-secondary" href="/shops.html">Лавки</a>
+          <a class="btn btn-secondary" href="/mods.html">Клиент и моды</a>
+          <a class="btn btn-ghost public-ghost" href="/signin.html">Войти</a>
         </div>
         <div class="hero-inline-status">
           <div class="hero-inline-card">
-            <span>IP сервера</span>
-            <strong id="serverIpText">Загружаем адрес...</strong>
+            <span>Адрес</span>
+            <strong id="serverIpText">copimine.ru</strong>
           </div>
           <div class="hero-inline-card">
             <span>Отклик</span>
-            <strong id="serverPulseText">Проверяем статус...</strong>
+            <strong id="serverPulseText">Проверяем сервер</strong>
           </div>
         </div>
       </div>
 
       <aside class="public-hero-side">
-        <article class="hero-media-card">
+        <article class="hero-media-card hero-media-card-title">
           <div class="hero-media-art brand-title-stage">
             <img src="/assets/brand/copimine-title.png" alt="CopiMine" />
           </div>
           <div class="hero-media-copy">
-            <span class="hero-kicker">Клиент</span>
-            <strong id="heroMiniTitle">Архив модов для входа на сервер</strong>
-            <p id="heroMiniText">На отдельной странице лежит архив клиента, список файлов и контрольная сумма.</p>
+            <span class="hero-kicker">Подключение</span>
+            <strong>Сервер, лавки, кабинет и клиент теперь разведены по разным страницам.</strong>
+            <p>Ничего не прячется в общей простыне. Открыл нужный раздел и работаешь уже там.</p>
           </div>
         </article>
 
-        <article class="hero-side-card">
-          <span class="hero-kicker">Маршрут</span>
-          <ul class="hero-check-list">
-            <li>Сначала проверь статус сервера и адрес.</li>
-            <li>Покупки и баланс открывай уже после входа в кабинет.</li>
-            <li>Клиент и моды скачиваются на отдельной странице.</li>
-          </ul>
-          <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
+        <article class="hero-side-card hero-side-card-compact">
+          <div class="public-actions public-actions-tight">
+            <button id="copyIpBtn" class="btn btn-primary" type="button">Скопировать copimine.ru</button>
+            <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
+          </div>
+          <div class="hero-side-note">
+            <span class="hero-kicker">Клиент</span>
+            <strong id="heroMiniTitle">Fabric 1.21.1</strong>
+            <p id="heroMiniText">Клиентская сборка лежит отдельно, чтобы сайт не превращался в склад ссылок и служебных блоков.</p>
+          </div>
         </article>
       </aside>
     </section>
 
-    <section class="public-section">
+    <section class="public-section public-route-section">
       <div class="section-head">
-        <span>С чего начать</span>
-        <h2>Три шага до нужного раздела.</h2>
-        <p>Проверяешь сервер, открываешь нужную витрину и входишь в кабинет только тогда, когда это действительно нужно.</p>
+        <span>Разделы</span>
+        <h2>Четыре маршрута, и у каждого своя работа.</h2>
+        <p>Сервер, лавки, клиент и кабинет больше не спорят друг с другом на одной странице.</p>
       </div>
 
-      <div class="public-stage-grid">
-        <article class="public-stage-card">
-          <span>1</span>
-          <strong>Проверь сервер</strong>
-          <p>На странице сервера лежат адрес, онлайн, список игроков, президент и состояние казны.</p>
-        </article>
-        <article class="public-stage-card">
-          <span>2</span>
-          <strong>Открой нужную лавку</strong>
-          <p>AR-предметы и donation-предметы разделены. У каждого магазина свой баланс и свой порядок выдачи.</p>
-        </article>
-        <article class="public-stage-card">
-          <span>3</span>
-          <strong>Войди в кабинет</strong>
-          <p>После проверки логина сайт сам отправит тебя в нужный кабинет без лишних переключателей и ручного выбора роли.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="public-section">
-      <div class="section-head">
-        <span>Основные разделы</span>
-        <h2>Короткий маршрут по сайту.</h2>
-        <p>Каждый раздел отвечает за одну задачу и не мешает соседним страницам.</p>
-      </div>
-
-      <div class="gateway-grid">
-        <article class="gateway-card">
+      <div class="public-route-board">
+        <article class="public-route-card public-route-card-server">
           <span class="hero-kicker">Сервер</span>
           <strong>Онлайн, президент и казна</strong>
-          <p>Адрес сервера, отклик, список игроков и данные по казне собраны на одной отдельной странице.</p>
-          <a class="btn btn-secondary" href="/server.html">Открыть страницу сервера</a>
+          <p>Адрес, онлайн, действующий срок и публичная часть казны в одном месте.</p>
+          <a class="btn btn-secondary" href="/server.html">Открыть сервер</a>
         </article>
 
-        <article class="gateway-card">
+        <article class="public-route-card public-route-card-shop">
           <span class="hero-kicker">Лавки</span>
-          <strong>AR и donation раздельно</strong>
-          <p>Каталог, цены и правила выдачи показаны отдельно для AR и donation, без смешивания валют.</p>
+          <strong>AR и donation отдельно</strong>
+          <p>AR и donation идут отдельно: разные витрины, разные правила и разная выдача.</p>
           <a class="btn btn-secondary" href="/shops.html">Открыть лавки</a>
         </article>
 
-        <article class="gateway-card">
+        <article class="public-route-card public-route-card-client">
           <span class="hero-kicker">Клиент</span>
-          <strong>Архив модов и клиентских файлов</strong>
-          <p>Состав клиентского архива, версия Minecraft и контрольная сумма находятся на своей странице.</p>
-          <a class="btn btn-secondary" href="/mods.html">Открыть страницу модов</a>
+          <strong>Архив модов и версий</strong>
+          <p>Версия Minecraft, список модов, размер архива и контрольная сумма без лишнего шума.</p>
+          <a class="btn btn-secondary" href="/mods.html">Открыть клиент</a>
         </article>
 
-        <article class="gateway-card">
+        <article class="public-route-card public-route-card-auth">
           <span class="hero-kicker">Кабинет</span>
-          <strong>Личный кабинет</strong>
-          <p>Банк, переводы, лавки, история и игровые выдачи открываются уже после обычного входа в кабинет.</p>
-          <a class="btn btn-primary" href="/signin.html">Открыть вход</a>
+          <strong>Банк, покупки и история</strong>
+          <p>После входа сайт сам откроет нужный кабинет. Переключать роли вручную больше не нужно.</p>
+          <a class="btn btn-primary" href="/signin.html">Перейти ко входу</a>
         </article>
       </div>
     </section>

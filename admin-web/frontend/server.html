@@ -16,7 +16,7 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>сервер, кабинет и клиент</small>
+          <small>Сервер, кабинет и клиент</small>
         </span>
       </a>
       <nav aria-label="Разделы сайта">
@@ -31,56 +31,61 @@
     </header>
 
     <div class="public-page-shell">
-      <section class="public-hero public-hero-slim">
+      <section class="public-hero public-hero-slim public-server-hero">
         <div class="public-hero-copy">
           <div class="page-kicker-row">
             <span class="hero-kicker">Сервер</span>
-            <span class="route-chip">Сервер</span>
+            <span class="route-chip">Статус</span>
           </div>
-          <h1>Сервер CopiMine.</h1>
-          <p>Онлайн, адрес, президент и история казны.</p>
+          <h1>Сервер CopiMine: адрес, онлайн и казна.</h1>
+          <p>Это короткая серверная страница. Здесь только подключение, текущий онлайн и публичная часть управления проектом.</p>
           <div class="public-actions">
-            <button id="copyIpBtn" class="btn btn-primary" type="button">Скопировать IP</button>
-            <a class="btn btn-secondary" href="/shops.html">Перейти к лавкам</a>
-            <a class="btn btn-ghost public-ghost" href="/signin.html">Открыть кабинет</a>
+            <button id="copyIpBtn" class="btn btn-primary" type="button">Скопировать copimine.ru</button>
+            <a class="btn btn-secondary" href="/shops.html">Лавки</a>
+            <a class="btn btn-ghost public-ghost" href="/signin.html">Кабинет</a>
           </div>
           <div class="hero-inline-status">
             <div class="hero-inline-card">
-              <span>IP сервера</span>
-              <strong id="serverIpText">Загружаем адрес...</strong>
+              <span>Адрес</span>
+              <strong id="serverIpText">copimine.ru</strong>
             </div>
             <div class="hero-inline-card">
               <span>Отклик</span>
-              <strong id="serverPulseText">Проверяем статус...</strong>
+              <strong id="serverPulseText">Проверяем сервер</strong>
             </div>
           </div>
         </div>
 
-        <aside class="hero-side-card">
+        <aside class="hero-side-card hero-side-card-compact">
           <div class="brand-banner-card brand-banner-inline">
             <img class="brand-banner-mark" src="/assets/brand/copimine-logo.png" alt="" />
             <div class="brand-banner-copy">
               <span>CopiMine</span>
               <strong>Официальный сервер</strong>
-              <p>Статус, казна и президентская сводка на одной странице.</p>
+              <p>Страница для быстрого входа в контекст: как зайти, кто сейчас в игре и что происходит с казной.</p>
             </div>
           </div>
           <span class="hero-kicker">На странице</span>
           <ul class="hero-check-list">
             <li>Текущий онлайн и отклик сервера.</li>
-            <li>Баланс казны и активный президент.</li>
+            <li>Действующий президент и состояние казны.</li>
             <li>Последние публичные операции по казне.</li>
           </ul>
         </aside>
       </section>
 
-      <section class="public-section" id="presidentBudgetShowcase">
+      <section class="public-section public-ops-section" id="presidentBudgetShowcase">
+        <div class="section-head">
+          <span>Оперативная сводка</span>
+          <h2>Короткий срез по серверу.</h2>
+          <p>Ниже только оперативная сводка: сервер, игроки, выборы, казна и последние публичные движения.</p>
+        </div>
         <div class="public-dashboard-grid">
           <article class="public-panel public-panel-wide" id="treasuryHistorySection">
             <div class="public-panel-head">
               <div>
                 <span class="hero-kicker">Сводка</span>
-                <h3>Сводка по серверу</h3>
+                <h3>Сервер сейчас</h3>
               </div>
             </div>
             <div id="publicStatusGrid" class="public-status-grid"></div>
@@ -105,7 +110,7 @@
           <article class="public-panel president-panel" id="presidentCardMount">
             <div class="president-card-copy">
               <span class="hero-kicker">Президент</span>
-              <h3 id="presidentCardName">Президент пока не выбран</h3>
+              <h3 id="presidentCardName">Президент пока не избран</h3>
               <p id="presidentCardMeta">Карточка появится, когда на сервере будет активный срок.</p>
             </div>
             <div class="president-skin-shell hidden" id="presidentSkinShell">

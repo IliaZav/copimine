@@ -342,14 +342,14 @@ export function createHomepageRenderer() {
   function renderServerHero(config = {}, status = {}, modpack = {}) {
     const server = status.server || {};
     const serverAddress = String(config.serverAddress || "").trim();
-    const address = serverAddress || "Адрес сервера пока не указан";
+    const address = serverAddress || "copimine.ru";
     const onlineText = server.online
       ? `Онлайн ${formatPlayers(server)} · задержка ${formatLatency(server.latencyMs)}`
       : "Сервер сейчас не ответил";
 
     if (serverIpText) {
       serverIpText.textContent = address;
-      serverIpText.dataset.serverAddress = serverAddress;
+      serverIpText.dataset.serverAddress = address;
     }
     if (serverPulseText) {
       serverPulseText.textContent = onlineText;

@@ -16,7 +16,7 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>сервер, кабинет и клиент</small>
+          <small>Сервер, кабинет и клиент</small>
         </span>
       </a>
       <nav aria-label="Разделы сайта">
@@ -31,14 +31,14 @@
     </header>
 
     <div class="public-page-shell">
-      <section class="public-hero public-hero-slim">
+      <section class="public-hero public-hero-slim public-shops-hero">
         <div class="public-hero-copy">
           <div class="page-kicker-row">
             <span class="hero-kicker">Лавки</span>
-            <span class="route-chip">Лавки</span>
+            <span class="route-chip">Каталог</span>
           </div>
-          <h1>Лавки CopiMine.</h1>
-          <p>Здесь две отдельные витрины: AR и donation. Цены, правила покупки и порядок выдачи можно посмотреть заранее.</p>
+          <h1>Две витрины: AR отдельно, donation отдельно.</h1>
+          <p>У каждой лавки своя валюта, свои правила и свой порядок выдачи. Никакой путаницы между игровыми AR и donation-балансом.</p>
           <div class="public-actions">
             <button id="openArShopBtn" type="button" class="btn btn-secondary">AR-лавка</button>
             <button id="openDonationShopBtn" type="button" class="btn btn-primary">Donation-лавка</button>
@@ -46,64 +46,30 @@
           </div>
         </div>
 
-        <aside class="hero-side-card">
-          <div class="brand-banner-card brand-banner-inline">
-            <img class="brand-banner-mark" src="/assets/brand/copimine-logo.png" alt="" />
-            <div class="brand-banner-copy">
-              <span>CopiMine</span>
-              <strong>Лавки сервера</strong>
-              <p>Официальные витрины CopiMine для игровых покупок за AR и именных вещей за donation.</p>
-            </div>
-          </div>
+        <aside class="hero-side-card hero-side-card-compact">
           <span class="hero-kicker">Правила</span>
           <ul class="hero-check-list">
             <li>AR-предметы покупаются и чинятся только за AR.</li>
-            <li>Donation-предметы идут через отдельный баланс и привязку к владельцу.</li>
-            <li>Выдача и возврат предметов происходят уже внутри игры.</li>
+            <li>Donation-предметы привязаны к владельцу и идут через отдельный баланс.</li>
+            <li>Физическая выдача и возврат происходят уже в игре.</li>
           </ul>
         </aside>
       </section>
 
-      <section class="public-section">
-        <div class="section-head">
-          <span>Сценарий</span>
-          <h2>Как проходит покупка.</h2>
-          <p>Сайт показывает каталог и оформляет покупку, а сама выдача и возврат происходят уже в игре.</p>
-        </div>
-
-        <div class="public-stage-grid">
-          <article class="public-stage-card">
-            <span>1</span>
-            <strong>Выбери валюту</strong>
-            <p>AR и donation живут отдельно. У каждой лавки свой баланс и свои правила.</p>
-          </article>
-          <article class="public-stage-card">
-            <span>2</span>
-            <strong>Оформи покупку</strong>
-            <p>Покупка записывается на сайте, а предмет потом спокойно забирается уже внутри игры.</p>
-          </article>
-          <article class="public-stage-card">
-            <span>3</span>
-            <strong>Забери в игре</strong>
-            <p>Выдача, возврат утерянного и защита от дюпа работают уже через игровой плагин.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="public-section">
+      <section class="public-section public-shop-board-section">
         <div class="section-head">
           <span>Витрины</span>
-          <h2>Витрины магазинов.</h2>
-          <p>Здесь видны актуальные цены и правила. Сами предметы появляются только в игре.</p>
+          <h2>Сначала выбираешь витрину, потом уже идёшь в нужный кабинет.</h2>
+          <p>Сайт показывает состав, цену и правила, а сама покупка и выдача идут по правильному сценарию.</p>
         </div>
 
-        <div class="commerce-grid">
-          <article class="commerce-panel">
-            <div class="commerce-panel-head">
+        <div class="public-shop-board">
+          <article class="public-shop-card public-shop-card-ar">
+            <div class="public-shop-card-head">
               <div>
                 <span class="hero-kicker">AR-лавка</span>
                 <h3>Официальные предметы за AR</h3>
-                <p>Игровые предметы за AR с ремонтом и ограничением на один активный экземпляр.</p>
+                <p>Игровые товары за AR с ремонтом, контролем экземпляров и отдельной AR-экономикой.</p>
               </div>
               <button id="openArShopBtnMirror" type="button" class="btn btn-secondary">Открыть в кабинете</button>
             </div>
@@ -112,12 +78,12 @@
             </div>
           </article>
 
-          <article class="commerce-panel commerce-panel-accent">
-            <div class="commerce-panel-head">
+          <article class="public-shop-card public-shop-card-donation">
+            <div class="public-shop-card-head">
               <div>
                 <span class="hero-kicker">Donation-лавка</span>
                 <h3>Именные предметы за donation</h3>
-                <p>Пополнение и покупка идут через сайт, а выдача и возврат именных предметов происходят уже в игре.</p>
+                <p>Покупка идёт через donation-баланс, а выдача и возврат защищены учётом экземпляров и антидюп-потоком.</p>
               </div>
               <button id="openDonationShopBtnMirror" type="button" class="btn btn-primary">Открыть в кабинете</button>
             </div>
@@ -128,27 +94,27 @@
         </div>
       </section>
 
-      <section class="public-section">
-        <div class="info-card-grid">
-          <article class="info-card">
-            <span class="hero-kicker">AR</span>
-            <strong>Игровые предметы</strong>
-            <p>AR-лавка отвечает за игровые покупки, ремонт и ограничения на активные экземпляры.</p>
+      <section class="public-section public-brief-section">
+        <div class="section-head">
+          <span>Порядок</span>
+          <h2>Как проходит покупка.</h2>
+        </div>
+
+        <div class="public-brief-grid">
+          <article class="public-brief-card">
+            <span>01</span>
+            <strong>Смотришь витрину</strong>
+            <p>Смотришь цену, эффект, валюту и ограничения по конкретному товару.</p>
           </article>
-          <article class="info-card">
-            <span class="hero-kicker">Donation</span>
-            <strong>Отдельный донатный баланс</strong>
-            <p>Donation не смешивается с AR и пополняется через отдельные платёжные сессии.</p>
+          <article class="public-brief-card">
+            <span>02</span>
+            <strong>Оформляешь покупку</strong>
+            <p>Сайт списывает нужную валюту и создаёт право на выдачу предмета.</p>
           </article>
-          <article class="info-card">
-            <span class="hero-kicker">Выдача</span>
-            <strong>Только через игру</strong>
-            <p>Сайт создаёт покупку и право на выдачу, а сам предмет появляется только в игровом интерфейсе.</p>
-          </article>
-          <article class="info-card">
-            <span class="hero-kicker">Возврат</span>
-            <strong>Только при внешней потере</strong>
-            <p>Утерянные donation-предметы можно вернуть поштучно. Израсходованные и сломанные бесплатно не восстанавливаются.</p>
+          <article class="public-brief-card">
+            <span>03</span>
+            <strong>Забираешь в игре</strong>
+            <p>Физический предмет забирается уже в игре, а не падает прямо из браузера.</p>
           </article>
         </div>
       </section>

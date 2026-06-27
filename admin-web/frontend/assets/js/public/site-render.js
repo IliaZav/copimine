@@ -90,6 +90,17 @@ export function createHomepageRenderer() {
   let currentRotation = -16;
   let currentFeature = "bank";
 
+  function bindCabinetButton() {
+    if (!cabinetButton || cabinetButton.dataset.bound === "true") return;
+    cabinetButton.dataset.bound = "true";
+    cabinetButton.addEventListener("click", () => {
+      const routeTarget = cabinetButton.dataset.routeTarget || "";
+      if (!routeTarget) return;
+      window.dispatchEvent(new CustomEvent("copimine:legacy-runtime-request"));
+      window.location.hash = routeTarget;
+    });
+  }
+
   function animateCounter(nextValue) {
     if (!budgetCounter) return;
     const target = Math.max(0, Number(nextValue || 0));
@@ -150,7 +161,8 @@ export function createHomepageRenderer() {
 
   function renderServerHero(config = {}, status = {}, modpack = {}) {
     const server = status.server || {};
-    const address = String(config.serverAddress || "").trim() || "Адрес сервера пока не указан";
+    const serverAddress = String(config.serverAddress || "").trim();
+    const address = serverAddress || "Адрес сервера пока не указан";
     const onlineText = server.online
       ? `Сервер онлайн, ${formatPlayers(server)}`
       : "Сервер сейчас офлайн или не отвечает";
@@ -160,6 +172,7 @@ export function createHomepageRenderer() {
 
     if (serverIpText) {
       serverIpText.textContent = address;
+      serverIpText.dataset.serverAddress = serverAddress;
     }
     if (serverPulseText) {
       serverPulseText.textContent = pulseText;
@@ -296,11 +309,9 @@ export function createHomepageRenderer() {
     if (!cabinetButton) return;
     const authed = Boolean(auth.role || auth.cookieAuth);
     cabinetButton.classList.toggle("hidden", !authed);
-    cabinetButton.onclick = authed
-      ? () => {
-          window.location.hash = auth.role === "player" ? "#cabinet" : "#dashboard";
-        }
-      : null;
+    cabinetButton.dataset.routeTarget = authed
+      ? auth.role === "player" ? "#cabinet" : "#dashboard"
+      : "";
   }
 
   function renderUnavailableState() {
@@ -338,6 +349,7 @@ export function createHomepageRenderer() {
 
   bindFeatureTabs();
   bindSkinControls();
+  bindCabinetButton();
   setSkinRotation(currentRotation);
 
   return {

@@ -1,64 +1,64 @@
 :root,
 :root[data-theme="light"] {
-  --bg: #eef3e8;
-  --surface: rgba(255, 255, 255, 0.94);
-  --surface-soft: rgba(246, 250, 241, 0.94);
-  --surface-strong: rgba(232, 239, 228, 0.98);
-  --ink: #182419;
-  --muted: #5d6c5f;
-  --faint: #829184;
-  --line: rgba(81, 104, 84, 0.16);
-  --line-strong: rgba(65, 95, 71, 0.28);
-  --sidebar: #f3f7ef;
-  --sidebar-2: #e4ecdf;
-  --sidebar-ink: #203024;
-  --sidebar-muted: #607263;
-  --sidebar-soft: rgba(45, 125, 63, 0.08);
-  --sidebar-soft-strong: rgba(45, 125, 63, 0.14);
-  --sidebar-inset: rgba(44, 68, 49, 0.08);
-  --accent: #2d7d3f;
+  --bg: #f4eee4;
+  --surface: rgba(255, 250, 243, 0.95);
+  --surface-soft: rgba(248, 241, 232, 0.95);
+  --surface-strong: rgba(234, 226, 214, 0.99);
+  --ink: #17202b;
+  --muted: #5f6977;
+  --faint: #7e8897;
+  --line: rgba(71, 84, 101, 0.14);
+  --line-strong: rgba(53, 69, 89, 0.25);
+  --sidebar: #f7f0e6;
+  --sidebar-2: #ebdfcf;
+  --sidebar-ink: #1f2a39;
+  --sidebar-muted: #66758a;
+  --sidebar-soft: rgba(30, 154, 99, 0.08);
+  --sidebar-soft-strong: rgba(30, 154, 99, 0.14);
+  --sidebar-inset: rgba(35, 45, 60, 0.08);
+  --accent: #1e9a63;
   --accent-2: rgba(45, 125, 63, 0.1);
-  --blue: #2f6b9c;
-  --blue-2: rgba(47, 107, 156, 0.12);
-  --amber: #8d631d;
+  --blue: #2f74ad;
+  --blue-2: rgba(47, 116, 173, 0.12);
+  --amber: #9b6d20;
   --amber-2: rgba(141, 99, 29, 0.13);
   --red: #a84a35;
   --red-2: rgba(168, 74, 53, 0.12);
-  --shadow: 0 20px 42px rgba(24, 36, 25, 0.1);
-  --shadow-soft: 0 12px 28px rgba(24, 36, 25, 0.07);
+  --shadow: 0 22px 46px rgba(18, 25, 37, 0.12);
+  --shadow-soft: 0 14px 32px rgba(18, 25, 37, 0.08);
   --r: 18px;
   --r-lg: 26px;
   --sidebar-w: 286px;
   --body-gradient:
-    radial-gradient(circle at top left, rgba(118, 196, 127, 0.18), transparent 28%),
-    radial-gradient(circle at right center, rgba(131, 210, 255, 0.12), transparent 26%),
-    linear-gradient(180deg, #f6faf2 0%, #eef3e8 42%, #e8efe3 100%);
+    radial-gradient(circle at top left, rgba(71, 211, 137, 0.16), transparent 28%),
+    radial-gradient(circle at right center, rgba(132, 184, 255, 0.16), transparent 26%),
+    linear-gradient(180deg, #faf4ea 0%, #f2e8d8 42%, #e8dcc8 100%);
   --section-surface:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(244, 248, 240, 0.94));
-  --nav-surface: rgba(255, 255, 255, 0.88);
-  --panel-translucent: rgba(255, 255, 255, 0.86);
+    linear-gradient(180deg, rgba(255, 251, 244, 0.84), rgba(245, 237, 226, 0.95));
+  --nav-surface: rgba(255, 251, 244, 0.9);
+  --panel-translucent: rgba(255, 251, 244, 0.88);
   --art-surface:
     linear-gradient(rgba(255, 255, 255, 0.32) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.32) 1px, transparent 1px),
-    linear-gradient(135deg, rgba(228, 241, 221, 0.92), rgba(247, 251, 244, 0.98));
-  --card-glass: rgba(255, 255, 255, 0.78);
+    linear-gradient(135deg, rgba(244, 236, 224, 0.94), rgba(252, 248, 241, 0.98));
+  --card-glass: rgba(255, 250, 243, 0.82);
   --summary-card-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 247, 235, 0.98)),
-    linear-gradient(135deg, rgba(45, 125, 63, 0.06), transparent 52%);
-  --stat-card-bg: rgba(250, 252, 248, 0.96);
+    linear-gradient(180deg, rgba(255, 251, 244, 0.98), rgba(243, 235, 224, 0.99)),
+    linear-gradient(135deg, rgba(30, 154, 99, 0.05), transparent 52%);
+  --stat-card-bg: rgba(253, 248, 242, 0.97);
   --feature-card-bg:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(243, 248, 238, 0.96)),
-    linear-gradient(135deg, rgba(45, 125, 63, 0.05), transparent 55%);
-  --chip-bg: rgba(255, 255, 255, 0.82);
-  --chip-border: rgba(81, 104, 84, 0.16);
-  --chip-text: #4e6252;
-  --public-ornament-a: radial-gradient(circle, rgba(45, 125, 63, 0.12), transparent 70%);
+    linear-gradient(180deg, rgba(255, 251, 244, 0.94), rgba(243, 235, 224, 0.97)),
+    linear-gradient(135deg, rgba(30, 154, 99, 0.05), transparent 55%);
+  --chip-bg: rgba(255, 251, 244, 0.84);
+  --chip-border: rgba(71, 84, 101, 0.16);
+  --chip-text: #566274;
+  --public-ornament-a: radial-gradient(circle, rgba(30, 154, 99, 0.12), transparent 70%);
   --public-ornament-b: radial-gradient(circle, rgba(67, 156, 208, 0.12), transparent 72%);
-  --theme-toggle-surface: rgba(255, 255, 255, 0.82);
-  --theme-toggle-border: rgba(65, 95, 71, 0.16);
-  --theme-toggle-text: #243327;
-  --theme-toggle-muted: #607263;
-  --theme-toggle-shadow: 0 10px 24px rgba(24, 36, 25, 0.08);
+  --theme-toggle-surface: rgba(255, 251, 244, 0.84);
+  --theme-toggle-border: rgba(53, 69, 89, 0.14);
+  --theme-toggle-text: #243244;
+  --theme-toggle-muted: #647286;
+  --theme-toggle-shadow: 0 10px 24px rgba(18, 25, 37, 0.08);
   color-scheme: light;
   font-synthesis-weight: none;
 }

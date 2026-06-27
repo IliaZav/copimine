@@ -34,8 +34,8 @@ export function createPlayerTreasuryPages(deps) {
     state.user = me.account || {};
     if (!state.user.linked) {
       setView(`
-        ${panel("Банк AR закрыт", "Для банка нужна привязка Minecraft-ника.", `
-          <div class="notice">Сначала запроси одноразовый код привязки. После этого банк откроется здесь и в игре.</div>
+        ${panel("Банк AR закрыт", "Нужна привязка Minecraft-ника.", `
+          <div class="notice">Сначала привяжи Minecraft-ник.</div>
         `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`)}
       `);
       return;
@@ -69,24 +69,24 @@ export function createPlayerTreasuryPages(deps) {
 
     setView(`
       <section class="layout-grid grid-4">
-        ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна президента и админов" : "Личный счёт для сайта и игры", "good")}
-        ${metric("Последние операции", ledger.length, "Только подтверждённые записи", "neutral")}
+        ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна" : "Личный счёт", "good")}
+        ${metric("Последние операции", ledger.length, "Подтверждённые записи", "neutral")}
         ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinStateTone(pin))}
-        ${metric("Minecraft", state.user.minecraftName || "—", "Привязан к кабинету", "good")}
+        ${metric("Minecraft", state.user.minecraftName || "—", "Привязан", "good")}
       </section>
       ${accountTabs}
       ${safetyRail([
-        ["Банк", usingTreasury ? "Обычные игроки не видят казну. Этот счёт доступен только президенту и админам." : "Баланс один и тот же на сайте, в банкомате и в игровых оплатах.", "good"],
-        ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `Текущий PIN казны: ${treasuryPin.visiblePin}` : "Установите PIN казны для переводов.") : (tempPin.code ? "Сейчас действует временный PIN. Замените его перед переводами." : (pin.set ? "PIN уже задан." : "Задайте PIN перед переводами.")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
-        ["Блокировка", usingTreasury ? "Для казны действуют те же ограничения по неверным попыткам PIN." : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "Неверные попытки временно блокируют PIN."), pin.locked && !usingTreasury ? "bad" : "neutral"],
+        ["Счёт", usingTreasury ? "Доступен президенту и админам" : "Сайт, банкомат и игровые оплаты", "good"],
+        ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задайте PIN казны") : (tempPin.code ? "Сейчас действует временный PIN" : (pin.set ? "PIN уже задан" : "Задайте PIN")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
+        ["Блокировка", usingTreasury ? "Лимит попыток действует и для казны" : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "После ошибок PIN временно блокируется"), pin.locked && !usingTreasury ? "bad" : "neutral"],
       ])}
-      ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([
+      ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Сначала войди по нему, потом задай новый.", kv([
         ["Временный PIN", tempPin.code],
         ["Выдан", dt(tempPin.createdAt)],
         ["Истекает", dt(tempPin.expiresAt)],
       ])) : ""}
       <section class="layout-grid grid-2">
-        ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "Президент и админ видят PIN казны и могут менять его прямо здесь." : (tempPin.code ? "Активен временный PIN. Введи его как текущий и замени сейчас." : "PIN нужен для переводов на сайте и защищённых операций банкомата."), `
+        ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "PIN казны виден президенту и админам." : (tempPin.code ? "Сначала введи временный PIN." : "PIN нужен для переводов."), `
           <div class="form-grid">
             ${usingTreasury ? `<div class="notice full">Текущий PIN казны: <strong>${esc(treasuryPin.visiblePin || "не задан")}</strong></div>` : ""}
             <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${usingTreasury ? "Текущий PIN казны, если уже задан" : (tempPin.code ? "Текущий временный PIN" : "Текущий PIN, если уже задан")}" />
@@ -94,7 +94,7 @@ export function createPlayerTreasuryPages(deps) {
             <button class="btn btn-primary full" data-click="playerSetPin()">Сохранить PIN</button>
           </div>
         `)}
-        ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Бюджетный перевод доступен только президенту и админам." : "Перевод отправит AR на другой счёт и сразу покажет результат в истории."), (!usingTreasury && transferLocked) ? `
+        ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Доступно президенту и админам." : "Перевод на другой счёт."), (!usingTreasury && transferLocked) ? `
           <div class="notice">${pin.status === "temporary-expired" ? "Временный PIN истёк. Попроси команду сервера сбросить его ещё раз." : "Сначала задай личный PIN. После этого переводы и ATM-операции откроются автоматически."}</div>
         ` : `
           <div class="form-grid">
@@ -106,7 +106,7 @@ export function createPlayerTreasuryPages(deps) {
           </div>
         `)}
       </section>
-      ${panel("Журнал операций", "Последние переводы, оплаты и покупки по этому счёту.", transactionFeed(ledger, 18))}
+      ${panel("Журнал операций", "Переводы, оплаты и покупки.", transactionFeed(ledger, 18))}
     `);
   }
 

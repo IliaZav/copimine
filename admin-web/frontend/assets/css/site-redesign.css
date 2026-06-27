@@ -1,31 +1,32 @@
 :root,
 :root[data-theme="light"] {
   --showcase-bg:
-    radial-gradient(circle at 12% -6%, rgba(110, 162, 255, 0.18), transparent 24%),
-    radial-gradient(circle at 88% 8%, rgba(34, 198, 107, 0.14), transparent 20%),
-    radial-gradient(circle at 50% 0%, rgba(18, 52, 92, 0.28), transparent 38%),
-    linear-gradient(180deg, #08121c 0%, #0b1522 48%, #071018 100%);
+    radial-gradient(circle at 10% -4%, rgba(98, 171, 255, 0.24), transparent 24%),
+    radial-gradient(circle at 92% 10%, rgba(34, 198, 107, 0.16), transparent 20%),
+    linear-gradient(180deg, #edf6ff 0%, #eef8f5 48%, #f4efe5 100%);
   --showcase-dark-surface:
-    linear-gradient(180deg, rgba(10, 15, 24, 0.96), rgba(13, 19, 30, 0.98));
+    linear-gradient(180deg, rgba(250, 253, 255, 0.99), rgba(239, 246, 252, 1));
   --showcase-light-surface:
-    linear-gradient(180deg, rgba(255, 251, 244, 0.94), rgba(244, 238, 227, 0.96));
+    linear-gradient(180deg, rgba(251, 254, 255, 0.99), rgba(241, 248, 253, 1));
   --showcase-panel:
-    linear-gradient(180deg, rgba(244, 248, 255, 0.96), rgba(231, 236, 247, 0.98));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(242, 248, 253, 1));
   --showcase-panel-alt:
-    linear-gradient(180deg, rgba(235, 244, 239, 0.95), rgba(224, 236, 230, 0.98));
+    linear-gradient(180deg, rgba(245, 253, 250, 0.99), rgba(233, 246, 240, 1));
   --showcase-panel-blue:
-    linear-gradient(180deg, rgba(233, 241, 255, 0.97), rgba(222, 231, 246, 0.99));
-  --showcase-card-border: rgba(108, 126, 150, 0.18);
-  --showcase-card-shadow: 0 24px 60px rgba(11, 18, 30, 0.16);
-  --showcase-card-shadow-soft: 0 18px 42px rgba(11, 18, 30, 0.12);
+    linear-gradient(180deg, rgba(246, 250, 255, 0.99), rgba(232, 241, 253, 1));
+  --showcase-card-border: rgba(67, 85, 112, 0.16);
+  --showcase-card-shadow: 0 30px 74px rgba(17, 24, 36, 0.13);
+  --showcase-card-shadow-soft: 0 18px 42px rgba(17, 24, 36, 0.1);
+  --showcase-card-glow: 0 0 0 0 rgba(0, 0, 0, 0);
+  --showcase-shell-glow: 0 0 0 0 rgba(0, 0, 0, 0);
   --showcase-accent: #25d66f;
   --showcase-accent-blue: #7dd8ff;
-  --showcase-heading: #f2f6fb;
-  --showcase-text: #dae4ef;
-  --showcase-muted: rgba(218, 228, 239, 0.74);
-  --showcase-ink: #121b28;
-  --showcase-ink-muted: #5e6d7d;
-  --showcase-cream: #dce7f2;
+  --showcase-heading: #152133;
+  --showcase-text: #263247;
+  --showcase-muted: rgba(45, 59, 80, 0.74);
+  --showcase-ink: #152133;
+  --showcase-ink-muted: #5a6778;
+  --showcase-cream: #eef6ff;
 }
 
 :root[data-theme="dark"] {
@@ -43,9 +44,11 @@
     linear-gradient(180deg, rgba(11, 24, 21, 0.96), rgba(10, 19, 20, 0.98));
   --showcase-panel-blue:
     linear-gradient(180deg, rgba(11, 19, 31, 0.96), rgba(12, 20, 35, 0.98));
-  --showcase-card-border: rgba(124, 148, 180, 0.18);
+  --showcase-card-border: rgba(92, 255, 167, 0.24);
   --showcase-card-shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
   --showcase-card-shadow-soft: 0 18px 46px rgba(0, 0, 0, 0.26);
+  --showcase-card-glow: 0 0 0 1px rgba(92, 255, 167, 0.1), 0 0 36px rgba(92, 255, 167, 0.1), inset 0 1px 0 rgba(125, 216, 255, 0.05);
+  --showcase-shell-glow: 0 0 0 1px rgba(92, 255, 167, 0.08), 0 0 54px rgba(92, 255, 167, 0.06);
   --showcase-heading: #f3f7fb;
   --showcase-text: #dfe9f1;
   --showcase-muted: rgba(223, 233, 241, 0.72);
@@ -99,6 +102,20 @@ body {
 .public-site > * {
   position: relative;
   z-index: 1;
+}
+
+.public-site .public-hero {
+  min-height: 0;
+  align-items: stretch;
+  padding: 30px;
+  color: var(--showcase-text);
+  isolation: auto;
+}
+
+.public-site .public-hero::after,
+.public-site .public-hero-bg {
+  display: none !important;
+  content: none;
 }
 
 .public-nav,
@@ -253,7 +270,16 @@ body {
     radial-gradient(circle at 82% 14%, rgba(125, 216, 255, 0.18), transparent 22%),
     radial-gradient(circle at 16% 100%, rgba(37, 214, 111, 0.1), transparent 26%),
     var(--showcase-light-surface);
-  box-shadow: var(--showcase-card-shadow);
+  box-shadow: var(--showcase-card-shadow), var(--showcase-shell-glow);
+}
+
+:root[data-theme="light"] .public-hero {
+  border-color: rgba(34, 49, 72, 0.1);
+  background:
+    radial-gradient(circle at 82% 14%, rgba(125, 216, 255, 0.26), transparent 22%),
+    radial-gradient(circle at 16% 100%, rgba(37, 214, 111, 0.12), transparent 26%),
+    linear-gradient(135deg, rgba(250, 253, 255, 0.99), rgba(240, 247, 253, 0.98) 52%, rgba(241, 248, 243, 0.98) 100%);
+  box-shadow: 0 28px 66px rgba(17, 24, 36, 0.12);
 }
 
 .public-site-compact {
@@ -324,12 +350,85 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(240, 235, 225, 0.94));
 }
 
+:root[data-theme="light"] .hero-media-art {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(125, 216, 255, 0.22), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 238, 228, 0.98));
+}
+
 .hero-media-art img {
   display: block;
   width: 100%;
   max-width: 100%;
   height: auto;
   object-fit: contain;
+}
+
+.hero-sprite-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hero-sprite-chip,
+.route-card-icon,
+.showcase-card-icon,
+.shop-item-icon,
+.modpack-file-icon {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(108, 126, 150, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+:root[data-theme="light"] .hero-sprite-chip,
+:root[data-theme="light"] .route-card-icon,
+:root[data-theme="light"] .showcase-card-icon,
+:root[data-theme="light"] .shop-item-icon,
+:root[data-theme="light"] .modpack-file-icon {
+  border-color: rgba(67, 85, 112, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme="dark"] .hero-sprite-chip,
+:root[data-theme="dark"] .route-card-icon,
+:root[data-theme="dark"] .showcase-card-icon,
+:root[data-theme="dark"] .shop-item-icon,
+:root[data-theme="dark"] .modpack-file-icon {
+  border-color: rgba(92, 255, 167, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hero-sprite-chip {
+  width: 56px;
+  height: 56px;
+}
+
+.route-card-icon,
+.showcase-card-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.shop-item-icon,
+.modpack-file-icon {
+  width: 52px;
+  height: 52px;
+}
+
+.mc-sprite,
+.hero-sprite-chip img,
+.route-card-icon img,
+.showcase-card-icon img,
+.shop-item-icon img,
+.modpack-file-icon img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.16));
 }
 
 .brand-title-stage {
@@ -487,7 +586,7 @@ body {
 .shop-item-chip {
   border: 1px solid var(--showcase-card-border);
   border-radius: 24px;
-  box-shadow: var(--showcase-card-shadow-soft);
+  box-shadow: var(--showcase-card-shadow-soft), var(--showcase-card-glow);
 }
 
 .hero-inline-status {
@@ -503,6 +602,11 @@ body {
   border: 1px solid rgba(108, 126, 150, 0.16);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.62);
+}
+
+:root[data-theme="light"] .hero-inline-card {
+  border-color: rgba(67, 85, 112, 0.14);
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .hero-inline-card strong {
@@ -565,7 +669,16 @@ body {
     radial-gradient(circle at 86% 18%, rgba(125, 216, 255, 0.1), transparent 24%),
     radial-gradient(circle at 10% 100%, rgba(37, 214, 111, 0.08), transparent 26%),
     var(--showcase-dark-surface);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28), var(--showcase-shell-glow);
+}
+
+:root[data-theme="light"] .public-section {
+  border-color: rgba(34, 49, 72, 0.1);
+  background:
+    radial-gradient(circle at 86% 18%, rgba(125, 216, 255, 0.16), transparent 24%),
+    radial-gradient(circle at 10% 100%, rgba(37, 214, 111, 0.08), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(243, 248, 252, 1));
+  box-shadow: 0 28px 64px rgba(17, 24, 36, 0.11);
 }
 
 .section-head {
@@ -664,6 +777,90 @@ body {
   padding: 18px;
 }
 
+:root[data-theme="light"] .hero-side-card,
+:root[data-theme="light"] .public-panel,
+:root[data-theme="light"] .commerce-panel,
+:root[data-theme="light"] .modpack-summary-card,
+:root[data-theme="light"] .modpack-file-card,
+:root[data-theme="light"] .modpack-note-card,
+:root[data-theme="light"] .public-route-card,
+:root[data-theme="light"] .public-shop-card,
+:root[data-theme="light"] .public-brief-card,
+:root[data-theme="light"] .showcase-card,
+:root[data-theme="light"] .treasury-history-card,
+:root[data-theme="light"] .shop-item-chip,
+:root[data-theme="light"] .brand-banner-card {
+  border-color: rgba(67, 85, 112, 0.14);
+  box-shadow: 0 16px 36px rgba(17, 24, 36, 0.08);
+}
+
+:root[data-theme="light"] .modpack-stat {
+  border-color: rgba(67, 85, 112, 0.14);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+:root[data-theme="light"] .public-hero-copy p,
+:root[data-theme="light"] .section-head p,
+:root[data-theme="light"] .hero-media-copy p,
+:root[data-theme="light"] .hero-side-note p,
+:root[data-theme="light"] .public-route-card p,
+:root[data-theme="light"] .public-shop-card p,
+:root[data-theme="light"] .public-brief-card p,
+:root[data-theme="light"] .showcase-card p,
+:root[data-theme="light"] .treasury-history-card p,
+:root[data-theme="light"] .shop-item-chip p,
+:root[data-theme="light"] .modpack-summary-copy p,
+:root[data-theme="light"] .modpack-file-card p,
+:root[data-theme="light"] .modpack-note-card p {
+  color: rgba(56, 71, 95, 0.84);
+}
+
+:root[data-theme="light"] .hero-media-copy strong,
+:root[data-theme="light"] .brand-banner-card strong,
+:root[data-theme="light"] .showcase-card strong,
+:root[data-theme="light"] .treasury-history-card strong,
+:root[data-theme="light"] .shop-item-chip strong,
+:root[data-theme="light"] .hero-side-note strong,
+:root[data-theme="light"] .modpack-stat strong {
+  color: #18253a;
+}
+
+:root[data-theme="light"] .hero-side-note,
+:root[data-theme="light"] .hero-media-copy,
+:root[data-theme="light"] .brand-banner-card {
+  color: #2f3f57;
+}
+
+:root[data-theme="light"] .hero-side-note ul,
+:root[data-theme="light"] .hero-side-note li,
+:root[data-theme="light"] .hero-media-copy ul,
+:root[data-theme="light"] .hero-media-copy li,
+:root[data-theme="light"] .brand-banner-card ul,
+:root[data-theme="light"] .brand-banner-card li {
+  color: #314158;
+}
+
+.showcase-card {
+  align-content: start;
+}
+
+.shop-item-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 14px;
+  row-gap: 10px;
+  align-items: start;
+}
+
+.shop-item-head,
+.shop-item-meta {
+  grid-column: 2;
+}
+
+.shop-item-icon {
+  grid-row: 1 / span 2;
+}
+
 .showcase-card strong,
 .treasury-history-card strong,
 .shop-item-chip strong,
@@ -708,8 +905,22 @@ body {
   background: rgba(255, 255, 255, 0.44);
 }
 
+.modpack-file-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  color: rgba(73, 88, 111, 0.82);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 :root[data-theme="dark"] .modpack-stat {
   background: rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="dark"] .modpack-file-meta {
+  color: rgba(209, 220, 232, 0.74);
 }
 
 .brand-banner-card.brand-banner-inline {
@@ -725,6 +936,12 @@ body {
   background:
     radial-gradient(circle at 85% 10%, rgba(125, 216, 255, 0.1), transparent 22%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(246, 241, 232, 0.92));
+}
+
+:root[data-theme="light"] .brand-banner-card {
+  background:
+    radial-gradient(circle at 85% 10%, rgba(125, 216, 255, 0.12), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 248, 252, 0.96));
 }
 
 .brand-banner-mark {

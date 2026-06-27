@@ -37,8 +37,8 @@
             <span class="hero-kicker">Клиент</span>
             <span class="route-chip">Архив</span>
           </div>
-          <h1>Клиентский архив для входа на CopiMine.</h1>
-          <p>Здесь лежит только клиентская часть: версия Minecraft, состав архива, размер и контрольная сумма.</p>
+          <h1>Клиент и моды CopiMine.</h1>
+          <p>Архив модов, версия Minecraft, размер и SHA1.</p>
           <div class="public-actions">
             <a id="downloadModsBtn" class="btn btn-primary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
             <a class="btn btn-secondary" href="/server.html">Сервер</a>
@@ -47,6 +47,11 @@
         </div>
 
         <aside class="hero-side-card hero-side-card-compact">
+          <div class="hero-sprite-strip" aria-hidden="true">
+            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/bundle_filled.png" alt="" /></span>
+            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/knowledge_book.png" alt="" /></span>
+            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/compass_00.png" alt="" /></span>
+          </div>
           <span class="hero-kicker">Внутри</span>
           <ul class="hero-check-list">
             <li>CopiMineClient и базовые библиотеки.</li>
@@ -59,8 +64,8 @@
       <section class="public-section public-modpack-section">
         <div class="section-head">
           <span>Архив</span>
-          <h2>Состав клиентской сборки.</h2>
-          <p>Слева лежит карточка архива, справа его содержимое, внешние моды и примечания по текущей версии.</p>
+          <h2>Состав архива.</h2>
+          <p>Файлы архива, внешние моды и примечания.</p>
         </div>
 
         <div class="modpack-shell">
@@ -68,8 +73,8 @@
             <div class="modpack-summary-copy">
               <span class="hero-kicker">CopiMineMods.zip</span>
               <h3 id="heroMiniTitle">Архив модов</h3>
-              <p id="heroMiniText">Клиентская сборка CopiMine.</p>
-              <p id="modpackSummaryLead">Состояние архива, его размер и список файлов.</p>
+          <p id="heroMiniText">CopiMineClient, моды и служебные библиотеки.</p>
+          <p id="modpackSummaryLead">Размер архива, SHA1 и список файлов.</p>
             </div>
             <div id="modpackMetaGrid" class="modpack-meta-grid">
               <article class="modpack-stat">
@@ -82,27 +87,27 @@
           <div class="modpack-side-stack">
             <div id="modpackFileGrid" class="modpack-file-grid">
               <article class="modpack-file-card">
-                <span class="modpack-file-badge">mods</span>
-                <strong>Загружаем список</strong>
-                <p>Состав архива появится после загрузки данных.</p>
-              </article>
-            </div>
+              <span class="modpack-file-badge">mods</span>
+              <strong>Список файлов</strong>
+              <p>Ждём данные архива.</p>
+            </article>
+          </div>
 
             <div id="modpackExternalGrid" class="modpack-file-grid">
               <article class="modpack-file-card">
-                <span class="modpack-file-badge">official</span>
-                <strong>Внешние моды</strong>
-                <p>Если для входа нужен мод с отдельной официальной страницы, он появится здесь.</p>
-              </article>
-            </div>
+              <span class="modpack-file-badge">official</span>
+              <strong>Внешние моды</strong>
+              <p>Отдельные загрузки и ссылки.</p>
+            </article>
+          </div>
 
             <div id="modpackNotes" class="modpack-note-grid">
               <article class="modpack-note-card">
-                <strong>Примечание</strong>
-                <p>Здесь будут лежать важные замечания по текущей сборке клиента.</p>
-              </article>
-            </div>
+              <strong>Примечание</strong>
+              <p>Версия, состав и требования.</p>
+            </article>
           </div>
+        </div>
         </div>
       </section>
 
@@ -116,17 +121,17 @@
           <article class="public-brief-card">
             <span>01</span>
             <strong>Скачай архив</strong>
-            <p>Скачиваешь свежий архив и при необходимости сверяешь контрольную сумму.</p>
+            <p>Скачай архив и сверяй SHA1 при необходимости.</p>
           </article>
           <article class="public-brief-card">
             <span>02</span>
             <strong>Проверь состав</strong>
-            <p>Проверяешь состав архива, чтобы понимать, что именно лежит внутри.</p>
+            <p>Проверь версию Minecraft и список файлов.</p>
           </article>
           <article class="public-brief-card">
             <span>03</span>
             <strong>Запусти клиент</strong>
-            <p>После распаковки в `mods` остаётся только зайти на `copimine.ru`.</p>
+            <p>После распаковки открой игру и зайди на `copimine.ru`.</p>
           </article>
         </div>
       </section>

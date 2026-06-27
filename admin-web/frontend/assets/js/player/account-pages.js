@@ -17,16 +17,16 @@ export function createPlayerAccountPages(deps) {
     const account = me.account || state.user || {};
     setView(`
       <section class="layout-grid grid-2">
-        ${panel("Профиль", "Основные данные кабинета и привязки к серверу.", kv([
+        ${panel("Профиль", "Аккаунт и привязка.", kv([
           ["Логин", account.username || "игрок"],
           ["Minecraft-ник", account.minecraftName || "не привязан"],
           ["Email", account.email || "не указан"],
           ["Создан", dt(account.createdAt)]
         ]), `<button class="btn btn-secondary" data-click="setTab('link')">Настроить Minecraft</button>`)}
-        ${panel("Что можно настроить", "Короткая карта того, что доступно в кабинете.", safetyRail([
-          ["Привязка", "Свяжи кабинет с Minecraft-ником и открой банк.", account.minecraftName ? "good" : "warn"],
-          ["Безопасность", "Проверь пароль и PIN банка.", "neutral"],
-          ["История", "Здесь можно посмотреть переводы, покупки и операции по счёту.", "good"]
+        ${panel("Разделы кабинета", "Доступные разделы.", safetyRail([
+          ["Привязка", "Minecraft-ник", account.minecraftName ? "good" : "warn"],
+          ["Банк", "AR и PIN", "neutral"],
+          ["История", "Переводы и покупки", "good"]
         ]))}
       </section>
     `);
@@ -38,14 +38,14 @@ export function createPlayerAccountPages(deps) {
     const pin = bank.pin || {};
     setView(`
       <section class="layout-grid grid-2">
-        ${panel("PIN банка", "PIN используется для переводов и защищённых операций.", kv([
+        ${panel("PIN банка", "PIN для переводов и банка.", kv([
           ["PIN задан", pin.set || false],
           ["Статус", bankPinState(pin)],
           ["Заблокирован", pin.locked || false],
           ["Нужна замена", pin.mustChange || false]
         ]), `<button class="btn btn-primary" data-click="setTab('bank')">Открыть банк</button>`)}
-        ${panel("Сессии", "Быстрые действия для защиты аккаунта.", `
-          <div class="notice">Если заметил подозрительную активность, смени пароль и PIN, а затем завершай текущую сессию.</div>
+        ${panel("Сессии", "Текущий вход.", `
+          <div class="notice">Если доступ чужой, смените пароль и PIN.</div>
           <button class="btn btn-secondary full" data-click="logout(true)">Выйти из текущей сессии</button>
         `)}
       </section>
@@ -56,15 +56,15 @@ export function createPlayerAccountPages(deps) {
     setLoading("Загрузка поддержки");
     setView(`
       <section class="layout-grid grid-2">
-        ${panel("Как обратиться за помощью", "Куда писать, если нужна помощь.", safetyRail([
-          ["/report в игре", "Если проблема случилась прямо на сервере, отправь сообщение через игровую команду /report.", "good"],
-          ["Администрация", "По банку, привязке ника и спорным операциям можно обратиться к администрации напрямую.", "neutral"],
-          ["Не отправляй PIN", "Пароль и PIN нельзя пересылать никому, даже если сообщение выглядит официально.", "warn"]
+        ${panel("Помощь", "Основные контакты.", safetyRail([
+          ["/report в игре", "Сообщение администрации", "good"],
+          ["Администрация", "Банк, привязка и спорные операции", "neutral"],
+          ["PIN и пароль", "Никому не сообщай", "warn"]
         ]))}
-        ${panel("Частые вопросы", "Коротко о главном.", safetyRail([
-          ["Банк", "Сначала привяжи Minecraft-ник и задай PIN, после этого откроются операции по счёту.", "good"],
-          ["Артефакты", "Игровая лавка открывается кликом по специальному блоку в мире.", "neutral"],
-          ["Выдача", "Если инвентарь был полон, предмет останется в ожидающей выдаче и его можно будет забрать позже.", "warn"]
+        ${panel("Частые вопросы", "Коротко.", safetyRail([
+          ["Банк", "Нужны привязка и PIN", "good"],
+          ["Артефакты", "Выдача идёт в игре", "neutral"],
+          ["Выдача", "При полном инвентаре предмет ждёт повторной выдачи", "warn"]
         ]))}
       </section>
     `);

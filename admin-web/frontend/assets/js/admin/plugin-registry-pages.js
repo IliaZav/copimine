@@ -125,13 +125,13 @@ export function createPluginRegistryPages(deps) {
     const reloadLabel = canReload ? "Перечитать" : "Перечитывание недоступно";
     return `
       <section class="layout-grid grid-2">
-        ${panel("Плагины и их конфиги", "Здесь можно безопасно проверить состояние плагина, сделать резервную копию конфига, внести разрешённые правки и перечитать настройки без ручного редактирования файлов.", plugins.length ? table("plugin-registry", plugins, [
+        ${panel("Плагины и конфиги", "Состояние плагина, резервная копия, разрешённые поля и перечитывание.", plugins.length ? table("plugin-registry", plugins, [
           { key: "displayName", label: "Плагин" },
           { key: "pluginId", label: "ID" },
           { key: "reloadMode", label: "Режим перечитывания" },
           { key: "pluginId", label: "Открыть", render: (value, row) => `<button class="btn btn-secondary" data-click="pluginRegistrySelect('${esc(row.pluginId)}')">${row.pluginId === selected ? "Открыт" : "Открыть"}</button>` }
-        ], { pageSize: 8 }) : empty("Список пуст", "Сервер пока не вернул список плагинов, которые разрешено настраивать через сайт."))}
-        ${panel("Текущий плагин", selected ? `Сейчас открыт ${cleanText(status.displayName || selected)}.` : "Выбери плагин из списка слева.", selected ? `
+        ], { pageSize: 8 }) : empty("Список пуст", "Доступных плагинов нет."))}
+        ${panel("Текущий плагин", selected ? `Сейчас открыт ${cleanText(status.displayName || selected)}.` : "Выбери плагин из списка.", selected ? `
           ${kv([
             ["ID плагина", status.pluginId || selected],
             ["Config", status.configExists ? "найден" : "не найден"],
@@ -151,9 +151,9 @@ export function createPluginRegistryPages(deps) {
             <button class="btn btn-primary ${canApply ? "" : "disabled"}" ${canApply ? `data-click="pluginRegistryApply('${esc(selected)}')"` : "disabled"}>${applyLabel}</button>
             <button class="btn btn-secondary ${canReload ? "" : "disabled"}" ${canReload ? `data-click="pluginRegistryReload('${esc(selected)}')"` : "disabled"}>${reloadLabel}</button>
           </div>
-        ` : empty("Плагин не выбран", "Слева можно открыть разрешённый плагин и применить только те изменения, которые сервер считает безопасными."))}
+        ` : empty("Плагин не выбран", "Выбери плагин из списка."))}
       </section>
-      ${panel("Журнал изменений", "Каждая копия, проверка, правка и перечитывание конфига записываются в журнал.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Журнал пуст", "После первых действий здесь появятся записи."))}
+      ${panel("Журнал изменений", "Копии, проверки, правки и перечитывание.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Журнал пуст", "Записей пока нет."))}
     `;
   }
 

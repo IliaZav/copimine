@@ -37,18 +37,18 @@
           <span class="hero-kicker">CopiMine</span>
           <span class="route-chip">Старт</span>
         </div>
-          <h1>CopiMine. Сервер, кабинет и клиент без лишнего шума.</h1>
-          <p>Здесь только быстрый вход: адрес сервера, переход в кабинет, витрины и клиентская сборка.</p>
+          <h1>CopiMine. IP, лавки и кабинет.</h1>
+          <p>Адрес сервера, лавки, клиентская сборка и вход в кабинет.</p>
         <div class="public-actions">
           <a class="btn btn-primary" href="/server.html">Статус сервера</a>
           <a class="btn btn-secondary" href="/shops.html">Лавки</a>
           <a class="btn btn-secondary" href="/mods.html">Клиент и моды</a>
           <a class="btn btn-ghost public-ghost" href="/signin.html">Войти</a>
         </div>
-        <div class="hero-inline-status">
-          <div class="hero-inline-card">
-            <span>Адрес</span>
-            <strong id="serverIpText">copimine.ru</strong>
+          <div class="hero-inline-status">
+            <div class="hero-inline-card">
+              <span>Адрес</span>
+              <strong id="serverIpText">copimine.ru</strong>
           </div>
           <div class="hero-inline-card">
               <span>Статус</span>
@@ -64,8 +64,13 @@
           </div>
           <div class="hero-media-copy">
             <span class="hero-kicker">CopiMine</span>
-            <strong>У каждой части проекта своя страница и свой ритм.</strong>
-            <p>Главная больше не тащит на себе весь сайт. Она просто ведёт туда, куда нужно зайти дальше.</p>
+            <strong>copimine.ru • Fabric 1.21.1</strong>
+            <p>Сервер, витрины и клиентская сборка.</p>
+            <div class="hero-sprite-strip" aria-hidden="true">
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/written_book.png" alt="" /></span>
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/compass_00.png" alt="" /></span>
+            </div>
           </div>
         </article>
 
@@ -77,7 +82,7 @@
           <div class="hero-side-note">
             <span class="hero-kicker">Клиент</span>
             <strong id="heroMiniTitle">Fabric 1.21.1</strong>
-            <p id="heroMiniText">Клиентская сборка лежит отдельно и обновляется независимо от кабинетов и витрин.</p>
+            <p id="heroMiniText">Fabric 1.21.1, CopiMineClient и архив модов.</p>
           </div>
         </article>
       </aside>
@@ -86,36 +91,48 @@
     <section class="public-section public-route-section">
       <div class="section-head">
         <span>Разделы</span>
-        <h2>Четыре отдельных направления.</h2>
-        <p>Сервер, витрины, клиент и кабинет разнесены по своим страницам, чтобы не мешать друг другу.</p>
+        <h2>Основные разделы.</h2>
+        <p>Статус сервера, лавки, клиент и вход.</p>
       </div>
 
       <div class="public-route-board">
         <article class="public-route-card public-route-card-server">
+          <div class="route-card-icon" aria-hidden="true">
+            <img src="/assets/mc-icons/item/beacon.png" alt="" />
+          </div>
           <span class="hero-kicker">Сервер</span>
-          <strong>Адрес, онлайн и публичная сводка</strong>
-          <p>Страница сервера показывает только подключение, игроков онлайн и открытую часть проектной сводки.</p>
+          <strong>Адрес, онлайн и статус</strong>
+          <p>IP сервера, текущий онлайн и открытая сводка.</p>
           <a class="btn btn-secondary" href="/server.html">Открыть сервер</a>
         </article>
 
         <article class="public-route-card public-route-card-shop">
+          <div class="route-card-icon" aria-hidden="true">
+            <img src="/assets/mc-icons/item/diamond_sword.png" alt="" />
+          </div>
           <span class="hero-kicker">Лавки</span>
-          <strong>AR отдельно, donation отдельно</strong>
-          <p>У каждой витрины своя валюта, свой порядок покупки и свой порядок выдачи в игре.</p>
+          <strong>AR-лавка и donation-лавка</strong>
+          <p>Каталог товаров, цены и выдача в игре.</p>
           <a class="btn btn-secondary" href="/shops.html">Открыть лавки</a>
         </article>
 
         <article class="public-route-card public-route-card-client">
+          <div class="route-card-icon" aria-hidden="true">
+            <img src="/assets/mc-icons/item/bundle_filled.png" alt="" />
+          </div>
           <span class="hero-kicker">Клиент</span>
-          <strong>Архив модов и клиент</strong>
-          <p>На отдельной странице лежат версия клиента, состав архива, размер и контрольная сумма.</p>
+          <strong>Клиент и моды</strong>
+          <p>Архив модов, версия Minecraft, размер и SHA1.</p>
           <a class="btn btn-secondary" href="/mods.html">Открыть клиент</a>
         </article>
 
         <article class="public-route-card public-route-card-auth">
+          <div class="route-card-icon" aria-hidden="true">
+            <img src="/assets/mc-icons/item/filled_map.png" alt="" />
+          </div>
           <span class="hero-kicker">Кабинет</span>
-          <strong>Банк, покупки и история</strong>
-          <p>После входа сайт сам откроет нужный кабинет по роли аккаунта, без ручного выбора режима.</p>
+          <strong>Личный кабинет</strong>
+          <p>Банк, покупки, история и админ-разделы после входа.</p>
           <a class="btn btn-primary" href="/signin.html">Перейти ко входу</a>
         </article>
       </div>

@@ -171,32 +171,32 @@ document.addEventListener("error", (event) => {
 const publicFeatures = {
   bank: {
     kicker: "Банк AR",
-    title: "Один счёт для банкомата, сайта и игровых оплат",
-    text: "Банк, покупки и переводы собраны в одном кабинете. Игровые действия подтверждаются отдельно и не смешиваются с витриной сайта.",
+    title: "Банк, переводы и покупки",
+    text: "Один счёт для банка, сайта и игровых оплат.",
     icon: "/assets/mc-icons/item/diamond_ore.png"
   },
   elections: {
     kicker: "Выборы",
-    title: "Игровая политика без командной путаницы",
-    text: "Заявки, участки, бюллетени, подсчёт и роли проходят через понятные игровые интерфейсы и публичные этапы.",
+    title: "ЦИК, бюллетени и результаты",
+    text: "Заявки, участки, бюллетени и подсчёт проходят через игровые интерфейсы.",
     icon: "/assets/mc-icons/item/writable_book.png"
   },
   president: {
     kicker: "Президент",
-    title: "Законы, обращения и открытая казна",
-    text: "После победы президент получает мандат, предлагает законы, делает обращения игрокам и работает с проектной казной.",
+    title: "Законы, обращения и казна",
+    text: "Президент ведёт срок, законы и казну.",
     icon: "/assets/mc-icons/item/nether_star.png"
   },
   artifacts: {
     kicker: "Артефакты",
-    title: "Лавки с официальными предметами",
-    text: "Оружие, броня и инструменты покупаются за AR. Каждый предмет имеет PDC-защиту, ремонт и историю покупки.",
+    title: "Официальные предметы за AR",
+    text: "AR-лавка хранит покупки, ремонт и историю предметов.",
     icon: "/assets/mc-icons/item/netherite_sword.png"
   },
   donation: {
     kicker: "Донат",
-    title: "Отдельный donation-баланс и owner-bound предметы",
-    text: "Пополнение идёт через отдельный donation-баланс, а предметы покупаются на сайте и забираются уже в игре через лавку.",
+    title: "Donation-баланс и выдача в игре",
+    text: "Пополнение идёт в отдельный donation-баланс, выдача проходит в игре.",
     icon: "/assets/mc-icons/item/nether_star.png"
   }
 };
@@ -252,9 +252,9 @@ const playerNavGroups = [
       ["history", "История", "Банк, лавка и события", ""],
       ["settings", "Настройки", "Профиль и интерфейс", "Н"],
       ["security", "Безопасность", "Пароль, PIN и сессии", "Б"],
-      ["support", "Поддержка", "Вопросы и обращения", "П"],
+      ["support", "Поддержка", "Помощь и обращения", "П"],
       ["artifacts", "Артефакты", "Покупки и выдача", "А"],
-      ["link", "Minecraft", "Одноразовый код", "M"]
+      ["link", "Minecraft", "Код привязки", "M"]
     ]
   }
 ];
@@ -790,7 +790,7 @@ function dashboardHero(status, perf, electionOverview, economy, readyPercent) {
       <div class="hero-copy">
         <span class="hero-kicker">${online ? "Контроль CopiMine" : "Ожидание запуска"}</span>
         <h2>${online ? "Операционный центр сервера" : "Панель готова к запуску"}</h2>
-        <p>Сводка по TPS/MSPT, выборам, банку AR и артефактам без лишнего декора. Важные риски видны сразу, подробности открываются в рабочих разделах.</p>
+        <p>TPS, MSPT, выборы, банк AR и артефакты.</p>
         <div class="hero-actions">
           ${pill(stateText, online ? "good" : "bad")}
           ${pill(`first-run ${Math.round(Number(readyPercent || 0))}%`, Number(readyPercent || 0) >= 90 ? "good" : "warn")}
@@ -1029,7 +1029,7 @@ function dbPolicyPanel(policy = {}, access = {}) {
       <div class="db-policy-card ${allowlist.length ? "good" : "neutral"}">
         <span>разрешённых сценариев</span>
         <strong>${allowlist.length || "нет"}</strong>
-        <p>${allowlist.length ? allowlist.map(esc).join(", ") : "Сайт сейчас не открывает прямые служебные правки."}</p>
+        <p>${allowlist.length ? allowlist.map(esc).join(", ") : "Прямые служебные правки закрыты."}</p>
       </div>
     </div>
     <div class="db-policy-list">
@@ -1248,7 +1248,7 @@ function applicationBookPreview(row, compact = false) {
 function lawCards(rows) {
   rows = asArray(rows);
   if (!rows.length) {
-    return empty("Законов пока нет", "После одобрения президентские законы появятся здесь.");
+    return empty("Законов пока нет", "Одобренных законов нет.");
   }
   return `
     <div class="law-grid">
@@ -1266,7 +1266,7 @@ function lawCards(rows) {
 function candidateCards(rows) {
   rows = asArray(rows);
   if (!rows.length) {
-    return empty("Кандидатов пока нет", "Когда заявки будут одобрены, кандидаты появятся здесь.");
+    return empty("Кандидатов пока нет", "Одобренных кандидатов нет.");
   }
   const mapped = rows.slice(0, 8).map((row) => ({
     id: row.player_uuid || row.id,
@@ -1282,7 +1282,7 @@ function candidateCards(rows) {
             ${avatarBadge(row.name, "sm")}
             <div>
               <strong>${esc(row.name)}</strong>
-              <span>${row.votes > 0 ? `${compactInt(row.votes)} голосов` : "Голоса появятся после подсчёта"}</span>
+              <span>${row.votes > 0 ? `${compactInt(row.votes)} голосов` : "Подсчёт ещё не завершён"}</span>
             </div>
           </div>
           <div class="candidate-progress">
@@ -1297,7 +1297,7 @@ function candidateCards(rows) {
 function electionApplicationCards(rows) {
   rows = asArray(rows);
   if (!rows.length) {
-    return empty("Заявок пока нет", "Когда кандидаты сдадут книги в участки, они появятся здесь.");
+    return empty("Заявок пока нет", "Поданных заявок нет.");
   }
   return `
     <div class="book-card-grid">
@@ -1810,15 +1810,15 @@ function renderPublicStatus(status = {}, config = {}) {
     const onlineRows = publicOnlineRows(asArray(server.samplePlayers));
     const runtimeNotes = makeElement("div", "top-note-list");
     runtimeNotes.append(
-      buildTopNote("Личный кабинет", "Регистрация, привязка ника, банк AR и история операций."),
-      buildTopNote("Выборы", elections.active ? "Активная стадия видна в панели и в игре." : "Сейчас нет активного голосования, но ЦИК и участки остаются частью системы."),
-      buildTopNote("Донат", config.donationEnabled ? "Донатный контур активен." : "Боевой платёжный провайдер ещё не подключён. Для команды доступны только mock-сессии."),
+      buildTopNote("Кабинет", "Вход, привязка и банк AR."),
+      buildTopNote("Выборы", elections.active ? "Идёт активный этап." : "Активных выборов нет."),
+      buildTopNote("Донат", config.donationEnabled ? "Донат включён." : "Сейчас работает тестовый провайдер."),
     );
     const treasuryNotes = makeElement("div", "top-note-list");
     treasuryNotes.append(
       buildTopNote("Баланс", formatAr(treasury.balance || 0)),
-      buildTopNote("Управление", "Только президент и полные админы. Обычные игроки видят только публичную историю и общий баланс."),
-      buildTopNote("Последние события", asArray(treasury.history).slice(0, 3).map((row) => row.label || row.type || "операция").join(" • ") || "Пока без новых записей"),
+      buildTopNote("Доступ", "Президент и админы."),
+      buildTopNote("Последние события", asArray(treasury.history).slice(0, 3).map((row) => row.label || row.type || "операция").join(" • ") || "Записей пока нет."),
     );
     replaceChildrenSafe(onlineBoard, [
       buildTopBoard("Кто сейчас в игре", onlineRows),
@@ -1875,7 +1875,7 @@ function updatePublicModpack(modpack = {}) {
   button.classList.remove("hidden");
   button.classList.add("btn-disabled");
   button.href = "mods.html";
-  button.textContent = "Архив модов готовится";
+  button.textContent = "Архив недоступен";
   button.setAttribute("aria-disabled", "true");
 }
 
@@ -2162,7 +2162,7 @@ function parsePerformance(status) {
 
 function timeline(rows) {
   rows = asArray(rows);
-  if (!rows.length) return empty("Событий пока нет", "Когда сервер начнёт отдавать события, они появятся здесь.");
+  if (!rows.length) return empty("Событий пока нет", "Сервер ещё не отдал события.");
   return `<div class="timeline">${rows.map(row => `
     <div class="timeline-item">
       <div class="timeline-dot"></div>
@@ -2181,7 +2181,7 @@ function compactCoords(row) {
 
 function activityTimeline(rows) {
   rows = asArray(rows).slice(0, 80);
-  if (!rows.length) return empty("Действий пока нет", "Когда плагин или CoreProtect запишут события игрока, они появятся здесь.");
+  if (!rows.length) return empty("Действий пока нет", "Записей по игроку нет.");
   return `<div class="activity-timeline">${rows.map(row => `
     <article class="activity-row">
       <div class="activity-icon">${esc(short(row.type || row.source || "log", 2).toUpperCase())}</div>
@@ -2205,7 +2205,7 @@ function activityTimeline(rows) {
 
 function ledgerRows(rows, className = "ledger") {
   rows = asArray(rows).slice(0, 120);
-  if (!rows.length) return empty("Записей пока нет", "Новые записи появятся здесь позже.");
+  if (!rows.length) return empty("Записей пока нет", "История ещё пустая.");
   return `<div class="${esc(className)}">${rows.map(row => `
     <article class="ledger-row">
       <div>
@@ -2443,7 +2443,7 @@ async function playerDetailsHtml(player) {
       ${metric("", number(profile.ar?.inventory) + number(profile.ar?.enderChest), ` ${profile.ar?.inventory ?? 0}   ${profile.ar?.enderChest ?? 0}`, "good")}
     </div>
     <div class="spacer-12"></div>
-    ${panel("Сайт и банк", "Привязка кабинета, баланс игрока и статус PIN без лишней техники.", kv([
+    ${panel("Кабинет и банк", "Привязка, баланс и PIN.", kv([
       ["Аккаунт сайта", site.username || "Не привязан"],
       ["Кабинет привязан", Boolean(site.id)],
       ["Последний вход на сайт", dt(site.lastLoginAt)],
@@ -2618,10 +2618,10 @@ async function loadInventories() {
           { key: "name", label: "Действие", render: v => `<button class="btn btn-secondary btn-small" data-click="snapshotInventory('${esc(v)}')">Снимок</button>` }
         ])}
       `)}
-      ${panel("Как этим пользоваться", "нструмент для проверок, спорных кейсов и экономики", `
+      ${panel("Проверка инвентаря", "Снимки, история и AR.", `
         ${kv([
           ["Сценарий", "Выбрать игрока → создать снимок → открыть профиль → сравнить с историей"],
-          ["Безопасность", "Сайт читает playerdata и сохраняет снимки в data/, без изменения инвентаря"],
+          ["Только чтение", "Читает playerdata и сохраняет снимки в data/"],
           ["АР", "Отдельно считается в инвентаре и эндер-сундуке"]
         ])}
       `)}
@@ -2660,7 +2660,7 @@ async function loadElections() {
       <div class="hero-copy">
         <span class="hero-kicker">Выборы CopiMine</span>
         <h2>${esc(electionStageLabel(election.current_stage || election.status || web.stageTitle, "Пауза"))}</h2>
-        <p>Сайт показывает ход выборов понятным языком: заявки кандидатов, участки ЦИК, результаты, президента, законы и открытую часть казны без сырых команд и технических реестров.</p>
+        <p>Стадия, кандидаты, участки, законы и открытая казна.</p>
         <div class="hero-actions">
           ${pill(`Тур ${esc(election.current_round || summary.round || web.raw?.round || 1)}`, "neutral")}
           ${pill(`${esc(summary.candidateCount ?? candidateRows.length)} `, candidateRows.length ? "good" : "warn")}
@@ -2691,7 +2691,7 @@ async function loadElections() {
       </div>
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Состояние цикла", "Главные статусы выборов коротко и понятным языком.", kv([
+      ${panel("Состояние цикла", "Этап, тур и президент.", kv([
         ["Этап", electionStageLabel(election.current_stage || election.status || web.stageTitle, "—")],
         ["Тур", election.current_round || summary.round || web.raw?.round || "1"],
         ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
@@ -2699,34 +2699,34 @@ async function loadElections() {
         ["Срок президента", election.president_term_days ? `${election.president_term_days} дн.` : "—"],
         ["Режим сайта", data.readOnly ? "Только просмотр" : "Управление разрешено"]
       ]), siteBulletList([
-        "Управление выборами перенесено в игровые GUI.",
-        "Сайт показывает статусы, книги кандидатов, законы и открытую часть казны.",
-        "Опасные действия здесь не дублируются."
+        "Сводка по выборам.",
+        "Кандидаты, законы и казна.",
+        "Смена этапов только в игре."
       ]))}
-      ${panel("Пульт цикла", "Сайт больше не дублирует опасные election actions. Управление идёт только через игровые GUI CopiMineElectionCore.", `
+      ${panel("Пульт цикла", "Этапы запускаются только в игре.", `
         <div class="book-status-strip">
           ${pill("Только просмотр", "warn")}
-          ${pill("Игровой GUI обязателен", "neutral")}
-          ${pill("Аудит сохраняется в игре", "good")}
+          ${pill("Игровой GUI", "neutral")}
+          ${pill("Аудит включён", "good")}
         </div>
         <div class="spacer-12"></div>
         ${siteBulletList([
-          "Открывай /cadm -> Выборы для запуска этапов, подсчёта и выбора победителя.",
-          "Сайт оставляет только обзор, книги кандидатов, законы и открытую часть казны.",
-          "Legacy emergency buttons здесь больше не публикуются."
+          "Запуск этапов через /cadm.",
+          "На сайте: обзор, книги, законы и казна.",
+          "Аварийных кнопок здесь нет."
         ])}
       `)}
-      ${panel("Заявки кандидатов", "Главный рабочий экран для просмотра кандидатов: книга, статусы комиссии и решение админа.", `
+      ${panel("Заявки кандидатов", "Книги, статусы комиссии и решение админа.", `
         ${electionApplicationCards(applicationRows)}
         <div class="spacer-12"></div>
         ${pendingLawRows.length ? `<div class="book-status-strip">${pendingLawRows.slice(0, 5).map((row) => pill(`Закон на проверке · ${short(row.text || "", 42)}`, "warn")).join("")}</div>` : ""}
       `)}
-      ${panel("Кандидаты и результаты", "После одобрения кандидаты попадают в список, а голоса складываются в понятный рейтинг.", `
+      ${panel("Кандидаты и результаты", "Список кандидатов и результаты туров.", `
         ${candidateCards(candidateRows)}
         <div class="spacer-12"></div>
         ${resultBars(candidateRows, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}
       `)}
-      ${panel("Участки и ЦИК", "Участки, комиссии и приём бюллетеней на одной странице.", `
+      ${panel("Участки и ЦИК", "Участки, комиссии и приём бюллетеней.", `
         ${stationCardsHtml(pollingStations, voteDeposits)}
         <div class="spacer-12"></div>
         ${kv([
@@ -2737,7 +2737,7 @@ async function loadElections() {
       `)}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Президент и законы", "Победитель выборов, опубликованные законы и новые тексты на проверке.", `
+      ${panel("Президент и законы", "Президент, законы и новые тексты на проверке.", `
         ${lawCards(lawRows)}
         <div class="spacer-12"></div>
         ${pendingLawRows.length ? `<div class="law-stack">${pendingLawRows.slice(0, 5).map((row) => `
@@ -2747,14 +2747,14 @@ async function loadElections() {
           </article>
         `).join("")}</div>` : empty("Новых законов на проверке нет", "Когда президент отправит новый закон или замену, он появится здесь.")}
       `)}
-      ${panel("Казна", "Сайт показывает только открытую часть казны: баланс, владельца и последние публичные движения.", kv([
+      ${panel("Казна", "Баланс, владелец и публичные движения.", kv([
         ["Баланс", formatAr(treasuryBudget)],
         ["Владелец", detail.treasury?.ownerName || overview.president || "не указан"],
         ["Источник", "игровая экономика и витрины"],
-        ["Публичность", "без служебных деталей и приватных переводов"]
+        ["Публичность", "только открытые записи"]
       ]))}
     </section>
-    ${panel("Журнал цикла", "Этапы выборов, книги кандидатов, законы и выбор президента.", `
+    ${panel("Журнал цикла", "Этапы, книги кандидатов, законы и президент.", `
       <div class="ledger election-ledger">
         ${auditRows.length ? auditRows.slice(0, 40).map((row) => `
           <article class="ledger-row">
@@ -2767,7 +2767,7 @@ async function loadElections() {
             </div>
             <p>${esc(short(row.details || row.notes || row.message || row.target_name || "", 220) || "Без дополнительных заметок")}</p>
           </article>
-        `).join("") : empty("Событий пока нет", "Когда начнётся избирательный цикл, события появятся здесь.")}
+        `).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}
       </div>
     `)}
   `);
@@ -3078,11 +3078,11 @@ async function loadServer() {
     <section class="layout-grid grid-4">
       ${metric("Minecraft", status.minecraftOnline ? "Онлайн" : "Оффлайн", status.rconOk ? "живая связь подключена" : "живая связь недоступна", status.minecraftOnline ? "good" : "bad")}
       ${metric("Voice", status.ports?.voiceUdp24454?.online ? "Ок" : "Нет ответа", "UDP 24454", status.ports?.voiceUdp24454?.online ? "good" : "warn")}
-      ${metric("Сайт сервера", status.ports?.backend8090?.online ? "Доступен" : "Нет связи", "панель и обновления", status.ports?.backend8090?.online ? "good" : "bad")}
+      ${metric("Панель сайта", status.ports?.backend8090?.online ? "Доступен" : "Нет связи", "backend 8090", status.ports?.backend8090?.online ? "good" : "bad")}
       ${metric("Бэкапы", asArray(backups.backups).length, backups.dir || "data/backups")}
     </section>
     <section class="layout-grid grid-wide">
-      ${panel("Управление сервером", "Опасные действия вынесены в явные кнопки и пишутся в аудит", `
+      ${panel("Управление сервером", "Проверка, сохранение и перезагрузка.", `
         <div class="action-strip">
           <button class="btn btn-secondary" data-click="serverControl('status')">Проверить</button>
           <button class="btn btn-secondary" data-click="serverControl('save-all')">Сохранить мир</button>
@@ -3343,7 +3343,7 @@ async function loadSecurity() {
         { key: "status", label: "Статус", render: v => pill(statusLabel(v || "pending"), artifactStatusTone(v)) },
         { key: "approved_by", label: "Одобрил", render: v => esc(v || "—") },
         { key: "id", label: "Действие", render: (value, row) => String(row.status || "").toUpperCase() === "PENDING" ? `<button class="btn btn-primary" data-click="approveWhitelistRequest('${esc(value)}')">Одобрить</button>` : '<span class="muted">Готово</span>' }
-      ], { pageSize: 12 }) : empty("Whitelist-заявок пока нет", "Когда игроки отправят запросы с сайта, они появятся здесь."))}
+      ], { pageSize: 12 }) : empty("Whitelist-заявок пока нет", "Новых заявок нет."))}
       ${panel("IP-alerts", "Срабатывают при лимите регистраций и других подозрительных паттернах.", alertRows.length ? table("security-ip-alerts", alertRows, [
         { key: "created_at", label: "Время", render: v => dt(v) },
         { key: "ip", label: "IP" },
@@ -3351,10 +3351,10 @@ async function loadSecurity() {
         { key: "minecraft_name", label: "Minecraft" },
         { key: "reason", label: "Причина" },
         { key: "status", label: "Статус" }
-      ], { pageSize: 12 }) : empty("IP-alerts пока нет", "Подозрительные регистрации и лимиты появятся здесь автоматически."))}
+      ], { pageSize: 12 }) : empty("IP-alerts пока нет", "Подозрительных регистраций нет."))}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Защита входа", "Короткая сводка по доступу в админку и подтверждениям.", kv([
+      ${panel("Защита входа", "Сессия, хранилище и код подтверждения.", kv([
         ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
         ["Хранилище входа", access.authDb || "основное"],
         ["Готовность хранилища", access.authDbExists ? "готово" : "проверить"],
@@ -3424,7 +3424,7 @@ async function loadAdmins() {
           `)}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Защита входа", "Короткая сводка по доступу в админку и подтверждениям.", kv([
+      ${panel("Защита входа", "Сессия, хранилище и код подтверждения.", kv([
         ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
         ["Хранилище входа", access.authDb || "основное"],
         ["Готовность хранилища", access.authDbExists ? "готово" : "проверить"],
@@ -3562,7 +3562,7 @@ async function loadPlayerCabinet() {
       ${metric("Баланс AR", linked ? formatAr(balance) : "—", linked ? "Доступен в игре и на сайте" : "Сначала привяжи Minecraft", linked ? "good" : "neutral")}
       ${metric("Whitelist", whitelistStatus, whitelisted ? "Доступ к серверу уже открыт" : "Заявка отправляется один раз", whitelisted ? "good" : (whitelistRequest?.status === "PENDING" ? "warn" : "neutral"))}
     </section>
-    ${panel("Личный кабинет", "Профиль, доступ к серверу, банк и привязка без технического мусора.", kv([
+    ${panel("Личный кабинет", "Профиль, доступ, банк и привязка.", kv([
       ["Логин", state.user.username || "—"],
       ["Роль", state.user.role || "игрок"],
       ["Minecraft-ник", state.user.minecraftName || "—"],
@@ -3570,7 +3570,7 @@ async function loadPlayerCabinet() {
       ["Создан", dt(state.user.createdAt)],
       ["Последний вход", dt(state.user.lastLoginAt)]
     ]))}
-    ${linked ? panel("Банк", "Баланс, переводы и история счёта.", kv([
+    ${linked ? panel("Банк", "Баланс, переводы и история.", kv([
       ["Счёт", bank?.account?.accountId ? "открыт" : "не открыт"],
       ["Баланс", formatAr(balance)],
       ["PIN задан", pin.set],
@@ -3578,10 +3578,10 @@ async function loadPlayerCabinet() {
       ["Состояние PIN", bankPinState(pin)],
       ["Нужно сменить временный PIN", pin.mustChange],
       ["Временный PIN истекает", tempPin.expiresAt ? dt(tempPin.expiresAt) : "--"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('bank')">Открыть банк</button>`) : panel("Привязка Minecraft", "Перед банком и переводами привяжи аккаунт сайта к своему игровому нику.", `
-      <div class="notice">На странице привязки запроси одноразовый код, получи его в Minecraft и подтверди здесь.</div>
+    ]), `<button class="btn btn-secondary" data-click="setTab('bank')">Открыть банк</button>`) : panel("Привязка Minecraft", "Свяжи аккаунт сайта с игровым ником.", `
+      <div class="notice">Запроси код в игре и подтверди его здесь.</div>
     `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`)}
-    ${panel("Whitelist", "Разовая заявка на доступ к серверу после привязки Minecraft-ника.", `
+    ${panel("Whitelist", "Заявка на доступ к серверу.", `
       ${kv([
         ["Статус", whitelistStatus],
         ["Одобрил", whitelistRequest?.approvedBy || "—"],
@@ -3594,18 +3594,18 @@ async function loadPlayerCabinet() {
       ${linked && whitelistRequest?.status === "PENDING" ? `<div class="notice">Заявка уже отправлена и ждёт одобрения в Discord или админ-панели.</div>` : ""}
       ${whitelisted ? `<div class="notice">Игрок уже добавлен в whitelist. Повторная заявка не нужна.</div>` : ""}
     `)}
-    ${panel("Донат-баланс", "Отдельный баланс для донат-предметов. Он не конвертируется в AR.", kv([
+    ${panel("Донат-баланс", "Баланс донат-предметов.", kv([
       ["Статус", donation?.linked ? "доступен" : "ждёт привязки Minecraft"],
       ["Баланс", donation?.linked ? formatDonate(donationBalance) : "—"],
       ["Покупки", "через вкладку Артефакты / Донат"],
-      ["SBP", "MOCK_SBP active, пополнение через фиксированные пакеты"]
+      ["Оплата", "Тестовый провайдер, пополнение через фиксированные пакеты"]
     ]), `<button class="btn btn-secondary" data-click="setTab('donation-balance')">Открыть донат</button>`)}
-    ${tempPin.code ? panel("Временный PIN", "Этот код выдан сбросом. Используй его как текущий PIN и сразу замени.", kv([
+    ${tempPin.code ? panel("Временный PIN", "Сначала войди по нему, потом задай новый.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
       ["Истекает", dt(tempPin.expiresAt)]
     ]), `<button class="btn btn-primary" data-click="setTab('bank')">Заменить PIN</button>`) : ""}
-    ${panel("Запрос привязки", "Последний одноразовый код", playerLinkSummary(state.playerLinkRequest))}
+    ${panel("Запрос привязки", "Последний одноразовый код.", playerLinkSummary(state.playerLinkRequest))}
   `);
 }
 
@@ -3629,20 +3629,20 @@ async function loadPlayerLink() {
   const linked = Boolean(state.user.linked);
   setView(`
     <section class="layout-grid grid-2">
-      ${panel("Статус привязки", "Minecraft-ник подтверждается одноразовым кодом из игры. Пароль от Minecraft здесь не нужен.", kv([
+      ${panel("Статус привязки", "Minecraft-ник подтверждается кодом из игры.", kv([
         ["Логин сайта", state.user.username || "—"],
         ["Minecraft-ник", state.user.minecraftName || "—"],
         ["Привязан", linked],
         ["Создан", dt(state.user.createdAt)]
       ]))}
-      ${panel("Как это работает", "Связка аккаунта занимает меньше минуты и открывает банк, переводы и кабинет игрока.", safetyRail([
+      ${panel("Привязка", "Запроси код в игре и подтверди его здесь.", safetyRail([
         ["1. Запроси код", "Укажи свой игровой ник, пока ты онлайн на сервере.", "good"],
         ["2. Прочитай в игре", "Код приходит в Minecraft-чат через сервер.", "neutral"],
         ["3. Подтверди на сайте", "Введи код здесь, чтобы открыть банк и личный кабинет игрока.", "good"]
       ]))}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Запросить одноразовый код", "Код не показывается публично и не уходит в логи браузера.", `
+      ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `
         <div class="form-grid">
           <input id="linkMinecraftName" value="${esc(state.user.minecraftName || "")}" placeholder="Minecraft-ник на сервере" />
           <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
@@ -3699,32 +3699,32 @@ async function loadPlayerBank() {
   ]);
   setView(`
     <section class="layout-grid grid-4">
-      ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна президента и админов" : "Личный счёт для сайта и игры", "good")}
+      ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна" : "Личный счёт", "good")}
       ${metric("Последние операции", ledger.length, "Только подтверждённые записи", "neutral")}
       ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinTone(pin))}
-      ${metric("Minecraft", state.user.minecraftName || "—", "Привязан к кабинету", "good")}
+      ${metric("Minecraft", state.user.minecraftName || "—", "Привязан", "good")}
     </section>
     ${accountTabs}
     ${safetyRail([
-      ["Банк", usingTreasury ? "Обычные игроки не видят казну. Этот счёт доступен только президенту и админам." : "Баланс один и тот же на сайте, в банкомате и в игровых оплатах.", "good"],
-      ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `Текущий PIN казны: ${treasuryPin.visiblePin}` : "Установите PIN казны для переводов.") : (tempPin.code ? "Сейчас действует временный PIN. Замените его перед переводами." : (pin.set ? "PIN уже задан." : "Задайте PIN перед переводами.")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
-      ["Блокировка", usingTreasury ? "Для казны действуют те же lockout-правила PIN." : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "Неверные попытки временно блокируют PIN."), pin.locked && !usingTreasury ? "bad" : "neutral"]
+      ["Счёт", usingTreasury ? "Доступен президенту и админам" : "Сайт, банкомат и игровые оплаты", "good"],
+      ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задайте PIN казны") : (tempPin.code ? "Сейчас действует временный PIN" : (pin.set ? "PIN уже задан" : "Задайте PIN")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
+      ["Блокировка", usingTreasury ? "Лимит попыток действует и для казны" : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "После ошибок PIN временно блокируется"), pin.locked && !usingTreasury ? "bad" : "neutral"]
     ])}
-    ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Этот PIN выдан сбросом. Введи его как текущий и сохрани новый.", kv([
+    ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Сначала войди по нему, потом задай новый.", kv([
       ["Временный PIN", tempPin.code],
       ["Выдан", dt(tempPin.createdAt)],
       ["Истекает", dt(tempPin.expiresAt)]
     ])) : ""}
     <section class="layout-grid grid-2">
-      ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "Президент и админ видят PIN казны и могут менять его прямо здесь." : (tempPin.code ? "Активен временный PIN. Введи его как текущий и замени сейчас." : "PIN нужен для переводов на сайте и защищённых операций банкомата."), `
+      ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "PIN казны виден президенту и админам." : (tempPin.code ? "Сначала введи временный PIN." : "PIN нужен для переводов."), `
         <div class="form-grid">
-          ${usingTreasury ? `<div class="notice full">Текущий PIN казны: <strong>${esc(treasuryPin.visiblePin || "не задан")}</strong></div>` : ""}
-          <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${usingTreasury ? "Текущий PIN казны, если уже задан" : (tempPin.code ? "Текущий временный PIN" : "Текущий PIN, если уже задан")}" />
+          ${usingTreasury ? `<div class="notice full">PIN казны: <strong>${esc(treasuryPin.visiblePin || "не задан")}</strong></div>` : ""}
+          <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${usingTreasury ? "Текущий PIN казны" : (tempPin.code ? "Текущий временный PIN" : "Текущий PIN")}" />
           <input id="bankNewPin" type="password" inputmode="numeric" placeholder="Новый PIN, 4-8 цифр" />
           <button class="btn btn-primary full" data-click="playerSetPin()">Сохранить PIN</button>
         </div>
       `)}
-      ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Бюджетный перевод доступен только президенту и админам." : "Перевод отправит AR на другой счёт и сразу покажет результат в истории."), (!usingTreasury && transferLocked) ? `
+      ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Доступно президенту и админам." : "Перевод на другой счёт."), (!usingTreasury && transferLocked) ? `
         <div class="notice">${pin.status === "temporary-expired" ? "Временный PIN истёк. Попроси команду сервера сбросить его ещё раз." : "Сначала задай личный PIN. После этого переводы и ATM-операции откроются автоматически."}</div>
       ` : `
         <div class="form-grid">
@@ -3736,7 +3736,7 @@ async function loadPlayerBank() {
         </div>
       `)}
     </section>
-    ${panel("Журнал операций", "Последние переводы, оплаты и покупки по этому счёту.", transactionFeed(ledger, 18))}
+    ${panel("Журнал операций", "Последние движения счёта.", transactionFeed(ledger, 18))}
   `);
 }
 
@@ -4000,7 +4000,7 @@ async function loadPlayerArtifacts() {
     safeApi("/api/player/shop/ar-items", { items: [] })
   ]);
   if (!data.linked) {
-    setView(panel("Артефакты", "Сначала привяжи Minecraft-аккаунт", empty("Minecraft-ник не привязан", "После привязки здесь появятся покупки, pending delivery и ремонт предметов.")));
+    setView(panel("Артефакты", "Сначала привяжи Minecraft-аккаунт", empty("Minecraft-ник не привязан", "После привязки здесь будут покупки, выдача и ремонт предметов.")));
     return;
   }
   const catalog = asArray(catalogPayload.items);
@@ -4012,30 +4012,30 @@ async function loadPlayerArtifacts() {
     limit_text: row.per_player_limit > 0 ? `${number(row.per_player_limit)} на игрока` : "без лимита",
     cooldown_text: row.cooldown_seconds ? `${number(row.cooldown_seconds)} сек.` : "—",
   }));
-  const catalogMetric = metric("AR catalog", catalog.length, "Backend catalog prices and limits", catalog.length ? "good" : "neutral");
+  const catalogMetric = metric("AR-каталог", catalog.length, "Цены и лимиты каталога", catalog.length ? "good" : "neutral");
   setView(`
     <section class="layout-grid grid-4">
       ${catalogMetric}
-      ${metric("Покупки", purchases.length, "Подтверждённые покупки артефактов", purchases.length ? "good" : "neutral")}
-      ${metric("Ожидают выдачи", pending.length, "Предметы ещё не дошли до Minecraft", pending.length ? "warn" : "good")}
-      ${metric("Ремонты", repairs.length, "История восстановления PDC-предметов")}
-      ${metric("Донат", "в отдельном разделе", "Balance, shop и reclaim теперь вынесены отдельно", "neutral")}
+      ${metric("Покупки", purchases.length, "Подтверждённые покупки", purchases.length ? "good" : "neutral")}
+      ${metric("Ожидают выдачи", pending.length, "Предметы ждут выдачи", pending.length ? "warn" : "good")}
+      ${metric("Ремонты", repairs.length, "История ремонтов")}
+      ${metric("Донат", "отдельный раздел", "Баланс, витрина и возврат", "neutral")}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Мои покупки", "Что уже куплено в лавке артефактов.", table("player-artifact-purchases", purchases, [
+      ${panel("Мои покупки", "Купленные предметы.", table("player-artifact-purchases", purchases, [
         { key: "created_at", label: "Время", render: v => dt(v) },
         { key: "item_id", label: "Предмет" },
         { key: "shop_id", label: "Лавка" },
         { key: "price_ar", label: "AR" },
         { key: "status", label: "Статус", render: v => pill(statusLabel(v), artifactStatusTone(v)) }
       ], { pageSize: 12 }))}
-      ${panel("Ожидают выдачи", "Если в игре не хватило места, предметы останутся здесь до следующей выдачи.", table("player-artifact-pending", pending, [
+      ${panel("Ожидают выдачи", "Предметы ждут следующей выдачи.", table("player-artifact-pending", pending, [
         { key: "created_at", label: "Создано", render: v => dt(v) },
         { key: "item_id", label: "Предмет" },
         { key: "status", label: "Статус", render: v => pill(statusLabel(v || "pending"), artifactStatusTone(v)) }
       ], { pageSize: 12 }))}
     </section>
-    ${panel("Каталог AR-лавки", "Сайт показывает те же цены, лимиты и описания, которые backend отдаёт из актуального каталога.", table("player-artifact-catalog", catalogRows, [
+    ${panel("Каталог AR-лавки", "Текущие цены и лимиты.", table("player-artifact-catalog", catalogRows, [
       { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
       { key: "price_ar", label: "AR" },
       { key: "effect_description", label: "Эффект", render: (value) => short(value || "", 110) || "Без отдельного описания" },
@@ -4118,7 +4118,7 @@ async function loadPlayerHistory() {
           </article>
         `).join("")}
       </div>
-    ` : empty("История пока пустая", "Когда появятся переводы, покупки или донат-операции, они появятся здесь."))}
+    ` : empty("История пока пустая", "Операций ещё не было."))}
   `);
 }
 async function loadPlayerSettings() {

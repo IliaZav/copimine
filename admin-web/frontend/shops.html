@@ -37,8 +37,8 @@
             <span class="hero-kicker">Лавки</span>
             <span class="route-chip">Каталог</span>
           </div>
-          <h1>Две витрины: AR и donation.</h1>
-          <p>AR-покупки и donation-покупки живут отдельно: у них разные балансы, разные ограничения и разная выдача.</p>
+          <h1>Лавки CopiMine.</h1>
+          <p>AR и donation разделены. Выдача и возврат идут в игре.</p>
           <div class="public-actions">
             <button id="openArShopBtn" type="button" class="btn btn-secondary">AR-лавка</button>
             <button id="openDonationShopBtn" type="button" class="btn btn-primary">Donation-лавка</button>
@@ -47,11 +47,16 @@
         </div>
 
         <aside class="hero-side-card hero-side-card-compact">
+          <div class="hero-sprite-strip" aria-hidden="true">
+            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
+            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/totem_of_undying.png" alt="" /></span>
+            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/barrel_top.png" alt="" /></span>
+          </div>
           <span class="hero-kicker">Правила</span>
           <ul class="hero-check-list">
-            <li>AR-предметы покупаются и чинятся только за AR.</li>
-            <li>Donation-предметы привязаны к владельцу и идут через отдельный баланс.</li>
-            <li>Физическая выдача и возврат всегда происходят уже в игре.</li>
+            <li>AR-предметы покупаются и чинятся за AR.</li>
+            <li>Donation-предметы идут через отдельный баланс.</li>
+            <li>Выдача и возврат проходят в игре.</li>
           </ul>
         </aside>
       </section>
@@ -59,8 +64,8 @@
       <section class="public-section public-shop-board-section">
         <div class="section-head">
           <span>Витрины</span>
-          <h2>Сначала витрина, потом покупка.</h2>
-          <p>Сайт показывает состав, цену и ограничения, а списание и физическая выдача идут уже по своему сценарию.</p>
+          <h2>AR и donation отдельно.</h2>
+          <p>На сайте — каталог и покупка. В игре — выдача и возврат.</p>
         </div>
 
         <div class="public-shop-board">
@@ -69,7 +74,7 @@
               <div>
                 <span class="hero-kicker">AR-лавка</span>
                 <h3>Официальные предметы за AR</h3>
-                <p>Игровые товары за AR с ремонтом, контролем экземпляров и отдельной AR-экономикой.</p>
+                <p>Игровые товары, ремонт и контроль экземпляров.</p>
               </div>
               <button id="openArShopBtnMirror" type="button" class="btn btn-secondary">Открыть в кабинете</button>
             </div>
@@ -83,7 +88,7 @@
               <div>
                 <span class="hero-kicker">Donation-лавка</span>
                 <h3>Именные предметы за donation</h3>
-                <p>Покупка идёт через donation-баланс, а выдача и возврат защищены учётом экземпляров и антидюп-потоком.</p>
+                <p>Отдельный баланс, выдача в игре и возврат утерянных предметов.</p>
               </div>
               <button id="openDonationShopBtnMirror" type="button" class="btn btn-primary">Открыть в кабинете</button>
             </div>
@@ -97,24 +102,24 @@
       <section class="public-section public-brief-section">
         <div class="section-head">
           <span>Порядок</span>
-          <h2>Как проходит покупка.</h2>
+          <h2>Как купить.</h2>
         </div>
 
         <div class="public-brief-grid">
           <article class="public-brief-card">
             <span>01</span>
             <strong>Смотришь витрину</strong>
-            <p>Смотришь цену, эффект, валюту и ограничения по конкретному товару.</p>
+            <p>Цена, эффект, кулдаун и ограничения.</p>
           </article>
           <article class="public-brief-card">
             <span>02</span>
             <strong>Оформляешь покупку</strong>
-            <p>Сайт списывает нужную валюту и создаёт право на выдачу предмета.</p>
+            <p>После покупки создаётся выдача.</p>
           </article>
           <article class="public-brief-card">
             <span>03</span>
             <strong>Забираешь в игре</strong>
-            <p>Физический предмет забирается уже в игре, а не падает прямо из браузера.</p>
+            <p>Предмет выдаётся через игровую лавку.</p>
           </article>
         </div>
       </section>

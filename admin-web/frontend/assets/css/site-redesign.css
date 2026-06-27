@@ -548,8 +548,8 @@ body {
   padding: 30px;
   border: 1px solid var(--line);
   border-radius: 34px;
-  background: rgba(255, 250, 243, 0.7);
-  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--surface) 92%, white 8%);
+  box-shadow: 0 18px 40px rgba(12, 37, 24, 0.08);
 }
 
 .gateway-grid,

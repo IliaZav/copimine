@@ -41,6 +41,18 @@ const state = {
   playerBankScope: getStoredUiState("copiminePlayerBankScope", "PERSONAL") || "PERSONAL"
 };
 
+const PUBLIC_GUEST_HASH_ROUTES = new Set([
+  "start",
+  "about",
+  "features",
+  "join",
+  "signin",
+  "mods",
+  "cabinet-zones",
+  "presidentBudgetShowcase",
+  "treasuryHistorySection"
+]);
+
 const dataClickHandlers = Object.create(null);
 const dataInputHandlers = Object.create(null);
 const fromWindow = (name) => (...args) => window[name]?.(...args);
@@ -1696,7 +1708,8 @@ function showGuestPages() {
     clearInterval(state.refreshTimer);
     renderPublicAuthState();
     loadPublicStatus();
-    if (!location.hash || location.hash === "#dashboard" || location.hash === "#cabinet") location.hash = "#start";
+    const route = parseHashRoute(location.hash);
+    if (!location.hash || location.hash === "#dashboard" || location.hash === "#cabinet" || !PUBLIC_GUEST_HASH_ROUTES.has(route.tab)) location.hash = "#start";
     setTimeout(() => document.querySelector(location.hash || "#start")?.scrollIntoView({ block: "start" }), 0);
   }
 
@@ -3541,19 +3554,26 @@ async function loadSecurity() {
       ], { pageSize: 12 }) : empty("IP-alerts пока нет", "Подозрительные регистрации и лимиты появятся здесь автоматически."))}
     </section>
     <section id="admin-create-panel" class="layout-grid grid-2">
-      ${panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
-        <div class="form-grid danger-zone">
-          <input id="newAdminUsername" placeholder="Minecraft-ник" />
-          <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
-          <select id="newAdminRole">
-            <option value="admin">Полный админ</option>
-            <option value="junior_admin">Младший админ</option>
-          </select>
-          <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить доступ к серверу, если нужно</label>
-          <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP, если политика входа требует</label>
-          <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
-        </div>
-      `)}
+      ${state.owner
+        ? panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
+            <div class="form-grid danger-zone">
+              <input id="newAdminUsername" placeholder="Minecraft-ник" />
+              <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
+              <select id="newAdminRole">
+                <option value="admin">Полный админ</option>
+                <option value="junior_admin">Младший админ</option>
+              </select>
+              <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить доступ к серверу, если нужно</label>
+              <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP, если политика входа требует</label>
+              <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
+            </div>
+          `)
+        : panel("Управление администраторами", "Создание и изменение учётных записей админов доступно только владельцу панели.", `
+            <div class="empty-state compact">
+              <strong>Owner-only раздел</strong>
+              <span>Полный админ может просматривать состояние безопасности и whitelist, но не менять состав админов.</span>
+            </div>
+          `)}
       ${panel("Защита входа", "Короткая сводка по доступу в админку и подтверждениям.", kv([
         ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
         ["Хранилище входа", access.authDb || "основное"],
@@ -4421,7 +4441,7 @@ function wire() {
       setStoredUiState("copimineDonationSessionId", sessionId);
     }
     state.donationFocusItemId = itemId;
-    if (!state.role && ["start", "about", "features", "join", "signin"].includes(next)) return;
+    if (!state.role && PUBLIC_GUEST_HASH_ROUTES.has(next)) return;
     if (next !== state.tab) {
       setTab(next);
       return;

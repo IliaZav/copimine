@@ -112,15 +112,19 @@ def main() -> None:
             assert c.get("/api/health").status_code == 200
             r = c.post("/api/auth/login", json={"username":"SudoKillDash9", "password":test_password})
             assert r.status_code == 200, r.text
-            token = r.json()["token"]
-            h = {"Authorization":"Bearer " + token}
+            assert r.json()["cookieAuth"] is True
+            csrf_boot = c.get("/api/auth/csrf")
+            assert csrf_boot.status_code == 200, csrf_boot.text
+            csrf_token = c.cookies.get(appmod.CSRF_COOKIE_NAME)
+            assert csrf_token, "CSRF cookie was not issued"
+            h = {appmod.CSRF_HEADER_NAME: csrf_token}
             for url in [
                 "/api/auth/me", "/api/status", "/api/server/files", "/api/minecraft/access-lists",
                 "/api/backups", "/api/resourcepack/status", "/api/security/admins",
                 "/api/data-sources", "/api/system/services", "/api/audit", "/api/plugin/events",
                 "/api/economy/ares/history", "/api/discord/status",
             ]:
-                rr = c.get(url, headers=h)
+                rr = c.get(url)
                 assert rr.status_code == 200, (url, rr.status_code, rr.text)
                 assert "/opt/copimine/" not in rr.text
                 assert ".env" not in rr.text

@@ -81,6 +81,8 @@
 4. Mutation without CSRF returns `403`.
 5. `junior_admin` can open only restricted read/admin-lite sections.
 6. Full admin actions still require full admin rights.
+7. `junior_admin` opens the panel without `403` on `/api/events/stream` and still does not receive owner-only mutation controls.
+8. Only `owner` can create, update or disable panel-admin accounts; full admin sees the owner-only notice instead of mutation controls.
 
 ## Commerce checks
 
@@ -96,6 +98,7 @@
 2. No inline `onclick=`, `oninput=`, `onsubmit=` in HTML or bundled frontend source.
 3. No refresh/access token persistence in browser storage.
 4. No fake success or placeholder copy in guest, player or admin UI.
+5. Public `#mods`, `#cabinet-zones`, `#presidentBudgetShowcase` and `#treasuryHistorySection` remain guest-accessible and do not force auth routing.
 
 ## Modpack archive checks
 

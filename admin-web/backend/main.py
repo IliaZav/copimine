@@ -807,15 +807,18 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        response.headers.setdefault("Vary", "Origin, Sec-Fetch-Site")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    if request.url.scheme.lower() == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+        "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'",
     )
     return response
 
@@ -943,8 +946,8 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
 
 
 def clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
-    response.delete_cookie(AUTH_REFRESH_COOKIE_NAME, path="/")
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/", secure=AUTH_COOKIE_SECURE, samesite="lax", httponly=True)
+    response.delete_cookie(AUTH_REFRESH_COOKIE_NAME, path="/", secure=AUTH_COOKIE_SECURE, samesite="lax", httponly=True)
     clear_csrf_cookie(response)
 
 
@@ -8827,7 +8830,7 @@ async def security_admins(_: str = Depends(require_admin)) -> dict[str, Any]:
 
 
 @app.post("/api/security/admins")
-async def security_add_admin(data: AdminAccessIn, request: Request, owner: str = Depends(require_admin)) -> dict[str, Any]:
+async def security_add_admin(data: AdminAccessIn, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_CREATE")
     username = data.username.strip()
     if not valid_minecraft_name(username):
@@ -8855,7 +8858,7 @@ async def security_add_admin(data: AdminAccessIn, request: Request, owner: str =
 
 
 @app.patch("/api/security/admins/{username}")
-async def security_update_admin(username: str, data: AdminUpdateIn, request: Request, owner: str = Depends(require_admin)) -> dict[str, Any]:
+async def security_update_admin(username: str, data: AdminUpdateIn, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_UPDATE")
     if not valid_minecraft_name(username):
         raise HTTPException(status_code=400, detail="Некорректный ник")
@@ -8885,7 +8888,7 @@ async def security_update_admin(username: str, data: AdminUpdateIn, request: Req
 
 
 @app.delete("/api/security/admins/{username}")
-async def security_delete_admin(username: str, request: Request, owner: str = Depends(require_admin)) -> dict[str, Any]:
+async def security_delete_admin(username: str, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_DISABLE")
     result = await bg(remove_or_disable_admin_user, username, owner)
     audit_event(owner, "security.admin.delete", target=username)
@@ -9177,7 +9180,7 @@ async def plugin_event_ingest(event: PluginEventIn) -> dict[str, Any]:
 
 
 @app.get("/api/events/stream")
-async def events_stream(_: str = Depends(require_admin)) -> StreamingResponse:
+async def events_stream(_: str = Depends(require_panel_admin)) -> StreamingResponse:
     async def generate():
         last_seen_id = ""
         while True:

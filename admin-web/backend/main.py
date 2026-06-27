@@ -7320,6 +7320,59 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
     }
 
 
+@app.post("/api/session/login")
+async def session_login(data: PlayerLoginIn, request: Request, response: Response) -> dict[str, Any]:
+    username = data.username.strip()
+    check_rate_limit(request, "session-login-ip", limit=20, window_seconds=300)
+    assert_not_locked(request, "session:" + username)
+
+    real_username, meta = resolve_admin_user(username)
+    if meta and bool(meta.get("enabled", True)) and verify_password_hash(str(meta.get("password_hash", "")), data.password):
+        access_ok, access_errors = minecraft_access_ok(real_username)
+        if not access_ok:
+            register_failed_login(request, "session:" + username)
+            audit_event(username, "auth.session_login", status="blocked", details={"reason": access_errors})
+            raise HTTPException(status_code=403, detail="Доступ запрещён: " + "; ".join(access_errors))
+        role = normalize_admin_role(meta.get("role"))
+        if not is_panel_admin_role(role):
+            register_failed_login(request, "session:" + username)
+            raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
+        clear_failed_login(request, "session:" + username)
+        access_token, refresh_token = issue_admin_auth_pair(real_username, role, request)
+        set_auth_cookies(response, access_token, refresh_token)
+        audit_event(real_username, "auth.session_login", status="ok", details={"role": role, "ip": get_client_ip(request)})
+        return {
+            "username": real_username,
+            "role": role,
+            "fullAccess": is_full_admin_role(role),
+            "owner": role == "owner",
+            "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
+            "cookieAuth": True,
+        }
+
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        account = player_account_by_username(conn, username)
+        if account and bool(int(account.get("enabled") or 0)) and verify_password_hash(str(account.get("password_hash") or ""), data.password):
+            conn.execute("UPDATE site_accounts SET last_login_at=%s WHERE id=%s", (now_ts(), account["id"]))
+            conn.execute(
+                "INSERT INTO auth_effects_disable_audit(actor,target_uuid,created_at,details) VALUES(%s,%s,%s,%s)",
+                (username, str(account.get("minecraft_uuid") or ""), now_ts(), "session login passed staged auth/runtime checks"),
+            )
+            conn.commit()
+            clear_failed_login(request, "session:" + username)
+            pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
+            access_token, refresh_token = issue_player_auth_pair(account, request)
+            set_auth_cookies(response, access_token, refresh_token)
+            account["last_login_at"] = now_ts()
+            audit_event(username, "auth.session_login", status="ok", details={"role": "player", "ip": get_client_ip(request)})
+            return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
+
+    register_failed_login(request, "session:" + username)
+    audit_event(username, "auth.session_login", status="failed", details={"ip": get_client_ip(request)})
+    raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+
+
 @app.get("/api/auth/csrf")
 async def auth_csrf(response: Response) -> dict[str, Any]:
     set_csrf_cookie(response)
@@ -7357,6 +7410,49 @@ async def logout(request: Request, response: Response, authorization: str = Head
     clear_auth_cookies(response)
     audit_event(actor or "unknown", "auth.logout")
     return {"ok": True}
+
+
+@app.get("/api/session/me")
+async def session_me(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
+    token = request_auth_token(request, authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Нужна авторизация")
+    payload = verify_token(token)
+    role = str(payload.get("role") or "").strip().lower()
+    if role == "player":
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            account = player_account_by_id(conn, str(payload.get("sub") or ""))
+            if not bool(int(account.get("enabled") or 0)):
+                raise HTTPException(status_code=403, detail="Аккаунт игрока отключён")
+            conn.commit()
+        return {
+            "authenticated": True,
+            "kind": "player",
+            "role": "player",
+            "username": str(account.get("username") or ""),
+            "homeRoute": "cabinet",
+            "account": public_player_account(account),
+        }
+    username = str(payload.get("sub") or "")
+    real_username, meta = resolve_admin_user(username)
+    if not meta or not bool(meta.get("enabled", True)):
+        raise HTTPException(status_code=403, detail="Доступ к админке отозван")
+    current_role = normalize_admin_role(meta.get("role"))
+    if not is_panel_admin_role(current_role):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
+    access_ok, access_errors = minecraft_access_ok(real_username)
+    if not access_ok:
+        raise HTTPException(status_code=403, detail="Minecraft-доступ отозван: " + "; ".join(access_errors))
+    return {
+        "authenticated": True,
+        "kind": "panel",
+        "role": current_role,
+        "username": real_username,
+        "homeRoute": "dashboard",
+        "fullAccess": is_full_admin_role(current_role),
+        "owner": current_role == "owner",
+    }
 
 
 @app.get("/api/auth/me")
@@ -7434,6 +7530,37 @@ async def public_president_skin_body(uuid: str = Query(default="")) -> Response:
 @app.get("/api/public/modpack")
 async def public_modpack() -> dict[str, Any]:
     return {"ok": True, "data": await bg(public_modpack_sync)}
+
+
+@app.get("/api/public/shop/ar-items")
+async def public_ar_shop_catalog() -> dict[str, Any]:
+    catalog = await bg(ar_catalog_snapshot_sync)
+    items: list[dict[str, Any]] = []
+    for row in catalog.get("items", [])[:12]:
+        item = dict(row)
+        item.pop("lore", None)
+        items.append(item)
+    return {"ok": True, "data": {"count": len(catalog.get("items", [])), "items": items}}
+
+
+@app.get("/api/public/shop/donation-items")
+async def public_donation_shop_catalog() -> dict[str, Any]:
+    catalog = await bg(donation_catalog_snapshot_sync)
+    items: list[dict[str, Any]] = []
+    for row in catalog.get("items", [])[:12]:
+        item = dict(row)
+        item["item_url"] = donation_item_page_url(str(item.get("item_id") or ""))
+        item.pop("lore", None)
+        items.append(item)
+    return {
+        "ok": True,
+        "data": {
+            "catalogVersion": catalog.get("catalogVersion", 0),
+            "updatedAt": catalog.get("updatedAt", 0),
+            "count": len(catalog.get("items", [])),
+            "items": items,
+        },
+    }
 
 
 @app.post("/api/player/register")

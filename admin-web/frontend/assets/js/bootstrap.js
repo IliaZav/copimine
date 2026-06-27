@@ -1,37 +1,56 @@
-import "./public/homepage.js";
+import { initThemeToggle } from "./theme/theme-toggle.js";
+import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js";
+import { initPublicNav } from "./public/public-nav.js";
+import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js";
 
-const PUBLIC_HASH_ROUTES = new Set([
-  "",
-  "start",
-  "servers",
-  "presidentbudgetshowcase",
-  "treasuryhistorysection",
-  "tops",
-  "features",
-  "mods",
-  "cabinet-zones",
-  "rules",
-  "help",
-  "join",
-  "signin",
+const LEGACY_PUBLIC_REDIRECTS = new Map([
+  ["start", "index.html"],
+  ["features", "index.html"],
+  ["rules", "index.html"],
+  ["help", "index.html"],
+  ["servers", "server.html"],
+  ["presidentbudgetshowcase", "server.html"],
+  ["treasuryhistorysection", "server.html"],
+  ["tops", "server.html"],
+  ["shops", "shops.html"],
+  ["mods", "mods.html"],
+  ["join", "mods.html"],
+  ["cabinet-zones", "signin.html"],
+  ["register", "register.html"],
 ]);
 
 let legacyRuntimePromise = null;
-let legacyRuntimeReady = false;
 
 function currentHashRoute(hashValue = window.location.hash) {
   return String(hashValue || "").replace(/^#/, "").split("?", 1)[0].trim().toLowerCase();
 }
 
-function needsLegacyRuntime(hashValue = window.location.hash) {
-  return !PUBLIC_HASH_ROUTES.has(currentHashRoute(hashValue));
+function pageKind() {
+  return String(document.body?.dataset.pageKind || "").trim().toLowerCase();
+}
+
+function normalizeLegacyPublicHash() {
+  const route = currentHashRoute();
+  const redirectTarget = LEGACY_PUBLIC_REDIRECTS.get(route);
+  if (!redirectTarget) return false;
+  window.location.replace(redirectTarget);
+  return true;
+}
+
+function normalizeAuthHashRoute() {
+  const route = currentHashRoute();
+  if (!route) return false;
+  if (redirectLegacyAuthRoute(`#${route}`)) return true;
+  const normalized = normalizeAppRoute(route, "");
+  if (!normalized) return false;
+  window.location.replace(appRouteHref(normalized));
+  return true;
 }
 
 function loadLegacyRuntime() {
   if (legacyRuntimePromise) return legacyRuntimePromise;
   legacyRuntimePromise = import("./legacy/app-legacy.js")
     .then((module) => {
-      legacyRuntimeReady = true;
       document.documentElement.dataset.legacyRuntime = "ready";
       return module;
     })
@@ -47,40 +66,32 @@ function requestLegacyRuntime() {
   void loadLegacyRuntime();
 }
 
-function primeLegacyRuntimeFromEvent(event) {
-  const target = event.target instanceof Element ? event.target : null;
-  if (!target) return;
-  if (target.closest("#loginForm") || target.closest("#publicCabinetBtn")) {
-    requestLegacyRuntime();
-  }
-}
-
-async function handleLoginSubmit(event) {
-  if (legacyRuntimeReady) return;
-  const form = event.target instanceof HTMLFormElement ? event.target : null;
-  if (!form || form.id !== "loginForm") return;
-  event.preventDefault();
-  await loadLegacyRuntime();
-  window.requestAnimationFrame(() => form.requestSubmit());
-}
-
 window.addEventListener("hashchange", () => {
-  if (needsLegacyRuntime()) {
+  if (pageKind() === "cabinet") {
+    if (normalizeAuthHashRoute()) return;
     requestLegacyRuntime();
+    return;
   }
+  if (pageKind() === "signin" || pageKind() === "register") {
+    normalizeAuthHashRoute();
+    return;
+  }
+  if (normalizeLegacyPublicHash()) return;
 });
 
 window.addEventListener("copimine:legacy-runtime-request", requestLegacyRuntime);
-document.addEventListener("pointerdown", primeLegacyRuntimeFromEvent, { passive: true, capture: true });
-document.addEventListener("focusin", primeLegacyRuntimeFromEvent, { capture: true });
-document.addEventListener(
-  "submit",
-  (event) => {
-    void handleLoginSubmit(event);
-  },
-  true,
-);
 
-if (needsLegacyRuntime()) {
-  requestLegacyRuntime();
+if (pageKind() === "cabinet") {
+  if (!normalizeAuthHashRoute()) {
+    requestLegacyRuntime();
+  }
+} else if (pageKind() === "signin" || pageKind() === "register") {
+  if (!normalizeAuthHashRoute()) {
+    void initAuthPage();
+  }
+} else {
+  normalizeLegacyPublicHash();
 }
+
+initThemeToggle();
+initPublicNav();

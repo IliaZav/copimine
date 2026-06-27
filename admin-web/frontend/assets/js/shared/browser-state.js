@@ -1,7 +1,7 @@
 const ALLOWED_KEYS = new Set([
-  "copimineLastRole",
   "copimineDonationSessionId",
   "copiminePlayerBankScope",
+  "copimine.theme",
 ]);
 
 function safeStorage() {

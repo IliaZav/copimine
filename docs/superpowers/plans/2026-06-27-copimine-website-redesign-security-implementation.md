@@ -572,6 +572,25 @@ git push -u origin $(git -C D:\Desktop\Copimine\opt\copimine branch --show-curre
 2. Fix findings and rerun validators.
 3. Only then commit/push to GitHub.
 
+## Independent Review Loop Before Git
+
+After implementation reaches a stable state, run an explicit multi-pass review loop before any push:
+
+1. **Pass 1:** frontend/backend regression sweep over website routes, auth, donation, AR shop, treasury, plugin registry
+2. **Pass 2:** focused security review over XSS, CSRF, auth/session storage, role guards, price/balance trust boundaries
+3. **Pass 3:** multi-user/state isolation review for per-user session state, cross-user data exposure, cabinet routing, treasury access
+4. **Pass 4:** UI/runtime honesty review for dead buttons, fake statuses, placeholder text, broken error states, mobile shell regressions
+5. **Pass 5:** final validator/build sweep and diff review
+
+For each pass:
+
+- record findings
+- fix findings
+- rerun the relevant validators/checks
+- continue to the next pass only after the previous pass is clean
+
+If a later pass introduces or reveals new defects in an earlier category, loop back and continue until the website is stable. Do not push while unresolved findings remain.
+
 ## Manual Smoke To Add
 
 - Homepage loads with public budget and president card.
@@ -582,4 +601,3 @@ git push -u origin $(git -C D:\Desktop\Copimine\opt\copimine branch --show-curre
 - AR shop still uses backend prices and stays separate from donation balance.
 - Junior admin sees limited navigation and cannot access dangerous admin actions.
 - Plugin registry pages cannot write arbitrary config keys or files.
-

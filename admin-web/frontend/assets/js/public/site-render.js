@@ -1,42 +1,21 @@
 import { makeElement, replaceChildrenSafe } from "../shared/dom.js";
-
-const publicFeatures = {
-  bank: {
-    kicker: "Банк AR",
-    title: "Один счёт для банкомата, сайта и игровых переводов",
-    text: "Баланс, переводы, PIN, личный счёт и доступ к казне у президента работают через единый безопасный банковский контур без ручных обходов.",
-    icon: "/assets/mc-icons/item/emerald_block.png",
-  },
-  elections: {
-    kicker: "Выборы",
-    title: "Игровая политика без ручного хаоса",
-    text: "Заявки, участки, бюллетени, подсчёт и результаты проходят через реальные игровые сценарии, а сайт показывает только подтверждённые данные.",
-    icon: "/assets/mc-icons/item/writable_book.png",
-  },
-  president: {
-    kicker: "Казна",
-    title: "Отдельный бюджетный счёт сервера",
-    text: "Президент и админы работают с отдельным счётом казны. Игроки видят только публичную витрину баланса и истории, без служебных реквизитов.",
-    icon: "/assets/mc-icons/item/nether_star.png",
-  },
-  artifacts: {
-    kicker: "Лавки",
-    title: "AR-предметы и защищённая выдача",
-    text: "Артефакты покупаются и чинятся по реальной экономике AR. Сайт не рисует фейковые статусы и честно показывает, если выдача или получение требуют внимания.",
-    icon: "/assets/mc-icons/item/netherite_sword.png",
-  },
-};
+import { appRouteHref, authLandingHref, defaultAppRouteForRole } from "../shared/app-routes.js";
 
 function formatAr(value) {
   const amount = Number(value || 0);
   return `${(Number.isFinite(amount) ? amount : 0).toLocaleString("ru-RU")} AR`;
 }
 
+function formatDonate(value) {
+  const amount = Number(value || 0);
+  return `${(Number.isFinite(amount) ? amount : 0).toLocaleString("ru-RU")} DC`;
+}
+
 function formatDate(value) {
   const raw = Number(value || 0);
-  if (!raw) return "—";
+  if (!raw) return "нет даты";
   const date = raw > 1000000000000 ? new Date(raw) : new Date(raw * 1000);
-  if (!Number.isFinite(date.getTime())) return "—";
+  if (!Number.isFinite(date.getTime())) return "нет даты";
   return date.toLocaleString("ru-RU");
 }
 
@@ -49,8 +28,7 @@ function formatLatency(value) {
 function formatPlayers(server = {}) {
   const online = Number(server.playersOnline || 0);
   const cap = Number(server.playerCap || 0);
-  if (!cap) return `${online} игроков онлайн`;
-  return `${online} / ${cap} игроков`;
+  return cap > 0 ? `${online} / ${cap}` : `${online}`;
 }
 
 function formatMegabytes(bytes) {
@@ -65,22 +43,36 @@ function shortSha(value) {
   return sha.length > 12 ? `${sha.slice(0, 12)}…` : sha;
 }
 
+function cabinetRoute(targetRoute) {
+  const raw = String(targetRoute || "cabinet").replace(/^#/, "").trim().toLowerCase() || "cabinet";
+  return appRouteHref(raw);
+}
+
+function publicPageRoute(pageName) {
+  const pathname = String(window.location.pathname || "").toLowerCase();
+  const fileName = String(pageName || "index.html").toLowerCase();
+  if (pathname.endsWith(`/${fileName}`) || pathname.endsWith(fileName)) {
+    return pathname;
+  }
+  return fileName;
+}
+
 function roleRoute(role) {
-  return role === "player" ? "#cabinet" : "#dashboard";
+  return appRouteHref(defaultAppRouteForRole(role || ""));
 }
 
 function roleLabel(role) {
   switch (String(role || "")) {
     case "player":
-      return "Личный кабинет";
+      return "Открыть кабинет игрока";
     case "junior_admin":
-      return "Панель младшего админа";
-    case "owner":
-      return "Панель владельца";
+      return "Открыть кабинет младшего админа";
     case "admin":
-      return "Админ-панель";
+      return "Открыть админ-панель";
+    case "owner":
+      return "Открыть панель владельца";
     default:
-      return "Личный кабинет";
+      return "Открыть кабинет";
   }
 }
 
@@ -105,6 +97,30 @@ function buildModpackMeta(label, value) {
   return card;
 }
 
+function buildShopItem(row, mode = "ar") {
+  const card = makeElement("article", "shop-item-chip");
+  const head = makeElement("div", "shop-item-head");
+  const title = makeElement("strong", "", String(row.display_name || row.item_id || "Товар"));
+  const price = makeElement(
+    "span",
+    "shop-item-price",
+    mode === "ar" ? formatAr(row.price_ar || 0) : formatDonate(row.price_donation || 0),
+  );
+  head.append(title, price);
+  card.append(head);
+
+  const meta = makeElement("div", "shop-item-meta");
+  const material = String(row.base_material || "").trim();
+  const effect = String(row.effect_description || row.effect_profile_id || "").trim();
+  if (material) meta.append(makeElement("span", "", material));
+  if (effect) meta.append(makeElement("span", "", effect));
+  if (Number(row.cooldown_seconds || 0) > 0) {
+    meta.append(makeElement("span", "", `${Number(row.cooldown_seconds)} сек. кулдаун`));
+  }
+  card.append(meta);
+  return card;
+}
+
 export function createHomepageRenderer() {
   const budgetCounter = document.getElementById("presidentBudgetCounter");
   const budgetDetail = document.getElementById("presidentBudgetDetail");
@@ -117,8 +133,6 @@ export function createHomepageRenderer() {
   const skinImage = document.getElementById("presidentSkinImage");
   const leftButton = document.getElementById("presidentSkinLeft");
   const rightButton = document.getElementById("presidentSkinRight");
-  const featurePanel = document.getElementById("publicFeaturePanel");
-  const featureTabs = document.getElementById("publicFeatureTabs");
   const serverIpText = document.getElementById("serverIpText");
   const serverPulseText = document.getElementById("serverPulseText");
   const downloadModsBtn = document.getElementById("downloadModsBtn");
@@ -131,22 +145,13 @@ export function createHomepageRenderer() {
   const modpackMetaGrid = document.getElementById("modpackMetaGrid");
   const modpackFileGrid = document.getElementById("modpackFileGrid");
   const modpackNotes = document.getElementById("modpackNotes");
-  const cabinetRoleCards = Array.from(document.querySelectorAll("[data-cabinet-role]"));
+  const arShopMount = document.getElementById("publicArShopPreview");
+  const donationShopMount = document.getElementById("publicDonationShopPreview");
+  const openArShopBtn = document.getElementById("openArShopBtn");
+  const openDonationShopBtn = document.getElementById("openDonationShopBtn");
 
   let currentBudgetValue = 0;
-  let currentRotation = -16;
-  let currentFeature = "bank";
-
-  function bindCabinetButton() {
-    if (!cabinetButton || cabinetButton.dataset.bound === "true") return;
-    cabinetButton.dataset.bound = "true";
-    cabinetButton.addEventListener("click", () => {
-      const routeTarget = cabinetButton.dataset.routeTarget || "";
-      if (!routeTarget) return;
-      window.dispatchEvent(new CustomEvent("copimine:legacy-runtime-request"));
-      window.location.hash = routeTarget;
-    });
-  }
+  let currentAuth = { role: "", cookieAuth: false };
 
   function animateCounter(nextValue) {
     if (!budgetCounter) return;
@@ -174,36 +179,48 @@ export function createHomepageRenderer() {
     requestAnimationFrame(step);
   }
 
-  function renderFeaturePanel(featureId = "bank") {
-    if (!featurePanel) return;
-    const feature = publicFeatures[featureId] || publicFeatures.bank;
-    const card = makeElement("article", "showcase-card");
-    const icon = makeElement("img");
-    icon.src = feature.icon;
-    icon.alt = "";
-    card.append(
-      icon,
-      makeElement("span", "hero-kicker", feature.kicker),
-      makeElement("strong", "", feature.title),
-      makeElement("p", "", feature.text),
-    );
-    replaceChildrenSafe(featurePanel, [card]);
+  function routePublicCommerce(targetRoute) {
+    if (currentAuth?.role || currentAuth?.cookieAuth) {
+      window.location.href = cabinetRoute(targetRoute);
+      return;
+    }
+    window.location.href = authLandingHref("signin");
   }
 
-  function bindFeatureTabs() {
-    if (!featureTabs || featureTabs.dataset.bound === "true") return;
-    featureTabs.dataset.bound = "true";
-    featureTabs.addEventListener("click", (event) => {
-      const button = event.target instanceof Element ? event.target.closest("[data-public-tab]") : null;
-      if (!button) return;
-      const nextFeature = String(button.getAttribute("data-public-tab") || "bank");
-      currentFeature = nextFeature;
-      featureTabs.querySelectorAll("[data-public-tab]").forEach((node) => {
-        node.classList.toggle("active", node === button);
-      });
-      renderFeaturePanel(nextFeature);
+  function bindCabinetButton() {
+    if (!cabinetButton || cabinetButton.dataset.bound === "true") return;
+    cabinetButton.dataset.bound = "true";
+    cabinetButton.addEventListener("click", () => {
+      const routeTarget = cabinetButton.dataset.routeTarget || "";
+      if (!routeTarget) return;
+      window.location.href = routeTarget;
     });
-    renderFeaturePanel(currentFeature);
+  }
+
+  function bindCommerceButtons() {
+    if (openArShopBtn && openArShopBtn.dataset.bound !== "true") {
+      openArShopBtn.dataset.bound = "true";
+      openArShopBtn.addEventListener("click", () => routePublicCommerce("artifacts"));
+    }
+    if (openDonationShopBtn && openDonationShopBtn.dataset.bound !== "true") {
+      openDonationShopBtn.dataset.bound = "true";
+      openDonationShopBtn.addEventListener("click", () => routePublicCommerce("donation-shop"));
+    }
+  }
+
+  function renderCommerce(arCatalog = {}, donationCatalog = {}) {
+    if (arShopMount) {
+      const cards = Array.isArray(arCatalog.items) && arCatalog.items.length
+        ? arCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "ar"))
+        : [cardStrong("AR-каталог временно недоступен", "Попробуйте обновить страницу чуть позже")];
+      replaceChildrenSafe(arShopMount, cards);
+    }
+    if (donationShopMount) {
+      const cards = Array.isArray(donationCatalog.items) && donationCatalog.items.length
+        ? donationCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "donation"))
+        : [cardStrong("Donation-каталог временно недоступен", "Попробуйте обновить страницу чуть позже")];
+      replaceChildrenSafe(donationShopMount, cards);
+    }
   }
 
   function renderModpack(modpack = {}, config = {}) {
@@ -215,78 +232,55 @@ export function createHomepageRenderer() {
 
     if (heroMiniTitle) {
       heroMiniTitle.textContent = available
-        ? `${manifest.loader || "Клиент"} ${manifest.minecraftVersion || config.serverVersion || ""}`.trim()
+        ? `${manifest.loader || "Fabric"} ${manifest.minecraftVersion || config.serverVersion || ""}`.trim()
         : "Клиент и моды";
     }
     if (heroMiniText) {
       heroMiniText.textContent = available
-        ? `В архиве ${files.length || 0} client jars. SHA1: ${shortSha(modpack.sha1)}.`
-        : "Архив модов пока не опубликован или backend ещё не подтвердил его доступность.";
+        ? `В архиве ${files.length || 0} клиентских jar. SHA1: ${shortSha(modpack.sha1)}.`
+        : "Архив модов пока не опубликован.";
     }
-
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
-        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов к скачиванию. Он собирается локально и отдаётся сайтом без внешних CDN и сторонних генераторов.`
-        : "Архив модов пока недоступен. Сайт не рисует фейковый статус и честно ждёт готовую сборку.";
+        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов. Внутри только нужные клиентские jar для первого входа.`
+        : "Архив модов ещё не собран или временно недоступен.";
     }
-
     if (modpackMetaGrid) {
-      const metaCards = [
+      replaceChildrenSafe(modpackMetaGrid, [
         buildModpackMeta("Minecraft", manifest.minecraftVersion || config.serverVersion || "1.21.1"),
         buildModpackMeta("Loader", manifest.loader || "Fabric"),
         buildModpackMeta("Файлов", String(files.length || 0)),
         buildModpackMeta("Размер", formatMegabytes(modpack.size || 0)),
         buildModpackMeta("SHA1", shortSha(modpack.sha1)),
         buildModpackMeta("Обновлён", modpack.modified ? formatDate(modpack.modified * 1000) : "нет данных"),
-      ];
-      replaceChildrenSafe(modpackMetaGrid, metaCards);
+      ]);
     }
-
     if (modpackFileGrid) {
       if (!available || !files.length) {
         replaceChildrenSafe(modpackFileGrid, [
-          (() => {
-            const card = makeElement("article", "modpack-file-card");
-            card.append(
-              makeElement("span", "modpack-file-badge", "mods"),
-              makeElement("strong", "", "Архив пока недоступен"),
-              makeElement("p", "", "Как только backend увидит готовый zip и manifest, список client jars появится здесь автоматически."),
-            );
-            return card;
-          })(),
+          cardStrong("Архив ещё не готов", "Когда сборка появится, список модов отобразится здесь."),
         ]);
       } else {
-        const cards = files.map((file) => {
-          const card = makeElement("article", "modpack-file-card");
-          const badge = makeElement("span", "modpack-file-badge", "mods");
-          const title = makeElement("strong", "", String(file.component || file.path || "Мод"));
-          const copy = makeElement(
-            "p",
-            "",
-            `${String(file.version || "без версии")} · ${String(file.license || "лицензия не указана")}`,
-          );
-          const meta = makeElement("div", "modpack-file-meta");
-          meta.append(
-            makeElement("span", "", String(file.path || "mods/unknown.jar")),
-          );
-          if (file.source) {
-            const sourceChip = makeElement("span", "", "есть source");
-            sourceChip.title = String(file.source);
-            meta.append(sourceChip);
-          }
-          card.append(badge, title, copy, meta);
-          return card;
-        });
-        replaceChildrenSafe(modpackFileGrid, cards);
+        replaceChildrenSafe(
+          modpackFileGrid,
+          files.map((file) => {
+            const card = makeElement("article", "modpack-file-card");
+            const meta = makeElement("div", "modpack-file-meta");
+            meta.append(makeElement("span", "", String(file.path || "mods/unknown.jar")));
+            if (file.license) meta.append(makeElement("span", "", String(file.license)));
+            card.append(
+              makeElement("span", "modpack-file-badge", "mods"),
+              makeElement("strong", "", String(file.component || file.path || "Мод")),
+              makeElement("p", "", String(file.version || "без версии")),
+              meta,
+            );
+            return card;
+          }),
+        );
       }
     }
-
     if (modpackNotes) {
-      const noteCards = (notes.length ? notes : [
-        available
-          ? "Manifest не вернул дополнительных заметок. Это допустимо, если архив уже собран и проверен."
-          : "После появления архива здесь отобразятся примечания по клиентской сборке и опциональным модам.",
-      ]).map((note) => {
+      const noteCards = (notes.length ? notes : ["Сборка рассчитана на первый вход без внешнего лаунчера."]).map((note) => {
         const card = makeElement("article", "modpack-note-card");
         card.append(
           makeElement("strong", "", "Примечание"),
@@ -296,7 +290,6 @@ export function createHomepageRenderer() {
       });
       replaceChildrenSafe(modpackNotes, noteCards);
     }
-
     if (downloadModsBtn && available) {
       downloadModsBtn.href = downloadUrl;
     }
@@ -307,28 +300,24 @@ export function createHomepageRenderer() {
     const serverAddress = String(config.serverAddress || "").trim();
     const address = serverAddress || "Адрес сервера пока не указан";
     const onlineText = server.online
-      ? `Сервер онлайн, ${formatPlayers(server)}`
-      : "Сервер сейчас офлайн или не отвечает";
-    const pulseText = server.online
-      ? `${onlineText}, задержка ${formatLatency(server.latencyMs)}`
-      : "Backend не получил подтверждение онлайн-статуса";
+      ? `Онлайн ${formatPlayers(server)} · задержка ${formatLatency(server.latencyMs)}`
+      : "Сервер сейчас не ответил";
 
     if (serverIpText) {
       serverIpText.textContent = address;
       serverIpText.dataset.serverAddress = serverAddress;
     }
     if (serverPulseText) {
-      serverPulseText.textContent = pulseText;
+      serverPulseText.textContent = onlineText;
     }
     if (downloadModsBtn) {
       if (modpack.available) {
-        const sizeText = formatMegabytes(modpack.size || 0);
         downloadModsBtn.href = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
-        downloadModsBtn.textContent = `Скачать моды (${sizeText})`;
+        downloadModsBtn.textContent = `Скачать моды (${formatMegabytes(modpack.size || 0)})`;
         downloadModsBtn.classList.remove("btn-disabled");
         downloadModsBtn.removeAttribute("aria-disabled");
       } else {
-        downloadModsBtn.href = "#mods";
+        downloadModsBtn.href = publicPageRoute("mods.html");
         downloadModsBtn.textContent = "Архив модов готовится";
         downloadModsBtn.classList.add("btn-disabled");
         downloadModsBtn.setAttribute("aria-disabled", "true");
@@ -341,13 +330,12 @@ export function createHomepageRenderer() {
     if (!statusGrid) return;
     const server = status.server || {};
     const elections = status.elections || {};
-    const cards = [
-      cardStrong("Сервер", server.online ? "Онлайн" : "Оффлайн", formatLatency(server.latencyMs)),
-      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков подтверждён" : "Список игроков временно недоступен"),
-      cardStrong("Выборы", elections.title || "Выборы CopiMine", elections.active ? `Кандидатов: ${Number(elections.candidates || 0)}` : "Сейчас нет активной кампании"),
-      cardStrong("Resource pack", config.resourcePackRequired ? "Обязателен" : "Опционален", config.serverVersion ? `Версия ${config.serverVersion}` : ""),
-    ];
-    replaceChildrenSafe(statusGrid, cards);
+    replaceChildrenSafe(statusGrid, [
+      cardStrong("Сервер", server.online ? "Онлайн" : "Нет ответа", formatLatency(server.latencyMs)),
+      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Публичный список доступен" : "Публичный список временно скрыт"),
+      cardStrong("Выборы", elections.active ? "Активны" : "Пауза", elections.active ? `${Number(elections.candidates || 0)} кандидатов` : "Сейчас нет активной кампании"),
+      cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Ресурспак обязателен" : "Ресурспак опционален"),
+    ]);
   }
 
   function renderOnline(server = {}) {
@@ -355,12 +343,14 @@ export function createHomepageRenderer() {
     const players = Array.isArray(server.samplePlayers) ? server.samplePlayers.filter(Boolean) : [];
     if (!players.length) {
       replaceChildrenSafe(onlineBoard, [
-        cardStrong("Игроки онлайн", "Список игроков пока недоступен", server.online ? "RCON не вернул актуальный список" : "Сервер не ответил"),
+        cardStrong("Игроки онлайн", "Список игроков пока недоступен"),
       ]);
       return;
     }
-    const cards = players.slice(0, 12).map((player) => cardStrong("Онлайн", String(player)));
-    replaceChildrenSafe(onlineBoard, cards);
+    replaceChildrenSafe(
+      onlineBoard,
+      players.slice(0, 12).map((player) => cardStrong("Онлайн", String(player))),
+    );
   }
 
   function renderHistory(items = []) {
@@ -368,25 +358,27 @@ export function createHomepageRenderer() {
     const rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
       replaceChildrenSafe(historyMount, [
-        cardStrong("История пока пустая", "Публичных операций ещё нет", "Как только появятся доходы или выплаты, они появятся здесь."),
+        cardStrong("История пока пустая", "Публичные операции казны появятся здесь."),
       ]);
       return;
     }
-    const cards = rows.slice(0, 6).map((row) => {
-      const card = makeElement("article", "treasury-history-card");
-      const head = makeElement("div", "treasury-history-row");
-      head.append(
-        makeElement("span", "treasury-history-type", String(row.label || row.type || "Операция")),
-        makeElement("strong", "", formatAr(row.amount || row.amount_ar || 0)),
-      );
-      card.append(
-        head,
-        makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || row.actor || "Публичная операция казны")),
-        makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)),
-      );
-      return card;
-    });
-    replaceChildrenSafe(historyMount, cards);
+    replaceChildrenSafe(
+      historyMount,
+      rows.slice(0, 6).map((row) => {
+        const card = makeElement("article", "treasury-history-card");
+        const head = makeElement("div", "treasury-history-row");
+        head.append(
+          makeElement("span", "treasury-history-type", String(row.label || row.type || "Операция")),
+          makeElement("strong", "", formatAr(row.amount || row.amount_ar || 0)),
+        );
+        card.append(
+          head,
+          makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || "Операция казны")),
+          makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)),
+        );
+        return card;
+      }),
+    );
   }
 
   function renderPresidentCard(president = {}) {
@@ -395,13 +387,13 @@ export function createHomepageRenderer() {
     const uuid = String(president.current_president_uuid || president.ownerUuid || "").trim();
     if (!name) {
       presidentName.textContent = "Президент пока не избран";
-      presidentMeta.textContent = "Карточка появится автоматически после подтверждения активного президентского срока.";
+      presidentMeta.textContent = "Карточка появится после подтверждения активного срока.";
       skinShell?.classList.add("hidden");
       if (skinImage) skinImage.removeAttribute("src");
       return;
     }
     presidentName.textContent = name;
-    presidentMeta.textContent = "Карточка использует только публичный API и не показывает служебные данные.";
+    presidentMeta.textContent = "Публичная карточка президента сервера.";
     if (!uuid || !skinImage || !skinShell) {
       skinShell?.classList.add("hidden");
       return;
@@ -417,12 +409,12 @@ export function createHomepageRenderer() {
     if (budgetOwner) {
       budgetOwner.textContent = currentPresidentName
         ? `Казной управляет ${currentPresidentName}`
-        : "Пока без активного президента";
+        : "Сейчас без активного президента";
     }
     if (budgetDetail) {
       budgetDetail.textContent = payload.updated_at || payload.updatedAt
-        ? `Публичные данные обновлены ${formatDate(payload.updated_at || payload.updatedAt)}`
-        : "Источник не вернул время обновления, поэтому показываем только подтверждённый баланс.";
+        ? `Обновлено ${formatDate(payload.updated_at || payload.updatedAt)}`
+        : "Публичный баланс казны сервера";
     }
     animateCounter(balance);
     renderPresidentCard(payload);
@@ -450,6 +442,7 @@ export function createHomepageRenderer() {
   }
 
   function renderAuthState(auth = {}) {
+    currentAuth = auth || { role: "", cookieAuth: false };
     const role = String(auth.role || "");
     const authed = Boolean(role || auth.cookieAuth);
     if (cabinetButton) {
@@ -457,42 +450,39 @@ export function createHomepageRenderer() {
       cabinetButton.dataset.routeTarget = authed ? roleRoute(role) : "";
       cabinetButton.textContent = roleLabel(role);
     }
-    cabinetRoleCards.forEach((card) => {
-      const cardRole = String(card.getAttribute("data-cabinet-role") || "");
-      const active = Boolean(
-        role &&
-        (role === cardRole || (role === "owner" && cardRole === "admin")),
-      );
-      card.classList.toggle("cabinet-role-active", active);
-    });
+    if (openArShopBtn) {
+      openArShopBtn.textContent = authed ? "Открыть AR-лавку" : "Войти и открыть AR-лавку";
+    }
+    if (openDonationShopBtn) {
+      openDonationShopBtn.textContent = authed ? "Открыть донат-лавку" : "Войти и открыть донат-лавку";
+    }
   }
 
   function renderUnavailableState() {
     if (budgetDetail) {
-      budgetDetail.textContent = "Источник публичной казны временно недоступен. Попробуйте позже.";
+      budgetDetail.textContent = "Сводка по казне временно недоступна.";
     }
     if (serverPulseText) {
-      serverPulseText.textContent = "Публичный backend временно не ответил. Сайт не показывает выдуманные данные.";
+      serverPulseText.textContent = "Сервер ещё не прислал свежую сводку.";
     }
     if (modpackSummaryLead) {
-      modpackSummaryLead.textContent = "Публичный backend не вернул сведения по модпаку. Сайт не подменяет это фейковыми карточками.";
+      modpackSummaryLead.textContent = "Сведения по архиву модов временно недоступны.";
     }
   }
 
   function setSkinRotation(nextRotation) {
     if (!skinTilt) return;
-    currentRotation = nextRotation;
     skinTilt.style.transform = `rotateX(4deg) rotateY(${nextRotation}deg)`;
   }
 
   function bindSkinControls() {
     if (leftButton && leftButton.dataset.bound !== "true") {
       leftButton.dataset.bound = "true";
-      leftButton.addEventListener("click", () => setSkinRotation(currentRotation - 18));
+      leftButton.addEventListener("click", () => setSkinRotation(-34));
     }
     if (rightButton && rightButton.dataset.bound !== "true") {
       rightButton.dataset.bound = "true";
-      rightButton.addEventListener("click", () => setSkinRotation(currentRotation + 18));
+      rightButton.addEventListener("click", () => setSkinRotation(2));
     }
     if (skinImage && skinImage.dataset.bound !== "true") {
       skinImage.dataset.bound = "true";
@@ -503,20 +493,20 @@ export function createHomepageRenderer() {
     }
   }
 
-  bindFeatureTabs();
   bindSkinControls();
   bindCabinetButton();
-  setSkinRotation(currentRotation);
+  bindCommerceButtons();
+  setSkinRotation(-16);
 
   return {
     renderBudget,
+    renderCommerce,
     renderHistory,
     renderStatus,
     renderOnline,
     renderStatusPayload,
     renderServerHero,
     renderPresidentCard,
-    renderFeaturePanel,
     renderAuthState,
     renderUnavailableState,
     renderModpack,

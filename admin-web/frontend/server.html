@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>CopiMine - Сервер</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body data-page-kind="public-server">
+  <main class="public-site public-site-compact">
+    <header class="public-nav">
+      <a class="public-brand" href="/index.html" aria-label="CopiMine">
+        <span class="brand-mark brand-mark-small">CM</span>
+        <strong>CopiMine</strong>
+      </a>
+      <nav aria-label="Разделы сайта">
+        <a href="/index.html">Главная</a>
+        <a href="/server.html" aria-current="page">Сервер</a>
+        <a href="/shops.html">Лавки</a>
+        <a href="/mods.html">Моды</a>
+        <a href="/signin.html">Вход</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Открыть кабинет</button>
+        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
+      </nav>
+    </header>
+
+    <div class="public-page-shell">
+      <section class="public-hero public-hero-slim">
+        <div class="public-hero-copy">
+          <div class="page-kicker-row">
+            <span class="hero-kicker">Сервер</span>
+            <span class="route-chip">Сервер</span>
+          </div>
+          <h1>Страница сервера.</h1>
+          <p>Онлайн, IP, президент и публичная история казны собраны в одном месте.</p>
+          <div class="public-actions">
+            <button id="copyIpBtn" class="btn btn-primary" type="button">Скопировать IP</button>
+            <a class="btn btn-secondary" href="/shops.html">Перейти к лавкам</a>
+            <a class="btn btn-ghost public-ghost" href="/signin.html">Открыть кабинет</a>
+          </div>
+          <div class="hero-inline-status">
+            <div class="hero-inline-card">
+              <span>IP сервера</span>
+              <strong id="serverIpText">Загружаем адрес...</strong>
+            </div>
+            <div class="hero-inline-card">
+              <span>Отклик</span>
+              <strong id="serverPulseText">Проверяем статус...</strong>
+            </div>
+          </div>
+        </div>
+
+        <aside class="hero-side-card">
+          <span class="hero-kicker">На странице</span>
+          <ul class="hero-check-list">
+            <li>Текущий онлайн и отклик сервера.</li>
+            <li>Баланс казны и активный президент.</li>
+            <li>Последние публичные операции по казне.</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section class="public-section" id="presidentBudgetShowcase">
+        <div class="public-dashboard-grid">
+          <article class="public-panel public-panel-wide" id="treasuryHistorySection">
+            <div class="public-panel-head">
+              <div>
+                <span class="hero-kicker">Сводка</span>
+                <h3>Сводка по серверу</h3>
+              </div>
+            </div>
+            <div id="publicStatusGrid" class="public-status-grid"></div>
+          </article>
+
+          <article class="public-panel treasury-panel">
+            <div class="public-panel-head">
+              <div>
+                <span class="hero-kicker">Казна</span>
+                <h3 id="presidentBudgetOwner">Загружаем владельца казны</h3>
+              </div>
+            </div>
+            <div class="budget-counter-shell">
+              <div class="budget-counter-value">
+                <img src="/assets/mc-icons/item/diamond_ore.png" alt="" />
+                <strong id="presidentBudgetCounter">0 AR</strong>
+              </div>
+              <p id="presidentBudgetDetail">Баланс обновится после ответа сервера.</p>
+            </div>
+          </article>
+
+          <article class="public-panel president-panel" id="presidentCardMount">
+            <div class="president-card-copy">
+              <span class="hero-kicker">Президент</span>
+              <h3 id="presidentCardName">Президент пока не выбран</h3>
+              <p id="presidentCardMeta">Карточка появится, когда на сервере будет активный срок.</p>
+            </div>
+            <div class="president-skin-shell hidden" id="presidentSkinShell">
+              <button class="skin-rotate skin-rotate-left" id="presidentSkinLeft" type="button" aria-label="Повернуть влево">‹</button>
+              <div class="president-skin-stage">
+                <div class="president-skin-tilt" id="presidentSkinTilt">
+                  <img id="presidentSkinImage" alt="" />
+                </div>
+              </div>
+              <button class="skin-rotate skin-rotate-right" id="presidentSkinRight" type="button" aria-label="Повернуть вправо">›</button>
+            </div>
+          </article>
+
+          <article class="public-panel">
+            <div class="public-panel-head">
+              <div>
+                <span class="hero-kicker">Онлайн</span>
+                <h3>Кто сейчас в игре</h3>
+              </div>
+            </div>
+            <div id="publicOnlineBoard" class="top-grid"></div>
+          </article>
+
+          <article class="public-panel public-panel-wide">
+            <div class="public-panel-head">
+              <div>
+                <span class="hero-kicker">История казны</span>
+                <h3>Последние публичные операции</h3>
+              </div>
+            </div>
+            <div id="publicTreasuryHistory" class="treasury-history-grid">
+              <article class="showcase-card">
+                <strong>Загружаем историю</strong>
+                <p>Публичные операции появятся после ответа сервера.</p>
+              </article>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+  <script type="module" src="/assets/js/public/public-page.js"></script>
+</body>
+</html>

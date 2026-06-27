@@ -9,3 +9,7 @@ export function makeElement(tag, className = "", text = "") {
   if (text) element.textContent = text;
   return element;
 }
+
+export function fragmentFromHtml(markup = "") {
+  return document.createRange().createContextualFragment(String(markup || ""));
+}

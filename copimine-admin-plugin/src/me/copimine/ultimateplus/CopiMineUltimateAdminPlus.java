@@ -414,6 +414,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(checkMode.containsKey(p.getUniqueId())&&!hasAdmin(p)){ e.setCancelled(true); return; }
         if(!e.getAction().isRightClick()) return;
         String officialType=officialTypeForStack(e.getItem());
+        if(legacyElectionRuntimeDisabled()&&isDelegatedElectionRuntimeItem(e.getItem(),officialType)) return;
         if("cik_seal".equals(officialType)) return;
         if(isTemporaryApplicationBook(e.getItem())) return;
         if(isBallotItem(e.getItem())){
@@ -555,6 +556,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Entity target=e.getRightClicked();
         if(handleProtectedVisualInteract(p,target,e))return;
         ItemStack hand=p.getInventory().getItem(e.getHand());
+        if(legacyElectionRuntimeDisabled()&&isDelegatedElectionRuntimeItem(hand,officialTypeForStack(hand))) return;
         if("cik_seal".equals(officialTypeForStack(hand))){
             e.setCancelled(true);
             if(legacyElectionRuntimeDisabled()){
@@ -3197,6 +3199,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private long countRowsForPlayer(String table,String eid,String uuid,boolean unusedOnly,String... uuidCols)throws SQLException{if(!tableExists(table))return 0; List<String> c=cols(table); if(!c.contains("election_id"))return 0; List<String> wh=new ArrayList<>(); List<Object> args=new ArrayList<>(); args.add(eid); for(String col:uuidCols)if(c.contains(col.toLowerCase(Locale.ROOT))){wh.add(col+"=?"); args.add(uuid);} if(wh.isEmpty())return 0; String sql="SELECT COUNT(*) FROM "+table+" WHERE election_id=? AND ("+String.join(" OR ",wh)+")"; if(unusedOnly&&c.contains("used"))sql+=" AND COALESCE(used,0)=0"; return scalarLong(sql,args.toArray());}
     private String curatorRoleLabel(String role){return switch(role==null?"":role.toUpperCase(Locale.ROOT)){case"CIK_CHAIR"->"Председатель ЦИК";case"PRESIDENT_DELEGATE"->"Представитель президента";case"CURATOR"->"Член ЦИК";default->role==null||role.isBlank()?"Член ЦИК":role;};}
     private boolean isBallotItem(ItemStack it){return "ballot".equals(electionItemString(it,"type"));}
+    private boolean isDelegatedElectionRuntimeItem(ItemStack it,String officialType){
+        String type=first(electionItemString(it,"type"),"").toLowerCase(Locale.ROOT);
+        String normalizedOfficialType=first(officialType,"").toLowerCase(Locale.ROOT);
+        return Set.of("ballot","cik_seal","president_mandate","application_book").contains(type)
+            || Set.of("cik_seal","president_mandate").contains(normalizedOfficialType);
+    }
     private boolean isPollingStationKit(ItemStack it){return "polling_station_kit".equals(electionItemString(it,"type"));}
     private boolean isPollingStationBlock(Block b){try{return b!=null&&scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE world=? AND x=? AND y=? AND z=? AND active=1",b.getWorld().getName(),b.getX(),b.getY(),b.getZ())>0;}catch(Exception e){return false;}}
     private String pollingStationId(Block b){try{List<Map<String,Object>> r=query("SELECT id FROM cmv7_polling_stations WHERE world=? AND x=? AND y=? AND z=? AND active=1 ORDER BY id DESC LIMIT 1",b.getWorld().getName(),b.getX(),b.getY(),b.getZ()); return r.isEmpty()?"station":s(r.get(0).get("id"));}catch(Exception e){return"station";}}

@@ -1,8 +1,16 @@
-import { loadPublicAuthState, loadPublicHomepageData, loadPublicTreasuryFallback } from "./site-data.js";
+import {
+  loadPublicAuthState,
+  loadPublicHomePageData,
+  loadPublicModsPageData,
+  loadPublicServerPageData,
+  loadPublicShopsPageData,
+  loadPublicTreasuryFallback,
+} from "./site-data.js";
 import { createHomepageRenderer } from "./site-render.js";
 
 const renderer = createHomepageRenderer();
-let homepageLoaded = false;
+const loadedPages = new Set();
+let homepageEventsBound = false;
 
 function bindCopyIpButton() {
   const button = document.getElementById("copyIpBtn");
@@ -24,39 +32,89 @@ function bindCopyIpButton() {
   });
 }
 
-async function loadHomepage() {
-  if (homepageLoaded) return;
-  homepageLoaded = true;
-  bindCopyIpButton();
-  try {
-    const [payload, authState] = await Promise.all([
-      loadPublicHomepageData(),
-      loadPublicAuthState(),
-    ]);
-    renderer.renderServerHero(payload.config, payload.status, payload.modpack);
-    renderer.renderStatus(payload.status, payload.config);
-    renderer.renderOnline(payload.status.server || {});
-    renderer.renderBudget(payload.budget || {});
-    renderer.renderPresidentCard(payload.president || payload.budget || {});
-    renderer.renderHistory(payload.history.items || []);
-    renderer.renderAuthState(authState);
-  } catch (_error) {
-    try {
-      const { budgetPayload, historyPayload } = await loadPublicTreasuryFallback();
-      if (budgetPayload?.ok && budgetPayload.data) renderer.renderBudget(budgetPayload.data);
-      if (historyPayload?.ok && historyPayload.data) renderer.renderHistory(historyPayload.data.items || []);
-    } catch (_fallbackError) {
-      renderer.renderUnavailableState();
+function resolvePublicPageKind() {
+  const explicit = String(document.body?.dataset.pageKind || "").trim().toLowerCase();
+  if (explicit) return explicit;
+  const pathname = String(window.location.pathname || "").toLowerCase();
+  if (pathname.endsWith("/server.html") || pathname.endsWith("server.html")) return "public-server";
+  if (pathname.endsWith("/shops.html") || pathname.endsWith("shops.html")) return "public-shops";
+  if (pathname.endsWith("/mods.html") || pathname.endsWith("mods.html")) return "public-mods";
+  return "public-home";
+}
+
+async function loadPublicPageByKind(kind, authState) {
+  switch (kind) {
+    case "public-server": {
+      const payload = await loadPublicServerPageData();
+      renderer.renderServerHero(payload.config, payload.status, {});
+      renderer.renderStatus(payload.status, payload.config);
+      renderer.renderOnline(payload.status.server || {});
+      renderer.renderBudget(payload.budget || {});
+      renderer.renderPresidentCard(payload.president || payload.budget || {});
+      renderer.renderHistory(payload.history.items || []);
+      renderer.renderAuthState(authState);
+      return;
+    }
+    case "public-shops": {
+      const payload = await loadPublicShopsPageData();
+      renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState);
+      renderer.renderAuthState(authState);
+      return;
+    }
+    case "public-mods": {
+      const payload = await loadPublicModsPageData();
+      renderer.renderModpack(payload.modpack || {}, payload.config || {});
+      renderer.renderAuthState(authState);
+      return;
+    }
+    case "public-home":
+    default: {
+      const payload = await loadPublicHomePageData();
+      renderer.renderServerHero(payload.config, payload.status, payload.modpack);
+      renderer.renderAuthState(authState);
     }
   }
 }
 
-window.addEventListener("copimine:public-status", (event) => {
-  renderer.renderStatusPayload(event.detail || {});
-});
+async function renderFallbackForKind(kind) {
+  if (kind === "public-server") {
+    try {
+      const { budgetPayload, historyPayload } = await loadPublicTreasuryFallback();
+      if (budgetPayload?.ok && budgetPayload.data) renderer.renderBudget(budgetPayload.data);
+      if (historyPayload?.ok && historyPayload.data) renderer.renderHistory(historyPayload.data.items || []);
+      return;
+    } catch (_fallbackError) {
+      renderer.renderUnavailableState();
+      return;
+    }
+  }
+  renderer.renderUnavailableState();
+}
 
-window.addEventListener("copimine:auth-state", (event) => {
-  renderer.renderAuthState(event.detail || {});
-});
+export async function loadPublicPage(kind = resolvePublicPageKind()) {
+  if (loadedPages.has(kind)) return;
+  loadedPages.add(kind);
+  bindCopyIpButton();
+  try {
+    const authState = await loadPublicAuthState();
+    await loadPublicPageByKind(kind, authState);
+  } catch (_error) {
+    await renderFallbackForKind(kind);
+  }
+}
 
-window.setTimeout(loadHomepage, 120);
+export async function loadHomepage() {
+  await loadPublicPage(resolvePublicPageKind());
+}
+
+export function bindHomepageEvents() {
+  if (homepageEventsBound) return;
+  homepageEventsBound = true;
+  window.addEventListener("copimine:public-status", (event) => {
+    renderer.renderStatusPayload(event.detail || {});
+  });
+
+  window.addEventListener("copimine:auth-state", (event) => {
+    renderer.renderAuthState(event.detail || {});
+  });
+}

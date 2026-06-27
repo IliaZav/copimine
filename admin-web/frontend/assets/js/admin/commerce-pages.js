@@ -28,6 +28,10 @@ export function createAdminCommercePages(deps) {
     toast,
   } = deps;
 
+  function paymentModeLabel(value) {
+    return String(value || "").toUpperCase() === "MOCK_SBP" ? "Тестовый режим" : String(value || "—");
+  }
+
   async function loadEconomy() {
     setLoading("Загружаю экономику");
     const [data, history, ledger, donation, donationCatalog, treasury] = await Promise.all([
@@ -111,8 +115,8 @@ export function createAdminCommercePages(deps) {
       <section class="layout-grid grid-4">
         ${metric("Счета Donation", donationSummary.accounts ?? 0, "Отдельно от AR-экономики", "good")}
         ${metric("Баланс Donation", formatDonate(donationSummary.totalBalance ?? 0), "Сумма по всем donation accounts", donationSummary.totalBalance ? "good" : "neutral")}
-        ${metric("Выдачи в работе", donationSummary.unclaimedItems ?? 0, "UNCLAIMED / RESERVED / DELIVERING / REVIEW", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
-        ${metric("Открытые сессии", donationSummary.openSessions ?? 0, "Mock SBP workflow без реального провайдера", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
+        ${metric("Выдачи в работе", donationSummary.unclaimedItems ?? 0, "Покупки, которые ещё не дошли до финальной выдачи", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
+        ${metric("Открытые сессии", donationSummary.openSessions ?? 0, "Тестовый платёжный контур без реального провайдера", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
       </section>
       <section class="layout-grid grid-2">
         ${panel("Донат-счёта", "Баланс игроков, который не смешивается с AR.", table("donation-balances", asArray(donation.balances), [
@@ -136,10 +140,10 @@ export function createAdminCommercePages(deps) {
           { key: "amount", label: "Кол-во" },
           { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
         ], { pageSize: 12 }))}
-        ${panel("Платёжные сессии", "Mock-сессии без реального SBP и без связи с AR.", table("donation-sessions", asArray(donation.sessions), [
+        ${panel("Платёжные сессии", "Тестовые сессии пополнения donation без связи с AR.", table("donation-sessions", asArray(donation.sessions), [
           { key: "created_at", label: "Создана", render: value => dt(value) },
           { key: "player_name", label: "Игрок", render: (value, row) => esc(value || row.player_uuid || "—") },
-          { key: "provider", label: "Провайдер" },
+          { key: "provider", label: "Режим", render: value => paymentModeLabel(value) },
           { key: "amount", label: "Сумма", render: value => formatDonate(value || 0) },
           { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
           { key: "id", label: "Управление", render: (value, row) => {
@@ -152,7 +156,7 @@ export function createAdminCommercePages(deps) {
         ], { pageSize: 12 }))}
       </section>
       <section class="layout-grid grid-2">
-        ${panel("Донат-баланс", "Ручное тестовое пополнение для QA и mock-сценариев. Баланс всё равно отделён от AR.", `
+        ${panel("Донат-баланс", "Ручное тестовое пополнение для проверки платёжного контура. Баланс всё равно полностью отделён от AR.", `
           <div class="form-grid">
             <input id="donationAdminUuid" placeholder="Minecraft UUID" />
             <input id="donationAdminName" placeholder="Minecraft-ник" />
@@ -174,8 +178,8 @@ export function createAdminCommercePages(deps) {
             <button class="btn btn-secondary full" data-click="adminSetTreasuryPin()">Сменить PIN казны</button>
           </div>
         `)}
-        ${panel("Provider Settings", "Активный provider: MOCK_SBP. Здесь нет секретов, только текущий режим и будущий слот интеграции.", kv([
-          ["Текущий provider", "MOCK_SBP"],
+        ${panel("Платёжный режим", "Здесь показывается только текущий режим оплаты и подготовленный слот под будущего провайдера, без секретов и токенов.", kv([
+          ["Текущий режим", "Тестовый платёжный режим"],
           ["Реальный webhook", "не подключён"],
           ["Курс", "1 ₽ = 1 Donation"],
           ["Пакеты", "50 / 100 / 250 / 500 / 1000"],
@@ -183,19 +187,19 @@ export function createAdminCommercePages(deps) {
         ]))}
       </section>
       <section class="layout-grid grid-2">
-        ${panel("Donation Shop", "Каталог сайта с фиксированным item_id и price_donation.", table("admin-donation-catalog", asArray(donationCatalog.items), [
+        ${panel("Donation Shop", "Каталог сайта с фиксированными ID товаров и ценами donation.", table("admin-donation-catalog", asArray(donationCatalog.items), [
           { key: "item_id", label: "ID" },
           { key: "display_name", label: "Название" },
           { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
           { key: "effect_profile_id", label: "Профиль" },
           { key: "enabled", label: "Статус", render: value => value ? pill("вкл", "good") : pill("off", "bad") }
         ], { pageSize: 10 }))}
-        ${panel("Выдачи и test purchase", "Тестовая покупка сразу создаёт CLAIM_PENDING, а физическая выдача всё равно идёт только в игре.", `
+        ${panel("Выдачи и тестовая покупка", "Тестовая покупка создаёт ожидающую выдачу запись, а физическая выдача всё равно остаётся только в игре.", `
           <div class="form-grid">
             <input id="donationTestUuid" placeholder="Minecraft UUID" />
             <input id="donationTestName" placeholder="Minecraft-ник" />
             <input id="donationTestItemId" placeholder="item_id из каталога" />
-            <button class="btn btn-secondary full" data-click="adminDonationTestPurchase()">Создать test purchase</button>
+            <button class="btn btn-secondary full" data-click="adminDonationTestPurchase()">Создать тестовую покупку</button>
           </div>
           <div class="spacer-12"></div>
           <div class="notice">Если payment session уже создана, mark-paid начисляет баланс только один раз благодаря idempotency.</div>
@@ -250,7 +254,7 @@ export function createAdminCommercePages(deps) {
 
   async function adminDonationTestPurchase() {
     try {
-      const headers = await dangerConfirm(`Создать test purchase ${$("donationTestItemId")?.value?.trim() || "item"} для ${$("donationTestName")?.value?.trim() || $("donationTestUuid")?.value?.trim()}`, "DONATION_TEST_PURCHASE");
+      const headers = await dangerConfirm(`Создать тестовую покупку ${$("donationTestItemId")?.value?.trim() || "item"} для ${$("donationTestName")?.value?.trim() || $("donationTestUuid")?.value?.trim()}`, "DONATION_TEST_PURCHASE");
       if (!headers) return;
       await api("/api/admin/donation/test-purchase", {
         method: "POST",
@@ -261,7 +265,7 @@ export function createAdminCommercePages(deps) {
           item_id: $("donationTestItemId")?.value?.trim() || ""
         })
       });
-      toast("Test purchase создан");
+      toast("Тестовая покупка создана");
       await loadEconomy();
     } catch (err) {
       toast(err.message, true);

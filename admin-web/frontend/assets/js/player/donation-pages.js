@@ -1,3 +1,5 @@
+import { appRouteHref } from "../shared/app-routes.js";
+
 export function createPlayerDonationPages(deps) {
   const {
     state,
@@ -28,22 +30,28 @@ export function createPlayerDonationPages(deps) {
     toast,
   } = deps;
 
+  function paymentModeLabel(value) {
+    return String(value || "").toUpperCase() === "MOCK_SBP" ? "Тестовый режим" : String(value || "Тестовый режим");
+  }
+
   async function loadPlayerDonationBalance() {
     setLoading("Загрузка donation-баланса");
     const me = await api("/api/player/me");
     state.user = me.account || {};
     const linked = Boolean(state.user.linked);
     if (!linked) {
-      setView(panel("Донат-баланс закрыт", "Сначала привяжи Minecraft-ник к кабинету.", `
-        <div class="notice">После привязки появятся пакеты 50 / 100 / 250 / 500 / 1000, история пополнений и mock SBP QR.</div>
+      setView(panel("Donation-баланс закрыт", "Сначала привяжи Minecraft-ник к кабинету.", `
+        <div class="notice">После привязки здесь появятся пакеты 50 / 100 / 250 / 500 / 1000, история пополнений и активная платёжная сессия.</div>
       `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
       return;
     }
+
     const [balance, packs, history] = await Promise.all([
       safeApi("/api/player/donation/balance", { linked: true, balance: 0 }),
       safeApi("/api/player/donation/packs", { packs: [], provider: "MOCK_SBP", rubPerUnit: 1 }),
       safeApi("/api/player/donation/history", { history: [] }),
     ]);
+
     let session = null;
     if (state.donationSessionId) {
       const result = await safeApi(`/api/player/donation/sbp/session/${encodeURIComponent(state.donationSessionId)}`, null);
@@ -53,12 +61,14 @@ export function createPlayerDonationPages(deps) {
         removeStoredUiState("copimineDonationSessionId");
       }
     }
+
     const packButtons = asArray(packs.packs).map((pack) => `
       <button class="btn btn-primary" data-click="playerCreateDonationSession(${number(pack.amount || 0)})">${esc(`${pack.amount} Donation`)}</button>
     `).join("");
+
     const sessionPanel = session ? `
       <div class="qr-block">
-        <img class="qr-image" src="/api/player/donation/sbp/session/${esc(donationSessionKey(session))}/qr.png?_fresh=${Date.now()}" alt="QR mock SBP" />
+        <img class="qr-image" src="/api/player/donation/sbp/session/${esc(donationSessionKey(session))}/qr.png?_fresh=${Date.now()}" alt="QR оплаты" />
         <div class="qr-copy">
           ${kv([
             ["Сессия", donationSessionKey(session)],
@@ -66,7 +76,7 @@ export function createPlayerDonationPages(deps) {
             ["Сумма", formatDonate(session.amount || session.donation_units || 0)],
             ["Статус", statusLabel(session.status || "created")],
             ["Истекает", dt(session.expires_at)],
-            ["Провайдер", session.provider || "MOCK_SBP"],
+            ["Провайдер", paymentModeLabel(session.provider)],
           ])}
           <div class="action-strip">
             <button class="btn btn-secondary" data-click="playerCopyDonationPaymentUrl()">Скопировать ссылку</button>
@@ -74,30 +84,31 @@ export function createPlayerDonationPages(deps) {
             <button class="btn btn-secondary" data-click="playerRefreshDonationSession()">Обновить статус</button>
             <button class="btn btn-secondary" data-click="playerForgetDonationSession()">Скрыть сессию</button>
           </div>
-          <div class="notice">Баланс пополнится только после статуса PAID. Пока активен MOCK_SBP foundation, реальный провайдер не подключён.</div>
+          <div class="notice">Баланс пополнится только после статуса PAID. Пока сервер работает в тестовом режиме оплаты без реального провайдера.</div>
         </div>
       </div>
-    ` : `<div class="notice">Активной payment session пока нет. Выбери один из фиксированных пакетов, чтобы открыть mock SBP QR и ссылку оплаты.</div>`;
+    ` : `<div class="notice">Активной платёжной сессии пока нет. Выбери фиксированный пакет, чтобы открыть QR, ссылку и код оплаты.</div>`;
+
     setView(`
       <section class="layout-grid grid-4">
         ${metric("Donation", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
         ${metric("Курс", `${packs.rubPerUnit || 1} ₽ = 1 DC`, "Фиксированный для всех пакетов", "neutral")}
-        ${metric("Провайдер", packs.provider || "MOCK_SBP", "Реальный провайдер пока не подключён", "warn")}
+        ${metric("Режим оплаты", paymentModeLabel(packs.provider), "Сейчас включён тестовый платёжный режим", "warn")}
         ${metric("Сессия", session ? statusLabel(session.status || "created") : "нет", session ? `Код ${session.session_code || short(donationSessionKey(session), 8)}` : "Создай новую сессию", session ? "neutral" : "good")}
       </section>
-      ${panel("Донат-баланс", "Этот баланс тратится только на donation shop и не смешивается с AR.", kv([
+      ${panel("Donation-баланс", "Этот баланс тратится только на donation-лавку и никак не смешивается с AR.", kv([
         ["Статус", linked ? "привязан" : "нет привязки"],
         ["Баланс", formatDonate(balance.balance || 0)],
         ["Пополнение", "только через фиксированные пакеты"],
-        ["Выдачи", "предметы забираются только в игре"],
-      ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Мои донат-предметы</button>`)}
-      ${panel("Пополнить", "Создай payment session и оплати её через mock SBP foundation. Сайт остаётся канонической точкой оплаты.", `
+        ["Выдача", "предметы забираются только в игре"],
+      ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Мои donation-предметы</button>`)}
+      ${panel("Пополнить", "Создай платёжную сессию и открой оплату через встроенный QR или ссылку.", `
         <div class="action-strip wrap">${packButtons}</div>
         <div class="spacer-12"></div>
         <div class="notice">Пакеты фиксированы: 50 / 100 / 250 / 500 / 1000. Donation нельзя обменять на AR.</div>
       `)}
-      ${panel("Mock SBP Session", "QR генерируется локально backend-ом. Если QR не нужен, можно использовать ссылку и код сессии.", sessionPanel)}
-      ${panel("История пополнений и списаний", "Только donation balance, без AR и без скрытых списаний.", table("player-donation-history", asArray(history.history), [
+      ${panel("Платёжная сессия", "QR генерируется локально на сервере. Если QR не нужен, можно использовать ссылку и короткий код сессии.", sessionPanel)}
+      ${panel("История пополнений и списаний", "Здесь только движения donation-баланса без примеси AR-операций.", table("player-donation-history", asArray(history.history), [
         { key: "created_at", label: "Время", render: (value) => dt(value) },
         { key: "delta", label: "Изменение", render: (value) => formatDonate(value || 0) },
         { key: "balance_after", label: "После", render: (value) => formatDonate(value || 0) },
@@ -113,17 +124,21 @@ export function createPlayerDonationPages(deps) {
     state.user = me.account || {};
     const linked = Boolean(state.user.linked);
     if (!linked) {
-      setView(panel("Донат-лавка закрыта", "Сначала привяжи Minecraft-ник.", `
-        <div class="notice">После привязки сайт сможет создавать purchase-intent и подсказывать, что предмет нужно забрать в игре.</div>
+      setView(panel("Donation-лавка закрыта", "Сначала привяжи Minecraft-ник.", `
+        <div class="notice">После привязки сайт сможет создать покупку и подскажет, что предмет уже можно забрать в игре.</div>
       `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
       return;
     }
+
     const [catalog, balance] = await Promise.all([
       safeApi("/api/player/shop/donation-items", { items: [], catalogVersion: 0 }),
       safeApi("/api/player/donation/balance", { balance: 0 }),
     ]);
+
     const rows = asArray(catalog.items).map((row) => {
-      const status = row.owned_active ? "Уже у тебя" : (row.claim_available ? "Можно забрать" : (row.enabled ? "Не куплен" : "Отключён"));
+      const status = row.owned_active
+        ? "Уже у тебя"
+        : (row.claim_available ? "Можно забрать в игре" : (row.enabled ? "Не куплен" : "Отключён"));
       const action = row.owned_active
         ? `<span class="btn btn-secondary btn-small disabled">Уже у тебя</span>`
         : row.claim_available
@@ -137,6 +152,7 @@ export function createPlayerDonationPages(deps) {
         action_html: action,
       };
     });
+
     const focusItemId = String(state.donationFocusItemId || "").trim().toLowerCase();
     if (focusItemId) {
       rows.sort((a, b) => {
@@ -145,14 +161,15 @@ export function createPlayerDonationPages(deps) {
         return aMatch - bMatch;
       });
     }
+
     setView(`
       <section class="layout-grid grid-4">
         ${metric("Баланс", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
         ${metric("Каталог", asArray(catalog.items).length, `Версия ${catalog.catalogVersion || 0}`, "neutral")}
-        ${metric("Готово к claim", rows.filter((row) => row.claim_available).length, "Предмет уже куплен и ждёт выдачи", rows.some((row) => row.claim_available) ? "warn" : "good")}
-        ${metric("Активные", rows.filter((row) => row.owned_active).length, "Предмет уже выдан и активен", rows.some((row) => row.owned_active) ? "good" : "neutral")}
+        ${metric("Готово к выдаче", rows.filter((row) => row.claim_available).length, "Предмет уже куплен и ждёт выдачи", rows.some((row) => row.claim_available) ? "warn" : "good")}
+        ${metric("Активные", rows.filter((row) => row.owned_active).length, "Предмет уже выдан игроку", rows.some((row) => row.owned_active) ? "good" : "neutral")}
       </section>
-      ${panel("Донатная лавка", "Покупка происходит только на сайте. После оплаты предмет нужно забрать в игре через лавку доната.", `
+      ${panel("Donation-лавка", "Покупка оформляется на сайте, а сама выдача предмета происходит только в игре через специальную лавку.", `
         ${focusItemId ? `<div class="notice">Открыт товар по прямой ссылке: <strong>${esc(focusItemId)}</strong>.</div>` : ""}
         ${table("player-donation-shop", rows, [
           { key: "display_name", label: "Предмет", render: (value) => `<strong>${esc(cleanText(value || "Предмет"))}</strong>` },
@@ -163,50 +180,52 @@ export function createPlayerDonationPages(deps) {
           { key: "action_html", label: "Действие", render: (value) => value },
         ], { pageSize: 10 })}
       `)}
-      ${panel("Правила выдачи", "Игровой мир остаётся единственной точкой физической выдачи и возврата.", safetyRail([
-        ["Покупка", "После списания donation появится claim со статусом «Заберите предмет в игре».", "good"],
-        ["Выдача", "Физическая выдача идёт только через блок лавки в Minecraft.", "warn"],
-        ["Возврат", "Если предмет потерян внешне, бесплатный возврат идёт только через экран «Вернуть утерянные предметы».", "neutral"],
-      ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои донат-предметы</button>`)}
+      ${panel("Как это работает", "Сайт оформляет покупку, а защищённая выдача и возврат происходят уже в игровом мире.", safetyRail([
+        ["Покупка", "После списания donation появится запись, что предмет можно забрать в игре.", "good"],
+        ["Выдача", "Физическая выдача проходит только через игровой блок donation-лавки.", "warn"],
+        ["Возврат", "Если предмет был утерян внешне, вернуть его можно через отдельный экран возврата утерянных предметов.", "neutral"],
+      ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои donation-предметы</button>`)}
     `);
   }
 
   async function loadPlayerDonationItems() {
-    setLoading("Загрузка донат-предметов");
+    setLoading("Загрузка donation-предметов");
     const me = await api("/api/player/me");
     state.user = me.account || {};
     const linked = Boolean(state.user.linked);
     if (!linked) {
-      setView(panel("Мои донат-предметы", "Сначала привяжи Minecraft-ник.", `
-        <div class="notice">Без привязки нельзя понять, какие claims и item instances принадлежат твоему игровому персонажу.</div>
+      setView(panel("Мои donation-предметы", "Сначала привяжи Minecraft-ник.", `
+        <div class="notice">Без привязки нельзя понять, какие покупки и выданные предметы относятся к твоему игровому персонажу.</div>
       `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
       return;
     }
+
     const owned = await safeApi("/api/player/shop/owned", { linked: true, claims: [], instances: [], summary: {} });
+
     setView(`
       <section class="layout-grid grid-4">
-        ${metric("Выдачи", asArray(owned.claims).length, "Ожидают или уже завершены", asArray(owned.claims).length ? "warn" : "neutral")}
+        ${metric("Покупки", asArray(owned.claims).length, "Ожидают выдачи или уже завершены", asArray(owned.claims).length ? "warn" : "neutral")}
         ${metric("Активные", owned.summary?.active || 0, "Сейчас у игрока", (owned.summary?.active || 0) ? "good" : "neutral")}
-        ${metric("Reclaimable", owned.summary?.reclaimable || 0, "Можно вернуть через лавку", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
-        ${metric("Ожидают выдачи", owned.summary?.claimPending || 0, "Выдача и review идут только в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
+        ${metric("Можно вернуть", owned.summary?.reclaimable || 0, "Утерянные предметы доступны к возврату", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
+        ${metric("Ждут выдачи", owned.summary?.claimPending || 0, "Выдача идёт только в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
       </section>
-      ${panel("Выдачи и покупки", "Сайт показывает статус, но физическая выдача идёт только через игровую лавку.", table("player-donation-owned-claims", asArray(owned.claims), [
+      ${panel("Покупки и выдача", "Здесь видно, что уже куплено и что ждёт выдачи. Сам предмет игрок забирает уже в игре.", table("player-donation-owned-claims", asArray(owned.claims), [
         { key: "purchase_created_at", label: "Покупка", render: (value) => dt(value) },
         { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
         { key: "price_donation", label: "Цена", render: (value) => formatDonate(value || 0) },
-        { key: "status", label: "Claim", render: (value) => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
+        { key: "status", label: "Выдача", render: (value) => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
         { key: "purchase_status", label: "Покупка", render: (value) => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
       ], { pageSize: 12 }))}
-      ${panel("Выданные экземпляры", "Только база статусов решает, является ли предмет активным, потерянным или недействительным.", table("player-donation-owned-instances", asArray(owned.instances), [
+      ${panel("Выданные экземпляры", "Здесь видно, находится ли предмет у игрока сейчас, был ли он утерян или уже выбыл из обращения.", table("player-donation-owned-instances", asArray(owned.instances), [
         { key: "updated_at", label: "Обновлён", render: (value) => dt(value) },
         { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
         { key: "status", label: "Статус", render: (value) => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
       ], { pageSize: 12 }))}
-      ${panel("Как это работает", "Возврат и anti-dupe проверяются только в игре и только через официальный workflow.", safetyRail([
-        ["Claim", "Если статус UNCLAIMED, предмет нужно забрать в игровой лавке.", "good"],
-        ["Reclaim", "LOST_RECLAIMABLE возвращается по одному предмету за раз.", "warn"],
-        ["Broken/Consumed", "BROKEN и CONSUMED бесплатно не возвращаются.", "bad"],
-      ]), `<button class="btn btn-secondary" data-click="setTab('donation-shop')">Вернуться в донат-лавку</button>`)}
+      ${panel("Возврат и защита от дюпа", "Возврат проходит только через официальный игровой workflow.", safetyRail([
+        ["Забрать в игре", "Если покупка ждёт выдачи, предмет нужно получить через игровую лавку.", "good"],
+        ["Вернуть утерянное", "Бесплатный возврат доступен только для тех предметов, которые сервер пометил как утерянные внешне.", "warn"],
+        ["Израсходовано или сломано", "Сломанные и израсходованные предметы бесплатно не возвращаются.", "bad"],
+      ]), `<button class="btn btn-secondary" data-click="setTab('donation-shop')">Вернуться в donation-лавку</button>`)}
     `);
   }
 
@@ -250,7 +269,7 @@ export function createPlayerDonationPages(deps) {
 
   async function playerCopyDonationPaymentUrl() {
     if (!state.donationSessionId) return;
-    await copyText(`${location.origin}/#donation-balance?session=${encodeURIComponent(state.donationSessionId)}`, "Ссылка оплаты скопирована");
+    await copyText(`${location.origin}${appRouteHref("donation-balance", { session: state.donationSessionId })}`, "Ссылка оплаты скопирована");
   }
 
   async function playerBuyDonationItem(itemId, displayName = "предмет", price = 0) {
@@ -262,7 +281,7 @@ export function createPlayerDonationPages(deps) {
         method: "POST",
         body: JSON.stringify({ item_id: String(itemId || ""), idempotency_key: randomActionKey("don-buy") }),
       });
-      toast(`Покупка создана. Предмет ${result.itemId} забирается в игре.`);
+      toast(`Покупка создана. Предмет ${result.itemId} можно забрать в игре.`);
       await loadPlayerDonationShop();
     } catch (err) {
       toast(err.message, true);

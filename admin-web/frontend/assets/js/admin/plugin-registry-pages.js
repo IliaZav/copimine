@@ -119,30 +119,30 @@ export function createPluginRegistryPages(deps) {
     const canBackup = hasConfigPath;
     const canApply = hasConfigPath && hasEditableKeys;
     const canReload = String(status.reloadMode || "none") !== "none";
-    const validateLabel = hasEditableKeys ? "Validate" : "Validate недоступен";
-    const backupLabel = canBackup ? "Backup" : "Backup недоступен";
-    const applyLabel = canApply ? "Apply" : "Apply недоступен";
-    const reloadLabel = canReload ? "Reload" : "Reload недоступен";
+    const validateLabel = hasEditableKeys ? "Проверить" : "Проверка недоступна";
+    const backupLabel = canBackup ? "Сделать копию" : "Копия недоступна";
+    const applyLabel = canApply ? "Применить" : "Применение недоступно";
+    const reloadLabel = canReload ? "Перечитать" : "Перечитывание недоступно";
     return `
       <section class="layout-grid grid-2">
-        ${panel("Plugin registry", "Allowlisted plugin config foundation: status, schema, validate, backup, apply и reload без raw file editing.", plugins.length ? table("plugin-registry", plugins, [
+        ${panel("Плагины и их конфиги", "Здесь можно безопасно проверить состояние плагина, сделать резервную копию конфига, внести разрешённые правки и перечитать настройки без ручного редактирования файлов.", plugins.length ? table("plugin-registry", plugins, [
           { key: "displayName", label: "Плагин" },
           { key: "pluginId", label: "ID" },
-          { key: "reloadMode", label: "Reload" },
+          { key: "reloadMode", label: "Режим перечитывания" },
           { key: "pluginId", label: "Открыть", render: (value, row) => `<button class="btn btn-secondary" data-click="pluginRegistrySelect('${esc(row.pluginId)}')">${row.pluginId === selected ? "Открыт" : "Открыть"}</button>` }
-        ], { pageSize: 8 }) : empty("Registry пуст", "Manifest пока не отдаёт plugins allowlist."))}
+        ], { pageSize: 8 }) : empty("Список пуст", "Сервер пока не вернул список плагинов, которые разрешено настраивать через сайт."))}
         ${panel("Текущий плагин", selected ? `Сейчас открыт ${cleanText(status.displayName || selected)}.` : "Выбери плагин из списка слева.", selected ? `
           ${kv([
-            ["Plugin ID", status.pluginId || selected],
+            ["ID плагина", status.pluginId || selected],
             ["Config", status.configExists ? "найден" : "не найден"],
             ["Путь", status.configPath || "—"],
-            ["Reload mode", status.reloadMode || "none"],
-            ["Reload command", status.reloadCommand || "—"],
-            ["Editable keys", hasEditableKeys ? String(Object.keys(schema).length) : "нет"]
+            ["Режим перечитывания", status.reloadMode || "none"],
+            ["Команда перечитывания", status.reloadCommand || "—"],
+            ["Доступных полей", hasEditableKeys ? String(Object.keys(schema).length) : "нет"]
           ])}
           <div class="spacer-12"></div>
           <div class="form-grid">
-            ${Object.keys(schema).length ? Object.entries(schema).map(([key, rules]) => pluginRegistryFieldControl(selected, key, rules, configValues[key])).join("") : '<div class="notice">Для этого плагина нет allowlisted editable keys.</div>'}
+            ${Object.keys(schema).length ? Object.entries(schema).map(([key, rules]) => pluginRegistryFieldControl(selected, key, rules, configValues[key])).join("") : '<div class="notice">Для этого плагина пока нет полей, которые разрешено менять через сайт.</div>'}
           </div>
           <div class="spacer-12"></div>
           <div class="button-row">
@@ -151,9 +151,9 @@ export function createPluginRegistryPages(deps) {
             <button class="btn btn-primary ${canApply ? "" : "disabled"}" ${canApply ? `data-click="pluginRegistryApply('${esc(selected)}')"` : "disabled"}>${applyLabel}</button>
             <button class="btn btn-secondary ${canReload ? "" : "disabled"}" ${canReload ? `data-click="pluginRegistryReload('${esc(selected)}')"` : "disabled"}>${reloadLabel}</button>
           </div>
-        ` : empty("Плагин не выбран", "Слева можно открыть allowlisted plugin и применить безопасные config changes."))}
+        ` : empty("Плагин не выбран", "Слева можно открыть разрешённый плагин и применить только те изменения, которые сервер считает безопасными."))}
       </section>
-      ${panel("Plugin registry audit", "Каждое backup/apply/reload действие журналируется.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Аудит пуст", "После первых действий здесь появятся записи."))}
+      ${panel("Журнал изменений", "Каждая копия, проверка, правка и перечитывание конфига записываются в журнал.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Журнал пуст", "После первых действий здесь появятся записи."))}
     `;
   }
 
@@ -165,7 +165,7 @@ export function createPluginRegistryPages(deps) {
   async function pluginRegistryValidate(pluginId) {
     try {
       if (!Object.keys(state.pluginRegistrySchema || {}).length) {
-        toast("Для этого плагина нет allowlisted editable keys", true);
+        toast("Для этого плагина пока нет полей, которые разрешено менять через сайт.", true);
         return;
       }
       const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
@@ -173,7 +173,7 @@ export function createPluginRegistryPages(deps) {
         method: "POST",
         body: JSON.stringify({ values })
       });
-      toast(`Конфиг валиден: ${(result.validated ? Object.keys(result.validated).length : 0)} ключей`);
+      toast(`Проверка прошла: ${(result.validated ? Object.keys(result.validated).length : 0)} полей готовы к применению.`);
     } catch (err) {
       toast(err.message, true);
     }
@@ -182,17 +182,17 @@ export function createPluginRegistryPages(deps) {
   async function pluginRegistryBackup(pluginId) {
     try {
       if (!state.pluginRegistryStatus?.configPath) {
-        toast("У этого плагина нет allowlisted configPath", true);
+        toast("Для этого плагина сервер не открыл путь к рабочему конфигу.", true);
         return;
       }
-      const headers = await dangerConfirm(`Создать backup конфига ${pluginId}?`, "PLUGIN_REGISTRY_BACKUP");
+      const headers = await dangerConfirm(`Создать резервную копию конфига ${pluginId}?`, "PLUGIN_REGISTRY_BACKUP");
       if (!headers) return;
       const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/backup`, {
         method: "POST",
         headers,
         body: "{}"
       });
-      toast(`Backup создан: ${result.backup?.name || pluginId}`);
+      toast(`Резервная копия создана: ${result.backup?.name || pluginId}`);
       await loadSources();
     } catch (err) {
       toast(err.message, true);
@@ -202,18 +202,18 @@ export function createPluginRegistryPages(deps) {
   async function pluginRegistryApply(pluginId) {
     try {
       if (!state.pluginRegistryStatus?.configPath || !Object.keys(state.pluginRegistrySchema || {}).length) {
-        toast("Для этого плагина недоступно apply изменений", true);
+        toast("Для этого плагина сейчас нельзя применить правки через сайт.", true);
         return;
       }
       const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
-      const headers = await dangerConfirm(`Применить allowlisted config changes для ${pluginId}?`, "PLUGIN_REGISTRY_APPLY");
+      const headers = await dangerConfirm(`Применить разрешённые настройки для ${pluginId}?`, "PLUGIN_REGISTRY_APPLY");
       if (!headers) return;
       const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/apply`, {
         method: "POST",
         headers,
         body: JSON.stringify({ values })
       });
-      toast(`Config обновлён: ${(result.updatedKeys || []).join(", ") || pluginId}`);
+      toast(`Настройки обновлены: ${(result.updatedKeys || []).join(", ") || pluginId}`);
       await loadSources();
     } catch (err) {
       toast(err.message, true);
@@ -223,17 +223,17 @@ export function createPluginRegistryPages(deps) {
   async function pluginRegistryReload(pluginId) {
     try {
       if (String(state.pluginRegistryStatus?.reloadMode || "none") === "none") {
-        toast("Для этого плагина нет allowlisted reload flow", true);
+        toast("Для этого плагина сервер не разрешил перечитывание через сайт.", true);
         return;
       }
-      const headers = await dangerConfirm(`Перезагрузить ${pluginId} через allowlisted reload flow?`, "PLUGIN_REGISTRY_RELOAD");
+      const headers = await dangerConfirm(`Попросить ${pluginId} перечитать свой конфиг?`, "PLUGIN_REGISTRY_RELOAD");
       if (!headers) return;
       const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/reload`, {
         method: "POST",
         headers,
         body: "{}"
       });
-      toast(result.message || (result.reloaded ? "Reload выполнен" : "Reload пропущен"));
+      toast(result.message || (result.reloaded ? "Плагин перечитал конфиг" : "Перечитывание пропущено"));
       await loadSources();
     } catch (err) {
       toast(err.message, true);

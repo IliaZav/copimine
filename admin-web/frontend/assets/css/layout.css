@@ -1,7 +1,7 @@
 .public-section-accent {
   background:
-    radial-gradient(circle at top left, rgba(59, 178, 90, .14), transparent 36%),
-    linear-gradient(180deg, rgba(19, 31, 22, .02), rgba(19, 31, 22, .02));
+    radial-gradient(circle at top left, rgba(59, 178, 90, 0.12), transparent 36%),
+    var(--section-surface);
 }
 
 .treasury-hero-grid {

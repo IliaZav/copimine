@@ -9,5 +9,13 @@ Require-NotContains $admin 'openEconomy(p);' 'AdminPlus must not open the legacy
 Require-NotContains $admin 'economy.openAtmDirectory(p)' 'AdminPlus must not own an ATM directory flow anymore.'
 Require-NotContains $admin 'economy.atmService().openAtm' 'AdminPlus must not proxy live ATM click handling anymore.'
 Require-NotContains $admin 'economyCore().isAtmBlock' 'AdminPlus must not inspect ATM blocks directly in active runtime.'
+Require-NotContains $admin 'private void openEconomy(Player p)' 'AdminPlus must not keep a local economy root implementation.'
+Require-NotContains $admin 'private void openBankAtms(Player p)' 'AdminPlus must not keep a local ATM registry GUI.'
+Require-NotContains $admin 'private void openBankAtm(Player p,String atmId)' 'AdminPlus must not keep a local ATM player GUI.'
+Require-NotContains $admin 'private boolean isBankAtmBlock(Block b)' 'AdminPlus must not own ATM block detection.'
+Require-NotContains $admin 'private String createBankAtmFromTarget(Player p)' 'AdminPlus must not own ATM creation flow.'
+Require-NotContains $admin 'private String archiveBankAtm(Player p,String id)' 'AdminPlus must not own ATM archive flow.'
+Require-NotContains $admin 'private int syncArOnline(String actor)' 'AdminPlus must not own AR balance synchronization.'
+Require-NotContains $admin 'private void syncAr(Player p)' 'AdminPlus must not own direct AR sync logic.'
 
 Throw-IfErrors 'ValidateCopiMineAdminPlusNoEconomyOwnership'

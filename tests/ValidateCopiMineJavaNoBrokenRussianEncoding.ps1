@@ -16,6 +16,13 @@ scan_roots = [
     Path(r"D:\Desktop\Copimine\opt\copimine\CopiMineClient\src\main\java"),
 ]
 bad_tokens = ["\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7", "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a", "\u0421\u0403", "\u0421\u201a", "\u0421\u0402", "\u0421\u0453", "?????", "?????????", "\ufffd"]
+bad_escape_patterns = [
+    r"\\u0420\\u00[0-9A-Fa-f]{2}",
+    r"\\u0420\\u201[0-9A-Fa-f]",
+    r"\\u0420\\u045[0-9A-Fa-f]",
+    r"\\u0421\\u201[0-9A-Fa-f]",
+    r"\\u0421\\u040[0-9A-Fa-f]",
+]
 
 hits = []
 for root in scan_roots:
@@ -24,6 +31,9 @@ for root in scan_roots:
     for path in root.rglob("*.java"):
         text = path.read_text(encoding="utf-8")
         if any(token in text for token in bad_tokens):
+            hits.append(str(path))
+            continue
+        if any(__import__("re").search(pattern, text) for pattern in bad_escape_patterns):
             hits.append(str(path))
 
 for hit in hits:

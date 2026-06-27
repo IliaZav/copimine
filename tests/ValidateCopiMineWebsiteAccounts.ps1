@@ -16,7 +16,8 @@ $backendMarkers = @(
   'one_time_link_codes',
   'make_password_hash',
   'verify_password_hash',
-  'make_token(account_id, "player"',
+  'issue_player_auth_pair',
+  'set_auth_cookies',
   'code_hash'
 )
 

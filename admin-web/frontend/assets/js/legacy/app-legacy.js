@@ -1,4 +1,6 @@
-﻿const $ = (id) => document.getElementById(id);
+import { getStoredUiState, removeStoredUiState, setStoredUiState } from "../shared/browser-state.js";
+
+const $ = (id) => document.getElementById(id);
 
 function parseHashRoute(hashValue) {
   const raw = String(hashValue || "").replace(/^#/, "");
@@ -16,7 +18,7 @@ const state = {
   role: "",
   fullAccess: false,
   owner: false,
-  authRole: localStorage.getItem("copimineLastRole") || "admin",
+  authRole: getStoredUiState("copimineLastRole", "admin") || "admin",
   authAction: "login",
   cookieAuth: false,
   tab: initialHashRoute.tab || "dashboard",
@@ -33,10 +35,10 @@ const state = {
   publicStatus: null,
   publicConfig: null,
   modalResolver: null,
-  donationSessionId: initialHashRoute.params.get("session") || localStorage.getItem("copimineDonationSessionId") || "",
+  donationSessionId: initialHashRoute.params.get("session") || getStoredUiState("copimineDonationSessionId", "") || "",
   donationFocusItemId: String(initialHashRoute.params.get("item") || "").trim().toLowerCase(),
   donationBusy: false,
-  playerBankScope: localStorage.getItem("copiminePlayerBankScope") || "PERSONAL"
+  playerBankScope: getStoredUiState("copiminePlayerBankScope", "PERSONAL") || "PERSONAL"
 };
 
 const dataClickHandlers = Object.create(null);
@@ -481,7 +483,7 @@ async function tryRefreshSession() {
         state.fullAccess = Boolean(data.fullAccess ?? (state.role === "admin" || state.role === "owner"));
         state.owner = Boolean(data.owner ?? state.role === "owner");
         state.authRole = state.role === "player" ? "player" : "admin";
-        localStorage.setItem("copimineLastRole", state.authRole);
+        setStoredUiState("copimineLastRole", state.authRole);
         if (data.account) state.user = data.account;
         if (data.username && !data.account) state.user = { ...(state.user || {}), username: data.username, role: data.role || state.role };
         return true;
@@ -1528,7 +1530,7 @@ function stopLivePanelStream() {
 function setAuthRole(role) {
   state.authRole = role === "player" ? "player" : "admin";
   if (state.authRole !== "player") state.authAction = "login";
-  localStorage.setItem("copimineLastRole", state.authRole);
+  setStoredUiState("copimineLastRole", state.authRole);
   syncAuthUi();
   renderPublicAuthState();
 }
@@ -1678,6 +1680,13 @@ function renderPublicAuthState() {
     button.classList.toggle("hidden", !authed);
     const username = state.user?.username || (isPlayerRole() ? "игрок" : "команда");
     button.textContent = isPanelAdminRole() ? `Открыть кабинет (${username})` : `Личный кабинет (${username})`;
+    window.dispatchEvent(new CustomEvent("copimine:auth-state", {
+      detail: {
+        role: state.role,
+        cookieAuth: state.cookieAuth,
+        username,
+      },
+    }));
   }
 
 function showGuestPages() {
@@ -1786,7 +1795,7 @@ async function login(event) {
     state.token = "";
     state.cookieAuth = data.cookieAuth === true;
     state.role = data.role || state.authRole;
-    localStorage.setItem("copimineLastRole", state.authRole);
+    setStoredUiState("copimineLastRole", state.authRole);
     state.user = data.account || { username: data.username, role: state.role };
     await bootAuthed();
   } catch (err) {
@@ -3654,9 +3663,7 @@ async function loadPlayerCabinet() {
   const me = await api("/api/player/me");
   state.user = me.account || {};
   let bank = null;
-  let electionTax = null;
   if (state.user.linked) bank = await safeApi("/api/player/bank", { account: null, pin: {}, ledger: [] });
-  if (state.user.linked) electionTax = await safeApi("/api/player/elections/tax", { linked: false, president: {}, laws: [], tax: null, paid: 0, due: 0, payments: [] });
   const donation = await safeApi("/api/player/donation/balance", { linked: false, balance: 0 });
   const linked = Boolean(state.user.linked);
   const whitelisted = Boolean(state.user.whitelisted);
@@ -3717,24 +3724,6 @@ async function loadPlayerCabinet() {
       ["Выдан", dt(tempPin.createdAt)],
       ["Истекает", dt(tempPin.expiresAt)]
     ]), `<button class="btn btn-primary" data-click="setTab('bank')">Заменить PIN</button>`) : ""}
-    ${linked ? panel("Президент и налоги", "Президент сервера, действующие законы и оплата налога без выхода из кабинета.", `
-      ${kv([
-        ["Президент", electionTax?.president?.president_name || "—"],
-        ["Налог", electionTax?.tax ? formatAr(electionTax.tax.amount || 0) : "не установлен"],
-        ["Оплачено", formatAr(electionTax?.paid || 0)],
-        ["Остаток", formatAr(electionTax?.due || 0)]
-      ])}
-      <div class="spacer-12"></div>
-      ${lawCards(asArray(electionTax?.laws))}
-      ${number(electionTax?.due || 0) > 0 ? `
-        <div class="spacer-12"></div>
-        <div class="form-grid">
-          <input id="cabinetTaxAmount" type="number" min="1" max="${esc(number(electionTax?.due || 0))}" value="${esc(number(electionTax?.due || 0))}" placeholder="Сумма" />
-          <input id="cabinetTaxPin" type="password" inputmode="numeric" placeholder="PIN" />
-          <button class="btn btn-primary full" data-click="playerPayElectionTax()">Оплатить налог</button>
-        </div>
-      ` : ""}
-    `) : ""}
     ${panel("Запрос привязки", "Последний одноразовый код", playerLinkSummary(state.playerLinkRequest))}
   `);
 }
@@ -3934,25 +3923,12 @@ window.playerTransfer = async () => {
 };
 
 window.playerPayElectionTax = async () => {
-  try {
-    const result = await api("/api/player/elections/tax/pay", {
-      method: "POST",
-      body: JSON.stringify({
-        amount: number($("cabinetTaxAmount")?.value || 0),
-        pin: $("cabinetTaxPin")?.value || ""
-      })
-    });
-    toast(`Налог оплачен: ${result.amount} AR.`);
-    if ($("cabinetTaxPin")) $("cabinetTaxPin").value = "";
-    loadPlayerCabinet();
-  } catch (err) {
-    toast(err.message, true);
-  }
+  toast("Президентский налог отключён.", true);
 };
 
 window.selectPlayerBankScope = async (scope = "PERSONAL") => {
   state.playerBankScope = String(scope || "PERSONAL").toUpperCase();
-  localStorage.setItem("copiminePlayerBankScope", state.playerBankScope);
+  setStoredUiState("copiminePlayerBankScope", state.playerBankScope);
   if (state.tab === "bank") {
     await loadPlayerBank();
   }
@@ -3980,7 +3956,7 @@ async function loadPlayerDonationBalance() {
     session = result?.session || null;
     if (!session) {
       state.donationSessionId = "";
-      localStorage.removeItem("copimineDonationSessionId");
+      removeStoredUiState("copimineDonationSessionId");
     }
   }
   const packButtons = asArray(packs.packs).map((pack) => `
@@ -4149,7 +4125,7 @@ window.playerCreateDonationSession = async (amount) => {
       body: JSON.stringify({ amount: number(amount || 0), idempotency_key: randomActionKey("don-session") })
     });
     state.donationSessionId = donationSessionKey(result?.session);
-    if (state.donationSessionId) localStorage.setItem("copimineDonationSessionId", state.donationSessionId);
+    if (state.donationSessionId) setStoredUiState("copimineDonationSessionId", state.donationSessionId);
     toast(`Создана сессия на ${number(amount || 0)} Donation.`);
     loadPlayerDonationBalance();
   } catch (err) {
@@ -4169,7 +4145,7 @@ window.playerRefreshDonationSession = async () => {
 
 window.playerForgetDonationSession = () => {
   state.donationSessionId = "";
-  localStorage.removeItem("copimineDonationSessionId");
+  removeStoredUiState("copimineDonationSessionId");
   loadPlayerDonationBalance();
 };
 
@@ -4442,7 +4418,7 @@ function wire() {
     const itemId = String(route.params.get("item") || "").trim().toLowerCase();
     if (sessionId) {
       state.donationSessionId = sessionId;
-      localStorage.setItem("copimineDonationSessionId", sessionId);
+      setStoredUiState("copimineDonationSessionId", sessionId);
     }
     state.donationFocusItemId = itemId;
     if (!state.role && ["start", "about", "features", "join", "signin"].includes(next)) return;

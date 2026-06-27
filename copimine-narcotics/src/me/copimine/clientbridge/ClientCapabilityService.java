@@ -120,7 +120,7 @@ public final class ClientCapabilityService {
         if (!state.clientModVisuals()) {
             return "client-no-visuals";
         }
-        String irisSuffix = state.trueIrisShader() ? "+iris-shaderpack-active" : "";
+        String irisSuffix = state.trueIrisShader() ? "+iris-shaderpack-active+hud-overlay-compatible" : "+hud-overlay-compatible";
         return state.supportedEffects().contains(normalized) ? "client-ready" + irisSuffix : "unsupported-effect" + irisSuffix;
     }
 }

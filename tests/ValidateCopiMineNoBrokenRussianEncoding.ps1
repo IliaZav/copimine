@@ -7,7 +7,9 @@ import sys
 
 scan_roots = [
     Path(r"D:\Desktop\Copimine\opt\copimine"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\CopiMineClient"),
+    Path(r"D:\Desktop\Copimine\CopiMineClient"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\docs\superpowers\specs"),
+    Path(r"D:\Desktop\Copimine\opt\copimine\docs\superpowers\plans"),
 ]
 extensions = {".java", ".py", ".js", ".yml", ".yaml", ".md"}
 skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", "backups", ".idea", ".mvn", "out"}
@@ -16,6 +18,13 @@ bad_tokens = [
     "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a",
     "\u0421\u0403", "\u0421\u201a", "\u0421\u0402", "\u0421\u0453",
     "?????", "?????????", "\ufffd"
+]
+bad_escape_patterns = [
+    r"\\u0420\\u00[0-9A-Fa-f]{2}",
+    r"\\u0420\\u201[0-9A-Fa-f]",
+    r"\\u0420\\u045[0-9A-Fa-f]",
+    r"\\u0421\\u201[0-9A-Fa-f]",
+    r"\\u0421\\u040[0-9A-Fa-f]",
 ]
 
 hits = []
@@ -34,6 +43,9 @@ for root in scan_roots:
         except Exception:
             continue
         if any(token in text for token in bad_tokens):
+            hits.append(str(path))
+            continue
+        if any(__import__("re").search(pattern, text) for pattern in bad_escape_patterns):
             hits.append(str(path))
 
 for hit in hits:

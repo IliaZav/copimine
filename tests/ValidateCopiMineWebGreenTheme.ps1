@@ -1,9 +1,7 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
-$cssPath = Join-Path $root 'admin-web\frontend\assets\style.css'
-$htmlPath = Join-Path $root 'admin-web\frontend\index.html'
-$css = Read-Utf8 $cssPath
-$html = Read-Utf8 $htmlPath
+$css = Read-FrontendStyles
+$html = Read-Utf8 $Paths.FrontendIndex
 
 Require-Contains $css '--bg: #06110b;' 'Green redesign must define the dark CopiMine background token.'
 Require-Contains $css '--accent: #35f07f;' 'Green redesign must define the bright CopiMine accent token.'

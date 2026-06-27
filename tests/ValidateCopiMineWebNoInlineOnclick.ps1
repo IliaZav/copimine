@@ -1,7 +1,7 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
-$app = Read-Utf8 $Paths.FrontendApp
-$index = Read-Utf8 (Join-Path (Split-Path $Paths.FrontendApp -Parent | Split-Path -Parent) 'index.html')
+$app = Read-FrontendBundle
+$index = Read-Utf8 $Paths.FrontendIndex
 
 foreach ($token in @('onclick=', 'oninput=', 'onchange=', 'onsubmit=')) {
   Require-NotContains $app $token "Frontend app source must not use inline handler $token."

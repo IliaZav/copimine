@@ -2,17 +2,18 @@ $ErrorActionPreference = 'Stop'
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $mainPy = Join-Path $root 'admin-web\backend\main.py'
-$appJs = Join-Path $root 'admin-web\frontend\assets\app.js'
 $migration = Join-Path $root 'db\migrations\20260611_001_copimine_v4_postgres.sql'
 
 $backend = Get-Content -Raw -Encoding UTF8 $mainPy
-$frontend = Get-Content -Raw -Encoding UTF8 $appJs
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
+$frontend = Read-FrontendBundle
 $sql = Get-Content -Raw -Encoding UTF8 $migration
 
 $backendMarkers = @(
   '/api/player/bank',
   '/api/player/bank/pin',
   '/api/player/bank/transfer',
+  '/api/player/bank/treasury',
   '/api/players/{player}/bank-pin/reset',
   'bank_pin_hashes',
   'temporary_pin_resets',
@@ -22,12 +23,12 @@ $backendMarkers = @(
   'PIN_MAX_ATTEMPTS',
   'PIN_LOCKOUT',
   'verify_bank_pin',
-  'bankPinState',
   'playerResetBankPin',
   'SELECT * FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE',
   'TRANSFER_OUT',
   'TRANSFER_IN',
-  'make_password_hash(new_pin)'
+  'make_password_hash(new_pin)',
+  'treasuryPin'
 )
 
 foreach ($marker in $backendMarkers) {
@@ -35,6 +36,10 @@ foreach ($marker in $backendMarkers) {
   if (-not $present) {
     throw "Missing website bank backend marker: $marker"
   }
+}
+
+if ($frontend -notmatch 'bankPinState|visiblePin|treasuryPin') {
+  throw 'Missing website bank frontend PIN/treasury marker set.'
 }
 
 $migrationMarkers = @(

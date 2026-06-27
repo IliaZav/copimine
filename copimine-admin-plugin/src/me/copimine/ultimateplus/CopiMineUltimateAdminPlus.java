@@ -402,10 +402,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!e.getAction().isRightClick()) return;
         String officialType=officialTypeForStack(e.getItem());
         if("cik_seal".equals(officialType)) return;
-        if(e.getClickedBlock()!=null&&isPollingStationBlock(e.getClickedBlock())){
-            warn(p,"\u0421\u0442\u0430\u0440\u044b\u0439 \u0443\u0447\u0430\u0441\u0442\u043e\u043a \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d. \u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u0443\u0447\u0430\u0441\u0442\u043e\u043a CopiMineElectionCore.");
-            return;
-        }
         if(isTemporaryApplicationBook(e.getItem())) return;
         if(isBallotItem(e.getItem())){
             e.setCancelled(true);
@@ -879,7 +875,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         long arTx=safeScalar("SELECT COUNT(*) FROM cmv7_ar_transactions");
         long snapshots=safeScalar("SELECT COUNT(*) FROM cmv7_inventory_snapshots");
         btn(m,4,Material.ENDER_CHEST,"&a&lСостояние базы",List.of("&7Источник: &f"+dbSourceSummary(),"&7Таблиц: &f"+tables+" &8| &7индексов: &f"+indexes,"&7Аудит: &f"+audits,"&7Используй только безопасные кнопки обслуживания."),"none");
-        btn(m,10,Material.GOLDEN_HELMET,"&6Данные выборов",List.of("&7Голосов: &f"+votes,"&7Бюллетеней: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ballot_issues"),"&7Заявок: &f"+safeScalar("SELECT COUNT(*) FROM applications"),"&7Сырые правки голосов запрещены на сайте."),"open:election-integrity");
+        btn(m,10,Material.GOLDEN_HELMET,"&6Модуль выборов",List.of("&7Runtime выборов делегирован в &fCopiMineElectionCore","&7Legacy election GUI в AdminPlus отключён.","&7Открыть актуальный election hub."),"open:elections");
         btn(m,12,Material.DIAMOND_ORE,"&bДанные АР",List.of("&7Транзакций: &f"+arTx,"&7Активов: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_assets"),"&7Guard-инцидентов: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_guard_incidents"),"&7Баланс меняется только через AR workflow."),"open:ar-health");
         btn(m,14,Material.PLAYER_HEAD,"&eДанные игроков",List.of("&7Снимков online: &f"+snapshots,"&7Событий активности: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_player_activity"),"&7Профили читаются без тяжёлых полных сканов."),"open:players-tools");
         btn(m,16,Material.SHIELD,"&aЗащита базы",List.of("&7Аудит и журналы не редактируются сырой формой.","&7Для выборов/АР есть отдельные безопасные API.","&7Все действия обслуживания пишутся в аудит."),"none");
@@ -915,6 +911,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 || action.equals("open:election-recovery-advanced")
                 || action.equals("open:election-settings")
                 || action.startsWith("open:citizen-")
+                || action.startsWith("open:cik-target:")
                 || action.startsWith("open:applications-")
                 || action.startsWith("open:ballots-")
                 || action.startsWith("open:polling-stations")
@@ -939,8 +936,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 || action.startsWith("give-ballot:")
                 || action.startsWith("vote-seal:")
                 || action.startsWith("vote-deposit:")
+                || action.startsWith("view-app:")
+                || action.startsWith("ballot-candidate:")
+                || action.startsWith("vote-confirm:")
                 || action.startsWith("open:station-ballot:")
                 || action.startsWith("open:station-hub:")
+                || action.startsWith("official:recover:")
                 || action.startsWith("toggle:")
                 || action.startsWith("stage:")
                 || action.startsWith("duration:")
@@ -1314,7 +1315,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         btn(m,37,Material.ANVIL,"&aБезопасный self-heal",List.of("&7Пересоздать таблицы, снять зависшие книги,","&7вернуть pending-предметы, обновить TAB/sidebar,","&7сделать снимки инвентарей онлайн-игроков."),"startup:repair");
         btn(m,39,Material.SPYGLASS,"&bЭкономика АР",List.of("&7Открыть здоровье экономики и guard-инциденты."),"open:ar-health");
-        btn(m,41,Material.RECOVERY_COMPASS,"&6Профилактика выборов",List.of("&7Чек-лист ЦИК, участков, ролей и бюллетеней."),"open:preflight");
+        btn(m,41,Material.GOLDEN_HELMET,"&6Выборы в ElectionCore",List.of("&7Проверки ЦИК, участков и бюллетеней","&7перенесены в &fCopiMineElectionCore&7.","&7Открыть актуальный election hub."),"open:elections");
         btn(m,43,Material.CLOCK,"&dОбновить",List.of("&7Повторить startup self-check."),"open:startup-readiness");
         nav(m,"open:hub","open:startup-readiness"); p.openInventory(m.inv);
     }
@@ -2147,7 +2148,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void openPInv(Player a,String n){ Menu m=new Menu("pinv"); create(m,54,"&a&lИнвентарь &8| &f"+n);
         btn(m,10,Material.CHEST,"&aОткрыть инвентарь",List.of(),"p:inv:"+n); btn(m,11,Material.ENDER_CHEST,"&5Эндер-сундук",List.of(),"p:ender:"+n); btn(m,12,Material.GOLDEN_APPLE,"&aHeal+feed",List.of(),"p:heal:"+n);
         btn(m,13,Material.COOKED_BEEF,"&6Накормить",List.of(),"p:feed:"+n); btn(m,14,Material.ANVIL,"&bПочинить руку",List.of(),"p:repairhand:"+n); btn(m,15,Material.IRON_CHESTPLATE,"&eСнять броню",List.of(),"p:armoroff:"+n);
-        btn(m,16,Material.WRITABLE_BOOK,"&7Заявки перенесены в ЦИК",List.of(),"p:givebook:"+n); btn(m,17,Material.PAPER,"&fБюллетени перенесены в ЦИК",List.of(),"p:giveballot:"+n); btn(m,22,Material.HOPPER,"&dПеремешать хотбар",List.of(),"p:shufflehotbar:"+n); btn(m,23,Material.SPYGLASS,"&bSnapshot",List.of("&7Записать live-инвентарь в БД."),"p:snapshot:"+n); btn(m,24,Material.DIAMOND_ORE,"&bAR sync",List.of("&7Пересчитать АР этого игрока."),"p:arsync:"+n); btn(m,25,Material.BARRIER,"&cОчистить инвентарь",List.of("&cShift+ЛКМ"),"p:clearinv:"+n);
+        btn(m,16,Material.GOLDEN_HELMET,"&6Выборы в ElectionCore",List.of("&7Выдача заявок и бюллетеней","&7перенесена в новый election hub."),"open:elections"); btn(m,17,Material.PAPER,"&7Через ЦИК и участок",List.of("&7AdminPlus больше не выдаёт","&7книги заявок и бюллетени напрямую."),"none"); btn(m,22,Material.HOPPER,"&dПеремешать хотбар",List.of(),"p:shufflehotbar:"+n); btn(m,23,Material.SPYGLASS,"&bSnapshot",List.of("&7Записать live-инвентарь в БД."),"p:snapshot:"+n); btn(m,24,Material.DIAMOND_ORE,"&bAR sync",List.of("&7Пересчитать АР этого игрока."),"p:arsync:"+n); btn(m,25,Material.BARRIER,"&cОчистить инвентарь",List.of("&cShift+ЛКМ"),"p:clearinv:"+n);
         nav(m,"player:"+n,"open:p-inv:"+n); a.openInventory(m.inv); }
     private void openPActions(Player a,String n){ Menu m=new Menu("pactions"); create(m,54,"&d&lОсновные действия &8| &f"+n);
         btn(m,10,Material.OAK_SIGN,"&eTitle",List.of(),"p:title:"+n); btn(m,11,Material.PAPER,"&fСообщение",List.of(),"p:message:"+n); btn(m,12,Material.GLOWSTONE_DUST,"&eGlow",List.of(),"p:glow:"+n);
@@ -2209,11 +2210,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(!a.startsWith("open:players"))openMainHub(p);
             return;
         }
-        if(a.equals("open:citizen-election")||a.equals("open:citizen-guide")||a.equals("open:citizen-candidates")){redirectLegacyElectionAction(p);return;}
-        if(a.startsWith("open:cik-target:")){Player t=Bukkit.getPlayerExact(a.substring("open:cik-target:".length())); if(t==null){warn(p,"Игрок оффлайн.");return;} openCikSealPlayerPanel(p,t); return;}
-        if(a.startsWith("view-app:")){String[] parts=a.split(":",3); if(parts.length>=3)openCandidateApplicationPreview(p,parts[1],parts[2]); return;}
-        if(a.startsWith("ballot-candidate:")){String[] parts=a.split(":",4); if(parts.length>=3){ if(click.isRightClick()) openCandidateApplicationPreview(p,parts[1],parts[2]); else openVoteConfirm(p,parts[1],parts[2],parts.length>=4?parts[3]:"inventory"); } return;}
-        if(a.startsWith("vote-confirm:")){String[] parts=a.split(":",4); if(parts.length>=3)openVoteConfirm(p,parts[1],parts[2],parts.length>=4?parts[3]:"inventory"); return;}
         if(isLegacyElectionAction(a)){redirectLegacyElectionAction(p); return;}
         if(a.startsWith("vote-seal:")){String[] parts=a.split(":",4); if(parts.length>=3)sealBallotChoice(p,parts[1],parts[2],parts.length>=4?parts[3]:"inventory"); return;}
         if(a.startsWith("vote-deposit:")){depositSealedBallotAtStation(p,findOwnedSealedBallot(p,activeOrLatestElectionId()),a.substring("vote-deposit:".length())); return;}
@@ -3431,7 +3427,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         meta.setLore(List.of(
                 c("&7Владелец: &f"+first(ownerName,"неизвестно")),
                 c("&7Партия: &f"+shortId(batch)),
-                c("&7Р С'Р В -ID: &f"+shortId(batch)+" &8x&f"+amount),
+                c("&7AR-ID: &f"+shortId(batch)+" &8x&f"+amount),
                 c("&7Уникальных АР в стаке: &f"+amount),
                 c("&7Передача: &fвыбросить и дать подобрать"),
                 c("&7Алмаз: &fтолько через переплавку"),
@@ -4733,8 +4729,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String shortId(String id){return id==null||id.isBlank()?"нет":id.length()<=12?id:id.substring(0,12);}
     private String clipped(String x,int m){return x==null?"":x.length()<=m?x:x.substring(0,Math.max(0,m-1))+"…";}
     private String c(String s){return ChatColor.translateAlternateColorCodes('&',s==null?"":s);}
-    private void msg(CommandSender s,String t){s.sendMessage(c("&2&lCopiMine Ultra7 &8Р'В» &f"+t));}
-    private void warn(CommandSender s,String t){s.sendMessage(c("&c&lCopiMine Ultra7 &8Р'В» &c"+t));}
+    private void msg(CommandSender s,String t){s.sendMessage(c("&2&lCopiMine Ultra7 &8| &f"+t));}
+    private void warn(CommandSender s,String t){s.sendMessage(c("&c&lCopiMine Ultra7 &8| &c"+t));}
     private Inventory create(Menu m,int size,String title){
         Inventory inv=Bukkit.createInventory(m,size,c(title)); m.inv=inv;
         Map<String,Material> theme=menuTheme(title);

@@ -132,6 +132,7 @@ import org.joml.Vector3f;
 
 public final class CopiMineArtifacts extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
    private static final String PRESIDENT_BUDGET_ACCOUNT_ID = "PRESIDENT_BUDGET";
+   private static final String TREASURY_LABEL = "Казна CopiMine";
    private static final UUID EMPTY_UUID = new UUID(0L, 0L);
    private static final int MODEL_ARTIFACT_SHOP_MARKER = 14004;
    private static final String ARTIFACT_LIMIT_SUPPLY = "ARTIFACT_LIMIT_SUPPLY";
@@ -346,7 +347,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private String defaultItemsYaml() {
-      return "items:\n  - id: zmei_gorynych\n    category: WEAPON\n    material: NETHERITE_SWORD\n    custom_model_data: 10001\n    name: \"&6\u0417\u043c\u0435\u0439 \u0413\u043e\u0440\u044b\u043d\u044b\u0447\"\n    rarity: LEGENDARY\n    price_ar: 500\n    supply_limit: 0\n    per_player_limit: 1\n    cooldown_seconds: 12\n    effect: ZMEI_GORYNYCH_POOP\n    effect_chance_percent: 10\n    visual_effect_id: INVERTED_SCREEN\n    lore:\n      - \"&7\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u043e\u0435 \u043e\u0440\u0443\u0436\u0438\u0435 CopiMineArtifacts\"\n      - \"&7\u041f\u0440\u0438 \u0443\u0434\u0430\u0440\u0435 \u043c\u043e\u0436\u0435\u0442 \u0432\u044b\u0437\u0432\u0430\u0442\u044c \u044d\u043b\u0435\u043a\u0442\u0440\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0438\u043c\u043f\u0443\u043b\u044c\u0441.\"\n";
+      return "items:\n  - id: zmei_gorynych\n    category: WEAPON\n    material: NETHERITE_SWORD\n    custom_model_data: 10001\n    name: \"&6Змей Горыныч\"\n    rarity: LEGENDARY\n    price_ar: 500\n    supply_limit: 0\n    per_player_limit: 1\n    cooldown_seconds: 12\n    effect: ZMEI_GORYNYCH_POOP\n    effect_chance_percent: 10\n    visual_effect_id: INVERTED_SCREEN\n    lore:\n      - \"&7Официальное оружие CopiMineArtifacts\"\n      - \"&7При ударе может вызвать электрический импульс.\"\n";
    }
 
    private CopiMineArtifacts.PgSettings loadPgSettings() throws IOException {
@@ -564,7 +565,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.firstNonBlank(this.str(var1.get("effect-profile-id")), var2.toUpperCase(Locale.ROOT)),
             this.firstNonBlank(
                this.str(var1.get("effect-description")),
-               "\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0439 \u0434\u043e\u043d\u0430\u0442-\u043f\u0440\u0435\u0434\u043c\u0435\u0442 CopiMine."
+               "Официальный донат-предмет CopiMine."
             ),
             Math.max(0, this.parseInt(this.str(var1.get("cooldown-seconds")), 0)),
             this.clampProcChance(this.parseDouble(this.str(var1.get("proc-chance")), 0.0)),
@@ -582,11 +583,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ArrayList var2 = new ArrayList<>(var1.lore());
       if (var2.isEmpty()) {
          var2.add(
-            "&7\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0439 \u0434\u043e\u043d\u0430\u0442-\u043f\u0440\u0435\u0434\u043c\u0435\u0442 CopiMine"
+            "&7Официальный донат-предмет CopiMine"
          );
          var2.add("&7" + var1.effectDescription());
          var2.add(
-            "&7\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u0438 \u0432\u043e\u0437\u0432\u0440\u0430\u0442 \u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0435\u0440\u0435\u0437 \u0438\u0433\u0440\u043e\u0432\u0443\u044e \u043b\u0430\u0432\u043a\u0443."
+            "&7Получение и возврат только через игровую лавку."
          );
       }
 
@@ -734,11 +735,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   var1.getPlayer()
                      .sendMessage(
                         this.color(
-                           "&c\u041c\u0430\u0433\u0430\u0437\u0438\u043d \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."
+                           "&cМагазин временно недоступен."
                         )
                      );
                } else if (!var1.getPlayer().hasPermission("copimine.artifacts.use")) {
-                  var1.getPlayer().sendMessage(this.color("&c\u041d\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a CopiMineArtifacts."));
+                  var1.getPlayer().sendMessage(this.color("&cНет доступа к CopiMineArtifacts."));
                } else {
                   this.openMain(var1.getPlayer(), var3, true);
                }
@@ -767,7 +768,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      .orElse(null);
                   if (var5 != null && var5.enabled()) {
                      if (!var1.getPlayer().hasPermission("copimine.artifacts.use")) {
-                        var1.getPlayer().sendMessage(this.color("&c\u041d\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a CopiMineArtifacts."));
+                        var1.getPlayer().sendMessage(this.color("&cНет доступа к CopiMineArtifacts."));
                      } else {
                         this.openMain(var1.getPlayer(), var5, true);
                      }
@@ -775,7 +776,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      var1.getPlayer()
                         .sendMessage(
                            this.color(
-                              "&c\u041b\u0430\u0432\u043a\u0430 \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430."
+                              "&cЛавка сейчас недоступна."
                            )
                         );
                   }
@@ -786,13 +787,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    @EventHandler
-   public void onChunkLoad(ChunkLoadEvent var1) {
-      if (this.customBlockVisualsEnabled()) {
-         try {
-            this.repairProtectedBlockVisuals(var1.getWorld().getName(), var1.getChunk().getX(), var1.getChunk().getZ());
-         } catch (Exception var3) {
-            this.getLogger().log(Level.WARNING, "Artifact shop visual repair failed for chunk load", (Throwable)var3);
-         }
+   public void onChunkLoad(ChunkLoadEvent event) {
+      if (!customBlockVisualsEnabled()) return;
+      try {
+         repairProtectedBlockVisuals(event.getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ());
+      } catch (Exception error) {
+         this.getLogger().log(Level.WARNING, "Artifact shop visual repair failed for chunk load", (Throwable)error);
       }
    }
 
@@ -809,7 +809,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var1.getPlayer()
                   .sendMessage(
                      this.color(
-                        "&c\u041b\u0430\u0432\u043a\u0430 CopiMineArtifacts \u0441\u043d\u0438\u043c\u0430\u0435\u0442\u0441\u044f \u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0435\u0440\u0435\u0437 /cmartifacts shop remove."
+                        "&cЛавка CopiMineArtifacts снимается только через /cmartifacts shop remove."
                      )
                   );
             }
@@ -886,7 +886,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   var2.closeInventory();
                   var2.sendMessage(
                      this.color(
-                        "&c\u042d\u0442\u043e \u043c\u0435\u043d\u044e \u043e\u0442\u043a\u0440\u044b\u0442\u043e \u043d\u0435 \u0434\u043b\u044f \u0432\u0430\u0441. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043b\u0430\u0432\u043a\u0443 \u0437\u0430\u043d\u043e\u0432\u043e."
+                        "&cЭто меню открыто не для вас. Откройте лавку заново."
                      )
                   );
                } else {
@@ -907,7 +907,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      var2.closeInventory();
                      var2.sendMessage(
                         this.color(
-                           "&c\u041c\u0435\u043d\u044e \u0443\u0441\u0442\u0430\u0440\u0435\u043b\u043e. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043b\u0430\u0432\u043a\u0443 \u0437\u0430\u043d\u043e\u0432\u043e."
+                           "&cМеню устарело. Откройте лавку заново."
                         )
                      );
                   } else if (!var1.getClick().isShiftClick() && var1.getHotbarButton() < 0) {
@@ -946,7 +946,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  );
                               var2.sendMessage(
                                  this.color(
-                                    "&c\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435. \u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0438\u0441\u0430\u043d\u0430 \u0432 \u043b\u043e\u0433."
+                                    "&cНе удалось выполнить действие. Ошибка записана в лог."
                                  )
                               );
                            }
@@ -1109,7 +1109,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var1.getEntity()
                .sendMessage(
                   this.color(
-                     "&e\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0405\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u00b0\u0420\u00bb\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u00bb\u0421\u040b. \u0420\u0098\u0421\u2026 \u0420\u0458\u0420\u0455\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0420\u0454\u0420\u0405\u0420\u0455\u0420\u0457\u0420\u0454\u0421\u0453 &f\u0412\u00ab\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a \u0421\u0453\u0421\u201a\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039\u0412\u00bb&e \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b5."
+                     "&eДонат-предметы не выпали на землю. Их можно вернуть позже через кнопку &f«Вернуть утерянные предметы»&e в лавке."
                   )
                );
          }
@@ -1274,7 +1274,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if (var8 > var6) {
                var2.sendMessage(
                   this.color(
-                     "&e\u0420\u0452\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5."
+                     "&eАртефакт ещё на откате."
                   )
                );
                var1.setCancelled(true);
@@ -1540,7 +1540,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   this.getLogger().log(Level.WARNING, "Artifacts reload failed", (Throwable)var7);
                   var5.sendMessage(
                      this.color(
-                        "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_RELOAD_FAILED"
+                        "&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_RELOAD_FAILED"
                      )
                   );
                }
@@ -1552,7 +1552,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          } else {
             var5.sendMessage(
                this.color(
-                  "&c\u0420\u045c\u0420\u00b5\u0420\u0451\u0420\u00b7\u0420\u0406\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0454\u0420\u0455\u0420\u0458\u0420\u00b0\u0420\u0405\u0420\u0491\u0420\u00b0 CopiMineArtifacts."
+                  "&cНеизвестная команда CopiMineArtifacts."
                )
             );
             return true;
@@ -1580,14 +1580,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.noPermission(var1);
             return true;
          } else if (var2.length < 2) {
-            var1.sendMessage(this.color("&c\u0420\u0408\u0420\u0454\u0420\u00b0\u0420\u00b6\u0420\u0451 shop_id."));
+            var1.sendMessage(this.color("&cУкажи shop_id."));
             return true;
          } else {
             Block var8 = var1.getTargetBlockExact(6);
             if (var8 == null) {
                var1.sendMessage(
                   this.color(
-                     "&c\u0420\u040e\u0420\u0458\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0406 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u00b0\u0421\u2026 6 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406."
+                     "&cСмотри на блок лавки в пределах 6 блоков."
                   )
                );
                return true;
@@ -1596,7 +1596,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                if (this.shopsByLocation.containsKey(var9)) {
                   var1.sendMessage(
                      this.color(
-                        "&c\u0420\u045c\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0458 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u00b5 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 CopiMineArtifacts."
+                        "&cНа этом блоке уже есть лавка CopiMineArtifacts."
                      )
                   );
                   return true;
@@ -1626,7 +1626,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            this.runSync(
                               () -> var1.sendMessage(
                                     this.color(
-                                       "&a\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0421\u0403\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u0405\u0420\u00b0: &f"
+                                       "&aЛавка создана: &f"
                                           + var6.shopId()
                                     )
                                  )
@@ -1636,7 +1636,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            this.runSync(
                               () -> var1.sendMessage(
                                     this.color(
-                                       "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_SHOP_SAVE_FAILED"
+                                       "&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_SHOP_SAVE_FAILED"
                                     )
                                  )
                            );
@@ -1656,7 +1656,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if (var7 == null) {
                var1.sendMessage(
                   this.color(
-                     "&c\u0420\u040e\u0420\u0458\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0406 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u00b0\u0421\u2026 6 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406."
+                     "&cСмотри на блок лавки в пределах 6 блоков."
                   )
                );
                return true;
@@ -1665,7 +1665,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                if (var4 == null) {
                   var1.sendMessage(
                      this.color(
-                        "&c\u0420\u045c\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0458 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u00b5 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 CopiMineArtifacts."
+                        "&cНа этом блоке нет лавки CopiMineArtifacts."
                      )
                   );
                   return true;
@@ -1687,7 +1687,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            this.runSync(
                               () -> var1.sendMessage(
                                     this.color(
-                                       "&a\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0: &f"
+                                       "&aЛавка удалена: &f"
                                           + var4.shopId()
                                     )
                                  )
@@ -1697,7 +1697,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            this.runSync(
                               () -> var1.sendMessage(
                                     this.color(
-                                       "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_SHOP_REMOVE_FAILED"
+                                       "&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_SHOP_REMOVE_FAILED"
                                     )
                                  )
                            );
@@ -1715,7 +1715,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          } else {
             var1.sendMessage(
                this.color(
-                  "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 CopiMineArtifacts: &f"
+                  "&eЛавки CopiMineArtifacts: &f"
                      + this.shopsByLocation.values().stream().map(CopiMineArtifacts.Shop::shopId).collect(Collectors.joining(", "))
                )
             );
@@ -1726,7 +1726,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.noPermission(var1);
             return true;
          } else if (var2.length < 2) {
-            var1.sendMessage(this.color("&c\u0420\u0408\u0420\u0454\u0420\u00b0\u0420\u00b6\u0420\u0451 shop_id."));
+            var1.sendMessage(this.color("&cУкажи shop_id."));
             return true;
          } else {
             CopiMineArtifacts.Shop var3 = this.shopsByLocation
@@ -1738,7 +1738,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if (var3 == null) {
                var1.sendMessage(
                   this.color(
-                     "&c\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u0405\u0420\u00b5 \u0420\u0405\u0420\u00b0\u0420\u2116\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u00b0: &f"
+                     "&cЛавка не найдена: &f"
                         + var2[1]
                   )
                );
@@ -1751,7 +1751,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else {
          var1.sendMessage(
             this.color(
-               "&c\u0420\u045c\u0420\u00b5\u0420\u0451\u0420\u00b7\u0420\u0406\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0454\u0420\u0455\u0420\u0458\u0420\u00b0\u0420\u0405\u0420\u0491\u0420\u00b0 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+               "&cНеизвестная команда лавки."
             )
          );
          return true;
@@ -1771,8 +1771,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                Material.NETHER_STAR,
                "&aCopiMineArtifacts",
                List.of(
-                  "&7\u0420\u040e\u0420\u00bb\u0421\u0453\u0420\u00b6\u0420\u00b5\u0420\u00b1\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b0\u0420\u0405\u0420\u00b5\u0420\u00bb\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0455\u0420\u0454 \u0420\u0451 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u00b0.",
-                  "&8\u0420\u0098\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0420\u0406\u0420\u00b0\u0421\u040b\u0421\u201a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u0455\u0420\u0458 \u0420\u0457\u0420\u0455 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0421\u0453."
+                  "&7Служебная панель лавок и каталога.",
+                  "&8Игроки открывают лавку только кликом по блоку."
                )
             )
          );
@@ -1782,9 +1782,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             10,
             this.button(
                Material.CHEST,
-               "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451",
+               "&eЛавки",
                List.of(
-                  "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+                  "&7Список активных блоков лавки."
                )
             ),
             "admin:shops"
@@ -1795,9 +1795,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             12,
             this.button(
                Material.BOOK,
-               "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+               "&eКаталог",
                List.of(
-                  "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406 \u0420\u0457\u0420\u0455 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f\u0420\u0458."
+                  "&7Количество товаров по категориям."
                )
             ),
             "admin:catalog"
@@ -1808,8 +1808,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             14,
             this.button(
                Material.COMPARATOR,
-               "&e\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0",
-               List.of("&7Bridge, PostgreSQL, PIN \u0420\u0451 \u0420\u0454\u0421\u040c\u0421\u20ac.")
+               "&eДиагностика",
+               List.of("&7Bridge, PostgreSQL, PIN и кэш.")
             ),
             "admin:diagnostics"
          );
@@ -1821,7 +1821,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                Material.CLOCK,
                "&aReload",
                List.of(
-                  "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a config.yml \u0420\u0451 items.yml."
+                  "&7Перезагрузить config.yml и items.yml."
                )
             ),
             "admin:reload"
@@ -1832,9 +1832,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             22,
             this.button(
                Material.BARRIER,
-               "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+               "&cЗакрыть",
                List.of(
-                  "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                  "&7Выйти из меню."
                )
             ),
             "close"
@@ -1845,10 +1845,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             16,
             this.button(
                Material.NETHER_STAR,
-               "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+               "&dДонатная лавка",
                List.of(
-                  "&7Owner-bound \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 mock SBP foundation.",
-                  "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5, \u0420\u00b0 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                  "&7Owner-bound предметы и mock SBP foundation.",
+                  "&7Покупка идёт на сайте, а выдача и возврат доступны только в игре."
                )
             ),
             "donation:root"
@@ -1865,16 +1865,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2,
          CopiMineArtifacts.ViewType.ADMIN_SHOPS,
          54,
-         "&8\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+         "&8Лавки артефактов"
       );
       var3.setItem(
          4,
          this.button(
             Material.CHEST,
-            "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406",
+            "&eЛавки артефактов",
             List.of(
-               "&7\u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5: /cmartifacts shop create <id>",
-               "&7\u0420\u0408\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5: /cmartifacts shop remove"
+               "&7Создание: /cmartifacts shop create <id>",
+               "&7Удаление: /cmartifacts shop remove"
             )
          )
       );
@@ -1891,13 +1891,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                Material.BARREL,
                "&f" + var6.shopId(),
                List.of(
-                  "&7\u0420\u045a\u0420\u0451\u0421\u0402: &f" + var6.world(),
+                  "&7Мир: &f" + var6.world(),
                   "&7XYZ: &f" + var6.x() + " " + var6.y() + " " + var6.z(),
-                  "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: "
+                  "&7Статус: "
                      + (
                         var6.enabled()
-                           ? "&a\u0420\u0406\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u00b0"
-                           : "&c\u0420\u0406\u0421\u2039\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u00b0"
+                           ? "&aвключена"
+                           : "&cвыключена"
                      )
                )
             )
@@ -1913,9 +1913,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          45,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+               "&7Вернуться в админ-меню."
             )
          ),
          "admin:main"
@@ -1926,9 +1926,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          49,
          this.button(
             Material.CLOCK,
-            "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+            "&eОбновить",
             List.of(
-               "&7\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0455\u0420\u0454."
+               "&7Обновить список лавок."
             )
          ),
          "refresh"
@@ -1939,8 +1939,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          53,
          this.button(
             Material.BARRIER,
-            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
-            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+            "&cЗакрыть",
+            List.of("&7Выйти из меню.")
          ),
          "close"
       );
@@ -1955,15 +1955,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2,
          CopiMineArtifacts.ViewType.ADMIN_CATALOG,
          27,
-         "&8\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+         "&8Каталог артефактов"
       );
       var3.setItem(
          4,
          this.button(
             Material.BOOK,
-            "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+            "&eКаталог",
             List.of(
-               "&7\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406: &f"
+               "&7Активных товаров: &f"
                   + this.catalogById.size()
             )
          )
@@ -1975,9 +1975,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          16,
          this.button(
             Material.BOOK,
-            "&e\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u0451",
+            "&eОфициальные модели",
             List.of(
-               "&7\u0420\u00a0\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403-\u0420\u0457\u0420\u00b0\u0420\u0454 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u0406\u0420\u0405\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u0451\u0420\u2116 \u0420\u0406\u0420\u0451\u0420\u0491 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406."
+               "&7Ресурс-пак сервера меняет внешний вид официальных предметов."
             )
          )
       );
@@ -1987,9 +1987,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+               "&7Вернуться в админ-меню."
             )
          ),
          "admin:main"
@@ -2005,7 +2005,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2,
          CopiMineArtifacts.ViewType.ADMIN_DIAGNOSTICS,
          27,
-         "&8\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+         "&8Диагностика артефактов"
       );
       CopiMineArtifacts.BridgeHealthSnapshot var4 = new CopiMineArtifacts.BridgeHealthSnapshot(
          false, false, false, 0L, "artifacts-admin-gui", "LEGACY_REDIRECT"
@@ -2015,7 +2015,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.button(
             var4.bridgeReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
             "&eBridge",
-            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var4.bridgeReady())
+            List.of("&7Готов: &f" + var4.bridgeReady())
          )
       );
       var3.setItem(
@@ -2023,7 +2023,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.button(
             var4.postgresReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
             "&ePostgreSQL",
-            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var4.postgresReady())
+            List.of("&7Готов: &f" + var4.postgresReady())
          )
       );
       var3.setItem(
@@ -2031,7 +2031,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.button(
             var4.pinReady() ? Material.LIME_CONCRETE : Material.ORANGE_CONCRETE,
             "&ePIN",
-            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var4.pinReady())
+            List.of("&7Готов: &f" + var4.pinReady())
          )
       );
       var3.setItem(
@@ -2040,9 +2040,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.CLOCK,
             "&eTasks",
             List.of(
-               "&7Pending hints: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
-               "&7Session cleanup: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
-               "&7Every tick \u0420\u00b7\u0420\u00b0\u0420\u0491\u0420\u00b0\u0421\u2021 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a"
+               "&7Pending hints: &f1 раз в минуту",
+               "&7Session cleanup: &f1 раз в минуту",
+               "&7Every tick задач лавки нет"
             )
          )
       );
@@ -2052,9 +2052,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+               "&7Вернуться в админ-меню."
             )
          ),
          "admin:main"
@@ -2084,14 +2084,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var3,
          CopiMineArtifacts.ViewType.ADMIN_DIAGNOSTICS,
          27,
-         "&8\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+         "&8Диагностика артефактов"
       );
       var4.setItem(
          10,
          this.button(
             var2.bridgeReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
             "&eBridge",
-            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var2.bridgeReady())
+            List.of("&7Готов: &f" + var2.bridgeReady())
          )
       );
       var4.setItem(
@@ -2099,7 +2099,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.button(
             var2.postgresReady() ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
             "&ePostgreSQL",
-            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var2.postgresReady())
+            List.of("&7Готов: &f" + var2.postgresReady())
          )
       );
       var4.setItem(
@@ -2107,7 +2107,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.button(
             var2.pinReady() ? Material.LIME_CONCRETE : Material.ORANGE_CONCRETE,
             "&ePIN",
-            List.of("&7\u0420\u201c\u0420\u0455\u0421\u201a\u0420\u0455\u0420\u0406: &f" + var2.pinReady())
+            List.of("&7Готов: &f" + var2.pinReady())
          )
       );
       var4.setItem(
@@ -2116,9 +2116,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.CLOCK,
             "&eTasks",
             List.of(
-               "&7Pending hints: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
-               "&7Session cleanup: &f1 \u0421\u0402\u0420\u00b0\u0420\u00b7 \u0420\u0406 \u0420\u0458\u0420\u0451\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u0453",
-               "&7Every tick \u0420\u00b7\u0420\u00b0\u0420\u0491\u0420\u00b0\u0421\u2021 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a"
+               "&7Pending hints: &f1 раз в минуту",
+               "&7Session cleanup: &f1 раз в минуту",
+               "&7Every tick задач лавки нет"
             )
          )
       );
@@ -2128,9 +2128,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+               "&7Вернуться в админ-меню."
             )
          ),
          "admin:main"
@@ -2167,7 +2167,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var4,
             CopiMineArtifacts.ViewType.MAIN,
             54,
-            "&8\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+            "&8Лавка артефактов"
          );
          var5.setItem(
             4,
@@ -2175,9 +2175,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                Material.EMERALD,
                "&6" + var2.title(),
                List.of(
-                  "&7\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 CopiMine.",
-                  "&7\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454 AR.",
-                  "&8PIN \u0420\u0451 \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a UltimateAdminPlus."
+                  "&7Официальные предметы CopiMine.",
+                  "&7Оплата идёт только через банк AR.",
+                  "&8PIN и баланс проверяет UltimateAdminPlus."
                )
             )
          );
@@ -2188,9 +2188,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             16,
             this.button(
                Material.BOOK,
-               "&e\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u0451",
+               "&eОфициальные модели",
                List.of(
-                  "&7\u0420\u00a0\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403-\u0420\u0457\u0420\u00b0\u0420\u0454 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u0406\u0420\u0405\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u0451\u0420\u2116 \u0420\u0406\u0420\u0451\u0420\u0491 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406."
+                  "&7Ресурс-пак сервера меняет внешний вид официальных предметов."
                )
             )
          );
@@ -2200,10 +2200,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             28,
             this.button(
                Material.CHEST,
-               "&b\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+               "&bМои покупки",
                List.of(
-                  "&7\u0420\u0098\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0420\u0451\u0421\u2026 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0455\u0420\u0454.",
-                  "&7\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403\u0421\u2039 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+                  "&7История последних покупок.",
+                  "&7Оплаченные предметы и статусы выдачи."
                )
             ),
             "purchases"
@@ -2214,10 +2214,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             30,
             this.button(
                Material.CHEST_MINECART,
-               "&a\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+               "&aОтложенная выдача",
                List.of(
-                  "&7\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039, \u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u00bb\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a.",
-                  "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0455\u0421\u0403\u0420\u0406\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u0491\u0420\u0451\u0421\u20ac\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                  "&7Предметы, которые не поместились в инвентарь.",
+                  "&eНажми, когда освободишь место."
                )
             ),
             "pending"
@@ -2228,10 +2228,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             32,
             this.button(
                Material.ANVIL,
-               "&a\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a",
+               "&aРемонт",
                List.of(
-                  "&7\u0420\u045f\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0406 \u0421\u0402\u0421\u0453\u0420\u0454\u0420\u00b5.",
-                  "&7\u0420\u040e\u0421\u201a\u0420\u0455\u0420\u0451\u0420\u0458\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u0451\u0421\u0403\u0420\u0451\u0421\u201a \u0420\u0455\u0421\u201a \u0420\u0451\u0420\u00b7\u0420\u0405\u0420\u0455\u0421\u0403\u0420\u00b0."
+                  "&7Починить официальный предмет в руке.",
+                  "&7Стоимость зависит от износа."
                )
             ),
             "repair:open"
@@ -2242,9 +2242,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             34,
             this.button(
                Material.BOOK,
-               "&e\u0420\u045f\u0420\u0455\u0420\u0458\u0420\u0455\u0421\u2030\u0421\u040a",
+               "&eПомощь",
                List.of(
-                  "&7\u0420\u0459\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0451\u0420\u0405\u0421\u0403\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u0454\u0421\u2020\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b5, PIN \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b5."
+                  "&7Короткая инструкция по покупке, PIN и выдаче."
                )
             ),
             "help"
@@ -2255,9 +2255,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             45,
             this.button(
                Material.ARROW,
-               "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+               "&aНазад",
                List.of(
-                  "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0421\u0453."
+                  "&7Вернуться в игру."
                )
             ),
             "close"
@@ -2268,9 +2268,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             49,
             this.button(
                Material.CLOCK,
-               "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+               "&eОбновить",
                List.of(
-                  "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a \u0421\u201a\u0420\u00b5\u0420\u0454\u0421\u0453\u0421\u2030\u0420\u00b5\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                  "&7Перерисовать текущее меню."
                )
             ),
             "refresh"
@@ -2281,9 +2281,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             53,
             this.button(
                Material.BARRIER,
-               "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+               "&cЗакрыть",
                List.of(
-                  "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+                  "&7Выйти из лавки."
                )
             ),
             "close"
@@ -2310,8 +2310,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.NETHER_STAR,
             "&aCopiMineArtifacts",
             List.of(
-               "&7\u0420\u040e\u0420\u00bb\u0421\u0453\u0420\u00b6\u0420\u00b5\u0420\u00b1\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b0\u0420\u0405\u0420\u00b5\u0420\u00bb\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0455\u0420\u0454 \u0420\u0451 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u00b0.",
-               "&8\u0420\u0098\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0420\u0406\u0420\u00b0\u0421\u040b\u0421\u201a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u0455\u0420\u0458 \u0420\u0457\u0420\u0455 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0421\u0453."
+               "&7Служебная панель лавок и каталога.",
+               "&8Игроки открывают лавку только кликом по блоку."
             )
          )
       );
@@ -2321,9 +2321,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          10,
          this.button(
             Material.CHEST,
-            "&e\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451",
+            "&eЛавки",
             List.of(
-               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0455\u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+               "&7Список активных блоков лавки."
             )
          ),
          "admin:shops"
@@ -2334,9 +2334,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          12,
          this.button(
             Material.BOOK,
-            "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+            "&eКаталог",
             List.of(
-               "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406 \u0420\u0457\u0420\u0455 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f\u0420\u0458."
+               "&7Количество товаров по категориям."
             )
          ),
          "admin:catalog"
@@ -2347,8 +2347,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          14,
          this.button(
             Material.COMPARATOR,
-            "&e\u0420\u201d\u0420\u0451\u0420\u00b0\u0420\u0456\u0420\u0405\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0454\u0420\u00b0",
-            List.of("&7Bridge, PostgreSQL, PIN \u0420\u0451 \u0420\u0454\u0421\u040c\u0421\u20ac.")
+            "&eДиагностика",
+            List.of("&7Bridge, PostgreSQL, PIN и кэш.")
          ),
          "admin:diagnostics"
       );
@@ -2358,10 +2358,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          16,
          this.button(
             Material.NETHER_STAR,
-            "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+            "&dДонатная лавка",
             List.of(
-               "&7Owner-bound \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 mock SBP foundation.",
-               "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5, \u0420\u00b0 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039 \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+               "&7Owner-bound предметы и mock SBP foundation.",
+               "&7Покупка идёт на сайте, а выдача и возврат доступны только в игре."
             )
          ),
          "donation:root"
@@ -2374,7 +2374,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.CLOCK,
             "&aReload",
             List.of(
-               "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a config.yml \u0420\u0451 items.yml."
+               "&7Перезагрузить config.yml и items.yml."
             )
          ),
          "admin:reload"
@@ -2385,8 +2385,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.BARRIER,
-            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
-            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+            "&cЗакрыть",
+            List.of("&7Выйти из меню.")
          ),
          "close"
       );
@@ -2405,7 +2405,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var4,
          CopiMineArtifacts.ViewType.MAIN,
          54,
-         "&8\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406"
+         "&8Лавка артефактов"
       );
       var5.setItem(
          4,
@@ -2413,9 +2413,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.EMERALD,
             "&6" + var2.title(),
             List.of(
-               "&7\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 CopiMine.",
-               "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0420\u00b1\u0421\u2039\u0421\u2021\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454 AR.",
-               "&8PIN \u0420\u0451 \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a CopiMineEconomyCore."
+               "&7Официальные предметы CopiMine.",
+               "&7Покупка обычных артефактов идёт только через банк AR.",
+               "&8PIN и баланс проверяет CopiMineEconomyCore."
             )
          )
       );
@@ -2428,10 +2428,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          16,
          this.button(
             Material.NETHER_STAR,
-            "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+            "&dДонатная лавка",
             List.of(
-               "&7\u0420\u045f\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5, donation-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403, claim \u0420\u0451 reclaim.",
-               "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a."
+               "&7Пополнение, donation-баланс, claim и reclaim.",
+               "&7Покупка донат-предметов идёт через сайт."
             )
          ),
          "donation:root"
@@ -2442,10 +2442,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          28,
          this.button(
             Material.CHEST,
-            "&b\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+            "&bМои покупки",
             List.of(
-               "&7\u0420\u0098\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0420\u0451\u0421\u2026 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0455\u0420\u0454.",
-               "&7\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403\u0421\u2039 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+               "&7История последних покупок.",
+               "&7Оплаченные предметы и статусы выдачи."
             )
          ),
          "purchases"
@@ -2456,10 +2456,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          30,
          this.button(
             Material.CHEST_MINECART,
-            "&a\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            "&aОтложенная выдача",
             List.of(
-               "&7\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039, \u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u00bb\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a.",
-               "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0455\u0421\u0403\u0420\u0406\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u0491\u0420\u0451\u0421\u20ac\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+               "&7Предметы, которые не поместились в инвентарь.",
+               "&eНажми, когда освободишь место."
             )
          ),
          "pending"
@@ -2470,10 +2470,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          32,
          this.button(
             Material.ANVIL,
-            "&a\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a",
+            "&aРемонт",
             List.of(
-               "&7\u0420\u045f\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0406 \u0421\u0402\u0421\u0453\u0420\u0454\u0420\u00b5.",
-               "&7\u0420\u040e\u0421\u201a\u0420\u0455\u0420\u0451\u0420\u0458\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u0451\u0421\u0403\u0420\u0451\u0421\u201a \u0420\u0455\u0421\u201a \u0420\u0451\u0420\u00b7\u0420\u0405\u0420\u0455\u0421\u0403\u0420\u00b0."
+               "&7Починить официальный предмет в руке.",
+               "&7Стоимость зависит от износа."
             )
          ),
          "repair:open"
@@ -2484,9 +2484,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          34,
          this.button(
             Material.BOOK,
-            "&e\u0420\u045f\u0420\u0455\u0420\u0458\u0420\u0455\u0421\u2030\u0421\u040a",
+            "&eПомощь",
             List.of(
-               "&7\u0420\u0459\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0451\u0420\u0405\u0421\u0403\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u0454\u0421\u2020\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b5, PIN \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b5."
+               "&7Короткая инструкция по покупке, PIN и выдаче."
             )
          ),
          "help"
@@ -2497,9 +2497,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          45,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0421\u0453."
+               "&7Вернуться в игру."
             )
          ),
          "close"
@@ -2510,9 +2510,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          49,
          this.button(
             Material.CLOCK,
-            "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+            "&eОбновить",
             List.of(
-               "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a \u0421\u201a\u0420\u00b5\u0420\u0454\u0421\u0453\u0421\u2030\u0420\u00b5\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+               "&7Перерисовать текущее меню."
             )
          ),
          "refresh"
@@ -2523,9 +2523,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          53,
          this.button(
             Material.BARRIER,
-            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            "&cЗакрыть",
             List.of(
-               "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+               "&7Выйти из лавки."
             )
          ),
          "close"
@@ -2547,7 +2547,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             "&f" + this.categoryTitle(var2),
             List.of(
                this.categoryHint(var2),
-               "&8\u0420\u2019\u0421\u2039\u0420\u00b1\u0420\u00b5\u0421\u0402\u0420\u0451 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a, \u0421\u2021\u0421\u201a\u0420\u0455\u0420\u00b1\u0421\u2039 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0421\u0453."
+               "&8Выбери предмет, чтобы открыть карточку."
             )
          )
       );
@@ -2570,9 +2570,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             22,
             this.button(
                Material.PAPER,
-               "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+               "&eПока пусто",
                List.of(
-                  "&7\u0420\u040e\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0406 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+                  "&7Сейчас в этой категории нет доступных товаров."
                )
             )
          );
@@ -2584,9 +2584,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          45,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+               "&7Вернуться в лавку."
             )
          ),
          "back:main"
@@ -2597,9 +2597,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          48,
          this.button(
             Material.SPECTRAL_ARROW,
-            "&e\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0421\u2039\u0420\u0491\u0421\u0453\u0421\u2030\u0420\u00b0\u0421\u040f",
+            "&eПредыдущая",
             List.of(
-               "&7\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0421\u2039\u0420\u0491\u0421\u0453\u0421\u2030\u0420\u00b0\u0421\u040f \u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u2020\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+               "&7Предыдущая страница товаров."
             )
          ),
          "page:prev"
@@ -2610,9 +2610,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          49,
          this.button(
             Material.CLOCK,
-            "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+            "&eОбновить",
             List.of(
-               "&7\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0455\u0420\u0454 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+               "&7Обновить список товаров."
             )
          ),
          "refresh"
@@ -2623,9 +2623,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          50,
          this.button(
             Material.SPECTRAL_ARROW,
-            "&e\u0420\u040e\u0420\u00bb\u0420\u00b5\u0420\u0491\u0421\u0453\u0421\u040b\u0421\u2030\u0420\u00b0\u0421\u040f",
+            "&eСледующая",
             List.of(
-               "&7\u0420\u040e\u0420\u00bb\u0420\u00b5\u0420\u0491\u0421\u0453\u0421\u040b\u0421\u2030\u0420\u00b0\u0421\u040f \u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u2020\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+               "&7Следующая страница товаров."
             )
          ),
          "page:next"
@@ -2636,8 +2636,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          53,
          this.button(
             Material.BARRIER,
-            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
-            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+            "&cЗакрыть",
+            List.of("&7Выйти из меню.")
          ),
          "close"
       );
@@ -2653,16 +2653,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var3,
          CopiMineArtifacts.ViewType.DETAIL,
          45,
-         "&8\u0420\u0459\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0"
+         "&8Карточка товара"
       );
       var4.setItem(13, this.previewIcon(var2));
       var4.setItem(
          20,
          this.button(
             Material.EMERALD,
-            "&a\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: " + var2.priceAr() + " AR",
+            "&aЦена: " + var2.priceAr() + " AR",
             List.of(
-               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 bank bridge."
+               "&7Списание выполняется только через bank bridge."
             )
          )
       );
@@ -2672,10 +2672,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.LIME_WOOL,
-            "&a\u0420\u0459\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a",
+            "&aКупить",
             List.of(
-               "&7\u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451.",
-               "&8\u0420\u201d\u0420\u00b0\u0420\u00bb\u0420\u00b5\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u00b6\u0420\u00b5\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u00b5\u0420\u00b1\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f PIN."
+               "&7Открыть подтверждение покупки.",
+               "&8Далее может потребоваться PIN."
             )
          ),
          "confirm:" + var2.itemId()
@@ -2684,18 +2684,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          24,
          this.button(
             Material.PAPER,
-            "&e\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a\u0421\u2039",
+            "&eЛимиты",
             List.of(
-               "&7\u0420\u045c\u0420\u00b0 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402: &f"
+               "&7На сервер: &f"
                   + (
                      var2.supplyLimit() <= 0
-                        ? "\u0420\u00b1\u0420\u00b5\u0420\u00b7 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a\u0420\u00b0"
+                        ? "без лимита"
                         : var2.supplyLimit()
                   ),
-               "&7\u0420\u045c\u0420\u00b0 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u00b0: &f"
+               "&7На игрока: &f"
                   + (
                      var2.perPlayerLimit() <= 0
-                        ? "\u0420\u00b1\u0420\u00b5\u0420\u00b7 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a\u0420\u00b0"
+                        ? "без лимита"
                         : var2.perPlayerLimit()
                   )
             )
@@ -2707,9 +2707,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          31,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040b."
+               "&7Вернуться в категорию."
             )
          ),
          "back:category"
@@ -2720,8 +2720,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          40,
          this.button(
             Material.BARRIER,
-            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
-            List.of("&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b.")
+            "&cЗакрыть",
+            List.of("&7Выйти из меню.")
          ),
          "close"
       );
@@ -2737,18 +2737,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var3,
          CopiMineArtifacts.ViewType.CONFIRM,
          45,
-         "&8\u0420\u045f\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5"
+         "&8Подтверждение"
       );
       var4.setItem(11, this.previewIcon(var2));
       var4.setItem(
          13,
          this.button(
             Material.PAPER,
-            "&f\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+            "&fПроверка покупки",
             List.of(
-               "&7\u0420\u045e\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402: &f" + this.strip(var2.name()),
-               "&7\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: &f" + var2.priceAr() + " AR",
-               "&7\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0: &f" + var3.shopId
+               "&7Товар: &f" + this.strip(var2.name()),
+               "&7Цена: &f" + var2.priceAr() + " AR",
+               "&7Лавка: &f" + var3.shopId
             )
          )
       );
@@ -2758,8 +2758,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.GOLD_INGOT,
             "&eBank bridge",
             List.of(
-               "&7\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451 PIN \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a CopiMineEconomyCore.",
-               "&7Artifacts \u0420\u0405\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0405\u0420\u00b0\u0420\u0457\u0421\u0402\u0421\u040f\u0420\u0458\u0421\u0453\u0421\u040b."
+               "&7Баланс и PIN проверяет CopiMineEconomyCore.",
+               "&7Artifacts не меняет баланс напрямую."
             )
          )
       );
@@ -2769,10 +2769,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          29,
          this.button(
             Material.LIME_WOOL,
-            "&a\u0420\u045f\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0491\u0420\u0451\u0421\u201a\u0421\u040a",
+            "&aПодтвердить",
             List.of(
-               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0421\u201a\u0421\u040a: &f" + var2.priceAr() + " AR",
-               "&8\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0421\u2030\u0420\u0451\u0421\u2030\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0455\u0421\u201a \u0420\u0491\u0420\u0406\u0420\u0455\u0420\u2116\u0420\u0405\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u00b0."
+               "&7Списать: &f" + var2.priceAr() + " AR",
+               "&8Покупка защищена от двойного клика."
             )
          ),
          "purchase:" + var2.itemId()
@@ -2783,9 +2783,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          33,
          this.button(
             Material.RED_WOOL,
-            "&c\u0420\u045b\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b0",
+            "&cОтмена",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b5 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0."
+               "&7Вернуться к карточке товара."
             )
          ),
          "back:detail"
@@ -2796,9 +2796,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          40,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b5 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0."
+               "&7Вернуться к карточке товара."
             )
          ),
          "back:detail"
@@ -2811,7 +2811,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       var3.viewType = CopiMineArtifacts.ViewType.PIN;
       var3.currentItemId = var2.itemId();
       Inventory var4 = this.createMenu(
-         var1, var3, CopiMineArtifacts.ViewType.PIN, 54, "&8\u0420\u2019\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b5 PIN"
+         var1, var3, CopiMineArtifacts.ViewType.PIN, 54, "&8Введите PIN"
       );
       int[] var5 = new int[]{20, 21, 22, 29, 30, 31, 38, 39, 40, 48};
 
@@ -2824,7 +2824,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          13,
          this.button(
             Material.PAPER,
-            "&b\u0420\u2019\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b5 PIN",
+            "&bВведите PIN",
             List.of("&7" + this.maskedPin(var3.pinBuffer))
          )
       );
@@ -2836,7 +2836,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.BARRIER,
             "&cCancel",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u040b."
+               "&7Вернуться к подтверждению."
             )
          ),
          "pin:cancel"
@@ -2849,7 +2849,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Material.YELLOW_WOOL,
             "&eClear",
             List.of(
-               "&7\u0420\u045b\u0421\u2021\u0420\u0451\u0421\u0403\u0421\u201a\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0421\u2018\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u2116 PIN."
+               "&7Очистить введённый PIN."
             )
          ),
          "pin:clear"
@@ -2858,7 +2858,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var4,
          var3,
          41,
-         this.button(Material.LIME_WOOL, "&aEnter", List.of("&7\u0420\u0459\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a " + var2.name())),
+         this.button(Material.LIME_WOOL, "&aEnter", List.of("&7Купить " + var2.name())),
          "pin:submit"
       );
       var1.openInventory(var4);
@@ -2879,16 +2879,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2,
          CopiMineArtifacts.ViewType.PURCHASES,
          54,
-         "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451"
+         "&8Мои покупки"
       );
       var3.setItem(
          4,
          this.button(
             Material.CHEST,
-            "&b\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            "&bПокупки и выдача",
             List.of(
-               "&7\u0420\u045c\u0420\u0455\u0420\u0406\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039 \u0420\u0457\u0420\u0455\u0421\u040f\u0420\u0406\u0420\u00bb\u0421\u040f\u0421\u040b\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u0403\u0421\u0402\u0420\u00b0\u0420\u00b7\u0421\u0453.",
-               "&7\u0420\u2022\u0421\u0403\u0420\u00bb\u0420\u0451 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0421\u2039\u0420\u2116, \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402 \u0420\u00b6\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a."
+               "&7Новые предметы появляются сразу.",
+               "&7Если инвентарь полный, товар ждёт здесь."
             )
          )
       );
@@ -2908,7 +2908,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      var3.setItem(
                         var6,
                         this.button(
-                           Material.PAPER, "&f\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0", List.of("&7" + var8)
+                           Material.PAPER, "&fПокупка", List.of("&7" + var8)
                         )
                      );
                      if (++var6 % 9 == 8) {
@@ -2930,11 +2930,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         var11,
                         this.button(
                            Material.CHEST_MINECART,
-                           "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: "
+                           "&aЗабрать: "
                               + (var10 == null ? var9.itemId() : this.strip(var10.name())),
                            List.of(
-                              "&7\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
-                              "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                              "&7Отложенная выдача",
+                              "&eНажми, когда в инвентаре есть место."
                            )
                         ),
                         "claim:" + var9.deliveryId()
@@ -2948,9 +2948,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      45,
                      this.button(
                         Material.ARROW,
-                        "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                        "&aНазад",
                         List.of(
-                           "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+                           "&7Вернуться в лавку."
                         )
                      ),
                      "back:main"
@@ -2961,9 +2961,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      49,
                      this.button(
                         Material.CLOCK,
-                        "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                        "&eОбновить",
                         List.of(
-                           "&7\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453."
+                           "&7Обновить покупки и выдачу."
                         )
                      ),
                      "refresh"
@@ -2974,9 +2974,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      53,
                      this.button(
                         Material.BARRIER,
-                        "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                        "&cЗакрыть",
                         List.of(
-                           "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                           "&7Выйти из меню."
                         )
                      ),
                      "close"
@@ -2995,16 +2995,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2,
          CopiMineArtifacts.ViewType.DONATION_ROOT,
          27,
-         "&8\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0"
+         "&8Донатная лавка"
       );
       var3.setItem(
          4,
          this.button(
             Material.NETHER_STAR,
-            "&d\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0",
+            "&dДонатная лавка",
             List.of(
-               "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0455\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u2021\u0420\u00b0\u0420\u00b5\u0421\u201a \u0420\u00b7\u0420\u00b0 \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u0453 \u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453.",
-               "&7\u0420\u0098\u0420\u0456\u0421\u0402\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u2021\u0420\u00b0\u0420\u00b5\u0421\u201a \u0420\u00b7\u0420\u00b0 claim, reclaim \u0420\u0451 anti-dupe."
+               "&7Сайт отвечает за оплату и покупку.",
+               "&7Игра отвечает за claim, reclaim и anti-dupe."
             )
          )
       );
@@ -3014,9 +3014,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          10,
          this.button(
             Material.BOOK,
-            "&e\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+            "&eКаталог",
             List.of(
-               "&7\u0420\u040e\u0420\u0458\u0420\u0455\u0421\u201a\u0421\u0402\u0420\u00b5\u0421\u201a\u0421\u040a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039, \u0421\u2020\u0420\u00b5\u0420\u0405\u0421\u2039 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451."
+               "&7Смотреть предметы, цены и статус покупки."
             )
          ),
          "donation:catalog"
@@ -3027,9 +3027,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          12,
          this.button(
             Material.EMERALD,
-            "&a\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403",
+            "&aДонат-баланс",
             List.of(
-               "&7\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403, provider \u0420\u0451 \u0420\u0451\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u040f."
+               "&7Баланс, provider и история пополнения."
             )
          ),
          "donation:balance"
@@ -3040,9 +3040,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          14,
          this.button(
             Material.FILLED_MAP,
-            "&b\u0420\u045f\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a",
+            "&bПополнить",
             List.of(
-               "&7\u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0421\u201a\u0421\u040a payment session \u0420\u0405\u0420\u00b0 50 / 100 / 250 / 500 / 1000."
+               "&7Создать payment session на 50 / 100 / 250 / 500 / 1000."
             )
          ),
          "donation:topup"
@@ -3053,9 +3053,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          16,
          this.button(
             Material.CHEST,
-            "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+            "&6Мои покупки",
             List.of(
-               "&7Claims, active-\u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039 \u0420\u0451 pending delivery."
+               "&7Claims, active-экземпляры и pending delivery."
             )
          ),
          "donation:owned"
@@ -3079,9 +3079,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          18,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0455\u0421\u0403\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+               "&7Вернуться в основную лавку."
             )
          ),
          "back:main"
@@ -3092,9 +3092,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          26,
          this.button(
             Material.BARRIER,
-            "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+            "&cЗакрыть",
             List.of(
-               "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+               "&7Выйти из лавки."
             )
          ),
          "close"
@@ -3107,7 +3107,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var2 == null) {
          var1.sendMessage(
             this.color(
-               "&cCopiMineEconomyCore \u0420\u0405\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u00b5\u0420\u0405. Donation-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0421\u0403\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0405\u0420\u00b5 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a."
+               "&cCopiMineEconomyCore недоступен. Donation-баланс сейчас не открыть."
             )
          );
       } else {
@@ -3120,7 +3120,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                               this.getLogger().log(Level.WARNING, "Donation balance fetch failed", var3);
                               var1.sendMessage(
                                  this.color(
-                                    "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a donation-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403."
+                                    "&cНе удалось загрузить donation-баланс."
                                  )
                               );
                            } else {
@@ -3130,16 +3130,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  var4,
                                  CopiMineArtifacts.ViewType.DONATION_BALANCE,
                                  45,
-                                 "&8\u0420\u201d\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403"
+                                 "&8Донат-баланс"
                               );
                               var5.setItem(
                                  4,
                                  this.button(
                                     Material.EMERALD,
-                                    "&a\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403: " + var2x + " Donation",
+                                    "&aБаланс: " + var2x + " Donation",
                                     List.of(
-                                       "&7Donation \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0458\u0420\u00b5\u0421\u20ac\u0420\u0451\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u0403 AR.",
-                                       "&7\u0420\u0459\u0421\u0453\u0421\u0402\u0421\u0403 \u0421\u201e\u0420\u0451\u0420\u0454\u0421\u0403\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0420\u0405: 1 \u0421\u0402\u0421\u0453\u0420\u00b1\u0420\u00bb\u0421\u040a = 1 Donation."
+                                       "&7Donation не смешивается с AR.",
+                                       "&7Курс фиксирован: 1 рубль = 1 Donation."
                                     )
                                  )
                               );
@@ -3154,11 +3154,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     var6[var8],
                                     this.button(
                                        Material.SUNFLOWER,
-                                       "&e\u0420\u045f\u0420\u0455\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b0 "
+                                       "&eПополнить на "
                                           + var9,
                                        List.of(
-                                          "&7\u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0421\u201a\u0421\u040a mock SBP session.",
-                                          "&7\u0420\u045f\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u2039."
+                                          "&7Создать mock SBP session.",
+                                          "&7После этого откроется сайт оплаты."
                                        )
                                     ),
                                     "donation:topup:create:" + var9
@@ -3169,11 +3169,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  13,
                                  this.button(
                                     Material.PAPER,
-                                    "&f\u0420\u0459\u0420\u00b0\u0420\u0454 \u0421\u040c\u0421\u201a\u0420\u0455 \u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u00b0\u0420\u00b5\u0421\u201a",
+                                    "&fКак это работает",
                                     List.of(
-                                       "&71. \u0420\u040e\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u2116 payment session.",
-                                       "&72. \u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u2116 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 QR fallback.",
-                                       "&73. \u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451\u0420\u00b7\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403\u0420\u00b0 PAID."
+                                       "&71. Создай payment session.",
+                                       "&72. Открой сайт или QR fallback.",
+                                       "&73. Баланс изменится только после статуса PAID."
                                     )
                                  )
                               );
@@ -3184,7 +3184,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     "&bFallback",
                                     List.of(
                                        "&7" + this.donationQrFallbackMessage(),
-                                       "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u2039: &f"
+                                       "&7Сайт оплаты: &f"
                                           + this.donationWebsiteBaseUrl()
                                     )
                                  )
@@ -3195,9 +3195,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  36,
                                  this.button(
                                     Material.ARROW,
-                                    "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                    "&aНазад",
                                     List.of(
-                                       "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                       "&7Вернуться в donation-меню."
                                     )
                                  ),
                                  "donation:root"
@@ -3208,9 +3208,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  40,
                                  this.button(
                                     Material.CLOCK,
-                                    "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                    "&eОбновить",
                                     List.of(
-                                       "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451 provider status."
+                                       "&7Перечитать баланс и provider status."
                                     )
                                  ),
                                  "donation:balance"
@@ -3221,9 +3221,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  44,
                                  this.button(
                                     Material.BARRIER,
-                                    "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                    "&cЗакрыть",
                                     List.of(
-                                       "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                       "&7Выйти из меню."
                                     )
                                  ),
                                  "close"
@@ -3254,16 +3254,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         var4,
                         CopiMineArtifacts.ViewType.DONATION_CATALOG,
                         54,
-                        "&8\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u00b0"
+                        "&8Каталог доната"
                      );
                      var5.setItem(
                         4,
                         this.button(
                            Material.NETHER_STAR,
-                           "&d\u0420\u0459\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456",
+                           "&dКаталог",
                            List.of(
-                              "&7\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5.",
-                              "&7\u0420\u045f\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0421\u2039 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u00b7\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                              "&7Покупка идёт только на сайте.",
+                              "&7После оплаты предмет нужно забрать в игре."
                            )
                         )
                      );
@@ -3274,11 +3274,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         CopiMineArtifacts.CatalogItem var9 = this.catalogById.get(var8.itemId());
                         if (var9 != null) {
                            String var10 = var2.activeItemIds().contains(var8.itemId())
-                              ? "&a\u0420\u0408\u0420\u00b6\u0420\u00b5 \u0421\u0453 \u0421\u201a\u0420\u00b5\u0420\u00b1\u0421\u040f"
+                              ? "&aУже у тебя"
                               : (
                                  var2.claimableItemIds().contains(var8.itemId())
-                                    ? "&e\u0420\u045a\u0420\u0455\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u00b7\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a"
-                                    : "&7\u0420\u045c\u0420\u00b5 \u0420\u0454\u0421\u0453\u0420\u0457\u0420\u00bb\u0420\u00b5\u0420\u0405"
+                                    ? "&eМожно забрать"
+                                    : "&7Не куплен"
                               );
                            this.setAction(
                               var5,
@@ -3288,17 +3288,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  var9.material(),
                                  "&f" + var8.displayName(),
                                  List.of(
-                                    "&7\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: &f" + var8.priceDonation() + " Donation",
-                                    "&7\u0420\u00ad\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a: &f"
+                                    "&7Цена: &f" + var8.priceDonation() + " Donation",
+                                    "&7Эффект: &f"
                                        + this.firstNonBlank(
                                           var8.effectDescription(),
-                                          "\u0420\u0455\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0457\u0420\u0455\u0421\u040f\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5"
+                                          "описание появится позже"
                                        ),
-                                    "&7\u0420\u0459\u0421\u0453\u0420\u00bb\u0420\u0491\u0420\u00b0\u0421\u0453\u0420\u0405: &f"
+                                    "&7Кулдаун: &f"
                                        + Math.max(0, var8.cooldownSeconds())
-                                       + " \u0421\u0403\u0420\u00b5\u0420\u0454.",
-                                    "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: " + var10,
-                                    "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0421\u2021\u0421\u201a\u0420\u0455\u0420\u00b1\u0421\u2039 \u0420\u0457\u0420\u0455\u0420\u00bb\u0421\u0453\u0421\u2021\u0420\u0451\u0421\u201a\u0421\u040a \u0421\u0403\u0421\u0403\u0421\u2039\u0420\u00bb\u0420\u0454\u0421\u0453 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a."
+                                       + " сек.",
+                                    "&7Статус: " + var10,
+                                    "&8Нажми, чтобы получить ссылку на сайт."
                                  )
                               ),
                               "donation:catalog:item:" + var8.itemId()
@@ -3312,9 +3312,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         45,
                         this.button(
                            Material.ARROW,
-                           "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                           "&aНазад",
                            List.of(
-                              "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                              "&7Вернуться в donation-меню."
                            )
                         ),
                         "donation:root"
@@ -3325,9 +3325,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         49,
                         this.button(
                            Material.CLOCK,
-                           "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                           "&eОбновить",
                            List.of(
-                              "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a ownership status."
+                              "&7Перечитать ownership status."
                            )
                         ),
                         "donation:catalog"
@@ -3338,9 +3338,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         53,
                         this.button(
                            Material.BARRIER,
-                           "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                           "&cЗакрыть",
                            List.of(
-                              "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                              "&7Выйти из меню."
                            )
                         ),
                         "close"
@@ -3363,7 +3363,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         if (var1.isOnline()) {
                            var1.sendMessage(
                               this.color(
-                                 "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451 claims."
+                                 "&cНе удалось загрузить донат-покупки и claims."
                               )
                            );
                         }
@@ -3382,17 +3382,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     var4,
                                     CopiMineArtifacts.ViewType.DONATION_OWNED,
                                     54,
-                                    "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                                    "&8Мои донат-предметы"
                                  );
                                  var5.setItem(
                                     4,
                                     this.button(
                                        Material.CHEST,
-                                       "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+                                       "&6Мои покупки",
                                        List.of(
-                                          "&7\u0420\u2014\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a \u0421\u0403\u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u0405\u0421\u2039 claims, \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0420\u00b5 \u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039",
-                                          "&7\u0420\u0451 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451, \u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0421\u0453\u0421\u20ac\u0420\u00bb\u0420\u0451 \u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453.",
-                                          "&7\u0420\u00a4\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a, \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                                          "&7Здесь собраны claims, активные экземпляры",
+                                          "&7и выдачи, которые ушли на ручную проверку.",
+                                          "&7Физическая выдача идёт только здесь, в игре."
                                        )
                                     )
                                  );
@@ -3413,12 +3413,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           var6,
                                           this.button(
                                              Material.CHEST_MINECART,
-                                             "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: " + var10,
+                                             "&aЗабрать: " + var10,
                                              List.of(
                                                 "&7Claim: &f" + var8.claimId(),
-                                                "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455: &f"
+                                                "&7Количество: &f"
                                                    + var8.amount(),
-                                                "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0421\u0403\u0420\u0406\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u0491\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                                                "&8Нажми, когда в инвентаре есть свободное место."
                                              )
                                           ),
                                           "claim:" + var8.claimId()
@@ -3428,13 +3428,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           var6,
                                           this.button(
                                              Material.CLOCK,
-                                             "&e\u0420\u2019 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5: "
+                                             "&eВ обработке: "
                                                 + var10,
                                              List.of(
                                                 "&7Claim: &f" + var8.claimId(),
-                                                "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: &f"
+                                                "&7Статус: &f"
                                                    + this.donationClaimStatusLabelSafe(var11),
-                                                "&7\u0420\u2019\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0457\u0421\u0402\u0420\u00b0\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453."
+                                                "&7Выдача уже идёт или отправлена на ручную проверку."
                                              )
                                           )
                                        );
@@ -3457,10 +3457,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        var12++,
                                        this.button(
                                           Material.LIME_CONCRETE,
-                                          "&a\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u00b5\u0420\u0405: "
+                                          "&aАктивен: "
                                              + (var16 == null ? var15 : var16.displayName()),
                                           List.of(
-                                             "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u0451 \u0420\u00b7\u0420\u00b0\u0420\u0454\u0421\u0402\u0420\u00b5\u0420\u0457\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u2116."
+                                             "&7Этот предмет уже выдан и закреплён за тобой."
                                           )
                                        )
                                     );
@@ -3468,13 +3468,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                                  if ((var2 == null || var2.isEmpty()) && var3x.activeItemIds().isEmpty()) {
                                     String var14 = var3x.claimPendingCount() > 0
-                                       ? "&7\u0420\u2022\u0421\u0403\u0421\u201a\u0421\u040a claims \u0420\u0406 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5. \u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451 \u0421\u040c\u0420\u0454\u0421\u0402\u0420\u00b0\u0420\u0405 \u0421\u2021\u0421\u0453\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5."
-                                       : "&7\u0420\u045c\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0405\u0420\u00b5\u0421\u201a purchase claim \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451.";
+                                       ? "&7Есть claims в обработке. Обнови экран чуть позже."
+                                       : "&7На сайте пока нет purchase claim для выдачи.";
                                     var5.setItem(
                                        22,
                                        this.button(
                                           Material.PAPER,
-                                          "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                                          "&eПока пусто",
                                           List.of(var14)
                                        )
                                     );
@@ -3486,9 +3486,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     45,
                                     this.button(
                                        Material.ARROW,
-                                       "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                       "&aНазад",
                                        List.of(
-                                          "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                          "&7Вернуться в donation-меню."
                                        )
                                     ),
                                     "donation:root"
@@ -3499,9 +3499,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     49,
                                     this.button(
                                        Material.CLOCK,
-                                       "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                       "&eОбновить",
                                        List.of(
-                                          "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a claims \u0420\u0451 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0420\u00b5 \u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039."
+                                          "&7Перечитать claims и активные экземпляры."
                                        )
                                     ),
                                     "donation:owned"
@@ -3512,9 +3512,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     53,
                                     this.button(
                                        Material.BARRIER,
-                                       "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                       "&cЗакрыть",
                                        List.of(
-                                          "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                          "&7Выйти из меню."
                                        )
                                     ),
                                     "close"
@@ -3556,7 +3556,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            if (var1.isOnline()) {
                               var1.sendMessage(
                                  this.color(
-                                    "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a donation-claims."
+                                    "&cНе удалось загрузить donation-claims."
                                  )
                               );
                            }
@@ -3575,16 +3575,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        var4,
                                        CopiMineArtifacts.ViewType.DONATION_OWNED,
                                        54,
-                                       "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                                       "&8Мои донат-предметы"
                                     );
                                     var5.setItem(
                                        4,
                                        this.button(
                                           Material.CHEST,
-                                          "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+                                          "&6Мои покупки",
                                           List.of(
-                                             "&7Claims \u0420\u0451 active-\u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039.",
-                                             "&7\u0420\u00a4\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a, \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                                             "&7Claims и active-экземпляры.",
+                                             "&7Физическая выдача идёт только здесь, в игре."
                                           )
                                        )
                                     );
@@ -3603,12 +3603,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           var6,
                                           this.button(
                                              Material.CHEST_MINECART,
-                                             "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: " + var10,
+                                             "&aЗабрать: " + var10,
                                              List.of(
                                                 "&7Claim: &f" + var8.claimId(),
-                                                "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455: &f"
+                                                "&7Количество: &f"
                                                    + var8.amount(),
-                                                "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                                                "&8Нажми, когда в инвентаре есть место."
                                              )
                                           ),
                                           "claim:" + var8.claimId()
@@ -3630,10 +3630,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           var11++,
                                           this.button(
                                              Material.LIME_CONCRETE,
-                                             "&a\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u00b5\u0420\u0405: "
+                                             "&aАктивен: "
                                                 + (var14 == null ? var13 : var14.displayName()),
                                              List.of(
-                                                "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u0451 \u0420\u00b7\u0420\u00b0\u0420\u0454\u0421\u0402\u0420\u00b5\u0420\u0457\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u2116."
+                                                "&7Этот предмет уже выдан и закреплён за тобой."
                                              )
                                           )
                                        );
@@ -3644,9 +3644,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           22,
                                           this.button(
                                              Material.PAPER,
-                                             "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                                             "&eПока пусто",
                                              List.of(
-                                                "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u00bb claim \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+                                                "&7Сайт ещё не создал claim для выдачи."
                                              )
                                           )
                                        );
@@ -3658,9 +3658,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        45,
                                        this.button(
                                           Material.ARROW,
-                                          "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                          "&aНазад",
                                           List.of(
-                                             "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                             "&7Вернуться в donation-меню."
                                           )
                                        ),
                                        "donation:root"
@@ -3671,9 +3671,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        49,
                                        this.button(
                                           Material.CLOCK,
-                                          "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                          "&eОбновить",
                                           List.of(
-                                             "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a claims \u0420\u0451 active instances."
+                                             "&7Перечитать claims и active instances."
                                           )
                                        ),
                                        "donation:owned"
@@ -3684,9 +3684,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        53,
                                        this.button(
                                           Material.BARRIER,
-                                          "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                          "&cЗакрыть",
                                           List.of(
-                                             "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                             "&7Выйти из меню."
                                           )
                                        ),
                                        "close"
@@ -3716,7 +3716,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         var3,
                         CopiMineArtifacts.ViewType.DONATION_RECLAIM,
                         54,
-                        "&8\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a \u0421\u0453\u0421\u201a\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                        "&8Вернуть утерянные предметы"
                      );
                      var4.setItem(
                         4,
@@ -3771,9 +3771,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         45,
                         this.button(
                            Material.ARROW,
-                           "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                           "&aНазад",
                            List.of(
-                              "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                              "&7Вернуться в donation-меню."
                            )
                         ),
                         "donation:root"
@@ -3784,9 +3784,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         49,
                         this.button(
                            Material.CLOCK,
-                           "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                           "&eОбновить",
                            List.of(
-                              "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a lost items."
+                              "&7Перечитать lost items."
                            )
                         ),
                         "donation:reclaim"
@@ -3797,9 +3797,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         53,
                         this.button(
                            Material.BARRIER,
-                           "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                           "&cЗакрыть",
                            List.of(
-                              "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                              "&7Выйти из меню."
                            )
                         ),
                         "close"
@@ -3842,7 +3842,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         if (var1.isOnline()) {
                            var1.sendMessage(
                               this.color(
-                                 "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0456\u0421\u0402\u0421\u0453\u0420\u00b7\u0420\u0451\u0421\u201a\u0421\u040a donation-claims."
+                                 "&cНе удалось загрузить donation-claims."
                               )
                            );
                         }
@@ -3861,16 +3861,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     var4,
                                     CopiMineArtifacts.ViewType.DONATION_OWNED,
                                     54,
-                                    "&8\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0491\u0420\u0455\u0420\u0405\u0420\u00b0\u0421\u201a-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039"
+                                    "&8Мои донат-предметы"
                                  );
                                  var5.setItem(
                                     4,
                                     this.button(
                                        Material.CHEST,
-                                       "&6\u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451",
+                                       "&6Мои покупки",
                                        List.of(
-                                          "&7Claims, active-\u0421\u040c\u0420\u0454\u0420\u00b7\u0420\u00b5\u0420\u0458\u0420\u0457\u0420\u00bb\u0421\u040f\u0421\u0402\u0421\u2039 \u0420\u0451 stuck-\u0421\u0403\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0455\u0421\u040f\u0420\u0405\u0420\u0451\u0421\u040f.",
-                                          "&7\u0420\u00a4\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u00b7\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a, \u0420\u0406 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u00b5."
+                                          "&7Claims, active-экземпляры и stuck-состояния.",
+                                          "&7Физическая выдача идёт только здесь, в игре."
                                        )
                                     )
                                  );
@@ -3891,12 +3891,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           var6,
                                           this.button(
                                              Material.CHEST_MINECART,
-                                             "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: " + var10,
+                                             "&aЗабрать: " + var10,
                                              List.of(
                                                 "&7Claim: &f" + var8.claimId(),
-                                                "&7\u0420\u0459\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0455: &f"
+                                                "&7Количество: &f"
                                                    + var8.amount(),
-                                                "&8\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                                                "&8Нажми, когда в инвентаре есть место."
                                              )
                                           ),
                                           "claim:" + var8.claimId()
@@ -3906,12 +3906,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           var6,
                                           this.button(
                                              Material.CLOCK,
-                                             "&e\u0420\u2019 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5: "
+                                             "&eВ обработке: "
                                                 + var10,
                                              List.of(
                                                 "&7Claim: &f" + var8.claimId(),
-                                                "&7\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403: &f" + var11,
-                                                "&7\u0420\u2019\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0451\u0420\u0491\u0421\u2018\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0457\u0421\u0402\u0420\u00b0\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453."
+                                                "&7Статус: &f" + var11,
+                                                "&7Выдача уже идёт или отправлена на ручную проверку."
                                              )
                                           )
                                        );
@@ -3934,10 +3934,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        var12++,
                                        this.button(
                                           Material.LIME_CONCRETE,
-                                          "&a\u0420\u0452\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u00b5\u0420\u0405: "
+                                          "&aАктивен: "
                                              + (var16 == null ? var15 : var16.displayName()),
                                           List.of(
-                                             "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u0451 \u0420\u00b7\u0420\u00b0\u0420\u0454\u0421\u0402\u0420\u00b5\u0420\u0457\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 \u0421\u201a\u0420\u0455\u0420\u00b1\u0420\u0455\u0420\u2116."
+                                             "&7Этот предмет уже выдан и закреплён за тобой."
                                           )
                                        )
                                     );
@@ -3945,13 +3945,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                                  if ((var2 == null || var2.isEmpty()) && var3x.activeItemIds().isEmpty()) {
                                     String var14 = var3x.claimPendingCount() > 0
-                                       ? "&7\u0420\u2022\u0421\u0403\u0421\u201a\u0421\u040a claims \u0420\u0406 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00b5. \u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451 \u0421\u040c\u0420\u0454\u0421\u0402\u0420\u00b0\u0420\u0405 \u0421\u2021\u0421\u0453\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u00b7\u0420\u00b6\u0420\u00b5."
-                                       : "&7\u0420\u040e\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0455\u0420\u00b7\u0420\u0491\u0420\u00b0\u0420\u00bb claim \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451.";
+                                       ? "&7Есть claims в обработке. Обнови экран чуть позже."
+                                       : "&7Сайт ещё не создал claim для выдачи.";
                                     var5.setItem(
                                        22,
                                        this.button(
                                           Material.PAPER,
-                                          "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                                          "&eПока пусто",
                                           List.of(var14)
                                        )
                                     );
@@ -3963,9 +3963,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     45,
                                     this.button(
                                        Material.ARROW,
-                                       "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                                       "&aНазад",
                                        List.of(
-                                          "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 donation-\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                          "&7Вернуться в donation-меню."
                                        )
                                     ),
                                     "donation:root"
@@ -3976,9 +3976,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     49,
                                     this.button(
                                        Material.CLOCK,
-                                       "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                                       "&eОбновить",
                                        List.of(
-                                          "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0421\u2021\u0420\u0451\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u040a claims \u0420\u0451 active instances."
+                                          "&7Перечитать claims и active instances."
                                        )
                                     ),
                                     "donation:owned"
@@ -3989,9 +3989,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     53,
                                     this.button(
                                        Material.BARRIER,
-                                       "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                                       "&cЗакрыть",
                                        List.of(
-                                          "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                                          "&7Выйти из меню."
                                        )
                                     ),
                                     "close"
@@ -4015,16 +4015,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2,
          CopiMineArtifacts.ViewType.PENDING_DELIVERY,
          54,
-         "&8\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0"
+         "&8Отложенная выдача"
       );
       var3.setItem(
          4,
          this.button(
             Material.CHEST_MINECART,
-            "&a\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            "&aОтложенная выдача",
             List.of(
-               "&7\u0420\u2014\u0420\u0491\u0420\u00b5\u0421\u0403\u0421\u040a \u0420\u00bb\u0420\u00b5\u0420\u00b6\u0420\u00b0\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039,",
-               "&7\u0420\u0454\u0420\u0455\u0421\u201a\u0420\u0455\u0421\u0402\u0421\u2039\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u00bb\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a."
+               "&7Здесь лежат оплаченные предметы,",
+               "&7которые не поместились в инвентарь."
             )
          )
       );
@@ -4047,11 +4047,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         var5,
                         this.button(
                            Material.CHEST_MINECART,
-                           "&a\u0420\u2014\u0420\u00b0\u0420\u00b1\u0421\u0402\u0420\u00b0\u0421\u201a\u0421\u040a: "
+                           "&aЗабрать: "
                               + (var8 == null ? var7.itemId() : this.strip(var8.name())),
                            List.of(
-                              "&7\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
-                              "&e\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451, \u0420\u0454\u0420\u0455\u0420\u0456\u0420\u0491\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5 \u0420\u00b5\u0421\u0403\u0421\u201a\u0421\u040a \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u0455."
+                              "&7Отложенная выдача",
+                              "&eНажми, когда в инвентаре есть место."
                            )
                         ),
                         "claim:" + var7.deliveryId()
@@ -4066,9 +4066,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         22,
                         this.button(
                            Material.LIME_CONCRETE,
-                           "&a\u0420\u045f\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+                           "&aПусто",
                            List.of(
-                              "&7\u0420\u045c\u0420\u00b5\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406, \u0420\u0455\u0420\u00b6\u0420\u0451\u0420\u0491\u0420\u00b0\u0421\u040b\u0421\u2030\u0420\u0451\u0421\u2026 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451."
+                              "&7Нет предметов, ожидающих выдачи."
                            )
                         )
                      );
@@ -4080,9 +4080,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      45,
                      this.button(
                         Material.ARROW,
-                        "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                        "&aНазад",
                         List.of(
-                           "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+                           "&7Вернуться в лавку."
                         )
                      ),
                      "back:main"
@@ -4093,9 +4093,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      49,
                      this.button(
                         Material.CLOCK,
-                        "&e\u0420\u045b\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u040a",
+                        "&eОбновить",
                         List.of(
-                           "&7\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7."
+                           "&7Проверить отложенную выдачу ещё раз."
                         )
                      ),
                      "refresh"
@@ -4106,9 +4106,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      53,
                      this.button(
                         Material.BARRIER,
-                        "&c\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a",
+                        "&cЗакрыть",
                         List.of(
-                           "&7\u0420\u2019\u0421\u2039\u0420\u2116\u0421\u201a\u0420\u0451 \u0420\u0451\u0420\u00b7 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b."
+                           "&7Выйти из меню."
                         )
                      ),
                      "close"
@@ -4128,16 +4128,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2,
          CopiMineArtifacts.ViewType.HELP,
          27,
-         "&8\u0420\u045f\u0420\u0455\u0420\u0458\u0420\u0455\u0421\u2030\u0421\u040a \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451"
+         "&8Помощь лавки"
       );
       var3.setItem(
          10,
          this.button(
             Material.BOOK,
-            "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0",
+            "&eПокупка",
             List.of(
-               "&7\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 -> \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040f -> \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402 -> \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0491\u0420\u0451\u0421\u201a\u0421\u040a.",
-               "&7\u0420\u2022\u0421\u0403\u0420\u00bb\u0420\u0451 PIN \u0420\u0406\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0421\u2018\u0420\u0405, \u0420\u0457\u0420\u0455\u0421\u040f\u0420\u0406\u0420\u0451\u0421\u201a\u0421\u0403\u0421\u040f \u0421\u2020\u0420\u0451\u0421\u201e\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b0\u0420\u0405\u0420\u00b5\u0420\u00bb\u0421\u040a."
+               "&7Лавка -> категория -> товар -> подтвердить.",
+               "&7Если PIN включён, появится цифровая панель."
             )
          )
       );
@@ -4145,10 +4145,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          12,
          this.button(
             Material.CHEST_MINECART,
-            "&e\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0",
+            "&eОтложенная выдача",
             List.of(
-               "&7\u0420\u2022\u0421\u0403\u0420\u00bb\u0420\u0451 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b5\u0420\u0405, \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0421\u201a\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f.",
-               "&7\u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u2116 \u0420\u045a\u0420\u0455\u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451 /cmartifacts claim."
+               "&7Если инвентарь заполнен, предмет не теряется.",
+               "&7Открой Мои покупки или введи /cmartifacts claim."
             )
          )
       );
@@ -4156,10 +4156,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          14,
          this.button(
             Material.ANVIL,
-            "&e\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a",
+            "&eРемонт",
             List.of(
-               "&7\u0420\u2019\u0420\u0455\u0420\u00b7\u0421\u040a\u0420\u0458\u0420\u0451 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0406 \u0421\u0402\u0421\u0453\u0420\u0454\u0421\u0453.",
-               "&7\u0420\u045c\u0420\u00b0\u0420\u00b6\u0420\u0458\u0420\u0451 \u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u0451 /cmartifacts repair."
+               "&7Возьми официальный предмет в руку.",
+               "&7Нажми Ремонт или введи /cmartifacts repair."
             )
          )
       );
@@ -4167,9 +4167,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          16,
          this.button(
             Material.BOOK,
-            "&e\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0458\u0420\u0455\u0420\u0491\u0420\u00b5\u0420\u00bb\u0420\u0451",
+            "&eОфициальные модели",
             List.of(
-               "&7\u0420\u00a0\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403-\u0420\u0457\u0420\u00b0\u0420\u0454 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0 \u0420\u0455\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u0406\u0420\u0405\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u0451\u0420\u2116 \u0420\u0406\u0420\u0451\u0420\u0491 \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0420\u0455\u0420\u0406."
+               "&7Ресурс-пак сервера обновляет внешний вид официальных предметов."
             )
          )
       );
@@ -4179,9 +4179,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+            "&aНазад",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453."
+               "&7Вернуться в лавку."
             )
          ),
          "back:main"
@@ -4198,17 +4198,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var5,
          CopiMineArtifacts.ViewType.SUCCESS,
          27,
-         "&8\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u20ac\u0420\u00b5\u0420\u0405\u0420\u00b0"
+         "&8Покупка завершена"
       );
       var6.setItem(
          13,
          this.button(
             Material.LIME_CONCRETE,
-            "&a\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0421\u0403\u0420\u0457\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u00b0",
+            "&aПокупка успешна",
             List.of(
-               "&7\u0420\u045e\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402: &f" + this.strip(var2.name()),
-               "&7\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0455: &f" + var2.priceAr() + " AR",
-               "&7\u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f: &f"
+               "&7Товар: &f" + this.strip(var2.name()),
+               "&7Списано: &f" + var2.priceAr() + " AR",
+               "&7Баланс после списания: &f"
                   + var3
                   + " AR"
             )
@@ -4220,9 +4220,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          11,
          this.button(
             Material.EMERALD,
-            "&a\u0420\u0459\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7",
+            "&aКупить ещё раз",
             List.of(
-               "&7\u0420\u045f\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0"
+               "&7Повторить покупку этого товара"
             )
          ),
          "confirm:" + var2.itemId()
@@ -4233,9 +4233,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          15,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491 \u0420\u0406 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u040b",
+            "&aНазад в категорию",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0454\u0421\u0453 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406"
+               "&7Вернуться к списку товаров"
             )
          ),
          "back:category"
@@ -4246,9 +4246,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.CHEST,
-            "&b\u0420\u201c\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b",
+            "&bГлавное меню",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0456\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451"
+               "&7Вернуться в главное меню лавки"
             )
          ),
          "back:main"
@@ -4265,7 +4265,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var5,
          CopiMineArtifacts.ViewType.ERROR,
          27,
-         "&8\u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451"
+         "&8Ошибка покупки"
       );
       var6.setItem(13, this.button(Material.RED_CONCRETE, var3, List.of("&7" + var4)));
       this.setAction(
@@ -4274,9 +4274,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          11,
          this.button(
             Material.RED_WOOL,
-            "&c\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491 \u0420\u0454 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0451\u0421\u040b",
+            "&cНазад к подтверждению",
             List.of(
-               "&7\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7"
+               "&7Проверить покупку ещё раз"
             )
          ),
          "back:confirm"
@@ -4287,9 +4287,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          15,
          this.button(
             Material.ARROW,
-            "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491 \u0420\u0454 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0421\u0453",
+            "&aНазад к товару",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0454 \u0420\u0454\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b5 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u00b0"
+               "&7Вернуться к карточке товара"
             )
          ),
          "back:detail"
@@ -4300,9 +4300,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          22,
          this.button(
             Material.CHEST,
-            "&b\u0420\u201c\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b",
+            "&bГлавное меню",
             List.of(
-               "&7\u0420\u2019\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u0453\u0421\u201a\u0421\u040a\u0421\u0403\u0421\u040f \u0420\u0406 \u0420\u0456\u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u0455\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040b \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451"
+               "&7Вернуться в главное меню лавки"
             )
          ),
          "back:main"
@@ -4316,14 +4316,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var3 == null) {
          var1.sendMessage(
             this.color(
-               "&c\u0420\u2019 \u0421\u0402\u0421\u0453\u0420\u0454\u0420\u00b5 \u0420\u0491\u0420\u0455\u0420\u00bb\u0420\u00b6\u0420\u00b5\u0420\u0405 \u0420\u00b1\u0421\u2039\u0421\u201a\u0421\u040a \u0420\u0455\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a CopiMineArtifacts."
+               "&cВ руке должен быть официальный предмет CopiMineArtifacts."
             )
          );
       } else if (!this.isArCatalogItem(var3.itemId())) {
          // player.sendMessage(color("&cDonation-
          var1.sendMessage(
             this.color(
-               "&cDonation-\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u0451\u0420\u0458\u0420\u00b0\u0421\u040b\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0406 AR-\u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a."
+               "&cDonation-артефакты не принимаются в AR-ремонт."
             )
          );
       } else {
@@ -4337,7 +4337,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var7,
                CopiMineArtifacts.ViewType.REPAIR,
                27,
-               "&8\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u00b0"
+               "&8Ремонт артефакта"
             );
             var8.setItem(13, var2.clone());
             this.setAction(
@@ -4346,9 +4346,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                11,
                this.button(
                   Material.ANVIL,
-                  "&a\u0420\u045f\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u00b7\u0420\u00b0 " + var9 + " AR",
+                  "&aПочинить за " + var9 + " AR",
                   List.of(
-                     "&7\u0420\u045b\u0421\u201e\u0420\u0451\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u00b7\u0420\u00b0 AR"
+                     "&7Официальный ремонт за AR"
                   )
                ),
                "repair:confirm:" + var9
@@ -4359,9 +4359,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                15,
                this.button(
                   Material.ARROW,
-                  "&a\u0420\u045c\u0420\u00b0\u0420\u00b7\u0420\u00b0\u0420\u0491",
+                  "&aНазад",
                   List.of(
-                     "&7\u0420\u2014\u0420\u00b0\u0420\u0454\u0421\u0402\u0421\u2039\u0421\u201a\u0421\u040a \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a"
+                     "&7Закрыть ремонт"
                   )
                ),
                "repair:cancel"
@@ -4372,7 +4372,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
          var1.sendMessage(
             this.color(
-               "&e\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0421\u201a\u0421\u0402\u0420\u00b5\u0420\u00b1\u0421\u0453\u0420\u00b5\u0421\u201a \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a\u0420\u00b0."
+               "&eЭтот предмет не требует ремонта."
             )
          );
       }
@@ -4397,7 +4397,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if (!var2.purchaseInFlightId.isBlank()) {
                var1.sendMessage(
                   this.color(
-                     "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u00b0\u0421\u201a\u0421\u2039\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f."
+                     "&eПокупка уже обрабатывается."
                   )
                );
             } else {
@@ -4413,7 +4413,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  if (var4x != null) {
                                     var1.sendMessage(
                                        this.color(
-                                          "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0451\u0421\u201a\u0421\u040a PIN-\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403. \u0420\u045f\u0420\u0455\u0420\u0457\u0421\u0402\u0420\u0455\u0420\u00b1\u0421\u0453\u0420\u2116\u0421\u201a\u0420\u00b5 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0421\u0402\u0420\u00b0\u0420\u00b7."
+                                          "&cНе удалось проверить PIN-статус. Попробуйте ещё раз."
                                        )
                                     );
                                  } else {
@@ -4556,7 +4556,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      this.runSync(
                         () -> var1.sendMessage(
                               this.color(
-                                 "&c\u0420\u045c\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u0406\u0421\u2039\u0420\u0457\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0491\u0420\u00b5\u0420\u2116\u0421\u0403\u0421\u201a\u0420\u0406\u0420\u0451\u0420\u00b5. \u0420\u045b\u0421\u20ac\u0420\u0451\u0420\u00b1\u0420\u0454\u0420\u00b0 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u00bb\u0420\u0455\u0420\u0456. \u0420\u0459\u0420\u0455\u0420\u0491: ARTIFACT_RELOAD_FAILED"
+                                 "&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_RELOAD_FAILED"
                               )
                            )
                      );
@@ -4683,19 +4683,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (!var5.purchaseInFlightId.isBlank()) {
             var1.sendMessage(
                this.color(
-                  "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0455\u0420\u00b1\u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u00b0\u0421\u201a\u0421\u2039\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f."
+                  "&eПокупка уже обрабатывается."
                )
             );
          } else if (var3.category() == CopiMineArtifacts.Category.RP) {
             var1.sendMessage(
                this.color(
-                  "&e\u0420\u201d\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0420\u0451 \u0421\u0403\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+                  "&eДля этой категории сейчас нет доступных товаров."
                )
             );
          } else if (var1.getInventory().firstEmpty() < 0) {
             var1.sendMessage(
                this.color(
-                  "&c\u0420\u045c\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0405\u0420\u0455 \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u00b0 \u0420\u0406 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0420\u00b5. AR \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0421\u2039."
+                  "&cНедостаточно места в инвентаре. AR не списаны."
                )
             );
          } else {
@@ -4710,7 +4710,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             CopiMineArtifacts.PurchaseContext var7 = new CopiMineArtifacts.PurchaseContext(var6, UUID.randomUUID().toString(), var3, var2, var4, var6x);
             var1.sendMessage(
                this.color(
-                  "&7CopiMineArtifacts: \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040f\u0420\u00b5\u0420\u0458 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453..."
+                  "&7CopiMineArtifacts: проверяем покупку..."
                )
             );
             this.runAsync(
@@ -4723,16 +4723,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            if (var1.isOnline()) {
                               var1.sendMessage(
                                  this.color(
-                                    "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u00b0 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405."
+                                    "&cЛимит поставки для этого артефакта исчерпан."
                                  )
                               );
                               this.openError(
                                  var1,
                                  var3,
-                                 "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405",
-                                 "\u0420\u201d\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u0455 "
+                                 "&cЛимит поставки исчерпан",
+                                 "Доступно "
                                     + var3.supplyLimit()
-                                    + " \u0421\u20ac\u0421\u201a. \u0420\u0405\u0420\u00b0 \u0420\u0406\u0420\u00b5\u0421\u0403\u0421\u040a \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402."
+                                    + " шт. на весь сервер."
                               );
                            }
                         }
@@ -4746,16 +4746,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                               if (var1.isOnline()) {
                                  var1.sendMessage(
                                     this.color(
-                                       "&c\u0420\u2019\u0420\u00b0\u0421\u20ac \u0420\u0457\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a."
+                                       "&cВаш персональный лимит на этот артефакт уже достигнут."
                                     )
                                  );
                                  this.openError(
                                     var1,
                                     var3,
-                                    "&c\u0420\u045f\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a",
-                                    "\u0420\u045a\u0420\u0455\u0420\u00b6\u0420\u0405\u0420\u0455 \u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0420\u00b1\u0420\u0455\u0420\u00bb\u0421\u040a\u0421\u20ac\u0420\u00b5 "
+                                    "&cПерсональный лимит достигнут",
+                                    "Можно купить не больше "
                                        + var3.perPlayerLimit()
-                                       + " \u0421\u20ac\u0421\u201a. \u0420\u0405\u0420\u00b0 \u0420\u0451\u0420\u0456\u0421\u0402\u0420\u0455\u0420\u0454\u0420\u00b0."
+                                       + " шт. на игрока."
                                  );
                               }
                            }
@@ -4781,39 +4781,39 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     if ("INSUFFICIENT_AR".equalsIgnoreCase(var10.code())) {
                                        var1.sendMessage(
                                           this.color(
-                                             "&c\u0420\u045c\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0405\u0420\u0455 AR \u0420\u0405\u0420\u00b0 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454\u0420\u0455\u0420\u0406\u0421\u0403\u0420\u0454\u0420\u0455\u0420\u0458 \u0421\u0403\u0421\u2021\u0421\u2018\u0421\u201a\u0420\u00b5."
+                                             "&cНедостаточно AR на банковском счёте."
                                           )
                                        );
                                        this.openError(
                                           var1,
                                           var3,
-                                          "&c\u0420\u045c\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0405\u0420\u0455 AR",
-                                          "\u0420\u045c\u0420\u00b0 \u0420\u00b1\u0420\u00b0\u0420\u0405\u0420\u0454\u0420\u0455\u0420\u0406\u0421\u0403\u0420\u0454\u0420\u0455\u0420\u0458 \u0421\u0403\u0421\u2021\u0421\u2018\u0421\u201a\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0421\u2026\u0420\u0406\u0420\u00b0\u0421\u201a\u0420\u00b0\u0420\u00b5\u0421\u201a \u0421\u0403\u0421\u0402\u0420\u00b5\u0420\u0491\u0421\u0403\u0421\u201a\u0420\u0406 \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451."
+                                          "&cНедостаточно AR",
+                                          "На банковском счёте не хватает средств для покупки."
                                        );
                                     } else if ("PIN_INVALID".equalsIgnoreCase(var10.code())) {
                                        var1.sendMessage(
                                           this.color(
-                                             "&cPIN \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0421\u2018\u0420\u0405 \u0420\u0405\u0420\u00b5\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0405\u0420\u0455."
+                                             "&cPIN введён неверно."
                                           )
                                        );
                                        this.openError(
                                           var1,
                                           var3,
-                                          "&c\u0420\u045c\u0420\u00b5\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0405\u0421\u2039\u0420\u2116 PIN",
-                                          "\u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040a\u0421\u201a\u0420\u00b5 \u0420\u0406\u0420\u0406\u0420\u00b5\u0420\u0491\u0421\u2018\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u2116 PIN \u0420\u0451 \u0420\u0457\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0451\u0421\u201a\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0421\u0453."
+                                          "&cНеверный PIN",
+                                          "Проверьте введённый PIN и повторите покупку."
                                        );
                                     } else {
                                        var1.sendMessage(
                                           this.color(
-                                             "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0420\u0455\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0. \u0420\u0459\u0420\u0455\u0420\u0491: "
+                                             "&cПокупка отклонена. Код: "
                                                 + this.safeBridgeCode(var10.code())
                                           )
                                        );
                                        this.openError(
                                           var1,
                                           var3,
-                                          "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0420\u0455\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0",
-                                          "\u0420\u0459\u0420\u0455\u0420\u0491: " + this.safeBridgeCode(var10.code())
+                                          "&cПокупка отклонена",
+                                          "Код: " + this.safeBridgeCode(var10.code())
                                        );
                                     }
                                  }
@@ -4860,51 +4860,51 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           if (var13) {
                                              var1.sendMessage(
                                                 this.color(
-                                                   "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u0456\u0420\u0455 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u00b0 \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405. AR \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                                   "&cЛимит поставки для этого артефакта уже исчерпан. AR автоматически возвращены."
                                                 )
                                              );
                                              this.openError(
                                                 var1,
                                                 var3,
-                                                "&c\u0420\u203a\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0457\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451 \u0420\u0451\u0421\u0403\u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u0457\u0420\u00b0\u0420\u0405",
-                                                "\u0420\u2019\u0420\u0455 \u0420\u0406\u0421\u0402\u0420\u00b5\u0420\u0458\u0421\u040f \u0421\u201e\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0420\u0455\u0420\u2116 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0451 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0420\u00bb \u0420\u0491\u0421\u0402\u0421\u0453\u0420\u0456\u0420\u0455\u0420\u2116 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u00bb\u0421\u040a. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                                                "&cЛимит поставки исчерпан",
+                                                "Во время финальной записи лимит уже занял другой покупатель. Списание AR отменено."
                                              );
                                           } else if (var14) {
                                              var1.sendMessage(
                                                 this.color(
-                                                   "&c\u0420\u2019\u0420\u00b0\u0421\u20ac \u0420\u0457\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0405\u0420\u00b0 \u0421\u040c\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a. AR \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451 \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                                   "&cВаш персональный лимит на этот артефакт уже достигнут. AR автоматически возвращены."
                                                 )
                                              );
                                              this.openError(
                                                 var1,
                                                 var3,
-                                                "&c\u0420\u045f\u0420\u00b5\u0421\u0402\u0421\u0403\u0420\u0455\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u0451\u0420\u0456\u0420\u0405\u0421\u0453\u0421\u201a",
-                                                "\u0420\u2019\u0420\u0455 \u0420\u0406\u0421\u0402\u0420\u00b5\u0420\u0458\u0421\u040f \u0421\u201e\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0420\u0455\u0420\u2116 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u0451 \u0420\u00bb\u0420\u0451\u0420\u0458\u0420\u0451\u0421\u201a \u0421\u0453\u0420\u00b6\u0420\u00b5 \u0420\u00b1\u0421\u2039\u0420\u00bb \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0421\u201a. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                                                "&cПерсональный лимит достигнут",
+                                                "Во время финальной записи лимит уже был занят. Списание AR отменено."
                                              );
                                           } else {
                                              var1.sendMessage(
                                                 this.color(
-                                                   "&c\u0420\u2018\u0420\u00b0\u0420\u00b7\u0420\u00b0 CopiMineArtifacts \u0420\u0405\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0, AR \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                                   "&cБаза CopiMineArtifacts недоступна. Покупка отменена, AR возвращены."
                                                 )
                                              );
                                              this.openError(
                                                 var1,
                                                 var3,
-                                                "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0",
-                                                "\u0420\u00a4\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0421\u040a \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0455\u0421\u20ac\u0420\u00bb\u0420\u00b0. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                                                "&cПокупка отменена",
+                                                "Финальная запись покупки не прошла. Списание AR отменено."
                                              );
                                           }
                                        } else {
                                           var1.sendMessage(
                                              this.color(
-                                                "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f AR. \u0420\u0452\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0421\u2018\u0420\u0405, \u0420\u0405\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0421\u2020\u0420\u0451\u0420\u0451."
+                                                "&cПокупка остановлена после списания AR. Автовозврат не подтверждён, нужна ручная проверка администрации."
                                              )
                                           );
                                           this.openError(
                                              var1,
                                              var3,
-                                             "&c\u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0",
-                                             "\u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0455\u0421\u20ac\u0420\u00bb\u0420\u0455, \u0420\u0405\u0420\u0455 rollback \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0421\u2018\u0420\u0405. \u0420\u0452\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0420\u00b5\u0420\u0405\u0420\u00b0."
+                                             "&cНужна ручная проверка",
+                                             "Списание прошло, но rollback не подтверждён. Автоматическая повторная выдача отключена."
                                           );
                                        }
                                     }
@@ -5048,7 +5048,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var4.purchaseInFlightId = "";
          var1.sendMessage(
             this.color(
-               "&a\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0421\u0453\u0421\u0403\u0420\u0457\u0420\u00b5\u0421\u20ac\u0420\u0405\u0420\u00b0. \u0420\u2018\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f: &f"
+               "&aПокупка успешна. Баланс после списания: &f"
                   + var3.balanceAfter()
                   + " AR"
             )
@@ -5068,7 +5068,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         if (var1.isOnline()) {
                            var1.sendMessage(
                               this.color(
-                                 "&e\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0455\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u2021\u0420\u00b5\u0420\u0405, \u0420\u0405\u0420\u0455 \u0420\u0451\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0421\u201a. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453."
+                                 "&eПредмет оплачен, но инвентарь занят. Покупка переведена в отложенную выдачу."
                               )
                            );
                            this.openPurchases(var1);
@@ -5142,38 +5142,38 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            if (var8) {
                               var1.sendMessage(
                                  this.color(
-                                    "&c\u0420\u0098\u0420\u0405\u0420\u0406\u0420\u00b5\u0420\u0405\u0421\u201a\u0420\u00b0\u0421\u0402\u0421\u040a \u0420\u00b1\u0421\u2039\u0420\u00bb \u0420\u00b7\u0420\u00b0\u0420\u0405\u0421\u040f\u0421\u201a, \u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0, AR \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                    "&cИнвентарь был занят, а отложенную выдачу сохранить не удалось. Покупка отменена, AR возвращены."
                                  )
                               );
                               this.openError(
                                  var1,
                                  var2.item(),
-                                 "&c\u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u00b0",
-                                 "\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 \u0420\u0405\u0420\u00b5 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00bb\u0420\u00b0\u0421\u0403\u0421\u040a. \u0420\u040e\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0420\u00b5 AR \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451 \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0420\u00b5\u0420\u0405\u0420\u0455."
+                                 "&cПокупка отменена",
+                                 "Отложенная выдача не сохранилась. Списание AR автоматически отменено."
                               );
                            } else if (var9) {
                               var1.sendMessage(
                                  this.color(
-                                    "&c\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a. \u0420\u045f\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u00b0 \u0420\u0457\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u0406\u0420\u00b5\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u00b0 \u0420\u0406 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0421\u0453, \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451\u0420\u2116 \u0420\u0457\u0420\u0455\u0420\u0406\u0421\u201a\u0420\u0455\u0421\u0402 \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0421\u040b\u0421\u2021\u0421\u2018\u0420\u0405."
+                                    "&cОтложенную выдачу сохранить не удалось. Покупка переведена в ручную проверку, автоматический повтор отключён."
                                  )
                               );
                               this.openError(
                                  var1,
                                  var2.item(),
-                                 "&c\u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0",
-                                 "\u0420\u045f\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0420\u0405 \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451. \u0420\u045f\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u040a \u0420\u00b6\u0421\u0453\u0421\u0402\u0420\u0405\u0420\u00b0\u0420\u00bb \u0420\u00b0\u0421\u0453\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b0 \u0420\u0451 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451."
+                                 "&cНужна ручная проверка",
+                                 "Предмет не выдан автоматически. Проверь журнал аудита и статус покупки."
                               );
                            } else {
                               var1.sendMessage(
                                  this.color(
-                                    "&c\u0420\u045b\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0421\u0453\u0421\u040b \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0421\u0453 \u0421\u0403\u0420\u0455\u0421\u2026\u0421\u0402\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u201a\u0421\u040a \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a, \u0420\u00b0 \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0455\u0420\u00b5 \u0420\u0406\u0420\u0455\u0421\u0403\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405\u0420\u0451\u0420\u00b5 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0420\u00b5\u0420\u0405\u0420\u0455. \u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0."
+                                    "&cОтложенную выдачу сохранить не удалось, а автоматическое восстановление не подтверждено. Нужна ручная проверка."
                                  )
                               );
                               this.openError(
                                  var1,
                                  var2.item(),
-                                 "&c\u0420\u045c\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0",
-                                 "\u0420\u040e\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 \u0420\u0457\u0420\u0455\u0420\u0454\u0421\u0453\u0420\u0457\u0420\u0454\u0420\u0451 \u0420\u0405\u0420\u00b5 \u0421\u0453\u0420\u0491\u0420\u00b0\u0420\u00bb\u0420\u0455\u0421\u0403\u0421\u040a \u0420\u00b1\u0420\u00b5\u0420\u00b7\u0420\u0455\u0420\u0457\u0420\u00b0\u0421\u0403\u0420\u0405\u0420\u0455 \u0421\u201e\u0420\u0451\u0420\u0405\u0420\u00b0\u0420\u00bb\u0420\u0451\u0420\u00b7\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u201a\u0421\u040a \u0420\u00b0\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0458\u0420\u00b0\u0421\u201a\u0420\u0451\u0421\u2021\u0420\u00b5\u0421\u0403\u0420\u0454\u0420\u0451."
+                                 "&cНужна ручная проверка",
+                                 "Статус покупки не удалось безопасно финализировать автоматически."
                               );
                            }
                         }
@@ -5197,7 +5197,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var5 == null) {
          var1.sendMessage(
             this.color(
-               "&c\u0420\u045f\u0420\u0455\u0420\u0491\u0420\u0491\u0420\u00b5\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u0451\u0420\u0458\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0406 \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a."
+               "&cПоддельный предмет не принимается в ремонт."
             )
          );
       } else if (!this.isArCatalogItem(var5.itemId())) {
@@ -5205,7 +5205,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          // player.sendMessage(color("&cDonation-
          var1.sendMessage(
             this.color(
-               "&cDonation-\u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039 \u0420\u0405\u0420\u00b5 \u0420\u0457\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u0451\u0420\u0458\u0420\u00b0\u0421\u040b\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0406 AR-\u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a."
+               "&cDonation-артефакты не принимаются в AR-ремонт."
             )
          );
       } else {
@@ -5228,7 +5228,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      this.runSync(
                         () -> var1.sendMessage(
                               this.color(
-                                 "&c\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0455\u0421\u201a\u0420\u0454\u0420\u00bb\u0420\u0455\u0420\u0405\u0421\u2018\u0420\u0405. \u0420\u0459\u0420\u0455\u0420\u0491: "
+                                 "&cРемонт отклонён. Код: "
                                     + this.safeBridgeCode(var6x.code())
                               )
                            )
@@ -5266,13 +5266,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                               if (var9.ok()) {
                                  var1.sendMessage(
                                     this.color(
-                                       "&c\u0420\u2018\u0420\u00b0\u0420\u00b7\u0420\u00b0 \u0420\u0405\u0420\u00b5\u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0. \u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0455\u0421\u201a\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u2018\u0420\u0405, AR \u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u2030\u0420\u00b5\u0420\u0405\u0421\u2039."
+                                       "&cБаза недоступна. Ремонт отменён, AR возвращены."
                                     )
                                  );
                               } else {
                                  var1.sendMessage(
                                     this.color(
-                                       "&c\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0420\u00b5\u0420\u0405 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5 \u0421\u0403\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f AR. \u0420\u0452\u0420\u0406\u0421\u201a\u0420\u0455\u0420\u0406\u0420\u0455\u0420\u00b7\u0420\u0406\u0421\u0402\u0420\u00b0\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0457\u0420\u0455\u0420\u0491\u0421\u201a\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b6\u0420\u0491\u0421\u2018\u0420\u0405, \u0420\u0405\u0421\u0453\u0420\u00b6\u0420\u0405\u0420\u00b0 \u0421\u0402\u0421\u0453\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0420\u0491\u0420\u0458\u0420\u0451\u0420\u0405\u0420\u0451\u0421\u0403\u0421\u201a\u0421\u0402\u0420\u00b0\u0421\u2020\u0420\u0451\u0420\u0451."
+                                       "&cРемонт остановлен после списания AR. Автовозврат не подтверждён, нужна ручная проверка администрации."
                                     )
                                  );
                               }
@@ -5289,7 +5289,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            var1.getInventory().setItemInMainHand(var4);
                            var1.sendMessage(
                               this.color(
-                                 "&a\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u20ac\u0421\u2018\u0420\u0405 \u0420\u00b7\u0420\u00b0 &f"
+                                 "&aРемонт завершён за &f"
                                     + var2
                                     + " AR"
                               )
@@ -5305,7 +5305,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
          var1.sendMessage(
             this.color(
-               "&e\u0420\u00a0\u0420\u00b5\u0420\u0458\u0420\u0455\u0420\u0405\u0421\u201a \u0420\u0405\u0420\u00b5 \u0421\u201a\u0421\u0402\u0420\u00b5\u0420\u00b1\u0421\u0453\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f."
+               "&eРемонт не требуется."
             )
          );
       }
@@ -5825,26 +5825,26 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private CopiMineArtifacts.ShopRevenueRecipient resolveActivePresidentRevenueRecipient() {
       Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineElectionCore");
       if (var1 == null || !var1.isEnabled()) {
-         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, "Президентская казна", "", PRESIDENT_BUDGET_ACCOUNT_ID);
+         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, TREASURY_LABEL, "", PRESIDENT_BUDGET_ACCOUNT_ID);
       }
 
       try {
          Object var2 = var1.getClass().getMethod("activePresidentRevenueProfile").invoke(var1);
          if (!(var2 instanceof Map<?, ?> var3)) {
-            return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, "Президентская казна", "", PRESIDENT_BUDGET_ACCOUNT_ID);
+            return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, TREASURY_LABEL, "", PRESIDENT_BUDGET_ACCOUNT_ID);
          }
 
          String var4 = this.firstNonBlank(this.str(var3.get("president_uuid")), "");
          UUID var5 = var4.isBlank() ? EMPTY_UUID : UUID.fromString(var4);
          return new CopiMineArtifacts.ShopRevenueRecipient(
             var5,
-            this.firstNonBlank(this.str(var3.get("president_name")), "Президентская казна"),
+            TREASURY_LABEL,
             this.firstNonBlank(this.str(var3.get("term_id")), ""),
             this.firstNonBlank(this.str(var3.get("budget_account_id")), PRESIDENT_BUDGET_ACCOUNT_ID)
          );
       } catch (Exception var6) {
          this.getLogger().log(Level.WARNING, "Failed to resolve active president for artifact revenue", (Throwable)var6);
-         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, "Президентская казна", "", PRESIDENT_BUDGET_ACCOUNT_ID);
+         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, TREASURY_LABEL, "", PRESIDENT_BUDGET_ACCOUNT_ID);
       }
    }
 
@@ -5927,7 +5927,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       String var3 = this.firstNonBlank(this.str(var2.get("recipient_account_id")), PRESIDENT_BUDGET_ACCOUNT_ID);
       String var4 = this.firstNonBlank(this.str(var2.get("president_uuid")), "");
-      String var5x = this.firstNonBlank(this.str(var2.get("president_name")), "Президентская казна");
+      String var5x = TREASURY_LABEL;
       long var5 = Math.max(0L, this.parseLong(this.str(var2.get("amount_ar")), 0L));
       if (var5 <= 0L) {
          this.markRevenuePayoutReview(var1, "amount_invalid");
@@ -6243,7 +6243,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (var6 > 0) {
             var1.sendMessage(
                this.color(
-                  "&eCopiMineArtifacts \u0420\u0406\u0420\u0455\u0421\u0403\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u0451\u0420\u00bb \u0420\u0405\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0420\u0406\u0420\u00b5\u0421\u0402\u0421\u20ac\u0421\u2018\u0420\u0405\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u0451: &f"
+                  "&eCopiMineArtifacts восстановил незавершённые выдачи: &f"
                      + var6
                )
             );
@@ -6996,7 +6996,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                var2.sendMessage(
                   this.color(
-                     "&c\u0420\u045f\u0420\u0455\u0420\u0491\u0420\u0455\u0420\u00b7\u0421\u0402\u0420\u0451\u0421\u201a\u0420\u00b5\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0420\u2116 \u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a CopiMineArtifacts \u0420\u00b7\u0420\u00b0\u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b0\u0420\u0405."
+                     "&cПодозрительный предмет CopiMineArtifacts заблокирован."
                   )
                );
                return null;
@@ -7027,7 +7027,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var6.setCustomModelData(var1.customModelData());
          }
 
-         var7.add(this.color("&8\u0420\u00a0\u0420\u00b5\u0420\u0491\u0420\u0454\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a: " + var1.rarity()));
+         var7.add(this.color("&8Редкость: " + var1.rarity()));
          var6.setLore(var7);
          var6.addItemFlags(new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE});
          var6.getPersistentDataContainer().set(this.keyItemId, PersistentDataType.STRING, var1.itemId());
@@ -8150,7 +8150,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   this.runSync(
                      () -> var2.sendActionBar(
                            this.color(
-                              "&eCopiMineArtifacts: \u0420\u0455\u0421\u201a\u0420\u00bb\u0420\u0455\u0420\u00b6\u0420\u00b5\u0420\u0405\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u0491\u0420\u00b0\u0421\u2021\u0420\u00b0 x"
+                              "&eCopiMineArtifacts: отложенная выдача x"
                                  + var2x
                            )
                         )
@@ -8234,7 +8234,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void noPermission(Player var1) {
       var1.sendMessage(
          this.color(
-            "&c\u0420\u0408 \u0420\u0406\u0420\u00b0\u0421\u0403 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0457\u0421\u0402\u0420\u00b0\u0420\u0406 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u0455\u0420\u0458\u0420\u00b0\u0420\u0405\u0420\u0491\u0421\u2039."
+            "&cУ вас нет прав для этой команды."
          )
       );
    }
@@ -8242,12 +8242,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void sendPlayerShopHelp(Player var1) {
       var1.sendMessage(
          this.color(
-            "&a\u0420\u203a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0455\u0420\u0406 \u0420\u0455\u0421\u201a\u0420\u0454\u0421\u0402\u0421\u2039\u0420\u0406\u0420\u00b0\u0420\u00b5\u0421\u201a\u0421\u0403\u0421\u040f \u0420\u0454\u0420\u00bb\u0420\u0451\u0420\u0454\u0420\u0455\u0420\u0458 \u0420\u0457\u0420\u0455 \u0420\u00b1\u0420\u00bb\u0420\u0455\u0420\u0454\u0421\u0453 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+            "&aЛавка артефактов открывается кликом по блоку лавки."
          )
       );
       var1.sendMessage(
          this.color(
-            "&7\u0420\u045c\u0420\u00b0\u0420\u2116\u0420\u0491\u0420\u0451\u0421\u201a\u0420\u00b5 \u0420\u00bb\u0420\u00b0\u0420\u0406\u0420\u0454\u0421\u0453 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u0457\u0420\u00b0\u0420\u0406\u0420\u0405\u0420\u00b5 \u0420\u0451\u0420\u00bb\u0420\u0451 \u0420\u0406 \u0421\u0403\u0420\u0457\u0420\u00b5\u0421\u2020\u0420\u0451\u0420\u00b0\u0420\u00bb\u0421\u040a\u0420\u0405\u0421\u2039\u0421\u2026 \u0420\u0458\u0420\u00b5\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u2026 \u0421\u0403\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u00b0."
+            "&7Найдите лавку на спавне или в специальных местах сервера."
          )
       );
    }
@@ -8267,7 +8267,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private String donationQrFallbackMessage() {
       return this.firstNonBlank(
          this.getConfig().getString("donation.qr-fallback-message"),
-         "\u0420\u045b\u0420\u0457\u0420\u00bb\u0420\u00b0\u0421\u201a\u0420\u00b0 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a\u0420\u00b5 CopiMine. \u0420\u045b\u0421\u201a\u0420\u0454\u0421\u0402\u0420\u0455\u0420\u2116 \u0421\u0403\u0421\u0403\u0421\u2039\u0420\u00bb\u0420\u0454\u0421\u0453 \u0420\u0451 \u0420\u0451\u0421\u0403\u0420\u0457\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u00b7\u0421\u0453\u0420\u2116 \u0420\u0454\u0420\u0455\u0420\u0491 \u0421\u0403\u0420\u00b5\u0421\u0403\u0421\u0403\u0420\u0451\u0420\u0451."
+         "Оплата доступна на сайте CopiMine. Открой ссылку и используй код сессии."
       );
    }
 
@@ -8428,7 +8428,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2.getWorld().dropItemNaturally(var2.getLocation().add(0.5, 0.5, 0.5), new ItemStack(var3, 1));
          var1.sendMessage(
             this.color(
-               "&a\u0420\u203a\u0420\u0455\u0420\u0457\u0420\u00b0\u0421\u201a\u0420\u00b0 \u0420\u0406\u0421\u2039\u0420\u00b1\u0420\u0451\u0420\u00bb\u0420\u00b0 \u0420\u00b1\u0420\u0455\u0420\u0405\u0421\u0453\u0421\u0403\u0420\u0405\u0421\u2039\u0420\u2116 \u0421\u0402\u0420\u00b5\u0421\u0403\u0421\u0453\u0421\u0402\u0421\u0403: &f"
+               "&aЛопата выбила бонусный ресурс: &f"
                   + var3.name()
             )
          );
@@ -8452,17 +8452,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void showTaxClockStatus(Player var1) {
       var1.sendMessage(
          this.color(
-            "&6\u0420\u045c\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u0455\u0420\u0406\u0421\u2039\u0420\u2116 \u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u201a\u0421\u0453\u0421\u0403 CopiMine"
+            "&6Налоговый статус CopiMine"
          )
       );
       var1.sendMessage(
          this.color(
-            "&7\u0420\u045f\u0420\u0455\u0420\u00bb\u0420\u0405\u0420\u00b0\u0421\u040f \u0420\u0491\u0420\u00b5\u0421\u201a\u0420\u00b0\u0420\u00bb\u0420\u0451\u0420\u00b7\u0420\u00b0\u0421\u2020\u0420\u0451\u0421\u040f \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0420\u00b0 \u0421\u2021\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7 \u0421\u0403\u0420\u00b0\u0420\u2116\u0421\u201a \u0420\u0451 ElectionCore."
+            "&7Полная детализация доступна через сайт и ElectionCore."
          )
       );
       var1.sendMessage(
          this.color(
-            "&7\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a \u0420\u0405\u0420\u00b5 \u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u040f\u0420\u00b5\u0421\u201a \u0420\u00b1\u0420\u00b0\u0420\u00bb\u0420\u00b0\u0420\u0405\u0421\u0403 \u0420\u0451 \u0420\u0405\u0420\u00b5 \u0420\u0455\u0420\u00b1\u0421\u2026\u0420\u0455\u0420\u0491\u0420\u0451\u0421\u201a PIN/\u0420\u0405\u0420\u00b0\u0420\u00bb\u0420\u0455\u0420\u0456\u0420\u0451."
+            "&7Этот артефакт не меняет баланс и не обходит PIN/налоги."
          )
       );
    }
@@ -8479,14 +8479,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.setCompassTarget(var3);
          var1.sendMessage(
             this.color(
-               "&a\u0420\u0459\u0420\u0455\u0420\u0458\u0420\u0457\u0420\u00b0\u0421\u0403 \u0420\u0455\u0420\u00b1\u0420\u0405\u0420\u0455\u0420\u0406\u0420\u00bb\u0421\u2018\u0420\u0405 \u0420\u0405\u0420\u00b0 \u0420\u0406\u0420\u00b0\u0421\u20ac\u0421\u0453 \u0420\u0457\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0421\u040b\u0421\u040b \u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0421\u0453 \u0421\u0403\u0420\u0458\u0420\u00b5\u0421\u0402\u0421\u201a\u0420\u0451."
+               "&aКомпас обновлён на вашу последнюю точку смерти."
             )
          );
          return true;
       } else {
          var1.sendMessage(
             this.color(
-               "&e\u0420\u045f\u0420\u0455\u0421\u0403\u0420\u00bb\u0420\u00b5\u0420\u0491\u0420\u0405\u0421\u040f\u0421\u040f \u0421\u201a\u0420\u0455\u0421\u2021\u0420\u0454\u0420\u00b0 \u0421\u0403\u0420\u0458\u0420\u00b5\u0421\u0402\u0421\u201a\u0420\u0451 \u0420\u00b5\u0421\u2030\u0421\u2018 \u0420\u0405\u0420\u00b5 \u0420\u00b7\u0420\u00b0\u0420\u0457\u0420\u0451\u0421\u0403\u0420\u00b0\u0420\u0405\u0420\u00b0."
+               "&eПоследняя точка смерти ещё не записана."
             )
          );
          return false;
@@ -8497,7 +8497,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!var1.isGliding()) {
          var1.sendMessage(
             this.color(
-               "&e\u0420\u00ad\u0421\u201a\u0420\u0455\u0421\u201a \u0421\u201e\u0420\u00b5\u0420\u2116\u0420\u00b5\u0421\u0402\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0454 \u0421\u0402\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u201a\u0420\u00b0\u0420\u00b5\u0421\u201a \u0421\u201a\u0420\u0455\u0420\u00bb\u0421\u040a\u0420\u0454\u0420\u0455 \u0420\u0406\u0420\u0455 \u0420\u0406\u0421\u0402\u0420\u00b5\u0420\u0458\u0421\u040f \u0420\u0457\u0420\u0455\u0420\u00bb\u0421\u2018\u0421\u201a\u0420\u00b0 \u0420\u0405\u0420\u00b0 \u0421\u040c\u0420\u00bb\u0420\u0451\u0421\u201a\u0421\u0402\u0420\u00b0\u0421\u2026."
+               "&eЭтот фейерверк работает только во время полёта на элитрах."
             )
          );
          return false;
@@ -8562,19 +8562,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private String categoryTitle(CopiMineArtifacts.Category var1) {
       return switch (var1) {
-         case WEAPON -> "\u0420\u2018\u0420\u0455\u0420\u00b5\u0420\u0406\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039";
-         case ARMOR -> "\u0420\u2014\u0420\u00b0\u0421\u2030\u0420\u0451\u0421\u201a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039";
-         case TOOL -> "\u0420\u00a0\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039";
-         case RP -> "RP-\u0420\u0457\u0421\u0402\u0420\u00b5\u0420\u0491\u0420\u0458\u0420\u00b5\u0421\u201a\u0421\u2039";
+         case WEAPON -> "Боевые артефакты";
+         case ARMOR -> "Защитные артефакты";
+         case TOOL -> "Рабочие артефакты";
+         case RP -> "RP-предметы";
       };
    }
 
    private String categoryHint(CopiMineArtifacts.Category var1) {
       return switch (var1) {
-         case WEAPON -> "&7\u0420\u045b\u0421\u0402\u0421\u0453\u0420\u00b6\u0420\u0451\u0420\u00b5 \u0421\u0403 \u0420\u0454\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u0451\u0420\u0458\u0420\u0451 \u0420\u0454\u0420\u0455\u0420\u0405\u0421\u201a\u0421\u0402\u0420\u0455\u0420\u00bb\u0420\u0451\u0421\u0402\u0421\u0453\u0420\u00b5\u0420\u0458\u0421\u2039\u0420\u0458\u0420\u0451 \u0421\u040c\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a\u0420\u00b0\u0420\u0458\u0420\u0451.";
-         case ARMOR -> "&7\u0420\u2018\u0421\u0402\u0420\u0455\u0420\u0405\u0421\u040f \u0420\u0451 \u0421\u040c\u0420\u0454\u0420\u0451\u0420\u0457\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u0491\u0420\u00bb\u0421\u040f \u0420\u0406\u0421\u2039\u0420\u00b6\u0420\u0451\u0420\u0406\u0420\u00b0\u0420\u0405\u0420\u0451\u0421\u040f.";
-         case TOOL -> "&7\u0420\u0098\u0420\u0405\u0421\u0403\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u0458\u0420\u00b5\u0420\u0405\u0421\u201a\u0421\u2039 \u0420\u00b1\u0420\u00b5\u0420\u00b7 vein-miner \u0420\u0451 \u0420\u0458\u0420\u00b0\u0421\u0403\u0421\u0403\u0420\u0455\u0420\u0406\u0421\u2039\u0421\u2026 \u0421\u0403\u0420\u0454\u0420\u00b0\u0420\u0405\u0420\u0455\u0420\u0406.";
-         case RP -> "&7\u0420\u045b\u0420\u00b1\u0421\u2039\u0421\u2021\u0420\u0405\u0420\u00b0\u0421\u040f RP-\u0420\u0406\u0420\u0454\u0420\u00bb\u0420\u00b0\u0420\u0491\u0420\u0454\u0420\u00b0 \u0420\u00b1\u0420\u00b5\u0420\u00b7 \u0420\u00b0\u0420\u0454\u0421\u201a\u0420\u0451\u0420\u0406\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406.";
+         case WEAPON -> "&7Оружие с короткими контролируемыми эффектами.";
+         case ARMOR -> "&7Броня и экипировка для выживания.";
+         case TOOL -> "&7Инструменты без vein-miner и массовых сканов.";
+         case RP -> "&7Обычная RP-вкладка без активных товаров.";
       };
    }
 
@@ -8591,32 +8591,32 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return switch (var1) {
          case WEAPON -> this.button(
          Material.NETHERITE_SWORD,
-         "&b\u0420\u2018\u0420\u0455\u0420\u00b5\u0420\u0406\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039",
+         "&bБоевые артефакты",
          List.of(
-            "&7\u0420\u0459\u0420\u00bb\u0420\u0451\u0420\u0405\u0420\u0454\u0420\u0451, \u0421\u201a\u0420\u0455\u0420\u0457\u0420\u0455\u0421\u0402\u0421\u2039 \u0420\u0451 \u0420\u00bb\u0421\u0453\u0420\u0454\u0420\u0451.",
-            "&8\u0420\u0459\u0420\u0455\u0421\u0402\u0420\u0455\u0421\u201a\u0420\u0454\u0420\u0451\u0420\u00b5 \u0421\u040c\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a\u0421\u2039, \u0420\u0455\u0420\u00b1\u0421\u2030\u0420\u00b0\u0421\u040f \u0420\u0457\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0421\u0402\u0421\u040f\u0420\u0491\u0420\u0454\u0420\u00b0."
+            "&7Клинки, топоры и луки.",
+            "&8Короткие эффекты, общая перезарядка."
          )
       );
          case ARMOR -> this.button(
          Material.DIAMOND_CHESTPLATE,
-         "&a\u0420\u2014\u0420\u00b0\u0421\u2030\u0420\u0451\u0421\u201a\u0420\u0405\u0421\u2039\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039",
+         "&aЗащитные артефакты",
          List.of(
-            "&7\u0420\u00ad\u0420\u0454\u0420\u0451\u0420\u0457\u0420\u0451\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u0454\u0420\u00b0 \u0420\u0491\u0420\u00bb\u0421\u040f \u0421\u20ac\u0420\u00b0\u0421\u2026\u0421\u201a\u0421\u2039, \u0420\u0457\u0420\u00b0\u0421\u201a\u0421\u0402\u0421\u0453\u0420\u00bb\u0421\u040f \u0420\u0451 \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0420\u00b0\u0420\u0406\u0420\u0454\u0420\u0451."
+            "&7Экипировка для шахты, патруля и доставки."
          )
       );
          case TOOL -> this.button(
          Material.DIAMOND_PICKAXE,
-         "&e\u0420\u00a0\u0420\u00b0\u0420\u00b1\u0420\u0455\u0421\u2021\u0420\u0451\u0420\u00b5 \u0420\u00b0\u0421\u0402\u0421\u201a\u0420\u00b5\u0421\u201e\u0420\u00b0\u0420\u0454\u0421\u201a\u0421\u2039",
+         "&eРабочие артефакты",
          List.of(
-            "&7\u0420\u0459\u0420\u0451\u0421\u0402\u0420\u0454\u0420\u0451, \u0421\u201a\u0420\u0455\u0420\u0457\u0420\u0455\u0421\u0402\u0421\u2039, \u0420\u00bb\u0420\u0455\u0420\u0457\u0420\u00b0\u0421\u201a\u0421\u2039 \u0420\u0451 \u0421\u0402\u0420\u00b5\u0420\u0458\u0420\u00b5\u0421\u0403\u0420\u00bb\u0420\u0455.",
-            "&8\u0420\u2018\u0420\u00b5\u0420\u00b7 \u0420\u0458\u0420\u00b0\u0421\u0403\u0421\u0403\u0420\u0455\u0420\u0406\u0421\u2039\u0421\u2026 \u0420\u0457\u0421\u0402\u0420\u0455\u0420\u0406\u0420\u00b5\u0421\u0402\u0420\u0455\u0420\u0454 \u0420\u0458\u0420\u0451\u0421\u0402\u0420\u00b0."
+            "&7Кирки, топоры, лопаты и ремесло.",
+            "&8Без массовых проверок мира."
          )
       );
          case RP -> this.button(
          Material.PAPER,
-         "&e\u0420\u045f\u0420\u0455\u0420\u0454\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u0455",
+         "&eПока пусто",
          List.of(
-            "&7\u0420\u040e\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0420\u0406 \u0421\u040c\u0421\u201a\u0420\u0455\u0420\u2116 \u0420\u0454\u0420\u00b0\u0421\u201a\u0420\u00b5\u0420\u0456\u0420\u0455\u0421\u0402\u0420\u0451\u0420\u0451 \u0420\u0405\u0420\u00b5\u0421\u201a \u0420\u0491\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u0453\u0420\u0457\u0420\u0405\u0421\u2039\u0421\u2026 \u0421\u201a\u0420\u0455\u0420\u0406\u0420\u00b0\u0421\u0402\u0420\u0455\u0420\u0406."
+            "&7Сейчас в этой категории нет доступных товаров."
          )
       );
       };
@@ -8624,14 +8624,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private ItemStack previewIcon(CopiMineArtifacts.CatalogItem var1) {
       ArrayList var2 = new ArrayList();
-      var2.add(this.color("&7\u0420\u00a6\u0420\u00b5\u0420\u0405\u0420\u00b0: &f" + var1.priceAr() + " AR"));
-      var2.add(this.color("&7\u0420\u00a0\u0420\u00b5\u0420\u0491\u0420\u0454\u0420\u0455\u0421\u0403\u0421\u201a\u0421\u040a: &f" + var1.rarity()));
+      var2.add(this.color("&7Цена: &f" + var1.priceAr() + " AR"));
+      var2.add(this.color("&7Редкость: &f" + var1.rarity()));
       if (var1.cooldownSeconds() > 0) {
          var2.add(
             this.color(
-               "&7\u0420\u045f\u0420\u00b5\u0421\u0402\u0420\u00b5\u0420\u00b7\u0420\u00b0\u0421\u0402\u0421\u040f\u0420\u0491\u0420\u0454\u0420\u00b0: &f"
+               "&7Перезарядка: &f"
                   + var1.cooldownSeconds()
-                  + " \u0421\u0403\u0420\u00b5\u0420\u0454."
+                  + " сек."
             )
          );
       }
@@ -8639,7 +8639,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var1.effectChancePercent() > 0 && var1.effectChancePercent() < 100) {
          var2.add(
             this.color(
-               "&7\u0420\u0401\u0420\u00b0\u0420\u0405\u0421\u0403 \u0421\u040c\u0421\u201e\u0421\u201e\u0420\u00b5\u0420\u0454\u0421\u201a\u0420\u00b0: &f"
+               "&7Шанс эффекта: &f"
                   + var1.effectChancePercent()
                   + "%"
             )
@@ -8664,7 +8664,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1,
          List.of(
             var2,
-            "&7\u0420\u040e\u0420\u00b5\u0420\u2116\u0421\u2021\u0420\u00b0\u0421\u0403 \u0421\u040c\u0421\u201a\u0420\u00b0 \u0420\u0406\u0420\u0451\u0421\u201a\u0421\u0402\u0420\u0451\u0420\u0405\u0420\u00b0 \u0420\u0457\u0421\u0453\u0421\u0403\u0421\u201a\u0420\u00b0\u0421\u040f."
+            "&7Сейчас эта витрина пустая."
          )
       );
    }
@@ -8759,12 +8759,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void repairProtectedBlockVisuals() throws Exception {
-      if (this.customBlockVisualsEnabled()) {
-         for (World var1 : Bukkit.getWorlds()) {
-            for (Chunk var5 : var1.getLoadedChunks()) {
-               this.enqueueProtectedBlockVisualRepair(var1.getName(), var5.getX(), var5.getZ());
-            }
-         }
+      if (!this.customBlockVisualsEnabled()) {
+         return;
+      }
+
+      List<Chunk> loadedChunks = new ArrayList<>();
+      for (World world : Bukkit.getWorlds()) {
+         loadedChunks.addAll(List.of(world.getLoadedChunks()));
+      }
+
+      for (Chunk chunk : loadedChunks) {
+         this.enqueueProtectedBlockVisualRepair(chunk.getWorld().getName(), chunk.getX(), chunk.getZ());
       }
    }
 
@@ -9138,7 +9143,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private String maskedPin(String var1) {
-      return var1 != null && !var1.isEmpty() ? "*".repeat(var1.length()) : "\u0432\u0402\u045e \u0432\u0402\u045e \u0432\u0402\u045e \u0432\u0402\u045e";
+      return var1 != null && !var1.isEmpty() ? "*".repeat(var1.length()) : "вЂў вЂў вЂў вЂў";
    }
 
    private String nice(String var1) {

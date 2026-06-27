@@ -15,6 +15,10 @@ $Paths = @{
   MainPy = Join-Path $root 'admin-web\backend\main.py'
   Discord = Join-Path $root 'admin-web\backend\discord_bot.py'
   FrontendApp = Join-Path $root 'admin-web\frontend\assets\app.js'
+  FrontendIndex = Join-Path $root 'admin-web\frontend\index.html'
+  FrontendAssetsJs = Join-Path $root 'admin-web\frontend\assets\js'
+  FrontendAssetsCss = Join-Path $root 'admin-web\frontend\assets\css'
+  FrontendStyle = Join-Path $root 'admin-web\frontend\assets\style.css'
   FrontendLegacy = Join-Path $root 'admin-web\frontend\assets\js\legacy\app-legacy.js'
   FrontendHomepage = Join-Path $root 'admin-web\frontend\assets\js\public\homepage.js'
   ServerProperties = Join-Path $root 'minecraft\server\server.properties'
@@ -71,6 +75,48 @@ function Method-Body([string]$text, [string]$signature) {
     $next = $text.Length
   }
   return $text.Substring($start, $next - $start)
+}
+
+function Read-FrontendBundle {
+  $parts = New-Object System.Collections.Generic.List[string]
+  $ordered = New-Object System.Collections.Generic.List[string]
+  foreach ($path in @($Paths.FrontendApp, $Paths.FrontendLegacy, $Paths.FrontendHomepage)) {
+    if ((Test-Path -LiteralPath $path) -and -not $ordered.Contains($path)) {
+      $ordered.Add($path)
+    }
+  }
+  if (Test-Path -LiteralPath $Paths.FrontendAssetsJs) {
+    Get-ChildItem -LiteralPath $Paths.FrontendAssetsJs -Recurse -File | Sort-Object FullName | ForEach-Object {
+      if (-not $ordered.Contains($_.FullName)) {
+        $ordered.Add($_.FullName)
+      }
+    }
+  }
+  foreach ($path in $ordered) {
+    $parts.Add((Read-Utf8 $path))
+  }
+  return ($parts -join "`n")
+}
+
+function Read-FrontendStyles {
+  $parts = New-Object System.Collections.Generic.List[string]
+  $ordered = New-Object System.Collections.Generic.List[string]
+  foreach ($path in @($Paths.FrontendStyle)) {
+    if ((Test-Path -LiteralPath $path) -and -not $ordered.Contains($path)) {
+      $ordered.Add($path)
+    }
+  }
+  if (Test-Path -LiteralPath $Paths.FrontendAssetsCss) {
+    Get-ChildItem -LiteralPath $Paths.FrontendAssetsCss -Recurse -File | Sort-Object FullName | ForEach-Object {
+      if (-not $ordered.Contains($_.FullName)) {
+        $ordered.Add($_.FullName)
+      }
+    }
+  }
+  foreach ($path in $ordered) {
+    $parts.Add((Read-Utf8 $path))
+  }
+  return ($parts -join "`n")
 }
 
 function Throw-IfErrors([string]$name) {

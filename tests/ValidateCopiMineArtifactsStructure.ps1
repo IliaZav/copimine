@@ -17,8 +17,8 @@ if (-not (Test-Path $activeJar)) { $errors.Add('Missing active CopiMineArtifacts
 if ((Get-Content -Raw $pluginYml) -notmatch 'name:\s*CopiMineArtifacts') { $errors.Add('plugin.yml name mismatch.') }
 if ((Get-Content -Raw $pluginYml) -notmatch 'main:\s*me\.copimine\.artifacts\.CopiMineArtifacts') { $errors.Add('plugin.yml main class mismatch.') }
 $pluginText = Get-Content -Raw $pluginYml
-if ($pluginText -notmatch "(?ms)^depend:\s*(\r?\n)+\s*-\s*CopiMineEconomyCore") { $errors.Add('CopiMineArtifacts must hard-depend on CopiMineEconomyCore.') }
-if ($pluginText -notmatch "(?ms)^softdepend:\s*(\r?\n)+\s*-\s*CopiMineUltimateAdminPlus") { $errors.Add('CopiMineArtifacts should keep AdminPlus only as an optional hub/delegator integration.') }
+if ($pluginText -notmatch "(?m)^depend:\s*$[\s\S]*?(?m)^\s*-\s*CopiMineEconomyCore\s*$") { $errors.Add('CopiMineArtifacts must hard-depend on CopiMineEconomyCore.') }
+if ($pluginText -notmatch "(?m)^softdepend:\s*$[\s\S]*?(?m)^\s*-\s*CopiMineUltimateAdminPlus\s*$") { $errors.Add('CopiMineArtifacts should keep AdminPlus only as an optional hub/delegator integration.') }
 if (Test-Path $activeJar) {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $zip = [System.IO.Compression.ZipFile]::OpenRead($activeJar)

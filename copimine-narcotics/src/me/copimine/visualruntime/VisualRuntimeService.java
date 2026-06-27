@@ -1,5 +1,6 @@
 package me.copimine.visualruntime;
 
+import me.copimine.clientbridge.ClientCapabilityState;
 import me.copimine.clientbridge.CopiMineClientBridge;
 import me.copimine.narcotics.CopiMineNarcotics;
 import me.copimine.narcotics.config.NarcoticsConfigService;
@@ -151,7 +152,12 @@ public final class VisualRuntimeService {
         if (!configService.allowClientModVisuals()) {
             return "client visuals disabled in config";
         }
-        return clientBridge.routeHint(player, effectId);
+        ClientCapabilityState state = player == null ? null : clientBridge.capabilities().state(player);
+        String base = clientBridge.routeHint(player, effectId);
+        if (state != null && state.trueIrisShader()) {
+            return base + " (Iris shaderpack active; CopiMineClient still uses its own HUD/fullscreen overlay renderer and does not inject or replace the user's shaderpack)";
+        }
+        return base;
     }
 
     public String shaderSupportReason() {
@@ -195,10 +201,10 @@ public final class VisualRuntimeService {
     public String sessionSummary(UUID playerUuid) {
         VisualSession session = sessions.get(playerUuid);
         if (session == null) {
-            return "нет";
+            return "no-active-session";
         }
         long secondsLeft = Math.max(0L, (session.untilMillis() - System.currentTimeMillis()) / 1000L);
-        return session.effectId() + " / " + session.route().name() + " / " + secondsLeft + "с";
+        return session.effectId() + " / " + session.route().name() + " / " + secondsLeft + "s";
     }
 
     private void applyInternal(Player player, String effectId, int durationSeconds, boolean overdose, boolean ignoreGate, boolean forceServerRoute) {

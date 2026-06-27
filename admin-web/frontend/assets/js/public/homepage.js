@@ -1,208 +1,57 @@
-const budgetCounter = document.getElementById("presidentBudgetCounter");
-const budgetDetail = document.getElementById("presidentBudgetDetail");
-const budgetOwner = document.getElementById("presidentBudgetOwner");
-const historyMount = document.getElementById("publicTreasuryHistory");
-const presidentName = document.getElementById("presidentCardName");
-const presidentMeta = document.getElementById("presidentCardMeta");
-const skinShell = document.getElementById("presidentSkinShell");
-const skinTilt = document.getElementById("presidentSkinTilt");
-const skinImage = document.getElementById("presidentSkinImage");
-const leftButton = document.getElementById("presidentSkinLeft");
-const rightButton = document.getElementById("presidentSkinRight");
+import { loadPublicHomepageData, loadPublicTreasuryFallback } from "./site-data.js";
+import { createHomepageRenderer } from "./site-render.js";
 
-let currentBudgetValue = 0;
-let currentRotation = -16;
-let publicFallbackLoaded = false;
+const renderer = createHomepageRenderer();
+let homepageLoaded = false;
 
-function formatAr(value) {
-  const amount = Number(value || 0);
-  const normalized = Number.isFinite(amount) ? amount : 0;
-  return `${normalized.toLocaleString("ru-RU")} AR`;
-}
-
-function formatDate(value) {
-  const raw = Number(value || 0);
-  if (!raw) return "—";
-  const date = raw > 1000000000000 ? new Date(raw) : new Date(raw * 1000);
-  if (!Number.isFinite(date.getTime())) return "—";
-  return date.toLocaleString("ru-RU");
-}
-
-function animateCounter(nextValue) {
-  if (!budgetCounter) return;
-  const target = Math.max(0, Number(nextValue || 0));
-  const start = currentBudgetValue;
-  const startedAt = performance.now();
-  const duration = 850;
-  const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  if (prefersReduced) {
-    currentBudgetValue = target;
-    budgetCounter.textContent = formatAr(target);
-    return;
-  }
-  const tick = (now) => {
-    const progress = Math.min(1, (now - startedAt) / duration);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const frame = Math.round(start + (target - start) * eased);
-    budgetCounter.textContent = formatAr(frame);
-    if (progress < 1) {
-      requestAnimationFrame(tick);
-      return;
+function bindCopyIpButton() {
+  const button = document.getElementById("copyIpBtn");
+  if (!button || button.dataset.bound === "true") return;
+  button.dataset.bound = "true";
+  button.addEventListener("click", async () => {
+    const ip = document.getElementById("serverIpText")?.textContent?.trim() || "";
+    if (!ip || ip === "Адрес сервера пока не указан" || ip === "загружаем адрес...") return;
+    try {
+      await navigator.clipboard.writeText(ip);
+      button.textContent = "IP скопирован";
+      window.setTimeout(() => {
+        button.textContent = "Скопировать IP";
+      }, 1400);
+    } catch (_error) {
+      button.textContent = ip;
     }
-    currentBudgetValue = target;
-    budgetCounter.textContent = formatAr(target);
-  };
-  requestAnimationFrame(tick);
-}
-
-function replaceChildrenSafe(node, children) {
-  if (!node) return;
-  node.replaceChildren(...children);
-}
-
-function makeElement(tag, className = "", text = "") {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
-
-function renderHistory(items = []) {
-  if (!historyMount) return;
-  const rows = Array.isArray(items) ? items : [];
-  if (!rows.length) {
-    const card = makeElement("article", "showcase-card");
-    card.append(
-      makeElement("strong", "", "История пока пустая"),
-      makeElement("p", "", "Как только появятся доходы лавки, ремонты или выплаты, они отобразятся здесь.")
-    );
-    replaceChildrenSafe(historyMount, [card]);
-    return;
-  }
-
-  const cards = rows.slice(0, 6).map((row) => {
-    const card = makeElement("article", "treasury-history-card");
-    const head = makeElement("div", "treasury-history-row");
-    head.append(
-      makeElement("span", "treasury-history-type", String(row.label || row.type || "Операция")),
-      makeElement("strong", "", formatAr(row.amount || row.amount_ar || 0))
-    );
-
-    const summary = makeElement(
-      "p",
-      "",
-      String(row.comment || row.item_name || row.public_actor_name || row.actor || "Публичная операция казны")
-    );
-    const stamp = makeElement(
-      "span",
-      "treasury-history-date",
-      formatDate(row.createdAt || row.created_at)
-    );
-
-    card.append(head, summary, stamp);
-    return card;
   });
-  replaceChildrenSafe(historyMount, cards);
 }
 
-function renderPresidentCard(president = {}) {
-  if (!presidentName || !presidentMeta) return;
-  const name = String(president.current_president_name || president.ownerName || "").trim();
-  const uuid = String(president.current_president_uuid || president.ownerUuid || "").trim();
-  if (!name) {
-    presidentName.textContent = "Президент пока не избран";
-    presidentMeta.textContent = "Казна продолжает пополняться, но персональная карточка появится только после активного президентского срока.";
-    skinShell?.classList.add("hidden");
-    if (skinImage) skinImage.removeAttribute("src");
-    return;
-  }
-
-  presidentName.textContent = name;
-  presidentMeta.textContent = "Карточка подтягивается из public API. Если скин недоступен, сайт оставляет имя и статус без битых изображений.";
-  if (!uuid || !skinImage || !skinShell) {
-    skinShell?.classList.add("hidden");
-    return;
-  }
-
-  skinImage.src = `/api/public/president/skin/body?uuid=${encodeURIComponent(uuid)}`;
-  skinImage.alt = `Скин президента ${name}`;
-  skinShell.classList.remove("hidden");
-}
-
-function setSkinRotation(nextRotation) {
-  if (!skinTilt) return;
-  currentRotation = nextRotation;
-  skinTilt.style.transform = `rotateX(4deg) rotateY(${nextRotation}deg)`;
-}
-
-function bindSkinControls() {
-  if (leftButton) {
-    leftButton.addEventListener("click", () => setSkinRotation(currentRotation - 18));
-  }
-  if (rightButton) {
-    rightButton.addEventListener("click", () => setSkinRotation(currentRotation + 18));
-  }
-  if (skinImage) {
-    skinImage.addEventListener("error", () => {
-      skinShell?.classList.add("hidden");
-      skinImage.removeAttribute("src");
-    });
-  }
-}
-
-function renderBudget(payload = {}) {
-  const balance = Number(payload.balance_ar ?? payload.balance ?? 0);
-  const currentPresidentName = String(payload.current_president_name || payload.ownerName || "").trim();
-  if (budgetOwner) {
-    budgetOwner.textContent = currentPresidentName
-      ? `Казной управляет ${currentPresidentName}`
-      : "Пока без активного президента";
-  }
-  if (budgetDetail) {
-    budgetDetail.textContent = payload.updated_at || payload.updatedAt
-      ? `Публичные данные обновлены ${formatDate(payload.updated_at || payload.updatedAt)}`
-      : "Публичный API не вернул время обновления, поэтому показываем только подтверждённый баланс.";
-  }
-  animateCounter(balance);
-  renderPresidentCard(payload);
-}
-
-async function loadFallback() {
-  if (publicFallbackLoaded) return;
-  publicFallbackLoaded = true;
+async function loadHomepage() {
+  if (homepageLoaded) return;
+  homepageLoaded = true;
+  bindCopyIpButton();
   try {
-    const [budgetRes, historyRes] = await Promise.all([
-      fetch("/api/public/president-budget", { credentials: "same-origin" }),
-      fetch("/api/public/president-budget/history?limit=6", { credentials: "same-origin" })
-    ]);
-    const budgetPayload = budgetRes.ok ? await budgetRes.json() : { ok: false, data: null };
-    const historyPayload = historyRes.ok ? await historyRes.json() : { ok: false, data: null };
-    if (budgetPayload?.ok && budgetPayload.data) renderBudget(budgetPayload.data);
-    if (historyPayload?.ok && historyPayload.data) renderHistory(historyPayload.data.items || []);
+    const payload = await loadPublicHomepageData();
+    renderer.renderServerHero(payload.config, payload.status, payload.modpack);
+    renderer.renderStatus(payload.status, payload.config);
+    renderer.renderOnline(payload.status.server || {});
+    renderer.renderBudget(payload.budget || {});
+    renderer.renderPresidentCard(payload.president || payload.budget || {});
+    renderer.renderHistory(payload.history.items || []);
   } catch (_error) {
-    if (budgetDetail) {
-      budgetDetail.textContent = "Источник публичной казны временно недоступен. Попробуйте позже.";
+    try {
+      const { budgetPayload, historyPayload } = await loadPublicTreasuryFallback();
+      if (budgetPayload?.ok && budgetPayload.data) renderer.renderBudget(budgetPayload.data);
+      if (historyPayload?.ok && historyPayload.data) renderer.renderHistory(historyPayload.data.items || []);
+    } catch (_fallbackError) {
+      renderer.renderUnavailableState();
     }
   }
 }
 
 window.addEventListener("copimine:public-status", (event) => {
-  const detail = event.detail || {};
-  const status = detail.status || {};
-  const treasury = status.treasury || {};
-  renderBudget({
-    balance_ar: treasury.balance,
-    current_president_name: treasury.ownerName || status.elections?.president || "",
-    current_president_uuid: treasury.ownerUuid || "",
-    updated_at: status.generatedAt || Date.now()
-  });
-  renderHistory((treasury.history || []).map((row) => ({
-    ...row,
-    public_actor_name: row.actor || "",
-    created_at: row.createdAt || row.created_at || 0
-  })));
+  renderer.renderStatusPayload(event.detail || {});
 });
 
-bindSkinControls();
-setSkinRotation(currentRotation);
-window.setTimeout(loadFallback, 250);
+window.addEventListener("copimine:auth-state", (event) => {
+  renderer.renderAuthState(event.detail || {});
+});
+
+window.setTimeout(loadHomepage, 120);

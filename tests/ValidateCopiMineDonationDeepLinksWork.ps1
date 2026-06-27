@@ -1,6 +1,6 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
-$app = Read-Utf8 $Paths.FrontendApp
+$app = Read-FrontendBundle
 
 Require-Contains $app 'function parseHashRoute(hashValue)' 'Frontend must parse donation deep links from location.hash.'
 Require-Contains $app 'const initialHashRoute = parseHashRoute(location.hash);' 'Frontend must bootstrap tab and donation params from the current hash.'

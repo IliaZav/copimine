@@ -1,17 +1,10 @@
 # CopiMineClient Asset Licenses
 
-Все visual assets в `src/main/resources/assets/copimineclient/textures/visuals` на текущем этапе являются self-made CopiMine assets.
+Все visual assets в `src/main/resources/assets/copimineclient/textures/visuals` на текущем этапе основаны на уже существующих self-made fallback overlay PNG из серверного resource pack CopiMine.
 
-Источник:
-- базовые fallback overlay PNG из серверного resource pack:
-  `resourcepacks/src/assets/copimine/textures/gui/narcotics`
-- адаптированные клиентские версии:
-  `CopiMineClient/src/main/resources/assets/copimineclient/textures/visuals`
+- Источник: `D:\Desktop\Copimine\opt\copimine\resourcepacks\src\assets\copimine\textures\gui\narcotics`
+- Статус: internal CopiMine self-made assets
+- Внешние зависимости: отсутствуют
+- Hotlink/runtime download: отсутствуют
 
-Статус:
-- internal CopiMine self-made assets;
-- внешние лицензии не требуются;
-- hotlink отсутствует;
-- runtime external download отсутствует.
-
-Файлы `noise.png`, `vignette.png`, `scanlines.png` тоже являются self-made вспомогательными текстурами для клиентского renderer.
+Файлы `noise.png`, `vignette.png`, `scanlines.png` на этом этапе являются адаптированными копиями существующих self-made overlays для client-side renderer и не требуют сторонней лицензии.

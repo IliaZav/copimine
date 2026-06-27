@@ -1,7 +1,7 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
 $html = Read-Utf8 (Join-Path $root 'admin-web\frontend\index.html')
-$js = Read-Utf8 $Paths.FrontendApp
+$js = Read-FrontendBundle
 
 $forbidden = @(
   'MinePro123',
@@ -23,7 +23,7 @@ foreach ($token in $forbidden) {
   }
 }
 
-Require-Contains $js 'safeApi("/api/public/status"' 'Guest frontend must load public status from backend instead of hardcoded fake data.'
-Require-Contains $js 'safeApi("/api/public/config"' 'Guest frontend must load public config from backend instead of hardcoded fake data.'
+Require-Regex $js 'safeApi\("/api/public/status"|fetchJson\("/api/public/status"' 'Guest frontend must load public status from backend instead of hardcoded fake data.'
+Require-Regex $js 'safeApi\("/api/public/config"|fetchJson\("/api/public/config"' 'Guest frontend must load public config from backend instead of hardcoded fake data.'
 
 Throw-IfErrors 'ValidateCopiMineWebNoFakeHardcodedData'

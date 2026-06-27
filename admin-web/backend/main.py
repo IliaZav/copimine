@@ -3251,8 +3251,14 @@ def player_is_site_admin(account: dict[str, Any]) -> bool:
     username = str(account.get("username") or "").strip()
     if not username:
         return False
-    _, meta = resolve_admin_user(username)
-    return bool(meta)
+    real_username, meta = resolve_admin_user(username)
+    if not meta or not bool(meta.get("enabled", True)):
+        return False
+    role = normalize_admin_role(meta.get("role"))
+    if not is_panel_admin_role(role):
+        return False
+    access_ok, _ = minecraft_access_ok(real_username)
+    return access_ok
 
 
 def player_is_active_president(conn: Any, account: dict[str, Any]) -> bool:

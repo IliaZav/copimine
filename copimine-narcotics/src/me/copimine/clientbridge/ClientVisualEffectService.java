@@ -193,12 +193,11 @@ public final class ClientVisualEffectService {
     }
 
     private void handleAck(Player player, ClientBridgePayloads.Message message) {
-        ClientVisualCommand pending = pendingAcks.remove(message.seq());
-        if (pending == null) {
+        ClientVisualCommand pending = pendingAcks.get(message.seq());
+        if (!commandMatchesPlayerSession(player, message, pending)) {
             return;
         }
-        if (!player.getUniqueId().equals(pending.playerUuid())) {
-            activeSeqByPlayer.remove(pending.playerUuid(), pending.seq());
+        if (!pendingAcks.remove(message.seq(), pending)) {
             return;
         }
         String status = message.status().toUpperCase(Locale.ROOT);
@@ -216,10 +215,7 @@ public final class ClientVisualEffectService {
     }
 
     private void handleFinished(Player player, ClientBridgePayloads.Message message) {
-        ClientVisualCommand command = runningCommands.remove(message.seq());
-        if (command == null) {
-            command = pendingAcks.remove(message.seq());
-        }
+        ClientVisualCommand command = popOwnedCommand(player, message);
         if (command == null) {
             return;
         }
@@ -231,10 +227,7 @@ public final class ClientVisualEffectService {
     }
 
     private void handleError(Player player, ClientBridgePayloads.Message message) {
-        ClientVisualCommand command = runningCommands.remove(message.seq());
-        if (command == null) {
-            command = pendingAcks.remove(message.seq());
-        }
+        ClientVisualCommand command = popOwnedCommand(player, message);
         if (command == null) {
             return;
         }
@@ -319,5 +312,25 @@ public final class ClientVisualEffectService {
             pendingAcks.remove(activeSeq);
             runningCommands.remove(activeSeq);
         }
+    }
+
+    private ClientVisualCommand popOwnedCommand(Player player, ClientBridgePayloads.Message message) {
+        ClientVisualCommand running = runningCommands.get(message.seq());
+        if (commandMatchesPlayerSession(player, message, running)) {
+            return runningCommands.remove(message.seq(), running) ? running : null;
+        }
+        ClientVisualCommand pending = pendingAcks.get(message.seq());
+        if (commandMatchesPlayerSession(player, message, pending)) {
+            return pendingAcks.remove(message.seq(), pending) ? pending : null;
+        }
+        return null;
+    }
+
+    private boolean commandMatchesPlayerSession(Player player, ClientBridgePayloads.Message message, ClientVisualCommand command) {
+        return player != null
+                && message != null
+                && command != null
+                && player.getUniqueId().equals(command.playerUuid())
+                && command.sessionId().equals(message.sessionId());
     }
 }

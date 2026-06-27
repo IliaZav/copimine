@@ -544,6 +544,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         ItemStack hand=p.getInventory().getItem(e.getHand());
         if("cik_seal".equals(officialTypeForStack(hand))){
             e.setCancelled(true);
+            if(legacyElectionRuntimeDisabled()){
+                if(!requireElectionItemOwner(p,hand,"cik_seal"))return;
+                warn(p,"Старая логика печати ЦИК отключена. Используйте CopiMineElectionCore.");
+                return;
+            }
             if(!(target instanceof Player t)){
                 warn(p,"Кликни печатью по игроку, чтобы открыть статус заявки и бюллетеня.");
                 return;
@@ -663,6 +668,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Player p=e.getPlayer();
         ItemStack old=p.getInventory().getItem(e.getSlot());
         if(!"application_book".equals(electionItemString(old,"type")) && !isApplicationBook(old)) return;
+        if(legacyElectionRuntimeDisabled()){
+            e.setCancelled(true);
+            if(!requireElectionItemOwner(p,old,"application_book")) return;
+            warn(p,"Старые книги заявок отключены. Подай заявку через CopiMineElectionCore.");
+            return;
+        }
         if(!requireElectionItemOwner(p,old,"application_book")){e.setCancelled(true); return;}
         try {
             String eid=activeElectionId();
@@ -977,6 +988,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void redirectLegacyElectionAction(Player p) throws Exception {
         warn(p,"Старый раздел выборов отключён. Открываю новый модуль.");
         openElections(p);
+    }
+
+    private boolean legacyElectionRuntimeDisabled(){
+        return true;
+    }
+
+    private SQLException legacyElectionRuntimeDisabledError(String operation){
+        return new SQLException("Legacy election runtime disabled in AdminPlus: " + operation + ". Use CopiMineElectionCore.");
     }
 
     private void openElectionOperations(Player p) throws Exception {
@@ -2594,7 +2613,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private ElectionLifecycleSnapshot lifecycleSnapshot()throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)return new ElectionLifecycleSnapshot(null,"NONE","NONE",0,0,0,0,0,0,""); String status=electionStatus(eid); long apps=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND COALESCE(deleted_at,0)=0",eid), pending=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='PENDING' AND COALESCE(deleted_at,0)=0",eid), approved=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='APPROVED' AND COALESCE(deleted_at,0)=0",eid), candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid), ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid), votes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=?",eid):0; String winner=safeWinnerName(eid); return new ElectionLifecycleSnapshot(eid,status,status,apps,pending,approved,candidates,ballots,votes,winner);}
-    private void runLifecycleNext(Player p)throws Exception{ElectionLifecycleSnapshot s=lifecycleSnapshot(); if(s.eid()==null){openApplications(p.getName(),72); announceStage(p.getName()); openElectionLifecycle(p); return;} ElectionStatus status=parseElectionStatus(s.status()); switch(status){case APPLICATIONS_OPEN->{if(s.applications()==0){warn(p,"Сначала выдай книги заявок или дождись заявок игроков."); openApplicationsIssue(p); return;} closeApplications(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case APPLICATIONS_CLOSED->{if(s.approved()==0&&s.candidates()==0){warn(p,"Нет утвержденных кандидатов. Проверь заявки."); openApplicationsReview(p); return;} approvedToCandidates(p.getName()); openBallotIssue(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case BALLOTS_OPEN->{openVoting(p.getName()); showSidebarAll(true); announceStage(p.getName()); openElectionLifecycle(p); return;} case VOTING_OPEN->{startCounting(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case COUNTING,SECOND_ROUND_REQUIRED->{msg(p,finishElection(p.getName())); openElectionLifecycle(p); return;} case FINISHED->{archiveElectionLifecycle(p.getName()); hideSidebarAll(true); openElectionLifecycle(p); return;} default->{msg(p,"&7Цикл завершен или требует ручного решения."); openElectionLifecycle(p);}}}
+    private void runLifecycleNext(Player p)throws Exception{
+        if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("runLifecycleNext");
+        ElectionLifecycleSnapshot s=lifecycleSnapshot(); if(s.eid()==null){openApplications(p.getName(),72); announceStage(p.getName()); openElectionLifecycle(p); return;} ElectionStatus status=parseElectionStatus(s.status()); switch(status){case APPLICATIONS_OPEN->{if(s.applications()==0){warn(p,"Сначала выдай книги заявок или дождись заявок игроков."); openApplicationsIssue(p); return;} closeApplications(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case APPLICATIONS_CLOSED->{if(s.approved()==0&&s.candidates()==0){warn(p,"Нет утвержденных кандидатов. Проверь заявки."); openApplicationsReview(p); return;} approvedToCandidates(p.getName()); openBallotIssue(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case BALLOTS_OPEN->{openVoting(p.getName()); showSidebarAll(true); announceStage(p.getName()); openElectionLifecycle(p); return;} case VOTING_OPEN->{startCounting(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case COUNTING,SECOND_ROUND_REQUIRED->{msg(p,finishElection(p.getName())); openElectionLifecycle(p); return;} case FINISHED->{archiveElectionLifecycle(p.getName()); hideSidebarAll(true); openElectionLifecycle(p); return;} default->{msg(p,"&7Цикл завершен или требует ручного решения."); openElectionLifecycle(p);}}}
     private String startElection(String actor,int hours)throws SQLException{ String active=activeElectionId(); if(active!=null){ensureSettings(active,actor); return active;} long n=now(); String id="election-"+n; exec("INSERT INTO elections(id,status,started_at,ended_at,scheduled_end_at,started_by,ended_by,winner_uuid,winner_name,notes) VALUES(?,?,?,0,?,?,'','','','Запущено через Ultra7+')",id,ElectionStatus.DRAFT.name(),n,n+hours*3600000L,actor); ensureSettings(id,actor); syncElectionSettingsStatus(id,ElectionStatus.DRAFT,actor); audit(actor,"ULTRA7_ELECTION_START",id,false); return id; }
     private String openApplications(String actor,int hours)throws SQLException{String id=startElection(actor,hours); transitionElectionStatus(id,ElectionStatus.APPLICATIONS_OPEN,actor,"ULTRA7_ELECTION_APPLICATIONS_OPEN"); return id;}
     private String prepareNomination(String actor,int hours)throws SQLException{return openApplications(actor,hours);}
@@ -2630,10 +2651,17 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     private void presidentProgram(Player p)throws Exception{ if(!hasAdmin(p)&&!isPresident(p)){warn(p,"Нет прав президента.");return;} String eid=activeOrLatestElectionId(); if(eid!=null){ensureSettings(eid,p.getName()); exec("UPDATE cmv7_election_settings SET notes=?,updated_at=?,updated_by=? WHERE election_id=?","president-program-updated-by-"+p.getName(),now(),p.getName(),eid);} Bukkit.broadcastMessage(c("&6&lПрезидент &f"+p.getName()+"&7: &eпрограмма обновлена. Игроки могут сравнить кандидатов через бюллетень.")); audit(p.getName(),"ULTRA7_PRESIDENT_PROGRAM","election="+first(eid,"none"),false); }
     private void presidentRequest(Player p,String what)throws Exception{ if(!hasAdmin(p)&&!isPresident(p)){warn(p,"Нет прав президента.");return;} String eid=activeOrLatestElectionId(); staffNotify("&6Президент &f"+p.getName()+" &7запросил этап: &e"+what); audit(p.getName(),"ULTRA7_PRESIDENT_REQUEST_"+what,"election="+first(eid,"none"),true); msg(p,"&aЗапрос отправлен председателю ЦИК: &e"+what); }
-    private int issueApplicationBooksAll(String actor)throws Exception{int n=0; for(Player t:Bukkit.getOnlinePlayers()){issueApplicationBook(t,actor); n++;} return n;}
-    private void issueApplicationBook(Player t,String actor)throws Exception{String eid=issuableElectionId(); if(eid==null)throw new SQLException("Нет текущих выборов для выдачи заявки"); requireElectionStatus(eid,ElectionStatus.APPLICATIONS_OPEN); String issueId=UUID.randomUUID().toString(); if(!giveApplicationBook(t,eid,issueId))throw new SQLException("У игрока нет места под книгу заявки: "+t.getName()); exec("INSERT INTO cmv7_application_issues(id,election_id,applicant_uuid,applicant_name,issued_at,issued_by,used,annulled,notes) VALUES(?,?,?,?,?,?,0,0,'Выдано через Ultra7+')",issueId,eid,t.getUniqueId().toString(),t.getName(),now(),actor); audit(actor,"ULTRA7_ISSUE_APP_PLAYER","target="+t.getName()+" election="+eid+" issue="+issueId,true);}
+    private int issueApplicationBooksAll(String actor)throws Exception{
+        if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("issueApplicationBooksAll");
+        int n=0; for(Player t:Bukkit.getOnlinePlayers()){issueApplicationBook(t,actor); n++;} return n;
+    }
+    private void issueApplicationBook(Player t,String actor)throws Exception{
+        if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("issueApplicationBook");
+        String eid=issuableElectionId(); if(eid==null)throw new SQLException("Нет текущих выборов для выдачи заявки"); requireElectionStatus(eid,ElectionStatus.APPLICATIONS_OPEN); String issueId=UUID.randomUUID().toString(); if(!giveApplicationBook(t,eid,issueId))throw new SQLException("У игрока нет места под книгу заявки: "+t.getName()); exec("INSERT INTO cmv7_application_issues(id,election_id,applicant_uuid,applicant_name,issued_at,issued_by,used,annulled,notes) VALUES(?,?,?,?,?,?,0,0,'Выдано через Ultra7+')",issueId,eid,t.getUniqueId().toString(),t.getName(),now(),actor); audit(actor,"ULTRA7_ISSUE_APP_PLAYER","target="+t.getName()+" election="+eid+" issue="+issueId,true);
+    }
     private int issueBallotsAll(String actor)throws Exception{int n=0; for(Player t:Bukkit.getOnlinePlayers()){issueBallot(t,actor); n++;} return n;}
     private void issueBallot(Player t,String actor)throws Exception{
+        if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("issueBallot");
         String eid=issuableElectionId();
         if(eid==null)throw new SQLException("Нет текущих выборов для выдачи бюллетеня");
         requireElectionStatus(eid,ElectionStatus.BALLOTS_OPEN);
@@ -2683,6 +2711,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return"&aЗаявка аннулирована. Снято строк кандидата: &e"+removed;
     }
     private String annulBallot(String ballotId,String actor,String reason)throws Exception{
+        if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("annulBallot");
         List<Map<String,Object>> rows=query("SELECT id,election_id,voter_uuid,voter_name,used,notes FROM cmv7_ballot_issues WHERE id=? LIMIT 1",ballotId);
         if(rows.isEmpty())return"&cБюллетень не найден: &f"+ballotId;
         Map<String,Object> r=rows.get(0);
@@ -2842,6 +2871,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void sealBallotChoice(Player p,String eid,String candidateUuid,String stationId)throws Exception{
+        if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("sealBallotChoice");
         if(eid==null||eid.isBlank())throw new SQLException("Нет выборов");
         try { requireElectionStatus(eid,ElectionStatus.VOTING_OPEN); }
         catch(SQLException closed){warn(p,"Голосование сейчас закрыто.");return;}
@@ -2879,6 +2909,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void depositSealedBallotAtStation(Player p,ItemStack ballot,String stationId)throws Exception{
+        if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("depositSealedBallotAtStation");
         if(ballot==null){warn(p,"Возьми свой запечатанный бюллетень или сначала выбери кандидата.");return;}
         if(!requireElectionItemOwner(p,ballot,"ballot"))return;
         String eid=first(electionItemString(ballot,"election"),activeOrLatestElectionId());

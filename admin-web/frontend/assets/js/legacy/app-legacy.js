@@ -279,6 +279,10 @@ const juniorNavGroups = [
   }
 ];
 
+if (Array.isArray(juniorNavGroups?.[0]?.items) && !juniorNavGroups[0].items.some(([id]) => id === "admins")) {
+  juniorNavGroups[0].items.splice(2, 0, ["admins", "Админы", "Состав команды и ограниченный обзор", "А"]);
+}
+
 const juniorPageMeta = Object.fromEntries(
   juniorNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );
@@ -1951,9 +1955,9 @@ function syncAuthUi() {
   const submit = loginCard.querySelector('button[type="submit"]');
   const note = loginCard.querySelector(".login-note");
 
-  if (isPlayer) {
+  if (true) {
     if (brandText) brandText.textContent = "Кабинет игрока: банк, привязка и покупки";
-    if (lead) lead.textContent = isRegister ? "Создать аккаунт игрока" : "Вход игрока";
+    if (lead) lead.textContent = isRegister ? "Создать аккаунт" : "Вход";
     if (support) support.textContent = isRegister
       ? "Зарегистрируй отдельный логин сайта. Minecraft-ник подтверждается позже одноразовым кодом на сервере."
       : "Войди логином сайта. После входа откроются банк, налог, история операций и привязка Minecraft.";
@@ -1967,7 +1971,7 @@ function syncAuthUi() {
       : "После входа можно запросить код привязки, настроить PIN и пользоваться переводами и оплатой налога.";
   } else {
     if (brandText) brandText.textContent = "Рабочий кабинет сервера";
-    if (lead) lead.textContent = "Вход для команды сервера";
+    if (lead) lead.textContent = "Вход";
     if (support) support.textContent = "Доступ к админке получают только сотрудники сервера с действующим логином.";
     if (usernameLabel) usernameLabel.textContent = "Minecraft-ник";
     if (passwordLabel) passwordLabel.textContent = "Пароль";
@@ -1976,10 +1980,10 @@ function syncAuthUi() {
     if (submit) submit.textContent = "Войти";
     if (note) note.textContent = "Если доступ не открывается, проверь логин и обратись к старшей команде сервера.";
   }
-  if (brandText) brandText.textContent = isRegister ? "Новый кабинет игрока" : "Вход в CopiMine";
-  if (lead) lead.textContent = isRegister ? "Регистрация игрока" : "Один вход для игрока и команды сервера";
+  if (brandText) brandText.textContent = isRegister ? "Новый кабинет" : "Вход в CopiMine";
+  if (lead) lead.textContent = isRegister ? "Регистрация" : "Вход";
   if (support) support.textContent = isRegister
-    ? "Здесь создаётся только обычный кабинет игрока. Роль команды сервера назначается отдельно и определяется сервером уже после входа."
+    ? "Создайте аккаунт сайта."
     : "Введите логин и пароль, чтобы открыть свой кабинет.";
   if (usernameLabel) usernameLabel.textContent = "Логин сайта";
   if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
@@ -1987,8 +1991,38 @@ function syncAuthUi() {
   if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введи пароль";
   if (submit) submit.textContent = isRegister ? "Создать кабинет" : "Войти";
   if (note) note.textContent = isRegister
-    ? "Регистрация создаёт обычный аккаунт игрока. Служебные роли выдаются отдельно."
+    ? "Создайте аккаунт сайта."
     : "После входа откроется кабинет, доступный для этого аккаунта.";
+}
+
+function syncAuthUi() {
+  const isRegister = isRegisterPage();
+  const loginCard = $("loginForm");
+  if (!loginCard) return;
+
+  $("minecraftNameGroup")?.classList.toggle("hidden", !isRegister);
+
+  const brandText = loginCard.querySelector(".login-brand p");
+  const lead = loginCard.querySelector(".login-copy strong");
+  const support = loginCard.querySelector(".login-copy span");
+  const usernameLabel = loginCard.querySelector('label[for="username"]');
+  const passwordLabel = loginCard.querySelector('label[for="password"]');
+  const submit = loginCard.querySelector('button[type="submit"]');
+  const note = loginCard.querySelector(".login-note");
+
+  if (brandText) brandText.textContent = "CopiMine";
+  if (lead) lead.textContent = isRegister ? "Регистрация" : "Вход";
+  if (support) {
+    support.textContent = isRegister
+      ? "Создайте аккаунт сайта. После входа можно привязать Minecraft-ник и открыть нужные разделы."
+      : "Введите логин и пароль.";
+  }
+  if (usernameLabel) usernameLabel.textContent = "Логин";
+  if (passwordLabel) passwordLabel.textContent = "Пароль";
+  if ($("username")) $("username").placeholder = isRegister ? "Придумайте логин" : "Введите логин";
+  if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введите пароль";
+  if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Войти";
+  if (note) note.textContent = "";
 }
 
 async function login(event) {

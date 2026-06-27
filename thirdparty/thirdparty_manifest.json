@@ -3,9 +3,19 @@
   "generatedFor": "CopiMine release hardening",
   "clientArchive": {
     "path": "thirdparty/CopiMineMods.zip",
-    "sha1": "a7f1d17cfe26f3bea00c64f93a797c7ad1c79b20",
+    "sha1": "897784af8504b38c57f89a8eb8b47e229291968e",
     "downloadPath": "/downloads/CopiMineMods.zip"
   },
+  "requiredExternal": [
+    {
+      "name": "Simple Voice Chat",
+      "scope": "client_and_server",
+      "clientSource": "https://modrinth.com/mod/simple-voice-chat",
+      "serverSource": "https://modrinth.com/plugin/simple-voice-chat",
+      "distribution": "official-download-only",
+      "license": "All Rights Reserved"
+    }
+  ],
   "artifacts": {
     "clientMods": [
       {

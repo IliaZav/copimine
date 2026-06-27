@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "name": "CopiMineMods",
   "minecraftVersion": "1.21.1",
   "loader": "Fabric",
@@ -9,25 +9,50 @@
       "path": "mods/CopiMineClient-0.1.0.jar",
       "component": "CopiMineClient",
       "version": "0.1.0",
-      "license": "Proprietary"
+      "license": "Proprietary",
+      "feature": "Наркотики, клиентские визуалы и связка CopiMineClient",
+      "required": true
     },
     {
       "path": "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
       "component": "Emotecraft",
       "version": "2.4.12+1.21.1-fabric",
       "license": "GPL-3.0-or-later",
-      "source": "https://modrinth.com/project/pZ2wrerK"
+      "source": "https://modrinth.com/project/pZ2wrerK",
+      "feature": "Анимации и эмоции",
+      "required": true
     },
     {
       "path": "mods/fabric-api-0.116.12+1.21.1.jar",
       "component": "Fabric API",
       "version": "0.116.12+1.21.1",
       "license": "Apache-2.0",
-      "source": "https://modrinth.com/project/P7dR8mSH"
+      "source": "https://modrinth.com/project/P7dR8mSH",
+      "feature": "Библиотека для CopiMineClient и Emotecraft",
+      "required": true
     }
   ],
+  "requiredExternal": [
+    {
+      "component": "Simple Voice Chat",
+      "feature": "Внутриигровой голосовой чат",
+      "distribution": "official-download-only",
+      "license": "All Rights Reserved",
+      "clientSource": "https://modrinth.com/mod/simple-voice-chat",
+      "serverSource": "https://modrinth.com/plugin/simple-voice-chat",
+      "reason": "CopiMine не встраивает jar с закрытыми правами на перераспространение. Голосовой мод ставится только с официальной страницы автора.",
+      "required": true
+    }
+  ],
+  "installSteps": [
+    "Установите Fabric Loader для Minecraft 1.21.1.",
+    "Скопируйте все jar из папки mods архива CopiMineMods.zip в .minecraft/mods.",
+    "Для голосового чата отдельно скачайте Simple Voice Chat с официальной страницы и добавьте jar в ту же папку mods."
+  ],
   "notes": [
-    "CoreProtect and the Emotecraft Bukkit plugin are not included in the client archive.",
-    "Iris is optional and is not controlled by CopiMineClient."
+    "Архив уже содержит CopiMineClient, Emotecraft и Fabric API для первого входа.",
+    "Simple Voice Chat обязателен только для голосовой связи и ставится отдельно с официальной страницы автора.",
+    "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
+    "Iris остаётся необязательным и не управляется CopiMineClient."
   ]
 }

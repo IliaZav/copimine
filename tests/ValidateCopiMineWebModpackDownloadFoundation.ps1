@@ -51,11 +51,20 @@ foreach ($required in @(
     "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
     "mods/fabric-api-0.116.12+1.21.1.jar",
     "modpack_manifest.json",
-    "README_RU.txt"
+    "README_RU.txt",
+    "VOICE_CHAT_OFFICIAL_DOWNLOAD.txt"
 )) {
     if ($zipEntries -notcontains $required) {
         throw "CopiMineMods.zip is missing required entry: $required"
     }
+}
+
+if ($manifestText -notmatch '"requiredExternal"\s*:') {
+    throw "modpack_manifest.json must describe official external downloads"
+}
+
+if ($manifestText -notmatch 'Simple Voice Chat') {
+    throw "modpack_manifest.json must document Simple Voice Chat"
 }
 
 Write-Output "ValidateCopiMineWebModpackDownloadFoundation passed."

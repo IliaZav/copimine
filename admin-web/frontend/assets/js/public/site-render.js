@@ -97,6 +97,38 @@ function buildModpackMeta(label, value) {
   return card;
 }
 
+function buildExternalModCard(row = {}) {
+  const card = makeElement("article", "modpack-file-card");
+  const meta = makeElement("div", "modpack-file-meta");
+  if (row.license) meta.append(makeElement("span", "", String(row.license)));
+  if (row.distribution) meta.append(makeElement("span", "", String(row.distribution)));
+  card.append(
+    makeElement("span", "modpack-file-badge", "official"),
+    makeElement("strong", "", String(row.component || "Внешний мод")),
+    makeElement("p", "", String(row.feature || row.reason || "Скачивается отдельно с официальной страницы.")),
+    meta,
+  );
+  const links = makeElement("div", "public-actions public-actions-compact");
+  if (row.clientSource) {
+    const clientLink = makeElement("a", "btn btn-ghost public-ghost", "Клиент");
+    clientLink.href = String(row.clientSource);
+    clientLink.target = "_blank";
+    clientLink.rel = "noopener noreferrer";
+    links.append(clientLink);
+  }
+  if (row.serverSource) {
+    const serverLink = makeElement("a", "btn btn-ghost public-ghost", "Сервер");
+    serverLink.href = String(row.serverSource);
+    serverLink.target = "_blank";
+    serverLink.rel = "noopener noreferrer";
+    links.append(serverLink);
+  }
+  if (links.childNodes.length) {
+    card.append(links);
+  }
+  return card;
+}
+
 function buildShopItem(row, mode = "ar") {
   const card = makeElement("article", "shop-item-chip");
   const head = makeElement("div", "shop-item-head");
@@ -144,6 +176,7 @@ export function createHomepageRenderer() {
   const modpackSummaryLead = document.getElementById("modpackSummaryLead");
   const modpackMetaGrid = document.getElementById("modpackMetaGrid");
   const modpackFileGrid = document.getElementById("modpackFileGrid");
+  const modpackExternalGrid = document.getElementById("modpackExternalGrid");
   const modpackNotes = document.getElementById("modpackNotes");
   const arShopMount = document.getElementById("publicArShopPreview");
   const donationShopMount = document.getElementById("publicDonationShopPreview");
@@ -226,6 +259,7 @@ export function createHomepageRenderer() {
   function renderModpack(modpack = {}, config = {}) {
     const manifest = modpack && typeof modpack === "object" ? (modpack.manifest || {}) : {};
     const files = Array.isArray(manifest.files) ? manifest.files : [];
+    const requiredExternal = Array.isArray(manifest.requiredExternal) ? manifest.requiredExternal : [];
     const notes = Array.isArray(manifest.notes) ? manifest.notes : [];
     const available = Boolean(modpack.available);
     const downloadUrl = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
@@ -237,19 +271,20 @@ export function createHomepageRenderer() {
     }
     if (heroMiniText) {
       heroMiniText.textContent = available
-        ? `В архиве ${files.length || 0} клиентских файлов. SHA1: ${shortSha(modpack.sha1)}.`
+        ? `В архиве ${files.length || 0} клиентских файлов${requiredExternal.length ? `, ещё ${requiredExternal.length} мод ставится отдельно` : ""}. SHA1: ${shortSha(modpack.sha1)}.`
         : "Архив модов пока не опубликован.";
     }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
-        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов. Внутри только нужные клиентские jar для первого входа.`
+        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов. Внутри лежат CopiMineClient, анимации и базовые библиотеки. Голосовой мод, если он нужен, ставится только с официальной страницы автора.`
         : "Архив модов ещё не собран или временно недоступен.";
     }
     if (modpackMetaGrid) {
       replaceChildrenSafe(modpackMetaGrid, [
         buildModpackMeta("Minecraft", manifest.minecraftVersion || config.serverVersion || "1.21.1"),
         buildModpackMeta("Loader", manifest.loader || "Fabric"),
-        buildModpackMeta("Файлов", String(files.length || 0)),
+        buildModpackMeta("В архиве", String(files.length || 0)),
+        buildModpackMeta("Отдельно", String(requiredExternal.length || 0)),
         buildModpackMeta("Размер", formatMegabytes(modpack.size || 0)),
         buildModpackMeta("SHA1", shortSha(modpack.sha1)),
         buildModpackMeta("Обновлён", modpack.modified ? formatDate(modpack.modified * 1000) : "нет данных"),
@@ -277,6 +312,15 @@ export function createHomepageRenderer() {
             return card;
           }),
         );
+      }
+    }
+    if (modpackExternalGrid) {
+      if (!requiredExternal.length) {
+        replaceChildrenSafe(modpackExternalGrid, [
+          cardStrong("Всё уже в архиве", "Дополнительные клиентские моды сейчас не требуются."),
+        ]);
+      } else {
+        replaceChildrenSafe(modpackExternalGrid, requiredExternal.map((row) => buildExternalModCard(row)));
       }
     }
     if (modpackNotes) {

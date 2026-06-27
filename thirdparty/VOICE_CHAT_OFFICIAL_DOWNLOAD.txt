@@ -1,0 +1,19 @@
+Simple Voice Chat: официальный мод для голосового чата
+
+Почему его нет в архиве:
+- автор распространяет проект отдельно;
+- CopiMine не кладёт jar с закрытыми правами на перераспространение в свой архив;
+- поэтому голосовой мод скачивается только с официальной страницы.
+
+Что скачать:
+- клиент Fabric: https://modrinth.com/mod/simple-voice-chat
+- server plugin Paper: https://modrinth.com/plugin/simple-voice-chat
+
+Что делать игроку:
+1. Скачайте версию Simple Voice Chat для Fabric / Minecraft 1.21.1.
+2. Положите jar в .minecraft/mods рядом с CopiMineClient, Emotecraft и Fabric API.
+
+Что делать на сервере:
+1. Скачайте Paper / Bukkit версию Simple Voice Chat.
+2. Положите jar в minecraft/server/plugins.
+3. Убедитесь, что UDP порт 24454 открыт.

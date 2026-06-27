@@ -34,6 +34,7 @@ foreach ($relative in $files) {
 
 foreach ($relative in @(
     "thirdparty\README_RU.txt",
+    "thirdparty\VOICE_CHAT_OFFICIAL_DOWNLOAD.txt",
     "thirdparty\checksums.txt",
     "thirdparty\modpack_manifest.json"
 )) {

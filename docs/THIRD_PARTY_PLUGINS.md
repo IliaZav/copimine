@@ -58,12 +58,25 @@
   - `mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar`
   - `mods/fabric-api-0.116.12+1.21.1.jar`
   - `README_RU.txt`
+  - `VOICE_CHAT_OFFICIAL_DOWNLOAD.txt`
   - `checksums.txt`
   - `modpack_manifest.json`
 - Важно:
   - серверные jar туда не входят;
   - `CoreProtect` и `Emotecraft bukkit` не раздаются игроку;
   - архив должен скачиваться только с сайта CopiMine.
+
+## Голосовой чат
+
+- Используемый проект: `Simple Voice Chat`.
+- Официальные страницы:
+  - клиент Fabric: https://modrinth.com/mod/simple-voice-chat
+  - server plugin: https://modrinth.com/plugin/simple-voice-chat
+- Лицензия исходного проекта: `All Rights Reserved`.
+- Следствие для CopiMine:
+  - jar голосового мода не кладётся в `CopiMineMods.zip`;
+  - сайт и архив обязаны показывать официальные ссылки на загрузку;
+  - внутри архива лежит отдельная памятка `VOICE_CHAT_OFFICIAL_DOWNLOAD.txt`.
 
 ## Совместимость CopiMineClient с Iris и Emotecraft
 

@@ -1940,7 +1940,7 @@ function wirePublicSite() {
   loadPublicStatus();
 }
 
-function syncAuthUi() {
+function syncAuthUiLegacyUnused() {
   const isRegister = isRegisterPage();
   const loginCard = $("loginForm");
   if (!loginCard) return;
@@ -1997,32 +1997,33 @@ function syncAuthUi() {
 
 function syncAuthUi() {
   const isRegister = isRegisterPage();
-  const loginCard = $("loginForm");
-  if (!loginCard) return;
+  const form = $("loginForm");
+  if (!form) return;
 
   $("minecraftNameGroup")?.classList.toggle("hidden", !isRegister);
 
-  const brandText = loginCard.querySelector(".login-brand p");
-  const lead = loginCard.querySelector(".login-copy strong");
-  const support = loginCard.querySelector(".login-copy span");
-  const usernameLabel = loginCard.querySelector('label[for="username"]');
-  const passwordLabel = loginCard.querySelector('label[for="password"]');
-  const submit = loginCard.querySelector('button[type="submit"]');
-  const note = loginCard.querySelector(".login-note");
+  const authCard = form.closest(".auth-card");
+  const lead = authCard?.querySelector(".auth-card-copy h1");
+  const kicker = authCard?.querySelector(".auth-kicker");
+  const usernameLabel = form.querySelector('label[for="username"]');
+  const passwordLabel = form.querySelector('label[for="password"]');
+  const minecraftLabel = form.querySelector('label[for="playerMinecraftName"]');
+  const submit = form.querySelector('button[type="submit"]');
+  const authLink = document.querySelector(".auth-links a");
 
-  if (brandText) brandText.textContent = "CopiMine";
+  if (kicker) kicker.textContent = "CopiMine";
   if (lead) lead.textContent = isRegister ? "Регистрация" : "Вход";
-  if (support) {
-    support.textContent = isRegister
-      ? "Создайте аккаунт сайта. После входа можно привязать Minecraft-ник и открыть нужные разделы."
-      : "Введите логин и пароль.";
-  }
   if (usernameLabel) usernameLabel.textContent = "Логин";
   if (passwordLabel) passwordLabel.textContent = "Пароль";
+  if (minecraftLabel) minecraftLabel.textContent = "Minecraft-ник";
   if ($("username")) $("username").placeholder = isRegister ? "Придумайте логин" : "Введите логин";
   if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введите пароль";
+  if ($("playerMinecraftName")) $("playerMinecraftName").placeholder = "Например, Cells";
   if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Войти";
-  if (note) note.textContent = "";
+  if (authLink) {
+    authLink.textContent = isRegister ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Регистрация";
+    authLink.setAttribute("href", isRegister ? "/signin.html" : "/register.html");
+  }
 }
 
 async function login(event) {

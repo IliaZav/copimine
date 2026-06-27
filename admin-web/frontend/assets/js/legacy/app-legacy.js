@@ -1,4 +1,7 @@
 import { getStoredUiState, removeStoredUiState, setStoredUiState } from "../shared/browser-state.js";
+import { createAdminCommercePages } from "../admin/commerce-pages.js";
+import { createPluginRegistryPages } from "../admin/plugin-registry-pages.js";
+import { createPlayerDonationPages } from "../player/donation-pages.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -1449,6 +1452,24 @@ function setMobileNav(open) {
   if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
+function syncWorkspaceMode() {
+  const role = state.role || "guest";
+  const tab = state.tab || defaultTab();
+  const body = document.body;
+  const app = $("app");
+  document.documentElement.dataset.copimineRole = role;
+  document.documentElement.dataset.copimineTab = tab;
+  body.dataset.copimineRole = role;
+  body.dataset.copimineTab = tab;
+  body.classList.toggle("player-mode", isPlayerRole());
+  body.classList.toggle("junior-admin-mode", isJuniorAdminRole());
+  body.classList.toggle("panel-admin-mode", isPanelAdminRole() && !isJuniorAdminRole());
+  if (app) {
+    app.dataset.copimineRole = role;
+    app.dataset.copimineTab = tab;
+  }
+}
+
 function renderNav() {
   $("nav").innerHTML = currentNavGroups().map(group => `
     <div class="nav-group">
@@ -1480,6 +1501,7 @@ function setTab(tab) {
   const meta = metaMap[state.tab];
   $("pageTitle").textContent = meta.title;
   $("pageSubtitle").textContent = meta.subtitle;
+  syncWorkspaceMode();
   renderNav();
   loadCurrent();
 }
@@ -1829,6 +1851,7 @@ async function logout(call = true) {
   state.playerLinkRequest = null;
   $("app").classList.add("hidden");
   $("login").classList.remove("hidden");
+  syncWorkspaceMode();
   stopLivePanelStream();
   clearInterval(state.refreshTimer);
   syncAuthUi();
@@ -1874,6 +1897,7 @@ async function bootAuthed(options = {}) {
     logout(false);
     return;
   }
+  syncWorkspaceMode();
   renderPublicAuthState();
   renderNav();
   setTab(state.tab);
@@ -2477,219 +2501,14 @@ async function loadElections() {
 }
 
 async function loadEconomy() {
-  setLoading("Загружаю экономику");
-  const [data, history, ledger, donation, donationCatalog, treasury] = await Promise.all([
-    safeApi("/api/economy/ares/overview", {}),
-    safeApi("/api/economy/ares/history?limit=40", { snapshots: [], changes: [] }),
-    safeApi("/api/economy/ares/ledger?limit=500", { events: [], balances: [], transactions: [], assets: [], scans: [], snapshots: [], summary: {} }),
-    safeApi("/api/admin/donation/overview?limit=120", { summary: {}, balances: [], ledger: [], claims: [], sessions: [] }),
-    safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0, updatedAt: 0 }),
-    safeApi("/api/admin/economy/treasury", { account: {}, pin: {}, ledger: [], ownerName: "" })
-  ]);
-  const players = asArray(ledger.balances).length ? asArray(ledger.balances).map((x) => ({
-    player: x.name,
-    amount: x.balance,
-    inventory: x.inventory_balance,
-    enderChest: x.ender_balance,
-    uuid: x.uuid,
-    updatedAt: x.updated_at
-  })) : asArray(data.players);
-  const containers = asArray(data.worldContainers?.rows);
-  const econSummary = ledger.summary || {};
-  const donationSummary = donation.summary || {};
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("AR  ", econSummary.totalBalance ?? data.totalKnownInPlayerData ?? 0, "     ", "good")}
-      ${metric("  AR", econSummary.holders ?? players.length, "  ")}
-      ${metric(" AR", econSummary.transactions ?? asArray(ledger.transactions).length, `${econSummary.transfers ?? 0}   ${econSummary.smelts ?? 0} `)}
-      ${metric(" AR-", econSummary.activeAssets ?? asArray(ledger.assets).length, `${econSummary.events ?? 0}   ${econSummary.scans ?? 0} `)}
-    </section>
-    <section class="layout-grid grid-wide">
-      ${panel("Распределение AR", "Где сейчас сосредоточен баланс", resultBars(players, ["player"], ["amount"]))}
-      ${panel("Операции", "нструменты для снимков и аудита экономики", `
-        <div class="action-strip">
-          <button class="btn btn-primary" data-click="createEconomySnapshot()">Создать снимок</button>
-          <button class="btn btn-secondary" data-click="scanAresWorld()">Скан предметов AR</button>
-        </div>
-        <div class="spacer-12"></div>
-        ${kv([
-          ["ID AR-предметов", asArray(data.itemIds).join(", ") || "не настроены"],
-          ["История снимков", history.count ? `${history.count} записей` : "пока пусто"],
-          ["Источник журнала", ledger.source || "основной backend"],
-          ["AR  ", econSummary.inventoryBalance ?? ""],
-          ["AR  -", econSummary.enderBalance ?? ""],
-          ["", econSummary.transfers ?? ""],
-          ["", econSummary.smelts ?? ""],
-          ["Последний снимок", dt(data.lastSnapshotAt || data.createdAt)]
-        ])}
-      `)}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Игроки с AR", "Балансы, инвентари и эндер-сундуки", table("economy-players", players, [
-        { key: "player", label: "Игрок" },
-        { key: "amount", label: "Баланс" },
-        { key: "inventory", label: "Инвентарь" },
-        { key: "enderChest", label: "Эндер" }
-      ], { pageSize: 15 }))}
-      ${panel("Контейнеры мира", "Подозрительные или крупные хранилища", table("economy-containers", containers, null, { pageSize: 15 }))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Транзакции AR", "Переводы, переплавки и другие движения", `<div class="economy-transactions">${table("economy-transactions-table", asArray(ledger.transactions), [
-        { key: "time", label: "Время", render: value => dt(value) },
-        { key: "type", label: "Тип" },
-        { key: "from_name", label: "От" },
-        { key: "to_name", label: "Кому" },
-        { key: "amount", label: "Сумма" },
-        { key: "material", label: "Материал" },
-        { key: "details", label: "Детали", render: value => short(value || "", 90) }
-      ], { pageSize: 12 })}</div>`)}
-      ${panel("Активы AR", "Официальные предметы и их текущее состояние", `<div class="economy-assets">${table("economy-assets-table", asArray(ledger.assets), [
-        { key: "updated_at", label: "Обновлён", render: value => dt(value) },
-        { key: "owner_name", label: "Владелец" },
-        { key: "status", label: "Статус" },
-        { key: "material", label: "Материал" },
-        { key: "source", label: "Источник" },
-        { key: "asset_id", label: "Asset", render: value => short(value || "", 12) }
-      ], { pageSize: 12 })}</div>`)}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Журнал AR", "Все ключевые события экономики в одном потоке", `<div class="economy-ledger">${ledgerRows(asArray(ledger.events), "economy-ledger")}</div>`)}
-      ${panel("История снимков", "Снимки состояния AR для аудита и расследований", table("economy-snapshots", asArray(ledger.snapshots), null, { pageSize: 12 }))}
-    </section>
-    <section class="layout-grid grid-4">
-      ${metric("Счета Donation", donationSummary.accounts ?? 0, "Отдельно от AR-экономики", "good")}
-      ${metric("Баланс Donation", formatDonate(donationSummary.totalBalance ?? 0), "Сумма по всем donation accounts", donationSummary.totalBalance ? "good" : "neutral")}
-      ${metric("Выдачи в работе", donationSummary.unclaimedItems ?? 0, "UNCLAIMED / RESERVED / DELIVERING / REVIEW", Number(donationSummary.unclaimedItems || 0) ? "warn" : "good")}
-      ${metric("Открытые сессии", donationSummary.openSessions ?? 0, "Mock SBP workflow без реального провайдера", Number(donationSummary.openSessions || 0) ? "warn" : "neutral")}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Донат-счёта", "Баланс игроков, который не смешивается с AR.", table("donation-balances", asArray(donation.balances), [
-        { key: "player_name", label: "Игрок", render: (value, row) => esc(value || row.player_uuid || "—") },
-        { key: "balance", label: "DC", render: value => formatDonate(value || 0) },
-        { key: "updated_at", label: "Обновлён", render: value => dt(value) }
-      ], { pageSize: 12 }))}
-      ${panel("Журнал доната", "Пополнения и списания только по donation balance.", table("donation-ledger", asArray(donation.ledger), [
-        { key: "created_at", label: "Время", render: value => dt(value) },
-        { key: "player_uuid", label: "Игрок" },
-        { key: "delta", label: "Изменение", render: value => formatDonate(value || 0) },
-        { key: "balance_after", label: "После", render: value => formatDonate(value || 0) },
-        { key: "reason", label: "Причина", render: value => short(value || "", 90) }
-      ], { pageSize: 12 }))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Выдачи предметов", "Что уже оплачено и ждёт выдачи игроку.", table("donation-claims", asArray(donation.claims), [
-        { key: "created_at", label: "Создан", render: value => dt(value) },
-        { key: "player_uuid", label: "Игрок" },
-        { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
-        { key: "amount", label: "Кол-во" },
-        { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
-      ], { pageSize: 12 }))}
-      ${panel("Платёжные сессии", "Mock-сессии без реального SBP и без связи с AR.", table("donation-sessions", asArray(donation.sessions), [
-        { key: "created_at", label: "Создана", render: value => dt(value) },
-        { key: "player_name", label: "Игрок", render: (value, row) => esc(value || row.player_uuid || "—") },
-        { key: "provider", label: "Провайдер" },
-        { key: "amount", label: "Сумма", render: value => formatDonate(value || 0) },
-        { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
-        { key: "id", label: "Управление", render: (value, row) => {
-          const status = String(row.status || "").toUpperCase();
-          if (status === "PAID") {
-            return `<span class="btn btn-secondary btn-small disabled">Оплачено</span>`;
-          }
-          if (status === "CANCELLED") {
-            return `<span class="btn btn-secondary btn-small disabled">Отменена</span>`;
-          }
-          if (status === "EXPIRED") {
-            return `<span class="btn btn-secondary btn-small disabled">Истекла</span>`;
-          }
-          return `<div class="action-strip"><button class="btn btn-primary btn-small" data-click="adminDonationMarkPaid('${row.id}')">Подтвердить</button><button class="btn btn-secondary btn-small" data-click="adminDonationCancelSession('${row.id}')">Отменить</button></div>`;
-        } }
-      ], { pageSize: 12 }))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Донат-баланс", "Ручное тестовое пополнение для QA и mock-сценариев. Баланс всё равно отделён от AR.", `
-        <div class="form-grid">
-          <input id="donationAdminUuid" placeholder="Minecraft UUID" />
-          <input id="donationAdminName" placeholder="Minecraft-ник" />
-          <input id="donationAdminAmount" type="number" min="1" step="1" placeholder="Сумма Donation" />
-          <input id="donationAdminReason" class="full" placeholder="Причина, например qa-topup" />
-          <button class="btn btn-primary full" data-click="adminDonationAddBalance()">Пополнить вручную</button>
-        </div>
-      `)}
-      ${panel("Казна", "Отдельный казначейский счёт. Его не видят обычные игроки; доступ только у президента и админов.", `
-        ${kv([
-          ["Счёт", treasury.account?.account_id || treasury.account?.accountId || "—"],
-          ["Владелец", treasury.ownerName || "—"],
-          ["Баланс", formatAr(treasury.account?.balance || 0)],
-          ["PIN казны", treasury.pin?.visiblePin || "не задан"]
-        ])}
-        <div class="spacer-12"></div>
-        <div class="form-grid">
-          <input id="treasuryNewPin" type="password" inputmode="numeric" placeholder="Новый PIN казны, 4-8 цифр" />
-          <button class="btn btn-secondary full" data-click="adminSetTreasuryPin()">Сменить PIN казны</button>
-        </div>
-      `)}
-      ${panel("Provider Settings", "Активный provider: MOCK_SBP. Здесь нет секретов, только текущий режим и будущий слот интеграции.", kv([
-        ["Текущий provider", "MOCK_SBP"],
-        ["Реальный webhook", "не подключён"],
-        ["Курс", "1 ₽ = 1 Donation"],
-        ["Пакеты", "50 / 100 / 250 / 500 / 1000"],
-        ["Каталог", `${asArray(donationCatalog.items).length} предметов, версия ${donationCatalog.catalogVersion || 0}`]
-      ]))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Donation Shop", "Каталог сайта с фиксированным item_id и price_donation.", table("admin-donation-catalog", asArray(donationCatalog.items), [
-        { key: "item_id", label: "ID" },
-        { key: "display_name", label: "Название" },
-        { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
-        { key: "effect_profile_id", label: "Профиль" },
-        { key: "enabled", label: "Статус", render: value => value ? pill("вкл", "good") : pill("off", "bad") }
-      ], { pageSize: 10 }))}
-      ${panel("Выдачи и test purchase", "Тестовая покупка сразу создаёт CLAIM_PENDING, а физическая выдача всё равно идёт только в игре.", `
-        <div class="form-grid">
-          <input id="donationTestUuid" placeholder="Minecraft UUID" />
-          <input id="donationTestName" placeholder="Minecraft-ник" />
-          <input id="donationTestItemId" placeholder="item_id из каталога" />
-          <button class="btn btn-secondary full" data-click="adminDonationTestPurchase()">Создать test purchase</button>
-        </div>
-        <div class="spacer-12"></div>
-        <div class="notice">Если payment session уже создана, mark-paid начисляет баланс только один раз благодаря idempotency.</div>
-      `)}
-    </section>
-    ${panel("Скан мира", "AR в контейнерах и подозрительных местах", table("economy-scans", asArray(ledger.scans), null, { pageSize: 12 }))}
-  `);
+  return getAdminCommercePages().loadEconomy();
 }
 
-window.createEconomySnapshot = async () => {
-  try { await api("/api/economy/ares/snapshots", { method: "POST", body: "{}" }); toast("Снимок экономики создан"); loadEconomy(); }
-  catch (err) { toast(err.message, true); }
-};
+window.createEconomySnapshot = async () => getAdminCommercePages().createEconomySnapshot();
 
-window.scanAresWorld = async () => {
-  try { toast("Скан мира запущен"); await api("/api/economy/ares/scan-world", { method: "POST", body: "{}" }); toast("Скан мира завершён"); loadEconomy(); }
-  catch (err) { toast(err.message, true); }
-};
+window.scanAresWorld = async () => getAdminCommercePages().scanAresWorld();
 
-window.adminDonationAddBalance = async () => {
-  try {
-    const headers = await dangerConfirm(`Пополнить donation-баланс игрока ${$("donationAdminName")?.value?.trim() || $("donationAdminUuid")?.value?.trim()}`, "DONATION_ADD_BALANCE");
-    if (!headers) return;
-    await api("/api/admin/donation/add-balance", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        minecraft_uuid: $("donationAdminUuid")?.value?.trim() || "",
-        minecraft_name: $("donationAdminName")?.value?.trim() || "",
-        amount: number($("donationAdminAmount")?.value || 0),
-        reason: $("donationAdminReason")?.value?.trim() || "admin-topup",
-        idempotency_key: randomActionKey("don-admin-topup")
-      })
-    });
-    toast("Donation-баланс пополнен");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationAddBalance = async () => getAdminCommercePages().adminDonationAddBalance();
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
@@ -2727,78 +2546,13 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
   }
 };
 
-window.adminDonationTestPurchase = async () => {
-  try {
-    const headers = await dangerConfirm(`Создать test purchase ${$("donationTestItemId")?.value?.trim() || "item"} для ${$("donationTestName")?.value?.trim() || $("donationTestUuid")?.value?.trim()}`, "DONATION_TEST_PURCHASE");
-    if (!headers) return;
-    await api("/api/admin/donation/test-purchase", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        minecraft_uuid: $("donationTestUuid")?.value?.trim() || "",
-        minecraft_name: $("donationTestName")?.value?.trim() || "",
-        item_id: $("donationTestItemId")?.value?.trim() || ""
-      })
-    });
-    toast("Test purchase создан");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationTestPurchase = async () => getAdminCommercePages().adminDonationTestPurchase();
 
-window.adminDonationMarkPaid = async (sessionId) => {
-  try {
-    const headers = await dangerConfirm(`Отметить session ${sessionId} как PAID?`, "DONATION_MARK_PAID");
-    if (!headers) return;
-    await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/mark-paid`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ note: "admin mark paid" })
-    });
-    toast("Сессия отмечена как PAID");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationMarkPaid = async (sessionId) => getAdminCommercePages().adminDonationMarkPaid(sessionId);
 
-window.adminDonationCancelSession = async (sessionId) => {
-  try {
-    const headers = await dangerConfirm(`Отменить session ${sessionId}?`, "DONATION_CANCEL_SESSION");
-    if (!headers) return;
-    await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/cancel`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ note: "admin cancel" })
-    });
-    toast("Сессия отменена");
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminDonationCancelSession = async (sessionId) => getAdminCommercePages().adminDonationCancelSession(sessionId);
 
-window.adminSetTreasuryPin = async () => {
-  try {
-    const headers = await dangerConfirm("Сменить PIN казны?", "TREASURY_PIN_SET");
-    if (!headers) return;
-    const result = await api("/api/admin/economy/treasury/pin", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        old_pin: "",
-        new_pin: $("treasuryNewPin")?.value || "",
-        account_scope: "TREASURY"
-      })
-    });
-    toast(`PIN казны обновлён: ${result.pin}`);
-    if ($("treasuryNewPin")) $("treasuryNewPin").value = "";
-    loadEconomy();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.adminSetTreasuryPin = async () => getAdminCommercePages().adminSetTreasuryPin();
 
 function artifactStatusTone(status) {
   const value = String(status || "").toUpperCase();
@@ -3232,247 +2986,19 @@ window.searchInvestigation = async () => {
   $("investigationResults").innerHTML = table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 });
 };
 
-function pluginRegistryFieldId(pluginId, key) {
-  return `plugin-registry-${String(pluginId || "").replace(/[^a-z0-9_-]/gi, "-")}-${String(key || "").replace(/[^a-z0-9_-]/gi, "-")}`;
-}
-
-function pluginRegistryFieldControl(pluginId, key, rules, value) {
-  const safeRules = rules || {};
-  const type = String(safeRules.type || "string").toLowerCase();
-  const inputId = pluginRegistryFieldId(pluginId, key);
-  const label = cleanText(key);
-  if (type === "bool") {
-    return `<label class="check-line full"><input id="${esc(inputId)}" type="checkbox" ${value ? "checked" : ""} /> ${esc(label)}</label>`;
-  }
-  if (type === "enum") {
-    const options = asArray(safeRules.allow).map((item) => {
-      const selected = String(item) === String(value ?? "") ? "selected" : "";
-      return `<option value="${esc(item)}" ${selected}>${esc(item)}</option>`;
-    }).join("");
-    return `<label class="full"><span>${esc(label)}</span><select id="${esc(inputId)}">${options}</select></label>`;
-  }
-  if (type === "int") {
-    const min = Number.isFinite(Number(safeRules.min)) ? `min="${esc(safeRules.min)}"` : "";
-    const max = Number.isFinite(Number(safeRules.max)) ? `max="${esc(safeRules.max)}"` : "";
-    return `<label><span>${esc(label)}</span><input id="${esc(inputId)}" type="number" step="1" ${min} ${max} value="${esc(value ?? "")}" /></label>`;
-  }
-  if (type === "int_list") {
-    const listValue = Array.isArray(value) ? value.join(", ") : "";
-    return `<label class="full"><span>${esc(label)}</span><input id="${esc(inputId)}" type="text" value="${esc(listValue)}" placeholder="Например: 50, 100, 250" /></label>`;
-  }
-  return `<label class="full"><span>${esc(label)}</span><input id="${esc(inputId)}" type="text" value="${esc(value ?? "")}" /></label>`;
-}
-
-function pluginRegistryCollectValues(pluginId, schema) {
-  const values = {};
-  for (const [key, rules] of Object.entries(schema || {})) {
-    const inputId = pluginRegistryFieldId(pluginId, key);
-    const element = $(inputId);
-    if (!element) continue;
-    const type = String(rules?.type || "string").toLowerCase();
-    if (type === "bool") {
-      values[key] = Boolean(element.checked);
-      continue;
-    }
-    if (type === "int") {
-      const parsed = Number(element.value);
-      if (!Number.isInteger(parsed)) {
-        throw new Error(`Поле ${key} должно быть целым числом`);
-      }
-      values[key] = parsed;
-      continue;
-    }
-    if (type === "int_list") {
-      const raw = String(element.value || "").trim();
-      const parts = raw ? raw.split(",").map((item) => item.trim()).filter(Boolean) : [];
-      const parsed = parts.map((item) => Number(item));
-      if (parsed.some((item) => !Number.isInteger(item))) {
-        throw new Error(`Поле ${key} должно содержать список целых чисел через запятую`);
-      }
-      values[key] = parsed;
-      continue;
-    }
-    values[key] = String(element.value || "");
-  }
-  return values;
-}
-
-async function loadPluginRegistryState(selectedPluginId = "") {
-  const registry = await safeApi("/api/admin/plugins/registry", { plugins: [], count: 0 });
-  const plugins = asArray(registry.plugins);
-  const selected = selectedPluginId || state.pluginRegistrySelected || plugins[0]?.pluginId || "";
-  let status = {};
-  let schema = {};
-  let config = { values: {} };
-  let audit = { audit: [] };
-  if (selected) {
-    [status, schema, config, audit] = await Promise.all([
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/status`, {}),
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/schema`, { editableKeys: {} }),
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/config`, { values: {} }),
-      safeApi(`/api/admin/plugins/${encodeURIComponent(selected)}/audit?limit=40`, { audit: [] })
-    ]);
-  }
-  state.pluginRegistrySelected = selected;
-  state.pluginRegistryStatus = status || {};
-  state.pluginRegistrySchema = schema.editableKeys || {};
-  state.pluginRegistryConfigValues = config.values || {};
-  return { plugins, selected, status, schema, config, audit };
-}
-
-function pluginRegistryPanel(registryState) {
-  const plugins = asArray(registryState.plugins);
-  const selected = registryState.selected || "";
-  const status = registryState.status || {};
-  const schema = registryState.schema?.editableKeys || {};
-  const configValues = registryState.config?.values || {};
-  const auditRows = asArray(registryState.audit?.audit);
-  const hasConfigPath = Boolean(status.configPath);
-  const hasEditableKeys = Object.keys(schema).length > 0;
-  const canBackup = hasConfigPath;
-  const canApply = hasConfigPath && hasEditableKeys;
-  const canReload = String(status.reloadMode || "none") !== "none";
-  const validateLabel = hasEditableKeys ? "Validate" : "Validate недоступен";
-  const backupLabel = canBackup ? "Backup" : "Backup недоступен";
-  const applyLabel = canApply ? "Apply" : "Apply недоступен";
-  const reloadLabel = canReload ? "Reload" : "Reload недоступен";
-  return `
-    <section class="layout-grid grid-2">
-      ${panel("Plugin registry", "Allowlisted plugin config foundation: status, schema, validate, backup, apply и reload без raw file editing.", plugins.length ? table("plugin-registry", plugins, [
-        { key: "displayName", label: "Плагин" },
-        { key: "pluginId", label: "ID" },
-        { key: "reloadMode", label: "Reload" },
-        { key: "pluginId", label: "Открыть", render: (value, row) => `<button class="btn btn-secondary" data-click="pluginRegistrySelect('${esc(row.pluginId)}')">${row.pluginId === selected ? "Открыт" : "Открыть"}</button>` }
-      ], { pageSize: 8 }) : empty("Registry пуст", "Manifest пока не отдаёт plugins allowlist."))}
-      ${panel("Текущий плагин", selected ? `Сейчас открыт ${cleanText(status.displayName || selected)}.` : "Выбери плагин из списка слева.", selected ? `
-        ${kv([
-          ["Plugin ID", status.pluginId || selected],
-          ["Config", status.configExists ? "найден" : "не найден"],
-          ["Путь", status.configPath || "—"],
-          ["Reload mode", status.reloadMode || "none"],
-          ["Reload command", status.reloadCommand || "—"],
-          ["Editable keys", hasEditableKeys ? String(Object.keys(schema).length) : "нет"]
-        ])}
-        <div class="spacer-12"></div>
-        <div class="form-grid">
-          ${Object.keys(schema).length ? Object.entries(schema).map(([key, rules]) => pluginRegistryFieldControl(selected, key, rules, configValues[key])).join("") : '<div class="notice">Для этого плагина нет allowlisted editable keys.</div>'}
-        </div>
-        <div class="spacer-12"></div>
-        <div class="button-row">
-          <button class="btn btn-secondary ${hasEditableKeys ? "" : "disabled"}" ${hasEditableKeys ? `data-click="pluginRegistryValidate('${esc(selected)}')"` : "disabled"}>${validateLabel}</button>
-          <button class="btn btn-secondary ${canBackup ? "" : "disabled"}" ${canBackup ? `data-click="pluginRegistryBackup('${esc(selected)}')"` : "disabled"}>${backupLabel}</button>
-          <button class="btn btn-primary ${canApply ? "" : "disabled"}" ${canApply ? `data-click="pluginRegistryApply('${esc(selected)}')"` : "disabled"}>${applyLabel}</button>
-          <button class="btn btn-secondary ${canReload ? "" : "disabled"}" ${canReload ? `data-click="pluginRegistryReload('${esc(selected)}')"` : "disabled"}>${reloadLabel}</button>
-        </div>
-      ` : empty("Плагин не выбран", "Слева можно открыть allowlisted plugin и применить безопасные config changes."))}
-    </section>
-    ${panel("Plugin registry audit", "Каждое backup/apply/reload действие журналируется.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Аудит пуст", "После первых действий здесь появятся записи."))}
-  `;
-}
-
-window.pluginRegistrySelect = async (pluginId) => {
-  state.pluginRegistrySelected = String(pluginId || "");
-  await loadSources();
-};
-
-window.pluginRegistryValidate = async (pluginId) => {
-  try {
-    if (!Object.keys(state.pluginRegistrySchema || {}).length) {
-      toast("Для этого плагина нет allowlisted editable keys", true);
-      return;
-    }
-    const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/validate`, {
-      method: "POST",
-      body: JSON.stringify({ values })
-    });
-    toast(`Конфиг валиден: ${(result.validated ? Object.keys(result.validated).length : 0)} ключей`);
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.pluginRegistryBackup = async (pluginId) => {
-  try {
-    if (!state.pluginRegistryStatus?.configPath) {
-      toast("У этого плагина нет allowlisted configPath", true);
-      return;
-    }
-    const headers = await dangerConfirm(`Создать backup конфига ${pluginId}?`, "PLUGIN_REGISTRY_BACKUP");
-    if (!headers) return;
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/backup`, {
-      method: "POST",
-      headers,
-      body: "{}"
-    });
-    toast(`Backup создан: ${result.backup?.name || pluginId}`);
-    await loadSources();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.pluginRegistryApply = async (pluginId) => {
-  try {
-    if (!state.pluginRegistryStatus?.configPath || !Object.keys(state.pluginRegistrySchema || {}).length) {
-      toast("Для этого плагина недоступно apply изменений", true);
-      return;
-    }
-    const values = pluginRegistryCollectValues(pluginId, state.pluginRegistrySchema || {});
-    const headers = await dangerConfirm(`Применить allowlisted config changes для ${pluginId}?`, "PLUGIN_REGISTRY_APPLY");
-    if (!headers) return;
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/apply`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ values })
-    });
-    toast(`Config обновлён: ${(result.updatedKeys || []).join(", ") || pluginId}`);
-    await loadSources();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.pluginRegistryReload = async (pluginId) => {
-  try {
-    if (String(state.pluginRegistryStatus?.reloadMode || "none") === "none") {
-      toast("Для этого плагина нет allowlisted reload flow", true);
-      return;
-    }
-    const headers = await dangerConfirm(`Перезагрузить ${pluginId} через allowlisted reload flow?`, "PLUGIN_REGISTRY_RELOAD");
-    if (!headers) return;
-    const result = await api(`/api/admin/plugins/${encodeURIComponent(pluginId)}/reload`, {
-      method: "POST",
-      headers,
-      body: "{}"
-    });
-    toast(result.message || (result.reloaded ? "Reload выполнен" : "Reload пропущен"));
-    await loadSources();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
 async function loadSources() {
-  setLoading("Проверяю источники данных");
-  const [data, config, access, registryState] = await Promise.all([
-    safeApi("/api/data-sources", { sources: [] }),
-    safeApi("/api/config", {}),
-    safeApi("/api/security/access", {}),
-    loadPluginRegistryState()
-  ]);
-  setView(`
-    ${panel("Источники данных", "Плагины, файлы и БД, на которых строится панель", table("sources", asArray(data.sources), [
-      { key: "name", label: "Источник" },
-      { key: "type", label: "Тип" },
-      { key: "status", label: "Статус", render: v => pill(v, v === "connected" ? "good" : "warn") },
-      { key: "capabilities", label: "Данные", render: v => asArray(v).map(x => pill(x, "neutral")).join(" ") || "—" },
-      { key: "message", label: "Комментарий" }
-    ], { pageSize: 20 }))}
-    ${dbPolicyPanel(config.dbWritePolicy || access.dbWritePolicy || {}, access)}
-    ${pluginRegistryPanel(registryState)}
-  `);
+  return getPluginRegistryPages().loadSources();
 }
+
+window.pluginRegistrySelect = async (pluginId) => getPluginRegistryPages().pluginRegistrySelect(pluginId);
+
+window.pluginRegistryValidate = async (pluginId) => getPluginRegistryPages().pluginRegistryValidate(pluginId);
+
+window.pluginRegistryBackup = async (pluginId) => getPluginRegistryPages().pluginRegistryBackup(pluginId);
+
+window.pluginRegistryApply = async (pluginId) => getPluginRegistryPages().pluginRegistryApply(pluginId);
+
+window.pluginRegistryReload = async (pluginId) => getPluginRegistryPages().pluginRegistryReload(pluginId);
 
 async function loadAudit() {
   setLoading("Загружаю аудит");
@@ -3954,246 +3480,122 @@ window.selectPlayerBankScope = async (scope = "PERSONAL") => {
   }
 };
 
+let playerDonationPages;
+let adminCommercePages;
+let pluginRegistryPages;
+
+function getAdminCommercePages() {
+  if (!adminCommercePages) {
+    adminCommercePages = createAdminCommercePages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      kv,
+      resultBars,
+      formatAr,
+      formatDonate,
+      asArray,
+      dt,
+      table,
+      pill,
+      artifactStatusTone,
+      statusLabel,
+      esc,
+      cleanText,
+      short,
+      ledgerRows,
+      dangerConfirm,
+      number,
+      randomActionKey,
+      toast,
+    });
+  }
+  return adminCommercePages;
+}
+
+function getPluginRegistryPages() {
+  if (!pluginRegistryPages) {
+    pluginRegistryPages = createPluginRegistryPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      table,
+      pill,
+      kv,
+      asArray,
+      esc,
+      cleanText,
+      empty,
+      dbPolicyPanel,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return pluginRegistryPages;
+}
+
+function getPlayerDonationPages() {
+  if (!playerDonationPages) {
+    playerDonationPages = createPlayerDonationPages({
+      state,
+      setLoading,
+      api,
+      safeApi,
+      setView,
+      panel,
+      metric,
+      kv,
+      dt,
+      esc,
+      short,
+      formatDonate,
+      asArray,
+      cleanText,
+      table,
+      safetyRail,
+      pill,
+      number,
+      donationSessionKey,
+      statusLabel,
+      artifactStatusTone,
+      randomActionKey,
+      setStoredUiState,
+      removeStoredUiState,
+      copyText,
+      toast,
+    });
+  }
+  return playerDonationPages;
+}
+
 async function loadPlayerDonationBalance() {
-  setLoading("Загрузка donation-баланса");
-  const me = await api("/api/player/me");
-  state.user = me.account || {};
-  const linked = Boolean(state.user.linked);
-  if (!linked) {
-    setView(panel("Донат-баланс закрыт", "Сначала привяжи Minecraft-ник к кабинету.", `
-      <div class="notice">После привязки появятся пакеты 50 / 100 / 250 / 500 / 1000, история пополнений и mock SBP QR.</div>
-    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
-    return;
-  }
-  const [balance, packs, history] = await Promise.all([
-    safeApi("/api/player/donation/balance", { linked: true, balance: 0 }),
-    safeApi("/api/player/donation/packs", { packs: [], provider: "MOCK_SBP", rubPerUnit: 1 }),
-    safeApi("/api/player/donation/history", { history: [] })
-  ]);
-  let session = null;
-  if (state.donationSessionId) {
-    const result = await safeApi(`/api/player/donation/sbp/session/${encodeURIComponent(state.donationSessionId)}`, null);
-    session = result?.session || null;
-    if (!session) {
-      state.donationSessionId = "";
-      removeStoredUiState("copimineDonationSessionId");
-    }
-  }
-  const packButtons = asArray(packs.packs).map((pack) => `
-    <button class="btn btn-primary" data-click="playerCreateDonationSession(${number(pack.amount || 0)})">${esc(`${pack.amount} Donation`)}</button>
-  `).join("");
-  const sessionPanel = session ? `
-    <div class="qr-block">
-      <img class="qr-image" src="/api/player/donation/sbp/session/${esc(donationSessionKey(session))}/qr.png?_fresh=${Date.now()}" alt="QR mock SBP" />
-      <div class="qr-copy">
-        ${kv([
-          ["Сессия", donationSessionKey(session)],
-          ["Код", session.session_code || short(donationSessionKey(session), 8)],
-          ["Сумма", formatDonate(session.amount || session.donation_units || 0)],
-          ["Статус", statusLabel(session.status || "created")],
-          ["Истекает", dt(session.expires_at)],
-          ["Провайдер", session.provider || "MOCK_SBP"]
-        ])}
-        <div class="action-strip">
-          <button class="btn btn-secondary" data-click="playerCopyDonationPaymentUrl()">Скопировать ссылку</button>
-          <button class="btn btn-secondary" data-click="playerCopyDonationSessionCode()">Скопировать код</button>
-          <button class="btn btn-secondary" data-click="playerRefreshDonationSession()">Обновить статус</button>
-          <button class="btn btn-secondary" data-click="playerForgetDonationSession()">Скрыть сессию</button>
-        </div>
-        <div class="notice">Баланс пополнится только после статуса PAID. Пока активен MOCK_SBP foundation, реальный провайдер не подключён.</div>
-      </div>
-    </div>
-  ` : `<div class="notice">Активной payment session пока нет. Выбери один из фиксированных пакетов, чтобы открыть mock SBP QR и ссылку оплаты.</div>`;
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Donation", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
-      ${metric("Курс", `${packs.rubPerUnit || 1} ₽ = 1 DC`, "Фиксированный для всех пакетов", "neutral")}
-      ${metric("Провайдер", packs.provider || "MOCK_SBP", "Реальный провайдер пока не подключён", "warn")}
-      ${metric("Сессия", session ? statusLabel(session.status || "created") : "нет", session ? `Код ${session.session_code || short(donationSessionKey(session), 8)}` : "Создай новую сессию", session ? "neutral" : "good")}
-    </section>
-    ${panel("Донат-баланс", "Этот баланс тратится только на donation shop и не смешивается с AR.", kv([
-      ["Статус", linked ? "привязан" : "нет привязки"],
-      ["Баланс", formatDonate(balance.balance || 0)],
-      ["Пополнение", "только через фиксированные пакеты"],
-      ["Выдачи", "предметы забираются только в игре"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Мои донат-предметы</button>`)}
-    ${panel("Пополнить", "Создай payment session и оплати её через mock SBP foundation. Сайт остаётся канонической точкой оплаты.", `
-      <div class="action-strip wrap">${packButtons}</div>
-      <div class="spacer-12"></div>
-      <div class="notice">Пакеты фиксированы: 50 / 100 / 250 / 500 / 1000. Donation нельзя обменять на AR.</div>
-    `)}
-    ${panel("Mock SBP Session", "QR генерируется локально backend-ом. Если QR не нужен, можно использовать ссылку и код сессии.", sessionPanel)}
-    ${panel("История пополнений и списаний", "Только donation balance, без AR и без скрытых списаний.", table("player-donation-history", asArray(history.history), [
-      { key: "created_at", label: "Время", render: value => dt(value) },
-      { key: "delta", label: "Изменение", render: value => formatDonate(value || 0) },
-      { key: "balance_after", label: "После", render: value => formatDonate(value || 0) },
-      { key: "reason", label: "Причина", render: value => short(value || "", 80) },
-      { key: "source", label: "Источник", render: value => cleanText(value || "—") }
-    ], { pageSize: 12 }))}
-  `);
+  return getPlayerDonationPages().loadPlayerDonationBalance();
 }
 
 async function loadPlayerDonationShop() {
-  setLoading("Загрузка donation-лавки");
-  const me = await api("/api/player/me");
-  state.user = me.account || {};
-  const linked = Boolean(state.user.linked);
-  if (!linked) {
-    setView(panel("Донат-лавка закрыта", "Сначала привяжи Minecraft-ник.", `
-      <div class="notice">После привязки сайт сможет создавать purchase-intent и подсказывать, что предмет нужно забрать в игре.</div>
-    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
-    return;
-  }
-  const [catalog, balance] = await Promise.all([
-    safeApi("/api/player/shop/donation-items", { items: [], catalogVersion: 0 }),
-    safeApi("/api/player/donation/balance", { balance: 0 })
-  ]);
-  const rows = asArray(catalog.items).map((row) => {
-    const status = row.owned_active ? "Уже у тебя" : (row.claim_available ? "Можно забрать" : (row.enabled ? "Не куплен" : "Отключён"));
-    const action = row.owned_active
-      ? `<span class="btn btn-secondary btn-small disabled">Уже у тебя</span>`
-      : row.claim_available
-        ? `<button class="btn btn-secondary btn-small" data-click="setTab('donation-items')">Забрать в игре</button>`
-        : row.enabled
-          ? `<button class="btn btn-primary btn-small" data-click='playerBuyDonationItem(${JSON.stringify(String(row.item_id || ""))}, ${JSON.stringify(cleanText(row.display_name || "предмет"))}, ${number(row.price_donation || 0)})'>Купить</button>`
-          : `<span class="btn btn-secondary btn-small disabled">Отключён</span>`;
-    return {
-      ...row,
-      status_text: status,
-      action_html: action
-    };
-  });
-  const focusItemId = String(state.donationFocusItemId || "").trim().toLowerCase();
-  if (focusItemId) {
-    rows.sort((a, b) => {
-      const aMatch = String(a.item_id || "").toLowerCase() === focusItemId ? 0 : 1;
-      const bMatch = String(b.item_id || "").toLowerCase() === focusItemId ? 0 : 1;
-      return aMatch - bMatch;
-    });
-  }
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Баланс", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
-      ${metric("Каталог", asArray(catalog.items).length, `Версия ${catalog.catalogVersion || 0}`, "neutral")}
-      ${metric("Готово к claim", rows.filter(row => row.claim_available).length, "Предмет уже куплен и ждёт выдачи", rows.some(row => row.claim_available) ? "warn" : "good")}
-      ${metric("Активные", rows.filter(row => row.owned_active).length, "Предмет уже выдан и активен", rows.some(row => row.owned_active) ? "good" : "neutral")}
-    </section>
-    ${panel("Донатная лавка", "Покупка происходит только на сайте. После оплаты предмет нужно забрать в игре через лавку доната.", `
-      ${focusItemId ? `<div class="notice">Открыт товар по прямой ссылке: <strong>${esc(focusItemId)}</strong>.</div>` : ""}
-      ${table("player-donation-shop", rows, [
-      { key: "display_name", label: "Предмет", render: value => `<strong>${esc(cleanText(value || "Предмет"))}</strong>` },
-      { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
-      { key: "effect_description", label: "Эффект", render: value => short(value || "", 110) },
-      { key: "cooldown_seconds", label: "Кулдаун", render: value => value ? `${value} сек.` : "—" },
-      { key: "status_text", label: "Статус", render: (value, row) => pill(value, row.owned_active ? "good" : (row.claim_available ? "warn" : "neutral")) },
-      { key: "action_html", label: "Действие", render: value => value }
-    ], { pageSize: 10 })}
-    `)}
-    ${panel("Правила выдачи", "Игровой мир остаётся единственной точкой физической выдачи и возврата.", safetyRail([
-      ["Покупка", "После списания donation появится claim со статусом «Заберите предмет в игре».", "good"],
-      ["Выдача", "Физическая выдача идёт только через блок лавки в Minecraft.", "warn"],
-      ["Возврат", "Если предмет потерян внешне, бесплатный возврат идёт только через экран «Вернуть утерянные предметы».", "neutral"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои донат-предметы</button>`)}
-  `);
+  return getPlayerDonationPages().loadPlayerDonationShop();
 }
 
 async function loadPlayerDonationItems() {
-  setLoading("Загрузка донат-предметов");
-  const me = await api("/api/player/me");
-  state.user = me.account || {};
-  const linked = Boolean(state.user.linked);
-  if (!linked) {
-    setView(panel("Мои донат-предметы", "Сначала привяжи Minecraft-ник.", `
-      <div class="notice">Без привязки нельзя понять, какие claims и item instances принадлежат твоему игровому персонажу.</div>
-    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`));
-    return;
-  }
-  const owned = await safeApi("/api/player/shop/owned", { linked: true, claims: [], instances: [], summary: {} });
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Выдачи", asArray(owned.claims).length, "Ожидают или уже завершены", asArray(owned.claims).length ? "warn" : "neutral")}
-      ${metric("Активные", owned.summary?.active || 0, "Сейчас у игрока", (owned.summary?.active || 0) ? "good" : "neutral")}
-      ${metric("Reclaimable", owned.summary?.reclaimable || 0, "Можно вернуть через лавку", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
-      ${metric("Ожидают выдачи", owned.summary?.claimPending || 0, "Выдача и review идут только в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
-    </section>
-    ${panel("Выдачи и покупки", "Сайт показывает статус, но физическая выдача идёт только через игровую лавку.", table("player-donation-owned-claims", asArray(owned.claims), [
-      { key: "purchase_created_at", label: "Покупка", render: value => dt(value) },
-      { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
-      { key: "price_donation", label: "Цена", render: value => formatDonate(value || 0) },
-      { key: "status", label: "Claim", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
-      { key: "purchase_status", label: "Покупка", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
-    ], { pageSize: 12 }))}
-    ${panel("Выданные экземпляры", "Только база статусов решает, является ли предмет активным, потерянным или недействительным.", table("player-donation-owned-instances", asArray(owned.instances), [
-      { key: "updated_at", label: "Обновлён", render: value => dt(value) },
-      { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
-      { key: "status", label: "Статус", render: value => pill(statusLabel(value || "pending"), artifactStatusTone(value)) }
-    ], { pageSize: 12 }))}
-    ${panel("Как это работает", "Возврат и anti-dupe проверяются только в игре и только через официальный workflow.", safetyRail([
-      ["Claim", "Если статус UNCLAIMED, предмет нужно забрать в игровой лавке.", "good"],
-      ["Reclaim", "LOST_RECLAIMABLE возвращается по одному предмету за раз.", "warn"],
-      ["Broken/Consumed", "BROKEN и CONSUMED бесплатно не возвращаются.", "bad"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('donation-shop')">Вернуться в донат-лавку</button>`)}
-  `);
+  return getPlayerDonationPages().loadPlayerDonationItems();
 }
 
-window.playerCreateDonationSession = async (amount) => {
-  if (state.donationBusy) return;
-  try {
-    state.donationBusy = true;
-    const result = await api("/api/player/donation/sbp/session", {
-      method: "POST",
-      body: JSON.stringify({ amount: number(amount || 0), idempotency_key: randomActionKey("don-session") })
-    });
-    state.donationSessionId = donationSessionKey(result?.session);
-    if (state.donationSessionId) setStoredUiState("copimineDonationSessionId", state.donationSessionId);
-    toast(`Создана сессия на ${number(amount || 0)} Donation.`);
-    loadPlayerDonationBalance();
-  } catch (err) {
-    toast(err.message, true);
-  } finally {
-    state.donationBusy = false;
-  }
-};
-
-window.playerRefreshDonationSession = async () => {
-  if (!state.donationSessionId) {
-    toast("Активной сессии нет.", true);
-    return;
-  }
-  await loadPlayerDonationBalance();
-};
-
-window.playerForgetDonationSession = () => {
-  state.donationSessionId = "";
-  removeStoredUiState("copimineDonationSessionId");
-  loadPlayerDonationBalance();
-};
-
-window.playerCopyDonationSessionCode = async () => {
-  if (!state.donationSessionId) return;
-  await copyText(state.donationSessionId.slice(-8), "Код сессии скопирован");
-};
-
-window.playerCopyDonationPaymentUrl = async () => {
-  if (!state.donationSessionId) return;
-  await copyText(`${location.origin}/#donation-balance?session=${encodeURIComponent(state.donationSessionId)}`, "Ссылка оплаты скопирована");
-};
-
-window.playerBuyDonationItem = async (itemId, displayName = "предмет", price = 0) => {
-  try {
-    if (!window.confirm(`Списать ${number(price || 0)} Donation за «${cleanText(displayName || itemId || "предмет")}»?`)) {
-      return;
-    }
-    const result = await api("/api/player/shop/purchase-intent", {
-      method: "POST",
-      body: JSON.stringify({ item_id: String(itemId || ""), idempotency_key: randomActionKey("don-buy") })
-    });
-    toast(`Покупка создана. Предмет ${result.itemId} забирается в игре.`);
-    loadPlayerDonationShop();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+window.playerCreateDonationSession = async (amount) => getPlayerDonationPages().playerCreateDonationSession(amount);
+window.playerRefreshDonationSession = async () => getPlayerDonationPages().playerRefreshDonationSession();
+window.playerForgetDonationSession = () => getPlayerDonationPages().playerForgetDonationSession();
+window.playerCopyDonationSessionCode = async () => getPlayerDonationPages().playerCopyDonationSessionCode();
+window.playerCopyDonationPaymentUrl = async () => getPlayerDonationPages().playerCopyDonationPaymentUrl();
+window.playerBuyDonationItem = async (itemId, displayName = "предмет", price = 0) =>
+  getPlayerDonationPages().playerBuyDonationItem(itemId, displayName, price);
 
 async function loadPlayerArtifacts() {
   setLoading("Загрузка предметов");
@@ -4519,6 +3921,3 @@ Object.assign(dataInputHandlers, {
 });
 
 boot();
-
-
-

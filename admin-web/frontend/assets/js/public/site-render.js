@@ -64,13 +64,13 @@ function roleRoute(role) {
 function roleLabel(role) {
   switch (String(role || "")) {
     case "player":
-      return "Открыть кабинет игрока";
+      return "Открыть кабинет";
     case "junior_admin":
-      return "Открыть кабинет младшего админа";
+      return "Открыть кабинет";
     case "admin":
-      return "Открыть админ-панель";
+      return "Открыть кабинет";
     case "owner":
-      return "Открыть панель владельца";
+      return "Открыть кабинет";
     default:
       return "Открыть кабинет";
   }
@@ -271,12 +271,12 @@ export function createHomepageRenderer() {
     }
     if (heroMiniText) {
       heroMiniText.textContent = available
-        ? `В архиве ${files.length || 0} клиентских файлов${requiredExternal.length ? `, ещё ${requiredExternal.length} мод ставится отдельно` : ""}. SHA1: ${shortSha(modpack.sha1)}.`
+        ? `В архиве ${files.length || 0} файлов${requiredExternal.length ? `, ещё ${requiredExternal.length} мод ставится отдельно` : ""}. SHA1: ${shortSha(modpack.sha1)}.`
         : "Архив модов пока не опубликован.";
     }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
-        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов. Внутри уже лежат CopiMineClient, анимации, голосовой чат, базовые библиотеки и клиентские улучшения для графики.`
+        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов. Внутри лежат CopiMineClient, анимации, голосовой чат и обязательные библиотеки.`
         : "Архив модов ещё не собран или временно недоступен.";
     }
     if (modpackMetaGrid) {
@@ -376,7 +376,7 @@ export function createHomepageRenderer() {
     const elections = status.elections || {};
     replaceChildrenSafe(statusGrid, [
       cardStrong("Сервер", server.online ? "Онлайн" : "Нет ответа", formatLatency(server.latencyMs)),
-      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков открыт" : "Список игроков временно скрыт"),
+      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков открыт" : "Список игроков скрыт"),
       cardStrong("Выборы", elections.active ? "Активны" : "Пауза", elections.active ? `${Number(elections.candidates || 0)} кандидатов` : "Сейчас нет активной кампании"),
       cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Ресурспак обязателен" : "Ресурспак опционален"),
     ]);

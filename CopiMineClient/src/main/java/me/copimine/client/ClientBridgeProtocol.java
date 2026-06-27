@@ -2,6 +2,7 @@ package me.copimine.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 
 import java.util.LinkedHashSet;
@@ -73,10 +74,6 @@ public final class ClientBridgeProtocol {
                         sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
                         return;
                     }
-                    if (IrisCompat.shaderPackActive() && !managerAllowsVisualsWhenIrisShaderpackActive(manager)) {
-                        sendVisualError(payload.seq(), payload.effectId(), "iris-shaderpack-active");
-                        return;
-                    }
                     manager.start(payload.effectId(), payload.seq(), payload.durationSeconds(), payload.intensity(), payload.clearPolicy());
                     sendVisualAck(payload.seq(), payload.effectId(), "STARTED");
                 });
@@ -98,7 +95,7 @@ public final class ClientBridgeProtocol {
         if (!ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return false;
         }
-        irisShaderPackActive = IrisCompat.shaderPackActive();
+        irisShaderPackActive = detectIrisShaderPackInUse();
         ClientPlayNetworking.send(BridgePayload.hello(sessionId, clientVersion, supportedEffects(), irisShaderPackActive));
         helloSent = true;
         lastReportedIrisShaderPackActive = irisShaderPackActive;
@@ -109,7 +106,7 @@ public final class ClientBridgeProtocol {
         if (!connected || !helloSent || !helloAcknowledged || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return;
         }
-        irisShaderPackActive = IrisCompat.shaderPackActive();
+        irisShaderPackActive = detectIrisShaderPackInUse();
         ClientPlayNetworking.send(BridgePayload.capabilitiesUpdate(sessionId, clientVersion, supportedEffects(), irisShaderPackActive));
         lastReportedIrisShaderPackActive = irisShaderPackActive;
     }
@@ -181,7 +178,7 @@ public final class ClientBridgeProtocol {
             return;
         }
         long now = System.currentTimeMillis();
-        irisShaderPackActive = IrisCompat.shaderPackActive();
+        irisShaderPackActive = detectIrisShaderPackInUse();
         if (irisShaderPackActive != lastReportedIrisShaderPackActive) {
             sendCapabilitiesUpdate();
         }
@@ -219,7 +216,7 @@ public final class ClientBridgeProtocol {
                 + ", lastPing=" + ageSeconds(lastServerPingAt)
                 + ", lastAckSeq=" + lastAckSeq
                 + ", irisShaderPackActive=" + (irisShaderPackActive ? "yes" : "no")
-                + ", renderer=fullscreen-hud-overlay/no-shader-injection"
+                + ", renderer=fullscreen-hud-overlay"
                 + ", lastError=" + (lastError.isBlank() ? "-" : lastError);
     }
 
@@ -246,7 +243,17 @@ public final class ClientBridgeProtocol {
         return manager != null && manager.serverVisualsAllowed();
     }
 
-    private static boolean managerAllowsVisualsWhenIrisShaderpackActive(ClientVisualManager manager) {
-        return manager == null || manager.allowVisualsWhenIrisShaderpackActive();
+    private static boolean detectIrisShaderPackInUse() {
+        try {
+            if (!FabricLoader.getInstance().isModLoaded("iris")) {
+                return false;
+            }
+            Class<?> irisApiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+            Object irisApi = irisApiClass.getMethod("getInstance").invoke(null);
+            Object value = irisApiClass.getMethod("isShaderPackInUse").invoke(irisApi);
+            return value instanceof Boolean enabled && enabled;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 }

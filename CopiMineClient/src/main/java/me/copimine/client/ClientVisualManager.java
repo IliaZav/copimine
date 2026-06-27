@@ -72,21 +72,7 @@ public final class ClientVisualManager {
     }
 
     public void clearAll(String reason) {
-        clearAll(null, reason);
-    }
-
-    public void clearAll(FinishedVisualHandler finishedHandler, String reason) {
-        List<ActiveVisual> cleared = new ArrayList<>(active.values());
         active.clear();
-        if (finishedHandler == null) {
-            return;
-        }
-        String finishReason = (reason == null || reason.isBlank()) ? "cleared" : reason;
-        for (ActiveVisual visual : cleared) {
-            if (visual.seq() > 0L) {
-                finishedHandler.onFinished(visual.seq(), visual.effectId(), finishReason);
-            }
-        }
     }
 
     public void tick(FinishedVisualHandler finishedHandler) {
@@ -126,21 +112,22 @@ public final class ClientVisualManager {
     }
 
     public String statusLine() {
-        boolean irisActive = IrisCompat.shaderPackActive();
+        boolean irisActive = ClientBridgeProtocol.isIrisShaderPackActive();
+        String irisBlend = irisActive ? "softened-overlay" : "normal-overlay";
         if (active.isEmpty()) {
             return "CopiMineClient: active visuals = none, render_when_hud_hidden=" + config.renderWhenHudHidden()
-                    + ", allow_when_iris_shaderpack_active=" + yesNo(config.allowVisualsWhenIrisShaderpackActive())
                     + ", irisShaderPackActive=" + yesNo(irisActive)
-                    + ", route=fullscreen-hud-overlay/no-shader-injection";
+                    + ", route=fullscreen-hud-overlay"
+                    + ", irisBlend=" + irisBlend;
         }
         ActiveVisual first = active.values().iterator().next();
         long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1000L);
         return "CopiMineClient: " + first.effectId() + " / " + secondsLeft + "s / active=" + active.size()
                 + " / lastSeq=" + lastServerSeq
                 + " / render_when_hud_hidden=" + config.renderWhenHudHidden()
-                + " / allow_when_iris_shaderpack_active=" + yesNo(config.allowVisualsWhenIrisShaderpackActive())
                 + " / irisShaderPackActive=" + yesNo(irisActive)
-                + " / route=fullscreen-hud-overlay/no-shader-injection";
+                + " / route=fullscreen-hud-overlay"
+                + " / irisBlend=" + irisBlend;
     }
 
     public String activeSummary() {
@@ -160,10 +147,6 @@ public final class ClientVisualManager {
 
     public boolean serverVisualsAllowed() {
         return config.allowServerVisuals();
-    }
-
-    public boolean allowVisualsWhenIrisShaderpackActive() {
-        return config.allowVisualsWhenIrisShaderpackActive();
     }
 
     private void drawEffect(DrawContext context, int width, int height, ActiveVisual visual, float pulse, float routeAlphaMultiplier) {
@@ -229,7 +212,7 @@ public final class ClientVisualManager {
     }
 
     private float effectiveAlphaMultiplier() {
-        return IrisCompat.shaderPackActive() ? Math.min(IRIS_ALPHA_MULTIPLIER, config.irisOverlayAlphaMultiplier()) : 1.0F;
+        return ClientBridgeProtocol.isIrisShaderPackActive() ? IRIS_ALPHA_MULTIPLIER : 1.0F;
     }
 
     private int alpha(int rgb, float alpha) {

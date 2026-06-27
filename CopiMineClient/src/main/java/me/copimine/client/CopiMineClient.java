@@ -23,9 +23,6 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientBridgeProtocol.registerNetworking(visualManager);
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> visualManager.render(drawContext));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.player != null && client.player.isDead()) {
-                visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death");
-            }
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
             ClientBridgeProtocol.tickNetwork(client);
         });
@@ -34,7 +31,7 @@ public final class CopiMineClient implements ClientModInitializer {
             ClientBridgeProtocol.onDisconnect();
             visualManager.clearAll("disconnect");
         });
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change"));
+        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll("world_change"));
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
     }
 
@@ -109,7 +106,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                                 })))
                                 .then(ClientCommandManager.literal("clear")
                                         .executes(context -> {
-                                            visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "manual");
+                                            visualManager.clearAll("manual");
                                             context.getSource().sendFeedback(Text.literal("Визуалы очищены"));
                                             return 1;
                                         })))

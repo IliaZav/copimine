@@ -1073,6 +1073,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openCikSealPlayerPanel(Player chair, Player target) throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(chair);
+            return;
+        }
         if(!hasAdmin(chair)&&!isChair(chair)){warn(chair,"Печать ЦИК работает только у председателя ЦИК или администрации."); return;}
         String eid=issuableElectionId();
         boolean hasElection=eid!=null&&!eid.isBlank();
@@ -1099,6 +1103,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openApplicationsIssue(Player p)throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(p);
+            return;
+        }
         Menu m=new Menu("appissue"); create(m,54,"&e&lВыдача заявок");
         String eid=activeOrLatestElectionId();
         long issued=eid==null?0:scalarLong("SELECT COUNT(*) FROM cmv7_application_issues WHERE election_id=?",eid);
@@ -1117,6 +1125,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         nav(m,"open:elections","open:applications-issue"); p.openInventory(m.inv);
     }
     private void openBallotsIssue(Player p)throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(p);
+            return;
+        }
         Menu m=new Menu("ballotissue"); create(m,54,"&f&lВыдача бюллетеней");
         String eid=activeOrLatestElectionId();
         long issuedBallots=eid==null?0:scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid);
@@ -1141,6 +1153,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openApplicationIssuesLedger(Player p)throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(p);
+            return;
+        }
         Menu m=new Menu("application-issues"); create(m,54,"&6&lВыданные книги заявок");
         String eid=activeOrLatestElectionId();
         if(eid==null){btn(m,22,Material.BARRIER,"&cНет выборов",List.of("&7Сначала запусти цикл."),"none");}
@@ -1865,6 +1881,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openCitizenElectionHub(Player p)throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(p);
+            return;
+        }
         Menu m=new Menu("citizen-election"); create(m,54,"&6&lВыборы &8| &f"+p.getName());
         String eid=activeOrLatestElectionId();
         if(eid==null){
@@ -1966,6 +1986,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openBallotCandidateHub(Player p, ItemStack ballot, String stationId)throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(p);
+            return;
+        }
         if(ballot!=null&&!requireElectionItemOwner(p,ballot,"ballot"))return;
         String eid=first(electionItemString(ballot,"election"),activeOrLatestElectionId());
         String owner=first(electionItemString(ballot,"owner"),"");
@@ -1999,6 +2023,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openPollingStationHub(Player p,Block block)throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(p);
+            return;
+        }
         String eid=activeOrLatestElectionId();
         String station=block==null?"station-gui":pollingStationId(block);
         Menu m=new Menu("polling-station"); create(m,27,"&b&lУчасток &8| &f"+p.getName());
@@ -2773,9 +2801,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String pauseElection(String actor)throws SQLException{ String id=activeElectionId(); if(id==null)return"&cНет активных выборов."; audit(actor,"ULTRA7_ELECTION_PAUSE_REQUEST",id,true); return"&eПауза заменена строгими этапами. Используй мастер выборов."; }
     private String resumeElection(String actor)throws SQLException{ String id=activeOrLatestElectionId(); if(id==null)return"&cНет выборов."; ensureSettings(id,actor); audit(actor,"ULTRA7_ELECTION_RESUME_REQUEST",id,true); return"&aОткрой следующий этап через мастер выборов."; }
     private String stopElection(String actor)throws Exception{return cancelElection(actor);}
-    private String resetVotes(String actor)throws SQLException{ String id=activeOrLatestElectionId(); if(id==null)return"&cНет выборов."; int v=0,b=0,vs=0; if(tableExists("cmv731_votes"))v+=exec("DELETE FROM cmv731_votes WHERE election_id=?",id); if(tableExists("votes"))v+=exec("DELETE FROM votes WHERE election_id=?",id); if(tableExists("cmv7_ballot_issues"))b+=exec("DELETE FROM cmv7_ballot_issues WHERE election_id=?",id); if(tableExists("ballots"))b+=exec("DELETE FROM ballots WHERE election_id=?",id); if(tableExists("cmv731_vote_sessions"))vs+=exec("DELETE FROM cmv731_vote_sessions WHERE election_id=?",id); exec("UPDATE candidates SET raw_votes=0,admin_adjustment=0 WHERE election_id=?",id); audit(actor,"ULTRA7_RESET_VOTES",id,true); return"&cСброшено: votes="+v+", ballots="+b+", sessions="+vs; }
+    private String resetVotes(String actor)throws SQLException{
+        throw legacyElectionRuntimeDisabledError("reset votes");
+    }
     private String clearCandidates(String actor)throws SQLException{ String id=activeOrLatestElectionId(); if(id==null)return"&cНет выборов."; int n=exec("DELETE FROM candidates WHERE election_id=?",id); return"&cКандидаты очищены: &e"+n; }
-    private String fullReset(String actor)throws SQLException{ String id=activeOrLatestElectionId(); if(id==null)return"&cНет выборов."; int v=0,b=0,vs=0; if(tableExists("cmv731_votes"))v+=exec("DELETE FROM cmv731_votes WHERE election_id=?",id); if(tableExists("votes"))v+=exec("DELETE FROM votes WHERE election_id=?",id); if(tableExists("cmv7_ballot_issues"))b+=exec("DELETE FROM cmv7_ballot_issues WHERE election_id=?",id); if(tableExists("ballots"))b+=exec("DELETE FROM ballots WHERE election_id=?",id); if(tableExists("cmv731_vote_sessions"))vs+=exec("DELETE FROM cmv731_vote_sessions WHERE election_id=?",id); int c=exec("DELETE FROM candidates WHERE election_id=?",id),cur=exec("UPDATE cmv7_election_curators SET active=0 WHERE election_id=?",id); retireActivePresident(actor,"election-full-reset"); exec("UPDATE elections SET status=?,ended_at=?,ended_by=?,winner_uuid='',winner_name='' WHERE id=?",ElectionStatus.CANCELLED.name(),now(),actor,id); exec("UPDATE cmv7_election_settings SET sidebar_visible=0,show_live_results=0,"+COL_VOTE_OPEN+"=0,"+COL_APP_OPEN+"=0,stage=? WHERE election_id=?",ElectionStatus.CANCELLED.name(),id); return"&4Полный сброс: votes="+v+", ballots="+b+", sessions="+vs+", candidates="+c+", curators="+cur; }
+    private String fullReset(String actor)throws SQLException{
+        throw legacyElectionRuntimeDisabledError("full reset");
+    }
     private void addCandidate(String name,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); OfflinePlayer op=Bukkit.getOfflinePlayer(name); String uuid=op.getUniqueId().toString(), display=op.getName()==null?name:op.getName(); if(scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND uuid=?",eid,uuid)==0) exec("INSERT INTO candidates(election_id,uuid,name,display_name,raw_votes,admin_adjustment,removed) VALUES(?,?,?,?,0,0,0)",eid,uuid,display,display); else exec("UPDATE candidates SET removed=0,display_name=? WHERE election_id=? AND uuid=?",display,eid,uuid); }
     private void adjustCandidate(String uuid,int d,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid!=null)exec("UPDATE candidates SET admin_adjustment=COALESCE(admin_adjustment,0)+? WHERE election_id=? AND uuid=?",d,eid,uuid); }
     private void toggleCandidate(String uuid,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid!=null)exec("UPDATE candidates SET removed=CASE WHEN COALESCE(removed,0)=0 THEN 1 ELSE 0 END WHERE election_id=? AND uuid=?",eid,uuid); }
@@ -3105,7 +3137,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String cancelElection(String actor)throws SQLException{String eid=activeElectionId(); if(eid==null)eid=activeOrLatestElectionId(); if(eid==null)return"&cНет выборов."; exec("UPDATE elections SET status=?,ended_at=?,ended_by=? WHERE id=?",ElectionStatus.CANCELLED.name(),now(),actor,eid); syncElectionSettingsStatus(eid,ElectionStatus.CANCELLED,actor); sidebarGlobal=false; audit(actor,"ULTRA7_ELECTION_CANCEL","election="+eid,true); return"&eВыборы отменены."; }
     private void announceInauguration(String actor)throws Exception{String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); ensureSettings(eid,actor); syncElectionSettingsStatus(eid,ElectionStatus.FINISHED,actor); broadcastElectionMoment(actor,"inauguration");}
     private void archiveElectionLifecycle(String actor)throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); ensureSettings(eid,actor); syncElectionSettingsStatus(eid,ElectionStatus.FINISHED,actor); sidebarGlobal=false; audit(actor,"ULTRA7_ELECTION_ARCHIVE",eid,true);}
-    private void announceStage(String actor)throws Exception{String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); String raw=electionSettings(eid).get("stage"); String stage=humanStage(raw); String subtitle=stageSubtitle(raw); String snd=stageSound(raw); broadcastElectionMoment(actor,"stage:"+first(raw,"UNKNOWN"),"&6&lВыборы сервера","&f"+subtitle,"&6&lВыборы &8» &fТекущий этап: &e"+stage+" &8| &7"+subtitle,snd);}
+    private void announceStage(String actor)throws Exception{
+        throw legacyElectionRuntimeDisabledError("announce stage");
+    }
 
     private String stageSubtitle(String raw){
         return switch(raw==null?"":raw.toUpperCase(Locale.ROOT)){
@@ -3172,14 +3206,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Bukkit.broadcastMessage(c(chat));
         audit(actor,"ULTRA7_ELECTION_MOMENT","kind="+kind+" chat="+ChatColor.stripColor(c(chat)),false);
     }
-    private void toggleFlag(String actor,String key)throws SQLException{ if(!Set.of(COL_APP_OPEN,COL_VOTE_OPEN,"curators_can_approve","show_live_results","allow_fake_adjustments","sidebar_visible").contains(key))throw new SQLException("bad flag"); String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); int next=onOff(electionSettings(eid).get(key))==0?1:0; exec("UPDATE cmv7_election_settings SET "+key+"=?,updated_at=?,updated_by=? WHERE election_id=?",next,now(),actor,eid); }
-    private void setStage(String actor,String stage)throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); ensureSettings(eid,actor); exec("UPDATE cmv7_election_settings SET stage=?,updated_at=?,updated_by=? WHERE election_id=?",stage,now(),actor,eid);}
+    private void toggleFlag(String actor,String key)throws SQLException{ throw legacyElectionRuntimeDisabledError("toggle flag "+key); }
+    private void setStage(String actor,String stage)throws SQLException{ throw legacyElectionRuntimeDisabledError("set stage "+stage); }
     private void setDuration(String actor,int h)throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); exec("UPDATE elections SET scheduled_end_at=? WHERE id=?",now()+h*3600000L,eid);}
     private void ensureSettings(String eid,String actor)throws SQLException{ if(eid!=null&&scalarLong("SELECT COUNT(*) FROM cmv7_election_settings WHERE election_id=?",eid)==0) exec("INSERT INTO cmv7_election_settings(election_id,"+COL_APP_OPEN+","+COL_VOTE_OPEN+",curators_can_approve,show_live_results,allow_fake_adjustments,sidebar_visible,stage,notes,updated_at,updated_by) VALUES(?,1,0,0,0,1,1,?,'',?,?)",eid,ElectionStatus.DRAFT.name(),now(),actor); }
     private Map<String,String> electionSettings(String eid)throws SQLException{ensureSettings(eid,"SERVER"); Map<String,String> out=new LinkedHashMap<>(); for(Map<String,Object> r:query("SELECT * FROM cmv7_election_settings WHERE election_id=? LIMIT 1",eid)) for(Map.Entry<String,Object> e:r.entrySet()) out.put(e.getKey(),s(e.getValue())); return out;}
     private ElectionStatus parseElectionStatus(String raw){try{return ElectionStatus.valueOf(first(raw,"DRAFT").toUpperCase(Locale.ROOT));}catch(Exception ignored){return switch(first(raw,"").toUpperCase(Locale.ROOT)){case"ACTIVE"->ElectionStatus.APPLICATIONS_OPEN;case"PAUSED"->ElectionStatus.APPLICATIONS_CLOSED;case"ENDED"->ElectionStatus.FINISHED;case"RESET","CANCELLED_FORCE"->ElectionStatus.CANCELLED;default->ElectionStatus.DRAFT;};}}
     private void requireElectionStatus(String eid,ElectionStatus... allowed)throws SQLException{ElectionStatus current=parseElectionStatus(electionStatus(eid)); for(ElectionStatus status:allowed)if(current==status)return; throw new SQLException("Неверный этап выборов: "+humanStatus(current.name()));}
-    private void transitionElectionStatus(String eid,ElectionStatus next,String actor,String action)throws SQLException{if(eid==null||eid.isBlank())throw new SQLException("Нет выборов"); exec("UPDATE elections SET status=? WHERE id=?",next.name(),eid); syncElectionSettingsStatus(eid,next,actor); audit(actor,action,"election="+eid+" status="+next.name(),true);}
+    private void transitionElectionStatus(String eid,ElectionStatus next,String actor,String action)throws SQLException{ throw legacyElectionRuntimeDisabledError("transition status "+next.name());}
     private void syncElectionSettingsStatus(String eid,ElectionStatus status,String actor)throws SQLException{ensureSettings(eid,actor); int app=status==ElectionStatus.APPLICATIONS_OPEN?1:0; int vote=status==ElectionStatus.VOTING_OPEN?1:0; int show=Set.of(ElectionStatus.VOTING_OPEN,ElectionStatus.COUNTING,ElectionStatus.FINISHED,ElectionStatus.SECOND_ROUND_REQUIRED).contains(status)?1:0; int sidebar=status==ElectionStatus.CANCELLED?0:1; exec("UPDATE cmv7_election_settings SET stage=?,"+COL_APP_OPEN+"=?,"+COL_VOTE_OPEN+"=?,show_live_results=?,sidebar_visible=?,updated_at=?,updated_by=? WHERE election_id=?",status.name(),app,vote,show,sidebar,now(),actor,eid);}
     private String liveElectionStatusSql(){return LIVE_ELECTION_STATUSES.stream().map(s->"'"+s.name()+"'").reduce("'ACTIVE'",(a,b)->a+","+b)+",'PAUSED'";}
     private String activeElectionId()throws SQLException{List<Map<String,Object>> r=query("SELECT id FROM elections WHERE status IN ("+liveElectionStatusSql()+") ORDER BY COALESCE(started_at,0) DESC,rowid DESC LIMIT 1"); return r.isEmpty()?null:s(r.get(0).get("id"));}
@@ -3947,7 +3981,71 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void deleteArPlacedBlock(Block b){String world=b.getWorld().getName(); int x=b.getX(),y=b.getY(),z=b.getZ(); dbAsync("AR placed block delete",()->exec("DELETE FROM cmv7_ar_placed_blocks WHERE world=? AND x=? AND y=? AND z=?",world,x,y,z));}
     private void arEvent(String type,Player a,Player target,String mat,int amount,Location loc,String details){long t=now(); String actorUuid=a==null?"":a.getUniqueId().toString(), actorName=a==null?"":a.getName(), targetUuid=target==null?"":target.getUniqueId().toString(), targetName=target==null?"":target.getName(), world=loc==null||loc.getWorld()==null?"":loc.getWorld().getName(); int x=loc==null?0:loc.getBlockX(),y=loc==null?0:loc.getBlockY(),z=loc==null?0:loc.getBlockZ(); dbAsync("AR event "+type,()->exec("INSERT INTO cmv7_ar_events(time,type,actor_uuid,actor_name,target_uuid,target_name,world,x,y,z,material,amount,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",t,type,actorUuid,actorName,targetUuid,targetName,world,x,y,z,mat,amount,details));}
     private void tpArEvent(Player p,String id)throws Exception{List<Map<String,Object>> r=query("SELECT world,x,y,z FROM cmv7_ar_events WHERE id=? LIMIT 1",id); if(r.isEmpty())return; World w=Bukkit.getWorld(s(r.get(0).get("world"))); if(w==null){warn(p,"Мир не найден.");return;} p.teleport(new Location(w,num(r.get(0).get("x"))+.5,num(r.get(0).get("y"))+1,num(r.get(0).get("z"))+.5));}
-    private void startScan(Player actor,int radius,boolean load){World w=actor.getWorld(); int cx=actor.getLocation().getChunk().getX(), cz=actor.getLocation().getChunk().getZ(); List<int[]> chunks=new ArrayList<>(); for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++){int x=cx+dx,z=cz+dz;if(!load&&!w.isChunkLoaded(x,z))continue;chunks.add(new int[]{x,z});} if(chunks.isEmpty()){warn(actor,"Нет чанков.");return;} msg(actor,"&bСкан запущен. Чанков: &e"+chunks.size()); class R implements Runnable{BukkitTask task; int i=0,blocks=0,items=0,cont=0; public void run(){int per=load?2:8; for(int k=0;k<per&&i<chunks.size();k++,i++){int[] a=chunks.get(i); try{Chunk ch=w.getChunkAt(a[0],a[1]); for(BlockState st:ch.getTileEntities()) if(st instanceof Container c){cont++; items+=countAr(c.getInventory());} for(int x=0;x<16;x++)for(int z=0;z<16;z++)for(int y=w.getMinHeight();y<w.getMaxHeight();y++){Material m=ch.getBlock(x,y,z).getType(); if(m==Material.DIAMOND_ORE||m==Material.DEEPSLATE_DIAMOND_ORE)blocks++;}}catch(Throwable ex){getLogger().warning("scan: "+ex);}} if(i>=chunks.size()){task.cancel(); try{exec("INSERT INTO cmv7_ar_scan_reports(time,actor,world,cx,cz,radius,chunks,ar_blocks,ar_items,containers,mode) VALUES(?,?,?,?,?,?,?,?,?,?,?)",now(),actor.getName(),w.getName(),cx,cz,radius,chunks.size(),blocks,items,cont,load?"deep-load":"loaded-only"); msg(actor,"&aСкан завершён. Блоки: &e"+blocks+"&a, предметы: &e"+items);}catch(Exception ex){warn(actor,"Не удалось сохранить отчёт сканирования. Подробности записаны в лог."); getLogger().warning("scan report save: "+ex);}}}} R r=new R(); BukkitTask t=Bukkit.getScheduler().runTaskTimer(this,r,1L,1L); r.task=t;}
+    private void startScan(Player actor,int radius,boolean load){
+        World world=actor.getWorld();
+        int clampedRadius=Math.max(1,Math.min(radius,8));
+        if(load){
+            warn(actor,"Глубокий scan с принудительной загрузкой чанков отключён. Использую только загруженные чанки.");
+        }
+        int centerChunkX=actor.getLocation().getChunk().getX();
+        int centerChunkZ=actor.getLocation().getChunk().getZ();
+        List<Chunk> chunks=new ArrayList<>();
+        for(int dx=-clampedRadius;dx<=clampedRadius;dx++){
+            for(int dz=-clampedRadius;dz<=clampedRadius;dz++){
+                int chunkX=centerChunkX+dx;
+                int chunkZ=centerChunkZ+dz;
+                if(!world.isChunkLoaded(chunkX,chunkZ))continue;
+                chunks.add(world.getChunkAt(chunkX,chunkZ));
+            }
+        }
+        if(chunks.isEmpty()){
+            warn(actor,"Нет загруженных чанков в радиусе для безопасного scan.");
+            return;
+        }
+        msg(actor,"&bБезопасный scan запущен. Загруженных чанков: &e"+chunks.size());
+        int minBlockX=chunks.stream().mapToInt(chunk->chunk.getX()<<4).min().orElse(actor.getLocation().getBlockX());
+        int maxBlockX=chunks.stream().mapToInt(chunk->(chunk.getX()<<4)+15).max().orElse(actor.getLocation().getBlockX());
+        int minBlockZ=chunks.stream().mapToInt(chunk->chunk.getZ()<<4).min().orElse(actor.getLocation().getBlockZ());
+        int maxBlockZ=chunks.stream().mapToInt(chunk->(chunk.getZ()<<4)+15).max().orElse(actor.getLocation().getBlockZ());
+        dbAsyncLoad("ar safe scan placed blocks",
+                ()->(int)scalarLong("SELECT COUNT(*) FROM cmv7_ar_placed_blocks WHERE world=? AND x BETWEEN ? AND ? AND z BETWEEN ? AND ?",
+                        world.getName(),minBlockX,maxBlockX,minBlockZ,maxBlockZ),
+                placedBlocks->{
+                    class SafeScanRun implements Runnable{
+                        BukkitTask task;
+                        int index=0;
+                        int items=0;
+                        int containers=0;
+                        @Override public void run(){
+                            for(int perTick=0;perTick<4&&index<chunks.size();perTick++,index++){
+                                Chunk chunk=chunks.get(index);
+                                try{
+                                    for(BlockState state:chunk.getTileEntities()){
+                                        if(!(state instanceof Container container))continue;
+                                        containers++;
+                                        items+=countAr(container.getInventory());
+                                    }
+                                }catch(Throwable error){
+                                    getLogger().warning("safe scan: "+safeErr(error));
+                                }
+                            }
+                            if(index<chunks.size())return;
+                            task.cancel();
+                            dbAsyncLoad("save AR safe scan report",
+                                    ()->{
+                                        exec("INSERT INTO cmv7_ar_scan_reports(time,actor,world,cx,cz,radius,chunks,ar_blocks,ar_items,containers,mode) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                                                now(),actor.getName(),world.getName(),centerChunkX,centerChunkZ,clampedRadius,chunks.size(),placedBlocks,items,containers,"loaded-safe");
+                                        return true;
+                                    },
+                                    ignored->msg(actor,"&aСкан завершён. Отслеживаемые AR-блоки: &e"+placedBlocks+"&a, предметы: &e"+items+"&a, контейнеры: &e"+containers),
+                                    error->warn(actor,"Не удалось сохранить отчёт сканирования. Подробности записаны в лог."));
+                        }
+                    }
+                    SafeScanRun run=new SafeScanRun();
+                    run.task=Bukkit.getScheduler().runTaskTimer(this,run,1L,2L);
+                },
+                error->warn(actor,"Не удалось подготовить безопасный scan. Подробности записаны в лог."));
+    }
     private void startCheck(Player admin,Player t)throws Exception{checkReturn.putIfAbsent(t.getUniqueId(),t.getLocation()); checkMode.put(t.getUniqueId(),admin.getUniqueId()); frozen.add(t.getUniqueId()); t.teleport(admin.getLocation()); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(); dbAsync("player check start",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'START',1,?)",time,adminUuid,adminName,targetUuid,targetName,"Проверка")); t.sendTitle(c("&c&lПРОВЕРКА"),c("&fСтой на месте и отвечай администрации"),10,100,20); msg(t,"&cТы вызван на проверку. Voice-chat не блокируется."); staffNotify("&6Игрок вызван на проверку: &e"+t.getName()+" &7админом &f"+admin.getName());}
     private void stopCheck(Player admin,Player t,boolean back)throws Exception{checkMode.remove(t.getUniqueId()); frozen.remove(t.getUniqueId()); Location loc=checkReturn.remove(t.getUniqueId()); if(back&&loc!=null)t.teleport(loc); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(), details=back?"return":"no return"; dbAsync("player check stop",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'STOP',0,?)",time,adminUuid,adminName,targetUuid,targetName,details)); msg(t,"&aПроверка завершена."); staffNotify("&aПроверка завершена: &e"+t.getName()+" &7админом &f"+admin.getName());}
     private void toggleFreeze(Player a,Player t){ if(frozen.remove(t.getUniqueId())){staffNotify("&bFreeze снят: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&aТы разморожен.");}else{frozen.add(t.getUniqueId()); staffNotify("&cFreeze включён: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&cТы заморожен.");}}

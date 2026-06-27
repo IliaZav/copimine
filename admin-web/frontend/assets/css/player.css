@@ -47,6 +47,17 @@ body.player-mode .side-brand {
   overflow: hidden;
 }
 
+:root[data-theme="dark"] body.player-mode .side-brand {
+  background:
+    linear-gradient(180deg, rgba(14, 24, 34, 0.96), rgba(12, 20, 29, 0.98)),
+    radial-gradient(circle at top right, rgba(125, 216, 255, 0.1), transparent 30%);
+  border-color: rgba(125, 216, 255, 0.16);
+}
+
+:root[data-theme="dark"] body.player-mode .side-brand-copy span {
+  color: rgba(223, 233, 241, 0.72);
+}
+
 body.player-mode .side-brand-logo {
   width: 56px;
   height: 56px;

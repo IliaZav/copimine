@@ -172,7 +172,7 @@ const publicFeatures = {
   bank: {
     kicker: "Банк AR",
     title: "Один счёт для банкомата, сайта и игровых оплат",
-    text: "Банк игрока, покупки и переводы сходятся в одном кабинете. Игровые действия подтверждаются отдельно и не смешиваются с витриной сайта.",
+    text: "Банк, покупки и переводы собраны в одном кабинете. Игровые действия подтверждаются отдельно и не смешиваются с витриной сайта.",
     icon: "/assets/mc-icons/item/diamond_ore.png"
   },
   elections: {
@@ -183,8 +183,8 @@ const publicFeatures = {
   },
   president: {
     kicker: "Президент",
-    title: "Законы и налог видны всему серверу",
-    text: "После победы президент получает мандат, предлагает законы, делает обращения игрокам и может настраивать еженедельный налог.",
+    title: "Законы, обращения и открытая казна",
+    text: "После победы президент получает мандат, предлагает законы, делает обращения игрокам и работает с проектной казной.",
     icon: "/assets/mc-icons/item/nether_star.png"
   },
   artifacts: {
@@ -196,7 +196,7 @@ const publicFeatures = {
   donation: {
     kicker: "Донат",
     title: "Отдельный donation-баланс и owner-bound предметы",
-    text: "Пополнение сейчас работает в тестовом платёжном режиме, а предметы покупаются на сайте и забираются уже в игре через лавку.",
+    text: "Пополнение идёт через отдельный donation-баланс, а предметы покупаются на сайте и забираются уже в игре через лавку.",
     icon: "/assets/mc-icons/item/nether_star.png"
   }
 };
@@ -1334,7 +1334,7 @@ function humanizeAuditAction(value) {
     stage_changed: "Сменён этап выборов",
     law_submitted: "Президент предложил закон",
     law_published: "Закон опубликован",
-    tax_set: "Назначен налог",
+    tax_set: "Обновлена казна",
     president_assigned: "Выбран президент",
     election_reset: "Выборы очищены"
   };
@@ -1350,8 +1350,8 @@ function humanizeBankAction(row = {}) {
     deposit: "Пополнение счёта",
     withdraw: "Снятие со счёта",
     artifact_purchase: "Покупка артефакта",
-    tax_payment: "Оплата налога",
-    tax: "Оплата налога",
+    tax_payment: "Платёж в казну",
+    tax: "Платёж в казну",
     repair: "Ремонт предмета",
     issue: "Выдача",
     refund: "Возврат"
@@ -1812,7 +1812,7 @@ function renderPublicStatus(status = {}, config = {}) {
     runtimeNotes.append(
       buildTopNote("Личный кабинет", "Регистрация, привязка ника, банк AR и история операций."),
       buildTopNote("Выборы", elections.active ? "Активная стадия видна в панели и в игре." : "Сейчас нет активного голосования, но ЦИК и участки остаются частью системы."),
-      buildTopNote("Донат", config.donationEnabled ? "Состояние донат-системы включено." : "Реальные платежи сейчас отключены. Доступны только безопасные test/mock сценарии для администрации."),
+      buildTopNote("Донат", config.donationEnabled ? "Донатный контур активен." : "Боевой платёжный провайдер ещё не подключён. Для команды доступны только mock-сессии."),
     );
     const treasuryNotes = makeElement("div", "top-note-list");
     treasuryNotes.append(
@@ -1956,11 +1956,11 @@ function syncAuthUiLegacyUnused() {
   const note = loginCard.querySelector(".login-note");
 
   if (true) {
-    if (brandText) brandText.textContent = "Кабинет игрока: банк, привязка и покупки";
+    if (brandText) brandText.textContent = "Личный кабинет CopiMine";
     if (lead) lead.textContent = isRegister ? "Создать аккаунт" : "Вход";
     if (support) support.textContent = isRegister
       ? "Зарегистрируй отдельный логин сайта. Minecraft-ник подтверждается позже одноразовым кодом на сервере."
-      : "Войди логином сайта. После входа откроются банк, налог, история операций и привязка Minecraft.";
+      : "Войди логином сайта. После входа откроются банк, история операций и привязка Minecraft.";
     if (usernameLabel) usernameLabel.textContent = "Логин сайта";
     if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
     $("username").placeholder = "Придумай логин";
@@ -1968,7 +1968,7 @@ function syncAuthUiLegacyUnused() {
     if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Открыть кабинет";
     if (note) note.textContent = isRegister
       ? "Пароль от Minecraft здесь никогда не нужен. Укажи свой игровой ник и подтверди его кодом в игре."
-      : "После входа можно запросить код привязки, настроить PIN и пользоваться переводами и оплатой налога.";
+      : "После входа можно запросить код привязки, настроить PIN и пользоваться переводами.";
   } else {
     if (brandText) brandText.textContent = "Рабочий кабинет сервера";
     if (lead) lead.textContent = "Вход";
@@ -2653,14 +2653,14 @@ async function loadElections() {
   const pollingStations = asArray(detail.pollingStations);
   const voteDeposits = asArray(detail.voteDeposits);
   const auditRows = asArray(detail.audit);
-  const tax = asArray(detail.taxes)[0] || {};
+  const treasuryBudget = Number(detail.treasury?.balance || detail.presidentBudget?.balance_ar || 0);
   state.electionApplications = Object.fromEntries(applicationRows.map((row) => [row.id, row]));
   setView(`
     <section class="dashboard-hero election-hero">
       <div class="hero-copy">
         <span class="hero-kicker">Выборы CopiMine</span>
         <h2>${esc(electionStageLabel(election.current_stage || election.status || web.stageTitle, "Пауза"))}</h2>
-        <p>Сайт показывает ход выборов понятным языком: заявки кандидатов, участки ЦИК, результаты, президента, законы и налог без сырых команд и технических реестров.</p>
+        <p>Сайт показывает ход выборов понятным языком: заявки кандидатов, участки ЦИК, результаты, президента, законы и открытую часть казны без сырых команд и технических реестров.</p>
         <div class="hero-actions">
           ${pill(`Тур ${esc(election.current_round || summary.round || web.raw?.round || 1)}`, "neutral")}
           ${pill(`${esc(summary.candidateCount ?? candidateRows.length)} `, candidateRows.length ? "good" : "warn")}
@@ -2685,8 +2685,8 @@ async function loadElections() {
         </div>
         <div class="hero-tile">
           <img src="/assets/mc-icons/item/diamond.png" alt="" />
-          <strong>${tax.amount ? formatAr(tax.amount) : "не назначен"}</strong>
-          <span>налог президента</span>
+          <strong>${formatAr(treasuryBudget)}</strong>
+          <span>открытая казна</span>
         </div>
       </div>
     </section>
@@ -2700,7 +2700,7 @@ async function loadElections() {
         ["Режим сайта", data.readOnly ? "Только просмотр" : "Управление разрешено"]
       ]), siteBulletList([
         "Управление выборами перенесено в игровые GUI.",
-        "Сайт показывает статусы, книги кандидатов, законы и оплату налога.",
+        "Сайт показывает статусы, книги кандидатов, законы и открытую часть казны.",
         "Опасные действия здесь не дублируются."
       ]))}
       ${panel("Пульт цикла", "Сайт больше не дублирует опасные election actions. Управление идёт только через игровые GUI CopiMineElectionCore.", `
@@ -2712,7 +2712,7 @@ async function loadElections() {
         <div class="spacer-12"></div>
         ${siteBulletList([
           "Открывай /cadm -> Выборы для запуска этапов, подсчёта и выбора победителя.",
-          "Сайт оставляет только обзор, книги кандидатов, законы и оплату налога.",
+          "Сайт оставляет только обзор, книги кандидатов, законы и открытую часть казны.",
           "Legacy emergency buttons здесь больше не публикуются."
         ])}
       `)}
@@ -2747,11 +2747,11 @@ async function loadElections() {
           </article>
         `).join("")}</div>` : empty("Новых законов на проверке нет", "Когда президент отправит новый закон или замену, он появится здесь.")}
       `)}
-      ${panel("Налог", "Налог задаёт президент, а игроки могут оплачивать его частями через сайт и игру.", kv([
-        ["Текущий налог", tax.amount ? formatAr(tax.amount) : "не установлен"],
-        ["Статус", tax.amount ? "приём оплаты открыт" : "налог пока не назначен"],
-        ["Оплата", "через игру и личный кабинет"],
-        ["Публичность", "без раскрытия плательщиков"]
+      ${panel("Казна", "Сайт показывает только открытую часть казны: баланс, владельца и последние публичные движения.", kv([
+        ["Баланс", formatAr(treasuryBudget)],
+        ["Владелец", detail.treasury?.ownerName || overview.president || "не указан"],
+        ["Источник", "игровая экономика и витрины"],
+        ["Публичность", "без служебных деталей и приватных переводов"]
       ]))}
     </section>
     ${panel("Журнал цикла", "Этапы выборов, книги кандидатов, законы и выбор президента.", `
@@ -3393,7 +3393,7 @@ async function loadAdmins() {
       ["Подтверждение", `Создание требует код ${CONFIRM_HEADER}.`, "warn"]
     ])}
     <section class="layout-grid grid-2">
-      ${panel("Команда сервера", "Кто уже имеет доступ к рабочему кабинету.", table("admins", rows, [
+      ${panel("Администрация", "Кто уже имеет доступ к рабочему кабинету.", table("admins", rows, [
         { key: "username", label: "Ник" },
         { key: "role", label: "Роль", render: value => pill(value === "junior_admin" ? "младший админ" : (value || "admin"), value === "junior_admin" ? "neutral" : "good") },
         { key: "enabled", label: "Включён", render: v => v ? pill("да", "good") : pill("нет", "bad") },
@@ -3562,7 +3562,7 @@ async function loadPlayerCabinet() {
       ${metric("Баланс AR", linked ? formatAr(balance) : "—", linked ? "Доступен в игре и на сайте" : "Сначала привяжи Minecraft", linked ? "good" : "neutral")}
       ${metric("Whitelist", whitelistStatus, whitelisted ? "Доступ к серверу уже открыт" : "Заявка отправляется один раз", whitelisted ? "good" : (whitelistRequest?.status === "PENDING" ? "warn" : "neutral"))}
     </section>
-    ${panel("Личный кабинет", "Профиль, доступ к серверу, банк и налоги без технического мусора.", kv([
+    ${panel("Личный кабинет", "Профиль, доступ к серверу, банк и привязка без технического мусора.", kv([
       ["Логин", state.user.username || "—"],
       ["Роль", state.user.role || "игрок"],
       ["Minecraft-ник", state.user.minecraftName || "—"],
@@ -3635,7 +3635,7 @@ async function loadPlayerLink() {
         ["Привязан", linked],
         ["Создан", dt(state.user.createdAt)]
       ]))}
-      ${panel("Как это работает", "Связка аккаунта занимает меньше минуты и открывает банк, переводы и налог.", safetyRail([
+      ${panel("Как это работает", "Связка аккаунта занимает меньше минуты и открывает банк, переводы и кабинет игрока.", safetyRail([
         ["1. Запроси код", "Укажи свой игровой ник, пока ты онлайн на сервере.", "good"],
         ["2. Прочитай в игре", "Код приходит в Minecraft-чат через сервер.", "neutral"],
         ["3. Подтверди на сайте", "Введи код здесь, чтобы открыть банк и личный кабинет игрока.", "good"]
@@ -3810,7 +3810,7 @@ window.legacyPlayerTransferDeprecated = async () => {
 };
 
 window.playerPayElectionTax = async () => {
-  toast("Президентский налог отключён.", true);
+  toast("Эта механика отключена.", true);
 };
 
 window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {

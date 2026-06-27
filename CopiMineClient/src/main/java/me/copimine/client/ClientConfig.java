@@ -15,16 +15,12 @@ public final class ClientConfig {
     private static final String KEY_DEBUG_OVERLAY = "debug_overlay";
     private static final String KEY_MAX_VISUAL_DURATION_SECONDS = "max_visual_duration_seconds";
     private static final String KEY_ALLOW_SERVER_VISUALS = "allow_server_visuals";
-    private static final String KEY_ALLOW_VISUALS_WHEN_IRIS_SHADERPACK_ACTIVE = "allow_visuals_when_iris_shaderpack_active";
-    private static final String KEY_IRIS_OVERLAY_ALPHA_MULTIPLIER = "iris_overlay_alpha_multiplier";
 
     private final Path path;
     private boolean renderWhenHudHidden = true;
     private boolean debugOverlay;
     private int maxVisualDurationSeconds = 600;
     private boolean allowServerVisuals = true;
-    private boolean allowVisualsWhenIrisShaderpackActive = false;
-    private float irisOverlayAlphaMultiplier = 0.82F;
 
     private ClientConfig(Path path) {
         this.path = path;
@@ -48,9 +44,7 @@ public final class ClientConfig {
         renderWhenHudHidden = parseBoolean(properties.getProperty(KEY_RENDER_WHEN_HUD_HIDDEN), true);
         debugOverlay = parseBoolean(properties.getProperty(KEY_DEBUG_OVERLAY), false);
         allowServerVisuals = parseBoolean(properties.getProperty(KEY_ALLOW_SERVER_VISUALS), true);
-        allowVisualsWhenIrisShaderpackActive = parseBoolean(properties.getProperty(KEY_ALLOW_VISUALS_WHEN_IRIS_SHADERPACK_ACTIVE), false);
         maxVisualDurationSeconds = clamp(parseInt(properties.getProperty(KEY_MAX_VISUAL_DURATION_SECONDS), 600), 1, 600);
-        irisOverlayAlphaMultiplier = clampFloat(parseFloat(properties.getProperty(KEY_IRIS_OVERLAY_ALPHA_MULTIPLIER), 0.82F), 0.10F, 1.0F);
         save();
     }
 
@@ -70,14 +64,6 @@ public final class ClientConfig {
         return allowServerVisuals;
     }
 
-    public boolean allowVisualsWhenIrisShaderpackActive() {
-        return allowVisualsWhenIrisShaderpackActive;
-    }
-
-    public float irisOverlayAlphaMultiplier() {
-        return irisOverlayAlphaMultiplier;
-    }
-
     public void setDebugOverlay(boolean enabled) {
         this.debugOverlay = enabled;
         save();
@@ -91,8 +77,6 @@ public final class ClientConfig {
             properties.setProperty(KEY_DEBUG_OVERLAY, Boolean.toString(debugOverlay));
             properties.setProperty(KEY_MAX_VISUAL_DURATION_SECONDS, Integer.toString(maxVisualDurationSeconds));
             properties.setProperty(KEY_ALLOW_SERVER_VISUALS, Boolean.toString(allowServerVisuals));
-            properties.setProperty(KEY_ALLOW_VISUALS_WHEN_IRIS_SHADERPACK_ACTIVE, Boolean.toString(allowVisualsWhenIrisShaderpackActive));
-            properties.setProperty(KEY_IRIS_OVERLAY_ALPHA_MULTIPLIER, Float.toString(irisOverlayAlphaMultiplier));
             try (OutputStream out = Files.newOutputStream(path)) {
                 properties.store(out, "CopiMineClient settings");
             }
@@ -119,19 +103,7 @@ public final class ClientConfig {
         }
     }
 
-    private static float parseFloat(String raw, float fallback) {
-        try {
-            return Float.parseFloat(raw);
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
     private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private static float clampFloat(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }
 }

@@ -34,7 +34,7 @@ commands:
   appeal:
     description: "CopiMine staff appeal"
     usage: /appeal <problem>
-    aliases: [adminrequest, problem, request, helpadm]
+    aliases: [adminrequest, request, helpadm]
   report:
     description: "CopiMine staff report"
     usage: /report <problem>

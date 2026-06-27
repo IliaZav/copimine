@@ -11,6 +11,7 @@ Transport model:
 - server never requires Iris or OptiFine;
 - if the client mod is missing or stops responding, the server falls back to server overlay or particle visuals;
 - if the player already runs an Iris shaderpack, CopiMineClient does not inject into that shaderpack and does not replace it: the mod uses its own fullscreen HUD overlay renderer.
+- when an Iris shaderpack is active, the client keeps the same HUD overlay route but softens the overlay alpha so the effect does not try to overpower the player's existing shaderpack.
 
 Message envelope:
 1. `type:string`
@@ -79,6 +80,6 @@ Supported effect ids:
 
 Notes:
 - `supports_true_iris_shader=false` is intentional: the mod uses its own fullscreen overlay / shader-like rendering path and does not depend on an external shaderpack;
+- `trueIrisShader=true` only means the player already has an Iris shaderpack enabled; it does not switch CopiMineClient into a different renderer and does not let the server force a true Iris post-process pass;
 - without the client mod, gameplay still works; only the visual route degrades to server fallback;
 - Paper cannot force true per-player post-processing shaders through a normal server resource pack, so "shader-like" here means an optional client-side fullscreen overlay runtime rather than a forced Iris/OptiFine shader.
-- On the current Fabric `1.21.1` target the client overlay route is rendered through `HudRenderCallback`, so it may temporarily overlap some HUD layers such as chat or title, but it does not replace or break the player's active Iris shaderpack.

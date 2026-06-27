@@ -1,6 +1,6 @@
 # CopiMineClient
 
-`CopiMineClient` — необязательный Fabric-клиент для визуальных эффектов `CopiMineNarcotics`.
+`CopiMineClient` — необязательный Fabric-клиент для красивых visual-эффектов CopiMineNarcotics.
 
 Что он даёт:
 - client-side fullscreen overlay / shader-like эффекты без зависимости от Iris и OptiFine;
@@ -9,10 +9,9 @@
 
 Что он не делает:
 - не является обязательным по умолчанию;
-- не даёт преимуществ в геймплее;
+- не даёт преимущества в геймплее;
 - не нужен для базовой работы сервера;
-- не подменяет и не навязывает внешний shaderpack;
-- не внедряется в pipeline активного Iris shaderpack.
+- не подменяет и не навязывает внешний shaderpack.
 
 Установка:
 1. Установить Fabric Loader для Minecraft `1.21.1`.
@@ -30,4 +29,4 @@
 - если мод отсутствует, сервер использует resource-pack overlay или particle fallback;
 - Iris и OptiFine не требуются и не используются как обязательная зависимость;
 - если у игрока уже включён Iris shaderpack, CopiMineClient не заменяет его и не вмешивается в его pipeline: мод рисует свои эффекты как отдельный fullscreen HUD overlay поверх обычного рендера;
-- в текущем таргете Fabric `1.21.1` клиентский overlay route использует `HudRenderCallback`, поэтому эффект может временно перекрывать отдельные HUD-слои вроде chat/title, но не ломает сам shaderpack игрока.
+- при активном Iris shaderpack маршрут не меняется: CopiMineClient остаётся в режиме fullscreen HUD overlay и лишь снижает прозрачность своих эффектов, чтобы они не давили поверх уже включённого shaderpack.

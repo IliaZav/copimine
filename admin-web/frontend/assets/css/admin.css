@@ -53,6 +53,19 @@ body.junior-admin-mode .side-brand {
   overflow: hidden;
 }
 
+:root[data-theme="dark"] body.panel-admin-mode .side-brand,
+:root[data-theme="dark"] body.junior-admin-mode .side-brand {
+  background:
+    linear-gradient(180deg, rgba(14, 24, 34, 0.96), rgba(12, 20, 29, 0.98)),
+    radial-gradient(circle at top right, rgba(125, 216, 255, 0.08), transparent 30%);
+  border-color: rgba(125, 216, 255, 0.14);
+}
+
+:root[data-theme="dark"] body.panel-admin-mode .side-brand-copy span,
+:root[data-theme="dark"] body.junior-admin-mode .side-brand-copy span {
+  color: rgba(223, 233, 241, 0.72);
+}
+
 body.panel-admin-mode .side-brand-logo,
 body.junior-admin-mode .side-brand-logo {
   width: 56px;

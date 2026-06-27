@@ -20,8 +20,10 @@ body.auth-screen .public-site-compact {
   place-items: center;
   padding: clamp(1.25rem, 4vw, 2.5rem);
   background:
-    radial-gradient(circle at top, color-mix(in srgb, var(--accent, #1f9b55) 12%, transparent), transparent 48%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-0, #f4faf5) 92%, #dff0e4 8%), var(--surface-1, #eef6ef));
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--accent, #1f9b55) 18%, transparent), transparent 42%),
+    radial-gradient(circle at 16% 14%, rgba(61, 158, 93, 0.12), transparent 24%),
+    radial-gradient(circle at 86% 10%, rgba(84, 120, 196, 0.1), transparent 20%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-0, #f4faf5) 94%, #dfece2 6%), #eef5ec 44%, #e6efe6 100%);
 }
 
 .auth-card {
@@ -29,16 +31,30 @@ body.auth-screen .public-site-compact {
   display: grid;
   gap: 1.25rem;
   padding: clamp(1.5rem, 3vw, 2rem);
-  border-radius: 1.75rem;
-  border: 1px solid color-mix(in srgb, var(--stroke-strong, #2a653e) 28%, transparent);
-  background: color-mix(in srgb, var(--surface-1, #ffffff) 90%, transparent);
-  box-shadow: 0 1.5rem 3.5rem rgba(10, 34, 20, 0.12);
+  border-radius: 2rem;
+  border: 1px solid color-mix(in srgb, var(--stroke-strong, #2a653e) 22%, transparent);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 251, 247, 0.94)),
+    radial-gradient(circle at top right, rgba(56, 163, 94, 0.08), transparent 28%);
+  box-shadow:
+    0 2rem 4rem rgba(10, 34, 20, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(16px);
 }
 
 .auth-card-head {
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.auth-brand-logo {
+  width: 4.5rem;
+  height: 4.5rem;
+  flex: 0 0 auto;
+  border-radius: 1.35rem;
+  object-fit: cover;
+  box-shadow: 0 1rem 2rem rgba(18, 40, 23, 0.16);
 }
 
 .auth-card-copy {
@@ -48,8 +64,9 @@ body.auth-screen .public-site-compact {
 
 .auth-card-copy h1 {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 2.5rem);
-  line-height: 1;
+  font-size: clamp(2.1rem, 4vw, 2.75rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
 }
 
 .auth-kicker {
@@ -73,17 +90,22 @@ body.auth-screen .public-site-compact {
 
 .auth-form input {
   min-height: 3.25rem;
-  border-radius: 1rem;
+  border-radius: 1.1rem;
   border: 1px solid color-mix(in srgb, var(--stroke-strong, #2a653e) 24%, transparent);
   background: color-mix(in srgb, var(--surface-0, #ffffff) 96%, transparent);
   padding: 0 1rem;
   font: inherit;
   color: var(--text, #142218);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .auth-form input:focus {
   outline: 2px solid color-mix(in srgb, var(--accent, #1f9b55) 35%, transparent);
   outline-offset: 1px;
+  border-color: color-mix(in srgb, var(--accent, #1f9b55) 36%, transparent);
+  box-shadow: 0 0 0 0.3rem color-mix(in srgb, var(--accent, #1f9b55) 12%, transparent);
+  transform: translateY(-1px);
 }
 
 .auth-links {
@@ -103,12 +125,15 @@ body.auth-screen .public-site-compact {
 
 :root[data-theme="dark"] .auth-shell {
   background:
-    radial-gradient(circle at top, rgba(32, 132, 76, 0.2), transparent 45%),
-    linear-gradient(180deg, #07140d, #0b1b12);
+    radial-gradient(circle at 50% 0%, rgba(41, 142, 84, 0.22), transparent 38%),
+    radial-gradient(circle at 18% 18%, rgba(26, 99, 64, 0.22), transparent 24%),
+    linear-gradient(180deg, #07140d, #0b1b12 46%, #08110d);
 }
 
 :root[data-theme="dark"] .auth-card {
-  background: rgba(12, 27, 19, 0.92);
+  background:
+    linear-gradient(180deg, rgba(12, 27, 19, 0.94), rgba(9, 21, 15, 0.96)),
+    radial-gradient(circle at top right, rgba(53, 240, 127, 0.08), transparent 28%);
   border-color: rgba(58, 123, 80, 0.45);
   box-shadow: 0 1.5rem 3.5rem rgba(0, 0, 0, 0.35);
 }
@@ -140,5 +165,11 @@ body.auth-screen .public-site-compact {
 
   .auth-card-head {
     align-items: flex-start;
+  }
+
+  .auth-brand-logo {
+    width: 3.75rem;
+    height: 3.75rem;
+    border-radius: 1.1rem;
   }
 }

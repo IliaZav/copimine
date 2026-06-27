@@ -10,7 +10,7 @@
       "component": "CopiMineClient",
       "version": "0.1.0",
       "license": "Proprietary",
-      "feature": "Наркотики, клиентские визуалы и связка CopiMineClient",
+      "feature": "Клиентский мод CopiMine, визуалы и связка с сервером",
       "required": true
     },
     {
@@ -23,36 +23,52 @@
       "required": true
     },
     {
-      "path": "mods/fabric-api-0.116.12+1.21.1.jar",
+      "path": "mods/fabric-api-0.116.11+1.21.1.jar",
       "component": "Fabric API",
-      "version": "0.116.12+1.21.1",
+      "version": "0.116.11+1.21.1",
       "license": "Apache-2.0",
       "source": "https://modrinth.com/project/P7dR8mSH",
-      "feature": "Библиотека для CopiMineClient и Emotecraft",
+      "feature": "Базовая библиотека для CopiMineClient и клиентских модов",
       "required": true
-    }
-  ],
-  "requiredExternal": [
+    },
     {
+      "path": "mods/voicechat-fabric-1.21.1-2.6.16.jar",
       "component": "Simple Voice Chat",
-      "feature": "Внутриигровой голосовой чат",
-      "distribution": "official-download-only",
+      "version": "2.6.16+1.21.1-fabric",
       "license": "All Rights Reserved",
-      "clientSource": "https://modrinth.com/mod/simple-voice-chat",
-      "serverSource": "https://modrinth.com/plugin/simple-voice-chat",
-      "reason": "CopiMine не встраивает jar с закрытыми правами на перераспространение. Голосовой мод ставится только с официальной страницы автора.",
+      "source": "https://modrinth.com/mod/simple-voice-chat",
+      "feature": "Голосовой чат в игре",
       "required": true
+    },
+    {
+      "path": "mods/iris-fabric-1.8.8+mc1.21.1.jar",
+      "component": "Iris",
+      "version": "1.8.8+mc1.21.1",
+      "license": "GPL-3.0-only",
+      "source": "https://modrinth.com/mod/iris",
+      "feature": "Поддержка шейдеров на клиенте",
+      "required": false
+    },
+    {
+      "path": "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
+      "component": "Sodium",
+      "version": "0.6.13+mc1.21.1",
+      "license": "LGPL-3.0-only",
+      "source": "https://modrinth.com/mod/sodium",
+      "feature": "Оптимизация производительности клиента",
+      "required": false
     }
   ],
+  "requiredExternal": [],
   "installSteps": [
     "Установите Fabric Loader для Minecraft 1.21.1.",
     "Скопируйте все jar из папки mods архива CopiMineMods.zip в .minecraft/mods.",
-    "Для голосового чата отдельно скачайте Simple Voice Chat с официальной страницы и добавьте jar в ту же папку mods."
+    "Если у вас уже стоят другие версии Fabric API, Iris, Sodium или Voice Chat, замените их файлами из архива."
   ],
   "notes": [
-    "Архив уже содержит CopiMineClient, Emotecraft и Fabric API для первого входа.",
-    "Simple Voice Chat обязателен только для голосовой связи и ставится отдельно с официальной страницы автора.",
+    "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris и Sodium.",
+    "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
     "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
-    "Iris остаётся необязательным и не управляется CopiMineClient."
+    "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."
   ]
 }

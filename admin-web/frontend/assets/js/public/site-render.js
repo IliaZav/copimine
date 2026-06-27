@@ -276,7 +276,7 @@ export function createHomepageRenderer() {
     }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
-        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов. Внутри лежат CopiMineClient, анимации и базовые библиотеки. Голосовой мод, если он нужен, ставится только с официальной страницы автора.`
+        ? `Архив ${modpack.filename || "CopiMineMods.zip"} готов. Внутри уже лежат CopiMineClient, анимации, голосовой чат, базовые библиотеки и клиентские улучшения для графики.`
         : "Архив модов ещё не собран или временно недоступен.";
     }
     if (modpackMetaGrid) {

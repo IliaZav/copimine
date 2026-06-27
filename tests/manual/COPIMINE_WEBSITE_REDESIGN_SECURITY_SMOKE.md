@@ -104,5 +104,5 @@
 
 1. `GET /api/public/modpack` returns `available=true`, size, SHA1 and manifest when the archive exists.
 2. The public "Архив модов без внешних лаунчеров" section lists real jars from `modpack_manifest.json`.
-3. `thirdparty/CopiMineMods.zip` contains `CopiMineClient`, `Emotecraft`, `Fabric API`, `checksums.txt`, `modpack_manifest.json`, `README_RU.txt`.
+3. `thirdparty/CopiMineMods.zip` contains `CopiMineClient`, `Emotecraft`, `Fabric API`, `Simple Voice Chat`, `Iris`, `Sodium`, `checksums.txt`, `modpack_manifest.json`, `README_RU.txt`.
 4. The hero download button and the modpack section both point to the same archive URL.

@@ -74,6 +74,16 @@
     min-width: 0;
   }
 
+  .public-brand-logo {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+  }
+
+  .public-brand-copy small {
+    display: none;
+  }
+
   .public-nav .public-mobile-toggle {
     display: inline-flex !important;
     justify-self: end;

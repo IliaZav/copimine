@@ -13,8 +13,11 @@
   <main class="public-site public-site-compact">
     <header class="public-nav">
       <a class="public-brand" href="/index.html" aria-label="CopiMine">
-        <span class="brand-mark brand-mark-small">CM</span>
-        <strong>CopiMine</strong>
+        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
+        <span class="public-brand-copy">
+          <strong>CopiMine</strong>
+          <small>сервер, кабинет и клиент</small>
+        </span>
       </a>
       <nav aria-label="Разделы сайта">
         <a href="/index.html">Главная</a>
@@ -34,8 +37,8 @@
             <span class="hero-kicker">Лавки</span>
             <span class="route-chip">Лавки</span>
           </div>
-          <h1>Лавки разделены по назначению.</h1>
-          <p>AR-предметы, donation-предметы и их правила больше не смешаны. На этой странице только каталог и маршрут покупки.</p>
+          <h1>Лавки CopiMine.</h1>
+          <p>Здесь две отдельные витрины: AR и donation. Цены, правила покупки и порядок выдачи можно посмотреть заранее.</p>
           <div class="public-actions">
             <button id="openArShopBtn" type="button" class="btn btn-secondary">AR-лавка</button>
             <button id="openDonationShopBtn" type="button" class="btn btn-primary">Donation-лавка</button>
@@ -49,7 +52,7 @@
             <div class="brand-banner-copy">
               <span>CopiMine</span>
               <strong>Лавки сервера</strong>
-              <p>Официальные витрины CopiMine для AR и donation.</p>
+              <p>Официальные витрины CopiMine для игровых покупок за AR и именных вещей за donation.</p>
             </div>
           </div>
           <span class="hero-kicker">Правила</span>
@@ -65,24 +68,24 @@
         <div class="section-head">
           <span>Сценарий</span>
           <h2>Как проходит покупка.</h2>
-          <p>Сайт показывает каталог и проводит оплату, а сам предмет забирается уже через игровой блок лавки.</p>
+          <p>Сайт показывает каталог и оформляет покупку, а сама выдача и возврат происходят уже в игре.</p>
         </div>
 
         <div class="public-stage-grid">
           <article class="public-stage-card">
             <span>1</span>
             <strong>Выбери валюту</strong>
-            <p>AR и donation разделены. Перепутать баланс нельзя.</p>
+            <p>AR и donation живут отдельно. У каждой лавки свой баланс и свои правила.</p>
           </article>
           <article class="public-stage-card">
             <span>2</span>
             <strong>Оформи покупку</strong>
-            <p>Списание и запись покупки происходят на сайте, без мгновенной выдачи вещи в браузере.</p>
+            <p>Покупка записывается на сайте, а предмет потом спокойно забирается уже внутри игры.</p>
           </article>
           <article class="public-stage-card">
             <span>3</span>
             <strong>Забери в игре</strong>
-            <p>Выдача, возврат утерянного и защита от дюпа живут уже в игровом плагине.</p>
+            <p>Выдача, возврат утерянного и защита от дюпа работают уже через игровой плагин.</p>
           </article>
         </div>
       </section>
@@ -91,7 +94,7 @@
         <div class="section-head">
           <span>Витрины</span>
           <h2>Витрины магазинов.</h2>
-          <p>Каталог показывает реальные цены и правила текущего сервера. Получение предметов остаётся только в игре.</p>
+          <p>Здесь видны актуальные цены и правила. Сами предметы появляются только в игре.</p>
         </div>
 
         <div class="commerce-grid">
@@ -100,7 +103,7 @@
               <div>
                 <span class="hero-kicker">AR-лавка</span>
                 <h3>Официальные предметы за AR</h3>
-                <p>Игровые предметы за AR с ремонтом и ограничением на активный экземпляр.</p>
+                <p>Игровые предметы за AR с ремонтом и ограничением на один активный экземпляр.</p>
               </div>
               <button id="openArShopBtnMirror" type="button" class="btn btn-secondary">Открыть в кабинете</button>
             </div>
@@ -114,7 +117,7 @@
               <div>
                 <span class="hero-kicker">Donation-лавка</span>
                 <h3>Именные предметы за donation</h3>
-                <p>Пополнение и покупка идут через сайт, а выдача и возврат предметов происходят в игре.</p>
+                <p>Пополнение и покупка идут через сайт, а выдача и возврат именных предметов происходят уже в игре.</p>
               </div>
               <button id="openDonationShopBtnMirror" type="button" class="btn btn-primary">Открыть в кабинете</button>
             </div>
@@ -130,22 +133,22 @@
           <article class="info-card">
             <span class="hero-kicker">AR</span>
             <strong>Игровые предметы</strong>
-            <p>AR-лавка держит игровые покупки, ограничения на экземпляры и ремонт за AR.</p>
+            <p>AR-лавка отвечает за игровые покупки, ремонт и ограничения на активные экземпляры.</p>
           </article>
           <article class="info-card">
             <span class="hero-kicker">Donation</span>
             <strong>Отдельный донатный баланс</strong>
-            <p>Donation не смешивается с AR и пополняется только через отдельные платёжные сессии.</p>
+            <p>Donation не смешивается с AR и пополняется через отдельные платёжные сессии.</p>
           </article>
           <article class="info-card">
             <span class="hero-kicker">Выдача</span>
             <strong>Только через игру</strong>
-            <p>Сайт создаёт покупку и claim, а сам предмет появляется только в игровом интерфейсе.</p>
+            <p>Сайт создаёт покупку и право на выдачу, а сам предмет появляется только в игровом интерфейсе.</p>
           </article>
           <article class="info-card">
             <span class="hero-kicker">Возврат</span>
             <strong>Только при внешней потере</strong>
-            <p>Утерянные donation-предметы можно вернуть поштучно. Израсходованные и сломанные бесплатно не возвращаются.</p>
+            <p>Утерянные donation-предметы можно вернуть поштучно. Израсходованные и сломанные бесплатно не восстанавливаются.</p>
           </article>
         </div>
       </section>

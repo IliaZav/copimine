@@ -917,3 +917,218 @@ body {
 .public-site .hidden {
   display: none !important;
 }
+
+.public-site::before,
+.public-site::after {
+  content: "";
+  position: fixed;
+  inset: auto;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(10px);
+  opacity: 0.9;
+}
+
+.public-site::before {
+  top: 92px;
+  right: min(4vw, 48px);
+  width: clamp(180px, 24vw, 340px);
+  height: clamp(180px, 24vw, 340px);
+  background: radial-gradient(circle, rgba(60, 154, 92, 0.18), transparent 68%);
+}
+
+.public-site::after {
+  left: min(2vw, 24px);
+  bottom: 10vh;
+  width: clamp(220px, 30vw, 400px);
+  height: clamp(220px, 30vw, 400px);
+  background: radial-gradient(circle, rgba(79, 126, 214, 0.12), transparent 70%);
+}
+
+.public-nav {
+  backdrop-filter: blur(18px);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.public-nav:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 50px rgba(78, 72, 54, 0.12);
+}
+
+.public-brand {
+  gap: 14px;
+}
+
+.public-brand-logo {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 16px 28px rgba(19, 42, 24, 0.16);
+}
+
+.public-brand-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.public-brand-copy strong {
+  margin: 0;
+}
+
+.public-brand-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.public-nav a:not(.public-brand) {
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.public-nav a:not(.public-brand):hover,
+.public-nav a:not(.public-brand):focus-visible {
+  transform: translateY(-1px);
+  background: rgba(45, 125, 63, 0.08);
+}
+
+.public-hero,
+.public-section,
+.public-panel,
+.commerce-panel,
+.gateway-card,
+.public-stage-card,
+.info-card,
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.showcase-card,
+.treasury-history-card,
+.shop-item-chip {
+  position: relative;
+  overflow: hidden;
+}
+
+.public-hero::before,
+.public-section::before,
+.public-panel::before,
+.commerce-panel::before,
+.gateway-card::before,
+.public-stage-card::before,
+.info-card::before,
+.modpack-summary-card::before,
+.modpack-file-card::before,
+.modpack-note-card::before,
+.showcase-card::before,
+.treasury-history-card::before,
+.shop-item-chip::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.public-hero {
+  box-shadow:
+    0 28px 70px rgba(57, 61, 41, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.hero-inline-card,
+.public-panel,
+.commerce-panel,
+.gateway-card,
+.public-stage-card,
+.info-card,
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.showcase-card,
+.treasury-history-card,
+.shop-item-chip {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.hero-inline-card:hover,
+.public-panel:hover,
+.commerce-panel:hover,
+.gateway-card:hover,
+.public-stage-card:hover,
+.info-card:hover,
+.modpack-summary-card:hover,
+.modpack-file-card:hover,
+.modpack-note-card:hover,
+.showcase-card:hover,
+.treasury-history-card:hover,
+.shop-item-chip:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 44px rgba(24, 36, 25, 0.11);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+}
+
+.public-actions .btn,
+.commerce-panel-head .btn {
+  box-shadow: 0 12px 22px rgba(24, 36, 25, 0.08);
+}
+
+.public-actions .btn:hover,
+.commerce-panel-head .btn:hover {
+  transform: translateY(-2px);
+}
+
+.hero-media-art.brand-title-stage {
+  padding: clamp(20px, 2.4vw, 30px);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(72, 164, 108, 0.18), transparent 24%),
+    linear-gradient(180deg, rgba(241, 247, 239, 0.94), rgba(231, 240, 232, 0.96));
+}
+
+.brand-banner-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(243, 249, 242, 0.9)),
+    linear-gradient(135deg, rgba(45, 125, 63, 0.08), transparent 54%);
+}
+
+.brand-banner-card img {
+  border-radius: 18px;
+  box-shadow: 0 16px 28px rgba(21, 44, 27, 0.14);
+}
+
+.gateway-card strong,
+.public-stage-card strong,
+.info-card strong,
+.hero-side-card strong,
+.modpack-summary-copy h3,
+.commerce-panel-head h3 {
+  text-wrap: balance;
+}
+
+:root[data-theme="dark"] .public-brand-logo {
+  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme="dark"] .public-nav a:not(.public-brand):hover,
+:root[data-theme="dark"] .public-nav a:not(.public-brand):focus-visible {
+  background: rgba(53, 240, 127, 0.08);
+}
+
+:root[data-theme="dark"] .hero-media-art.brand-title-stage {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(53, 240, 127, 0.16), transparent 24%),
+    linear-gradient(180deg, rgba(10, 24, 15, 0.9), rgba(8, 20, 13, 0.96));
+}
+
+:root[data-theme="dark"] .brand-banner-card {
+  background:
+    linear-gradient(180deg, rgba(12, 27, 19, 0.88), rgba(10, 21, 15, 0.94)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.08), transparent 54%);
+}

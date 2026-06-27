@@ -39,11 +39,51 @@ body.junior-admin-mode .sidebar {
 
 body.panel-admin-mode .side-brand,
 body.junior-admin-mode .side-brand {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
   padding: 14px 16px;
   border: 1px solid var(--copimine-admin-line);
   border-radius: 22px;
-  background: var(--copimine-admin-panel-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(243, 249, 241, 0.94)),
+    linear-gradient(135deg, rgba(45, 125, 63, 0.08), transparent 54%);
   box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+body.panel-admin-mode .side-brand-logo,
+body.junior-admin-mode .side-brand-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 14px 24px rgba(20, 42, 24, 0.14);
+}
+
+body.panel-admin-mode .side-brand-copy,
+body.junior-admin-mode .side-brand-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+body.panel-admin-mode .side-brand-copy strong,
+body.junior-admin-mode .side-brand-copy strong {
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI Variable Text", sans-serif;
+  font-size: 22px;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+body.panel-admin-mode .side-brand-copy span,
+body.junior-admin-mode .side-brand-copy span {
+  color: var(--copimine-admin-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 body.panel-admin-mode .side-footer,

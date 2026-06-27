@@ -49,7 +49,10 @@ try {
 foreach ($required in @(
     "mods/CopiMineClient-0.1.0.jar",
     "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
-    "mods/fabric-api-0.116.12+1.21.1.jar",
+    "mods/fabric-api-0.116.11+1.21.1.jar",
+    "mods/voicechat-fabric-1.21.1-2.6.16.jar",
+    "mods/iris-fabric-1.8.8+mc1.21.1.jar",
+    "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
     "modpack_manifest.json",
     "README_RU.txt",
     "VOICE_CHAT_OFFICIAL_DOWNLOAD.txt"
@@ -59,12 +62,16 @@ foreach ($required in @(
     }
 }
 
-if ($manifestText -notmatch '"requiredExternal"\s*:') {
-    throw "modpack_manifest.json must describe official external downloads"
+if ($manifestText -notmatch '"requiredExternal"\s*:\s*\[\s*\]') {
+    throw "modpack_manifest.json must state that no external client mods are required"
 }
 
 if ($manifestText -notmatch 'Simple Voice Chat') {
     throw "modpack_manifest.json must document Simple Voice Chat"
+}
+
+if ($manifestText -notmatch 'Iris' -or $manifestText -notmatch 'Sodium') {
+    throw "modpack_manifest.json must document Iris and Sodium in the bundled client set"
 }
 
 Write-Output "ValidateCopiMineWebModpackDownloadFoundation passed."

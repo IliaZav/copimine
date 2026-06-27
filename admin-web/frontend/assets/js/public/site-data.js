@@ -35,6 +35,10 @@ async function fetchModpackPayload() {
   return fetchJson("/api/public/modpack", { ok: false, data: {} });
 }
 
+async function fetchStaticModpackSnapshot() {
+  return fetchJson("/assets/public-data/modpack_snapshot.json", {});
+}
+
 async function fetchBudgetPayload() {
   return fetchJson("/api/public/president-budget", { ok: false, data: {} });
 }
@@ -56,16 +60,22 @@ async function fetchDonationCatalogPayload() {
 }
 
 export async function loadPublicHomePageData() {
-  const [configPayload, statusPayload, modpackPayload] = await Promise.all([
+  const [configPayload, statusPayload, modpackPayload, staticModpack] = await Promise.all([
     fetchConfigPayload(),
     fetchStatusPayload(),
     fetchModpackPayload(),
+    fetchStaticModpackSnapshot(),
   ]);
+
+  const apiModpack = modpackPayload?.data || {};
+  const resolvedModpack = apiModpack && (apiModpack.available || apiModpack.filename || apiModpack.manifest)
+    ? apiModpack
+    : (staticModpack || {});
 
   return {
     config: configPayload?.data || {},
     status: statusPayload?.data || {},
-    modpack: modpackPayload?.data || {},
+    modpack: resolvedModpack,
   };
 }
 
@@ -106,14 +116,20 @@ export async function loadPublicShopsPageData() {
 }
 
 export async function loadPublicModsPageData() {
-  const [configPayload, modpackPayload] = await Promise.all([
+  const [configPayload, modpackPayload, staticModpack] = await Promise.all([
     fetchConfigPayload(),
     fetchModpackPayload(),
+    fetchStaticModpackSnapshot(),
   ]);
+
+  const apiModpack = modpackPayload?.data || {};
+  const resolvedModpack = apiModpack && (apiModpack.available || apiModpack.filename || apiModpack.manifest)
+    ? apiModpack
+    : (staticModpack || {});
 
   return {
     config: configPayload?.data || {},
-    modpack: modpackPayload?.data || {},
+    modpack: resolvedModpack,
   };
 }
 

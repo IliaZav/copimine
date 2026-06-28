@@ -20,6 +20,7 @@
 - Minecraft сервер;
 - все актуальные jar плагинов;
 - сайт `admin-web`;
+- архив клиентских модов `CopiMineMods.zip`;
 - resource pack;
 - клиентский мод `CopiMineClient`;
 - базы и runtime-данные, которые уже включены в архив;
@@ -174,6 +175,43 @@ ls /opt/copimine/admin-web/frontend
 
 Если эти файлы лежат в новой `/opt/copimine/admin-web`, значит сайт заменён вместе со всем проектом.
 
+## 8.1.1 Проверить, что архив модов тоже заменился
+
+Архив модов не лежит в `frontend/downloads`.
+Сайт выдаёт его через backend-роут:
+
+```bash
+/downloads/CopiMineMods.zip
+```
+
+Сам файл должен лежать здесь:
+
+```bash
+/opt/copimine/thirdparty/CopiMineMods.zip
+```
+
+Связанные файлы:
+
+- `/opt/copimine/thirdparty/CopiMineMods.zip`
+- `/opt/copimine/thirdparty/CopiMineMods.sha1`
+- `/opt/copimine/thirdparty/modpack_manifest.json`
+- `/opt/copimine/admin-web/frontend/assets/public-data/modpack_snapshot.json`
+
+Проверка, что файл на месте:
+
+```bash
+ls -lh /opt/copimine/thirdparty/CopiMineMods.zip
+cat /opt/copimine/thirdparty/CopiMineMods.sha1
+```
+
+Проверка, что snapshot тоже на месте:
+
+```bash
+ls -lh /opt/copimine/admin-web/frontend/assets/public-data/modpack_snapshot.json
+```
+
+Если `CopiMineMods.zip` отсутствует, сайт откроется, но кнопка скачивания модов будет вести на недоступный архив.
+
 ## 8.2 Проверить, что плагины тоже заменились
 
 Проверка:
@@ -244,12 +282,21 @@ curl -I http://127.0.0.1:8090/
 curl -fsS http://127.0.0.1:8090/api/health
 ```
 
+Проверка скачивания архива модов через backend:
+
+```bash
+curl -I http://127.0.0.1:8090/downloads/CopiMineMods.zip
+```
+
+Если backend раздаёт архив правильно, должен прийти ответ `200 OK`.
+
 Если снаружи стоит nginx:
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 curl -I http://127.0.0.1:18080/
+curl -I http://127.0.0.1:18080/downloads/CopiMineMods.zip
 ```
 
 Плюс вручную:
@@ -260,6 +307,30 @@ curl -I http://127.0.0.1:18080/
 4. Проверить, что в `minecraft/server/plugins` лежат актуальные jar.
 5. Проверить, что Minecraft стартует без ошибок загрузки плагинов.
 6. Проверить, что resource pack скачивается по старому URL.
+7. Проверить, что на странице `/mods.html` кнопка скачивания действительно отдаёт актуальный `CopiMineMods.zip`.
+8. Проверить, что размер архива на сайте соответствует файлу `/opt/copimine/thirdparty/CopiMineMods.zip`.
+
+## Что нужно для актуальной версии сайта и архива модов
+
+Чтобы сайт после полной замены показывал и раздавал именно актуальную версию проекта, на сервере должны одновременно обновиться четыре места:
+
+1. весь `/opt/copimine/admin-web`;
+2. файл `/opt/copimine/thirdparty/CopiMineMods.zip`;
+3. файл `/opt/copimine/thirdparty/modpack_manifest.json`;
+4. файл `/opt/copimine/admin-web/frontend/assets/public-data/modpack_snapshot.json`.
+
+При полной замене `/opt/copimine` из подготовленного архива это происходит автоматически.
+Ничего отдельно копировать в `frontend/downloads` не нужно.
+
+Если когда-нибудь будешь обновлять только архив модов без полной замены проекта, тогда нужно обновить не только `CopiMineMods.zip`, но и связанные manifest/snapshot-файлы. Иначе сайт может показывать старый размер, старый список модов или старую подпись архива.
+
+Минимальная проверка актуальности после деплоя:
+
+```bash
+stat /opt/copimine/thirdparty/CopiMineMods.zip
+stat /opt/copimine/admin-web/frontend/assets/public-data/modpack_snapshot.json
+curl -I http://127.0.0.1:8090/downloads/CopiMineMods.zip
+```
 
 ## Быстрый откат
 

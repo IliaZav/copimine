@@ -852,8 +852,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private boolean openElectionCoreHub(Player p){
         Plugin plugin=Bukkit.getPluginManager().getPlugin("CopiMineElectionCore");
-        if(plugin==null||!plugin.isEnabled()){
+        if(plugin==null){
             warn(p,"Новый модуль CopiMineElectionCore не загружен.");
+            return false;
+        }
+        if(!plugin.isEnabled()){
+            warn(p,"CopiMineElectionCore найден, но выключен. Проверь лог запуска сервера.");
             return false;
         }
         try{
@@ -4903,11 +4907,21 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private CachedElectionRole loadElectionRoleState(UUID playerUuid,boolean permissionPresident)throws Exception{
         if(playerUuid==null)return new CachedElectionRole(false,permissionPresident,now());
         String uuid=playerUuid.toString();
-        boolean chair=scalarLong("SELECT COUNT(*) FROM cik_chairs WHERE player_uuid=? AND active=1",uuid)>0;
-        boolean president=permissionPresident||scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'",uuid)>0;
-        CachedElectionRole state=new CachedElectionRole(chair,president,now());
-        electionRoleCache.put(playerUuid,state);
-        return state;
+        try{
+            boolean chair=scalarLong("SELECT COUNT(*) FROM cik_chairs WHERE player_uuid=? AND active=1",uuid)>0;
+            boolean president=permissionPresident||scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'",uuid)>0;
+            CachedElectionRole state=new CachedElectionRole(chair,president,now());
+            electionRoleCache.put(playerUuid,state);
+            return state;
+        }catch(SQLException error){
+            String message=String.valueOf(error.getMessage()).toLowerCase(Locale.ROOT);
+            if(message.contains("cik_chairs")||message.contains("president_terms")||message.contains("does not exist")||message.contains("relation")){
+                CachedElectionRole fallback=new CachedElectionRole(false,permissionPresident,now());
+                electionRoleCache.put(playerUuid,fallback);
+                return fallback;
+            }
+            throw error;
+        }
     }
     private void bind(PreparedStatement ps,Object...args)throws SQLException{
         for(int i=0;i<args.length;i++)ps.setObject(i+1,args[i]);

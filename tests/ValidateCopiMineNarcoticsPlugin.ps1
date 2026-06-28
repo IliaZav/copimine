@@ -28,13 +28,14 @@ if (Test-Path $pluginYml) {
   $yaml = Get-Content -Raw -Encoding UTF8 $pluginYml
   foreach ($marker in @(
     "name: CopiMineNarcotics",
-    "version: '2.0.0-phase1'",
+    "version: '2.1.0-client-bridge'",
     "cmnarcotics:",
     "copimine.narcotics.admin",
     "copimine.narcotics.reset",
     "copimine.narcotics.visuals",
     "copimine.narcotics.selfcheck",
-    "copimine.narcotics.clearoverdose"
+    "copimine.narcotics.clearoverdose",
+    "cmclient:"
   )) {
     if ($yaml -notmatch [regex]::Escape($marker)) { $errors.Add("plugin.yml missing marker: $marker") }
   }
@@ -45,9 +46,11 @@ if (Test-Path $config) {
   foreach ($marker in @(
     "textures:",
     "mode: VANILLA",
+    "client_bridge:",
     "visuals:",
     "enabled: false",
-    "mode: FALLBACK",
+    "mode: AUTO",
+    "allow_server_particle_fallback: true",
     "feta:",
     "kola:",
     "girion:",

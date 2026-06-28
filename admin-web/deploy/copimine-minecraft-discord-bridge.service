@@ -1,7 +1,7 @@
 [Unit]
-Description=CopiMine Discord Bot
-After=network.target copimine-admin.service
-Wants=copimine-admin.service
+Description=CopiMine Minecraft to Discord Bridge
+After=network.target copimine-admin.service copimine-minecraft.service
+Wants=copimine-admin.service copimine-minecraft.service
 
 [Service]
 Type=simple
@@ -11,7 +11,7 @@ EnvironmentFile=/opt/copimine/admin-web/.env
 Environment=COPIMINE_ENV_FILE=/opt/copimine/admin-web/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/opt/copimine/admin-web/backend:/opt/copimine/admin-web
-ExecStart=/opt/copimine/admin-web/.venv/bin/python -m backend.discord_bot
+ExecStart=/opt/copimine/admin-web/.venv/bin/python /opt/copimine/admin-web/backend/minecraft_discord_bridge.py
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

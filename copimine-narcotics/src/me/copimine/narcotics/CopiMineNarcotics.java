@@ -28,6 +28,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.CauldronLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
@@ -46,6 +47,7 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -141,7 +143,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
 
         if (official != null) {
-            if (event.getAction() == Action.RIGHT_CLICK_AIR) {
+            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+            if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+                event.setCancelled(true);
+            }
+            if (canConsumeOfficialOnInteract(event)) {
                 event.setCancelled(true);
                 long now = Instant.now().getEpochSecond();
                 long cooldownUntil = consumeCooldownUntil.getOrDefault(player.getUniqueId(), 0L);
@@ -160,6 +166,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return;
         }
         Block block = event.getClickedBlock();
+        if ((block.getType() == Material.CAULDRON || block.getType() == Material.WATER_CAULDRON) && !cauldronService.isSupportedCauldron(block)) {
+            if (recipeService.isRecognizedIngredient(inHand)) {
+                event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.YELLOW + "Для варки нужен полный котёл воды.");
+            }
+            return;
+        }
         if (!cauldronService.isSupportedCauldron(block)) {
             return;
         }
@@ -167,8 +181,34 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return;
         }
         if (cauldronService.tryAddIngredient(player, block, inHand)) {
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
             event.setCancelled(true);
         }
+    }
+
+    private boolean canConsumeOfficialOnInteract(PlayerInteractEvent event) {
+        if (event.getAction() == Action.RIGHT_CLICK_AIR) {
+            return true;
+        }
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return false;
+        }
+        return !isUnsafeConsumeTarget(event.getClickedBlock());
+    }
+
+    private boolean isUnsafeConsumeTarget(Block block) {
+        if (block == null) {
+            return false;
+        }
+        if (cauldronService.isSupportedCauldron(block)) {
+            return true;
+        }
+        Material type = block.getType();
+        if (type == Material.WATER_CAULDRON || type == Material.CAULDRON) {
+            return true;
+        }
+        return block.getState() instanceof InventoryHolder || type.isInteractable();
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -233,6 +273,13 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     @EventHandler(ignoreCancelled = true)
     public void onDispense(BlockDispenseEvent event) {
         if (itemFactory.isOfficialFinishedItem(event.getItem())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        if (itemFactory.isOfficialFinishedItem(event.getItemInHand())) {
             event.setCancelled(true);
         }
     }

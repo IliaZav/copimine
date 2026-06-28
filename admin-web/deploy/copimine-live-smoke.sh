@@ -24,7 +24,8 @@ need psql
 echo "[2/6] systemd units"
 systemctl is-active --quiet copimine-admin
 systemctl is-active --quiet copimine-discord-bot
-systemctl is-active --quiet minecraft || echo "minecraft service is not active; continuing with web/database checks"
+systemctl is-active --quiet copimine-minecraft
+systemctl is-active --quiet copimine-minecraft-discord-bridge
 
 echo "[3/6] Backend health"
 curl -fsS "$HEALTH_ENDPOINT" >/dev/null
@@ -52,5 +53,6 @@ psql \
 echo "[6/6] systemd logs tail"
 journalctl -u copimine-admin -n 20 --no-pager
 journalctl -u copimine-discord-bot -n 20 --no-pager || true
+journalctl -u copimine-minecraft-discord-bridge -n 20 --no-pager || true
 
 echo "CopiMine live smoke OK"

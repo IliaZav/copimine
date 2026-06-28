@@ -12,6 +12,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from backend.envfile import load_env_file_to_os, resolve_env_file
+
 try:
     import psycopg
     from psycopg.rows import dict_row
@@ -20,23 +22,13 @@ except Exception as exc:
     raise
 
 APP_ROOT = Path("/opt/copimine/admin-web")
-ENV_FILE = APP_ROOT / ".env"
+ENV_FILE = resolve_env_file(APP_ROOT / ".env")
 STATE_FILE = APP_ROOT / "data" / "discord_bot_state.json"
 DISCORD_BOT_STATE_KEY = "discord_bot_runtime_state"
 
 DEFAULT_STATUS_CHANNEL_ID = "1501623987468370161"
 
-def load_env() -> None:
-    if not ENV_FILE.exists():
-        return
-    for raw in ENV_FILE.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-
-load_env()
+load_env_file_to_os(ENV_FILE)
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 APP_CH = os.getenv("DISCORD_APPLICATIONS_CHANNEL_ID", "").strip()

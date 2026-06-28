@@ -1,0 +1,20 @@
+[Unit]
+Description=CopiMine Minecraft Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=qwerty
+WorkingDirectory=/opt/copimine/minecraft/server
+EnvironmentFile=/opt/copimine/admin-web/.env
+Environment=COPIMINE_ENV_FILE=/opt/copimine/admin-web/.env
+ExecStart=/usr/bin/java -Xms2G -Xmx6G -jar purpur.jar nogui
+Restart=always
+RestartSec=10
+SuccessExitStatus=0 1 143
+NoNewPrivileges=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

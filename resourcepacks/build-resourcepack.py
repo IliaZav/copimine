@@ -18,6 +18,7 @@ SERVER_PROPERTIES = ROOT.parent / "minecraft" / "server" / "server.properties"
 
 REQUIRED_SOURCE_FILES = [
     "pack.mcmeta",
+    "assets/minecraft/font/default.json",
     "assets/copimine/manifests/block_visuals_manifest.json",
     "assets/copimine/manifests/narcotics_items_manifest.json",
     "assets/copimine/manifests/narcotics_visuals_manifest.json",
@@ -50,6 +51,7 @@ REQUIRED_SOURCE_FILES = [
     "assets/copimine/textures/block/polling_station_marker.png",
     "assets/copimine/textures/block/tax_office_marker.png",
     "assets/copimine/textures/block/artifact_shop_marker.png",
+    "assets/copimine/textures/gui/tab/minecraft_title.png",
     "assets/copimine/textures/gui/narcotics/desaturate_overlay.png",
     "assets/copimine/textures/gui/narcotics/color_convolve_overlay.png",
     "assets/copimine/textures/gui/narcotics/scan_pincushion_overlay.png",

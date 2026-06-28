@@ -5,22 +5,16 @@ import time
 import urllib.request
 from pathlib import Path
 
+from backend.envfile import parse_env_file, resolve_env_file
+
 APP_ROOT = Path("/opt/copimine/admin-web")
-ENV_FILE = APP_ROOT / ".env"
+ENV_FILE = resolve_env_file(APP_ROOT / ".env")
 MC_LOG = Path(os.getenv("MC_LOG_FILE", "/opt/copimine/minecraft/server/logs/latest.log"))
 STATE_FILE = APP_ROOT / "data" / "minecraft_discord_bridge.offset"
 DEDUPE_FILE = APP_ROOT / "data" / "minecraft_discord_bridge.dedupe.json"
 
 def load_env():
-    env = {}
-    if ENV_FILE.exists():
-        for line in ENV_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip().strip('"').strip("'")
-    return env
+    return parse_env_file(ENV_FILE)
 
 env = load_env()
 TOKEN = env.get("DISCORD_BOT_TOKEN", "")

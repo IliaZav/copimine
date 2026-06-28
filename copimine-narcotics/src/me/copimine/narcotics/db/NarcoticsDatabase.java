@@ -358,10 +358,7 @@ public final class NarcoticsDatabase {
 
     private DbSettings loadDbSettings() throws Exception {
         Map<String, String> values = new HashMap<>(System.getenv());
-        Path envFile = Optional.ofNullable(System.getenv("COPIMINE_ENV_FILE"))
-                .filter(path -> !path.isBlank())
-                .map(Paths::get)
-                .orElse(Paths.get(System.getProperty("user.dir")).resolve("../admin-web/.env").normalize());
+        Path envFile = resolveEnvFile();
         if (Files.isRegularFile(envFile)) {
             for (String line : Files.readAllLines(envFile, StandardCharsets.UTF_8)) {
                 String trimmed = line.trim();
@@ -387,6 +384,37 @@ public final class NarcoticsDatabase {
             throw new IllegalStateException("Unsafe POSTGRES_SCHEMA.");
         }
         return new DbSettings(host, port, database, user, password, schema, envFile);
+    }
+
+    private Path resolveEnvFile() {
+        String explicit = System.getenv("COPIMINE_ENV_FILE");
+        if (explicit != null && !explicit.isBlank()) {
+            return Paths.get(explicit).normalize();
+        }
+        List<Path> candidates = List.of(
+                releaseRoot().resolve("admin-web").resolve(".env"),
+                Paths.get(System.getProperty("user.dir")).resolve("../../admin-web/.env").normalize(),
+                Paths.get(System.getProperty("user.dir")).resolve("../admin-web/.env").normalize()
+        );
+        for (Path candidate : candidates) {
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+        }
+        return candidates.getFirst();
+    }
+
+    private Path releaseRoot() {
+        try {
+            Path server = plugin.getServer().getWorldContainer().toPath().toAbsolutePath().normalize();
+            Path minecraft = server.getParent();
+            Path root = minecraft == null ? null : minecraft.getParent();
+            if (root != null) {
+                return root;
+            }
+        } catch (Throwable ignored) {
+        }
+        return Paths.get("/opt/copimine");
     }
 
     private CompletableFuture<Void> runAsync(SqlVoidWork work) {

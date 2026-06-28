@@ -72,11 +72,14 @@ public final class NarcoticItemFactory {
         String id = meta.getPersistentDataContainer().get(narcoticIdKey, PersistentDataType.STRING);
         Boolean official = meta.getPersistentDataContainer().get(officialKey, PersistentDataType.BOOLEAN);
         Integer version = meta.getPersistentDataContainer().get(versionKey, PersistentDataType.INTEGER);
-        if (!"RP_NARCOTIC".equals(type) || id == null || official == null || !official || version == null) {
+        if (!"RP_NARCOTIC".equals(type) || id == null || official == null || !official) {
             return null;
         }
         NarcoticDefinition definition = configService.items().get(id);
         if (definition == null) {
+            return null;
+        }
+        if (version != null && version > configService.narcoticVersion()) {
             return null;
         }
         if (meta.hasCustomModelData() && meta.getCustomModelData() != definition.customModelData()) {

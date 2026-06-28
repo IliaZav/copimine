@@ -256,7 +256,11 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             return;
         }
         World targetWorld = event.getTo().getWorld();
-        if (isBlockedWorld(targetWorld, false)) {
+        boolean portalTeleport = switch (event.getCause()) {
+            case NETHER_PORTAL, END_PORTAL, END_GATEWAY -> true;
+            default -> false;
+        };
+        if (isBlockedWorld(targetWorld, portalTeleport)) {
             event.setCancelled(true);
             redirectPlayer(event.getPlayer(), accessFor(targetWorld), blockedMessage(targetWorld));
             return;
@@ -536,7 +540,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if (access == null || access.enabled()) {
             return false;
         }
-        return portal ? !access.allowPortals() : !access.allowCommandsTeleport();
+        return portal || !access.allowCommandsTeleport();
     }
 
     private String blockedMessage(World world) {

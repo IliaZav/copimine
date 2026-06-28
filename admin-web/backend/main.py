@@ -71,6 +71,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from commerce_catalog import ar_catalog_snapshot, donation_catalog_snapshot
+from backend.envfile import load_env_file_to_os, resolve_env_file
 from plugin_registry import (
     PluginRegistryError,
     apply_registry_values,
@@ -119,21 +120,7 @@ OWNER_ONLY_SERVER_PROPERTY_KEYS = {
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PLUGIN_REGISTRY_MANIFEST = APP_ROOT / "backend" / "plugin_registry_manifest.json"
 
-
-def load_dotenv(path: Path = APP_ROOT / ".env") -> None:
-    if not path.exists():
-        return
-    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        os.environ.setdefault(key, value)
-
-
-load_dotenv()
+load_env_file_to_os(resolve_env_file(APP_ROOT / ".env"))
 
 # No built-in real admins: production access is loaded from .env or data/admin_users.json.
 # Runtime roles are owner / admin / junior_admin / player.
@@ -7404,6 +7391,11 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
 async def auth_csrf(response: Response) -> dict[str, Any]:
     set_csrf_cookie(response)
     return {"ok": True, "cookie": CSRF_COOKIE_NAME, "header": CSRF_HEADER_NAME}
+
+
+@app.get("/api/csrf")
+async def csrf_alias(response: Response) -> dict[str, Any]:
+    return await auth_csrf(response)
 
 
 @app.post("/api/auth/refresh")

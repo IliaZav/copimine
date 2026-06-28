@@ -1194,117 +1194,214 @@ body {
   color: var(--showcase-muted);
 }
 
-body.player-mode .app,
-body.panel-admin-mode .app,
-body.junior-admin-mode .app {
+:root[data-theme="light"] body.player-mode .app,
+:root[data-theme="light"] body.panel-admin-mode .app,
+:root[data-theme="light"] body.junior-admin-mode .app {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(125, 216, 255, 0.14), transparent 22%),
+    radial-gradient(circle at 100% 4%, rgba(37, 214, 111, 0.08), transparent 18%),
+    linear-gradient(180deg, #f6fbff 0%, #edf5fd 100%);
+}
+
+:root[data-theme="light"] body.player-mode .sidebar,
+:root[data-theme="light"] body.panel-admin-mode .sidebar,
+:root[data-theme="light"] body.junior-admin-mode .sidebar {
+  background:
+    linear-gradient(180deg, rgba(245, 250, 255, 0.98), rgba(234, 242, 250, 0.98)),
+    linear-gradient(180deg, rgba(125, 216, 255, 0.08), transparent 42%);
+}
+
+:root[data-theme="light"] body.player-mode .workspace,
+:root[data-theme="light"] body.panel-admin-mode .workspace,
+:root[data-theme="light"] body.junior-admin-mode .workspace {
+  background:
+    radial-gradient(circle at 6% 0%, rgba(125, 216, 255, 0.14), transparent 18%),
+    radial-gradient(circle at 96% 0%, rgba(37, 214, 111, 0.08), transparent 18%),
+    linear-gradient(180deg, rgba(248, 252, 255, 0.98), rgba(238, 245, 252, 0.99));
+}
+
+:root[data-theme="light"] body.player-mode .topbar,
+:root[data-theme="light"] body.panel-admin-mode .topbar,
+:root[data-theme="light"] body.junior-admin-mode .topbar {
+  border-color: rgba(46, 70, 104, 0.12);
+  background:
+    linear-gradient(180deg, rgba(252, 255, 255, 0.96), rgba(237, 245, 252, 0.98)),
+    radial-gradient(circle at right top, rgba(125, 216, 255, 0.18), transparent 26%);
+  box-shadow: 0 18px 42px rgba(16, 29, 45, 0.1);
+}
+
+:root[data-theme="light"] body.player-mode .side-brand,
+:root[data-theme="light"] body.panel-admin-mode .side-brand,
+:root[data-theme="light"] body.junior-admin-mode .side-brand,
+:root[data-theme="light"] body.player-mode .panel,
+:root[data-theme="light"] body.panel-admin-mode .panel,
+:root[data-theme="light"] body.junior-admin-mode .panel,
+:root[data-theme="light"] body.player-mode .metric,
+:root[data-theme="light"] body.panel-admin-mode .metric,
+:root[data-theme="light"] body.junior-admin-mode .metric,
+:root[data-theme="light"] body.player-mode .table-wrap,
+:root[data-theme="light"] body.panel-admin-mode .table-wrap,
+:root[data-theme="light"] body.junior-admin-mode .table-wrap {
+  border-color: rgba(56, 78, 111, 0.12) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 247, 253, 0.98)) !important;
+  box-shadow: 0 18px 36px rgba(16, 29, 45, 0.08);
+}
+
+:root[data-theme="light"] body.player-mode .nav-item,
+:root[data-theme="light"] body.panel-admin-mode .nav-item,
+:root[data-theme="light"] body.junior-admin-mode .nav-item {
+  border-color: rgba(56, 78, 111, 0.12);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+:root[data-theme="light"] body.player-mode .nav-item:hover,
+:root[data-theme="light"] body.panel-admin-mode .nav-item:hover,
+:root[data-theme="light"] body.junior-admin-mode .nav-item:hover {
+  background: rgba(125, 216, 255, 0.16);
+}
+
+:root[data-theme="light"] body.player-mode .nav-item.active,
+:root[data-theme="light"] body.panel-admin-mode .nav-item.active,
+:root[data-theme="light"] body.junior-admin-mode .nav-item.active {
+  background:
+    linear-gradient(180deg, rgba(234, 247, 238, 0.96), rgba(225, 241, 251, 0.98)),
+    linear-gradient(90deg, rgba(37, 214, 111, 0.14), transparent);
+}
+
+:root[data-theme="dark"] body.player-mode .app,
+:root[data-theme="dark"] body.panel-admin-mode .app,
+:root[data-theme="dark"] body.junior-admin-mode .app {
   background:
     radial-gradient(circle at 10% 0%, rgba(125, 216, 255, 0.12), transparent 18%),
     radial-gradient(circle at 100% 6%, rgba(37, 214, 111, 0.1), transparent 20%),
-    linear-gradient(180deg, #f5f0e4 0%, #efe8d9 14%, #0a1018 14%, #0e1521 100%);
+    linear-gradient(180deg, #08111b 0%, #0c1520 100%);
 }
 
-body.player-mode .sidebar,
-body.panel-admin-mode .sidebar,
-body.junior-admin-mode .sidebar {
+:root[data-theme="dark"] body.player-mode .sidebar,
+:root[data-theme="dark"] body.panel-admin-mode .sidebar,
+:root[data-theme="dark"] body.junior-admin-mode .sidebar {
   background:
-    linear-gradient(180deg, rgba(9, 14, 22, 0.96), rgba(11, 17, 26, 0.98)),
+    linear-gradient(180deg, rgba(7, 13, 21, 0.97), rgba(10, 16, 25, 0.99)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
 }
 
-body.player-mode .workspace,
-body.panel-admin-mode .workspace,
-body.junior-admin-mode .workspace {
+:root[data-theme="dark"] body.player-mode .workspace,
+:root[data-theme="dark"] body.panel-admin-mode .workspace,
+:root[data-theme="dark"] body.junior-admin-mode .workspace {
   background:
     radial-gradient(circle at 8% 0%, rgba(125, 216, 255, 0.12), transparent 20%),
     radial-gradient(circle at 94% 0%, rgba(37, 214, 111, 0.09), transparent 20%),
-    linear-gradient(180deg, rgba(8, 12, 19, 0.96), rgba(10, 16, 24, 0.98));
+    linear-gradient(180deg, rgba(8, 12, 19, 0.96), rgba(10, 16, 24, 0.99));
 }
 
-body.player-mode .topbar,
-body.panel-admin-mode .topbar,
-body.junior-admin-mode .topbar {
-  border-color: rgba(255, 255, 255, 0.08);
+:root[data-theme="dark"] body.player-mode .topbar,
+:root[data-theme="dark"] body.panel-admin-mode .topbar,
+:root[data-theme="dark"] body.junior-admin-mode .topbar {
+  border-color: rgba(92, 255, 167, 0.14);
   background:
-    linear-gradient(180deg, rgba(12, 19, 29, 0.92), rgba(10, 16, 25, 0.96)),
-    radial-gradient(circle at right top, rgba(125, 216, 255, 0.1), transparent 26%);
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
+    linear-gradient(180deg, rgba(10, 18, 28, 0.96), rgba(8, 15, 24, 0.99)),
+    radial-gradient(circle at right top, rgba(125, 216, 255, 0.12), transparent 26%);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(92, 255, 167, 0.08);
 }
 
-body.player-mode .side-brand,
-body.panel-admin-mode .side-brand,
-body.junior-admin-mode .side-brand,
-body.player-mode .panel,
-body.panel-admin-mode .panel,
-body.junior-admin-mode .panel,
-body.player-mode .metric,
-body.panel-admin-mode .metric,
-body.junior-admin-mode .metric,
-body.player-mode .table-wrap,
-body.panel-admin-mode .table-wrap,
-body.junior-admin-mode .table-wrap {
-  border-color: rgba(255, 255, 255, 0.08) !important;
+:root[data-theme="dark"] body.player-mode .side-brand,
+:root[data-theme="dark"] body.panel-admin-mode .side-brand,
+:root[data-theme="dark"] body.junior-admin-mode .side-brand,
+:root[data-theme="dark"] body.player-mode .panel,
+:root[data-theme="dark"] body.panel-admin-mode .panel,
+:root[data-theme="dark"] body.junior-admin-mode .panel,
+:root[data-theme="dark"] body.player-mode .metric,
+:root[data-theme="dark"] body.panel-admin-mode .metric,
+:root[data-theme="dark"] body.junior-admin-mode .metric,
+:root[data-theme="dark"] body.player-mode .table-wrap,
+:root[data-theme="dark"] body.panel-admin-mode .table-wrap,
+:root[data-theme="dark"] body.junior-admin-mode .table-wrap {
+  border-color: rgba(92, 255, 167, 0.14) !important;
   background:
-    linear-gradient(180deg, rgba(13, 20, 31, 0.94), rgba(12, 18, 28, 0.98)) !important;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+    linear-gradient(180deg, rgba(12, 19, 30, 0.96), rgba(10, 17, 27, 0.99)) !important;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(92, 255, 167, 0.06);
 }
 
-body.player-mode .nav-item,
-body.panel-admin-mode .nav-item,
-body.junior-admin-mode .nav-item {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+:root[data-theme="dark"] body.player-mode .nav-item,
+:root[data-theme="dark"] body.panel-admin-mode .nav-item,
+:root[data-theme="dark"] body.junior-admin-mode .nav-item {
+  border-color: rgba(92, 255, 167, 0.12);
+  background: rgba(255, 255, 255, 0.035);
 }
 
-body.player-mode .nav-item:hover,
-body.panel-admin-mode .nav-item:hover,
-body.junior-admin-mode .nav-item:hover {
+:root[data-theme="dark"] body.player-mode .nav-item:hover,
+:root[data-theme="dark"] body.panel-admin-mode .nav-item:hover,
+:root[data-theme="dark"] body.junior-admin-mode .nav-item:hover {
   background: rgba(125, 216, 255, 0.08);
 }
 
-body.player-mode .nav-item.active,
-body.panel-admin-mode .nav-item.active,
-body.junior-admin-mode .nav-item.active {
+:root[data-theme="dark"] body.player-mode .nav-item.active,
+:root[data-theme="dark"] body.panel-admin-mode .nav-item.active,
+:root[data-theme="dark"] body.junior-admin-mode .nav-item.active {
   background:
-    linear-gradient(180deg, rgba(16, 30, 48, 0.96), rgba(10, 19, 30, 0.98)),
+    linear-gradient(180deg, rgba(14, 25, 40, 0.98), rgba(10, 18, 30, 0.99)),
     linear-gradient(90deg, rgba(37, 214, 111, 0.18), transparent);
 }
 
-body.player-mode .page-heading h1,
-body.panel-admin-mode .page-heading h1,
-body.junior-admin-mode .page-heading h1,
-body.player-mode .panel-title,
-body.panel-admin-mode .panel-title,
-body.junior-admin-mode .panel-title,
-body.player-mode .metric-value,
-body.panel-admin-mode .metric-value,
-body.junior-admin-mode .metric-value {
-  color: var(--showcase-heading);
+:root[data-theme="dark"] body.player-mode .page-heading h1,
+:root[data-theme="dark"] body.panel-admin-mode .page-heading h1,
+:root[data-theme="dark"] body.junior-admin-mode .page-heading h1,
+:root[data-theme="dark"] body.player-mode .panel-title,
+:root[data-theme="dark"] body.panel-admin-mode .panel-title,
+:root[data-theme="dark"] body.junior-admin-mode .panel-title,
+:root[data-theme="dark"] body.player-mode .metric-value,
+:root[data-theme="dark"] body.panel-admin-mode .metric-value,
+:root[data-theme="dark"] body.junior-admin-mode .metric-value,
+:root[data-theme="dark"] body.player-mode .metric strong,
+:root[data-theme="dark"] body.panel-admin-mode .metric strong,
+:root[data-theme="dark"] body.junior-admin-mode .metric strong,
+:root[data-theme="dark"] body.player-mode .panel strong,
+:root[data-theme="dark"] body.panel-admin-mode .panel strong,
+:root[data-theme="dark"] body.junior-admin-mode .panel strong {
+  color: #f2f7fb;
 }
 
-body.player-mode .page-heading p,
-body.panel-admin-mode .page-heading p,
-body.junior-admin-mode .page-heading p,
-body.player-mode .panel-subtitle,
-body.panel-admin-mode .panel-subtitle,
-body.junior-admin-mode .panel-subtitle,
-body.player-mode .last-update,
-body.panel-admin-mode .last-update,
-body.junior-admin-mode .last-update {
-  color: var(--showcase-muted);
+:root[data-theme="dark"] body.player-mode .page-heading p,
+:root[data-theme="dark"] body.panel-admin-mode .page-heading p,
+:root[data-theme="dark"] body.junior-admin-mode .page-heading p,
+:root[data-theme="dark"] body.player-mode .panel-subtitle,
+:root[data-theme="dark"] body.panel-admin-mode .panel-subtitle,
+:root[data-theme="dark"] body.junior-admin-mode .panel-subtitle,
+:root[data-theme="dark"] body.player-mode .last-update,
+:root[data-theme="dark"] body.panel-admin-mode .last-update,
+:root[data-theme="dark"] body.junior-admin-mode .last-update,
+:root[data-theme="dark"] body.player-mode .metric-detail,
+:root[data-theme="dark"] body.panel-admin-mode .metric-detail,
+:root[data-theme="dark"] body.junior-admin-mode .metric-detail,
+:root[data-theme="dark"] body.player-mode .panel p,
+:root[data-theme="dark"] body.panel-admin-mode .panel p,
+:root[data-theme="dark"] body.junior-admin-mode .panel p,
+:root[data-theme="dark"] body.player-mode .metric p,
+:root[data-theme="dark"] body.panel-admin-mode .metric p,
+:root[data-theme="dark"] body.junior-admin-mode .metric p,
+:root[data-theme="dark"] body.player-mode table td,
+:root[data-theme="dark"] body.panel-admin-mode table td,
+:root[data-theme="dark"] body.junior-admin-mode table td {
+  color: rgba(220, 231, 240, 0.82);
 }
 
-body.player-mode .mini-health,
-body.panel-admin-mode .mini-health,
-body.junior-admin-mode .mini-health {
-  border-color: rgba(255, 255, 255, 0.08);
+:root[data-theme="dark"] body.player-mode .mini-health,
+:root[data-theme="dark"] body.panel-admin-mode .mini-health,
+:root[data-theme="dark"] body.junior-admin-mode .mini-health {
+  border-color: rgba(92, 255, 167, 0.12);
   background: rgba(255, 255, 255, 0.03);
-  color: var(--showcase-muted);
+  color: rgba(220, 231, 240, 0.78);
 }
 
-body.player-mode .mini-health strong,
-body.panel-admin-mode .mini-health strong,
-body.junior-admin-mode .mini-health strong {
-  color: var(--showcase-heading);
+:root[data-theme="dark"] body.player-mode .mini-health strong,
+:root[data-theme="dark"] body.panel-admin-mode .mini-health strong,
+:root[data-theme="dark"] body.junior-admin-mode .mini-health strong {
+  color: #f2f7fb;
 }
 
 @media (max-width: 1180px) {

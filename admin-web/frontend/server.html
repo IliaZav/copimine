@@ -38,11 +38,9 @@
             <span class="route-chip">Статус</span>
           </div>
           <h1>Статус сервера CopiMine.</h1>
-          <p>IP сервера, онлайн, президент и открытая казна.</p>
+          <p>IP сервера, онлайн, выборы, президент и казна.</p>
           <div class="public-actions">
             <button id="copyIpBtn" class="btn btn-primary" type="button">Скопировать copimine.ru</button>
-            <a class="btn btn-secondary" href="/shops.html">Лавки</a>
-            <a class="btn btn-ghost public-ghost" href="/signin.html">Кабинет</a>
           </div>
           <div class="hero-inline-status">
             <div class="hero-inline-card">
@@ -51,45 +49,47 @@
             </div>
             <div class="hero-inline-card">
               <span>Отклик</span>
-              <strong id="serverPulseText">Проверяем сервер</strong>
+              <strong id="serverPulseText">Загружаем онлайн</strong>
             </div>
           </div>
         </div>
 
-        <aside class="hero-side-card hero-side-card-compact">
-          <div class="brand-banner-card brand-banner-inline">
-            <img class="brand-banner-mark" src="/assets/brand/copimine-logo.png" alt="" />
-            <div class="brand-banner-copy">
-              <span>CopiMine</span>
+        <aside class="public-hero-side">
+          <article class="scene-card scene-card-server">
+            <div class="scene-card-copy">
+              <span class="hero-kicker">Сервер</span>
               <strong>copimine.ru</strong>
-              <p>Онлайн, казна и публичная сводка.</p>
+              <p>Отклик, онлайн, карта мира и выборы.</p>
             </div>
-          </div>
-          <div class="hero-sprite-strip" aria-hidden="true">
-            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/beacon.png" alt="" /></span>
-            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/filled_map.png" alt="" /></span>
-            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
-          </div>
-          <span class="hero-kicker">На странице</span>
-          <ul class="hero-check-list">
-            <li>IP сервера и текущий онлайн.</li>
-            <li>Открытая часть казны.</li>
-            <li>Президент и последние операции.</li>
-          </ul>
+          </article>
+
+          <article class="hero-side-card hero-side-card-compact">
+            <div class="hero-sprite-strip" aria-hidden="true">
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/beacon.png" alt="" /></span>
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/filled_map.png" alt="" /></span>
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
+            </div>
+            <span class="hero-kicker">Данные</span>
+            <ul class="hero-check-list">
+              <li>IP и отклик.</li>
+              <li>Онлайн и выборы.</li>
+              <li>Президент и казна.</li>
+            </ul>
+          </article>
         </aside>
       </section>
 
       <section class="public-section public-ops-section" id="presidentBudgetShowcase">
         <div class="section-head">
-          <span>Сводка</span>
-          <h2>Сервер сейчас.</h2>
-          <p>Онлайн, казна и последние операции.</p>
+          <span>Статус</span>
+          <h2>Открытые данные сервера.</h2>
+          <p>Онлайн, выборы, президент и казна.</p>
         </div>
         <div class="public-dashboard-grid">
           <article class="public-panel public-panel-wide" id="treasuryHistorySection">
             <div class="public-panel-head">
               <div>
-                <span class="hero-kicker">Сводка</span>
+                <span class="hero-kicker">Сервер</span>
                 <h3>Сервер сейчас</h3>
               </div>
             </div>
@@ -116,7 +116,7 @@
             <div class="president-card-copy">
               <span class="hero-kicker">Президент</span>
               <h3 id="presidentCardName">Президент пока не избран</h3>
-              <p id="presidentCardMeta">Карточка появится, когда на сервере будет активный срок.</p>
+              <p id="presidentCardMeta">Действующего срока нет.</p>
             </div>
             <div class="president-skin-shell hidden" id="presidentSkinShell">
               <button class="skin-rotate skin-rotate-left" id="presidentSkinLeft" type="button" aria-label="Повернуть влево">‹</button>
@@ -143,13 +143,13 @@
             <div class="public-panel-head">
               <div>
                 <span class="hero-kicker">История казны</span>
-                <h3>Последние публичные операции</h3>
+                <h3>Последние операции казны</h3>
               </div>
             </div>
             <div id="publicTreasuryHistory" class="treasury-history-grid">
               <article class="showcase-card">
-                <strong>Загружаем историю</strong>
-                <p>Публичные операции загружаются.</p>
+                <strong>Загружаем данные</strong>
+                <p>История казны обновляется.</p>
               </article>
             </div>
           </article>

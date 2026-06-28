@@ -1,22 +1,22 @@
 :root,
 :root[data-theme="light"] {
   --showcase-bg:
-    radial-gradient(circle at 10% -4%, rgba(98, 171, 255, 0.24), transparent 24%),
-    radial-gradient(circle at 92% 10%, rgba(34, 198, 107, 0.16), transparent 20%),
-    linear-gradient(180deg, #edf6ff 0%, #eef8f5 48%, #f4efe5 100%);
+    radial-gradient(circle at 10% -4%, rgba(98, 171, 255, 0.28), transparent 24%),
+    radial-gradient(circle at 92% 10%, rgba(34, 198, 107, 0.12), transparent 20%),
+    linear-gradient(180deg, #e7f2ff 0%, #ebf5ff 52%, #eef9f8 100%);
   --showcase-dark-surface:
-    linear-gradient(180deg, rgba(250, 253, 255, 0.99), rgba(239, 246, 252, 1));
+    linear-gradient(180deg, rgba(251, 254, 255, 0.99), rgba(236, 245, 255, 1));
   --showcase-light-surface:
-    linear-gradient(180deg, rgba(251, 254, 255, 0.99), rgba(241, 248, 253, 1));
+    linear-gradient(180deg, rgba(251, 254, 255, 0.99), rgba(233, 244, 255, 1));
   --showcase-panel:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(242, 248, 253, 1));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(236, 245, 255, 1));
   --showcase-panel-alt:
-    linear-gradient(180deg, rgba(245, 253, 250, 0.99), rgba(233, 246, 240, 1));
+    linear-gradient(180deg, rgba(243, 251, 255, 0.99), rgba(230, 244, 252, 1));
   --showcase-panel-blue:
-    linear-gradient(180deg, rgba(246, 250, 255, 0.99), rgba(232, 241, 253, 1));
-  --showcase-card-border: rgba(67, 85, 112, 0.16);
-  --showcase-card-shadow: 0 30px 74px rgba(17, 24, 36, 0.13);
-  --showcase-card-shadow-soft: 0 18px 42px rgba(17, 24, 36, 0.1);
+    linear-gradient(180deg, rgba(244, 249, 255, 0.99), rgba(225, 238, 255, 1));
+  --showcase-card-border: rgba(72, 103, 146, 0.18);
+  --showcase-card-shadow: 0 28px 68px rgba(17, 24, 36, 0.11);
+  --showcase-card-shadow-soft: 0 18px 44px rgba(17, 24, 36, 0.09);
   --showcase-card-glow: 0 0 0 0 rgba(0, 0, 0, 0);
   --showcase-shell-glow: 0 0 0 0 rgba(0, 0, 0, 0);
   --showcase-accent: #25d66f;
@@ -44,11 +44,11 @@
     linear-gradient(180deg, rgba(11, 24, 21, 0.96), rgba(10, 19, 20, 0.98));
   --showcase-panel-blue:
     linear-gradient(180deg, rgba(11, 19, 31, 0.96), rgba(12, 20, 35, 0.98));
-  --showcase-card-border: rgba(92, 255, 167, 0.24);
+  --showcase-card-border: rgba(92, 255, 167, 0.28);
   --showcase-card-shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
   --showcase-card-shadow-soft: 0 18px 46px rgba(0, 0, 0, 0.26);
-  --showcase-card-glow: 0 0 0 1px rgba(92, 255, 167, 0.1), 0 0 36px rgba(92, 255, 167, 0.1), inset 0 1px 0 rgba(125, 216, 255, 0.05);
-  --showcase-shell-glow: 0 0 0 1px rgba(92, 255, 167, 0.08), 0 0 54px rgba(92, 255, 167, 0.06);
+  --showcase-card-glow: 0 0 0 1px rgba(92, 255, 167, 0.14), 0 0 42px rgba(92, 255, 167, 0.12), inset 0 1px 0 rgba(125, 216, 255, 0.07);
+  --showcase-shell-glow: 0 0 0 1px rgba(92, 255, 167, 0.12), 0 0 72px rgba(92, 255, 167, 0.08);
   --showcase-heading: #f3f7fb;
   --showcase-text: #dfe9f1;
   --showcase-muted: rgba(223, 233, 241, 0.72);
@@ -150,8 +150,8 @@ body {
 :root[data-theme="light"] .public-nav {
   border-color: rgba(28, 37, 52, 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 252, 246, 0.82), rgba(247, 243, 234, 0.9)),
-    linear-gradient(135deg, rgba(125, 216, 255, 0.08), transparent 56%);
+    linear-gradient(180deg, rgba(250, 253, 255, 0.88), rgba(239, 247, 255, 0.94)),
+    linear-gradient(135deg, rgba(125, 216, 255, 0.14), transparent 56%);
   box-shadow: 0 20px 48px rgba(18, 25, 37, 0.12);
 }
 
@@ -276,9 +276,9 @@ body {
 :root[data-theme="light"] .public-hero {
   border-color: rgba(34, 49, 72, 0.1);
   background:
-    radial-gradient(circle at 82% 14%, rgba(125, 216, 255, 0.26), transparent 22%),
-    radial-gradient(circle at 16% 100%, rgba(37, 214, 111, 0.12), transparent 26%),
-    linear-gradient(135deg, rgba(250, 253, 255, 0.99), rgba(240, 247, 253, 0.98) 52%, rgba(241, 248, 243, 0.98) 100%);
+    radial-gradient(circle at 82% 14%, rgba(125, 216, 255, 0.3), transparent 22%),
+    radial-gradient(circle at 16% 100%, rgba(37, 214, 111, 0.1), transparent 26%),
+    linear-gradient(135deg, rgba(250, 253, 255, 0.99), rgba(236, 245, 255, 0.98) 52%, rgba(238, 247, 255, 0.98) 100%);
   box-shadow: 0 28px 66px rgba(17, 24, 36, 0.12);
 }
 
@@ -339,24 +339,134 @@ body {
   align-self: start;
 }
 
+.scene-card {
+  position: relative;
+  display: grid;
+  align-items: end;
+  min-height: 264px;
+  overflow: hidden;
+  padding: 22px;
+  border: 1px solid var(--showcase-card-border);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(11, 18, 29, 0.24), rgba(9, 15, 24, 0.58));
+  box-shadow: var(--showcase-card-shadow-soft), var(--showcase-card-glow);
+  isolation: isolate;
+}
+
+.scene-card::before,
+.scene-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scene-card::before {
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transform: scale(1.02);
+}
+
+.scene-card::after {
+  background:
+    linear-gradient(180deg, rgba(8, 14, 23, 0.12), rgba(7, 12, 20, 0.22) 44%, rgba(6, 11, 18, 0.82) 100%);
+}
+
+.scene-card-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 6px;
+}
+
+.scene-card-copy strong {
+  margin: 0;
+  color: #f4f8fb;
+  font-family: "Bahnschrift", "Trebuchet MS", "Segoe UI Variable Display", sans-serif;
+  font-size: clamp(1.45rem, 2.4vw, 2.3rem);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  max-width: 11ch;
+  text-wrap: balance;
+}
+
+.scene-card-copy p {
+  margin: 0;
+  color: rgba(233, 240, 247, 0.8);
+  line-height: 1.55;
+  max-width: 30ch;
+}
+
+.scene-card-server::before {
+  background-image: url("/assets/showcase/server-light-v2.png");
+  background-position: center center;
+}
+
+.scene-card-shops::before {
+  background-image: url("/assets/showcase/shops-light-v2.png");
+  background-position: center center;
+}
+
+.scene-card-mods::before {
+  background-image: url("/assets/showcase/mods-light-v2.png");
+  background-position: center center;
+}
+
+.scene-card-server::after {
+  background:
+    linear-gradient(180deg, rgba(9, 15, 23, 0.18), rgba(7, 12, 20, 0.24) 42%, rgba(6, 11, 18, 0.84) 100%);
+}
+
+.scene-card-shops::after {
+  background:
+    linear-gradient(180deg, rgba(255, 251, 244, 0.08), rgba(16, 21, 27, 0.04) 42%, rgba(12, 17, 25, 0.68) 100%);
+}
+
 .hero-media-art {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 220px;
   overflow: hidden;
   border-radius: 20px;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(125, 216, 255, 0.18), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(240, 235, 225, 0.94));
+  isolation: isolate;
+  background: linear-gradient(180deg, rgba(12, 19, 31, 0.82), rgba(8, 15, 24, 0.96));
 }
 
-:root[data-theme="light"] .hero-media-art {
+.hero-media-art::before,
+.hero-media-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hero-media-art::before {
   background:
-    radial-gradient(circle at 50% 18%, rgba(125, 216, 255, 0.22), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 238, 228, 0.98));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 30%),
+    url("/assets/showcase/home-light-v2.png") center 52% / cover no-repeat;
+  transform: scale(1.03);
+}
+
+.hero-media-art::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(12, 18, 29, 0.1) 62%, rgba(9, 16, 25, 0.48) 100%);
+}
+
+:root[data-theme="light"] .hero-media-art::before {
+  filter: saturate(1.04) brightness(1.02);
+}
+
+:root[data-theme="light"] .hero-media-art::after {
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 255, 255, 0.18), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 56%, rgba(235, 245, 255, 0.34) 100%);
 }
 
 .hero-media-art img {
+  position: relative;
+  z-index: 2;
   display: block;
   width: 100%;
   max-width: 100%;
@@ -388,8 +498,8 @@ body {
 :root[data-theme="light"] .showcase-card-icon,
 :root[data-theme="light"] .shop-item-icon,
 :root[data-theme="light"] .modpack-file-icon {
-  border-color: rgba(67, 85, 112, 0.14);
-  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(72, 103, 146, 0.16);
+  background: rgba(246, 251, 255, 0.94);
 }
 
 :root[data-theme="dark"] .hero-sprite-chip,
@@ -397,8 +507,8 @@ body {
 :root[data-theme="dark"] .showcase-card-icon,
 :root[data-theme="dark"] .shop-item-icon,
 :root[data-theme="dark"] .modpack-file-icon {
-  border-color: rgba(92, 255, 167, 0.16);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(92, 255, 167, 0.22);
+  background: rgba(8, 18, 29, 0.78);
 }
 
 .hero-sprite-chip {
@@ -439,12 +549,21 @@ body {
 .brand-title-stage img {
   width: min(100%, 520px);
   margin-inline: auto;
+  filter: drop-shadow(0 14px 26px rgba(9, 14, 24, 0.38));
 }
 
-:root[data-theme="dark"] .hero-media-art {
+:root[data-theme="dark"] .hero-media-art::before {
   background:
-    radial-gradient(circle at 50% 18%, rgba(125, 216, 255, 0.12), transparent 26%),
-    linear-gradient(180deg, rgba(10, 16, 26, 0.92), rgba(13, 20, 31, 0.98));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 28%),
+    url("/assets/showcase/home-dark-v2.png") center 54% / cover no-repeat;
+  filter: brightness(0.44) saturate(0.98) contrast(1.06);
+}
+
+:root[data-theme="dark"] .hero-media-art::after {
+  background:
+    radial-gradient(circle at 72% 14%, rgba(87, 255, 204, 0.22), transparent 20%),
+    radial-gradient(circle at 86% 18%, rgba(46, 178, 255, 0.16), transparent 18%),
+    linear-gradient(180deg, rgba(6, 13, 21, 0.04), rgba(5, 11, 18, 0.16) 48%, rgba(4, 10, 16, 0.58) 100%);
 }
 
 .page-kicker-row {
@@ -605,8 +724,8 @@ body {
 }
 
 :root[data-theme="light"] .hero-inline-card {
-  border-color: rgba(67, 85, 112, 0.14);
-  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(72, 103, 146, 0.16);
+  background: rgba(248, 252, 255, 0.92);
 }
 
 .hero-inline-card strong {
@@ -677,8 +796,58 @@ body {
   background:
     radial-gradient(circle at 86% 18%, rgba(125, 216, 255, 0.16), transparent 24%),
     radial-gradient(circle at 10% 100%, rgba(37, 214, 111, 0.08), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(243, 248, 252, 1));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(240, 247, 255, 1));
   box-shadow: 0 28px 64px rgba(17, 24, 36, 0.11);
+}
+
+:root[data-theme="light"] .scene-card {
+  border-color: rgba(72, 103, 146, 0.16);
+}
+
+:root[data-theme="light"] .scene-card::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 44%, rgba(14, 24, 36, 0.28) 100%);
+}
+
+:root[data-theme="light"] .scene-card-copy strong {
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .scene-card-copy p {
+  color: rgba(246, 250, 255, 0.92);
+}
+
+:root[data-theme="dark"] .scene-card {
+  border-color: rgba(72, 233, 152, 0.18);
+  box-shadow:
+    0 24px 42px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(62, 214, 144, 0.08),
+    0 0 24px rgba(53, 197, 133, 0.12);
+}
+
+:root[data-theme="dark"] .scene-card::after {
+  background:
+    linear-gradient(180deg, rgba(6, 10, 16, 0.08), rgba(5, 9, 15, 0.16) 46%, rgba(4, 9, 14, 0.8) 100%);
+}
+
+:root[data-theme="dark"] .scene-card-server::before {
+  background-image: url("/assets/showcase/server-dark-v2.png");
+  background-position: center center;
+}
+
+:root[data-theme="dark"] .scene-card-shops::before {
+  background-image: url("/assets/showcase/shops-dark-v2.png");
+  background-position: center center;
+}
+
+:root[data-theme="dark"] .scene-card-shops::after {
+  background:
+    linear-gradient(180deg, rgba(4, 11, 16, 0.08), rgba(5, 12, 18, 0.18) 38%, rgba(4, 9, 15, 0.84) 100%);
+}
+
+:root[data-theme="dark"] .scene-card-mods::before {
+  background-image: url("/assets/showcase/mods-dark-v2.png");
+  background-position: center center;
 }
 
 .section-head {
@@ -713,10 +882,25 @@ body {
 .public-route-card,
 .public-shop-card,
 .public-brief-card {
+  position: relative;
   display: grid;
   gap: 14px;
   align-content: start;
   padding: 24px;
+}
+
+.public-route-card::after {
+  content: "↗";
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  color: rgba(87, 103, 126, 0.7);
+  font-size: 1.08rem;
+  font-weight: 900;
+}
+
+:root[data-theme="dark"] .public-route-card::after {
+  color: rgba(92, 255, 167, 0.82);
 }
 
 .public-route-card strong,
@@ -930,6 +1114,11 @@ body {
   align-items: center;
 }
 
+.brand-banner-copy {
+  display: grid;
+  gap: 4px;
+}
+
 .brand-banner-card {
   padding: 20px 22px;
   border-radius: 22px;
@@ -942,6 +1131,14 @@ body {
   background:
     radial-gradient(circle at 85% 10%, rgba(125, 216, 255, 0.12), transparent 22%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 248, 252, 0.96));
+}
+
+:root[data-theme="light"] .brand-banner-copy span {
+  color: #5b6b84;
+}
+
+:root[data-theme="light"] .brand-banner-copy p {
+  color: #4d617b;
 }
 
 .brand-banner-mark {

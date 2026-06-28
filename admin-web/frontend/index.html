@@ -35,16 +35,10 @@
       <div class="public-hero-copy">
         <div class="page-kicker-row">
           <span class="hero-kicker">CopiMine</span>
-          <span class="route-chip">Старт</span>
+          <span class="route-chip">Главная</span>
         </div>
-          <h1>CopiMine. IP, лавки и кабинет.</h1>
-          <p>Адрес сервера, лавки, клиентская сборка и вход в кабинет.</p>
-        <div class="public-actions">
-          <a class="btn btn-primary" href="/server.html">Статус сервера</a>
-          <a class="btn btn-secondary" href="/shops.html">Лавки</a>
-          <a class="btn btn-secondary" href="/mods.html">Клиент и моды</a>
-          <a class="btn btn-ghost public-ghost" href="/signin.html">Войти</a>
-        </div>
+          <h1>CopiMine. Сервер, лавки и кабинет.</h1>
+          <p>IP сервера, онлайн, выборы, казна и клиентская сборка.</p>
           <div class="hero-inline-status">
             <div class="hero-inline-card">
               <span>Адрес</span>
@@ -52,7 +46,7 @@
           </div>
           <div class="hero-inline-card">
               <span>Статус</span>
-            <strong id="serverPulseText">Проверяем сервер</strong>
+            <strong id="serverPulseText">Загружаем онлайн</strong>
           </div>
         </div>
       </div>
@@ -64,8 +58,8 @@
           </div>
           <div class="hero-media-copy">
             <span class="hero-kicker">CopiMine</span>
-            <strong>copimine.ru • Fabric 1.21.1</strong>
-            <p>Сервер, витрины и клиентская сборка.</p>
+            <strong>Клиентская сборка CopiMine</strong>
+            <p>CopiMineClient, моды и готовый архив.</p>
             <div class="hero-sprite-strip" aria-hidden="true">
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/written_book.png" alt="" /></span>
@@ -80,19 +74,78 @@
             <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
           </div>
           <div class="hero-side-note">
-            <span class="hero-kicker">Клиент</span>
-            <strong id="heroMiniTitle">Fabric 1.21.1</strong>
-            <p id="heroMiniText">Fabric 1.21.1, CopiMineClient и архив модов.</p>
+            <span class="hero-kicker">Архив модов</span>
+            <strong id="heroMiniTitle">CopiMineMods.zip</strong>
+            <p id="heroMiniText">Fabric 1.21.1 и готовая сборка для входа.</p>
           </div>
         </article>
       </aside>
+    </section>
+
+    <section class="public-section public-home-summary">
+      <div class="section-head">
+        <span>Статус</span>
+        <h2>Главное по серверу.</h2>
+        <p>Онлайн, выборы, президент и казна.</p>
+      </div>
+
+      <div class="public-dashboard-grid">
+        <article class="public-panel public-panel-wide">
+          <div class="public-panel-head">
+            <div>
+              <span class="hero-kicker">Сервер</span>
+              <h3>Онлайн и выборы</h3>
+            </div>
+          </div>
+          <div id="publicStatusGrid" class="public-status-grid"></div>
+        </article>
+
+        <article class="public-panel treasury-panel">
+          <div class="public-panel-head">
+            <div>
+              <span class="hero-kicker">Казна</span>
+              <h3 id="presidentBudgetOwner">Загружаем казну</h3>
+            </div>
+          </div>
+          <div class="budget-counter-shell">
+            <div class="budget-counter-value">
+              <img src="/assets/mc-icons/item/diamond_ore.png" alt="" />
+              <strong id="presidentBudgetCounter">0 AR</strong>
+            </div>
+            <p id="presidentBudgetDetail">Ждём данные сервера.</p>
+          </div>
+        </article>
+
+        <article class="public-panel president-panel" id="presidentCardMount">
+          <div class="president-card-copy">
+            <span class="hero-kicker">Президент</span>
+            <h3 id="presidentCardName">Президент пока не избран</h3>
+            <p id="presidentCardMeta">Действующий срок не найден.</p>
+          </div>
+        </article>
+
+        <article class="public-panel public-panel-wide">
+          <div class="public-panel-head">
+            <div>
+              <span class="hero-kicker">История</span>
+              <h3>Последние операции казны</h3>
+            </div>
+          </div>
+          <div id="publicTreasuryHistory" class="treasury-history-grid">
+            <article class="showcase-card">
+              <strong>Загружаем историю</strong>
+              <p>Открытые операции загружаются.</p>
+            </article>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="public-section public-route-section">
       <div class="section-head">
         <span>Разделы</span>
         <h2>Основные разделы.</h2>
-        <p>Статус сервера, лавки, клиент и вход.</p>
+        <p>Сервер, лавки, клиент и кабинет.</p>
       </div>
 
       <div class="public-route-board">
@@ -102,8 +155,7 @@
           </div>
           <span class="hero-kicker">Сервер</span>
           <strong>Адрес, онлайн и статус</strong>
-          <p>IP сервера, текущий онлайн и открытая сводка.</p>
-          <a class="btn btn-secondary" href="/server.html">Открыть сервер</a>
+          <p>IP, выборы, президент и публичная казна.</p>
         </article>
 
         <article class="public-route-card public-route-card-shop">
@@ -113,7 +165,6 @@
           <span class="hero-kicker">Лавки</span>
           <strong>AR-лавка и donation-лавка</strong>
           <p>Каталог товаров, цены и выдача в игре.</p>
-          <a class="btn btn-secondary" href="/shops.html">Открыть лавки</a>
         </article>
 
         <article class="public-route-card public-route-card-client">
@@ -122,8 +173,7 @@
           </div>
           <span class="hero-kicker">Клиент</span>
           <strong>Клиент и моды</strong>
-          <p>Архив модов, версия Minecraft, размер и SHA1.</p>
-          <a class="btn btn-secondary" href="/mods.html">Открыть клиент</a>
+          <p>Архив модов, версия Minecraft и размер файла.</p>
         </article>
 
         <article class="public-route-card public-route-card-auth">
@@ -133,7 +183,6 @@
           <span class="hero-kicker">Кабинет</span>
           <strong>Личный кабинет</strong>
           <p>Банк, покупки, история и админ-разделы после входа.</p>
-          <a class="btn btn-primary" href="/signin.html">Перейти ко входу</a>
         </article>
       </div>
     </section>

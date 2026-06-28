@@ -84,7 +84,7 @@ export function createPlayerDonationPages(deps) {
             <button class="btn btn-secondary" data-click="playerRefreshDonationSession()">Обновить статус</button>
             <button class="btn btn-secondary" data-click="playerForgetDonationSession()">Скрыть сессию</button>
           </div>
-          <div class="notice">Баланс изменится после подтверждения оплаты. Сейчас включён тестовый провайдер.</div>
+          <div class="notice">Баланс изменится после подтверждения оплаты.</div>
         </div>
       </div>
     ` : `<div class="notice">Активной платёжной сессии нет.</div>`;
@@ -169,7 +169,7 @@ export function createPlayerDonationPages(deps) {
         ${metric("Готово к выдаче", rows.filter((row) => row.claim_available).length, "Можно забрать в игре", rows.some((row) => row.claim_available) ? "warn" : "good")}
         ${metric("Активные", rows.filter((row) => row.owned_active).length, "Сейчас у игрока", rows.some((row) => row.owned_active) ? "good" : "neutral")}
       </section>
-      ${panel("Donation-лавка", "Покупка проходит на сайте. Выдача проходит в игре.", `
+      ${panel("Donation-лавка", "Покупка на сайте. Выдача в игре.", `
         ${focusItemId ? `<div class="notice">Открыт товар по прямой ссылке: <strong>${esc(focusItemId)}</strong>.</div>` : ""}
         ${table("player-donation-shop", rows, [
           { key: "display_name", label: "Предмет", render: (value) => `<strong>${esc(cleanText(value || "Предмет"))}</strong>` },
@@ -180,7 +180,7 @@ export function createPlayerDonationPages(deps) {
           { key: "action_html", label: "Действие", render: (value) => value },
         ], { pageSize: 10 })}
       `)}
-      ${panel("Порядок", "Как проходит покупка и возврат.", safetyRail([
+      ${panel("Порядок", "Покупка и возврат.", safetyRail([
         ["Покупка", "После списания donation появится запись на выдачу.", "good"],
         ["Выдача", "Предмет выдаётся через игровую donation-лавку.", "warn"],
         ["Возврат", "Утерянный предмет возвращается через отдельный экран.", "neutral"],
@@ -209,7 +209,7 @@ export function createPlayerDonationPages(deps) {
         ${metric("Можно вернуть", owned.summary?.reclaimable || 0, "Утерянные предметы", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
         ${metric("Ждут выдачи", owned.summary?.claimPending || 0, "Забираются в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
       </section>
-      ${panel("Покупки и выдача", "Купленные предметы и выдача в игре.", table("player-donation-owned-claims", asArray(owned.claims), [
+      ${panel("Покупки и выдача", "Купленные предметы и выдача.", table("player-donation-owned-claims", asArray(owned.claims), [
         { key: "purchase_created_at", label: "Покупка", render: (value) => dt(value) },
         { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
         { key: "price_donation", label: "Цена", render: (value) => formatDonate(value || 0) },

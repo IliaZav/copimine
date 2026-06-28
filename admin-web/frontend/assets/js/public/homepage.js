@@ -1,6 +1,6 @@
 import {
   loadPublicAuthState,
-  loadPublicHomePageData,
+  loadPublicHomepageData,
   loadPublicModsPageData,
   loadPublicServerPageData,
   loadPublicShopsPageData,
@@ -69,8 +69,12 @@ async function loadPublicPageByKind(kind, authState) {
     }
     case "public-home":
     default: {
-      const payload = await loadPublicHomePageData();
+      const payload = await loadPublicHomepageData();
       renderer.renderServerHero(payload.config, payload.status, payload.modpack);
+      renderer.renderStatus(payload.status, payload.config);
+      renderer.renderBudget(payload.budget || {});
+      renderer.renderPresidentCard(payload.president || payload.budget || {});
+      renderer.renderHistory(payload.history.items || []);
       renderer.renderAuthState(authState);
     }
   }

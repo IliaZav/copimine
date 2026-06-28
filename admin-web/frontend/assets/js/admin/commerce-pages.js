@@ -133,7 +133,7 @@ export function createAdminCommercePages(deps) {
         ], { pageSize: 12 }))}
       </section>
       <section class="layout-grid grid-2">
-        ${panel("Выдачи предметов", "Что уже оплачено и ждёт выдачи игроку.", table("donation-claims", asArray(donation.claims), [
+        ${panel("Выдачи предметов", "Оплаченные выдачи, ещё не забранные игроками.", table("donation-claims", asArray(donation.claims), [
           { key: "created_at", label: "Создан", render: value => dt(value) },
           { key: "player_uuid", label: "Игрок" },
           { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
@@ -178,7 +178,7 @@ export function createAdminCommercePages(deps) {
             <button class="btn btn-secondary full" data-click="adminSetTreasuryPin()">Сменить PIN казны</button>
           </div>
         `)}
-        ${panel("Платёжный режим", "Здесь показывается только текущий режим оплаты и подготовленный слот под будущего провайдера, без секретов и токенов.", kv([
+        ${panel("Платёжный режим", "Текущий режим оплаты и место под будущего провайдера.", kv([
           ["Текущий режим", "Тестовый платёжный режим"],
           ["Реальный webhook", "не подключён"],
           ["Курс", "1 ₽ = 1 Donation"],

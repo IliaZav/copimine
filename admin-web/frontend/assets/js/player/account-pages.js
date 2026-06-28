@@ -17,13 +17,13 @@ export function createPlayerAccountPages(deps) {
     const account = me.account || state.user || {};
     setView(`
       <section class="layout-grid grid-2">
-        ${panel("Профиль", "Аккаунт и привязка.", kv([
+        ${panel("Профиль", "Аккаунт, Minecraft и email.", kv([
           ["Логин", account.username || "игрок"],
           ["Minecraft-ник", account.minecraftName || "не привязан"],
           ["Email", account.email || "не указан"],
           ["Создан", dt(account.createdAt)]
         ]), `<button class="btn btn-secondary" data-click="setTab('link')">Настроить Minecraft</button>`)}
-        ${panel("Разделы кабинета", "Доступные разделы.", safetyRail([
+        ${panel("Разделы кабинета", "Основные разделы.", safetyRail([
           ["Привязка", "Minecraft-ник", account.minecraftName ? "good" : "warn"],
           ["Банк", "AR и PIN", "neutral"],
           ["История", "Переводы и покупки", "good"]
@@ -64,7 +64,7 @@ export function createPlayerAccountPages(deps) {
         ${panel("Частые вопросы", "Коротко.", safetyRail([
           ["Банк", "Нужны привязка и PIN", "good"],
           ["Артефакты", "Выдача идёт в игре", "neutral"],
-          ["Выдача", "При полном инвентаре предмет ждёт повторной выдачи", "warn"]
+          ["Выдача", "Если инвентарь заполнен, выдача остаётся в очереди", "warn"]
         ]))}
       </section>
     `);

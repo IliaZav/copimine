@@ -38,34 +38,39 @@
             <span class="route-chip">Каталог</span>
           </div>
           <h1>Лавки CopiMine.</h1>
-          <p>AR и donation разделены. Выдача и возврат идут в игре.</p>
-          <div class="public-actions">
-            <button id="openArShopBtn" type="button" class="btn btn-secondary">AR-лавка</button>
-            <button id="openDonationShopBtn" type="button" class="btn btn-primary">Donation-лавка</button>
-            <a class="btn btn-ghost public-ghost" href="/signin.html">Войти в кабинет</a>
-          </div>
+          <p>AR и donation разделены. Каталог здесь, выдача в игре.</p>
         </div>
 
-        <aside class="hero-side-card hero-side-card-compact">
-          <div class="hero-sprite-strip" aria-hidden="true">
-            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
-            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/totem_of_undying.png" alt="" /></span>
-            <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/barrel_top.png" alt="" /></span>
-          </div>
-          <span class="hero-kicker">Правила</span>
-          <ul class="hero-check-list">
-            <li>AR-предметы покупаются и чинятся за AR.</li>
-            <li>Donation-предметы идут через отдельный баланс.</li>
-            <li>Выдача и возврат проходят в игре.</li>
-          </ul>
+        <aside class="public-hero-side">
+          <article class="scene-card scene-card-shops">
+            <div class="scene-card-copy">
+              <span class="hero-kicker">Лавки</span>
+              <strong>AR-лавка и donation</strong>
+              <p>Каталог на сайте. Выдача и возврат в игре.</p>
+            </div>
+          </article>
+
+          <article class="hero-side-card hero-side-card-compact">
+            <div class="hero-sprite-strip" aria-hidden="true">
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/totem_of_undying.png" alt="" /></span>
+              <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/barrel_top.png" alt="" /></span>
+            </div>
+            <span class="hero-kicker">Правила</span>
+            <ul class="hero-check-list">
+              <li>AR-предметы покупаются и чинятся за AR.</li>
+              <li>Donation-предметы идут через отдельный баланс.</li>
+              <li>Выдача и возврат проходят через игровую лавку.</li>
+            </ul>
+          </article>
         </aside>
       </section>
 
       <section class="public-section public-shop-board-section">
         <div class="section-head">
           <span>Витрины</span>
-          <h2>AR и donation отдельно.</h2>
-          <p>На сайте — каталог и покупка. В игре — выдача и возврат.</p>
+          <h2>Каталог AR и donation.</h2>
+          <p>Покупка на сайте. Выдача и возврат в игре.</p>
         </div>
 
         <div class="public-shop-board">
@@ -76,7 +81,6 @@
                 <h3>Официальные предметы за AR</h3>
                 <p>Игровые товары, ремонт и контроль экземпляров.</p>
               </div>
-              <button id="openArShopBtnMirror" type="button" class="btn btn-secondary">Открыть в кабинете</button>
             </div>
             <div id="publicArShopPreview" class="shop-rail">
               <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
@@ -90,7 +94,6 @@
                 <h3>Именные предметы за donation</h3>
                 <p>Отдельный баланс, выдача в игре и возврат утерянных предметов.</p>
               </div>
-              <button id="openDonationShopBtnMirror" type="button" class="btn btn-primary">Открыть в кабинете</button>
             </div>
             <div id="publicDonationShopPreview" class="shop-rail">
               <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
@@ -101,24 +104,24 @@
 
       <section class="public-section public-brief-section">
         <div class="section-head">
-          <span>Порядок</span>
-          <h2>Как купить.</h2>
+          <span>Выдача</span>
+          <h2>Как получить предмет.</h2>
         </div>
 
         <div class="public-brief-grid">
           <article class="public-brief-card">
             <span>01</span>
-            <strong>Смотришь витрину</strong>
+            <strong>Выбери товар</strong>
             <p>Цена, эффект, кулдаун и ограничения.</p>
           </article>
           <article class="public-brief-card">
             <span>02</span>
-            <strong>Оформляешь покупку</strong>
+            <strong>Оплати покупку</strong>
             <p>После покупки создаётся выдача.</p>
           </article>
           <article class="public-brief-card">
             <span>03</span>
-            <strong>Забираешь в игре</strong>
+            <strong>Забери в игре</strong>
             <p>Предмет выдаётся через игровую лавку.</p>
           </article>
         </div>

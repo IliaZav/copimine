@@ -153,7 +153,7 @@ export function createPluginRegistryPages(deps) {
           </div>
         ` : empty("Плагин не выбран", "Выбери плагин из списка."))}
       </section>
-      ${panel("Журнал изменений", "Копии, проверки, правки и перечитывание.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Журнал пуст", "Записей пока нет."))}
+      ${panel("Журнал изменений", "Резервные копии, проверки, правки и перечитывание.", auditRows.length ? table("plugin-registry-audit", auditRows, null, { pageSize: 10 }) : empty("Журнал пуст", "Записей пока нет."))}
     `;
   }
 
@@ -241,7 +241,7 @@ export function createPluginRegistryPages(deps) {
   }
 
   async function loadSources() {
-    setLoading("Проверяю источники данных");
+    setLoading("Загружаю источники данных");
     const [data, config, access, registryState] = await Promise.all([
       safeApi("/api/data-sources", { sources: [] }),
       safeApi("/api/config", {}),
@@ -249,7 +249,7 @@ export function createPluginRegistryPages(deps) {
       loadPluginRegistryState()
     ]);
     setView(`
-      ${panel("Источники данных", "Плагины, файлы и БД, на которых строится панель", table("sources", asArray(data.sources), [
+      ${panel("Источники данных", "Плагины, файлы и базы данных панели.", table("sources", asArray(data.sources), [
         { key: "name", label: "Источник" },
         { key: "type", label: "Тип" },
         { key: "status", label: "Статус", render: v => pill(v, v === "connected" ? "good" : "warn") },

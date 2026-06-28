@@ -401,7 +401,7 @@ function statusLabel(value, fallback = "-") {
     unclaimed: "Можно забрать",
     reserved: "Резервируется",
     delivering: "Выдаётся",
-    delivery_review: "Нужна проверка",
+    delivery_review: "Проверка",
     lost_reclaimable: "Можно вернуть",
     replaced_after_loss: "Заменён после потери",
     broken: "Сломан",
@@ -1014,17 +1014,17 @@ function dbPolicyPanel(policy = {}, access = {}) {
     protected: protectedPatterns.length,
     allowlist: allowlist.length
   };
-  return panel("Защита данных", "Как сайт бережёт выборы, банк и журнал действий от случайных правок", `
+  return panel("Защита данных", "Правила изменения данных через сайт.", `
     <div class="db-policy-grid">
       <div class="db-policy-card ${enabled ? "warn" : "good"}">
         <span>изменения с сайта</span>
         <strong>${enabled ? "ограничены правилами" : "только готовые действия"}</strong>
-        <p>${enabled ? "Чувствительные разделы защищены и не меняются напрямую." : "Критичные данные можно менять только через подготовленные сценарии."}</p>
+        <p>${enabled ? "Прямое изменение закрыто. Работают только разрешённые действия." : "Доступны только готовые действия."}</p>
       </div>
       <div class="db-policy-card good">
         <span>защищённых правил</span>
         <strong>${writePolicy.protected}</strong>
-        <p>Голоса, бюллетени, AR, аудит и официальные предметы ведутся через отдельные сценарии.</p>
+        <p>Выборы, AR и официальные предметы меняются только через отдельные сценарии.</p>
       </div>
       <div class="db-policy-card ${allowlist.length ? "good" : "neutral"}">
         <span>разрешённых сценариев</span>
@@ -1656,7 +1656,7 @@ function updateGlobalStatus(status = {}) {
   const badge = $("liveBadge");
   badge.className = `status-chip ${ok ? "status-good" : status.minecraftOnline ? "status-warn" : "status-bad"}`;
   badge.textContent = ok ? "сервер онлайн" : status.minecraftOnline ? "частично" : "offline";
-  setMiniHealthSummary(ok ? "Сервер работает" : "Нужна проверка", [
+  setMiniHealthSummary(ok ? "Сервер работает" : "Проверь сервер", [
     `TPS: ${short(status.tps || "—", 26)}`,
     `MSPT: ${short(status.mspt || "—", 26)}`,
   ]);
@@ -1761,7 +1761,7 @@ function buildAvatarBadgeNode(name, size = "sm") {
 
 function publicOnlineRows(players = []) {
   if (!players.length) {
-    return [makeElement("div", "empty-public-state", "Список игроков сейчас недоступен или сервер не отдал его публично.")];
+    return [makeElement("div", "empty-public-state", "Список игроков скрыт.")];
   }
   return players.map((name, index) => {
     const row = makeElement("div", "top-row");
@@ -1800,7 +1800,7 @@ function renderPublicStatus(status = {}, config = {}) {
   if (statusGrid) {
     replaceChildrenSafe(statusGrid, [
       publicStatusMetric("", server.online ? "" : "", server.online ? ` ${server.latencyMs ?? "?"} ` : "   ", server.online ? "good" : "bad"),
-      publicStatusMetric("Игроки", String(server.playersOnline || 0), server.playerCap ? `из ${server.playerCap}` : (server.playerListAvailable ? "публичный список доступен" : "публичный список недоступен"), server.playersOnline ? "good" : "neutral"),
+      publicStatusMetric("Игроки", String(server.playersOnline || 0), server.playerCap ? `из ${server.playerCap}` : (server.playerListAvailable ? "список открыт" : "список скрыт"), server.playersOnline ? "good" : "neutral"),
       publicStatusMetric("Выборы", elections.active ? "идут" : "пауза", elections.active ? `${elections.candidates || 0} кандидатов · ${elections.votes || 0} голосов` : "Сейчас нет активного этапа голосования", elections.active ? "good" : "warn"),
       publicStatusMetric("Президент", elections.president || "не выбран", elections.president ? "Данные пришли из ElectionCore" : "Активный срок пока не подтверждён", elections.president ? "good" : "neutral"),
       publicStatusMetric("Казна", formatAr(treasury.balance || 0), treasury.ownerName ? `Ведёт ${treasury.ownerName}` : "Публичный бюджет сервера", Number(treasury.balance || 0) > 0 ? "good" : "neutral")
@@ -1812,7 +1812,7 @@ function renderPublicStatus(status = {}, config = {}) {
     runtimeNotes.append(
       buildTopNote("Кабинет", "Вход, привязка и банк AR."),
       buildTopNote("Выборы", elections.active ? "Идёт активный этап." : "Активных выборов нет."),
-      buildTopNote("Донат", config.donationEnabled ? "Донат включён." : "Сейчас работает тестовый провайдер."),
+      buildTopNote("Донат", config.donationEnabled ? "Донат открыт." : "Оплата временно закрыта."),
     );
     const treasuryNotes = makeElement("div", "top-note-list");
     treasuryNotes.append(
@@ -1841,7 +1841,7 @@ function updatePublicHero(status = {}, config = {}) {
   const version = cleanText(config.serverVersion || "1.21.x");
   const pulseText = server.online
     ? `Онлайн ${server.playersOnline || 0}${server.playerCap ? ` / ${server.playerCap}` : ""} · ${version} · Paper`
-    : `Сервер сейчас недоступен для проверки · ${version}`;
+    : `Сервер не ответил · ${version}`;
   if ($("serverIpText")) $("serverIpText").textContent = address;
   if ($("serverPulseText")) $("serverPulseText").textContent = pulseText;
 }
@@ -1923,7 +1923,7 @@ async function showCabinetFromPublic() {
 function copyServerIp() {
     const ip = $("serverIpText")?.textContent?.trim() || "";
     if (!ip || ip === "запроси адрес у администрации" || ip === "загружаем адрес...") {
-      toast("Публичный адрес сервера сейчас не настроен.", true);
+      toast("Адрес сервера не задан.", true);
       return;
     }
     navigator.clipboard?.writeText(ip).then(() => toast(`IP скопирован: ${ip}`)).catch(() => toast(`IP сервера: ${ip}`));
@@ -1992,7 +1992,7 @@ function syncAuthUiLegacyUnused() {
   if (submit) submit.textContent = isRegister ? "Создать кабинет" : "Войти";
   if (note) note.textContent = isRegister
     ? "Создайте аккаунт сайта."
-    : "После входа откроется кабинет, доступный для этого аккаунта.";
+    : "После входа откроется кабинет этого аккаунта.";
 }
 
 function syncAuthUi() {
@@ -2315,7 +2315,7 @@ async function loadDashboard(silent = false) {
         <div class="layout-grid grid-3">
           ${metric("", electionOverview.active ? "" : "", `${short(electionOverview.title || "CopiMine Elections", 42)}  ${electionOverview.candidates ?? 0}   ${electionOverview.votes ?? 0} `, electionOverview.active ? "good" : "")}
           ${metric("  ", economy.totalKnownInPlayerData ?? 0, "     ", "good")}
-          ${metric("Связь с сервером", status.rconOk ? "Есть" : "Нет", status.rconOk ? "живые действия доступны" : "часть быстрых действий недоступна", status.rconOk ? "good" : "warn")}
+          ${metric("Связь с сервером", status.rconOk ? "Есть" : "Нет", status.rconOk ? "RCON отвечает" : "RCON не отвечает", status.rconOk ? "good" : "warn")}
         </div>
         <div class="spacer-12"></div>
         ${players.length ? table("dash-online", players.map(name => ({ player: name })), [{ key: "player", label: "Игрок онлайн" }], { pageSize: 8 }) : empty("Игроков онлайн не найдено", "Если игрок скрыт vanish/hidden, сервер может не отдавать его в /list.")}
@@ -2324,7 +2324,7 @@ async function loadDashboard(silent = false) {
     </section>
     <section class="layout-grid grid-2">
       ${panel("Стабильность сервера", "Плагины и настройки, которые помогают держать мир лёгким и плавным", optimizationStackHtml(perfReady))}
-      ${panel("Источники проверки", "Какие данные уже подключены для панели", kv([
+      ${panel("Источники данных", "Файлы, сервисы и таблицы панели.", kv([
         ["server.properties", perfReady.sources?.serverProperties || "—"],
         ["plugins", perfReady.sources?.plugins || "—"],
         ["База панели", perfReady.sources?.adminDb || "—"],
@@ -2479,7 +2479,7 @@ async function playerDetailsHtml(player) {
       { key: "ar", label: "АР" }
     ], { pageSize: 8 }))}
     ${panel("Лента действий", "Проверки, AR и игровые события по времени.", `<div class="player-actions-log">${activityTimeline(timelineData.rows)}</div>`)}
-    ${panel("Последние действия CoreProtect", "Контекст для проверки игрока", table("player-actions", asArray(actions.rows), null, { pageSize: 12 }))}
+    ${panel("Последние действия CoreProtect", "События по игроку.", table("player-actions", asArray(actions.rows), null, { pageSize: 12 }))}
   `;
 }
 
@@ -2711,7 +2711,7 @@ async function loadElections() {
         </div>
         <div class="spacer-12"></div>
         ${siteBulletList([
-          "Запуск этапов через /cadm.",
+          "Управление этапами через /cadm.",
           "На сайте: обзор, книги, законы и казна.",
           "Аварийных кнопок здесь нет."
         ])}
@@ -2737,7 +2737,7 @@ async function loadElections() {
       `)}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Президент и законы", "Президент, законы и новые тексты на проверке.", `
+      ${panel("Президент и законы", "Действующий срок и законы.", `
         ${lawCards(lawRows)}
         <div class="spacer-12"></div>
         ${pendingLawRows.length ? `<div class="law-stack">${pendingLawRows.slice(0, 5).map((row) => `
@@ -2747,7 +2747,7 @@ async function loadElections() {
           </article>
         `).join("")}</div>` : empty("Новых законов на проверке нет", "Когда президент отправит новый закон или замену, он появится здесь.")}
       `)}
-      ${panel("Казна", "Баланс, владелец и публичные движения.", kv([
+      ${panel("Казна", "Баланс, владелец и история.", kv([
         ["Баланс", formatAr(treasuryBudget)],
         ["Владелец", detail.treasury?.ownerName || overview.president || "не указан"],
         ["Источник", "игровая экономика и витрины"],
@@ -2850,7 +2850,7 @@ async function loadArtifacts() {
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Связка модулей", health.bridgeMode || "ArtifactsBridge", health.jarsOk ? "оба модуля активны" : `модули: ${asArray(health.activeJars).join(", ") || "нет"}`, health.jarsOk ? "good" : "bad")}
-      ${metric("База сайта", health.postgres ? "PostgreSQL доступна" : "PostgreSQL недоступна", "единое хранилище CopiMine", health.postgres ? "good" : "bad")}
+      ${metric("База сайта", health.postgres ? "PostgreSQL доступна" : "PostgreSQL недоступна", "Основная база сайта", health.postgres ? "good" : "bad")}
       ${metric("", counts.artifact_items_catalog ?? asArray(catalog.items).length, " ")}
       ${metric("Pending", counts.artifact_pending_deliveries ?? asArray(pending.deliveries).length, "  ", Number(counts.artifact_pending_deliveries || 0) ? "warn" : "good")}
     </section>
@@ -2880,7 +2880,7 @@ async function loadArtifacts() {
         { key: "price_ar", label: "AR" },
         { key: "status", label: "Статус", render: v => pill(v || "—", artifactStatusTone(v)) }
       ], { pageSize: 12 }))}
-      ${panel("Отложенная выдача", "Оплачено, но предмет ждёт безопасной выдачи", table("artifact-pending", asArray(pending.deliveries), [
+      ${panel("Отложенная выдача", "Оплаченные выдачи, ещё не забранные игроками.", table("artifact-pending", asArray(pending.deliveries), [
         { key: "created_at", label: "Создано", render: v => dt(v) },
         { key: "player_uuid", label: "Игрок", render: (value, row) => esc(row.player_name || row.player || value || "—") },
         { key: "item_id", label: "Предмет" },
@@ -3213,7 +3213,7 @@ async function loadLogs() {
   setView(`
     <section class="layout-grid grid-2">
       ${panel("Логи сервера", "latest.log, последние строки", `<pre class="log-box">${esc(asArray(data.lines).join("\n") || "Лог пуст")}</pre>`)}
-      ${panel("События плагинов", "гровые и системные события, которые пришли в панель", table("plugin-events", asArray(events.rows), null, { pageSize: 18 }))}
+      ${panel("События плагинов", "Игровые и системные события панели.", table("plugin-events", asArray(events.rows), null, { pageSize: 18 }))}
     </section>
   `);
 }
@@ -3237,7 +3237,7 @@ async function loadInvestigations() {
         </div>
         <div id="investigationResults">${table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 })}</div>
       `)}
-      ${panel("Источники расследований", "Какие таблицы доступны", table("investigation-sources", asArray(sources.tables).map(t => ({ table: t.name, columns: asArray(t.columns).join(", ") })), [
+      ${panel("Источники расследований", "Таблицы и колонки для поиска.", table("investigation-sources", asArray(sources.tables).map(t => ({ table: t.name, columns: asArray(t.columns).join(", ") })), [
         { key: "table", label: "Таблица" },
         { key: "columns", label: "Колонки" }
       ]))}
@@ -3591,11 +3591,11 @@ async function loadPlayerCabinet() {
       <div class="spacer-12"></div>
       ${!linked ? `<div class="notice">Сначала привяжи Minecraft-ник, затем появится кнопка whitelist-заявки.</div>` : ""}
       ${linked && !whitelisted && !whitelistRequest ? `<button class="btn btn-primary" data-click="playerRequestWhitelist()">Отправить whitelist-заявку</button>` : ""}
-      ${linked && whitelistRequest?.status === "PENDING" ? `<div class="notice">Заявка уже отправлена и ждёт одобрения в Discord или админ-панели.</div>` : ""}
+      ${linked && whitelistRequest?.status === "PENDING" ? `<div class="notice">Заявка отправлена. Ждёт решения администрации.</div>` : ""}
       ${whitelisted ? `<div class="notice">Игрок уже добавлен в whitelist. Повторная заявка не нужна.</div>` : ""}
     `)}
     ${panel("Донат-баланс", "Баланс донат-предметов.", kv([
-      ["Статус", donation?.linked ? "доступен" : "ждёт привязки Minecraft"],
+        ["Статус", donation?.linked ? "доступен" : "требуется привязка Minecraft"],
       ["Баланс", donation?.linked ? formatDonate(donationBalance) : "—"],
       ["Покупки", "через вкладку Артефакты / Донат"],
       ["Оплата", "Тестовый провайдер, пополнение через фиксированные пакеты"]
@@ -3700,7 +3700,7 @@ async function loadPlayerBank() {
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна" : "Личный счёт", "good")}
-      ${metric("Последние операции", ledger.length, "Только подтверждённые записи", "neutral")}
+      ${metric("Последние операции", ledger.length, "Подтверждённые записи", "neutral")}
       ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinTone(pin))}
       ${metric("Minecraft", state.user.minecraftName || "—", "Привязан", "good")}
     </section>
@@ -4019,7 +4019,7 @@ async function loadPlayerArtifacts() {
       ${metric("Покупки", purchases.length, "Подтверждённые покупки", purchases.length ? "good" : "neutral")}
       ${metric("Ожидают выдачи", pending.length, "Предметы ждут выдачи", pending.length ? "warn" : "good")}
       ${metric("Ремонты", repairs.length, "История ремонтов")}
-      ${metric("Донат", "отдельный раздел", "Баланс, витрина и возврат", "neutral")}
+      ${metric("Донат", "включён", "Баланс, витрина и возврат", "neutral")}
     </section>
     <section class="layout-grid grid-2">
       ${panel("Мои покупки", "Купленные предметы.", table("player-artifact-purchases", purchases, [

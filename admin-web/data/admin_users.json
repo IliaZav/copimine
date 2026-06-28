@@ -1,0 +1,26 @@
+{
+  "SudoKillDash9": {
+    "username": "SudoKillDash9",
+    "password_hash": "pbkdf2_sha256$260000$c0118e97f8d321728d8cefd93ab4f3f5$4eda37621f8c8ebafff2a884a66056b46eacaeb253f3967205d3f8bf78a54484",
+    "role": "owner",
+    "enabled": true
+  },
+  "sudokilldash9": {
+    "username": "SudoKillDash9",
+    "password_hash": "pbkdf2_sha256$260000$c0118e97f8d321728d8cefd93ab4f3f5$4eda37621f8c8ebafff2a884a66056b46eacaeb253f3967205d3f8bf78a54484",
+    "role": "owner",
+    "enabled": true
+  },
+  "Alvarez_227": {
+    "username": "Alvarez_227",
+    "password_hash": "pbkdf2_sha256$260000$8f6f369b1ad684a886aa0f8a35c5df9b$47ee4cff3e972b948878055e7b8eb6c80c39d35bc0ba8aaa6b70c3ff9363f645",
+    "role": "admin",
+    "enabled": true
+  },
+  "alvarez_227": {
+    "username": "Alvarez_227",
+    "password_hash": "pbkdf2_sha256$260000$8f6f369b1ad684a886aa0f8a35c5df9b$47ee4cff3e972b948878055e7b8eb6c80c39d35bc0ba8aaa6b70c3ff9363f645",
+    "role": "admin",
+    "enabled": true
+  }
+}

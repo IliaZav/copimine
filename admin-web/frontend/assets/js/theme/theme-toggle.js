@@ -13,16 +13,16 @@ function themeApi() {
   };
 }
 
-function toggleLabel(theme) {
-  return theme === "dark"
-    ? "\u0421\u0432\u0435\u0442\u043b\u0430\u044f \u0442\u0435\u043c\u0430"
-    : "\u0422\u0451\u043c\u043d\u0430\u044f \u0442\u0435\u043c\u0430";
-}
-
 function currentThemeLabel(theme) {
   return theme === "dark"
     ? "\u0442\u0451\u043c\u043d\u0430\u044f"
     : "\u0441\u0432\u0435\u0442\u043b\u0430\u044f";
+}
+
+function currentThemeLabelDisplay(theme) {
+  return theme === "dark"
+    ? "\u0422\u0451\u043c\u043d\u0430\u044f"
+    : "\u0421\u0432\u0435\u0442\u043b\u0430\u044f";
 }
 
 function ensureButtonContent(button) {
@@ -47,21 +47,21 @@ function syncThemeButtons() {
   const current = themeApi().getTheme();
   document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
     const isButton = button instanceof HTMLButtonElement;
-    const nextLabel = toggleLabel(current);
+    const currentLabel = currentThemeLabelDisplay(current);
     button.setAttribute("data-theme-current", current);
     button.setAttribute(
       "aria-label",
-      `${nextLabel}. \u0421\u0435\u0439\u0447\u0430\u0441 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u0430 ${currentThemeLabel(current)} \u0442\u0435\u043c\u0430.`,
+      `\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0442\u0435\u043c\u0443. \u0421\u0435\u0439\u0447\u0430\u0441 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u0430 ${currentThemeLabel(current)} \u0442\u0435\u043c\u0430.`,
     );
-    button.setAttribute("title", nextLabel);
+    button.setAttribute("title", currentLabel);
     if (isButton) {
       const content = ensureButtonContent(button);
       if (content) {
-        content.icon.textContent = current === "dark" ? "\u2600" : "\u263E";
-        content.label.textContent = nextLabel;
+        content.icon.textContent = current === "dark" ? "\u263E" : "\u2600";
+        content.label.textContent = currentLabel;
       }
     } else {
-      button.textContent = nextLabel;
+      button.textContent = currentLabel;
     }
   });
 }

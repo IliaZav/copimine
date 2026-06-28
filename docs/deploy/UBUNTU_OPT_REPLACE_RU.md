@@ -5,6 +5,41 @@
 Архив собран так, чтобы его можно было распаковать прямо в `/opt`.
 После распаковки должен появиться путь `/opt/copimine`.
 
+## Что именно заменяется
+
+Заменяется весь проект целиком, а не отдельные куски.
+
+После выполнения этой инструкции на сервере будет одна рабочая папка:
+
+```bash
+/opt/copimine
+```
+
+Внутри неё лежат:
+
+- Minecraft сервер;
+- все актуальные jar плагинов;
+- сайт `admin-web`;
+- resource pack;
+- клиентский мод `CopiMineClient`;
+- базы и runtime-данные, которые уже включены в архив;
+- текущие конфиги проекта.
+
+Это значит:
+
+- сайт заменяется вместе с проектом;
+- плагины заменяются вместе с проектом;
+- resource pack заменяется вместе с проектом;
+- устаревшая версия не должна оставаться в старой `/opt/copimine`;
+- нельзя распаковывать новую версию поверх старой вручную по частям.
+
+Правильный сценарий только такой:
+
+1. остановить сервисы;
+2. убрать старую `/opt/copimine` целиком в backup;
+3. распаковать новый архив;
+4. поднять сервисы уже из новой папки.
+
 ## Что лежит в архиве
 
 - Внутри архива есть верхняя папка `copimine/`.
@@ -48,6 +83,20 @@ TS="$(date +%F-%H%M%S)"
 sudo mv copimine "copimine.backup.$TS"
 ```
 
+После этой команды в `/opt` не должно остаться активной рабочей папки `copimine`.
+
+Проверка:
+
+```bash
+ls -la /opt
+```
+
+До распаковки нового архива в `/opt` должна быть только backup-папка вида:
+
+```bash
+copimine.backup.YYYY-MM-DD-HHMMSS
+```
+
 ## 4. Распаковать новый архив
 
 ```bash
@@ -61,6 +110,13 @@ sudo tar -xzf /root/CopiMine-opt-ubuntu-transfer-2026-06-28.tar.gz
 test -d /opt/copimine
 ls /opt/copimine
 ```
+
+Если в `/opt` одновременно есть и старая рабочая `copimine`, и новая `copimine`, значит замена выполнена неправильно.
+
+Должно быть так:
+
+- одна активная папка: `/opt/copimine`;
+- одна или несколько backup-папок: `/opt/copimine.backup.*`.
 
 ## 5. Назначить владельца
 
@@ -103,6 +159,46 @@ ls /opt/copimine/resourcepacks/build
 ls /opt/copimine/CopiMineClient
 ```
 
+## 8.1 Проверить, что сайт тоже заменился
+
+Сайт входит в полный архив. Отдельно копировать `admin-web` не нужно.
+
+Проверка:
+
+```bash
+test -f /opt/copimine/admin-web/backend/main.py
+test -f /opt/copimine/admin-web/frontend/index.html
+test -f /opt/copimine/admin-web/deploy/copimine-admin.service
+ls /opt/copimine/admin-web/frontend
+```
+
+Если эти файлы лежат в новой `/opt/copimine/admin-web`, значит сайт заменён вместе со всем проектом.
+
+## 8.2 Проверить, что плагины тоже заменились
+
+Проверка:
+
+```bash
+ls /opt/copimine/minecraft/server/plugins/CopiMine*.jar
+```
+
+Должны лежать актуальные jar:
+
+- `CopiMineUltimateAdminPlus.jar`
+- `CopiMineArtifacts.jar`
+- `CopiMineEconomyCore.jar`
+- `CopiMineElectionCore.jar`
+- `CopiMineNarcotics.jar`
+- `CopiMineWorldCore.jar`
+
+Если в `plugins/` лежат старые дубли с другими именами, их нужно убрать вручную до запуска сервера.
+
+Пример поиска дублей:
+
+```bash
+find /opt/copimine/minecraft/server/plugins -maxdepth 1 -type f | sort
+```
+
 ## 9. Проверить resource pack
 
 ```bash
@@ -134,6 +230,28 @@ systemctl status copimine-discord-bot --no-pager -l
 systemctl status minecraft --no-pager -l || true
 ```
 
+Проверка, что используется именно новая версия:
+
+```bash
+readlink -f /opt/copimine
+find /opt/copimine/minecraft/server/plugins -maxdepth 1 -name 'CopiMine*.jar' -printf '%f %TY-%Tm-%Td %TH:%TM\n' | sort
+```
+
+Проверка сайта:
+
+```bash
+curl -I http://127.0.0.1:8090/
+curl -fsS http://127.0.0.1:8090/api/health
+```
+
+Если снаружи стоит nginx:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+curl -I http://127.0.0.1:18080/
+```
+
 Плюс вручную:
 
 1. Открыть сайт.
@@ -163,3 +281,5 @@ sudo systemctl start minecraft || true
 - Полная замена `/opt/copimine` перезапишет все локальные файлы внутри этой папки.
 - Если на сервере были ручные правки, которых нет в текущем архиве, они будут потеряны.
 - Перед запуском сайта на Ubuntu обязательно заново создать `admin-web/.venv`.
+- Если нужен именно один актуальный проект на сервере, рабочей должна быть только папка `/opt/copimine`.
+- Старые версии можно хранить только как `copimine.backup.*`, но не запускать их как рабочие.

@@ -2813,13 +2813,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       Inventory var4 = this.createMenu(
          var1, var3, CopiMineArtifacts.ViewType.PIN, 54, "&8Введите PIN"
       );
-      int[] var5 = new int[]{20, 21, 22, 29, 30, 31, 38, 39, 40, 48};
+      int[] slots = {20,21,22,29,30,31,38,39,40,48};
 
       for (int var6 = 1; var6 <= 9; var6++) {
-         this.setAction(var4, var3, var5[var6 - 1], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + var6, List.of()), "digit:" + var6);
+         this.setAction(var4, var3, slots[var6 - 1], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + var6, List.of()), "digit:" + var6);
       }
 
-      this.setAction(var4, var3, var5[9], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f0", List.of()), "digit:0");
+      this.setAction(var4, var3, slots[9], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f0", List.of()), "digit:0");
       var4.setItem(
          13,
          this.button(

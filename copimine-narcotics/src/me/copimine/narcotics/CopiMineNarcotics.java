@@ -47,7 +47,6 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -145,20 +144,23 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (official != null) {
             event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
             if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+                event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
                 event.setCancelled(true);
+                return;
             }
-            if (canConsumeOfficialOnInteract(event)) {
-                event.setCancelled(true);
-                long now = Instant.now().getEpochSecond();
-                long cooldownUntil = consumeCooldownUntil.getOrDefault(player.getUniqueId(), 0L);
-                if (cooldownUntil > now) {
-                    player.sendMessage(message("consume_cooldown", String.valueOf(cooldownUntil - now)));
-                    return;
-                }
-                consumeCooldownUntil.put(player.getUniqueId(), now + configService.consumeCooldownSeconds());
-                itemFactory.consumeOne(player, inHand);
-                overdoseService.consume(player, official);
+            if (event.getAction() != Action.RIGHT_CLICK_AIR) {
+                return;
             }
+            event.setCancelled(true);
+            long now = Instant.now().getEpochSecond();
+            long cooldownUntil = consumeCooldownUntil.getOrDefault(player.getUniqueId(), 0L);
+            if (cooldownUntil > now) {
+                player.sendMessage(message("consume_cooldown", String.valueOf(cooldownUntil - now)));
+                return;
+            }
+            consumeCooldownUntil.put(player.getUniqueId(), now + configService.consumeCooldownSeconds());
+            itemFactory.consumeOne(player, inHand);
+            overdoseService.consume(player, official);
             return;
         }
 
@@ -185,30 +187,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
             event.setCancelled(true);
         }
-    }
-
-    private boolean canConsumeOfficialOnInteract(PlayerInteractEvent event) {
-        if (event.getAction() == Action.RIGHT_CLICK_AIR) {
-            return true;
-        }
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
-            return false;
-        }
-        return !isUnsafeConsumeTarget(event.getClickedBlock());
-    }
-
-    private boolean isUnsafeConsumeTarget(Block block) {
-        if (block == null) {
-            return false;
-        }
-        if (cauldronService.isSupportedCauldron(block)) {
-            return true;
-        }
-        Material type = block.getType();
-        if (type == Material.WATER_CAULDRON || type == Material.CAULDRON) {
-            return true;
-        }
-        return block.getState() instanceof InventoryHolder || type.isInteractable();
     }
 
     @EventHandler(ignoreCancelled = true)

@@ -520,7 +520,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private int playersInside(WorldAccess access) {
         int count = 0;
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (access.worldNames().contains(player.getWorld().getName())) {
+            if (matchesAccessWorld(access, player.getWorld())) {
                 count++;
             }
         }
@@ -529,7 +529,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     private void evacuatePlayers(WorldAccess access, String message) {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (access.worldNames().contains(player.getWorld().getName())) {
+            if (matchesAccessWorld(access, player.getWorld())) {
                 redirectPlayer(player, access, message);
             }
         }
@@ -554,13 +554,24 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if (world == null) {
             return null;
         }
-        if (netherAccess.worldNames().contains(world.getName())) {
+        if (matchesAccessWorld(netherAccess, world)) {
             return netherAccess;
         }
-        if (endAccess.worldNames().contains(world.getName())) {
+        if (matchesAccessWorld(endAccess, world)) {
             return endAccess;
         }
         return null;
+    }
+
+    private boolean matchesAccessWorld(WorldAccess access, World world) {
+        if (access == null || world == null) {
+            return false;
+        }
+        if (access.worldNames().contains(world.getName())) {
+            return true;
+        }
+        return access == netherAccess && world.getEnvironment() == World.Environment.NETHER
+                || access == endAccess && world.getEnvironment() == World.Environment.THE_END;
     }
 
     private void redirectPlayer(Player player, WorldAccess access, String message) {

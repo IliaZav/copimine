@@ -798,8 +798,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)
     public void onFurnaceExtract(FurnaceExtractEvent e){queueArSync("FURNACE_EXTRACT");}
-
-    private void openHub(Player p){
+    // private void openHub
+    public void openHub(Player p){
         Menu m=new Menu("hub"); create(m,27,"&2&lCopiMine &8| &fадминка");
         btn(m,11,Material.GOLDEN_HELMET,"&6&lВыборы",List.of(
                 "&7Новый чистый модуль выборов.",

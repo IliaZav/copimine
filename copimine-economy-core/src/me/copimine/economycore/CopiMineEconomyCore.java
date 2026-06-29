@@ -1983,6 +1983,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS price_donation BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Банкомат'");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS archived_by TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS archived_at BIGINT NOT NULL DEFAULT 0");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_owner_type_active ON cmv4_bank_accounts(owner_uuid,account_type,currency) WHERE status='ACTIVE'");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_ledger_idempotency ON cmv4_bank_ledger(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_transfers_idempotency ON cmv4_bank_transfers(idempotency_key) WHERE idempotency_key<>''");

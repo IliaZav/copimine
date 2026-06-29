@@ -25,6 +25,24 @@ BEGIN
     END IF;
 END $$;
 
+ALTER TABLE ar_atms
+    ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Банкомат';
+
+ALTER TABLE ar_atms
+    ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE ar_atms
+    ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE ar_atms
+    ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE ar_atms
+    ADD COLUMN IF NOT EXISTS archived_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE ar_atms
+    ADD COLUMN IF NOT EXISTS archived_at BIGINT NOT NULL DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_atm_audit_created_at
     ON atm_audit(created_at DESC, action);
 

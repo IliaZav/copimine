@@ -25,6 +25,8 @@ $javaMarkers = @(
   'cmv4_bank_accounts',
   'cmv4_bank_ledger',
   'ar_atms',
+  'ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS archived_by',
+  'ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS archived_at',
   'protected_block_visuals',
   'FOR UPDATE'
 )

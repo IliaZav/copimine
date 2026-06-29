@@ -34,7 +34,7 @@ client_bridge:
   fallback_to_particles: true
 
 visuals:
-  enabled: false
+  enabled: true
   mode: AUTO
   allow_client_mod_visuals: true
   allow_server_resource_pack_overlay: true
@@ -44,15 +44,15 @@ visuals:
     max_duration_seconds: 60
     clear_on_stop: true
   effects:
-    DESATURATE: false
-    COLOR_CONVOLVE: false
-    SCAN_PINCUSHION: false
-    GREEN_NOISE: false
-    INVERT: false
-    WOBBLE: false
-    BLOBS: false
-    PENCIL: false
-    CHAOS: false
+    DESATURATE: true
+    COLOR_CONVOLVE: true
+    SCAN_PINCUSHION: true
+    GREEN_NOISE: true
+    INVERT: true
+    WOBBLE: true
+    BLOBS: true
+    PENCIL: true
+    CHAOS: true
 
 storage:
   allow_player_inventory: true

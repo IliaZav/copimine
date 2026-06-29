@@ -1,0 +1,83 @@
+header-footer:
+  enabled: true
+  designs:
+    default:
+      header:
+      - ""
+      - "&f\uE300"
+      - "&8&m------------------------------------"
+      - "&7Президент: &f%copimine_president%"
+      - "&7Онлайн: &f%online% &8| &7Админов: &f%staffonline%"
+      - "&8&m------------------------------------"
+      - ""
+      footer:
+      - ""
+      - "&8&m------------------------------------"
+      - "&7TPS: &f%tps% &8| &7MSPT: &f%mspt% &8| &7Ping: &f%ping% ms"
+      - "&8&m------------------------------------"
+
+tablist-name-formatting:
+  enabled: true
+
+scoreboard-teams:
+  enabled: true
+  enable-collision: true
+  invisible-nametags: false
+  can-see-friendly-invisibles: false
+  case-sensitive-sorting: true
+  sorting-types:
+  - GROUPS:owner,admin,president,curator,default
+  - PLACEHOLDER_A_TO_Z:%player%
+
+playerlist-objective:
+  enabled: true
+  value: '%ping%'
+  fancy-value: '&7Ping: %ping%'
+  title: TAB
+  render-type: INTEGER
+
+belowname-objective:
+  enabled: false
+  value: '%health%'
+  fancy-value: '&c%health%'
+  fancy-value-default: NPC
+  title: '&cHealth'
+
+bossbar:
+  enabled: false
+  toggle-command: /bossbar
+  remember-toggle-choice: false
+  hidden-by-default: false
+
+layout:
+  enabled: false
+  direction: COLUMNS
+  default-skin: mineskin:37e93c8e12cd426cb28fce31969e0674
+  enable-remaining-players-text: true
+  remaining-players-text: '... and %s more'
+  empty-slot-ping-value: 1000
+
+ping-spoof:
+  enabled: false
+
+placeholders:
+  date-format: 'dd.MM.yyyy'
+  time-format: 'HH:mm:ss'
+  time-offset: 0
+  register-tab-expansion: false
+
+placeholder-output-replacements:
+  '%essentials_vanished%':
+    'yes': '&7| Vanished'
+    'no': ''
+
+assign-groups-by-permissions: false
+
+primary-group-finding-list:
+  - owner
+  - admin
+  - president
+  - curator
+  - default
+
+debug: false

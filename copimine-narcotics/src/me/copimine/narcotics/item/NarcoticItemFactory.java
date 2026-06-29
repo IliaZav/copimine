@@ -58,7 +58,7 @@ public final class NarcoticItemFactory {
         meta.getPersistentDataContainer().set(itemTypeKey, PersistentDataType.STRING, "RP_NARCOTIC");
         meta.getPersistentDataContainer().set(narcoticIdKey, PersistentDataType.STRING, definition.id());
         meta.getPersistentDataContainer().set(versionKey, PersistentDataType.INTEGER, configService.narcoticVersion());
-        meta.getPersistentDataContainer().set(officialKey, PersistentDataType.BOOLEAN, true);
+        meta.getPersistentDataContainer().set(officialKey, PersistentDataType.BYTE, (byte) 1);
         stack.setItemMeta(meta);
         return stack;
     }
@@ -70,9 +70,8 @@ public final class NarcoticItemFactory {
         ItemMeta meta = stack.getItemMeta();
         String type = meta.getPersistentDataContainer().get(itemTypeKey, PersistentDataType.STRING);
         String id = meta.getPersistentDataContainer().get(narcoticIdKey, PersistentDataType.STRING);
-        Boolean official = meta.getPersistentDataContainer().get(officialKey, PersistentDataType.BOOLEAN);
         Integer version = meta.getPersistentDataContainer().get(versionKey, PersistentDataType.INTEGER);
-        if (!"RP_NARCOTIC".equals(type) || id == null || official == null || !official) {
+        if (!"RP_NARCOTIC".equals(type) || id == null || !hasOfficialFlag(meta)) {
             return null;
         }
         NarcoticDefinition definition = configService.items().get(id);
@@ -148,11 +147,26 @@ public final class NarcoticItemFactory {
         ItemMeta meta = stack.getItemMeta();
         String type = meta.getPersistentDataContainer().get(itemTypeKey, PersistentDataType.STRING);
         String id = meta.getPersistentDataContainer().get(narcoticIdKey, PersistentDataType.STRING);
-        Boolean official = meta.getPersistentDataContainer().get(officialKey, PersistentDataType.BOOLEAN);
-        if (!"RP_NARCOTIC".equals(type) || id == null || official == null || !official) {
+        if (!"RP_NARCOTIC".equals(type) || id == null || !hasOfficialFlag(meta)) {
             return null;
         }
         return configService.items().get(id);
+    }
+
+    private boolean hasOfficialFlag(ItemMeta meta) {
+        Byte byteValue = meta.getPersistentDataContainer().get(officialKey, PersistentDataType.BYTE);
+        if (byteValue != null) {
+            return byteValue != 0;
+        }
+        Boolean booleanValue = meta.getPersistentDataContainer().get(officialKey, PersistentDataType.BOOLEAN);
+        if (booleanValue != null) {
+            return booleanValue;
+        }
+        String textValue = meta.getPersistentDataContainer().get(officialKey, PersistentDataType.STRING);
+        if (textValue != null) {
+            return "true".equalsIgnoreCase(textValue) || "1".equals(textValue);
+        }
+        return meta.getPersistentDataContainer().has(narcoticIdKey, PersistentDataType.STRING);
     }
 
     private String color(String text) {

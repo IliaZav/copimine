@@ -348,10 +348,11 @@ public final class VisualRuntimeService {
         if (player == null) {
             return false;
         }
+        Boolean ready = resourcePackReady.get(player.getUniqueId());
         return configService.allowServerResourcePackOverlay()
                 && configService.fallbackToServerOverlay()
                 && detectServerOverlaySupport()
-                && resourcePackReady.getOrDefault(player.getUniqueId(), false);
+                && (ready == null || ready);
     }
 
     private boolean detectServerOverlaySupport() {

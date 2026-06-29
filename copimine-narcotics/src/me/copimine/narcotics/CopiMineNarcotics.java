@@ -299,7 +299,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         overdoseService.preloadState(event.getPlayer().getUniqueId());
-        visualRuntime.markResourcePackReady(event.getPlayer(), false);
+        visualRuntime.clearTracking(event.getPlayer());
     }
 
     @EventHandler
@@ -323,7 +323,10 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler
     public void onResourcePackStatus(PlayerResourcePackStatusEvent event) {
-        boolean ready = event.getStatus() == PlayerResourcePackStatusEvent.Status.SUCCESSFULLY_LOADED;
+        boolean ready = switch (event.getStatus()) {
+            case SUCCESSFULLY_LOADED, ACCEPTED -> true;
+            default -> false;
+        };
         visualRuntime.markResourcePackReady(event.getPlayer(), ready);
     }
 

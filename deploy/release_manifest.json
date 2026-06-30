@@ -1,0 +1,24 @@
+﻿{
+    "generatedAtUtc":  "2026-06-30T12:10:27.5562928Z",
+    "gitCommit":  "097b9fe",
+    "projectRoot":  "copimine",
+    "resourcePack":  {
+                         "path":  "resourcepacks/build/CopiMineResourcePack.zip",
+                         "sha1":  "6ad4a5bdf0ab2f4505876a77698bad6d5e0635cc",
+                         "downloadUrl":  "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
+                     },
+    "modpack":  {
+                    "path":  "thirdparty/CopiMineMods.zip",
+                    "sha1":  "97760ef7a7780f6d29e198aebc99ba40c7e0a34f",
+                    "downloadUrl":  "/downloads/CopiMineMods.zip"
+                },
+    "clientMod":  {
+                      "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
+                      "sha1":  "241c42f8194dd94e511a82a30e556d95d8eb7ab6"
+                  },
+    "database":  {
+                     "bundledDump":  false,
+                     "dumpPathInsideArchive":  "db/runtime/copimine.dump",
+                     "note":  "If no live PostgreSQL dump is bundled, the replace script keeps the existing database or restores an external dump passed as argument 2."
+                 }
+}

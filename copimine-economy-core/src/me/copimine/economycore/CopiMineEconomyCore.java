@@ -22,6 +22,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -82,10 +83,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private static final int MODEL_ATM_TERMINAL = 12002;
     // Preserve the legacy id for compatibility with existing rows and ledgers.
     private static final String TREASURY_ACCOUNT_ID = "PRESIDENT_BUDGET";
-    private static final String TREASURY_ACCOUNT_LABEL = "Р С™Р В°Р В·Р Р…Р В° CopiMine";
+    private static final String TREASURY_ACCOUNT_LABEL = "Казна CopiMine";
     private static final String TREASURY_ACCOUNT_TYPE = "TREASURY";
     private static final Set<Long> DONATION_PACKS = Set.of(50L, 100L, 250L, 500L, 1000L);
     private static final long DONATION_SESSION_TTL_MS = 15L * 60L * 1000L;
+    private static final String PENDING_AR_SETTLEMENT_STATUS_PENDING = "PENDING";
+    private static final String PENDING_AR_SETTLEMENT_STATUS_DELIVERING = "DELIVERING";
+    private static final String PENDING_AR_SETTLEMENT_STATUS_DELIVERED = "DELIVERED";
+    private static final String PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY = "WITHDRAW_DELIVERY";
+    private static final String PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE = "DEPOSIT_RESTORE";
 
     private DbSettings db;
     private ExecutorService dbExecutor;
@@ -241,6 +247,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private record BlockKey(String world, int x, int y, int z) {}
+    private record PendingArSettlement(String id, UUID playerUuid, String playerName, long amount, String settlementType, String reason) {}
 
     @Override
     public void onEnable() {
@@ -279,6 +286,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 getLogger().warning("ATM visual repair: " + safeError(error));
             }
         }, 20L);
+        Bukkit.getScheduler().runTaskLater(this, () -> Bukkit.getOnlinePlayers().forEach(player -> processPendingArSettlements(player, false)), 40L);
     }
 
     @Override
@@ -323,14 +331,20 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     public void openAdminEconomyHub(Player player) throws Exception {
         if (!hasEconomyAdmin(player)) {
-            player.sendMessage(color("&cР вЂќР С•РЎРѓРЎвЂљРЎС“Р С—Р Р…Р С• РЎвЂљР С•Р В»РЎРЉР С”Р С• Р В°Р Т‘Р СР С‘Р Р…Р С‘РЎРѓРЎвЂљРЎР‚Р В°РЎвЂ Р С‘Р С‘ РЎРЊР С”Р С•Р Р…Р С•Р СР С‘Р С”Р С‘."));
+            player.sendMessage(color("&cДоступно только администрации экономики."));
             return;
         }
         MenuHolder holder = new MenuHolder("economy:hub", "");
-        Inventory inventory = holder.create(27, color("&b&lР В­Р С”Р С•Р Р…Р С•Р СР С‘Р С”Р В° CopiMine"));
-        button(holder, inventory, 11, Material.GOLD_BLOCK, "&bР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљРЎвЂ№", List.of("&7Р В Р ВµР ВµРЎРѓРЎвЂљРЎР‚ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР С•Р Р† Р С‘ РЎРѓР С•Р В·Р Т‘Р В°Р Р…Р С‘Р Вµ Р С—Р С• Р В±Р В»Р С•Р С”РЎС“."), "economy:atms");
-        button(holder, inventory, 13, Material.ENDER_CHEST, "&fР РЋР Р†Р С•Р Т‘Р С”Р В° Р В±Р В°Р Р…Р С”Р В°", List.of("&7Р вЂР В°Р Р…Р С”, PIN, Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘РЎвЂ№ Р С‘ AR."), "economy:summary");
-        button(holder, inventory, 15, Material.ARROW, "&aР С›Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ", List.of("&7Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР С•Р Р†."), "economy:atms");
+        Inventory inventory = holder.create(27, color("&b&lЭкономика CopiMine"));
+        button(holder, inventory, 11, Material.GOLD_BLOCK, "&bБанкоматы", List.of(
+                "&7Список активных ATM и создание нового блока."
+        ), "economy:atms");
+        button(holder, inventory, 13, Material.ENDER_CHEST, "&fСводка банка", List.of(
+                "&7Баланс, PIN, банкоматы и официальный AR."
+        ), "economy:summary");
+        button(holder, inventory, 15, Material.ARROW, "&aОбновить", List.of(
+                "&7Пересобрать список банкоматов."
+        ), "economy:atms");
         player.openInventory(inventory);
     }
 
@@ -451,15 +465,24 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Bukkit.getScheduler().runTaskLater(this, () -> processPendingArSettlements(event.getPlayer(), true), 20L);
+    }
+
+    @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
         InventoryHolder holder = event.getInventory().getHolder();
         if (holder instanceof MenuHolder menu && "atm:pin".equals(menu.id())) {
-            Bukkit.getScheduler().runTask(this, () -> {
+            UUID playerId = event.getPlayer().getUniqueId();
+            Bukkit.getScheduler().runTaskLater(this, () -> {
                 InventoryView nextView = event.getPlayer().getOpenInventory();
-                if (!(nextView.getTopInventory().getHolder() instanceof MenuHolder nextMenu) || !"atm:pin".equals(nextMenu.id())) {
-                    atmPinSessions.remove(event.getPlayer().getUniqueId());
+                boolean stillInsidePinPad = nextView.getTopInventory().getHolder() instanceof MenuHolder nextMenu
+                        && "atm:pin".equals(nextMenu.id());
+                atmPinRefreshBypass.remove(playerId);
+                if (!stillInsidePinPad) {
+                    atmPinSessions.remove(playerId);
                 }
-            });
+            }, 1L);
         }
     }
 
@@ -480,7 +503,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         try {
             handleMenuAction(player, menu, action);
         } catch (Exception error) {
-            player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р С‘РЎвЂљРЎРЉ Р Т‘Р ВµР в„–РЎРѓРЎвЂљР Р†Р С‘Р Вµ."));
+            player.sendMessage(color("&cНе удалось выполнить действие."));
             getLogger().warning("economy action " + action + ": " + safeError(error));
         }
     }
@@ -568,25 +591,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private void openAtmDeleteConfirm(Player player, String atmId) {
         MenuHolder holder = new MenuHolder("economy:atm-delete", atmId);
-        Inventory inventory = holder.create(27, color("&cРЈРґР°Р»РёС‚СЊ Р±Р°РЅРєРѕРјР°С‚"));
-        button(holder, inventory, 11, Material.RED_WOOL, "&cР”Р°, СѓРґР°Р»РёС‚СЊ", List.of(
-                "&7Р‘Р»РѕРє Р±СѓРґРµС‚ СЃРЅСЏС‚ СЃ СѓС‡С‘С‚Р° Рё СѓРґР°Р»С‘РЅ РёР· СЌРєРѕРЅРѕРјРёРєРё.",
-                "&7РЎРІСЏР·Р°РЅРЅС‹Р№ visual С‚РѕР¶Рµ Р±СѓРґРµС‚ РѕС‡РёС‰РµРЅ."
+        Inventory inventory = holder.create(27, color("&cУдалить банкомат"));
+        button(holder, inventory, 11, Material.RED_WOOL, "&cДа, удалить", List.of(
+                "&7Блок будет снят с учёта и удалён из экономики.",
+                "&7Связанный visual тоже будет очищен."
         ), "atm:delete:" + atmId);
-        button(holder, inventory, 13, Material.PAPER, "&fРџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ", List.of(
+        button(holder, inventory, 13, Material.PAPER, "&fПодтверждение", List.of(
                 "&7ATM ID: &f" + shortId(atmId),
-                "&7РЈРґР°Р»РµРЅРёРµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ СЌС‚РѕРіРѕ Р±Р°РЅРєРѕРјР°С‚Р°."
+                "&7Удаление затронет только этот банкомат."
         ), "");
-        button(holder, inventory, 15, Material.ARROW, "&aРћС‚РјРµРЅР°", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ Р±РµР· РёР·РјРµРЅРµРЅРёР№."), "economy:atms");
-        button(holder, inventory, 31, Material.GRAY_STAINED_GLASS_PANE, " ", List.of(), "");
-        button(holder, inventory, 33, Material.GRAY_STAINED_GLASS_PANE, " ", List.of(), "");
-        button(holder, inventory, 34, Material.GRAY_STAINED_GLASS_PANE, " ", List.of(), "");
-        button(holder, inventory, 37, Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f7", List.of(), "pin:digit:7");
-        button(holder, inventory, 38, Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f8", List.of(), "pin:digit:8");
-        button(holder, inventory, 39, Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f9", List.of(), "pin:digit:9");
-        button(holder, inventory, 40, Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f0", List.of(), "pin:digit:0");
-        atmPinRefreshBypass.add(player.getUniqueId());
-        Bukkit.getScheduler().runTask(this, () -> atmPinRefreshBypass.remove(player.getUniqueId()));
+        button(holder, inventory, 15, Material.ARROW, "&aОтмена", List.of(
+                "&7Вернуться без изменений."
+        ), "economy:atms");
         player.openInventory(inventory);
     }
 
@@ -605,15 +621,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (error != null) {
-                player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ РЎРѓР Р†Р С•Р Т‘Р С”РЎС“ РЎРЊР С”Р С•Р Р…Р С•Р СР С‘Р С”Р С‘."));
+                player.sendMessage(color("&cНе удалось открыть сводку экономики."));
                 getLogger().warning("open economy summary: " + safeError(error));
                 return;
             }
             MenuHolder holder = new MenuHolder("economy:summary", "");
-            Inventory inventory = holder.create(27, color("&b&lР РЋР Р†Р С•Р Т‘Р С”Р В° РЎРЊР С”Р С•Р Р…Р С•Р СР С‘Р С”Р С‘"));
-            button(holder, inventory, 11, Material.EMERALD_BLOCK, "&aР вЂР В°Р В»Р В°Р Р…РЎРѓ", List.of("&7Р СњР В° РЎРѓРЎвЂЎРЎвЂРЎвЂљР Вµ: &f" + data.get("balance") + " AR"), "");
-            button(holder, inventory, 13, Material.GOLD_BLOCK, "&fР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљРЎвЂ№", List.of("&7Р С’Р С”РЎвЂљР С‘Р Р†Р Р…РЎвЂ№РЎвЂ¦ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР С•Р Р†: &f" + data.get("atmCount")), "economy:atms");
-            button(holder, inventory, 15, Material.ARROW, "&aР СњР В°Р В·Р В°Р Т‘", List.of(), "nav:hub");
+            Inventory inventory = holder.create(27, color("&b&lСводка экономики"));
+            button(holder, inventory, 11, Material.EMERALD_BLOCK, "&aБаланс", List.of("&7На счёте: &f" + data.get("balance") + " AR"), "");
+            button(holder, inventory, 13, Material.GOLD_BLOCK, "&fБанкоматы", List.of("&7Активных банкоматов: &f" + data.get("atmCount")), "economy:atms");
+            button(holder, inventory, 15, Material.ARROW, "&aНазад", List.of(), "nav:hub");
             player.openInventory(inventory);
         }));
     }
@@ -625,24 +641,26 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         return;
                     }
                     if (error != null) {
-                        player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР С•Р Р†."));
+                        player.sendMessage(color("&cНе удалось открыть список банкоматов."));
                         getLogger().warning("open atm directory: " + safeError(error));
                         return;
                     }
                     MenuHolder holder = new MenuHolder("economy:atms", "");
-                    Inventory inventory = holder.create(54, color("&b&lР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљРЎвЂ№ CopiMine"));
-                    button(holder, inventory, 10, Material.GOLD_BLOCK, "&aР РЋР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ Р С—Р С• Р В±Р В»Р С•Р С”РЎС“", List.of("&7Р РЋР С•Р В·Р Т‘Р В°РЎвЂРЎвЂљ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ Р Р…Р В° Р В±Р В»Р С•Р С”Р Вµ, Р С”РЎС“Р Т‘Р В° РЎвЂљРЎвЂ№ РЎРѓР СР С•РЎвЂљРЎР‚Р С‘РЎв‚¬РЎРЉ."), "atm:create-target");
+                    Inventory inventory = holder.create(54, color("&b&lБанкоматы CopiMine"));
+                    button(holder, inventory, 10, Material.GOLD_BLOCK, "&aСоздать по блоку", List.of(
+                            "&7Смотри на блок и создай на нём банкомат."
+                    ), "atm:create-target");
                     int slot = 19;
                     for (Map<String, Object> row : rows) {
                         if (slot >= 46) {
                             break;
                         }
                         String atmId = string(row.get("id"));
-                        button(holder, inventory, slot++, Material.EMERALD, "&b" + first(string(row.get("name")), "Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ"),
-                                List.of("&7ID: &f" + shortId(atmId), "&7Р СљР С‘РЎР‚: &f" + string(row.get("world")), "&7Р С™Р С•Р С•РЎР‚Р Т‘Р С‘Р Р…Р В°РЎвЂљРЎвЂ№: &f" + row.get("x") + ", " + row.get("y") + ", " + row.get("z"),
-                                        "&7Р вЂєР С™Р Сљ: Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ", "&7Р СџР С™Р Сљ: Р В°РЎР‚РЎвЂ¦Р С‘Р Р†Р С‘РЎР‚Р С•Р Р†Р В°РЎвЂљРЎРЉ"), "atm:open:" + atmId, "atm:delete:" + atmId);
+                        button(holder, inventory, slot++, Material.EMERALD, "&b" + first(string(row.get("name")), "Банкомат"),
+                                List.of("&7ID: &f" + shortId(atmId), "&7Мир: &f" + string(row.get("world")), "&7Координаты: &f" + row.get("x") + ", " + row.get("y") + ", " + row.get("z"),
+                                        "&7ЛКМ: открыть", "&7ПКМ: архивировать"), "atm:open:" + atmId, "atm:delete:" + atmId);
                     }
-                    button(holder, inventory, 49, Material.ARROW, "&aР СњР В°Р В·Р В°Р Т‘", List.of(), "nav:hub");
+                    button(holder, inventory, 49, Material.ARROW, "&aНазад", List.of(), "nav:hub");
                     player.openInventory(inventory);
                 }));
     }
@@ -650,28 +668,28 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private String createBankAtmFromTarget(Player player) throws Exception {
         Block block = player.getTargetBlockExact(6);
         if (block == null) {
-            return "&cР РЋР Р…Р В°РЎвЂЎР В°Р В»Р В° Р С—Р С•РЎРѓР СР С•РЎвЂљРЎР‚Р С‘ Р Р…Р В° Р В±Р В»Р С•Р С” Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР В°.";
+            return "&cСначала посмотри на блок банкомата.";
         }
         if (isAtmBlock(block)) {
-            return "&eР СњР В° РЎРЊРЎвЂљР С•Р С Р В±Р В»Р С•Р С”Р Вµ РЎС“Р В¶Р Вµ Р ВµРЎРѓРЎвЂљРЎРЉ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ.";
+            return "&eНа этом блоке уже есть банкомат.";
         }
         String id = "atm_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
-        update("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ',1,?,?, '',0)",
+        update("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0)",
                 id, block.getWorld().getName(), block.getX(), block.getY(), block.getZ(), player.getName(), t);
         cacheAtm(id, block);
         spawnOrReplaceProtectedBlockVisual(block.getLocation(), "ATM", id, Material.PAPER, MODEL_ATM_TERMINAL, "atm_terminal");
         pluginEvent("economy_core", "atm_created", player.getName(), id, "world=" + block.getWorld().getName());
-        return "&aР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ РЎРѓР С•Р В·Р Т‘Р В°Р Р….";
+        return "&aБанкомат создан.";
     }
 
     private String createBankAtmFromTargetAsync(Player player) throws Exception {
         Block block = player.getTargetBlockExact(6);
         if (block == null) {
-            return "&cР РЋР Р…Р В°РЎвЂЎР В°Р В»Р В° Р С—Р С•РЎРѓР СР С•РЎвЂљРЎР‚Р С‘ Р Р…Р В° Р В±Р В»Р С•Р С” Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР В°.";
+            return "&cСначала посмотри на блок банкомата.";
         }
         if (isAtmBlock(block)) {
-            return "&eР СњР В° РЎРЊРЎвЂљР С•Р С Р В±Р В»Р С•Р С”Р Вµ РЎС“Р В¶Р Вµ Р ВµРЎРѓРЎвЂљРЎРЉ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ.";
+            return "&eНа этом блоке уже есть банкомат.";
         }
         String id = "atm_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
@@ -687,7 +705,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (!existing.isEmpty()) {
                 throw new IllegalStateException("ATM_EXISTS:" + first(string(existing.getFirst().get("id")), ""));
             }
-            update("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ',1,?,?, '',0)",
+            update("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0)",
                     id, worldName, x, y, z, player.getName(), t);
             pluginEvent("economy_core", "atm_created", player.getName(), id, "world=" + worldName);
             return id;
@@ -696,13 +714,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (error != null) {
-                player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ."));
                 Throwable root = unwrap(error);
                 String message = safeError(root);
                 if (message.startsWith("ATM_EXISTS:")) {
-                    player.sendMessage(color("&eActive ATM already exists on this block."));
+                    player.sendMessage(color("&eНа этом блоке уже есть активный банкомат."));
                     return;
                 }
+                player.sendMessage(color("&cНе удалось создать банкомат."));
                 getLogger().warning("create atm: " + message);
                 return;
             }
@@ -712,14 +730,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             } catch (Exception visualError) {
                 getLogger().warning("create atm visual: " + safeError(visualError));
             }
-            player.sendMessage(color("&aР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ РЎРѓР С•Р В·Р Т‘Р В°Р Р…."));
+            player.sendMessage(color("&aБанкомат создан."));
             try {
                 openBankAtms(player);
             } catch (Exception openError) {
                 getLogger().warning("open atm directory after create: " + safeError(openError));
             }
         }));
-        return "&7Р РЋР С•Р В·Р Т‘Р В°РЎвЂР С Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ...";
+        return "&7Создаём банкомат...";
     }
 
     private String archiveBankAtm(Player actor, String atmId) throws Exception {
@@ -730,7 +748,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         });
         evictAtmCache(atmId);
         pluginEvent("economy_core", "atm_archived", actor.getName(), atmId, "");
-        return changed > 0 ? "&aР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ РЎРѓР Р…РЎРЏРЎвЂљ." : "&eР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ РЎС“Р В¶Р Вµ Р В±РЎвЂ№Р В» РЎРѓР Р…РЎРЏРЎвЂљ.";
+        return changed > 0 ? "&aБанкомат снят." : "&eБанкомат уже был снят.";
     }
 
     private String archiveBankAtmAsync(Player actor, String atmId) throws Exception {
@@ -752,7 +770,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (error != null) {
-                actor.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ РЎРѓР Р…РЎРЏРЎвЂљРЎРЉ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ."));
+                actor.sendMessage(color("&cНе удалось снять банкомат."));
                 getLogger().warning("archive atm: " + safeError(error));
                 return;
             }
@@ -763,9 +781,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 } catch (Exception cleanupError) {
                     getLogger().warning("archive atm visual cleanup: " + safeError(cleanupError));
                 }
-                actor.sendMessage(color("&aР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ РЎРѓР Р…РЎРЏРЎвЂљ."));
+                actor.sendMessage(color("&aБанкомат снят."));
             } else {
-                actor.sendMessage(color("&eР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ РЎС“Р В¶Р Вµ Р В±РЎвЂ№Р В» РЎРѓР Р…РЎРЏРЎвЂљ."));
+                actor.sendMessage(color("&eБанкомат уже был снят."));
             }
             try {
                 openBankAtms(actor);
@@ -773,18 +791,19 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 getLogger().warning("open atm directory after archive: " + safeError(openError));
             }
         }));
-        return "&7Р РЋР Р…Р С‘Р СР В°Р ВµР С Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ...";
+        return "&7Снимаем банкомат...";
     }
 
     private void openBankAtm(Player player, String atmId) {
+        processPendingArSettlements(player, false);
         if (hasTreasuryAccess(player)) {
             MenuHolder holder = new MenuHolder("economy:atm-select", atmId);
-            Inventory inventory = holder.create(27, color("&b&lР вЂР В°Р Р…Р С” CopiMine"));
-            button(holder, inventory, 11, Material.PLAYER_HEAD, "&bР вЂєР С‘РЎвЂЎР Р…РЎвЂ№Р в„– РЎРѓРЎвЂЎРЎвЂРЎвЂљ",
-                    List.of("&7Р С›Р В±РЎвЂ№РЎвЂЎР Р…РЎвЂ№Р в„– Р В±Р В°Р Р…Р С”Р С•Р Р†РЎРѓР С”Р С‘Р в„– РЎРѓРЎвЂЎРЎвЂРЎвЂљ Р С‘ Р В»Р С‘РЎвЂЎР Р…РЎвЂ№Р в„– PIN."), "atm:account:" + atmId + ":PERSONAL");
-            button(holder, inventory, 15, Material.GOLD_BLOCK, "&6Р С™Р В°Р В·Р Р…Р В°",
-                    List.of("&7Р С›РЎвЂљР Т‘Р ВµР В»РЎРЉР Р…РЎвЂ№Р в„– РЎРѓРЎвЂЎРЎвЂРЎвЂљ Р С”Р В°Р В·Р Р…РЎвЂ№.", "&7Р вЂќР С•РЎРѓРЎвЂљРЎС“Р С— РЎвЂљР С•Р В»РЎРЉР С”Р С• РЎС“ Р С—РЎР‚Р ВµР В·Р С‘Р Т‘Р ВµР Р…РЎвЂљР В° Р С‘ Р В°Р Т‘Р СР С‘Р Р…Р С•Р Р†."), "atm:account:" + atmId + ":TREASURY");
-            button(holder, inventory, 22, Material.ARROW, "&aР С™ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР В°Р С", List.of(), "nav:atms");
+            Inventory inventory = holder.create(27, color("&b&lБанк CopiMine"));
+            button(holder, inventory, 11, Material.PLAYER_HEAD, "&bЛичный счёт",
+                    List.of("&7Обычный банковский счёт и личный PIN."), "atm:account:" + atmId + ":PERSONAL");
+            button(holder, inventory, 15, Material.GOLD_BLOCK, "&6Казна",
+                    List.of("&7Отдельный счёт казны.", "&7Доступ только у президента и админов."), "atm:account:" + atmId + ":TREASURY");
+            button(holder, inventory, 22, Material.ARROW, "&aК банкоматам", List.of(), "nav:atms");
             player.openInventory(inventory);
             return;
         }
@@ -805,7 +824,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             Map<String, Object> treasury = tx(this::ensureTreasuryAccount);
             Map<String, Object> payload = new HashMap<>();
             payload.put("scope", "TREASURY");
-            payload.put("name", first(string(rows.getFirst().get("name")), "Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ"));
+            payload.put("name", first(string(rows.getFirst().get("name")), "Банкомат"));
             payload.put("balance", longValue(treasury.get("balance")));
             return payload;
         }).whenComplete((payload, error) -> Bukkit.getScheduler().runTask(this, () -> {
@@ -813,26 +832,26 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (error != null) {
-                player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ."));
+                player.sendMessage(color("&cНе удалось открыть банкомат."));
                 getLogger().warning("treasury ATM open: " + safeError(error));
                 return;
             }
             if (payload == null) {
-                player.sendMessage(color("&cР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ Р В±Р С•Р В»РЎРЉРЎв‚¬Р Вµ Р Р…Р Вµ Р В°Р С”РЎвЂљР С‘Р Р†Р ВµР Р…."));
+                player.sendMessage(color("&cБанкомат больше не активен."));
                 return;
             }
             MenuHolder holder = new MenuHolder("economy:atm", atmId);
             holder.data.put("scope", "TREASURY");
-            Inventory inventory = holder.create(54, color("&b&lР вЂР В°Р Р…Р С” CopiMine"));
-            button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ"),
-                    List.of("&7Р РЋРЎвЂЎРЎвЂРЎвЂљ: &fР С™Р В°Р В·Р Р…Р В° CopiMine", "&7Р вЂР В°Р В»Р В°Р Р…РЎРѓ: &f" + payload.get("balance") + " AR"), "");
-            button(holder, inventory, 10, Material.DIAMOND_ORE, "&aР вЂ™Р Р…Р ВµРЎРѓРЎвЂљР С‘ Р С—РЎР‚Р ВµР Т‘Р СР ВµРЎвЂљ Р С‘Р В· РЎР‚РЎС“Р С”Р С‘", List.of("&7Р вЂР ВµРЎР‚РЎвЂРЎвЂљ Р С•РЎвЂћР С‘РЎвЂ Р С‘Р В°Р В»РЎРЉР Р…РЎвЂ№Р в„– AR Р С‘Р В· Р С•РЎРѓР Р…Р С•Р Р†Р Р…Р С•Р в„– РЎР‚РЎС“Р С”Р С‘.", "&7PIN Р Р…Р Вµ РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ."), "atm:deposit-hand:" + atmId + ":TREASURY");
-            button(holder, inventory, 12, Material.CHEST, "&aР вЂ™Р Р…Р ВµРЎРѓРЎвЂљР С‘ Р Р†Р ВµРЎРѓРЎРЉ AR", List.of("&7Р вЂР ВµРЎР‚РЎвЂРЎвЂљ Р Р†Р ВµРЎРѓРЎРЉ Р С•РЎвЂћР С‘РЎвЂ Р С‘Р В°Р В»РЎРЉР Р…РЎвЂ№Р в„– AR Р С‘Р В· Р С‘Р Р…Р Р†Р ВµР Р…РЎвЂљР В°РЎР‚РЎРЏ.", "&7PIN Р Р…Р Вµ РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ."), "atm:deposit-all:" + atmId + ":TREASURY");
-            button(holder, inventory, 14, Material.PLAYER_HEAD, "&bР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ Р С‘Р С–РЎР‚Р С•Р С”РЎС“", List.of("&7Р вЂР В°Р Р…Р С”Р С•Р Р†РЎРѓР С”Р С‘Р в„– Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘ РЎРѓ Р С—РЎР‚Р С•Р Р†Р ВµРЎР‚Р С”Р С•Р в„– PIN Р С”Р В°Р В·Р Р…РЎвЂ№."), "atm:targets:" + atmId + ":TREASURY");
-            button(holder, inventory, 28, Material.EMERALD, "&eР РЋР Р…РЎРЏРЎвЂљРЎРЉ 1 AR", List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р С”Р В°Р В·Р Р…РЎвЂ№."), "atm:withdraw:" + atmId + ":TREASURY:1");
-            button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eР РЋР Р…РЎРЏРЎвЂљРЎРЉ 16 AR", List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р С”Р В°Р В·Р Р…РЎвЂ№."), "atm:withdraw:" + atmId + ":TREASURY:16");
-            button(holder, inventory, 32, Material.DIAMOND_ORE, "&eР РЋР Р…РЎРЏРЎвЂљРЎРЉ 64 AR", List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р С”Р В°Р В·Р Р…РЎвЂ№."), "atm:withdraw:" + atmId + ":TREASURY:64");
-            button(holder, inventory, 49, Material.ARROW, "&aР СњР В°Р В·Р В°Р Т‘", List.of(), "atm:open:" + atmId);
+            Inventory inventory = holder.create(54, color("&b&lБанк CopiMine"));
+            button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Банкомат"),
+                    List.of("&7Счёт: &fКазна CopiMine", "&7Баланс: &f" + payload.get("balance") + " AR"), "");
+            button(holder, inventory, 10, Material.DIAMOND_ORE, "&aВнести предмет из руки", List.of("&7Берёт официальный AR из основной руки.", "&7PIN не требуется."), "atm:deposit-hand:" + atmId + ":TREASURY");
+            button(holder, inventory, 12, Material.CHEST, "&aВнести весь AR", List.of("&7Берёт весь официальный AR из инвентаря.", "&7PIN не требуется."), "atm:deposit-all:" + atmId + ":TREASURY");
+            button(holder, inventory, 14, Material.PLAYER_HEAD, "&bПеревести игроку", List.of("&7Банковский перевод с проверкой PIN казны."), "atm:targets:" + atmId + ":TREASURY");
+            button(holder, inventory, 28, Material.EMERALD, "&eСнять 1 AR", List.of("&7Потребуется PIN казны."), "atm:withdraw:" + atmId + ":TREASURY:1");
+            button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eСнять 16 AR", List.of("&7Потребуется PIN казны."), "atm:withdraw:" + atmId + ":TREASURY:16");
+            button(holder, inventory, 32, Material.DIAMOND_ORE, "&eСнять 64 AR", List.of("&7Потребуется PIN казны."), "atm:withdraw:" + atmId + ":TREASURY:64");
+            button(holder, inventory, 49, Material.ARROW, "&aНазад", List.of(), "atm:open:" + atmId);
             player.openInventory(inventory);
         }));
     }
@@ -848,7 +867,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             ensureBankAccount(playerUuid.toString(), playerName);
             long balance = bankService.balance(playerUuid, playerName);
             Map<String, Object> payload = new HashMap<>();
-            payload.put("name", first(string(rows.getFirst().get("name")), "Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ"));
+            payload.put("name", first(string(rows.getFirst().get("name")), "Банкомат"));
             payload.put("balance", balance);
             return payload;
         }).whenComplete((payload, error) -> Bukkit.getScheduler().runTask(this, () -> {
@@ -856,25 +875,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (error != null) {
-                player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљ."));
+                player.sendMessage(color("&cНе удалось открыть банкомат."));
                 getLogger().warning("ATM open: " + safeError(error));
                 return;
             }
             if (payload == null) {
-                player.sendMessage(color("&cР вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ Р В±Р С•Р В»РЎРЉРЎв‚¬Р Вµ Р Р…Р Вµ Р В°Р С”РЎвЂљР С‘Р Р†Р ВµР Р…."));
+                player.sendMessage(color("&cБанкомат больше не активен."));
                 return;
             }
             MenuHolder holder = new MenuHolder("economy:atm", atmId);
-            Inventory inventory = holder.create(54, color("&b&lР вЂР В°Р Р…Р С” CopiMine"));
-            button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ"),
-                    List.of("&7Р вЂР В°Р В»Р В°Р Р…РЎРѓ: &f" + payload.get("balance") + " AR"), "");
-            button(holder, inventory, 10, Material.DIAMOND_ORE, "&aР вЂ™Р Р…Р ВµРЎРѓРЎвЂљР С‘ Р С—РЎР‚Р ВµР Т‘Р СР ВµРЎвЂљ Р С‘Р В· РЎР‚РЎС“Р С”Р С‘", List.of("&7Р вЂР ВµРЎР‚РЎвЂРЎвЂљ Р С•РЎвЂћР С‘РЎвЂ Р С‘Р В°Р В»РЎРЉР Р…РЎвЂ№Р в„– AR Р С‘Р В· Р С•РЎРѓР Р…Р С•Р Р†Р Р…Р С•Р в„– РЎР‚РЎС“Р С”Р С‘.", "&7PIN Р Р…Р Вµ РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ."), "atm:deposit-hand:" + atmId);
-            button(holder, inventory, 12, Material.CHEST, "&aР вЂ™Р Р…Р ВµРЎРѓРЎвЂљР С‘ Р Р†Р ВµРЎРѓРЎРЉ AR", List.of("&7Р вЂР ВµРЎР‚РЎвЂРЎвЂљ Р Р†Р ВµРЎРѓРЎРЉ Р С•РЎвЂћР С‘РЎвЂ Р С‘Р В°Р В»РЎРЉР Р…РЎвЂ№Р в„– AR Р С‘Р В· Р С‘Р Р…Р Р†Р ВµР Р…РЎвЂљР В°РЎР‚РЎРЏ.", "&7PIN Р Р…Р Вµ РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ."), "atm:deposit-all:" + atmId);
-            button(holder, inventory, 14, Material.PLAYER_HEAD, "&bР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ Р С‘Р С–РЎР‚Р С•Р С”РЎС“", List.of("&7Р вЂР В°Р Р…Р С”Р С•Р Р†РЎРѓР С”Р С‘Р в„– Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘ РЎРѓ Р С—РЎР‚Р С•Р Р†Р ВµРЎР‚Р С”Р С•Р в„– PIN."), "atm:targets:" + atmId);
-            button(holder, inventory, 28, Material.EMERALD, "&eР РЋР Р…РЎРЏРЎвЂљРЎРЉ 1 AR", List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р В±Р В°Р Р…Р С”Р В°."), "atm:withdraw:" + atmId + ":1");
-            button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eР РЋР Р…РЎРЏРЎвЂљРЎРЉ 16 AR", List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р В±Р В°Р Р…Р С”Р В°."), "atm:withdraw:" + atmId + ":16");
-            button(holder, inventory, 32, Material.DIAMOND_ORE, "&eР РЋР Р…РЎРЏРЎвЂљРЎРЉ 64 AR", List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р В±Р В°Р Р…Р С”Р В°."), "atm:withdraw:" + atmId + ":64");
-            button(holder, inventory, 49, Material.ARROW, "&aР С™ Р В±Р В°Р Р…Р С”Р С•Р СР В°РЎвЂљР В°Р С", List.of(), "nav:atms");
+            Inventory inventory = holder.create(54, color("&b&lБанк CopiMine"));
+            button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Банкомат"),
+                    List.of("&7Баланс: &f" + payload.get("balance") + " AR"), "");
+            button(holder, inventory, 10, Material.DIAMOND_ORE, "&aВнести предмет из руки", List.of("&7Берёт официальный AR из основной руки.", "&7PIN не требуется."), "atm:deposit-hand:" + atmId);
+            button(holder, inventory, 12, Material.CHEST, "&aВнести весь AR", List.of("&7Берёт весь официальный AR из инвентаря.", "&7PIN не требуется."), "atm:deposit-all:" + atmId);
+            button(holder, inventory, 14, Material.PLAYER_HEAD, "&bПеревести игроку", List.of("&7Банковский перевод с проверкой PIN."), "atm:targets:" + atmId);
+            button(holder, inventory, 28, Material.EMERALD, "&eСнять 1 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":1");
+            button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eСнять 16 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":16");
+            button(holder, inventory, 32, Material.DIAMOND_ORE, "&eСнять 64 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":64");
+            button(holder, inventory, 49, Material.ARROW, "&aК банкоматам", List.of(), "nav:atms");
             player.openInventory(inventory);
         }));
     }
@@ -887,31 +906,31 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         MenuHolder holder = new MenuHolder("economy:targets", atmId);
         holder.data.put("scope", scope);
-        Inventory inventory = holder.create(54, color("&b&lР С™Р С•Р СРЎС“ Р С—Р ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ AR"));
+        Inventory inventory = holder.create(54, color("&b&lКому перевести AR"));
         int slot = 10;
         for (Player target : Bukkit.getOnlinePlayers().stream().sorted(Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER)).toList()) {
             if (target.getUniqueId().equals(player.getUniqueId()) || slot >= 44) {
                 continue;
             }
             button(holder, inventory, slot++, Material.PLAYER_HEAD, "&b" + target.getName(),
-                    List.of("&7Р С›Р Р…Р В»Р В°Р в„–Р Р…: &fР Т‘Р В°", "&7UUID: &f" + shortId(target.getUniqueId().toString())), "atm:target:" + atmId + ":" + scope + ":" + target.getUniqueId());
+                    List.of("&7Онлайн: &fда", "&7UUID: &f" + shortId(target.getUniqueId().toString())), "atm:target:" + atmId + ":" + scope + ":" + target.getUniqueId());
         }
-        button(holder, inventory, 49, Material.ARROW, "&aР СњР В°Р В·Р В°Р Т‘", List.of(), "atm:account:" + atmId + ":" + scope);
+        button(holder, inventory, 49, Material.ARROW, "&aНазад", List.of(), "atm:account:" + atmId + ":" + scope);
         player.openInventory(inventory);
     }
 
     private void openBankTransferTargetsLegacy(Player player, String atmId) throws Exception {
         MenuHolder holder = new MenuHolder("economy:targets", atmId);
-        Inventory inventory = holder.create(54, color("&b&lР С™Р С•Р СРЎС“ Р С—Р ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ AR"));
+        Inventory inventory = holder.create(54, color("&b&lКому перевести AR"));
         int slot = 10;
         for (Player target : Bukkit.getOnlinePlayers().stream().sorted(Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER)).toList()) {
             if (target.getUniqueId().equals(player.getUniqueId()) || slot >= 44) {
                 continue;
             }
             button(holder, inventory, slot++, Material.PLAYER_HEAD, "&b" + target.getName(),
-                    List.of("&7Р С›Р Р…Р В»Р В°Р в„–Р Р…: &fР Т‘Р В°", "&7UUID: &f" + shortId(target.getUniqueId().toString())), "atm:target:" + atmId + ":" + target.getUniqueId());
+                    List.of("&7Онлайн: &fда", "&7UUID: &f" + shortId(target.getUniqueId().toString())), "atm:target:" + atmId + ":" + target.getUniqueId());
         }
-        button(holder, inventory, 49, Material.ARROW, "&aР СњР В°Р В·Р В°Р Т‘", List.of(), "atm:open:" + atmId);
+        button(holder, inventory, 49, Material.ARROW, "&aНазад", List.of(), "atm:open:" + atmId);
         player.openInventory(inventory);
     }
 
@@ -923,33 +942,33 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         MenuHolder holder = new MenuHolder("economy:amount", atmId);
         holder.data.put("scope", scope);
-        Inventory inventory = holder.create(27, color("&b&lР РЋРЎС“Р СР СР В° Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘Р В°"));
+        Inventory inventory = holder.create(27, color("&b&lСумма перевода"));
         String targetName = bankTargetName(targetUuid);
-        button(holder, inventory, 4, Material.PLAYER_HEAD, "&b" + first(targetName, targetUuid), List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р С”Р В°Р В·Р Р…РЎвЂ№."), "");
-        button(holder, inventory, 11, Material.EMERALD, "&eР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ 1 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":1");
-        button(holder, inventory, 13, Material.EMERALD_BLOCK, "&eР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ 16 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":16");
-        button(holder, inventory, 15, Material.DIAMOND_ORE, "&eР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ 64 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":64");
-        button(holder, inventory, 22, Material.ARROW, "&aР СњР В°Р В·Р В°Р Т‘", List.of(), "atm:targets:" + atmId + ":" + scope);
+        button(holder, inventory, 4, Material.PLAYER_HEAD, "&b" + first(targetName, targetUuid), List.of("&7Потребуется PIN казны."), "");
+        button(holder, inventory, 11, Material.EMERALD, "&eПеревести 1 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":1");
+        button(holder, inventory, 13, Material.EMERALD_BLOCK, "&eПеревести 16 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":16");
+        button(holder, inventory, 15, Material.DIAMOND_ORE, "&eПеревести 64 AR", List.of(), "atm:transfer:" + atmId + ":" + scope + ":" + targetUuid + ":64");
+        button(holder, inventory, 22, Material.ARROW, "&aНазад", List.of(), "atm:targets:" + atmId + ":" + scope);
         player.openInventory(inventory);
     }
 
     private void openBankTransferAmountsLegacy(Player player, String atmId, String targetUuid) throws Exception {
         MenuHolder holder = new MenuHolder("economy:amount", atmId);
-        Inventory inventory = holder.create(27, color("&b&lР РЋРЎС“Р СР СР В° Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘Р В°"));
+        Inventory inventory = holder.create(27, color("&b&lСумма перевода"));
         String targetName = bankTargetName(targetUuid);
-        button(holder, inventory, 4, Material.PLAYER_HEAD, "&b" + first(targetName, targetUuid), List.of("&7Р СџР С•РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљРЎРѓРЎРЏ PIN Р В±Р В°Р Р…Р С”Р В°."), "");
-        button(holder, inventory, 11, Material.EMERALD, "&eР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ 1 AR", List.of(), "atm:transfer:" + atmId + ":" + targetUuid + ":1");
-        button(holder, inventory, 13, Material.EMERALD_BLOCK, "&eР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ 16 AR", List.of(), "atm:transfer:" + atmId + ":" + targetUuid + ":16");
-        button(holder, inventory, 15, Material.DIAMOND_ORE, "&eР СџР ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ 64 AR", List.of(), "atm:transfer:" + atmId + ":" + targetUuid + ":64");
-        button(holder, inventory, 22, Material.ARROW, "&aР СњР В°Р В·Р В°Р Т‘", List.of(), "atm:targets:" + atmId);
+        button(holder, inventory, 4, Material.PLAYER_HEAD, "&b" + first(targetName, targetUuid), List.of("&7Потребуется PIN банка."), "");
+        button(holder, inventory, 11, Material.EMERALD, "&eПеревести 1 AR", List.of(), "atm:transfer:" + atmId + ":" + targetUuid + ":1");
+        button(holder, inventory, 13, Material.EMERALD_BLOCK, "&eПеревести 16 AR", List.of(), "atm:transfer:" + atmId + ":" + targetUuid + ":16");
+        button(holder, inventory, 15, Material.DIAMOND_ORE, "&eПеревести 64 AR", List.of(), "atm:transfer:" + atmId + ":" + targetUuid + ":64");
+        button(holder, inventory, 22, Material.ARROW, "&aНазад", List.of(), "atm:targets:" + atmId);
         player.openInventory(inventory);
     }
 
     private void openAtmPinPad(Player player, String atmId, String accountScope, String action, int amount, String pin, String targetUuid, String targetName) {
         String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
-        String masked = pin.isBlank() ? "РІР‚Сћ РІР‚Сћ РІР‚Сћ РІР‚Сћ" : pin.chars().mapToObj(i -> "РІР‚Сћ").reduce((a, b) -> a + " " + b).orElse("РІР‚Сћ");
+        String masked = pin.isBlank() ? "* * * *" : pin.chars().mapToObj(i -> "*").reduce((a, b) -> a + " " + b).orElse("*");
         MenuHolder holder = new MenuHolder("atm:pin", atmId);
-        Inventory inventory = holder.create(45, color("&e&lР вЂ™Р Р†Р ВµР Т‘Р С‘РЎвЂљР Вµ PIN"));
+        Inventory inventory = holder.create(45, color("&e&lВведите PIN"));
         holder.data.put("atm_id", atmId);
         holder.data.put("account_scope", scope);
         holder.data.put("action", action);
@@ -957,10 +976,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         holder.data.put("target_uuid", first(targetUuid, ""));
         holder.data.put("target_name", first(targetName, ""));
         atmPinSessions.put(player.getUniqueId(), new AtmPinSession(atmId, scope, action, amount, pin, targetUuid, targetName));
-        button(holder, inventory, 13, Material.PAPER, "&fР вЂ™Р Р†Р ВµР Т‘Р С‘РЎвЂљР Вµ PIN",
+        button(holder, inventory, 13, Material.PAPER, "&fВведите PIN",
                 targetUuid.isBlank()
-                        ? List.of("&7Р С™Р С•Р Т‘: &f" + masked)
-                        : List.of("&7Р С™Р С•Р СРЎС“: &f" + first(targetName, targetUuid), "&7Р С™Р С•Р Т‘: &f" + masked),
+                        ? List.of("&7Код: &f" + masked)
+                        : List.of("&7Кому: &f" + first(targetName, targetUuid), "&7Код: &f" + masked),
                 "");
         Map<Integer, String> keypad = Map.of(
                 10, "1",
@@ -975,9 +994,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 38, "0"
         );
         keypad.forEach((slot, digit) -> button(holder, inventory, slot, Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + digit, List.of(), "pin:digit:" + digit));
-        button(holder, inventory, 23, Material.BARRIER, "&cCancel", List.of(), "pin:cancel");
-        button(holder, inventory, 32, Material.ORANGE_WOOL, "&eClear", List.of(), "pin:clear");
-        button(holder, inventory, 41, Material.LIME_WOOL, "&aEnter", List.of("&7Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р Т‘Р С‘РЎвЂљРЎРЉ Р В±Р В°Р Р…Р С”Р С•Р Р†РЎРѓР С”РЎС“РЎР‹ Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘РЎР‹."), "pin:confirm");
+        button(holder, inventory, 23, Material.BARRIER, "&cОтмена", List.of("&7Вернуться без операции."), "pin:cancel");
+        button(holder, inventory, 24, Material.YELLOW_WOOL, "&eСтереть цифру", List.of("&7Удалить последнюю цифру PIN."), "pin:back");
+        button(holder, inventory, 32, Material.ORANGE_WOOL, "&eОчистить", List.of("&7Сбросить весь введённый PIN."), "pin:clear");
+        button(holder, inventory, 41, Material.LIME_WOOL, "&aПодтвердить", List.of("&7Подтвердить банковскую операцию."), "pin:confirm");
+        atmPinRefreshBypass.add(player.getUniqueId());
         player.openInventory(inventory);
     }
 
@@ -1000,6 +1021,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), "", session.targetUuid(), session.targetName());
             return;
         }
+        if (action.equals("pin:back")) {
+            String nextPin = pin.isEmpty() ? "" : pin.substring(0, pin.length() - 1);
+            openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), nextPin, session.targetUuid(), session.targetName());
+            return;
+        }
         if (action.equals("pin:cancel")) {
             atmPinSessions.remove(player.getUniqueId());
             openBankAtmAccount(player, session.atmId(), scope);
@@ -1009,14 +1035,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return;
         }
         if (!pin.matches("\\d{4,8}")) {
-            player.sendMessage(color("&cР вЂ™Р Р†Р ВµР Т‘Р С‘РЎвЂљР Вµ PIN Р С—Р С•Р В»Р Р…Р С•РЎРѓРЎвЂљРЎРЉРЎР‹: Р С•РЎвЂљ 4 Р Т‘Р С• 8 РЎвЂ Р С‘РЎвЂћРЎР‚."));
+            player.sendMessage(color("&cВведите PIN полностью: от 4 до 8 цифр."));
             openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), pin, session.targetUuid(), session.targetName());
             return;
         }
         String confirmedPin = pin;
         atmPinSessions.remove(player.getUniqueId());
         player.closeInventory();
-        player.sendMessage(color("&7Р С›Р В±РЎР‚Р В°Р В±Р В°РЎвЂљРЎвЂ№Р Р†Р В°Р ВµР С Р В±Р В°Р Р…Р С”Р С•Р Р†РЎРѓР С”РЎС“РЎР‹ Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘РЎР‹..."));
+        player.sendMessage(color("&7Обрабатываем банковскую операцию..."));
         CompletableFuture<TxnResult> future;
         if ("TRANSFER".equals(session.action())) {
             if ("TREASURY".equals(scope)) {
@@ -1063,6 +1089,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         future.whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
             if (!player.isOnline()) {
+                if (error == null && result != null && result.ok && !"TRANSFER".equals(session.action())) {
+                    queuePendingArSettlement(player.getUniqueId(), player.getName(), session.amount(), PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY,
+                            "atm=" + session.atmId() + ",scope=" + scope + ",tx=" + first(result.txId, ""));
+                }
                 return;
             }
             if (error != null || result == null || !result.ok) {
@@ -1070,14 +1100,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 if (error != null) {
                     getLogger().warning("ATM PIN operation: " + safeError(error));
                 }
-                player.sendMessage(color("&c" + first(result == null ? "" : result.message, "Р С›Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘РЎРЏ Р С•РЎвЂљР С”Р В»Р С•Р Р…Р ВµР Р…Р В°.")));
+                player.sendMessage(color("&c" + first(result == null ? "" : result.message, "Операция отклонена.")));
                 openAtmPinPad(player, session.atmId(), scope, session.action(), session.amount(), confirmedPin, session.targetUuid(), session.targetName());
                 return;
             }
             if (!"TRANSFER".equals(session.action())) {
                 completeWithdrawOnMainThread(player, session.amount());
             }
-            player.sendMessage(color("&aР С›Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘РЎРЏ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р ВµР Р…Р В°."));
+            player.sendMessage(color("&aОперация выполнена."));
             openBankAtmAccount(player, session.atmId(), scope);
         }));
     }
@@ -1085,7 +1115,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private String depositArFromHandAsync(Player player, String atmId, String accountScope) throws Exception {
         ItemStack stack = player.getInventory().getItemInMainHand();
         if (!isOfficialAr(stack)) {
-            return "&cР вЂ™ Р С•РЎРѓР Р…Р С•Р Р†Р Р…Р С•Р в„– РЎР‚РЎС“Р С”Р Вµ Р Р…Р ВµРЎвЂљ Р С•РЎвЂћР С‘РЎвЂ Р С‘Р В°Р В»РЎРЉР Р…Р С•Р С–Р С• AR.";
+            return "&cВ основной руке нет официального AR.";
         }
         String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
         int amount = stack.getAmount();
@@ -1097,29 +1127,34 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 ? creditAccountAsync(treasuryAccountId(), player.getUniqueId().toString(), player.getName(), amount, txKey, "TREASURY_DEPOSIT", "atm=" + atmId)
                 : bankService.creditAsync(player.getUniqueId(), player.getName(), amount, txKey, "ATM_DEPOSIT", "atm=" + atmId))
                 .whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
-                    if (!player.isOnline()) {
-                        return;
-                    }
                     if (error != null || result == null || !result.ok) {
+                        if (!player.isOnline()) {
+                            queuePendingArSettlement(player.getUniqueId(), player.getName(), amount, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
+                                    "atm=" + atmId + ",scope=" + scope + ",hand=true");
+                            return;
+                        }
                         player.getInventory().setItemInMainHand(snapshot);
                         player.updateInventory();
-                        player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р Р†Р Р…Р ВµРЎРѓРЎвЂљР С‘ AR Р Р† Р В±Р В°Р Р…Р С”."));
+                        player.sendMessage(color("&cНе удалось внести AR в банк."));
                         if (error != null) {
                             getLogger().warning("atm deposit hand: " + safeError(error));
                         }
                         openBankAtmAccount(player, atmId, scope);
                         return;
                     }
-                    player.sendMessage(color("&aР вЂ™ Р В±Р В°Р Р…Р С” Р Р†Р Р…Р ВµРЎРѓР ВµР Р…Р С•: &f" + amount + " AR"));
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    player.sendMessage(color("&aВ банк внесено: &f" + amount + " AR"));
                     openBankAtmAccount(player, atmId, scope);
                 }));
-        return "&7Р вЂ™Р Р…Р С•РЎРѓР С‘Р С AR Р Р† Р В±Р В°Р Р…Р С”...";
+        return "&7Вносим AR в банк...";
     }
 
     private String depositAllArAsync(Player player, String atmId, String accountScope) throws Exception {
         int available = countOfficialAr(player.getInventory());
         if (available <= 0) {
-            return "&cР вЂ™ Р С‘Р Р…Р Р†Р ВµР Р…РЎвЂљР В°РЎР‚Р Вµ Р Р…Р ВµРЎвЂљ Р С•РЎвЂћР С‘РЎвЂ Р С‘Р В°Р В»РЎРЉР Р…Р С•Р С–Р С• AR.";
+            return "&cВ инвентаре нет официального AR.";
         }
         String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
         ItemStack[] snapshot = cloneInventoryContents(player.getInventory());
@@ -1130,22 +1165,189 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 ? creditAccountAsync(treasuryAccountId(), player.getUniqueId().toString(), player.getName(), available, txKey, "TREASURY_DEPOSIT_ALL", "atm=" + atmId)
                 : bankService.creditAsync(player.getUniqueId(), player.getName(), available, txKey, "ATM_DEPOSIT_ALL", "atm=" + atmId))
                 .whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
-                    if (!player.isOnline()) {
-                        return;
-                    }
                     if (error != null || result == null || !result.ok) {
+                        if (!player.isOnline()) {
+                            queuePendingArSettlement(player.getUniqueId(), player.getName(), available, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
+                                    "atm=" + atmId + ",scope=" + scope + ",all=true");
+                            return;
+                        }
                         restoreInventorySnapshot(player, snapshot);
-                        player.sendMessage(color("&cР СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р Р†Р Р…Р ВµРЎРѓРЎвЂљР С‘ AR Р Р† Р В±Р В°Р Р…Р С”."));
+                        player.sendMessage(color("&cНе удалось внести AR в банк."));
                         if (error != null) {
                             getLogger().warning("atm deposit all: " + safeError(error));
                         }
                         openBankAtmAccount(player, atmId, scope);
                         return;
                     }
-                    player.sendMessage(color("&aР вЂ™ Р В±Р В°Р Р…Р С” Р Р†Р Р…Р ВµРЎРѓР ВµР Р…Р С•: &f" + available + " AR"));
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    player.sendMessage(color("&aВ банк внесено: &f" + available + " AR"));
                     openBankAtmAccount(player, atmId, scope);
                 }));
-        return "&7Р вЂ™Р Р…Р С•РЎРѓР С‘Р С Р Р†Р ВµРЎРѓРЎРЉ AR Р Р† Р В±Р В°Р Р…Р С”...";
+        return "&7Вносим весь AR в банк...";
+    }
+
+    private void processPendingArSettlements(Player player, boolean notifyNoSpace) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        dbFuture("pending ar settlements load", () -> loadPendingArSettlements(player.getUniqueId()))
+                .whenComplete((rows, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (error != null) {
+                        getLogger().warning("pending AR settlements load: " + safeError(error));
+                        return;
+                    }
+                    if (rows == null || rows.isEmpty() || !player.isOnline()) {
+                        return;
+                    }
+                    long totalAmount = rows.stream().mapToLong(PendingArSettlement::amount).sum();
+                    long capacity = arCapacity(player.getInventory());
+                    if (capacity < totalAmount) {
+                        if (notifyNoSpace) {
+                            player.sendMessage(color("&eЕсть невыданный официальный AR. Освободи место в инвентаре и открой банкомат снова."));
+                        }
+                        return;
+                    }
+                    List<String> ids = rows.stream().map(PendingArSettlement::id).toList();
+                    dbFuture("pending ar settlements reserve", () -> reservePendingArSettlements(ids))
+                            .whenComplete((reserved, reserveError) -> Bukkit.getScheduler().runTask(this, () -> {
+                                if (reserveError != null) {
+                                    getLogger().warning("pending AR settlements reserve: " + safeError(reserveError));
+                                    return;
+                                }
+                                if (!player.isOnline() || reserved == null || reserved != ids.size()) {
+                                    return;
+                                }
+                                if (arCapacity(player.getInventory()) < totalAmount || !issueOfficialArAmount(player, totalAmount, "pending-ar-settlement", false)) {
+                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(ids));
+                                    if (notifyNoSpace) {
+                                        player.sendMessage(color("&eОсвободи место в инвентаре и открой банкомат снова, чтобы забрать ожидающий AR."));
+                                    }
+                                    return;
+                                }
+                                dbAsync("pending ar settlements delivered", () -> markPendingArSettlementsDelivered(ids));
+                                player.sendMessage(color("&aВыдан ожидающий официальный AR: &f" + totalAmount + " AR"));
+                            }));
+                }));
+    }
+
+    private List<PendingArSettlement> loadPendingArSettlements(UUID playerUuid) throws Exception {
+        return tx(connection -> {
+            List<Map<String, Object>> rows = queryList(connection,
+                    "SELECT id,player_uuid,player_name,amount,settlement_type,reason FROM cmv4_pending_ar_settlements WHERE player_uuid=? AND status=? ORDER BY created_at ASC",
+                    playerUuid.toString(), PENDING_AR_SETTLEMENT_STATUS_PENDING);
+            List<PendingArSettlement> result = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                result.add(new PendingArSettlement(
+                        string(row.get("id")),
+                        UUID.fromString(string(row.get("player_uuid"))),
+                        first(string(row.get("player_name")), ""),
+                        longValue(row.get("amount")),
+                        first(string(row.get("settlement_type")), ""),
+                        first(string(row.get("reason")), "")
+                ));
+            }
+            return result;
+        });
+    }
+
+    private int reservePendingArSettlements(List<String> ids) throws Exception {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        return tx(connection -> {
+            int reserved = 0;
+            long updatedAt = now();
+            for (String id : ids) {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,updated_at=? WHERE id=? AND status=?")) {
+                    bind(statement, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_PENDING);
+                    reserved += statement.executeUpdate();
+                }
+            }
+            return reserved;
+        });
+    }
+
+    private void markPendingArSettlementsDelivered(List<String> ids) throws Exception {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        tx(connection -> {
+            long updatedAt = now();
+            for (String id : ids) {
+                update(connection,
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivered_at=?,updated_at=? WHERE id=? AND status=?",
+                        PENDING_AR_SETTLEMENT_STATUS_DELIVERED, updatedAt, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING);
+            }
+            return null;
+        });
+    }
+
+    private void releasePendingArSettlements(List<String> ids) throws Exception {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        tx(connection -> {
+            long updatedAt = now();
+            for (String id : ids) {
+                update(connection,
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,updated_at=? WHERE id=? AND status=?",
+                        PENDING_AR_SETTLEMENT_STATUS_PENDING, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING);
+            }
+            return null;
+        });
+    }
+
+    private void queuePendingArSettlement(UUID playerUuid, String playerName, long amount, String settlementType, String reason) {
+        if (amount <= 0) {
+            return;
+        }
+        dbAsync("queue pending ar settlement", () -> update(
+                "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,0)",
+                UUID.randomUUID().toString(),
+                playerUuid.toString(),
+                first(playerName, ""),
+                amount,
+                first(settlementType, PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY),
+                PENDING_AR_SETTLEMENT_STATUS_PENDING,
+                first(reason, ""),
+                now(),
+                now()
+        ));
+    }
+
+    private long arCapacity(Inventory inventory) {
+        long capacity = 0L;
+        for (ItemStack stack : inventory.getStorageContents()) {
+            if (stack == null || stack.getType().isAir()) {
+                capacity += 64L;
+                continue;
+            }
+            if (isOfficialAr(stack)) {
+                capacity += Math.max(0, stack.getMaxStackSize() - stack.getAmount());
+            }
+        }
+        return capacity;
+    }
+
+    private boolean issueOfficialArAmount(Player player, long amount, String source, boolean dropOverflow) {
+        long remaining = amount;
+        while (remaining > 0) {
+            int stackAmount = (int) Math.min(64L, remaining);
+            ItemStack out = createOfficialArStack(stackAmount, player.getUniqueId().toString(), player.getName(), source);
+            Map<Integer, ItemStack> left = player.getInventory().addItem(out);
+            if (!left.isEmpty()) {
+                if (!dropOverflow) {
+                    return false;
+                }
+                left.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
+            }
+            remaining -= stackAmount;
+        }
+        player.updateInventory();
+        return true;
     }
 
     private ItemStack[] cloneInventoryContents(Inventory inventory) {
@@ -1167,11 +1369,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void completeWithdrawOnMainThread(Player player, long amount) {
-        ItemStack out = createOfficialArStack((int) amount, player.getUniqueId().toString(), player.getName(), "bank-withdraw");
-        Map<Integer, ItemStack> left = player.getInventory().addItem(out);
-        if (!left.isEmpty()) {
-            left.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
-        }
+        issueOfficialArAmount(player, amount, "bank-withdraw", true);
     }
 
     private ItemStack createOfficialArStack(int amount, String ownerUuid, String ownerName, String source) {
@@ -1600,7 +1798,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private TxnResult creditAccount(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details) {
         if (accountId == null || accountId.isBlank() || amount <= 0L) {
-            return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С—Р С•Р С—Р С•Р В»Р Р…Р ВµР Р…Р С‘РЎРЏ.", 0L, "");
+            return new TxnResult(false, "INVALID_REQUEST", "Некорректные данные пополнения.", 0L, "");
         }
         try {
             return tx(connection -> {
@@ -1623,7 +1821,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, targetId);
                 update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                         txId, targetId, first(action, "CREDIT"), first(ownerUuid, ""), first(action, "CREDIT"), amount, after, txId, "COMMITTED", t, first(ownerName, ""), first(details, ""));
-                return new TxnResult(true, "OK", "Р СџР С•Р С—Р С•Р В»Р Р…Р ВµР Р…Р С‘Р Вµ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р ВµР Р…Р С•.", after, txId);
+                return new TxnResult(true, "OK", "Пополнение выполнено.", after, txId);
             });
         } catch (Exception error) {
             return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
@@ -1815,21 +2013,21 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private CompletableFuture<TxnResult> chargeTreasuryWithPinAsync(Player actor, long amount, String pin, String idempotencyKey, String action, String details) {
         return dbFuture("treasury charge", () -> {
             if (actor == null || amount <= 0L) {
-                return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р в„– Р В·Р В°Р С—РЎР‚Р С•РЎРѓ.", 0L, "");
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректный запрос.", 0L, "");
             }
             String accountId = treasuryAccountId();
             if (accountPinLockedSeconds(accountId) > 0L) {
-                return new TxnResult(false, "PIN_LOCKED", "PIN Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р†РЎР‚Р ВµР СР ВµР Р…Р Р…Р С• Р В·Р В°Р В±Р В»Р С•Р С”Р С‘РЎР‚Р С•Р Р†Р В°Р Р….", 0L, "");
+                return new TxnResult(false, "PIN_LOCKED", "PIN казны временно заблокирован.", 0L, "");
             }
             if (!accountPinSet(accountId)) {
-                return new TxnResult(false, "PIN_REQUIRED", "Р РЋР Р…Р В°РЎвЂЎР В°Р В»Р В° Р В·Р В°Р Т‘Р В°Р в„– PIN Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р…Р В° РЎРѓР В°Р в„–РЎвЂљР Вµ.", 0L, "");
+                return new TxnResult(false, "PIN_REQUIRED", "Для казны PIN ещё не задан.", 0L, "");
             }
             if (accountPinMustChange(accountId)) {
-                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р…РЎС“Р В¶Р Р…Р С• Р С•Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р Р…Р В° РЎРѓР В°Р в„–РЎвЂљР Вµ.", 0L, "");
+                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN казны нужно обновить на сайте.", 0L, "");
             }
             if (!verifyAccountPinHash(accountId, pin)) {
                 recordFailedAccountPinAttempt(accountId, "economy-treasury-withdraw");
-                return new TxnResult(false, "PIN_INVALID", "Р СњР ВµР Р†Р ВµРЎР‚Р Р…РЎвЂ№Р в„– PIN Р С”Р В°Р В·Р Р…РЎвЂ№.", 0L, "");
+                return new TxnResult(false, "PIN_INVALID", "Неверный PIN казны.", 0L, "");
             }
             return tx(connection -> {
                 ensureTreasuryAccount(connection);
@@ -1841,14 +2039,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", accountId);
                 long after = before - amount;
                 if (after < 0L) {
-                    return new TxnResult(false, "INSUFFICIENT_AR", "Р СњР ВµР Т‘Р С•РЎРѓРЎвЂљР В°РЎвЂљР С•РЎвЂЎР Р…Р С• AR Р Р† Р С”Р В°Р В·Р Р…Р Вµ.", before, "");
+                    return new TxnResult(false, "INSUFFICIENT_AR", "Недостаточно AR в казне.", before, "");
                 }
                 long t = now();
                 String txId = "bank-" + first(action, "TREASURY_DEBIT") + "-" + UUID.randomUUID();
                 update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, accountId);
                 update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                         txId, accountId, first(action, "TREASURY_DEBIT"), actor.getUniqueId().toString(), "DEBIT", amount, after, txKey, "COMMITTED", t, actor.getName(), first(details, ""));
-                return new TxnResult(true, "OK", "Р РЋР С—Р С‘РЎРѓР В°Р Р…Р С‘Р Вµ Р С‘Р В· Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р ВµР Р…Р С•.", after, txId);
+                return new TxnResult(true, "OK", "Операция по казне подтверждена.", after, txId);
             });
         });
     }
@@ -1856,21 +2054,21 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private CompletableFuture<TxnResult> transferFromTreasuryWithPinAsync(Player actor, UUID targetUuid, String targetName, long amount, String pin, String idempotencyKey, String action, String details) {
         return dbFuture("treasury transfer", () -> {
             if (actor == null || targetUuid == null || amount <= 0L) {
-                return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р в„– Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘.", 0L, "");
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректный перевод.", 0L, "");
             }
             String accountId = treasuryAccountId();
             if (accountPinLockedSeconds(accountId) > 0L) {
-                return new TxnResult(false, "PIN_LOCKED", "PIN Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р†РЎР‚Р ВµР СР ВµР Р…Р Р…Р С• Р В·Р В°Р В±Р В»Р С•Р С”Р С‘РЎР‚Р С•Р Р†Р В°Р Р….", 0L, "");
+                return new TxnResult(false, "PIN_LOCKED", "PIN казны временно заблокирован.", 0L, "");
             }
             if (!accountPinSet(accountId)) {
-                return new TxnResult(false, "PIN_REQUIRED", "Р РЋР Р…Р В°РЎвЂЎР В°Р В»Р В° Р В·Р В°Р Т‘Р В°Р в„– PIN Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р…Р В° РЎРѓР В°Р в„–РЎвЂљР Вµ.", 0L, "");
+                return new TxnResult(false, "PIN_REQUIRED", "Для казны PIN ещё не задан.", 0L, "");
             }
             if (accountPinMustChange(accountId)) {
-                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р…РЎС“Р В¶Р Р…Р С• Р С•Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р Р…Р В° РЎРѓР В°Р в„–РЎвЂљР Вµ.", 0L, "");
+                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN казны нужно обновить на сайте.", 0L, "");
             }
             if (!verifyAccountPinHash(accountId, pin)) {
                 recordFailedAccountPinAttempt(accountId, "economy-treasury-transfer");
-                return new TxnResult(false, "PIN_INVALID", "Р СњР ВµР Р†Р ВµРЎР‚Р Р…РЎвЂ№Р в„– PIN Р С”Р В°Р В·Р Р…РЎвЂ№.", 0L, "");
+                return new TxnResult(false, "PIN_INVALID", "Неверный PIN казны.", 0L, "");
             }
             return tx(connection -> {
                 Map<String, Object> fromAccount = ensureTreasuryAccount(connection);
@@ -1885,7 +2083,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
                 long targetBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
                 if (before < amount) {
-                    return new TxnResult(false, "INSUFFICIENT_AR", "Р СњР ВµР Т‘Р С•РЎРѓРЎвЂљР В°РЎвЂљР С•РЎвЂЎР Р…Р С• AR Р Р† Р С”Р В°Р В·Р Р…Р Вµ.", before, "");
+                    return new TxnResult(false, "INSUFFICIENT_AR", "Недостаточно AR в казне.", before, "");
                 }
                 long t = now();
                 long after = before - amount;
@@ -1899,7 +2097,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         txId + ":out", fromId, toId, actor.getUniqueId().toString(), first(action, "TREASURY_TRANSFER_OUT"), amount, after, txId + ":out", "COMMITTED", t, actor.getName(), first(details, ""));
                 update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                         txId + ":in", toId, fromId, targetUuid.toString(), "TRANSFER_IN", amount, targetAfter, txId + ":in", "COMMITTED", t, actor.getName(), first(details, ""));
-                return new TxnResult(true, "OK", "Р СџР ВµРЎР‚Р ВµР Р†Р С•Р Т‘ Р С‘Р В· Р С”Р В°Р В·Р Р…РЎвЂ№ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р ВµР Р….", after, txId);
+                return new TxnResult(true, "OK", "Перевод из казны выполнен.", after, txId);
             });
         });
     }
@@ -1927,7 +2125,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private TxnResult mutateDonationBalanceInConnection(Connection connection, UUID playerUuid, String playerName, long delta, String reason, String actor, String source, String idempotencyKey) throws Exception {
         if (playerUuid == null || delta == 0L) {
-            return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р в„– donation-Р В·Р В°Р С—РЎР‚Р С•РЎРѓ.", 0L, "");
+            return new TxnResult(false, "INVALID_REQUEST", "Некорректный donation-запрос.", 0L, "");
         }
         String uuid = playerUuid.toString();
         ensureDonationAccount(connection, uuid, first(playerName, ""));
@@ -1941,14 +2139,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM donation_accounts WHERE player_uuid=? FOR UPDATE", uuid);
         long after = before + delta;
         if (after < 0L) {
-            return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Р СњР ВµР Т‘Р С•РЎРѓРЎвЂљР В°РЎвЂљР С•РЎвЂЎР Р…Р С• Р Т‘Р С•Р Р…Р В°РЎвЂљ-Р В±Р В°Р В»Р В°Р Р…РЎРѓР В°.", before, "");
+            return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Недостаточно донат-баланса.", before, "");
         }
         long t = now();
         String txId = "don-" + UUID.randomUUID();
         update(connection, "UPDATE donation_accounts SET balance=?,updated_at=?,player_name=? WHERE player_uuid=?", after, t, first(playerName, ""), uuid);
         update(connection, "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
                 txId, uuid, delta, after, first(reason, ""), first(actor, ""), first(source, ""), key, t);
-        return new TxnResult(true, "OK", delta >= 0 ? "Р вЂР В°Р В»Р В°Р Р…РЎРѓ Р С—Р С•Р С—Р С•Р В»Р Р…Р ВµР Р…." : "Р вЂР В°Р В»Р В°Р Р…РЎРѓ РЎРѓР С—Р С‘РЎРѓР В°Р Р….", after, txId);
+        return new TxnResult(true, "OK", delta >= 0 ? "Баланс пополнен." : "Баланс списан.", after, txId);
     }
 
     private TxnResult replayDonationBalanceMutation(Connection connection, String idempotencyKey, String playerUuid, long delta, String reason, String actor, String source) throws Exception {
@@ -2011,7 +2209,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_transfers(tx_id TEXT PRIMARY KEY,from_account_id TEXT NOT NULL,to_account_id TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>0),currency TEXT NOT NULL DEFAULT 'AR',status TEXT NOT NULL DEFAULT 'COMMITTED',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS bank_pin_hashes(minecraft_uuid TEXT PRIMARY KEY,site_account_id TEXT NOT NULL DEFAULT '',pin_hash TEXT NOT NULL,must_change INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS bank_account_pins(account_id TEXT PRIMARY KEY,pin_hash TEXT NOT NULL,pin_sealed TEXT NOT NULL DEFAULT '',must_change INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,updated_by TEXT NOT NULL DEFAULT '')");
-            update(connection, "CREATE TABLE IF NOT EXISTS ar_atms(id TEXT PRIMARY KEY,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,name TEXT NOT NULL DEFAULT 'Р вЂР В°Р Р…Р С”Р С•Р СР В°РЎвЂљ',active INTEGER NOT NULL DEFAULT 1,created_by TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,archived_by TEXT NOT NULL DEFAULT '',archived_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS ar_atms(id TEXT PRIMARY KEY,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,name TEXT NOT NULL DEFAULT 'Банкомат',active INTEGER NOT NULL DEFAULT 1,created_by TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,archived_by TEXT NOT NULL DEFAULT '',archived_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS account_lockouts(account_id TEXT PRIMARY KEY,locked_until BIGINT NOT NULL DEFAULT 0,reason TEXT NOT NULL DEFAULT '',updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS failed_pin_attempts(id BIGSERIAL PRIMARY KEY,minecraft_uuid TEXT NOT NULL,site_account_id TEXT NOT NULL DEFAULT '',attempted_at BIGINT NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS atm_events(id BIGSERIAL PRIMARY KEY,atm_id TEXT NOT NULL,player_uuid TEXT NOT NULL DEFAULT '',player_name TEXT NOT NULL DEFAULT '',event_type TEXT NOT NULL,amount BIGINT NOT NULL DEFAULT 0,balance_after BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '')");
@@ -2022,6 +2220,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS donation_payment_sessions(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL DEFAULT '',player_name TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT 'MOCK_SBP',amount BIGINT NOT NULL DEFAULT 0,amount_rub BIGINT NOT NULL DEFAULT 0,donation_units BIGINT NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'RUB',status TEXT NOT NULL DEFAULT 'CREATED',qr_payload TEXT NOT NULL DEFAULT '',qr_image_path TEXT NOT NULL DEFAULT '',callback_payload_json TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,expires_at BIGINT NOT NULL DEFAULT 0,paid_at BIGINT NOT NULL DEFAULT 0,cancelled_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_purchases(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',item_id TEXT NOT NULL,price BIGINT NOT NULL DEFAULT 0,price_donation BIGINT NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'CREATED',source TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_item_claims(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,item_id TEXT NOT NULL,amount BIGINT NOT NULL DEFAULT 1,status TEXT NOT NULL DEFAULT 'UNCLAIMED',claimed_at BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,purchase_id TEXT NOT NULL DEFAULT '',actor TEXT NOT NULL DEFAULT '')");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv4_pending_ar_settlements(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0 CHECK(amount>0),settlement_type TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,delivered_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_block_visuals(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,entity_uuid TEXT NOT NULL DEFAULT '',base_material TEXT NOT NULL DEFAULT 'PAPER',custom_model_data INTEGER NOT NULL DEFAULT 0,model_id TEXT NOT NULL DEFAULT '',offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,yaw DOUBLE PRECISION NOT NULL DEFAULT 0,pitch DOUBLE PRECISION NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS amount_rub BIGINT NOT NULL DEFAULT 0");
@@ -2036,7 +2235,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS price_donation BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE donation_purchases ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
-            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Р‘Р°РЅРєРѕРјР°С‚'");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Банкомат'");
             update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1");
             update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
@@ -2052,6 +2251,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_sessions_player_status ON donation_payment_sessions(player_uuid,status,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_purchases_player_status ON donation_purchases(player_uuid,status,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_claims_player_status ON donation_item_claims(player_uuid,status,created_at DESC)");
+            update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv4_pending_ar_player_status ON cmv4_pending_ar_settlements(player_uuid,status,created_at ASC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_ar_atms_location ON ar_atms(world,x,y,z,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_location ON protected_block_visuals(world,x,y,z,active)");
@@ -2332,7 +2532,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     /*
         private TxnResult mutateInConnection(Connection connection, UUID playerUuid, String playerName, long delta, String reason, String actor, String source, String idempotencyKey) throws Exception {
             if (playerUuid == null || delta == 0L) {
-                return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р в„– donation-Р В·Р В°Р С—РЎР‚Р С•РЎРѓ.", 0L, "");
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректный donation-запрос.", 0L, "");
             }
             String uuid = playerUuid.toString();
             ensureDonationAccount(connection, uuid, first(playerName, ""));
@@ -2346,14 +2546,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM donation_accounts WHERE player_uuid=? FOR UPDATE", uuid);
             long after = before + delta;
             if (after < 0L) {
-                return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Р СњР ВµР Т‘Р С•РЎРѓРЎвЂљР В°РЎвЂљР С•РЎвЂЎР Р…Р С• Р Т‘Р С•Р Р…Р В°РЎвЂљ-Р В±Р В°Р В»Р В°Р Р…РЎРѓР В°.", before, "");
+                return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Недостаточно донат-баланса.", before, "");
             }
             long t = now();
             String txId = "don-" + UUID.randomUUID();
             update(connection, "UPDATE donation_accounts SET balance=?,updated_at=?,player_name=? WHERE player_uuid=?", after, t, first(playerName, ""), uuid);
             update(connection, "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
                     txId, uuid, delta, after, first(reason, ""), first(actor, ""), first(source, ""), key, t);
-            return new TxnResult(true, "OK", delta >= 0 ? "Р вЂР В°Р В»Р В°Р Р…РЎРѓ Р С—Р С•Р С—Р С•Р В»Р Р…Р ВµР Р…." : "Р вЂР В°Р В»Р В°Р Р…РЎРѓ РЎРѓР С—Р С‘РЎРѓР В°Р Р….", after, txId);
+            return new TxnResult(true, "OK", delta >= 0 ? "Баланс пополнен." : "Баланс списан.", after, txId);
         }
     }
 
@@ -2364,7 +2564,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String shortId(String id) {
-        return id == null || id.isBlank() ? "РІР‚вЂќ" : (id.length() <= 10 ? id : id.substring(0, 10));
+        return id == null || id.isBlank() ? "—" : (id.length() <= 10 ? id : id.substring(0, 10));
     }
 
     private String hex(byte[] bytes) {
@@ -2545,7 +2745,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         private TxnResult mutate(UUID playerUuid, String playerName, long delta, String reason, String actor, String source, String idempotencyKey) {
             if (playerUuid == null || delta == 0L) {
-                return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р в„– donation-Р В·Р В°Р С—РЎР‚Р С•РЎРѓ.", 0L, "");
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректный donation-запрос.", 0L, "");
             }
             try {
                 return tx(connection -> mutateDonationBalanceInConnection(connection, playerUuid, playerName, delta, reason, actor, source, idempotencyKey));
@@ -2563,14 +2763,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     long before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM donation_accounts WHERE player_uuid=? FOR UPDATE", uuid);
                     long after = before + delta;
                     if (after < 0L) {
-                        return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Р СњР ВµР Т‘Р С•РЎРѓРЎвЂљР В°РЎвЂљР С•РЎвЂЎР Р…Р С• Р Т‘Р С•Р Р…Р В°РЎвЂљ-Р В±Р В°Р В»Р В°Р Р…РЎРѓР В°.", before, "");
+                        return new TxnResult(false, "INSUFFICIENT_DONATION_BALANCE", "Недостаточно донат-баланса.", before, "");
                     }
                     long t = now();
                     String txId = "don-" + UUID.randomUUID();
                     update(connection, "UPDATE donation_accounts SET balance=?,updated_at=?,player_name=? WHERE player_uuid=?", after, t, first(playerName, ""), uuid);
                     update(connection, "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
                             txId, uuid, delta, after, first(reason, ""), first(actor, ""), first(source, ""), key, t);
-                    return new TxnResult(true, "OK", delta >= 0 ? "Р вЂР В°Р В»Р В°Р Р…РЎРѓ Р С—Р С•Р С—Р С•Р В»Р Р…Р ВµР Р…." : "Р вЂР В°Р В»Р В°Р Р…РЎРѓ РЎРѓР С—Р С‘РЎРѓР В°Р Р….", after, txId);
+                    return new TxnResult(true, "OK", delta >= 0 ? "Баланс пополнен." : "Баланс списан.", after, txId);
                 });
                 */
             } catch (Exception error) {
@@ -3329,28 +3529,28 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         public TxnResult transferWithPin(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String pin, String idempotencyKey, String action, String details) {
             requireAsyncBankContext("BankService.transferWithPin");
             if (fromUuid == null || toUuid == null || amount <= 0) {
-                return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘Р В°.", 0L, "");
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректные данные перевода.", 0L, "");
             }
             if (fromUuid.equals(toUuid)) {
-                return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР В»РЎРЉР В·РЎРЏ Р С—Р ВµРЎР‚Р ВµР Р†Р ВµРЎРѓРЎвЂљР С‘ AR Р Р…Р В° РЎвЂљР С•РЎвЂљ Р В¶Р Вµ РЎРѓРЎвЂЎРЎвЂРЎвЂљ.", 0L, "");
+                return new TxnResult(false, "INVALID_REQUEST", "Нельзя перевести AR на тот же счёт.", 0L, "");
             }
             try {
                 long locked = bankPinLockedSeconds(fromUuid.toString());
                 if (locked > 0) {
-                    return new TxnResult(false, "PIN_LOCKED", "PIN Р Р†РЎР‚Р ВµР СР ВµР Р…Р Р…Р С• Р В·Р В°Р В±Р В»Р С•Р С”Р С‘РЎР‚Р С•Р Р†Р В°Р Р….", 0L, "");
+                    return new TxnResult(false, "PIN_LOCKED", "PIN временно заблокирован.", 0L, "");
                 }
                 if (!bankPinSet(fromUuid.toString())) {
-                    return new TxnResult(false, "PIN_REQUIRED", "Р РЋР Р…Р В°РЎвЂЎР В°Р В»Р В° Р В·Р В°Р Т‘Р В°Р в„– Р В±Р В°Р Р…Р С”Р С•Р Р†РЎРѓР С”Р С‘Р в„– PIN Р Р…Р В° РЎРѓР В°Р в„–РЎвЂљР Вµ.", 0L, "");
+                    return new TxnResult(false, "PIN_REQUIRED", "Банковский PIN ещё не задан.", 0L, "");
                 }
                 if (bankPinMustChange(fromUuid.toString())) {
-                    return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Р вЂ™РЎР‚Р ВµР СР ВµР Р…Р Р…РЎвЂ№Р в„– PIN Р Р…РЎС“Р В¶Р Р…Р С• Р В·Р В°Р СР ВµР Р…Р С‘РЎвЂљРЎРЉ Р Р…Р В° РЎРѓР В°Р в„–РЎвЂљР Вµ.", 0L, "");
+                    return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Временный PIN нужно заменить на сайте.", 0L, "");
                 }
                 if (!verifyBankPin(fromUuid.toString(), pin)) {
                     Player online = Bukkit.getPlayer(fromUuid);
                     if (online != null) {
                         recordFailedPinAttempt(online, "economy-transfer");
                     }
-                    return new TxnResult(false, "PIN_INVALID", "Р СњР ВµР Р†Р ВµРЎР‚Р Р…РЎвЂ№Р в„– Р В±Р В°Р Р…Р С”Р С•Р Р†РЎРѓР С”Р С‘Р в„– PIN.", 0L, "");
+                    return new TxnResult(false, "PIN_INVALID", "Неверный банковский PIN.", 0L, "");
                 }
                 return tx(connection -> {
                     Map<String, Object> fromAccount = ensureBankAccount(connection, fromUuid.toString(), first(fromName, ""));
@@ -3372,7 +3572,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         before = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
                     }
                     if (before < amount) {
-                        return new TxnResult(false, "INSUFFICIENT_AR", "Р СњР ВµР Т‘Р С•РЎРѓРЎвЂљР В°РЎвЂљР С•РЎвЂЎР Р…Р С• AR Р Р…Р В° РЎРѓРЎвЂЎРЎвЂРЎвЂљР Вµ.", before, "");
+                        return new TxnResult(false, "INSUFFICIENT_AR", "Недостаточно AR на счёте.", before, "");
                     }
                     long t = now();
                     long after = before - amount;
@@ -3386,7 +3586,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                             txId + ":out", fromId, toId, fromUuid.toString(), first(action, "TRANSFER_OUT"), amount, after, txId + ":out", "COMMITTED", t, first(fromName, ""), first(details, ""));
                     update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                             txId + ":in", toId, fromId, toUuid.toString(), "TRANSFER_IN", amount, targetAfter, txId + ":in", "COMMITTED", t, first(fromName, ""), first(details, ""));
-                    return new TxnResult(true, "OK", "Р СџР ВµРЎР‚Р ВµР Р†Р С•Р Т‘ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р ВµР Р….", after, txId);
+                    return new TxnResult(true, "OK", "Перевод выполнен.", after, txId);
                 });
             } catch (Exception error) {
                 try {
@@ -3412,7 +3612,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         public TxnResult credit(UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
             requireAsyncBankContext("BankService.credit");
             if (toUuid == null || amount <= 0) {
-                return new TxnResult(false, "INVALID_REQUEST", "Р СњР ВµР С”Р С•РЎР‚РЎР‚Р ВµР С”РЎвЂљР Р…РЎвЂ№Р Вµ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ Р С—Р С•Р С—Р С•Р В»Р Р…Р ВµР Р…Р С‘РЎРЏ.", 0L, "");
+                return new TxnResult(false, "INVALID_REQUEST", "Некорректные данные пополнения.", 0L, "");
             }
             try {
                 return tx(connection -> {
@@ -3430,7 +3630,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, accountId);
                     update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                             txId, accountId, first(action, "CREDIT"), toUuid.toString(), first(action, "CREDIT"), amount, after, txId, "COMMITTED", t, first(toName, ""), first(details, ""));
-                    return new TxnResult(true, "OK", "Р СџР С•Р С—Р С•Р В»Р Р…Р ВµР Р…Р С‘Р Вµ Р Р†РЎвЂ№Р С—Р С•Р В»Р Р…Р ВµР Р…Р С•.", after, txId);
+                    return new TxnResult(true, "OK", "Пополнение выполнено.", after, txId);
                 });
             } catch (Exception error) {
                 try {
@@ -3521,12 +3721,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (!fromAccountId.equalsIgnoreCase(string(existing.get("from_account_id")))
                     || !toAccountId.equalsIgnoreCase(string(existing.get("to_account_id")))
                     || longValue(existing.get("amount")) != amount) {
-                return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Р С™Р В»РЎР‹РЎвЂЎ Р С—Р ВµРЎР‚Р ВµР Р†Р С•Р Т‘Р В° РЎС“Р В¶Р Вµ Р С—РЎР‚Р С‘Р Р†РЎРЏР В·Р В°Р Р… Р С” Р Т‘РЎР‚РЎС“Р С–Р С•Р в„– Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘Р С‘.", 0L, "");
+                return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Ключ перевода уже привязан к другой операции.", 0L, "");
             }
             long replayBalance = scalarLong(connection,
                     "SELECT COALESCE(balance_after,0) FROM cmv4_bank_ledger WHERE tx_id=? LIMIT 1",
                     string(existing.get("tx_id")) + ":out");
-            return new TxnResult(true, "OK", "Р ВР Т‘Р ВµР СР С—Р С•РЎвЂљР ВµР Р…РЎвЂљР Р…РЎвЂ№Р в„– Р С—Р С•Р Р†РЎвЂљР С•РЎР‚.", replayBalance, string(existing.get("tx_id")));
+            return new TxnResult(true, "OK", "Идемпотентный повтор.", replayBalance, string(existing.get("tx_id")));
         }
 
         private TxnResult replayCreditIfCommitted(Connection connection, String txKey, String accountId) throws Exception {
@@ -3540,13 +3740,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return null;
             }
             if (!accountId.equalsIgnoreCase(string(existing.get("account_id")))) {
-                return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Р С™Р В»РЎР‹РЎвЂЎ Р С—Р С•Р С—Р С•Р В»Р Р…Р ВµР Р…Р С‘РЎРЏ РЎС“Р В¶Р Вµ Р С—РЎР‚Р С‘Р Р†РЎРЏР В·Р В°Р Р… Р С” Р Т‘РЎР‚РЎС“Р С–Р С•Р СРЎС“ РЎРѓРЎвЂЎРЎвЂРЎвЂљРЎС“.", 0L, "");
+                return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Ключ пополнения уже привязан к другому счёту.", 0L, "");
             }
-            return new TxnResult(true, "OK", "Р ВР Т‘Р ВµР СР С—Р С•РЎвЂљР ВµР Р…РЎвЂљР Р…РЎвЂ№Р в„– Р С—Р С•Р Р†РЎвЂљР С•РЎР‚.", longValue(existing.get("balance_after")), string(existing.get("tx_id")));
+            return new TxnResult(true, "OK", "Идемпотентный повтор.", longValue(existing.get("balance_after")), string(existing.get("tx_id")));
         }
     }
 }
-
-
-
-

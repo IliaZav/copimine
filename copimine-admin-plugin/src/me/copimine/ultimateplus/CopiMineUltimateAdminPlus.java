@@ -460,7 +460,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(e.getItemDrop()!=null&&isOfficialArItem(e.getItemDrop().getItemStack())){
             protectArEntity(e.getItemDrop(),"drop");
             registerArTransferClaim(e.getItemDrop(),e.getPlayer());
-            recordArTransaction("AR_DROP_LISTED",e.getItemDrop().getItemStack(),e.getPlayer(),arString(e.getItemDrop().getItemStack(),"owner_uuid"),arString(e.getItemDrop().getItemStack(),"owner_name"),null,e.getItemDrop().getLocation(),"Игрок выставил АР для RP-передачи через pickup");
+            recordArTransaction("AR_DROP_LISTED",e.getItemDrop().getItemStack(),e.getPlayer(),arString(e.getItemDrop().getItemStack(),"owner_uuid"),arString(e.getItemDrop().getItemStack(),"owner_name"),null,e.getItemDrop().getLocation(),"����� �������� �� ��� RP-�������� ����� pickup");
             queueArSync("AR_DROP_LISTED");
             return;
         }
@@ -512,7 +512,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         e.setCancelled(true);
         protectArEntity(e.getItem(),"hopper-pickup");
         recordArGuardIncident("AR_HOPPER_PICKUP_BLOCKED",e.getItem().getItemStack(),null,e.getItem().getLocation(),"hopper pickup prevented");
-        recordArTransaction("AR_HOPPER_PICKUP_BLOCKED",e.getItem().getItemStack(),null,arString(e.getItem().getItemStack(),"owner_uuid"),arString(e.getItem().getItemStack(),"owner_name"),null,e.getItem().getLocation(),"АР нельзя засасывать воронками");
+        recordArTransaction("AR_HOPPER_PICKUP_BLOCKED",e.getItem().getItemStack(),null,arString(e.getItem().getItemStack(),"owner_uuid"),arString(e.getItem().getItemStack(),"owner_name"),null,e.getItem().getLocation(),"�� ������ ���������� ���������");
     }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
@@ -523,7 +523,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(isOfficialArItem(e.getItem())&&(isArTransportInventory(e.getSource())||isArTransportInventory(e.getDestination()))){
             e.setCancelled(true);
             recordArGuardIncident("AR_MACHINE_MOVE_BLOCKED",e.getItem(),null,null,"hopper/dropper/dispenser move prevented");
-            recordArTransaction("AR_MACHINE_MOVE_BLOCKED",e.getItem(),null,arString(e.getItem(),"owner_uuid"),arString(e.getItem(),"owner_name"),null,null,"АР нельзя перемещать воронками, раздатчиками и выбрасывателями");
+            recordArTransaction("AR_MACHINE_MOVE_BLOCKED",e.getItem(),null,arString(e.getItem(),"owner_uuid"),arString(e.getItem(),"owner_name"),null,null,"�� ������ ���������� ���������, ������������ � ���������������");
         }
     }
 
@@ -535,7 +535,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!isOfficialArItem(e.getItem()))return;
         e.setCancelled(true);
         recordArGuardIncident("AR_DISPENSE_BLOCKED",e.getItem(),null,e.getBlock().getLocation(),"dispenser/dropper prevented");
-        recordArTransaction("AR_DISPENSE_BLOCKED",e.getItem(),null,arString(e.getItem(),"owner_uuid"),arString(e.getItem(),"owner_name"),null,e.getBlock().getLocation(),"АР нельзя выдавать раздатчиком или выбрасывателем");
+        recordArTransaction("AR_DISPENSE_BLOCKED",e.getItem(),null,arString(e.getItem(),"owner_uuid"),arString(e.getItem(),"owner_name"),null,e.getBlock().getLocation(),"�� ������ �������� ����������� ��� ��������������");
     }
 
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)
@@ -561,7 +561,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             e.setCancelled(true);
             if(legacyElectionRuntimeDisabled()){
                 if(!requireElectionItemOwner(p,hand,"cik_seal"))return;
-                warn(p,"Старая логика печати ЦИК отключена. Используйте CopiMineElectionCore.");
+                warn(p,"������ ������ ������ ��� ���������. ����������� CopiMineElectionCore.");
                 return;
             }
             if(!(target instanceof Player t)){
@@ -577,7 +577,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(isOfficialArItem(hand)&&(e.getRightClicked() instanceof ItemFrame||e.getRightClicked() instanceof ArmorStand)){
             e.setCancelled(true);
             p.updateInventory();
-            warn(p,"Сертифицированный АР передаётся только через выбрасывание и pickup. В рамки и стойки его класть нельзя.");
+            warn(p,"����������������� �� ��������� ������ ����� ������������ � pickup. � ����� � ������ ��� ������ ������.");
             return;
         }
         if(!isProtectedCustomItem(hand)||isOfficialArItem(hand))return;
@@ -650,10 +650,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!isOfficialArItem(e.getItemInHand()))return;
         e.setCancelled(true);
         e.getPlayer().updateInventory();
-        warn(e.getPlayer(),"Сертифицированный АР нельзя ставить блоком. Единственный вывод алмазов из него - переплавка.");
+        warn(e.getPlayer(),"����������������� �� ������ ������� ������. ������������ ����� ������� �� ���� - ����������.");
         sound(e.getPlayer(),"BLOCK_NOTE_BLOCK_BASS",0.55f,0.8f);
         recordArGuardIncident("AR_PLACE_BLOCKED",e.getItemInHand(),e.getPlayer(),e.getBlockPlaced().getLocation(),"Certified AR cannot be placed");
-        recordArTransaction("AR_PLACE_BLOCKED",e.getItemInHand(),e.getPlayer(),arString(e.getItemInHand(),"owner_uuid"),arString(e.getItemInHand(),"owner_name"),null,e.getBlockPlaced().getLocation(),"Блокировка установки сертифицированного АР");
+        recordArTransaction("AR_PLACE_BLOCKED",e.getItemInHand(),e.getPlayer(),arString(e.getItemInHand(),"owner_uuid"),arString(e.getItemInHand(),"owner_name"),null,e.getBlockPlaced().getLocation(),"���������� ��������� ������������������ ��");
     }
 
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=true)
@@ -672,7 +672,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 item.setItemStack(st);
                 amount+=st.getAmount();
             }
-            if(amount>0) arEvent(placed||!eligible?(placed?"AR_DROP_BLOCKED_PLACED":"AR_CERTIFICATION_BLOCKED"):"MINE_AR_DROP", e.getPlayer(), null, e.getBlockState().getType().name(), amount, e.getBlock().getLocation(), placed?"Поставленная руда не сертифицирована":(!eligible?"AR_CERTIFICATION_GATE_V3: drop was not produced by valid Silk Touch survival mining":"Сертифицированный АР создан добычей"));
+            if(amount>0) arEvent(placed||!eligible?(placed?"AR_DROP_BLOCKED_PLACED":"AR_CERTIFICATION_BLOCKED"):"MINE_AR_DROP", e.getPlayer(), null, e.getBlockState().getType().name(), amount, e.getBlock().getLocation(), placed?"������������ ���� �� ���������������":(!eligible?"AR_CERTIFICATION_GATE_V3: drop was not produced by valid Silk Touch survival mining":"����������������� �� ������ �������"));
             if(placed) deleteArPlacedBlock(e.getBlock());
         } catch(Exception ex) { getLogger().warning("ar drop: "+ex); }
     }
@@ -686,7 +686,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(legacyElectionRuntimeDisabled()){
             e.setCancelled(true);
             if(!requireElectionItemOwner(p,old,"application_book")) return;
-            warn(p,"Старые книги заявок отключены. Подай заявку через CopiMineElectionCore.");
+            warn(p,"������ ����� ������ ���������. ����� ������ ����� CopiMineElectionCore.");
             return;
         }
         if(!requireElectionItemOwner(p,old,"application_book")){e.setCancelled(true); return;}
@@ -697,9 +697,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             catch (SQLException closed) { e.setCancelled(true); warn(p,"Прием заявок уже закрыт председателем ЦИК."); return; }
             if(hasActiveApplication(p.getUniqueId().toString(), eid)){ e.setCancelled(true); warn(p,"У тебя уже есть активная заявка."); return; }
             BookMeta bm=e.getNewBookMeta(); List<String> pages=bm.getPages();
-            String text="Страница 1: Почему ты хочешь стать кандидатом?\n"+cleanPage(pages,0)+"\n\n"+
-                    "Страница 2: Что ты сделаешь для сервера?\n"+cleanPage(pages,1)+"\n\n"+
-                    "Страница 3: Почему игроки должны выбрать тебя?\n"+cleanPage(pages,2);
+            String text="�������� 1: ������ �� ������ ����� ����������?\n"+cleanPage(pages,0)+"\n\n"+
+                    "�������� 2: ��� �� �������� ��� �������?\n"+cleanPage(pages,1)+"\n\n"+
+                    "�������� 3: ������ ������ ������ ������� ����?\n"+cleanPage(pages,2);
             String id=UUID.randomUUID().toString();
             exec(""" 
                 INSERT INTO applications
@@ -779,7 +779,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onOfficialItemInteract(PlayerInteractEvent e){
         if(e.getClickedBlock()==null||!isProtectedOfficialItem(e.getItem()))return;
-        if(e.getClickedBlock().getState() instanceof Container){e.setCancelled(true); warn(e.getPlayer(),"Сначала убери официальный предмет из руки. Его нельзя класть в хранилища.");}
+        if(e.getClickedBlock().getState() instanceof Container){e.setCancelled(true); warn(e.getPlayer(),"������� ����� ����������� ������� �� ����. ��� ������ ������ � ���������.");}
     }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
@@ -788,12 +788,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!arMaterial(source==null?Material.AIR:source.getType()))return;
         if(isOfficialArItem(source)){
             e.setResult(new ItemStack(Material.DIAMOND,1));
-            recordArTransaction("AR_SMELT_DIAMOND",source,null,arString(source,"owner_uuid"),arString(source,"owner_name"),null,e.getBlock().getLocation(),"Единственный легальный вывод алмаза из сертифицированного АР");
+            recordArTransaction("AR_SMELT_DIAMOND",source,null,arString(source,"owner_uuid"),arString(source,"owner_name"),null,e.getBlock().getLocation(),"������������ ��������� ����� ������ �� ������������������ ��");
             queueArSync("AR_SMELT_DIAMOND");
             return;
         }
         e.setCancelled(true);
-        recordArTransaction("UNCERTIFIED_AR_SMELT_BLOCKED",source,null,"","",null,e.getBlock().getLocation(),"Несертифицированная алмазная руда не превращается в экономический АР-алмаз");
+        recordArTransaction("UNCERTIFIED_AR_SMELT_BLOCKED",source,null,"","",null,e.getBlock().getLocation(),"������������������� �������� ���� �� ������������ � ������������� ��-�����");
     }
 
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)
@@ -806,13 +806,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&7Участки, ЦИК, заявки, президент,",
                 "&7законы, live-панель и налоговая."),"open:elections");
         btn(m,13,Material.DIAMOND_ORE,"&b&lЭкономика",List.of(
-                "&7АР, банк, банкоматы, ledger,",
+                "&7AR, банк, банкоматы, ledger,",
                 "&7сканы и защита экономики.",
-                "&7Рабочий контур без выборного мусора."),"open:economy");
+                "&7Открывает модуль EconomyCore."),"open:economy");
         btn(m,15,Material.PLAYER_HEAD,"&e&lИгроки",List.of(
                 "&7Профили, инвентари, проверки,",
                 "&7массовые действия и приколы.",
-                "&7Существующая рабочая логика."),"open:players");
+                "&7Инструменты для модерации игроков."),"open:players");
         p.openInventory(m.inv);
     }
 
@@ -824,8 +824,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                     "&7Опасные действия, экономика, выборы и миры",
                     "&7для младшего админа заблокированы."),"open:players");
             btn(m,15,Material.PAPER,"&bОграничения роли",List.of(
-                    "&7Роль предназначена для безопасной модерации.",
-                    "&7Снятие админов, опасные кнопки, казна,",
+                    "&7Роль ограничена безопасными действиями.",
+                    "&7Опасные команды, экономика, миры,",
                     "&7выборные и world-control действия отключены."),"none");
             p.openInventory(m.inv);
             return;
@@ -838,7 +838,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,12,Material.DIAMOND_ORE,"&b&lЭкономика",List.of(
                 "&7AR, банк, банкоматы, ledger,",
                 "&7сканы и защита экономики.",
-                "&7Рабочий контур без выборного мусора."),"open:economy");
+                "&7Открывает модуль EconomyCore."),"open:economy");
         btn(m,14,Material.GRASS_BLOCK,"&a&lМиры",List.of(
                 "&7Граница Overworld, Nether и End.",
                 "&7Открытие, закрытие и безопасный возврат",
@@ -846,7 +846,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,16,Material.PLAYER_HEAD,"&e&lИгроки",List.of(
                 "&7Профили, инвентари, проверки,",
                 "&7массовые действия и приколы.",
-                "&7Существующая рабочая логика."),"open:players");
+                "&7Инструменты для модерации игроков."),"open:players");
         p.openInventory(m.inv);
     }
 
@@ -904,13 +904,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         long votes=safeScalar("SELECT COUNT(*) FROM cmv731_votes");
         long arTx=safeScalar("SELECT COUNT(*) FROM cmv7_ar_transactions");
         long snapshots=safeScalar("SELECT COUNT(*) FROM cmv7_inventory_snapshots");
-        btn(m,4,Material.ENDER_CHEST,"&a&lСостояние базы",List.of("&7Источник: &f"+dbSourceSummary(),"&7Таблиц: &f"+tables+" &8| &7индексов: &f"+indexes,"&7Аудит: &f"+audits,"&7Используй только безопасные кнопки обслуживания."),"none");
+        btn(m,4,Material.ENDER_CHEST,"&a&l��������� ����",List.of("&7��������: &f"+dbSourceSummary(),"&7������: &f"+tables+" &8| &7��������: &f"+indexes,"&7�����: &f"+audits,"&7��������� ������ ���������� ������ ������������."),"none");
         btn(m,10,Material.GOLDEN_HELMET,"&6Модуль выборов",List.of("&7Runtime выборов делегирован в &fCopiMineElectionCore","&7Legacy election GUI в AdminPlus отключён.","&7Открыть актуальный election hub."),"open:elections");
-        btn(m,12,Material.DIAMOND_ORE,"&bДанные АР",List.of("&7Транзакций: &f"+arTx,"&7Активов: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_assets"),"&7Guard-инцидентов: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_guard_incidents"),"&7Баланс меняется только через AR workflow."),"open:ar-health");
-        btn(m,14,Material.PLAYER_HEAD,"&eДанные игроков",List.of("&7Снимков online: &f"+snapshots,"&7Событий активности: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_player_activity"),"&7Профили читаются без тяжёлых полных сканов."),"open:players-tools");
-        btn(m,16,Material.SHIELD,"&aЗащита базы",List.of("&7Аудит и журналы не редактируются сырой формой.","&7Для выборов/АР есть отдельные безопасные API.","&7Все действия обслуживания пишутся в аудит."),"none");
+        btn(m,12,Material.DIAMOND_ORE,"&b������ ��",List.of("&7����������: &f"+arTx,"&7�������: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_assets"),"&7Guard-����������: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_guard_incidents"),"&7������ �������� ������ ����� AR workflow."),"open:ar-health");
+        btn(m,14,Material.PLAYER_HEAD,"&e������ �������",List.of("&7������� online: &f"+snapshots,"&7������� ����������: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_player_activity"),"&7������� �������� ��� ������ ������ ������."),"open:players-tools");
+        btn(m,16,Material.SHIELD,"&a������ ����",List.of("&7����� � ������� �� ������������� ����� ������.","&7��� �������/�� ���� ��������� ���������� API.","&7��� �������� ������������ ������� � �����."),"none");
         btn(m,28,Material.ANVIL,"&aОптимизировать базу",List.of("&7Безопасно обновляет внутреннюю статистику.","&7Не меняет голоса, балансы и заявки."),"db:optimize");
-        btn(m,30,Material.CLOCK,"&bСбросить журнал базы",List.of("&7Пассивно сбрасывает журнал, если база разрешит.","&7Полезно после длинных админ-сессий."),"db:checkpoint");
+        btn(m,30,Material.CLOCK,"&b�������� ������ ����",List.of("&7�������� ���������� ������, ���� ���� ��������.","&7������� ����� ������� �����-������."),"db:checkpoint");
         btn(m,32,Material.SPYGLASS,"&dПроверка запуска",List.of("&7Перепроверить схему, зависимости и защиту."),"open:startup-readiness");
         btn(m,34,Material.COMPASS,"&2Карта админки",List.of("&7Вернуться к подгруппам."),"open:admin-map");
         nav(m,"open:admin-map","open:db-health"); p.openInventory(m.inv);
@@ -1005,7 +1005,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void redirectLegacyElectionAction(Player p) throws Exception {
-        warn(p,"Старый раздел выборов отключён. Открываю новый модуль.");
+        warn(p,"������ ������ ������� ��������. �������� ����� ������.");
         openElections(p);
     }
 
@@ -1120,8 +1120,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,4,Material.WRITABLE_BOOK,"&e&lAPPLICATION_BOOK_V2_POLISH",List.of("&7Цикл: &f"+shortId(eid),"&7Книг выдано: &f"+issued,"&7Не подписано: &f"+unsigned,"&7Подано заявок: &f"+submitted+" &8| &ePENDING "+pending,"&7Новая книга содержит памятку, программу,","&7первые 24 часа, команду и риски."),"none");
         btn(m,19,Material.WRITABLE_BOOK,"&eЗаявки всем онлайн",List.of("&7Выдаёт новый аккуратный шаблон книги.","&7После подписи книга попадёт в БД.","&7Повторная выдача нужна только по RP-сценарию."),"election:app-all");
         btn(m,20,Material.PLAYER_HEAD,"&eЗаявка одному игроку",List.of("&7Адресная выдача с привязкой к UUID.","&7Используй, если игрок потерял книгу","&7или вступает в процесс позже."),"open:give-app-player");
-        btn(m,21,Material.BOOKSHELF,"&6Реестр выданных книг",List.of("&7Книги, которые ЦИК выдал игрокам.","&7Можно аннулировать до подписи."),"open:application-issues");
-        btn(m,22,Material.BOOK,"&eРевью поданных заявок",List.of("&7Approve/reject, быстрый перенос","&7в кандидаты через Shift+ЛКМ."),"open:applications-review");
+        btn(m,21,Material.BOOKSHELF,"&6������ �������� ����",List.of("&7�����, ������� ��� ����� �������.","&7����� ������������ �� �������."),"open:application-issues");
+        btn(m,22,Material.BOOK,"&e����� �������� ������",List.of("&7Approve/reject, ������� �������","&7� ��������� ����� Shift+���."),"open:applications-review");
         btn(m,23,Material.SHIELD,"&aКонтроль целостности",List.of("&7Проверить pending, роли, участки","&7и готовность перед голосованием."),"open:election-integrity");
         btn(m,24,Material.REDSTONE_TORCH,"&cАварийный контроль",List.of("&7Аннулировать ошибочно выданную","&7или уже поданную заявку."),"open:election-emergency");
         btn(m,31,Material.FILLED_MAP,"&fБюллетени",List.of("&7После ревью заявок перейти","&7к выдаче бюллетеней."),"open:ballots-issue");
@@ -1140,11 +1140,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         long usedBallots=eid==null?0:scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=? AND COALESCE(used,0)>0",eid);
         long stationDeposits=eid==null?0:scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=? AND COALESCE(station_id,'')<>''",eid);
         long stations=eid==null?0:scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE election_id=? AND active=1 AND COALESCE(archived_at,0)=0",eid);
-        btn(m,4,Material.PAPER,"&f&lBALLOT_GUI_V2",List.of("&7Цикл: &f"+shortId(eid),"&7Выдано: &f"+issuedBallots,"&7Свободно: &f"+unusedBallots+" &8| &7использовано: &f"+usedBallots,"&7Опущено через участки: &f"+stationDeposits,"&7Активных участков: &f"+stations),"none");
+        btn(m,4,Material.PAPER,"&f&lBALLOT_GUI_V2",List.of("&7����: &f"+shortId(eid),"&7������: &f"+issuedBallots,"&7��������: &f"+unusedBallots+" &8| &7������������: &f"+usedBallots,"&7������� ����� �������: &f"+stationDeposits,"&7�������� ��������: &f"+stations),"none");
         btn(m,19,Material.PAPER,"&fБюллетени всем онлайн",List.of("&7Официальный бюллетень каждому online игроку.","&7Каждый предмет привязан к UUID.","&7Чужой игрок не откроет бюллетень."),"election:ballot-all");
         btn(m,20,Material.PLAYER_HEAD,"&fБюллетень одному игроку",List.of("&7Адресная выдача для recovery","&7или позднего участия игрока."),"open:give-ballot-player");
-        btn(m,21,Material.FILLED_MAP,"&6Реестр бюллетеней",List.of("&7Кто получил, использовал,","&7аннулирован или опустил в участок."),"open:ballots-ledger");
-        btn(m,22,Material.LECTERN,"&bУчастки ЦИК",List.of("&7Создать/проверить участки,","&7телепорт и карточки RP-точек."),"open:polling-stations");
+        btn(m,21,Material.FILLED_MAP,"&6������ ����������",List.of("&7��� �������, �����������,","&7����������� ��� ������� � �������."),"open:ballots-ledger");
+        btn(m,22,Material.LECTERN,"&b������� ���",List.of("&7�������/��������� �������,","&7�������� � �������� RP-�����."),"open:polling-stations");
         btn(m,23,Material.COMPASS,"&aПрофилактика",List.of("&7Перед открытием голосования","&7проверяет бюллетени и участки."),"open:preflight");
         btn(m,24,Material.REDSTONE_TORCH,"&cАварийный контроль",List.of("&7Аннулировать ошибочный бюллетень","&7или выдать новый конкретному игроку."),"open:election-emergency");
         btn(m,31,Material.EMERALD,"&aОткрыть голосование",List.of("&7Безопасный переход через release gates.","&7Если есть блокер, действие остановится."),"election:prepare-voting");
@@ -1163,7 +1163,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         Menu m=new Menu("application-issues"); create(m,54,"&6&lВыданные книги заявок");
         String eid=activeOrLatestElectionId();
-        if(eid==null){btn(m,22,Material.BARRIER,"&cНет выборов",List.of("&7Сначала запусти цикл."),"none");}
+        if(eid==null){btn(m,22,Material.BARRIER,"&c��� �������",List.of("&7������� ������� ����."),"none");}
         else{
             btn(m,4,Material.WRITABLE_BOOK,"&6&lКниги заявок",List.of("&7Всего: &f"+scalarLong("SELECT COUNT(*) FROM cmv7_application_issues WHERE election_id=?",eid),"&7Не подписаны: &f"+scalarLong("SELECT COUNT(*) FROM cmv7_application_issues WHERE election_id=? AND COALESCE(used,0)=0 AND COALESCE(annulled,0)=0",eid),"&cShift+ПКМ по книге: аннулировать."),"none");
             int slot=9;
@@ -1209,14 +1209,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         boolean active=num(r.get("active"))!=0, archived=num(r.get("archived_at"))>0;
         long votes=scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=? AND station_id=?",eid,id);
         Menu m=new Menu("polling-station-card"); create(m,54,"&b&lУчасток ЦИК &8#"+id);
-        btn(m,4,archived?Material.BARRIER:(active?Material.LECTERN:Material.GRAY_DYE),(archived?"&c&lУчасток в архиве":active?"&b&lАктивный участок":"&7&lУчасток выключен"),List.of("&7Название: &f"+first(s(r.get("name")),"Участок ЦИК"),"&7Цикл: &f"+shortId(eid),"&7Мир: &f"+s(r.get("world")),"&7XYZ: &f"+xyz,"&7Создал: &f"+first(s(r.get("created_by")),"-"),"&7Голосов через участок: &f"+votes),"none");
+        btn(m,4,archived?Material.BARRIER:(active?Material.LECTERN:Material.GRAY_DYE),(archived?"&c&l������� � ������":active?"&b&l�������� �������":"&7&l������� ��������"),List.of("&7��������: &f"+first(s(r.get("name")),"������� ���"),"&7����: &f"+shortId(eid),"&7���: &f"+s(r.get("world")),"&7XYZ: &f"+xyz,"&7������: &f"+first(s(r.get("created_by")),"-"),"&7������� ����� �������: &f"+votes),"none");
         btn(m,10,Material.ENDER_PEARL,"&aТелепорт к участку",List.of("&7Переносит на блок над участком.","&7Удобно для проверки RP-зоны."),"station:teleport:"+id);
         btn(m,12,active?Material.REDSTONE_TORCH:Material.LEVER,active?"&eВыключить участок":"&aВключить участок",List.of("&7ЛКМ включает запись как активную.","&7ПКМ выключает без удаления истории."),"station-toggle:"+id);
         btn(m,14,Material.RED_CONCRETE,"&cУдалить участок",List.of("&7Откроется подтверждение.","&7История голосов не стирается: участок","&7будет архивирован и выключен."),"station:delete-confirm:"+id);
-        btn(m,16,Material.SPYGLASS,"&aСоздать ещё по взгляду",List.of("&7Наведи взгляд на следующий блок","&7и создай ещё одну RP-точку."),"station:create-target");
+        btn(m,16,Material.SPYGLASS,"&a������� ��� �� �������",List.of("&7������ ������ �� ��������� ����","&7� ������ ��� ���� RP-�����."),"station:create-target");
         btn(m,28,Material.PAPER,"&fВыдать бюллетени всем",List.of("&7Быстро подготовить игроков","&7к голосованию на участках."),"election:ballot-all");
         btn(m,29,Material.PLAYER_HEAD,"&fВыдать бюллетень одному",List.of("&7Адресная выдача без выхода","&7из карточки участка."),"open:give-ballot-player");
-        btn(m,30,Material.FILLED_MAP,"&6Реестр бюллетеней",List.of("&7Проверить выдачи, аннулирования","&7и station_id по голосам."),"open:ballots-ledger");
+        btn(m,30,Material.FILLED_MAP,"&6������ ����������",List.of("&7��������� ������, �������������","&7� station_id �� �������."),"open:ballots-ledger");
         btn(m,31,Material.COMPASS,"&6Маршрут избирателя",List.of("&7Как игрок проходит участок:","&7заявка, бюллетень, кандидат, урна."),"open:citizen-guide");
         btn(m,32,Material.SHIELD,"&aПрофилактика",List.of("&7Проверить участки, роли, заявки,","&7бюллетени и live-панель."),"open:preflight");
         btn(m,33,Material.BOOK,"&6Журнал выборов",List.of("&7Открыть аудит действий ЦИК","&7и служебных операций."),"open:election-audit");
@@ -1260,7 +1260,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         staffNotify("&bУчасток ЦИК создан по взгляду: &f"+b.getWorld().getName()+" "+b.getX()+" "+b.getY()+" "+b.getZ());
         p.sendTitle(c("&b&lУчасток создан"),c("&f"+b.getWorld().getName()+" "+b.getX()+" "+b.getY()+" "+b.getZ()),5,45,10);
         sound(p,"BLOCK_NOTE_BLOCK_CHIME",.8f,1.35f);
-        return"&aСоздан участок по блоку в прицеле: &f"+b.getType()+" &7("+b.getX()+" "+b.getY()+" "+b.getZ()+")";
+        return"&a������ ������� �� ����� � �������: &f"+b.getType()+" &7("+b.getX()+" "+b.getY()+" "+b.getZ()+")";
     }
 
     private String archivePollingStation(Player p,String stationId)throws Exception{
@@ -1299,7 +1299,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         int[] slots={10,11,12,13,14,15,16,19,20,21,22,23,24,25};
         for(int i=0;i<rows.size()&&i<slots.length;i++){
             PreflightRow r=rows.get(i);
-            btn(m,slots[i],r.ok()?r.material():Material.REDSTONE_TORCH,(r.ok()?"&a":"&e")+r.title(),List.of(r.ok()?"&7Статус: &aOK":"&7Статус: &eПроверь","&7"+r.detail(),"&8"+r.key()),r.action()==null||r.action().isBlank()?"none":r.action());
+            btn(m,slots[i],r.ok()?r.material():Material.REDSTONE_TORCH,(r.ok()?"&a":"&e")+r.title(),List.of(r.ok()?"&7������: &aOK":"&7������: &e�������","&7"+r.detail(),"&8"+r.key()),r.action()==null||r.action().isBlank()?"none":r.action());
         }
         btn(m,37,Material.NETHER_STAR,"&bПечать председателя",List.of("&7Восстановление только через панель ЦИК,","&7если нет предмета и нет закрепления."),"official:recover:cik_seal");
         btn(m,39,Material.WRITTEN_BOOK,"&6Мандат президента",List.of("&7Восстановление только через кабинет президента,","&7если нет предмета и нет закрепления."),"official:recover:president_mandate");
@@ -1336,7 +1336,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         rows.add(new PreflightRow("PREFLIGHT_CHAIR",chair>0,Material.NAME_TAG,"Председатель ЦИК",chair>0?"Председатель назначен, всего членов ЦИК: "+curators:"Назначь председателя в кураторах.","open:curators"));
         rows.add(new PreflightRow("PREFLIGHT_SIDEBAR",sidebarGlobal&&onOff(st.get("sidebar_visible"))==1,Material.MAP,"Live-панель",sidebarGlobal?"Панель готова к показу.":"Включи или перезагрузи панель перед стартом.","open:sidebar"));
         rows.add(new PreflightRow("PREFLIGHT_ITEM_GUARD",guard,Material.SHIELD,"Защита предметов",guard?"Официальные предметы распознаются guard-системой.":"Проверь PDC official items и защиту инвентарей.","none"));
-        rows.add(new PreflightRow("PREFLIGHT_BINDINGS",bindings,Material.ENDER_CHEST,"Реестр печатей",bindings?"Binding DB готова для восстановления.":"Таблица будет создана при запуске плагина.","none"));
+        rows.add(new PreflightRow("PREFLIGHT_BINDINGS",bindings,Material.ENDER_CHEST,"������ �������",bindings?"Binding DB ������ ��� ��������������.":"������� ����� ������� ��� ������� �������.","none"));
         rows.add(new PreflightRow("PREFLIGHT_DUPLICATES",dupVotes==0,Material.SPYGLASS,"Антидюп голосов",dupVotes==0?"Дубликатов голосов не найдено.":"Есть подозрительные duplicate voter rows: "+dupVotes,"open:election-audit"));
         return rows;
     }
@@ -1365,10 +1365,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         int[] slots={10,11,12,13,14,15,16,19,20,21,22,23,24,25};
         for(int i=0;i<rows.size()&&i<slots.length;i++){
             StartupCheckRow r=rows.get(i);
-            btn(m,slots[i],r.ok()?r.material():Material.REDSTONE_TORCH,(r.ok()?"&a":"&e")+r.title(),List.of(r.ok()?"&7Статус: &aOK":"&7Статус: &eПроверь","&7"+r.detail(),"&8"+r.key()),r.action()==null||r.action().isBlank()?"none":r.action());
+            btn(m,slots[i],r.ok()?r.material():Material.REDSTONE_TORCH,(r.ok()?"&a":"&e")+r.title(),List.of(r.ok()?"&7������: &aOK":"&7������: &e�������","&7"+r.detail(),"&8"+r.key()),r.action()==null||r.action().isBlank()?"none":r.action());
         }
         btn(m,37,Material.ANVIL,"&aБезопасный self-heal",List.of("&7Пересоздать таблицы, снять зависшие книги,","&7вернуть pending-предметы, обновить TAB/sidebar,","&7сделать снимки инвентарей онлайн-игроков."),"startup:repair");
-        btn(m,39,Material.SPYGLASS,"&bЭкономика АР",List.of("&7Открыть здоровье экономики и guard-инциденты."),"open:ar-health");
+        btn(m,39,Material.SPYGLASS,"&b��������� ��",List.of("&7������� �������� ��������� � guard-���������."),"open:ar-health");
         btn(m,41,Material.GOLDEN_HELMET,"&6Выборы в ElectionCore",List.of("&7Проверки ЦИК, участков и бюллетеней","&7перенесены в &fCopiMineElectionCore&7.","&7Открыть актуальный election hub."),"open:elections");
         btn(m,43,Material.CLOCK,"&dОбновить",List.of("&7Повторить startup self-check."),"open:startup-readiness");
         nav(m,"open:hub","open:startup-readiness"); p.openInventory(m.inv);
@@ -1377,7 +1377,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private List<StartupCheckRow> startupSelfCheckRows()throws Exception{
         List<StartupCheckRow> rows=new ArrayList<>();
         rows.add(new StartupCheckRow("STARTUP_DB_FILE",dbSourceReady(),Material.BOOK,"Источник данных","DB: "+dbSourceSummary(),"none"));
-        rows.add(new StartupCheckRow("STARTUP_DB_SCHEMA",tableExists("cmv7_audit")&&tableExists("cmv731_votes")&&tableExists("cmv7_ar_assets"),Material.WRITABLE_BOOK,"Схема БД","Таблицы выборов, АР и аудита созданы.","none"));
+        rows.add(new StartupCheckRow("STARTUP_DB_SCHEMA",tableExists("cmv7_audit")&&tableExists("cmv731_votes")&&tableExists("cmv7_ar_assets"),Material.WRITABLE_BOOK,"����� ��","������� �������, �� � ������ �������.","none"));
         rows.add(new StartupCheckRow("STARTUP_PLACEHOLDERAPI",pluginReady("PlaceholderAPI"),Material.NAME_TAG,"PlaceholderAPI",pluginDetail("PlaceholderAPI"),"none"));
         rows.add(new StartupCheckRow("STARTUP_LUCKPERMS",pluginReady("LuckPerms"),Material.GOLDEN_HELMET,"LuckPerms",pluginDetail("LuckPerms"),"none"));
         rows.add(new StartupCheckRow("STARTUP_WORLDGUARD",pluginReady("WorldGuard"),Material.SHIELD,"WorldGuard",pluginDetail("WorldGuard"),"none"));
@@ -1385,9 +1385,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         rows.add(new StartupCheckRow("STARTUP_FARMCONTROL",pluginReady("FarmControl"),Material.WHEAT,"FarmControl",pluginDetail("FarmControl"),"none"));
         rows.add(new StartupCheckRow("STARTUP_ENTITYCLEARER",pluginReady("EntityClearer"),Material.BUCKET,"EntityClearer",pluginDetail("EntityClearer"),"none"));
         rows.add(new StartupCheckRow("STARTUP_CHUNKY_SEEMORE",pluginReady("Chunky")&&pluginReady("SeeMore"),Material.MAP,"Chunky + SeeMore","Chunky: "+pluginState("Chunky")+", SeeMore: "+pluginState("SeeMore"),"none"));
-        rows.add(new StartupCheckRow("STARTUP_AR_GUARD",tableExists("cmv7_official_item_bindings")&&tableExists("cmv7_ar_guard_incidents"),Material.DIAMOND_ORE,"Защита предметов","Реестры official items и guard-инцидентов созданы.","none"));
+        rows.add(new StartupCheckRow("STARTUP_AR_GUARD",tableExists("cmv7_official_item_bindings")&&tableExists("cmv7_ar_guard_incidents"),Material.DIAMOND_ORE,"������ ���������","������� official items � guard-���������� �������.","none"));
         rows.add(new StartupCheckRow("STARTUP_SIDEBAR",sidebarTask!=null&&!sidebarTask.isCancelled(),Material.MAP,"Live-панель","Scoreboard task активен, красные числа скрываются при поддержке API.","open:sidebar"));
-        rows.add(new StartupCheckRow("STARTUP_AUTH_MODE",!Bukkit.getOnlineMode(),Material.ENDER_EYE,"AuthMe/offline режим",Bukkit.getOnlineMode()?"online-mode=true":"offline-mode=false: проверь AuthMe/proxy перед публичным запуском.","none"));
+        rows.add(new StartupCheckRow("STARTUP_AUTH_MODE",!Bukkit.getOnlineMode(),Material.ENDER_EYE,"nLogin / offline-режим",Bukkit.getOnlineMode()?"online-mode=true":"offline-mode=false: проверь nLogin, proxy и привязку сайта перед публичным запуском.","none"));
         return rows;
     }
 
@@ -1453,7 +1453,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         rows.add(new ElectionIntegrityRow("duplicate voter",dupVotes==0,Material.SPYGLASS,"Дубликаты голосов",dupVotes==0?"duplicate voter не найден.":"Найдено voter_uuid с несколькими голосами: "+dupVotes,"open:election-audit"));
         rows.add(new ElectionIntegrityRow("sealed_not_deposited",sealedSessions==0,Material.CAULDRON,"Запечатанные бюллетени",sealedSessions==0?"Нет зависших sealed sessions.":"Запечатано, но не опущено в участок: "+sealedSessions,"open:ballots-ledger"));
         rows.add(new ElectionIntegrityRow("PENDING applications",pending==0||onOff(st.get(COL_APP_OPEN))==1,Material.WRITABLE_BOOK,"PENDING заявки",pending==0?"Нет ожидающих заявок.":(onOff(st.get(COL_APP_OPEN))==1?"Прием открыт, pending нормально: "+pending:"Перед голосованием проверь pending: "+pending),"open:applications-review"));
-        rows.add(new ElectionIntegrityRow("voted_sessions",votedSessions==0,Material.ANVIL,"Сессии после голоса",votedSessions==0?"Нет лишних vote_sessions у проголосовавших.":"Можно безопасно закрыть сессии: "+votedSessions,"election:integrity-repair"));
+        rows.add(new ElectionIntegrityRow("voted_sessions",votedSessions==0,Material.ANVIL,"������ ����� ������",votedSessions==0?"��� ������ vote_sessions � ���������������.":"����� ��������� ������� ������: "+votedSessions,"election:integrity-repair"));
         rows.add(new ElectionIntegrityRow("orphan_votes",orphanVotes==0,Material.BOOK,"Голоса без кандидата",orphanVotes==0?"Все ledger votes ссылаются на кандидатов.":"Есть голоса к отсутствующим кандидатам: "+orphanVotes,"open:election-audit"));
         rows.add(new ElectionIntegrityRow("live_panel",sidebarGlobal&&onOff(st.get("sidebar_visible"))==1,Material.MAP,"Live-панель",sidebarGlobal?"Панель готова.":"Панель скрыта или отключена в настройках.","open:sidebar"));
         return rows;
@@ -1472,16 +1472,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openElectionReleaseBoard(Player p)throws Exception{
-        if(!hasElectionAdmin(p)){warn(p,"Релизная готовность доступна ЦИК и администрации."); return;}
-        Menu m=new Menu("election-release"); create(m,54,"&a&lРелизная готовность выборов");
+        if(!hasElectionAdmin(p)){warn(p,"�������� ���������� �������� ��� � �������������."); return;}
+        Menu m=new Menu("election-release"); create(m,54,"&a&l�������� ���������� �������");
         String eid=activeOrLatestElectionId();
         String target=nextReleaseTarget();
         List<ElectionGateRow> rows=releaseGateRows(eid,target);
         long blockers=rows.stream().filter(r->r.blocking()&&!r.ok()).count();
-        btn(m,4,blockers==0?Material.EMERALD_BLOCK:Material.TARGET,"&a&lСледующий этап: &f"+humanStage(target),List.of(
+        btn(m,4,blockers==0?Material.EMERALD_BLOCK:Material.TARGET,"&a&l��������� ����: &f"+humanStage(target),List.of(
                 "&7Цикл: &f"+shortId(eid),
                 "&7Блокеров: &f"+blockers,
-                blockers==0?"&aМожно идти дальше через мастер цикла.":"&eСначала закрой красные пункты.",
+                blockers==0?"&a����� ���� ������ ����� ������ �����.":"&e������� ������ ������� ������.",
                 "&8Эта же проверка стоит внутри опасных кнопок."),"none");
         int[] slots={10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34};
         for(int i=0;i<rows.size()&&i<slots.length;i++){
@@ -1489,14 +1489,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             Material mat=r.ok()?r.material():(r.blocking()?Material.REDSTONE_BLOCK:Material.ORANGE_DYE);
             String prefix=r.ok()?"&a":(r.blocking()?"&c":"&e");
             List<String> lore=new ArrayList<>();
-            lore.add(r.ok()?"&7Статус: &aготово":(r.blocking()?"&7Статус: &cблокирует этап":"&7Статус: &eпредупреждение"));
+            lore.add(r.ok()?"&7������: &a������":(r.blocking()?"&7������: &c��������� ����":"&7������: &e��������������"));
             lore.add("&7"+r.detail());
             lore.add("&8"+r.key());
             btn(m,slots[i],mat,prefix+r.title(),lore,r.action()==null||r.action().isBlank()?"none":r.action());
         }
         btn(m,39,Material.CAULDRON,"&eЗакрыть не опущенные бюллетени",List.of("&7Запечатанные, но не опущенные бюллетени","&7не считаются голосом и безопасно закрываются."),"election:expire-sealed-sessions");
         btn(m,41,Material.FIREWORK_ROCKET,"&dRP-режиссёр",List.of("&7Открыть красивые объявления этапов."),"open:election-ceremony");
-        btn(m,43,Material.NETHER_STAR,"&bСледующий безопасный шаг",List.of("&7Мастер выполнит этап только если","&7релизные ворота зелёные."),"election:lifecycle-next");
+        btn(m,43,Material.NETHER_STAR,"&b��������� ���������� ���",List.of("&7������ �������� ���� ������ ����","&7�������� ������ ������."),"election:lifecycle-next");
         audit(p.getName(),"ULTRA7_ELECTION_RELEASE_BOARD_OPEN","election="+first(eid,"none")+" target="+target+" blockers="+blockers,true);
         nav(m,"open:lifecycle","open:election-release"); p.openInventory(m.inv);
     }
@@ -1506,7 +1506,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Menu m=new Menu("election-ceremony"); create(m,54,"&d&lRP-режиссёр выборов");
         String eid=activeOrLatestElectionId();
         String stage=eid==null?"NONE":electionSettings(eid).getOrDefault("stage","NOMINATION");
-        btn(m,4,Material.FIREWORK_ROCKET,"&d&lСценарная панель",List.of(
+        btn(m,4,Material.FIREWORK_ROCKET,"&d&l��������� ������",List.of(
                 "&7Цикл: &f"+shortId(eid),
                 "&7Этап: &f"+humanStage(stage),
                 "&7Кнопки дают title, чат и звук игрокам,",
@@ -1520,7 +1520,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,16,Material.NETHER_STAR,"&6Победитель",List.of("&7Красивое объявление текущего победителя","&7после синхронизации ledger."),"ceremony:winner");
         btn(m,22,Material.GOLDEN_HELMET,"&6Инаугурация",List.of("&7Финальная церемония президента."),"ceremony:inauguration");
         btn(m,24,Material.MAP,"&dТекущий этап",List.of("&7Повторить официальное объявление этапа."),"election:announce-stage");
-        btn(m,28,Material.TARGET,"&aРелизная готовность",List.of("&7Проверить, можно ли нажимать следующий этап."),"open:election-release");
+        btn(m,28,Material.TARGET,"&a�������� ����������",List.of("&7���������, ����� �� �������� ��������� ����."),"open:election-release");
         btn(m,30,Material.RECOVERY_COMPASS,"&bМастер цикла",List.of("&7Вернуться к сквозному сценарию."),"open:lifecycle");
         nav(m,"open:lifecycle","open:election-ceremony"); p.openInventory(m.inv);
     }
@@ -1582,7 +1582,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!blockers.isEmpty()){
             String details="target="+target+" blockers="+String.join(" | ",blockers);
             audit(actor,"ULTRA7_ELECTION_GATE_BLOCK",details,true);
-            throw new SQLException("Релизная проверка не пройдена: "+String.join("; ",blockers));
+            throw new SQLException("�������� �������� �� ��������: "+String.join("; ",blockers));
         }
         audit(actor,"ULTRA7_ELECTION_GATE_PASS","target="+target+" election="+first(eid,"none"),true);
     }
@@ -1633,7 +1633,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 """,eid);
             int slot=0; for(Map<String,Object> r:rows){
                 String uuid=s(r.get("uuid")), name=first(s(r.get("display_name")),s(r.get("name")),uuid); boolean rem=num(r.get("removed"))!=0;
-                btn(m,slot++,rem?Material.SKELETON_SKULL:Material.PLAYER_HEAD,(rem?"&7&m":"&e")+name,List.of("&7Голоса: &f"+num(r.get("raw_votes")),"&7Корректировка: &e"+num(r.get("admin_adjustment")),"&7Итого: &a"+num(r.get("total")),"&aЛКМ +1","&cПКМ -1","&eShift+ЛКМ +10","&4Shift+ПКМ снять/вернуть","&6Средняя: победитель"),"cand:"+uuid);
+                btn(m,slot++,rem?Material.SKELETON_SKULL:Material.PLAYER_HEAD,(rem?"&7&m":"&e")+name,List.of("&7������: &f"+num(r.get("raw_votes")),"&7�������������: &e"+num(r.get("admin_adjustment")),"&7�����: &a"+num(r.get("total")),"&a��� +1","&c��� -1","&eShift+��� +10","&4Shift+��� �����/�������","&6�������: ����������"),"cand:"+uuid);
             }
         }
         btn(m,47,Material.LIME_CONCRETE,"&aДобавить онлайн игрока",List.of(),"open:add-candidate");
@@ -1646,7 +1646,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String eid=activeOrLatestElectionId();
         if(eid!=null){ int slot=0; for(Map<String,Object> r:query("SELECT rowid,name,role,active,added_by FROM cmv7_election_curators WHERE election_id=? ORDER BY active DESC,added_at DESC LIMIT 45",eid)){
             boolean act=num(r.get("active"))!=0;
-            btn(m,slot++,act?Material.NAME_TAG:Material.GRAY_DYE,(act?"&b":"&7&m")+s(r.get("name")),List.of("&7Роль: &f"+curatorRoleLabel(s(r.get("role"))),"&7Добавил: &f"+s(r.get("added_by")),"&aЛКМ вернуть","&cПКМ снять"),"curator:"+s(r.get("rowid")));
+            btn(m,slot++,act?Material.NAME_TAG:Material.GRAY_DYE,(act?"&b":"&7&m")+s(r.get("name")),List.of("&7����: &f"+curatorRoleLabel(s(r.get("role"))),"&7�������: &f"+s(r.get("added_by")),"&a��� �������","&c��� �����"),"curator:"+s(r.get("rowid")));
         }}
         btn(m,47,Material.LIME_CONCRETE,"&aДобавить онлайн куратора",List.of(),"open:add-curator");
         nav(m,"open:elections","open:curators"); p.openInventory(m.inv);
@@ -1661,7 +1661,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private void openDanger(Player p){
         Menu m=new Menu("danger"); create(m,54,"&4&lОпасная зона");
-        btn(m,19,Material.REDSTONE_BLOCK,"&cСбросить голоса",List.of("&cShift+ЛКМ"),"election:reset-votes");
+        btn(m,19,Material.REDSTONE_BLOCK,"&c�������� ������",List.of("&cShift+���"),"election:reset-votes");
         btn(m,21,Material.SKELETON_SKULL,"&cОчистить кандидатов",List.of("&cShift+ЛКМ"),"election:clear-candidates");
         btn(m,23,Material.BARRIER,"&4Полный сброс выборов + панели",List.of("&cShift+ЛКМ"),"election:full-reset");
         nav(m,"open:elections","open:election-danger"); p.openInventory(m.inv);
@@ -1724,22 +1724,22 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private void legacyOpenEconomy(Player p) throws Exception{
         if(!hasEconomyAdmin(p)){warn(p,"Нет прав на экономику.");return;}
-        Menu m=new Menu("economy-root"); create(m,54,"&b&lЭкономика АР &8| &fоперации");
+        Menu m=new Menu("economy-root"); create(m,54,"&b&l��������� �� &8| &f��������");
         btn(m,4,Material.DIAMOND_ORE,"&b&lБаланс игроков",List.of(
                 "&7Баланс: &f"+safeScalar("SELECT COALESCE(SUM(balance),0) FROM cmv7_ar_balances"),
                 "&7Транзакций: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_transactions"),
-                "&7Событий: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_events"),
+                "&7�������: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_events"),
                 "&7Топ и карточки владения без сырой правки."
         ),"open:ar-top");
-        btn(m,10,Material.EMERALD_BLOCK,"&aВыдать АР",List.of(
+        btn(m,10,Material.EMERALD_BLOCK,"&a������ ��",List.of(
                 "&7Безопасная выдача через сертифицированный предмет.",
                 "&7Все операции пишутся в журнал."
         ),"open:economy-basic");
-        btn(m,11,Material.REDSTONE,"&cСписать АР",List.of(
-                "&7Списание только через проверяемый сценарий.",
-                "&7Ручного изменения баланса нет."
+        btn(m,11,Material.REDSTONE,"&c������� ��",List.of(
+                "&7�������� ������ ����� ����������� ��������.",
+                "&7������� ��������� ������� ���."
         ),"open:economy-advanced");
-        btn(m,12,Material.HOPPER,"&eПеревод АР",List.of(
+        btn(m,12,Material.HOPPER,"&e������� ��",List.of(
                 "&7История drop/pickup передач и claim-ledger.",
                 "&7Владелец меняется при подборе другим игроком."
         ),"open:ar-events:TRANSFER");
@@ -1747,7 +1747,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&7Добыча, переплавка, передачи и guard-события.",
                 "&7Удобно для разбора спорных ситуаций."
         ),"open:ar-events:ALL");
-        btn(m,14,Material.SPYGLASS,"&6Найти поддельные АР",List.of(
+        btn(m,14,Material.SPYGLASS,"&6����� ���������� ��",List.of(
                 "&7Проверка предметов и подозрительных событий.",
                 "&7Подделки не получают экономический вывод."
         ),"open:ar-health");
@@ -1756,7 +1756,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&7Безопасно для голосов и балансов."
         ),"open:ar-health");
         btn(m,16,Material.DIAMOND_PICKAXE,"&bНастройки добычи",List.of(
-                "&7Сканы руды, добыча и сертификация АР.",
+                "&7����� ����, ������ � ������������ ��.",
                 "&7Проверяет только загруженные безопасные зоны."
         ),"open:scan");
         btn(m,19,Material.GOLD_BLOCK,"&eV4 Bank ATM",List.of(
@@ -1765,11 +1765,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&8V4_BANK_ATM_GAMEPLAY"
         ),"open:bank-atms");
         btn(m,28,Material.CHEST,"&eПересчитать экономику",List.of(
-                "&7Сверяет online игроков и кэш балансов.",
+                "&7������� online ������� � ��� ��������.",
                 "&7Не удаляет активы и историю."
         ),"ar:sync");
         btn(m,30,Material.REDSTONE_TORCH,"&cАварийное восстановление",List.of(
-                "&7Реестр активов, глубокие сканы и восстановление.",
+                "&7������ �������, �������� ����� � ��������������.",
                 "&cТолько для редких ручных разборов."
         ),"open:economy-advanced");
         btn(m,40,Material.COMPASS,"&2Карта админки",List.of("&7Вернуться к трём главным разделам."),"open:admin-map");
@@ -1779,21 +1779,21 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void legacyOpenEconomyBasic(Player p) throws Exception{
         if(!hasEconomyAdmin(p)){warn(p,"Нет прав на экономику.");return;}
         Menu m=new Menu("economy-basic"); create(m,54,"&b&lЭкономика &8| &fобычные действия");
-        btn(m,4,Material.DIAMOND_ORE,"&b&lАР",List.of("&7Баланс: &f"+safeScalar("SELECT COALESCE(SUM(balance),0) FROM cmv7_ar_balances"),"&7Событий: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_events"),"&7Транзакций: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_transactions"),"&7Активов в реестре: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_assets WHERE status='ACTIVE'")),"none");
-        btn(m,10,Material.EMERALD_BLOCK,"&aТоп AR",List.of(),"open:ar-top");
+        btn(m,4,Material.DIAMOND_ORE,"&b&l��",List.of("&7������: &f"+safeScalar("SELECT COALESCE(SUM(balance),0) FROM cmv7_ar_balances"),"&7�������: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_events"),"&7����������: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_transactions"),"&7������� � �������: &f"+safeScalar("SELECT COUNT(*) FROM cmv7_ar_assets WHERE status='ACTIVE'")),"none");
+        btn(m,10,Material.EMERALD_BLOCK,"&aРўРѕРї AR",List.of(),"open:ar-top");
         btn(m,11,Material.CHEST,"&eПересчитать онлайн",List.of(),"ar:sync");
         btn(m,12,Material.HOPPER,"&eПередачи",List.of("&7История передач через выброс и подбор.","&7Новый владелец записывается автоматически."),"open:ar-events:TRANSFER");
-        btn(m,13,Material.BOOKSHELF,"&dИстория АР",List.of("&7Добыча, переплавка, передачи и guard-события."),"open:ar-events:ALL");
-        btn(m,14,Material.DIAMOND_PICKAXE,"&bДобыча",List.of("&7История появления сертифицированного АР."),"open:ar-events:MINE");
-        btn(m,15,Material.FURNACE,"&6Переплавка АР",List.of("&7Единственный легальный способ","&7получить алмаз из сертифицированного АР."),"open:ar-events:SMELT");
-        btn(m,16,Material.PAPER,"&fПамятка игрокам",List.of("&7Передача: выбросить АР и дать подобрать.","&7Сундуки разрешены, механизмы запрещены.","&7Алмазы выводятся только переплавкой."),"none");
+        btn(m,13,Material.BOOKSHELF,"&d������� ��",List.of("&7������, ����������, �������� � guard-�������."),"open:ar-events:ALL");
+        btn(m,14,Material.DIAMOND_PICKAXE,"&b������",List.of("&7������� ��������� ������������������ ��."),"open:ar-events:MINE");
+        btn(m,15,Material.FURNACE,"&6���������� ��",List.of("&7������������ ��������� ������","&7�������� ����� �� ������������������ ��."),"open:ar-events:SMELT");
+        btn(m,16,Material.PAPER,"&f������� �������",List.of("&7��������: ��������� �� � ���� ���������.","&7������� ���������, ��������� ���������.","&7������ ��������� ������ �����������."),"none");
         btn(m,21,Material.EMERALD,"&aЧто безопасно",List.of("&7Топ, пересчет online и просмотр истории.","&7Эти действия не ломают экономику."),"none");
-        btn(m,22,Material.SHIELD,"&aЗащита экономики",List.of("&7Сброс АР из админки отключён.","&7Доступны только аудит, пересчёт","&7и сканы текущего состояния."),"none");
+        btn(m,22,Material.SHIELD,"&a������ ���������",List.of("&7����� �� �� ������� ��������.","&7�������� ������ �����, ��������","&7� ����� �������� ���������."),"none");
         btn(m,23,Material.CLOCK,"&eПоследние передачи",List.of("&7Открыть transfer-ledger без доступа к таблицам."),"open:ar-events:TRANSFER");
         btn(m,24,Material.FURNACE,"&6Последние переплавки",List.of("&7Проверить, кто вывел алмазы через печь."),"open:ar-events:SMELT");
         btn(m,25,Material.GOLD_BLOCK,"&eV4 Bank ATM",List.of("&7Register ATM blocks and audit ATM events.","&8V4_BANK_ATM_GAMEPLAY"),"open:bank-atms");
         btn(m,28,Material.COMPASS,"&2Карта админки",List.of("&7Выборы, экономика, игроки и служебные проверки","&7в одной понятной схеме."),"open:admin-map");
-        btn(m,29,Material.REDSTONE_TORCH,"&cПродвинутый контроль",List.of("&7Реестр активов, сканы мира, состояние базы.","&cДля технического админа."),"open:economy-advanced");
+        btn(m,29,Material.REDSTONE_TORCH,"&c����������� ��������",List.of("&7������ �������, ����� ����, ��������� ����.","&c��� ������������ ������."),"open:economy-advanced");
         nav(m,"open:economy","open:economy-basic"); p.openInventory(m.inv);
     }
 
@@ -1803,35 +1803,35 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,4,Material.REDSTONE_TORCH,"&c&lТехническая зона",List.of(
                 "&7Здесь находятся действия для понимания БД и кода.",
                 "&7Обычному админскому сценарию достаточно раздела",
-                "&7'Обычные действия'. Сырых сбросов экономики нет."
+                "&7'������� ��������'. ����� ������� ��������� ���."
         ),"none");
-        btn(m,10,Material.ENDER_CHEST,"&bРеестр владения АР",List.of("&7Активы, batch, owner, source, координаты.","&7Нужен для расследований и восстановления ledger."),"open:ar-custody");
+        btn(m,10,Material.ENDER_CHEST,"&b������ �������� ��",List.of("&7������, batch, owner, source, ����������.","&7����� ��� ������������� � �������������� ledger."),"open:ar-custody");
         btn(m,12,Material.HEART_OF_THE_SEA,"&bЗдоровье экономики",List.of("&7Guard-инциденты, сироты реестра, активы,","&7smelted, быстрый online-sync."),"open:ar-health");
         btn(m,14,Material.MAP,"&6Отчеты сканов",List.of("&7История проверок чанков и контейнеров."),"open:ar-scans");
-        btn(m,16,Material.ENDER_CHEST,"&aСостояние базы",List.of("&7Безопасное обслуживание базы.","&7Без ручного редактирования AR ledger."),"open:db-health");
-        btn(m,28,Material.SPYGLASS,"&bСкан загруженных чанков",List.of("&7Легкая проверка без подгрузки мира."),"ar:scan-loaded");
+        btn(m,16,Material.ENDER_CHEST,"&a��������� ����",List.of("&7���������� ������������ ����.","&7��� ������� �������������� AR ledger."),"open:db-health");
+        btn(m,28,Material.SPYGLASS,"&b���� ����������� ������",List.of("&7������ �������� ��� ��������� ����."),"ar:scan-loaded");
         btn(m,30,Material.NETHER_STAR,"&6Глубокий скан мира",List.of("&cShift+ЛКМ.","&7Тяжелая операция, поэтому убрана в advanced."),"ar:scan-deep");
-        btn(m,32,Material.BOOKSHELF,"&dПолная история АР",List.of("&7Все события экономики, включая блокировки","&7и восстановленные transfer-claim записи."),"open:ar-events:ALL");
+        btn(m,32,Material.BOOKSHELF,"&d������ ������� ��",List.of("&7��� ������� ���������, ������� ����������","&7� ��������������� transfer-claim ������."),"open:ar-events:ALL");
         btn(m,34,Material.SHIELD,"&aПолитика защиты",List.of("&7Контейнеры разрешены, механизмы запрещены.","&7Передача игроку: выбросил -> другой подобрал."),"none");
         btn(m,40,Material.ARROW,"&bК экономике",List.of("&7Назад к простому корню экономики."),"open:economy");
         nav(m,"open:economy","open:economy-advanced"); p.openInventory(m.inv);
     }
     private void legacyOpenArTopDisabled(Player p) throws Exception{
-        Menu m=new Menu("artop"); create(m,54,"&a&lТоп AR");
+        Menu m=new Menu("artop"); create(m,54,"&a&lРўРѕРї AR");
         int slot=0; for(Map<String,Object> r:query("SELECT name,balance,inventory_balance,ender_balance,updated_at FROM cmv7_ar_balances ORDER BY balance DESC,name ASC LIMIT 45")){
             btn(m,slot++,Material.DIAMOND_ORE,"&b"+s(r.get("name")),List.of("&7Всего: &f"+num(r.get("balance")),"&7Инв: &f"+num(r.get("inventory_balance")),"&7Эндер: &f"+num(r.get("ender_balance")),"&7Обновлено: &f"+num(r.get("updated_at"))),"none");
         }
         btn(m,47,Material.CHEST,"&aПересчитать онлайн",List.of(),"ar:sync"); nav(m,"open:economy","open:ar-top"); p.openInventory(m.inv);
     }
     private void legacyOpenArCustodyDisabled(Player p) throws Exception{
-        Menu m=new Menu("arcustody"); create(m,54,"&b&lРеестр АР");
+        Menu m=new Menu("arcustody"); create(m,54,"&b&l������ ��");
         int slot=0; for(Map<String,Object> r:query("SELECT asset_id,batch_id,owner_name,status,material,source,world,x,y,z,updated_at FROM cmv7_ar_assets ORDER BY updated_at DESC,asset_id DESC LIMIT 45")){
             Material mat=Material.matchMaterial(s(r.get("material"))); if(mat==null||!mat.isItem())mat=Material.DIAMOND_ORE;
             String status=s(r.get("status"));
             btn(m,slot++,mat,"&b"+clipped(first(s(r.get("owner_name")),"SERVER"),22)+" &8| &f"+status,List.of("&7Asset: &f"+shortId(s(r.get("asset_id"))),"&7Batch: &f"+shortId(s(r.get("batch_id"))),"&7Источник: &f"+clipped(s(r.get("source")),34),"&7XYZ: &f"+s(r.get("world"))+" "+num(r.get("x"))+" "+num(r.get("y"))+" "+num(r.get("z")),"&7Обновлено: &f"+num(r.get("updated_at"))),"none");
             if(slot>=45)break;
         }
-        if(slot==0)btn(m,22,Material.BARRIER,"&7Реестр пуст",List.of("&7Новые сертифицированные АР появятся","&7после добычи или восстановления legacy-АР."),"none");
+        if(slot==0)btn(m,22,Material.BARRIER,"&7������ ����",List.of("&7����� ����������������� �� ��������","&7����� ������ ��� �������������� legacy-��."),"none");
         nav(m,"open:economy","open:ar-custody"); p.openInventory(m.inv);
     }
     private void legacyOpenEconomyHealthDisabled(Player p) throws Exception{
@@ -1843,12 +1843,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         long tx=safeScalar("SELECT COUNT(*) FROM cmv7_ar_transactions");
         long incidents=safeScalar("SELECT COUNT(*) FROM cmv7_ar_guard_incidents");
         long orphanOwners=safeScalar("SELECT COUNT(*) FROM cmv7_ar_assets WHERE status='ACTIVE' AND COALESCE(owner_uuid,'')=''");
-        btn(m,4,incidents==0?Material.EMERALD_BLOCK:Material.HEART_OF_THE_SEA,"&b&lСостояние защиты",List.of("&7Баланс ledger: &f"+total,"&7Активных АР: &f"+active,"&7Переплавлено: &f"+smelted,"&7Транзакций: &f"+tx,"&7Guard-инцидентов: &f"+incidents,"&7Активов без владельца: &f"+orphanOwners),"none");
-        btn(m,10,Material.CHEST,"&aПересчитать online",List.of("&7Синхронизирует балансы онлайн-игроков","&7и пишет live-снимки инвентарей."),"ar:sync");
-        btn(m,11,Material.SPYGLASS,"&bСкан загруженных чанков",List.of("&7Ищет АР в контейнерах без подгрузки мира."),"ar:scan-loaded");
+        btn(m,4,incidents==0?Material.EMERALD_BLOCK:Material.HEART_OF_THE_SEA,"&b&l��������� ������",List.of("&7������ ledger: &f"+total,"&7�������� ��: &f"+active,"&7������������: &f"+smelted,"&7����������: &f"+tx,"&7Guard-����������: &f"+incidents,"&7������� ��� ���������: &f"+orphanOwners),"none");
+        btn(m,10,Material.CHEST,"&a����������� online",List.of("&7�������������� ������� ������-�������","&7� ����� live-������ ����������."),"ar:sync");
+        btn(m,11,Material.SPYGLASS,"&b���� ����������� ������",List.of("&7���� �� � ����������� ��� ��������� ����."),"ar:scan-loaded");
         btn(m,12,Material.MAP,"&dОтчёты сканов",List.of("&7История последних проверок мира."),"open:ar-scans");
-        btn(m,13,Material.ENDER_CHEST,"&bРеестр активов",List.of("&7Владельцы, источники, статусы и координаты."),"open:ar-custody");
-        btn(m,14,Material.BOOKSHELF,"&dИстория АР",List.of("&7Передачи, переплавки, блокировки и добыча."),"open:ar-events:ALL");
+        btn(m,13,Material.ENDER_CHEST,"&b������ �������",List.of("&7���������, ���������, ������� � ����������."),"open:ar-custody");
+        btn(m,14,Material.BOOKSHELF,"&d������� ��",List.of("&7��������, ����������, ���������� � ������."),"open:ar-events:ALL");
         int slot=19;
         for(Map<String,Object> r:query("SELECT time,type,actor_name,owner_name,material,amount,world,x,y,z,details FROM cmv7_ar_guard_incidents ORDER BY time DESC,id DESC LIMIT 28")){
             String type=s(r.get("type"));
@@ -1856,12 +1856,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             btn(m,slot++,mat,"&e"+clipped(type,28),List.of("&7Время: &f"+num(r.get("time")),"&7Игрок: &f"+first(s(r.get("actor_name")),"-"),"&7Владелец: &f"+first(s(r.get("owner_name")),"-"),"&7Материал: &f"+first(s(r.get("material")),"-")+" x"+num(r.get("amount")),"&7XYZ: &f"+first(s(r.get("world")),"-")+" "+num(r.get("x"))+" "+num(r.get("y"))+" "+num(r.get("z")),"&7Детали: &f"+clipped(s(r.get("details")),42)),"none");
             if(slot>=45)break;
         }
-        if(slot==19)btn(m,31,Material.EMERALD,"&aИнцидентов пока нет",List.of("&7Защита АР работает тихо: hopper, fire,","&7despawn, machines и place не тревожили систему."),"none");
+        if(slot==19)btn(m,31,Material.EMERALD,"&a���������� ���� ���",List.of("&7������ �� �������� ����: hopper, fire,","&7despawn, machines � place �� ��������� �������."),"none");
         audit(p.getName(),"ULTRA7_AR_HEALTH_OPEN","incidents="+incidents+" active="+active+" balance="+total,true);
         nav(m,"open:economy","open:ar-health"); p.openInventory(m.inv);
     }
     private void openArEvents(Player p,String filter) throws Exception{
-        Menu m=new Menu("arevents"); create(m,54,"&d&lИстория АР &8| &f"+filter);
+        Menu m=new Menu("arevents"); create(m,54,"&d&l������� �� &8| &f"+filter);
         String where = filter.equals("MINE")?"WHERE type LIKE 'MINE%' OR type='AR_CERTIFIED'":filter.equals("TRANSFER")?"WHERE type LIKE '%TRANSFER%' OR type='AR_DROP_LISTED'":filter.equals("SMELT")?"WHERE type LIKE '%SMELT%'":"";
         int slot=0; for(Map<String,Object> r:query("SELECT id,type,actor_name,target_name,world,x,y,z,material,amount,details FROM cmv7_ar_events "+where+" ORDER BY id DESC LIMIT 45")){
             Material mat=Material.matchMaterial(s(r.get("material"))); if(mat==null||!mat.isItem()) mat=Material.PAPER;
@@ -1870,16 +1870,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         nav(m,"open:economy","open:ar-events:"+filter); p.openInventory(m.inv);
     }
     private void openScan(Player p){
-        Menu m=new Menu("scan"); create(m,54,"&b&lСканирование");
-        btn(m,20,Material.CHEST,"&aСкан загруженных чанков radius 16",List.of(),"ar:scan-loaded");
+        Menu m=new Menu("scan"); create(m,54,"&b&l������������");
+        btn(m,20,Material.CHEST,"&a���� ����������� ������ radius 16",List.of(),"ar:scan-loaded");
         btn(m,22,Material.NETHER_STAR,"&6Глубокий скан radius 100",List.of("&cShift+ЛКМ"),"ar:scan-deep");
         btn(m,24,Material.MAP,"&dОтчёты",List.of(),"open:ar-scans");
         nav(m,"open:economy","open:scan"); p.openInventory(m.inv);
     }
     private void openArScans(Player p)throws Exception{
-        Menu m=new Menu("scans"); create(m,54,"&6&lАР-сканы");
+        Menu m=new Menu("scans"); create(m,54,"&6&l��-�����");
         int slot=0; for(Map<String,Object> r:query("SELECT id,actor,world,cx,cz,radius,chunks,ar_blocks,ar_items,containers,mode FROM cmv7_ar_scan_reports ORDER BY id DESC LIMIT 45")){
-            btn(m,slot++,Material.MAP,"&6Скан #"+num(r.get("id")),List.of("&7Админ: &f"+s(r.get("actor")),"&7Мир: &f"+s(r.get("world")),"&7Радиус: &f"+num(r.get("radius")),"&7Чанков: &f"+num(r.get("chunks")),"&7АР-блоки: &f"+num(r.get("ar_blocks")),"&7АР в сундуках: &f"+num(r.get("ar_items")),"&7Контейнеры: &f"+num(r.get("containers"))),"none");
+            btn(m,slot++,Material.MAP,"&6���� #"+num(r.get("id")),List.of("&7�����: &f"+s(r.get("actor")),"&7���: &f"+s(r.get("world")),"&7������: &f"+num(r.get("radius")),"&7������: &f"+num(r.get("chunks")),"&7��-�����: &f"+num(r.get("ar_blocks")),"&7�� � ��������: &f"+num(r.get("ar_items")),"&7����������: &f"+num(r.get("containers"))),"none");
         }
         nav(m,"open:economy","open:ar-scans"); p.openInventory(m.inv);
     }
@@ -1902,13 +1902,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         boolean live=onOff(st.get("show_live_results"))==1;
         long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
         long chairs=scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND active=1 AND role='CIK_CHAIR'",eid);
-        btn(m,4,Material.GOLDEN_HELMET,"&6&lТекущие выборы",List.of("&7ID: &f"+shortId(eid),"&7Статус: &f"+humanStatus(electionStatus(eid)),"&7Этап: &f"+humanStage(st.getOrDefault("stage","?")),"&7Кандидатов: &f"+candidates,"&7Председатель ЦИК: &f"+(chairs>0?"назначен":"не назначен")),"none");
+        btn(m,4,Material.GOLDEN_HELMET,"&6&l������� ������",List.of("&7ID: &f"+shortId(eid),"&7������: &f"+humanStatus(electionStatus(eid)),"&7����: &f"+humanStage(st.getOrDefault("stage","?")),"&7����������: &f"+candidates,"&7������������ ���: &f"+(chairs>0?"��������":"�� ��������")),"none");
         btn(m,10,Material.WRITABLE_BOOK,app?"&aЗаявка подана":"&eЗаявка кандидата",List.of(app?"&7Твоя заявка уже в системе.":"&7Книгу заявки выдаёт ЦИК или админ.","&7После подписи книга сама попадёт в БД."),"none");
         btn(m,12,ballot?Material.PAPER:Material.MAP,ballot?"&aБюллетень у тебя":"&fБюллетень выдаёт ЦИК",List.of(ballot?"&7Голосуй только на участке ЦИК.":"&7Попроси председателя ЦИК выдать бюллетень.","&7Меню не подменяет защищённое голосование."),"none");
         btn(m,14,voted?Material.EMERALD_BLOCK:Material.CLOCK,voted?"&aГолос учтён":"&eГолос ещё не найден",List.of(voted?"&7Твой голос уже записан в журнал.":"&7После голосования статус обновится сам.","&7Обычные игроки не вводят команды."),"none");
         btn(m,16,cand?Material.PLAYER_HEAD:Material.NAME_TAG,cand?"&6Ты кандидат":"&7Ты не кандидат",List.of(cand?"&7Твоё имя участвует в списке кандидатов.":"&7Подай заявку и дождись одобрения ЦИК."),"none");
         btn(m,20,Material.PLAYER_HEAD,"&eКандидаты и результаты",List.of(live?"&7Открыты live-результаты с графиками.":"&7Имена видны, цифры скрыты до решения ЦИК."),"open:citizen-candidates");
-        btn(m,22,sidebarHidden.contains(p.getUniqueId())?Material.ENDER_EYE:Material.BARRIER,sidebarHidden.contains(p.getUniqueId())?"&aПоказать панель справа":"&cСкрыть панель справа",List.of("&7Это меняет только твою панель.","&7На ход выборов не влияет."),sidebarHidden.contains(p.getUniqueId())?"citizen:sidebar-show":"citizen:sidebar-hide");
+        btn(m,22,sidebarHidden.contains(p.getUniqueId())?Material.ENDER_EYE:Material.BARRIER,sidebarHidden.contains(p.getUniqueId())?"&a�������� ������ ������":"&c������ ������ ������",List.of("&7��� ������ ������ ���� ������.","&7�� ��� ������� �� ������."),sidebarHidden.contains(p.getUniqueId())?"citizen:sidebar-show":"citizen:sidebar-hide");
         btn(m,24,Material.COMPASS,"&6Маршрут избирателя",List.of("&7Пошаговый путь без команд:","&7заявка, бюллетень, кандидат, урна."),"open:citizen-guide");
         btn(m,49,Material.BARRIER,"&cЗакрыть",List.of(),"close");
         btn(m,53,Material.EMERALD,"&aОбновить",List.of(),"open:citizen-election");
@@ -1940,7 +1940,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         else if(cand) appLore.add("&7Ты уже в списке кандидатов.");
         else { appLore.add("&7Книгу выдаёт председатель ЦИК."); appLore.add("&7После подписи она сама исчезнет."); }
         btn(m,10,app||cand?Material.LIME_DYE:Material.WRITABLE_BOOK,app||cand?"&a1. Заявка готова":"&e1. Получить книгу заявки",appLore,"none");
-        btn(m,12,candidates>0?Material.PLAYER_HEAD:Material.NAME_TAG,candidates>0?"&a2. Изучить кандидатов":"&e2. Дождаться кандидатов",List.of(candidates>0?"&7Открой заявки и программы кандидатов.":"&7ЦИК ещё проверяет заявки.","&7Результаты скрываются, если live выключен."),"open:citizen-candidates");
+        btn(m,12,candidates>0?Material.PLAYER_HEAD:Material.NAME_TAG,candidates>0?"&a2. ������� ����������":"&e2. ��������� ����������",List.of(candidates>0?"&7������ ������ � ��������� ����������.":"&7��� ��� ��������� ������.","&7���������� ����������, ���� live ��������."),"open:citizen-candidates");
         btn(m,14,ballot?Material.PAPER:Material.MAP,ballot?"&a3. Бюллетень получен":"&f3. Получить бюллетень",List.of(ballot?"&7Бюллетень привязан к тебе.":"&7Бюллетень выдаёт ЦИК.","&7Чужой бюллетень не откроется."),ballot?"open:station-ballot:guide":"none");
         List<String> sealLore=new ArrayList<>();
         if(sealed) sealLore.add("&7В бюллетене уже записан кандидат.");
@@ -1949,10 +1949,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         List<String> depositLore=new ArrayList<>();
         if(voted) depositLore.add("&7Запись есть в журнале голосов.");
         else if(sealed){ depositLore.add("&7Подойди к лекторну участка ЦИК"); depositLore.add("&7и кликни запечатанным бюллетенем."); }
-        else depositLore.add("&7Сначала нужен запечатанный бюллетень.");
+        else depositLore.add("&7������� ����� ������������ ���������.");
         btn(m,22,voted?Material.EMERALD_BLOCK:(sealed?Material.CAULDRON:Material.CLOCK),voted?"&a5. Голос учтён":(sealed?"&a5. Опусти бюллетень в участок":"&e5. Финальный шаг ещё закрыт"),depositLore,"none");
         btn(m,24,Material.LECTERN,"&bУчасток ЦИК",List.of(stations>0?"&7Найди лекторн участка в здании ЦИК.":"&eЦИК ещё не поставил активный участок.","&7Именно участок принимает финальный голос."),"none");
-        btn(m,30,sidebarHidden.contains(p.getUniqueId())?Material.ENDER_EYE:Material.BARRIER,sidebarHidden.contains(p.getUniqueId())?"&aПоказать live-панель":"&cСкрыть live-панель",List.of("&7Только для твоего экрана."),sidebarHidden.contains(p.getUniqueId())?"citizen:sidebar-show":"citizen:sidebar-hide");
+        btn(m,30,sidebarHidden.contains(p.getUniqueId())?Material.ENDER_EYE:Material.BARRIER,sidebarHidden.contains(p.getUniqueId())?"&a�������� live-������":"&c������ live-������",List.of("&7������ ��� ������ ������."),sidebarHidden.contains(p.getUniqueId())?"citizen:sidebar-show":"citizen:sidebar-hide");
         btn(m,45,Material.ARROW,"&aНазад",List.of(),"open:citizen-election");
         btn(m,49,Material.BARRIER,"&cЗакрыть",List.of(),"close");
         btn(m,53,Material.EMERALD,"&aОбновить маршрут",List.of(),"open:citizen-guide");
@@ -1998,7 +1998,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String eid=first(electionItemString(ballot,"election"),activeOrLatestElectionId());
         String owner=first(electionItemString(ballot,"owner"),"");
         if(!owner.isBlank()&&!owner.equals(p.getUniqueId().toString())){warn(p,"Этот бюллетень выдан другому игроку."); return;}
-        if(ballot==null&&eid!=null&&!hasCitizenBallot(p,eid)){warn(p,"Сначала получи свой личный бюллетень у председателя ЦИК."); return;}
+        if(ballot==null&&eid!=null&&!hasCitizenBallot(p,eid)){warn(p,"������� ������ ���� ������ ��������� � ������������ ���."); return;}
         Menu m=new Menu("ballot-candidates"); create(m,27,"&f&lБюллетень &8| &fкандидаты");
         if(eid==null){
             btn(m,13,Material.BARRIER,"&cВыборов нет",List.of("&8BALLOT_HEADS_ONLY_V3","&7Бюллетень не привязан к текущему циклу."),"none");
@@ -2039,10 +2039,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }else{
             Map<String,String> st=electionSettings(eid);
             boolean ballot=hasCitizenBallot(p,eid), voted=hasCitizenVote(p,eid), sealed=hasOwnedSealedBallot(p,eid);
-            btn(m,4,Material.LECTERN,"&b&lОфициальный участок",List.of("&8STATION_MINIMAL_GUI_V3","&8STATION_RIGHT_CLICK_DEPOSIT_ONLY_V5","&7Этап: &f"+humanStage(st.getOrDefault("stage","?")),"&7Голосование: "+(onOff(st.get(COL_VOTE_OPEN))==1?"&aоткрыто":"&eзакрыто"),"&7Бюллетень: "+(ballot?"&aесть":"&cнет"),"&7Статус голоса: "+(voted?"&aучтен":(sealed?"&eдержи бюллетень и ПКМ по участку":"&7не выбран"))),"none");
-            btn(m,10,Material.PLAYER_HEAD,"&eКандидаты",List.of("&7Список кандидатов и их программы.","&7Без служебных цифр и админских данных."),"open:citizen-candidates");
+            btn(m,4,Material.LECTERN,"&b&l����������� �������",List.of("&8STATION_MINIMAL_GUI_V3","&8STATION_RIGHT_CLICK_DEPOSIT_ONLY_V5","&7����: &f"+humanStage(st.getOrDefault("stage","?")),"&7�����������: "+(onOff(st.get(COL_VOTE_OPEN))==1?"&a�������":"&e�������"),"&7���������: "+(ballot?"&a����":"&c���"),"&7������ ������: "+(voted?"&a�����":(sealed?"&e����� ��������� � ��� �� �������":"&7�� ������"))),"none");
+            btn(m,10,Material.PLAYER_HEAD,"&e���������",List.of("&7������ ���������� � �� ���������.","&7��� ��������� ���� � ��������� ������."),"open:citizen-candidates");
             btn(m,12,ballot?Material.PAPER:Material.MAP,ballot?"&aБюллетень":"&eНужен бюллетень",List.of(ballot?"&7Открой личный бюллетень.":"&7Попроси председателя ЦИК выдать бюллетень.","&7Чужой бюллетень не откроется."),ballot?"open:station-ballot:"+station:"none");
-            List<String> urnLore=voted?List.of("&7Голос уже записан."):sealed?List.of("&7Закрой меню, возьми запечатанный бюллетень в руку","&7и ПКМ кликни сам блок участка ЦИК."):List.of("&7Сначала выбери кандидата в бюллетене.");
+            List<String> urnLore=voted?List.of("&7����� ��� �������."):sealed?List.of("&7������ ����, ������ ������������ ��������� � ����","&7� ��� ������ ��� ���� ������� ���."):List.of("&7������� ������ ��������� � ���������.");
             btn(m,14,voted?Material.EMERALD_BLOCK:(sealed?Material.CAULDRON:Material.CLOCK),voted?"&aГолос принят":(sealed?"&aПКМ по участку с бюллетенем":"&eУрна ждет бюллетень"),urnLore,"none");
             btn(m,16,Material.COMPASS,"&6Что дальше",List.of("&7Короткая подсказка по твоему текущему шагу.","&7Команды для голосования не нужны."),"open:citizen-guide");
         }
@@ -2070,7 +2070,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }else if(ballot){
             p.sendMessage(c("&fОткрой бюллетень в руке, прочитай заявки кандидатов, выбери одного и вернись к участку."));
         }else{
-            p.sendMessage(c("&eСначала получи официальный бюллетень у председателя ЦИК. Команды вводить не нужно."));
+            p.sendMessage(c("&e������� ������ ����������� ��������� � ������������ ���. ������� ������� �� �����."));
         }
         p.sendMessage(c("&7Бюллетень работает только у владельца. Чужие документы участок не принимает."));
         sound(p,"BLOCK_AMETHYST_BLOCK_CHIME",0.55f,1.35f);
@@ -2138,12 +2138,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!hasPlayerAdmin(p)){warn(p,"Нет прав на игроков."); return;}
         Menu m=new Menu("players-daily"); create(m,54,"&e&lИгроки &8| &fонлайн и профили");
         int slot=0; for(Player t:Bukkit.getOnlinePlayers()){
-            btn(m,slot++,Material.PLAYER_HEAD,"&e"+t.getName(),List.of("&7UUID: &f"+t.getUniqueId(),"&7Мир: &f"+t.getWorld().getName(),"&7XYZ: &f"+t.getLocation().getBlockX()+" "+t.getLocation().getBlockY()+" "+t.getLocation().getBlockZ(),checkMode.containsKey(t.getUniqueId())?"&cНа проверке":"&aСвободен"),"player:"+t.getName());
+            btn(m,slot++,Material.PLAYER_HEAD,"&e"+t.getName(),List.of("&7UUID: &f"+t.getUniqueId(),"&7���: &f"+t.getWorld().getName(),"&7XYZ: &f"+t.getLocation().getBlockX()+" "+t.getLocation().getBlockY()+" "+t.getLocation().getBlockZ(),checkMode.containsKey(t.getUniqueId())?"&c�� ��������":"&a��������"),"player:"+t.getName());
             if(slot>=45)break;
         }
-        btn(m,47,Material.CLOCK,"&bИнструменты игрока",List.of("&7Массовые безопасные действия.","&7Снимки, лечение, разморозка."),"open:players-tools");
+        btn(m,47,Material.CLOCK,"&b����������� ������",List.of("&7�������� ���������� ��������.","&7������, �������, ����������."),"open:players-tools");
         btn(m,48,Material.COMPASS,"&2Карта админки",List.of("&7Быстрые подгруппы без выхода из GUI."),"open:admin-map");
-        btn(m,50,Material.ENDER_CHEST,"&aБД и оптимизация",List.of("&7Снимки online, timeline и состояние базы."),"open:db-health");
+        btn(m,50,Material.ENDER_CHEST,"&a�� � �����������",List.of("&7������ online, timeline � ��������� ����."),"open:db-health");
         nav(m,"open:players","open:players-daily"); p.openInventory(m.inv);
     }
 
@@ -2151,7 +2151,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!hasPlayerAdmin(p)){warn(p,"Нет прав на advanced-игроков."); return;}
         Menu m=new Menu("players-advanced"); create(m,54,"&6&lИгроки &8| &fпроверки и advanced");
         btn(m,4,Material.SPYGLASS,"&6&lКонтроль игроков",List.of(
-                "&7Раздел для проверок, наказаний и технической диагностики.",
+                "&7������ ��� ��������, ��������� � ����������� �����������.",
                 "&7Массовые опасные действия требуют Shift в дочерних вкладках.",
                 "&7Публичные сообщения проверки видят только админы."
         ),"none");
@@ -2160,7 +2160,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,14,Material.REDSTONE_BLOCK,"&4Наказания",List.of("&7Kick/IP-ban и жесткие действия находятся","&7в карточке конкретного игрока."),"open:players-daily");
         btn(m,16,Material.SHIELD,"&aClient guard",List.of("&7Посмотреть client brand игроков и denylist."),"open:client-guard");
         btn(m,28,Material.CLOCK,"&bМассовые инструменты",List.of("&7Snapshot all, unfreeze all, save-all, sync AR."),"open:players-tools");
-        btn(m,30,Material.ENDER_CHEST,"&aСостояние базы",List.of("&7Снимки online, активность игроков и состояние базы."),"open:db-health");
+        btn(m,30,Material.ENDER_CHEST,"&a��������� ����",List.of("&7������ online, ���������� ������� � ��������� ����."),"open:db-health");
         btn(m,32,Material.TARGET,"&aStartup readiness",List.of("&7Античит, TAB/sidebar, БД и защита предметов."),"open:startup-readiness");
         btn(m,40,Material.ARROW,"&eК игрокам",List.of("&7Назад к структуре игроков."),"open:players");
         nav(m,"open:players","open:players-advanced"); p.openInventory(m.inv);
@@ -2171,7 +2171,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Menu m=new Menu("client-guard"); create(m,54,"&a&lЗащита от чит-модов");
         btn(m,4,Material.SHIELD,"&a&lClient brand guard",List.of(
                 "&7Блокирует явные hack clients по minecraft:brand.",
-                "&7Разрешены vanilla/fabric/forge/quilt, performance-моды",
+                "&7��������� vanilla/fabric/forge/quilt, performance-����",
                 "&7и миникарты. GrimAC остается основным античитом.",
                 "&7Denylist: &f"+BLOCKED_CLIENT_BRAND_TOKENS.size()+" токенов."
         ),"none");
@@ -2208,34 +2208,34 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void openPMove(Player a,String n){ Menu m=new Menu("pmove"); create(m,54,"&b&lПеремещение &8| &f"+n);
         btn(m,10,Material.COMPASS,"&bТП к игроку",List.of(),"p:tpto:"+n); btn(m,11,Material.ENDER_PEARL,"&bТП к себе",List.of(),"p:tphere:"+n); btn(m,12,Material.ICE,"&bFreeze",List.of(),"p:freeze:"+n);
         btn(m,13,Material.FEATHER,"&eПодбросить",List.of(),"p:launch:"+n); btn(m,14,Material.SLIME_BALL,"&aПоднять на 10",List.of(),"p:up10:"+n); btn(m,15,Material.BEACON,"&dЛевитация",List.of(),"p:levitate:"+n);
-        btn(m,16,Material.CHORUS_FRUIT,"&5Случайный шаг",List.of("&7Безопасный телепорт рядом с текущей точкой."),"p:randomtp:"+n); btn(m,17,Material.SPYGLASS,"&bКто рядом",List.of("&7Показывает администратору игроков около цели."),"p:nearby:"+n);
+        btn(m,16,Material.CHORUS_FRUIT,"&5��������� ���",List.of("&7���������� �������� ����� � ������� ������."),"p:randomtp:"+n); btn(m,17,Material.SPYGLASS,"&b��� �����",List.of("&7���������� �������������� ������� ����� ����."),"p:nearby:"+n);
         btn(m,28,Material.GRASS_BLOCK,"&aSurvival",List.of(),"p:gm-survival:"+n); btn(m,29,Material.COMMAND_BLOCK,"&dCreative",List.of(),"p:gm-creative:"+n); btn(m,30,Material.ENDER_EYE,"&7Spectator",List.of(),"p:gm-spectator:"+n); btn(m,31,Material.IRON_SWORD,"&6Adventure",List.of(),"p:gm-adventure:"+n);
         nav(m,"player:"+n,"open:p-move:"+n); a.openInventory(m.inv); }
     private void openPInv(Player a,String n){ Menu m=new Menu("pinv"); create(m,54,"&a&lИнвентарь &8| &f"+n);
         btn(m,10,Material.CHEST,"&aОткрыть инвентарь",List.of(),"p:inv:"+n); btn(m,11,Material.ENDER_CHEST,"&5Эндер-сундук",List.of(),"p:ender:"+n); btn(m,12,Material.GOLDEN_APPLE,"&aHeal+feed",List.of(),"p:heal:"+n);
-        btn(m,13,Material.COOKED_BEEF,"&6Накормить",List.of(),"p:feed:"+n); btn(m,14,Material.ANVIL,"&bПочинить руку",List.of(),"p:repairhand:"+n); btn(m,15,Material.IRON_CHESTPLATE,"&eСнять броню",List.of(),"p:armoroff:"+n);
-        btn(m,16,Material.GOLDEN_HELMET,"&6Выборы в ElectionCore",List.of("&7Выдача заявок и бюллетеней","&7перенесена в новый election hub."),"open:elections"); btn(m,17,Material.PAPER,"&7Через ЦИК и участок",List.of("&7AdminPlus больше не выдаёт","&7книги заявок и бюллетени напрямую."),"none"); btn(m,22,Material.HOPPER,"&dПеремешать хотбар",List.of(),"p:shufflehotbar:"+n); btn(m,23,Material.SPYGLASS,"&bSnapshot",List.of("&7Записать live-инвентарь в БД."),"p:snapshot:"+n); btn(m,24,Material.DIAMOND_ORE,"&bAR sync",List.of("&7Пересчитать АР этого игрока."),"p:arsync:"+n); btn(m,25,Material.BARRIER,"&cОчистить инвентарь",List.of("&cShift+ЛКМ"),"p:clearinv:"+n);
+        btn(m,13,Material.COOKED_BEEF,"&6���������",List.of(),"p:feed:"+n); btn(m,14,Material.ANVIL,"&b�������� ����",List.of(),"p:repairhand:"+n); btn(m,15,Material.IRON_CHESTPLATE,"&e����� �����",List.of(),"p:armoroff:"+n);
+        btn(m,16,Material.GOLDEN_HELMET,"&6������ � ElectionCore",List.of("&7������ ������ � ����������","&7���������� � ����� election hub."),"open:elections"); btn(m,17,Material.PAPER,"&7����� ��� � �������",List.of("&7AdminPlus ������ �� �����","&7����� ������ � ��������� ��������."),"none"); btn(m,22,Material.HOPPER,"&d���������� ������",List.of(),"p:shufflehotbar:"+n); btn(m,23,Material.SPYGLASS,"&bSnapshot",List.of("&7�������� live-��������� � ��."),"p:snapshot:"+n); btn(m,24,Material.DIAMOND_ORE,"&bAR sync",List.of("&7����������� �� ����� ������."),"p:arsync:"+n); btn(m,25,Material.BARRIER,"&c�������� ���������",List.of("&cShift+���"),"p:clearinv:"+n);
         nav(m,"player:"+n,"open:p-inv:"+n); a.openInventory(m.inv); }
     private void openPActions(Player a,String n){ Menu m=new Menu("pactions"); create(m,54,"&d&lОсновные действия &8| &f"+n);
-        btn(m,10,Material.OAK_SIGN,"&eTitle",List.of(),"p:title:"+n); btn(m,11,Material.PAPER,"&fСообщение",List.of(),"p:message:"+n); btn(m,12,Material.GLOWSTONE_DUST,"&eGlow",List.of(),"p:glow:"+n);
+        btn(m,10,Material.OAK_SIGN,"&eTitle",List.of(),"p:title:"+n); btn(m,11,Material.PAPER,"&f���������",List.of(),"p:message:"+n); btn(m,12,Material.GLOWSTONE_DUST,"&eGlow",List.of(),"p:glow:"+n);
         btn(m,13,Material.POTION,"&8Тьма",List.of(),"p:dark:"+n); btn(m,14,Material.MILK_BUCKET,"&fОчистить эффекты",List.of(),"p:cleanse:"+n); btn(m,15,Material.TOTEM_OF_UNDYING,"&aGod-like 10с",List.of(),"p:god10:"+n);
-        btn(m,16,Material.NAME_TAG,"&6Fake OP",List.of(),"p:fakeop:"+n); btn(m,17,Material.SPYGLASS,"&bКто рядом",List.of(),"p:nearby:"+n); btn(m,18,Material.SCULK_SHRIEKER,"&cPanic",List.of("&7Срочный title и звук без урона."),"p:panic:"+n);
+        btn(m,16,Material.NAME_TAG,"&6Fake OP",List.of(),"p:fakeop:"+n); btn(m,17,Material.SPYGLASS,"&b��� �����",List.of(),"p:nearby:"+n); btn(m,18,Material.SCULK_SHRIEKER,"&cPanic",List.of("&7������� title � ���� ��� �����."),"p:panic:"+n);
         btn(m,19,Material.SPIDER_EYE,"&dConfuse",List.of("&7Короткая дезориентация."),"p:confuse:"+n); btn(m,20,Material.IRON_DOOR,"&7Lock inventory",List.of("&7Блокирует клики в инвентаре на 5 секунд."),"p:inventory-lock:"+n); btn(m,23,Material.SPYGLASS,"&6Вызвать на проверку",List.of(),"p:check-start:"+n);
         nav(m,"player:"+n,"open:p-actions:"+n); a.openInventory(m.inv); }
     private void openPPranks(Player a,String n){ Menu m=new Menu("ppranks"); create(m,54,"&c&lПриколы &8| &f"+n);
         Object[][] buttons={{10,Material.CARVED_PUMPKIN,"&6Тыква","pumpkin"},{11,Material.BELL,"&cИспугать","scare"},{12,Material.LIGHTNING_ROD,"&eМолния","lightning"},{13,Material.TNT,"&cФейк взрыв","explosion"},{14,Material.FEATHER,"&eПодбросить","launch"},{15,Material.POTION,"&8Тьма","dark"},{16,Material.GLOWSTONE_DUST,"&eGlow","glow"},{19,Material.COMPASS,"&bЗакрутить","spin"},{20,Material.BEACON,"&dЛевитация","levitate"},{21,Material.EGG,"&fКуриный дождь","chickens"},{22,Material.HOPPER,"&dХотбар","shufflehotbar"},{23,Material.NAME_TAG,"&6Fake OP","fakeop"},{24,Material.ANVIL,"&7Наковальня","anvil"},{25,Material.PAPER,"&fНалоговая","taxpaper"},{28,Material.HONEYCOMB,"&eЗлой улей","bee"},{29,Material.SCULK_SHRIEKER,"&9Варден","warden"},{30,Material.SPIDER_EYE,"&dТошнота","nausea"},{31,Material.FIREWORK_ROCKET,"&aФейерверк","fireworkfake"},{32,Material.POTATO,"&6Картошка","potato"},{33,Material.ENDER_PEARL,"&5Swap","swap"},{34,Material.BARRIER,"&4Fake ban","fakeban"},{35,Material.GOAT_HORN,"&fГорн","horn"}};
         for(Object[] b:buttons) btn(m,(int)b[0],(Material)b[1],(String)b[2],List.of(),"p:"+b[3]+":"+n);
-        Object[][] moreButtons={{0,Material.FIREWORK_STAR,"&dКонфетти","confetti"},{1,Material.SNOWBALL,"&fСнежок","snowball"},{2,Material.COBWEB,"&7Паутина","cobweb"},{3,Material.SLIME_BALL,"&aСлайм-скачок","slime"},{4,Material.GLOWSTONE_DUST,"&eИскры","sparkle"},{5,Material.NOTE_BLOCK,"&bНотный хаос","note"},{6,Material.AMETHYST_SHARD,"&dАметист","amethyst"},{7,Material.CHORUS_FRUIT,"&5Хорус","chorus"},{8,Material.POWDER_SNOW_BUCKET,"&bПухлый снег","powdersnow"},{9,Material.ICE,"&bЗаморозка","freeze"},{17,Material.SCULK_SHRIEKER,"&5Скример","jumpscare"},{18,Material.ENDER_EYE,"&8Ослепить","blind"},{26,Material.HONEYCOMB,"&6Пчелы","bees"},{27,Material.COMPASS,"&4Псевдо-ФСБ","fsb"},{36,Material.WIND_CHARGE,"&fПорыв ветра","wind"},{37,Material.INK_SAC,"&8Чернила","squid"},{38,Material.PHANTOM_MEMBRANE,"&9Фантом","phantom"},{39,Material.COOKIE,"&6Печенье судьбы","fortune"},{40,Material.TOTEM_OF_UNDYING,"&aТотем","totem"},{41,Material.CLOCK,"&eОтсчет","clock"},{42,Material.SPYGLASS,"&6Слежка","spy"},{43,Material.PINK_DYE,"&dРадуга","rainbow"}};
+        Object[][] moreButtons={{0,Material.FIREWORK_STAR,"&d��������","confetti"},{1,Material.SNOWBALL,"&f������","snowball"},{2,Material.COBWEB,"&7�������","cobweb"},{3,Material.SLIME_BALL,"&a�����-������","slime"},{4,Material.GLOWSTONE_DUST,"&e�����","sparkle"},{5,Material.NOTE_BLOCK,"&b������ ����","note"},{6,Material.AMETHYST_SHARD,"&d�������","amethyst"},{7,Material.CHORUS_FRUIT,"&5�����","chorus"},{8,Material.POWDER_SNOW_BUCKET,"&b������ ����","powdersnow"},{9,Material.ICE,"&b���������","freeze"},{17,Material.SCULK_SHRIEKER,"&5�������","jumpscare"},{18,Material.ENDER_EYE,"&8��������","blind"},{26,Material.HONEYCOMB,"&6�����","bees"},{27,Material.COMPASS,"&4������-���","fsb"},{36,Material.WIND_CHARGE,"&f����� �����","wind"},{37,Material.INK_SAC,"&8�������","squid"},{38,Material.PHANTOM_MEMBRANE,"&9������","phantom"},{39,Material.COOKIE,"&6������� ������","fortune"},{40,Material.TOTEM_OF_UNDYING,"&a�����","totem"},{41,Material.CLOCK,"&e������","clock"},{42,Material.SPYGLASS,"&6������","spy"},{43,Material.PINK_DYE,"&d������","rainbow"}};
         for(Object[] b:moreButtons) btn(m,(int)b[0],(Material)b[1],(String)b[2],List.of(),"p:"+b[3]+":"+n);
-        Object[][] polished={{44,Material.WRITABLE_BOOK,"&fБюрократия","paperwork"},{46,Material.MAP,"&aМини-квест","tinyquest"},{47,Material.FEATHER,"&fЧих","sneeze"},{48,Material.SNOW_BLOCK,"&bСнежное облако","snowcloud"},{50,Material.WIND_CHARGE,"&fОтталкивание","knockback"},{51,Material.END_CRYSTAL,"&dФейковые титры","fakecredits"}};
+        Object[][] polished={{44,Material.WRITABLE_BOOK,"&f����������","paperwork"},{46,Material.MAP,"&a����-�����","tinyquest"},{47,Material.FEATHER,"&f���","sneeze"},{48,Material.SNOW_BLOCK,"&b������� ������","snowcloud"},{50,Material.WIND_CHARGE,"&f������������","knockback"},{51,Material.END_CRYSTAL,"&d�������� �����","fakecredits"}};
         for(Object[] b:polished) btn(m,(int)b[0],(Material)b[1],(String)b[2],List.of(),"p:"+b[3]+":"+n);
         nav(m,"player:"+n,"open:p-pranks:"+n); a.openInventory(m.inv); }
     private void openPCheck(Player a,String n){ Menu m=new Menu("pcheck"); create(m,54,"&6&lПроверка &8| &f"+n);
-        btn(m,4,Material.SPYGLASS,"&6Режим проверки",List.of("&7ТП к админу, freeze,","&7запрет команд/действий.","&7Voice-chat не блокируется."),"none");
+        btn(m,4,Material.SPYGLASS,"&6����� ��������",List.of("&7�� � ������, freeze,","&7������ ������/��������.","&7Voice-chat �� �����������."),"none");
         btn(m,20,Material.LIME_CONCRETE,"&aНачать",List.of(),"p:check-start:"+n); btn(m,22,Material.RED_CONCRETE,"&cЗакончить и вернуть",List.of(),"p:check-stop-return:"+n); btn(m,23,Material.ORANGE_CONCRETE,"&6Закончить без возврата",List.of(),"p:check-stop:"+n); btn(m,24,Material.BELL,"&eНапомнить",List.of(),"p:check-remind:"+n);
         nav(m,"player:"+n,"open:p-check:"+n); a.openInventory(m.inv); }
     private void openPPunish(Player a,String n){ Menu m=new Menu("ppunish"); create(m,54,"&4&lНаказания &8| &f"+n);
-        btn(m,10,Material.ICE,"&bFreeze",List.of(),"p:freeze:"+n); btn(m,11,Material.FLINT_AND_STEEL,"&cПоджечь",List.of(),"p:burn5:"+n); btn(m,12,Material.MILK_BUCKET,"&aОчистить эффекты",List.of(),"p:cleanse:"+n); btn(m,13,Material.BARRIER,"&cKick",List.of(),"p:kick:"+n); btn(m,14,Material.REDSTONE_BLOCK,"&4IP-ban",List.of("&cShift+ПКМ"),"p:ipban:"+n); btn(m,15,Material.COBWEB,"&7Сильное замедление",List.of(),"p:slow10:"+n); btn(m,16,Material.SPYGLASS,"&6Проверка",List.of(),"p:check-start:"+n);
+        btn(m,10,Material.ICE,"&bFreeze",List.of(),"p:freeze:"+n); btn(m,11,Material.FLINT_AND_STEEL,"&c�������",List.of(),"p:burn5:"+n); btn(m,12,Material.MILK_BUCKET,"&a�������� �������",List.of(),"p:cleanse:"+n); btn(m,13,Material.BARRIER,"&cKick",List.of(),"p:kick:"+n); btn(m,14,Material.REDSTONE_BLOCK,"&4IP-ban",List.of("&cShift+���"),"p:ipban:"+n); btn(m,15,Material.COBWEB,"&7������� ����������",List.of(),"p:slow10:"+n); btn(m,16,Material.SPYGLASS,"&6��������",List.of(),"p:check-start:"+n);
         nav(m,"player:"+n,"open:p-punish:"+n); a.openInventory(m.inv); }
 
     private void openPlayersTools(Player p)throws Exception{
@@ -2244,12 +2244,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,10,Material.SPYGLASS,"&bSnapshot all online",List.of("&7Записать live-инвентарь всех online игроков."),"players:snapshot-all");
         btn(m,11,Material.GOLDEN_APPLE,"&aHeal all online",List.of("&7Лечение + еда всем online.","&7Безопасно, без экономики."),"players:heal-all");
         btn(m,12,Material.COOKED_BEEF,"&6Feed all online",List.of("&7Накормить всех online."),"players:feed-all");
-        btn(m,13,Material.ICE,"&bUnfreeze all",List.of("&7Снять freeze и режим проверки со всех."),"players:unfreeze-all");
+        btn(m,13,Material.ICE,"&bUnfreeze all",List.of("&7����� freeze � ����� �������� �� ����."),"players:unfreeze-all");
         btn(m,14,Material.BELL,"&eRemind checked",List.of("&7Напомнить игрокам на проверке."),"players:remind-checks");
-        btn(m,15,Material.DIAMOND_ORE,"&bSync AR online",List.of("&7Пересчитать АР online игроков."),"ar:sync");
-        btn(m,19,Material.COMMAND_BLOCK,"&aSave-all",List.of("&7Серверное сохранение мира перед проверками.","&cShift+ПКМ: выполнить."),"players:save-all");
+        btn(m,15,Material.DIAMOND_ORE,"&bSync AR online",List.of("&7����������� �� online �������."),"ar:sync");
+        btn(m,19,Material.COMMAND_BLOCK,"&aSave-all",List.of("&7��������� ���������� ���� ����� ����������.","&cShift+���: ���������."),"players:save-all");
         btn(m,20,Material.GOLDEN_CARROT,"&dNight vision all",List.of("&7Даёт всем online ночное зрение на 8 минут.","&cShift+ПКМ: выполнить."),"players:night-vision-all");
-        btn(m,21,Material.MILK_BUCKET,"&aCleanse all",List.of("&7Снимает негативные эффекты со всех online.","&cShift+ПКМ: выполнить."),"players:clear-negative-effects-all");
+        btn(m,21,Material.MILK_BUCKET,"&aCleanse all",List.of("&7������� ���������� ������� �� ���� online.","&cShift+���: ���������."),"players:clear-negative-effects-all");
         btn(m,23,Material.TARGET,"&a&lГотовность запуска",List.of("&7first-run-ready: БД, зависимости,","&7оптимизация, античит и live-защита.","&7Открой после замены папки на сервере."),"open:startup-readiness");
         nav(m,"open:players","open:players-tools"); p.openInventory(m.inv);
     }
@@ -2281,7 +2281,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             btn(m,slot++,mat,"&b"+clipped(type,26),List.of("&7Time: &f"+num(r.get("time")),"&7World: &f"+first(s(r.get("world")),"-"),"&7XYZ: &f"+num(r.get("x"))+" "+num(r.get("y"))+" "+num(r.get("z")),"&7Details: &f"+clipped(s(r.get("details")),42),"&7Admin only: &f"+num(r.get("admin_only"))),"none");
             if(slot>=45)break;
         }
-        if(slot==0)btn(m,22,Material.BOOK,"&7No timeline rows",List.of("&7Сделай snapshot или дождись действий игрока."),"none");
+        if(slot==0)btn(m,22,Material.BOOK,"&7No timeline rows",List.of("&7������ snapshot ��� ������� �������� ������."),"none");
         nav(m,"player:"+name,"open:p-timeline:"+name); admin.openInventory(m.inv);
     }
 
@@ -2301,13 +2301,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         ),snapshot->{
             if(!p.isOnline())return;
             Menu m=new Menu("db-health"); create(m,54,"&a&lБД и оптимизация");
-            btn(m,4,Material.ENDER_CHEST,"&a&lСостояние базы",List.of("&7Источник: &f"+dbSourceSummary(),"&7Таблиц: &f"+snapshot.tables()+" &8| &7индексов: &f"+snapshot.indexes(),"&7Аудит: &f"+snapshot.audits(),"&7Используй только безопасные кнопки обслуживания."),"none");
+            btn(m,4,Material.ENDER_CHEST,"&a&l��������� ����",List.of("&7��������: &f"+dbSourceSummary(),"&7������: &f"+snapshot.tables()+" &8| &7��������: &f"+snapshot.indexes(),"&7�����: &f"+snapshot.audits(),"&7��������� ������ ���������� ������ ������������."),"none");
             btn(m,10,Material.GOLDEN_HELMET,"&6Модуль выборов",List.of("&7Runtime выборов делегирован в &fCopiMineElectionCore","&7Legacy election GUI в AdminPlus отключён.","&7Открыть актуальный election hub."),"open:elections");
-            btn(m,12,Material.DIAMOND_ORE,"&bДанные АР",List.of("&7Транзакций: &f"+snapshot.arTransactions(),"&7Активов: &f"+snapshot.arAssets(),"&7Guard-инцидентов: &f"+snapshot.arGuardIncidents(),"&7Баланс меняется только через AR workflow."),"open:ar-health");
-            btn(m,14,Material.PLAYER_HEAD,"&eДанные игроков",List.of("&7Снимков online: &f"+snapshot.snapshots(),"&7Событий активности: &f"+snapshot.playerActivity(),"&7Профили читаются без тяжёлых полных сканов."),"open:players-tools");
-            btn(m,16,Material.SHIELD,"&aЗащита базы",List.of("&7Аудит и журналы не редактируются сырой формой.","&7Для выборов/АР есть отдельные безопасные API.","&7Все действия обслуживания пишутся в аудит."),"none");
+            btn(m,12,Material.DIAMOND_ORE,"&b������ ��",List.of("&7����������: &f"+snapshot.arTransactions(),"&7�������: &f"+snapshot.arAssets(),"&7Guard-����������: &f"+snapshot.arGuardIncidents(),"&7������ �������� ������ ����� AR workflow."),"open:ar-health");
+            btn(m,14,Material.PLAYER_HEAD,"&e������ �������",List.of("&7������� online: &f"+snapshot.snapshots(),"&7������� ����������: &f"+snapshot.playerActivity(),"&7������� �������� ��� ������ ������ ������."),"open:players-tools");
+            btn(m,16,Material.SHIELD,"&a������ ����",List.of("&7����� � ������� �� ������������� ����� ������.","&7��� �������/�� ���� ��������� ���������� API.","&7��� �������� ������������ ������� � �����."),"none");
             btn(m,28,Material.ANVIL,"&aОптимизировать базу",List.of("&7Безопасно обновляет внутреннюю статистику.","&7Не меняет голоса, балансы и заявки."),"db:optimize");
-            btn(m,30,Material.CLOCK,"&bСбросить журнал базы",List.of("&7Пассивно сбрасывает журнал, если база разрешит.","&7Полезно после длинных админ-сессий."),"db:checkpoint");
+            btn(m,30,Material.CLOCK,"&b�������� ������ ����",List.of("&7�������� ���������� ������, ���� ���� ��������.","&7������� ����� ������� �����-������."),"db:checkpoint");
             btn(m,32,Material.SPYGLASS,"&dПроверка запуска",List.of("&7Перепроверить схему, зависимости и защиту."),"open:startup-readiness");
             btn(m,34,Material.COMPASS,"&2Карта админки",List.of("&7Вернуться к подгруппам."),"open:admin-map");
             nav(m,"open:admin-map","open:db-health"); p.openInventory(m.inv);
@@ -2395,7 +2395,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 btn(m,slot++,mat,"&b"+clipped(type,26),List.of("&7Time: &f"+num(r.get("time")),"&7World: &f"+first(s(r.get("world")),"-"),"&7XYZ: &f"+num(r.get("x"))+" "+num(r.get("y"))+" "+num(r.get("z")),"&7Details: &f"+clipped(s(r.get("details")),42),"&7Admin only: &f"+num(r.get("admin_only"))),"none");
                 if(slot>=45)break;
             }
-            if(slot==0)btn(m,22,Material.BOOK,"&7No timeline rows",List.of("&7Сделай snapshot или дождись действий игрока."),"none");
+            if(slot==0)btn(m,22,Material.BOOK,"&7No timeline rows",List.of("&7������ snapshot ��� ������� �������� ������."),"none");
             nav(m,"player:"+snapshot.playerName(),"open:p-timeline:"+snapshot.playerName());
             admin.openInventory(m.inv);
         },error->{ if(admin.isOnline())warn(admin,"Не удалось загрузить ленту действий. Подробности записаны в лог."); });
@@ -2441,7 +2441,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(a.startsWith("bank:")||a.startsWith("bankpin:")){
             CopiMineEconomyCore economy=economyCore();
             if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;}
-            warn(p,"Старые банковские действия отключены. Используйте новый раздел экономики в CopiMineEconomyCore.");
+            warn(p,"������ ���������� �������� ���������. ����������� ����� ������ ��������� � CopiMineEconomyCore.");
             economy.openAdminEconomyHub(p);
             return;
         }
@@ -2478,10 +2478,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             case "launch" -> {t.setVelocity(t.getVelocity().setY(1.45)); sound(t,"ENTITY_FIREWORK_ROCKET_LAUNCH",1f,1f);} case "up10" -> t.teleport(t.getLocation().clone().add(0,10,0)); case "levitate" -> effect(t,5,1,"LEVITATION"); case "randomtp" -> randomTpNear(t); case "nearby" -> nearbyReport(admin,t);
             case "gm-survival" -> t.setGameMode(GameMode.SURVIVAL); case "gm-creative" -> t.setGameMode(GameMode.CREATIVE); case "gm-spectator" -> t.setGameMode(GameMode.SPECTATOR); case "gm-adventure" -> t.setGameMode(GameMode.ADVENTURE);
             case "repairhand" -> repairHand(admin,t); case "armoroff" -> armorOff(admin,t); case "snapshot" -> {snapshotOnlineInventory(t,"admin_manual"); msg(admin,"&aSnapshot saved.");} case "arsync" -> {warn(admin,"AR sync перенесён в CopiMineEconomyCore."); CopiMineEconomyCore economy=economyCore(); if(economy!=null) economy.openAdminEconomyHub(admin);} case "clearinv" -> {if(click!=ClickType.SHIFT_LEFT){warn(admin,"Только Shift+ЛКМ.");return;} t.getInventory().clear();} case "givebook","giveballot" -> {warn(admin,"Выдача заявок и бюллетеней перенесена в CopiMineElectionCore."); openElections(admin);} case "shufflehotbar" -> shuffleHotbar(t);
-            case "title" -> t.sendTitle(c("&6&lВнимание"),c("&fАдминистрация наблюдает"),10,60,10); case "message" -> msg(t,"&eАдминистрация: &fПожалуйста, соблюдай правила сервера."); case "glow" -> effect(t,30,0,"GLOWING"); case "dark" -> {effect(t,6,0,"BLINDNESS"); effect(t,6,1,"SLOWNESS","SLOW");} case "cleanse" -> {t.setFireTicks(0); t.getActivePotionEffects().forEach(pe->t.removePotionEffect(pe.getType()));} case "god10" -> {effect(t,10,4,"DAMAGE_RESISTANCE","RESISTANCE"); effect(t,10,2,"REGENERATION");} case "fakeop" -> t.sendMessage(c("&7[Server: Made "+t.getName()+" a server operator]")); case "panic" -> {t.sendTitle(c("&c&lВНИМАНИЕ"),c("&fСрочная проверка реакции"),0,45,10); sound(t,"ENTITY_ENDER_DRAGON_GROWL",.45f,1.7f);} case "confuse" -> {effect(t,7,0,"NAUSEA","CONFUSION"); effect(t,3,0,"BLINDNESS"); sound(t,"ENTITY_ILLUSIONER_CAST_SPELL",.8f,1.2f);} case "inventory-lock" -> {inventoryLocks.put(t.getUniqueId(),now()+5000L); t.closeInventory(); t.sendTitle(c("&7Инвентарь закрыт"),c("&fПауза 5 секунд"),5,45,10); Bukkit.getScheduler().runTaskLater(this,()->inventoryLocks.remove(t.getUniqueId()),110L);}
+            case "title" -> t.sendTitle(c("&6&l��������"),c("&f������������� ���������"),10,60,10); case "message" -> msg(t,"&e�������������: &f����������, �������� ������� �������."); case "glow" -> effect(t,30,0,"GLOWING"); case "dark" -> {effect(t,6,0,"BLINDNESS"); effect(t,6,1,"SLOWNESS","SLOW");} case "cleanse" -> {t.setFireTicks(0); t.getActivePotionEffects().forEach(pe->t.removePotionEffect(pe.getType()));} case "god10" -> {effect(t,10,4,"DAMAGE_RESISTANCE","RESISTANCE"); effect(t,10,2,"REGENERATION");} case "fakeop" -> t.sendMessage(c("&7[Server: Made "+t.getName()+" a server operator]")); case "panic" -> {t.sendTitle(c("&c&l��������"),c("&f������� �������� �������"),0,45,10); sound(t,"ENTITY_ENDER_DRAGON_GROWL",.45f,1.7f);} case "confuse" -> {effect(t,7,0,"NAUSEA","CONFUSION"); effect(t,3,0,"BLINDNESS"); sound(t,"ENTITY_ILLUSIONER_CAST_SPELL",.8f,1.2f);} case "inventory-lock" -> {inventoryLocks.put(t.getUniqueId(),now()+5000L); t.closeInventory(); t.sendTitle(c("&7��������� ������"),c("&f����� 5 ������"),5,45,10); Bukkit.getScheduler().runTaskLater(this,()->inventoryLocks.remove(t.getUniqueId()),110L);}
             case "pumpkin" -> t.getInventory().setHelmet(new ItemStack(Material.CARVED_PUMPKIN)); case "scare" -> {sound(t,"ENTITY_CREEPER_PRIMED",1f,.55f); Bukkit.getScheduler().runTaskLater(this,()->sound(t,"ENTITY_WITHER_SPAWN",.7f,.7f),18L);} case "lightning" -> t.getWorld().strikeLightningEffect(t.getLocation()); case "explosion" -> t.getWorld().createExplosion(t.getLocation(),0F,false,false); case "spin" -> spin(t); case "chickens" -> chickens(t); case "anvil" -> sound(t,"BLOCK_ANVIL_LAND",1f,.8f); case "taxpaper" -> giveTaxPaper(t); case "bee" -> {sound(t,"ENTITY_BEE_LOOP_AGGRESSIVE",1f,1.8f); t.sendTitle(c("&eБзззз..."),c("&7Где-то рядом пчёлы"),5,45,10);} case "warden" -> {sound(t,"ENTITY_WARDEN_SONIC_BOOM",1f,.9f); t.sendTitle(c("&9&lТссс..."),c("&7Варден услышал тебя"),5,55,10);} case "nausea" -> effect(t,8,0,"NAUSEA","CONFUSION"); case "fireworkfake" -> {sound(t,"ENTITY_FIREWORK_ROCKET_LAUNCH",1f,1f); sound(t,"ENTITY_FIREWORK_ROCKET_TWINKLE",1f,1.2f);} case "potato" -> givePotato(t); case "swap" -> {Location al=admin.getLocation(), tl=t.getLocation(); admin.teleport(tl); t.teleport(al);} case "fakeban" -> {t.sendTitle(c("&4&lBAN"),c("&cШутка. Но правила лучше соблюдать."),5,70,15); sound(t,"ENTITY_WITHER_DEATH",.7f,.8f);} case "horn" -> sound(t,"ITEM_GOAT_HORN_SOUND_0",1f,1f);
             case "kick" -> t.kickPlayer(c("&cКикнут администрацией CopiMine.")); case "ipban" -> {if(click!=ClickType.SHIFT_RIGHT){warn(admin,"Только Shift+ПКМ.");return;} if(t.getAddress()!=null){String ip=t.getAddress().getAddress().getHostAddress(); Bukkit.getBanList(BanList.Type.IP).addBan(ip,"IP-ban CopiMine",(Date)null,admin.getName()); t.kickPlayer(c("&cIP-ban"));}} case "burn5" -> t.setFireTicks(100); case "slow10" -> {effect(t,10,5,"SLOWNESS","SLOW"); effect(t,10,2,"MINING_FATIGUE","SLOW_DIGGING");}
-            case "check-start" -> startCheck(admin,t); case "check-stop" -> stopCheck(admin,t,false); case "check-stop-return" -> stopCheck(admin,t,true); case "check-remind" -> {t.sendTitle(c("&c&lПРОВЕРКА"),c("&fСтой на месте и отвечай администрации"),10,80,10); sound(t,"BLOCK_NOTE_BLOCK_PLING",1f,.8f);}
+            case "check-start" -> startCheck(admin,t); case "check-stop" -> stopCheck(admin,t,false); case "check-stop-return" -> stopCheck(admin,t,true); case "check-remind" -> {t.sendTitle(c("&c&l��������"),c("&f���� �� ����� � ������� �������������"),10,80,10); sound(t,"BLOCK_NOTE_BLOCK_PLING",1f,.8f);}
         }
         audit(admin.getName(),"ULTRA7_PLAYER_"+act.toUpperCase(Locale.ROOT),t.getName(),true);
         snapshotOnlineInventory(t,"admin_"+act);
@@ -2510,7 +2510,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private int healAllOnline(){int n=0; for(Player t:Bukkit.getOnlinePlayers()){try{t.setHealth(Math.min(t.getMaxHealth(),20.0)); t.setFoodLevel(20); t.setSaturation(20f); t.setFireTicks(0); n++;}catch(Throwable ignored){}} return n;}
     private int feedAllOnline(){int n=0; for(Player t:Bukkit.getOnlinePlayers()){t.setFoodLevel(20); t.setSaturation(20f); n++;} return n;}
     private int unfreezeAllPlayers(String actor){int n=frozen.size()+checkMode.size(); frozen.clear(); checkMode.clear(); checkReturn.clear(); try{exec("UPDATE cmv7_player_checks SET active=0,details=COALESCE(details,'')||' | force-unfreeze by '||? WHERE active=1",actor);}catch(Throwable ignored){} staffNotify("&aAll player checks/freeze states were cleared by &f"+actor); return n;}
-    private int remindCheckedPlayers(){int n=0; for(UUID id:checkMode.keySet()){Player t=Bukkit.getPlayer(id); if(t!=null&&t.isOnline()){t.sendTitle(c("&c&lПРОВЕРКА"),c("&fСтой на месте и отвечай администрации"),10,80,10); sound(t,"BLOCK_NOTE_BLOCK_PLING",1f,.8f); n++;}} return n;}
+    private int remindCheckedPlayers(){int n=0; for(UUID id:checkMode.keySet()){Player t=Bukkit.getPlayer(id); if(t!=null&&t.isOnline()){t.sendTitle(c("&c&l��������"),c("&f���� �� ����� � ������� �������������"),10,80,10); sound(t,"BLOCK_NOTE_BLOCK_PLING",1f,.8f); n++;}} return n;}
     private String saveAllPlayers(String actor){
         boolean ok=Bukkit.dispatchCommand(Bukkit.getConsoleSender(),"save-all");
         try{audit(actor,"ULTRA7_PLAYERS_SAVE_ALL","ok="+ok,true);}catch(Throwable ignored){}
@@ -2560,21 +2560,21 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             case "jumpscare" -> {t.sendTitle(c("&5&lБУ!"),c("&7Это была проверка реакции"),0,45,10); sound(t,"ENTITY_GHAST_SCREAM",1f,1.35f);}
             case "blind" -> {effect(t,5,0,"BLINDNESS"); t.sendTitle(c("&8Темнота"),c("&7Фонарик не прилагается"),5,45,10); sound(t,"ENTITY_ELDER_GUARDIAN_CURSE",.7f,1.2f);}
             case "bees" -> {sound(t,"ENTITY_BEE_LOOP_AGGRESSIVE",1f,1.4f); t.sendTitle(c("&6Пчелы"),c("&7Кажется, улей недоволен"),5,45,10);}
-            case "fsb" -> {msg(t,"&8[&4ФСБ&8] &cПроверка Minecraft-активности..."); msg(t,"&8[&4ФСБ&8] &7Статус: &eподозрительно нормально."); t.sendTitle(c("&4Проверка"),c("&7Это шутка. Продолжай играть."),5,70,20); sound(t,"BLOCK_NOTE_BLOCK_PLING",.9f,.6f);}
+            case "fsb" -> {msg(t,"&8[&4���&8] &c�������� Minecraft-����������..."); msg(t,"&8[&4���&8] &7������: &e������������� ���������."); t.sendTitle(c("&4��������"),c("&7��� �����. ��������� ������."),5,70,20); sound(t,"BLOCK_NOTE_BLOCK_PLING",.9f,.6f);}
             case "wind" -> {t.setVelocity(t.getLocation().getDirection().multiply(1.35).setY(.45)); sound(t,"ENTITY_BREEZE_WIND_BURST",1f,1f);}
             case "squid" -> {effect(t,3,0,"BLINDNESS"); sound(t,"ENTITY_SQUID_SQUIRT",1f,.9f);}
             case "phantom" -> {sound(t,"ENTITY_PHANTOM_SWOOP",1f,.75f); t.sendTitle(c("&9Фантом сверху"),c("&7Но урона не будет"),5,35,10);}
-            case "fortune" -> dropFunnyItem(t,Material.COOKIE,"&6&lПеченье судьбы",List.of("&7Сегодня тебе повезло: это не бан.","&8Съесть можно, поверить нельзя."));
+            case "fortune" -> dropFunnyItem(t,Material.COOKIE,"&6&l������� ������",List.of("&7������� ���� �������: ��� �� ���.","&8������ �����, �������� ������."));
             case "totem" -> {try{t.playEffect(EntityEffect.TOTEM_RESURRECT);}catch(Throwable ignored){} sound(t,"ITEM_TOTEM_USE",.7f,1.4f);}
             case "clock" -> {for(int i=3;i>=1;i--){final int n=i; Bukkit.getScheduler().runTaskLater(this,()->{t.sendTitle(c("&e"+n),c("&7Почти ничего не случится"),0,18,2); sound(t,"BLOCK_NOTE_BLOCK_HAT",1f,1.4f);},(3-i)*20L);} Bukkit.getScheduler().runTaskLater(this,()->t.sendTitle(c("&aПуск"),c("&7Проверка реакции завершена"),0,30,8),60L);}
             case "spy" -> {sound(t,"ITEM_SPYGLASS_USE",1f,1f); msg(t,"&6Администрация внимательно изучила ситуацию. Выглядит подозрительно нормально.");}
-            case "rainbow" -> {t.sendTitle(c("&cР&6а&eд&aу&bг&dа"),c("&7Цветовая проверка настроения"),5,45,10); sound(t,"BLOCK_NOTE_BLOCK_CHIME",1f,1.6f);}
+            case "rainbow" -> {t.sendTitle(c("&c�&6�&e�&a�&b�&d�"),c("&7�������� �������� ����������"),5,45,10); sound(t,"BLOCK_NOTE_BLOCK_CHIME",1f,1.6f);}
             case "paperwork" -> {dropFunnyItem(t,Material.PAPER,"&f&lФорма 404-ЦИК",List.of("&7Подписать, заверить, забыть.","&8Никаких реальных обязательств.")); sound(t,"ITEM_BOOK_PAGE_TURN",1f,1.1f);}
             case "tinyquest" -> {t.sendTitle(c("&aМини-квест"),c("&fНайди самый официальный блок рядом"),5,70,15); dropFunnyItem(t,Material.MAP,"&a&lКарта мини-квеста",List.of("&7Цель: улыбнуться и продолжить играть."));}
             case "sneeze" -> {sound(t,"ENTITY_PANDA_SNEEZE",1f,1.2f); t.setVelocity(t.getVelocity().add(t.getLocation().getDirection().multiply(-.35).setY(.2)));}
-            case "snowcloud" -> {effect(t,5,0,"SLOWNESS","SLOW"); for(int i=0;i<3;i++)dropFunnyItem(t,Material.SNOWBALL,"&b&lСнежинка администрации",List.of("&7Тает от слишком серьезного лица.")); sound(t,"BLOCK_POWDER_SNOW_BREAK",1f,.8f);}
+            case "snowcloud" -> {effect(t,5,0,"SLOWNESS","SLOW"); for(int i=0;i<3;i++)dropFunnyItem(t,Material.SNOWBALL,"&b&l�������� �������������",List.of("&7���� �� ������� ���������� ����.")); sound(t,"BLOCK_POWDER_SNOW_BREAK",1f,.8f);}
             case "knockback" -> {t.setVelocity(t.getLocation().getDirection().multiply(-1.1).setY(.45)); sound(t,"ENTITY_BREEZE_WIND_BURST",1f,1.25f);}
-            case "fakecredits" -> {t.sendTitle(c("&d&lCredits"),c("&fСпасибо за участие в тесте интерфейса"),5,80,20); sound(t,"UI_TOAST_CHALLENGE_COMPLETE",.8f,1.1f);}
+            case "fakecredits" -> {t.sendTitle(c("&d&lCredits"),c("&f������� �� ������� � ����� ����������"),5,80,20); sound(t,"UI_TOAST_CHALLENGE_COMPLETE",.8f,1.1f);}
         }
         msg(admin,"&aПрикол применен: &e"+act+" &7→ &f"+t.getName());
     }
@@ -2609,19 +2609,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private List<String> sidebarNoElectionLines(){
         List<String> lines=new ArrayList<>();
         lines.add("&8LIVE_SIDEBAR_ALWAYS_ON_V3");
-        lines.add("&7Статус: &fнет активного цикла");
+        lines.add("&7������: &f��� ��������� �����");
         lines.add("&7Этап: &fожидание ЦИК");
-        lines.add("&8Служебный раздел");
+        lines.add("&8��������� ������");
         lines.add("&eКогда выборы начнутся,");
         lines.add("&eздесь появятся этапы и кандидаты.");
-        lines.add("&8Служебный раздел");
+        lines.add("&8��������� ������");
         lines.add("&d"+animLine());
         return lines;
     }
     private List<String> sidebarLines(SidebarSnapshot snap){
         List<String> lines=new ArrayList<>();
         lines.add("&8LIVE_SIDEBAR_ALWAYS_ON_V3");
-        lines.add("&7Статус: &f"+snap.status()); lines.add("&7Этап: &f"+snap.stage()); lines.add("&8────────────");
+        lines.add("&7������: &f"+snap.status()); lines.add("&7����: &f"+snap.stage()); lines.add("&8------------");
         List<SidebarCandidate> rows=snap.candidates()==null?List.of():snap.candidates();
         long max=1,totalVotes=0; for(SidebarCandidate r:rows){ long total=Math.max(0,r.total()); totalVotes+=total; max=Math.max(max,total); }
         int place=1; for(SidebarCandidate r:rows){ long total=Math.max(0,r.total()); String name=clipped(r.name(),10); lines.add("&e"+place+++". &f"+name+(snap.liveResults()?" &a"+percent(total,totalVotes):" &7заявка")); lines.add(snap.liveResults()?("&7"+graphBar(total,max,13)+" &f"+total):"&7результаты скрыты до подсчёта"); }
@@ -2632,7 +2632,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private List<String> sidebarLines(String eid, boolean liveResults)throws Exception{
         Map<String,String> st=electionSettings(eid); List<String> lines=new ArrayList<>();
         lines.add("&8LIVE_SIDEBAR_ALWAYS_ON_V3");
-        lines.add("&7Статус: &f"+humanStatus(electionStatus(eid))); lines.add("&7Этап: &f"+humanStage(st.getOrDefault("stage","?"))); lines.add("&8────────────");
+        lines.add("&7������: &f"+humanStatus(electionStatus(eid))); lines.add("&7����: &f"+humanStage(st.getOrDefault("stage","?"))); lines.add("&8------------");
         List<Map<String,Object>> rows=candidateRowsForElection(eid,5);
         long max=1,totalVotes=0; for(Map<String,Object> r:rows){ long total=Math.max(0,num(r.get("total"))); totalVotes+=total; max=Math.max(max,total); }
         int place=1; for(Map<String,Object> r:rows){ long total=Math.max(0,num(r.get("total"))); String name=clipped(first(s(r.get("display_name")),s(r.get("name"))),10); lines.add("&e"+place+++". &f"+name+(liveResults?" &a"+percent(total,totalVotes):" &7заявка")); lines.add(liveResults?("&7"+graphBar(total,max,13)+" &f"+total):"&7результаты скрыты до этапа подсчета"); }
@@ -2674,9 +2674,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean tryBlankNumbersWith(Object o,String className){
         try{Class<?> nf=Class.forName(className); Object blank=nf.getMethod("blank").invoke(null); try{o.getClass().getMethod("setNumberFormat",nf).invoke(o,blank);}catch(NoSuchMethodException ex){o.getClass().getMethod("numberFormat",nf).invoke(o,blank);} return true;}catch(Throwable ignored){return false;}
     }
-    private String graphBar(long v,long max,int w){ int f=max<=0?0:(int)Math.round((double)v/max*w); f=Math.max(0,Math.min(w,f)); return "▰".repeat(f)+"▱".repeat(w-f); }
+    private String graphBar(long v,long max,int w){ int f=max<=0?0:(int)Math.round((double)v/max*w); f=Math.max(0,Math.min(w,f)); return "в–°".repeat(f)+"в–±".repeat(w-f); }
     private String percent(long v,long total){ return total<=0?"0%":Math.round((double)Math.max(0,v)*100D/Math.max(1,total))+"%"; }
-    private String anim(){ return new String[]{"▖","▘","▝","▗"}[tick%4]; }
+    private String anim(){ return new String[]{"в––","в–","в–ќ","в–—"}[tick%4]; }
     private String animLine(){ return new String[]{"Голоса обновляются ▌░░","Голоса обновляются ▌▌░","Голоса обновляются ▌▌▌","Выборы продолжаются"}[tick%4]; }
     private void showSidebarAll(boolean sound){ sidebarGlobal=true; sidebarHidden.clear(); sidebarPersonal.clear(); try{updateGlobalSidebar(true);}catch(Exception e){getLogger().warning("show sidebar global: "+e);} refreshSidebarSnapshotAsync(true); for(Player p:Bukkit.getOnlinePlayers())if(sound)sound(p,"BLOCK_NOTE_BLOCK_PLING",.7f,1.2f); }
     private void hideSidebarAll(boolean sound){ sidebarGlobal=false; sidebarPersonal.clear(); clearGlobalSidebar(); for(Player p:Bukkit.getOnlinePlayers()) hideSidebar(p,sound); }
@@ -2794,7 +2794,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private ElectionLifecycleSnapshot lifecycleSnapshot()throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)return new ElectionLifecycleSnapshot(null,"NONE","NONE",0,0,0,0,0,0,""); String status=electionStatus(eid); long apps=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND COALESCE(deleted_at,0)=0",eid), pending=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='PENDING' AND COALESCE(deleted_at,0)=0",eid), approved=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='APPROVED' AND COALESCE(deleted_at,0)=0",eid), candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid), ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid), votes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=?",eid):0; String winner=safeWinnerName(eid); return new ElectionLifecycleSnapshot(eid,status,status,apps,pending,approved,candidates,ballots,votes,winner);}
     private void runLifecycleNext(Player p)throws Exception{
         if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("runLifecycleNext");
-        ElectionLifecycleSnapshot s=lifecycleSnapshot(); if(s.eid()==null){openApplications(p.getName(),72); announceStage(p.getName()); openElectionLifecycle(p); return;} ElectionStatus status=parseElectionStatus(s.status()); switch(status){case APPLICATIONS_OPEN->{if(s.applications()==0){warn(p,"Сначала выдай книги заявок или дождись заявок игроков."); openApplicationsIssue(p); return;} closeApplications(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case APPLICATIONS_CLOSED->{if(s.approved()==0&&s.candidates()==0){warn(p,"Нет утвержденных кандидатов. Проверь заявки."); openApplicationsReview(p); return;} approvedToCandidates(p.getName()); openBallotIssue(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case BALLOTS_OPEN->{openVoting(p.getName()); showSidebarAll(true); announceStage(p.getName()); openElectionLifecycle(p); return;} case VOTING_OPEN->{startCounting(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case COUNTING,SECOND_ROUND_REQUIRED->{msg(p,finishElection(p.getName())); openElectionLifecycle(p); return;} case FINISHED->{archiveElectionLifecycle(p.getName()); hideSidebarAll(true); openElectionLifecycle(p); return;} default->{msg(p,"&7Цикл завершен или требует ручного решения."); openElectionLifecycle(p);}}}
+        ElectionLifecycleSnapshot s=lifecycleSnapshot(); if(s.eid()==null){openApplications(p.getName(),72); announceStage(p.getName()); openElectionLifecycle(p); return;} ElectionStatus status=parseElectionStatus(s.status()); switch(status){case APPLICATIONS_OPEN->{if(s.applications()==0){warn(p,"������� ����� ����� ������ ��� ������� ������ �������."); openApplicationsIssue(p); return;} closeApplications(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case APPLICATIONS_CLOSED->{if(s.approved()==0&&s.candidates()==0){warn(p,"��� ������������ ����������. ������� ������."); openApplicationsReview(p); return;} approvedToCandidates(p.getName()); openBallotIssue(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case BALLOTS_OPEN->{openVoting(p.getName()); showSidebarAll(true); announceStage(p.getName()); openElectionLifecycle(p); return;} case VOTING_OPEN->{startCounting(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case COUNTING,SECOND_ROUND_REQUIRED->{msg(p,finishElection(p.getName())); openElectionLifecycle(p); return;} case FINISHED->{archiveElectionLifecycle(p.getName()); hideSidebarAll(true); openElectionLifecycle(p); return;} default->{msg(p,"&7���� �������� ��� ������� ������� �������."); openElectionLifecycle(p);}}}
     private String startElection(String actor,int hours)throws SQLException{ String active=activeElectionId(); if(active!=null){ensureSettings(active,actor); return active;} long n=now(); String id="election-"+n; exec("INSERT INTO elections(id,status,started_at,ended_at,scheduled_end_at,started_by,ended_by,winner_uuid,winner_name,notes) VALUES(?,?,?,0,?,?,'','','','Запущено через Ultra7+')",id,ElectionStatus.DRAFT.name(),n,n+hours*3600000L,actor); ensureSettings(id,actor); syncElectionSettingsStatus(id,ElectionStatus.DRAFT,actor); audit(actor,"ULTRA7_ELECTION_START",id,false); return id; }
     private String openApplications(String actor,int hours)throws SQLException{String id=startElection(actor,hours); transitionElectionStatus(id,ElectionStatus.APPLICATIONS_OPEN,actor,"ULTRA7_ELECTION_APPLICATIONS_OPEN"); return id;}
     private String prepareNomination(String actor,int hours)throws SQLException{return openApplications(actor,hours);}
@@ -2827,7 +2827,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(wait>0){warn(p,"PRESIDENT_MANDATE_HOURLY_V3: следующее обращение через "+Math.max(1,wait/60000L)+" мин."); return;}
         exec("INSERT INTO cmv7_president_cooldowns(uuid,name,last_announce_at,election_id) VALUES(?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET name=excluded.name,last_announce_at=excluded.last_announce_at,election_id=excluded.election_id",uuid,p.getName(),now(),first(eid,"none"));
         Bukkit.broadcastMessage(c("&6&lПрезидент &f"+p.getName()+" &8» &eофициальное обращение к серверу."));
-        Bukkit.broadcastMessage(c("&fСледите за этапом выборов, проверяйте заявки кандидатов и голосуйте только своим бюллетенем."));
+        Bukkit.broadcastMessage(c("&f������� �� ������ �������, ���������� ������ ���������� � ��������� ������ ����� ����������."));
         for(Player t:Bukkit.getOnlinePlayers())t.sendTitle(c("&6&lПрезидент "+p.getName()),c("&fОфициальное обращение сервера"),10,90,20);
         broadcastSound("UI_TOAST_CHALLENGE_COMPLETE",0.8f,1.1f);
         audit(p.getName(),"ULTRA7_PRESIDENT_HOURLY_ANNOUNCE","PRESIDENT_MANDATE_HOURLY_V3 election="+first(eid,"none"),false);
@@ -2891,7 +2891,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         exec("UPDATE applications SET status='ANNULLED',visible_in_game=0,deleted_by=?,deleted_at=?,verdict_reason=COALESCE(verdict_reason,'')||? WHERE id=?",actor,now(),note,appId);
         int removed=exec("UPDATE candidates SET removed=1 WHERE election_id=? AND uuid=?",eid,uuid);
         audit(actor,"ULTRA7_APPLICATION_ANNUL","application="+appId+" election="+eid+" player="+name+" removedCandidateRows="+removed+" reason="+first(reason,"emergency"),true);
-        return"&aЗаявка аннулирована. Снято строк кандидата: &e"+removed;
+        return"&a������ ������������. ����� ����� ���������: &e"+removed;
     }
     private String annulBallot(String ballotId,String actor,String reason)throws Exception{
         if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("annulBallot");
@@ -2989,7 +2989,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         BookMeta meta=(BookMeta)mandate.getItemMeta();
         if(meta!=null){
             meta.setTitle("Мандат президента");
-            meta.setAuthor("CopiMine ЦИК");
+            meta.setAuthor("CopiMine Р¦РРљ");
             meta.setDisplayName(c("&6&lМандат президента"));
             meta.setLore(List.of(c("&7Президент: &f"+p.getName()),c("&7Цикл: &f"+shortId(eid)),c("&7Главная функция: обращение ко всем игрокам."),c("&aПКМ: большое сообщение на экран."),c("&eКаждый час реального времени."),c("&cQ уничтожает мандат, выброс запрещен."),c("&8PRESIDENT_MANDATE_HOURLY_V3 ID "+shortId(itemId))));
             meta.setPages(List.of(c("&6Мандат президента\n\n&0Игрок: "+p.getName()+"\nЦикл: "+shortId(eid)+"\n\nПКМ по мандату: официальное обращение ко всем игрокам. Доступно один раз в реальный час.")));
@@ -3073,7 +3073,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                     c("&7Выбор записан внутри документа."),
                     c("&aФинальный шаг: опусти бюллетень в участок ЦИК."),
                     c("&7Кликни по участку, держа этот бюллетень."),
-                    c("&8Содержимое скрыто от других игроков.")
+                    c("&8���������� ������ �� ������ �������.")
             ));
             setElectionItemString(meta,"selected_candidate",candidateUuid);
             setElectionItemString(meta,"selected_candidate_name",candidateName);
@@ -3098,7 +3098,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String eid=first(electionItemString(ballot,"election"),activeOrLatestElectionId());
         String candidateUuid=first(electionItemString(ballot,"selected_candidate"),"");
         String ballotId=first(electionItemString(ballot,"id"),"");
-        if(eid.isBlank()||candidateUuid.isBlank()||ballotId.isBlank()){warn(p,"Этот бюллетень не запечатан. Сначала выбери кандидата.");return;}
+        if(eid.isBlank()||candidateUuid.isBlank()||ballotId.isBlank()){warn(p,"���� ��������� �� ���������. ������� ������ ���������.");return;}
         try { requireElectionStatus(eid,ElectionStatus.VOTING_OPEN); }
         catch(SQLException closed){warn(p,"Голосование сейчас закрыто.");return;}
         if(hasCitizenVote(p,eid)){warn(p,"Твой голос уже учтен.");return;}
@@ -3191,11 +3191,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String eid=activeOrLatestElectionId();
         String k=first(kind,"stage").toLowerCase(Locale.ROOT);
         String title="&6&lВыборы сервера";
-        String subtitle="&fСобытие ЦИК";
-        String chat="&6&lВыборы &8» &fСобытие ЦИК.";
+        String subtitle="&f������� ���";
+        String chat="&6&l������ &8� &f������� ���.";
         String snd="BLOCK_NOTE_BLOCK_PLING";
         if(k.equals("candidate-call")){title="&e&lКандидаты"; subtitle="&fПодойдите к ЦИК для публичного этапа"; chat="&6&lЦИК &8» &fКандидаты приглашаются к участку для публичной части выборов."; snd="ENTITY_VILLAGER_YES";}
-        else if(k.equals("debate")){title="&6&lДебаты"; subtitle="&fСравните программы, задайте вопросы"; chat="&6&lДебаты &8» &fОткройте заявки кандидатов и сравните программы перед голосованием."; snd="ENTITY_VILLAGER_CELEBRATE";}
+        else if(k.equals("debate")){title="&6&l������"; subtitle="&f�������� ���������, ������� �������"; chat="&6&l������ &8� &f�������� ������ ���������� � �������� ��������� ����� ������������."; snd="ENTITY_VILLAGER_CELEBRATE";}
         else if(k.equals("stations-open")){title="&b&lУчастки открыты"; subtitle="&fГолос считается только после опускания бюллетеня"; chat="&b&lЦИК &8» &fУчастки открыты. Выберите кандидата, запечатайте бюллетень и опустите его в участок."; snd="BLOCK_BELL_USE";}
         else if(k.equals("silence")){title="&e&lТихий час"; subtitle="&fАгитация завершена, готовьтесь к финалу"; chat="&6&lЦИК &8» &fОбъявлен тихий час перед закрытием голосования."; snd="BLOCK_AMETHYST_BLOCK_CHIME";}
         else if(k.equals("final-call")){title="&c&lФинальный зов"; subtitle="&fПоследний шанс опустить бюллетень в участок"; chat="&c&lЦИК &8» &fФинальный зов: запечатанные бюллетени нужно опустить в участок до закрытия урн."; snd="BLOCK_NOTE_BLOCK_BELL";}
@@ -3261,19 +3261,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void legacyOpenBankAtms(Player p)throws Exception{
         if(!hasEconomyAdmin(p)){warn(p,"Нет прав на экономику.");return;}
         Menu m=new Menu("bank-atms"); create(m,54,"&e&lБанкоматы AR");
-        btn(m,4,Material.GOLD_BLOCK,"&eРеестр банкоматов",List.of(
+        btn(m,4,Material.GOLD_BLOCK,"&e������ ����������",List.of(
                 "&7Активных: &f"+safeScalar("SELECT COUNT(*) FROM ar_atms WHERE active=1"),
-                "&7Событий: &f"+safeScalar("SELECT COUNT(*) FROM atm_events"),
+                "&7�������: &f"+safeScalar("SELECT COUNT(*) FROM atm_events"),
                 "&8V4_BANK_ATM_GAMEPLAY"
         ),"none");
-        btn(m,10,Material.TARGET,"&aСоздать банкомат по блоку",List.of("&7Смотри на блок в пределах 6 блоков.","&7ПКМ по этому блоку откроет банкомат."),"bank-atm:create-target");
+        btn(m,10,Material.TARGET,"&a������� �������� �� �����",List.of("&7������ �� ���� � �������� 6 ������.","&7��� �� ����� ����� ������� ��������."),"bank-atm:create-target");
         int slot=19;
         for(Map<String,Object> r:query("SELECT id,world,x,y,z,name,active,created_by,created_at FROM ar_atms ORDER BY active DESC,created_at DESC LIMIT 27")){
             String id=s(r.get("id"));
             boolean active=num(r.get("active"))==1;
             btn(m,slot++,active?Material.GOLD_BLOCK:Material.GRAY_CONCRETE,"&e"+first(s(r.get("name")),"AR ATM")+" &8| &f"+shortId(id),List.of(
                     "&7Точка: &f"+s(r.get("world"))+" "+num(r.get("x"))+" "+num(r.get("y"))+" "+num(r.get("z")),
-                    "&7Создал: &f"+first(s(r.get("created_by")),"-"),
+                    "&7������: &f"+first(s(r.get("created_by")),"-"),
                     "&7Активен: &f"+(active?"да":"нет"),
                     "&cShift+ПКМ: отправить в архив"
             ),"bank-atm:delete:"+id);
@@ -3285,7 +3285,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String legacyCreateBankAtmFromTarget(Player p)throws Exception{
         if(!hasEconomyAdmin(p))return"&cНет прав на экономику.";
         Block b=p.getTargetBlockExact(6);
-        if(b==null||b.getType().isAir())return"&cСмотри на твёрдый блок в пределах 6 блоков.";
+        if(b==null||b.getType().isAir())return"&c������ �� ������ ���� � �������� 6 ������.";
         if(scalarLong("SELECT COUNT(*) FROM ar_atms WHERE world=? AND x=? AND y=? AND z=? AND active=1",b.getWorld().getName(),b.getX(),b.getY(),b.getZ())>0)return"&eНа этом блоке уже есть активный банкомат.";
         if(isPollingStationBlock(b))return"&cЭтот блок уже используется как участок ЦИК.";
         String id="atm-"+UUID.randomUUID();
@@ -3324,9 +3324,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,10,Material.DIAMOND_ORE,"&aВнести предмет из руки",List.of("&7Внесёт сертифицированный AR из основной руки.","&7PIN не требуется."),"bank:deposit-hand:"+atmId);
         btn(m,12,Material.CHEST,"&aВнести весь AR",List.of("&7Внесёт весь сертифицированный AR из инвентаря.","&7Эндер-сундук не трогается."),"bank:deposit-all:"+atmId);
         btn(m,14,Material.PLAYER_HEAD,"&bПеревести игроку",List.of("&7Используется банковский ledger, как на сайте.","&7Потребуется PIN банка."),"bank:transfer-targets:"+atmId);
-        btn(m,28,Material.EMERALD,"&eСнять 1 AR",List.of("&7Потребуется PIN банка."),"bank:withdraw-pin:"+atmId+":1");
-        btn(m,30,Material.EMERALD_BLOCK,"&eСнять 16 AR",List.of("&7Потребуется PIN банка."),"bank:withdraw-pin:"+atmId+":16");
-        btn(m,32,Material.DIAMOND_ORE,"&eСнять 64 AR",List.of("&7Потребуется PIN банка."),"bank:withdraw-pin:"+atmId+":64");
+        btn(m,28,Material.EMERALD,"&e����� 1 AR",List.of("&7����������� PIN �����."),"bank:withdraw-pin:"+atmId+":1");
+        btn(m,30,Material.EMERALD_BLOCK,"&e����� 16 AR",List.of("&7����������� PIN �����."),"bank:withdraw-pin:"+atmId+":16");
+        btn(m,32,Material.DIAMOND_ORE,"&e����� 64 AR",List.of("&7����������� PIN �����."),"bank:withdraw-pin:"+atmId+":64");
         btn(m,49,Material.BARRIER,"&cЗакрыть",List.of(),"close");
         btn(m,53,Material.EMERALD,"&aОбновить",List.of(),"open:bank-atm:"+atmId);
         p.openInventory(m.inv);
@@ -3347,7 +3347,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         for(Player target:Bukkit.getOnlinePlayers()){
             String uuid=target.getUniqueId().toString();
             if(target.equals(p)||!seen.add(uuid)||slot>=45)continue;
-            btn(m,slot++,Material.PLAYER_HEAD,"&b"+target.getName(),List.of("&7Сейчас онлайн.","&7UUID: &f"+shortId(uuid)),"bank:transfer-target:"+atmId+":"+uuid);
+            btn(m,slot++,Material.PLAYER_HEAD,"&b"+target.getName(),List.of("&7������ ������.","&7UUID: &f"+shortId(uuid)),"bank:transfer-target:"+atmId+":"+uuid);
         }
         if(slot==10)btn(m,22,Material.BARRIER,"&cПолучатели не найдены",List.of("&7Игрок должен быть онлайн или известен PostgreSQL."),"none");
         btn(m,45,Material.ARROW,"&aНазад",List.of(),"open:bank-atm:"+atmId);
@@ -3358,7 +3358,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void legacyOpenBankTransferAmountsDisabled(Player p,String atmId,String targetUuid)throws Exception{
         if(targetUuid.equals(p.getUniqueId().toString())){warn(p,"Нельзя перевести AR самому себе.");legacyOpenBankAtm(p,atmId);return;}
         String targetName=bankTargetName(targetUuid);
-        Menu m=new Menu("bank-transfer-amount"); create(m,54,"&b&lСумма перевода");
+        Menu m=new Menu("bank-transfer-amount"); create(m,54,"&b&l����� ��������");
         btn(m,4,Material.PLAYER_HEAD,"&b"+first(targetName,targetUuid),List.of("&7UUID получателя: &f"+shortId(targetUuid),"&7Потребуется PIN банка."),"none");
         btn(m,20,Material.EMERALD,"&eПеревести 1 AR",List.of(),"bank:transfer-pin:"+atmId+":"+targetUuid+":1");
         btn(m,22,Material.EMERALD_BLOCK,"&eПеревести 16 AR",List.of(),"bank:transfer-pin:"+atmId+":"+targetUuid+":16");
@@ -3432,7 +3432,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         atmPinSessions.put(p.getUniqueId(),new AtmPinSession(atmId,action,amount,first(pin,""),first(targetUuid,""),first(targetName,"")));
         Menu m=new Menu("atm-pin"); create(m,54,"&e&lВведите PIN");
         String masked="*".repeat(Math.min(8,first(pin,"").length()));
-        String title="TRANSFER".equals(action)?"&bПеревод "+amount+" AR":"&eСнятие "+amount+" AR";
+        String title="TRANSFER".equals(action)?"&b������� "+amount+" AR":"&e������ "+amount+" AR";
         List<String> details="TRANSFER".equals(action)
                 ? List.of("&7Кому: &f"+clipped(first(targetName,targetUuid),30),"&7Код: &f"+masked,"&8Проверяется только хэш банковского PIN")
                 : List.of("&7Код: &f"+masked,"&8Проверяется только хэш банковского PIN");
@@ -3447,7 +3447,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private void legacyHandleAtmPinActionDisabled(Player p,String action)throws Exception{
         AtmPinSession s=atmPinSessions.get(p.getUniqueId());
-        if(s==null){warn(p,"Сессия банкомата истекла.");p.closeInventory();return;}
+        if(s==null){warn(p,"������ ��������� �������.");p.closeInventory();return;}
         String pin=s.pin();
         if(action.startsWith("bankpin:digit:")){
             if(pin.length()<8)pin+=action.substring("bankpin:digit:".length());
@@ -3510,7 +3510,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private String legacyWithdrawBankArDisabled(Player p,String atmId,int amount,String pin)throws Exception{
         final int withdrawAmount=Math.max(1,Math.min(64,amount));
-        if(p.getInventory().firstEmpty()<0)return"&cСначала освободи один слот в инвентаре.";
+        if(p.getInventory().firstEmpty()<0)return"&c������� �������� ���� ���� � ���������.";
         long locked=bankPinLockedSeconds(p);
         if(locked>0)return"&cPIN временно заблокирован. Повтори через &e"+locked+"&c сек.";
         if(bankPinMustChange(p))return"&cВременный PIN нужно сменить на сайте перед снятием.";
@@ -3537,7 +3537,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         p.updateInventory();
         recordArTransaction("AR_BANK_WITHDRAW",out,p,"BANK","CopiMine Bank",p,loc,"atm="+atmId);
         legacySyncAr(p);
-        return"&aСнято &e"+withdrawAmount+"&a AR. Баланс: &e"+after;
+        return"&a����� &e"+withdrawAmount+"&a AR. ������: &e"+after;
     }
 
     private boolean verifyBankPin(Player p,String pin)throws Exception{
@@ -3636,7 +3636,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(it==null||miner==null)return;
         setArOwnerMeta(it,miner.getUniqueId().toString(),miner.getName(),source.name());
         ensureArAsset(it,miner,"mined:"+source.name(),miner.getLocation());
-        recordArTransaction("AR_CERTIFIED",it,miner,"","",miner,miner.getLocation(),"Сертифицированный АР создан добычей. Алмаз из него можно получить только переплавкой.");
+        recordArTransaction("AR_CERTIFIED",it,miner,"","",miner,miner.getLocation(),"����������������� �� ������ �������. ����� �� ���� ����� �������� ������ �����������.");
     }
     private boolean isOfficialAr(ItemStack it){if(it==null||!arMaterial(it.getType()))return false; ItemMeta meta=it.getItemMeta(); if(meta==null)return false; return "certified".equals(meta.getPersistentDataContainer().get(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING));}
     private boolean isLegacyArItem(ItemStack it){if(it==null||!arMaterial(it.getType()))return false; ItemMeta meta=it.getItemMeta(); if(meta==null)return false; StringBuilder sb=new StringBuilder(); if(meta.hasDisplayName())sb.append(ChatColor.stripColor(meta.getDisplayName())).append(" "); if(meta.hasLore()&&meta.getLore()!=null)for(String l:meta.getLore())sb.append(ChatColor.stripColor(l)).append(" "); String t=sb.toString().toLowerCase(Locale.ROOT); return t.contains("сертифицирован")||t.contains("copimine")||t.matches(".*(^|\\s)ар(\\s|$|\\().*");}
@@ -3654,13 +3654,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         ItemMeta meta=it==null?null:it.getItemMeta(); if(meta==null)return;
         String batch=ensureArStackBatch(meta);
         int amount=Math.max(1,it.getAmount());
-        meta.setDisplayName(c("&b&lАР &8| &fсертифицированная руда"));
+        meta.setDisplayName(c("&b&l�� &8| &f����������������� ����"));
         // AR_STACK_BATCH_LABEL / AR_STACK_VISIBLE_ID / AR_STACK_UNIQUE_COUNT
         meta.setLore(List.of(
                 c("&7Владелец: &f"+first(ownerName,"неизвестно")),
                 c("&7Партия: &f"+shortId(batch)),
                 c("&7AR-ID: &f"+shortId(batch)+" &8x&f"+amount),
-                c("&7Уникальных АР в стаке: &f"+amount),
+                c("&7���������� �� � �����: &f"+amount),
                 c("&7Передача: &fвыбросить и дать подобрать"),
                 c("&7Алмаз: &fтолько через переплавку"),
                 c("&8Не горит, не despawn, не ставится, не идет в механизмы")
@@ -3695,7 +3695,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String oldName=first(arString(st,"owner_name"),owner.getName());
         ArDropClaim claim=new ArDropClaim(UUID.randomUUID().toString(),oldUuid,oldName,Math.max(1,st.getAmount()),now(),item.getLocation());
         arTransferClaims.put(item.getUniqueId(),claim);
-        recordArTransaction("AR_TRANSFER_DROP_CLAIM",st,owner,oldUuid,oldName,null,item.getLocation(),"АР помечен как передаваемый через выброс и pickup; claim="+shortId(claim.claimId()));
+        recordArTransaction("AR_TRANSFER_DROP_CLAIM",st,owner,oldUuid,oldName,null,item.getLocation(),"�� ������� ��� ������������ ����� ������ � pickup; claim="+shortId(claim.claimId()));
         Bukkit.getScheduler().runTaskLater(this,()->arTransferClaims.remove(item.getUniqueId()),20L*300L);
     }
 
@@ -3729,11 +3729,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(legacy)ensureArAsset(updated,newOwner,"legacy:"+reason,item.getLocation());
         else if(!newUuid.equals(oldUuid))transferArAssets(oldUuid,oldName,newOwner,updated.getAmount(),item.getLocation(),reason,batch,updated.getType());
         if(!newUuid.equals(oldUuid)){
-            recordArTransaction("AR_TRANSFER_PICKUP",updated,newOwner,oldUuid,oldName,newOwner,item.getLocation(),"Владелец АР переписан при pickup после выбрасывания");
+            recordArTransaction("AR_TRANSFER_PICKUP",updated,newOwner,oldUuid,oldName,newOwner,item.getLocation(),"�������� �� ��������� ��� pickup ����� ������������");
             recordArTransaction("AR_TRANSFER_CLAIMED",updated,newOwner,oldUuid,oldName,newOwner,item.getLocation(),"Передача подтверждена pickup; claim="+(claim==null?"none":shortId(claim.claimId())));
-            msg(newOwner,"&aАР записан на тебя. &7Количество: &f"+updated.getAmount()+" &8| &7старый владелец: &f"+oldName);
+            msg(newOwner,"&a�� ������� �� ����. &7����������: &f"+updated.getAmount()+" &8| &7������ ��������: &f"+oldName);
             Player old=onlineByUuid(oldUuid);
-            if(old!=null&&old.isOnline())msg(old,"&eАР передан игроку &f"+newOwner.getName()+"&e. Количество: &f"+updated.getAmount());
+            if(old!=null&&old.isOnline())msg(old,"&e�� ������� ������ &f"+newOwner.getName()+"&e. ����������: &f"+updated.getAmount());
             sound(newOwner,"ENTITY_EXPERIENCE_ORB_PICKUP",0.55f,1.35f);
         }
     }
@@ -4041,7 +4041,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                                                 now(),actor.getName(),world.getName(),centerChunkX,centerChunkZ,clampedRadius,chunks.size(),placedBlocks,items,containers,"loaded-safe");
                                         return true;
                                     },
-                                    ignored->msg(actor,"&aСкан завершён. Отслеживаемые AR-блоки: &e"+placedBlocks+"&a, предметы: &e"+items+"&a, контейнеры: &e"+containers),
+                                    ignored->msg(actor,"&a���� ��������. ������������� AR-�����: &e"+placedBlocks+"&a, ��������: &e"+items+"&a, ����������: &e"+containers),
                                     error->warn(actor,"Не удалось сохранить отчёт сканирования. Подробности записаны в лог."));
                         }
                     }
@@ -4050,14 +4050,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 },
                 error->warn(actor,"Не удалось подготовить безопасный scan. Подробности записаны в лог."));
     }
-    private void startCheck(Player admin,Player t)throws Exception{checkReturn.putIfAbsent(t.getUniqueId(),t.getLocation()); checkMode.put(t.getUniqueId(),admin.getUniqueId()); frozen.add(t.getUniqueId()); t.teleport(admin.getLocation()); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(); dbAsync("player check start",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'START',1,?)",time,adminUuid,adminName,targetUuid,targetName,"Проверка")); t.sendTitle(c("&c&lПРОВЕРКА"),c("&fСтой на месте и отвечай администрации"),10,100,20); msg(t,"&cТы вызван на проверку. Voice-chat не блокируется."); staffNotify("&6Игрок вызван на проверку: &e"+t.getName()+" &7админом &f"+admin.getName());}
+    private void startCheck(Player admin,Player t)throws Exception{checkReturn.putIfAbsent(t.getUniqueId(),t.getLocation()); checkMode.put(t.getUniqueId(),admin.getUniqueId()); frozen.add(t.getUniqueId()); t.teleport(admin.getLocation()); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(); dbAsync("player check start",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'START',1,?)",time,adminUuid,adminName,targetUuid,targetName,"��������")); t.sendTitle(c("&c&l��������"),c("&f���� �� ����� � ������� �������������"),10,100,20); msg(t,"&c�� ������ �� ��������. Voice-chat �� �����������."); staffNotify("&6����� ������ �� ��������: &e"+t.getName()+" &7������� &f"+admin.getName());}
     private void stopCheck(Player admin,Player t,boolean back)throws Exception{checkMode.remove(t.getUniqueId()); frozen.remove(t.getUniqueId()); Location loc=checkReturn.remove(t.getUniqueId()); if(back&&loc!=null)t.teleport(loc); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(), details=back?"return":"no return"; dbAsync("player check stop",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'STOP',0,?)",time,adminUuid,adminName,targetUuid,targetName,details)); msg(t,"&aПроверка завершена."); staffNotify("&aПроверка завершена: &e"+t.getName()+" &7админом &f"+admin.getName());}
     private void toggleFreeze(Player a,Player t){ if(frozen.remove(t.getUniqueId())){staffNotify("&bFreeze снят: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&aТы разморожен.");}else{frozen.add(t.getUniqueId()); staffNotify("&cFreeze включён: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&cТы заморожен.");}}
     private void repairHand(Player a,Player t){ItemStack it=t.getInventory().getItemInMainHand(); if(it==null||it.getType()==Material.AIR)return; ItemMeta im=it.getItemMeta(); if(im instanceof org.bukkit.inventory.meta.Damageable d){d.setDamage(0); it.setItemMeta((ItemMeta)d);}}
     private void armorOff(Player a,Player t){PlayerInventory inv=t.getInventory(); ItemStack[] armor=inv.getArmorContents(); for(ItemStack it:armor) if(it!=null&&it.getType()!=Material.AIR) inv.addItem(it).values().forEach(left->t.getWorld().dropItemNaturally(t.getLocation(),left)); inv.setArmorContents(null);}
     private void shuffleHotbar(Player t){List<ItemStack> h=new ArrayList<>(); for(int i=0;i<9;i++)h.add(t.getInventory().getItem(i)); Collections.shuffle(h); for(int i=0;i<9;i++)t.getInventory().setItem(i,h.get(i)); t.updateInventory();}
     private void randomTpNear(Player t){Location base=t.getLocation(); double a=rnd.nextDouble()*Math.PI*2, d=12+rnd.nextDouble()*28; Location loc=base.clone().add(Math.cos(a)*d,0,Math.sin(a)*d); World w=loc.getWorld(); if(w!=null)loc.setY(Math.max(w.getMinHeight()+2,w.getHighestBlockYAt(loc)+1)); t.teleport(loc); sound(t,"ITEM_CHORUS_FRUIT_TELEPORT",1f,1f);}
-    private void nearbyReport(Player admin,Player t){List<String> names=new ArrayList<>(); for(Player p:Bukkit.getOnlinePlayers())if(!p.equals(t)&&p.getWorld().equals(t.getWorld())&&p.getLocation().distanceSquared(t.getLocation())<=48*48)names.add(p.getName()+" "+Math.round(p.getLocation().distance(t.getLocation()))+"м"); msg(admin,"&bРядом с &f"+t.getName()+"&b: &f"+(names.isEmpty()?"никого в 48м":String.join(", ",names)));}
+    private void nearbyReport(Player admin,Player t){List<String> names=new ArrayList<>(); for(Player p:Bukkit.getOnlinePlayers())if(!p.equals(t)&&p.getWorld().equals(t.getWorld())&&p.getLocation().distanceSquared(t.getLocation())<=48*48)names.add(p.getName()+" "+Math.round(p.getLocation().distance(t.getLocation()))+"�"); msg(admin,"&b����� � &f"+t.getName()+"&b: &f"+(names.isEmpty()?"������ � 48�":String.join(", ",names)));}
     private void spin(Player t){for(int i=1;i<=12;i++)Bukkit.getScheduler().runTaskLater(this,()->{if(!t.isOnline())return; Location l=t.getLocation(); l.setYaw(l.getYaw()+75f); t.teleport(l);},i*2L);}
     private void chickens(Player t){for(int i=0;i<8;i++)t.getWorld().spawnEntity(t.getLocation().clone().add(rnd.nextDouble()*4-2,1.2,rnd.nextDouble()*4-2), EntityType.CHICKEN);}
     private void giveTaxPaper(Player t){ItemStack p=new ItemStack(Material.PAPER); ItemMeta m=p.getItemMeta(); if(m!=null){m.setDisplayName(c("&f&lНалоговая повестка")); m.setLore(List.of(c("&7Явиться в администрацию."))); p.setItemMeta(m);} t.getInventory().addItem(p);}
@@ -4080,7 +4080,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         BookMeta bm=(BookMeta)book.getItemMeta();
         if(bm!=null){
             bm.setTitle(clipped("Заявка "+candidate,32));
-            bm.setAuthor("ЦИК CopiMine");
+            bm.setAuthor("Р¦РРљ CopiMine");
             bm.setDisplayName(c("&e&lЗаявка кандидата: &f"+clipped(candidate,24)));
             bm.setLore(List.of(c("&7Публичная заявка кандидата."),c("&7После закрытия она пропадет из инвентаря."),c("&8Только для просмотра.")));
             bm.setPages(applicationBookPages(candidate,eid,status,statement));
@@ -4119,7 +4119,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String candidateGuidePage=c("&6Памятка кандидата\n\n&0Игрок: "+player+"\nЦикл: "+shortId(eid)+"\nКнига: "+shortId(issueId)+"\n\nЗаполни честно. После подписи книга уйдет в ЦИК и исчезнет.");
         String campaignProgramPage=c("&6Программа\n\n&0Опиши главную идею кампании.\n\nЧто изменишь на сервере?\nПочему это полезно игрокам?\nКак это будет выглядеть в RP?");
         String first24HoursPage=c("&6Первые 24 часа\n\n&0Что ты сделаешь сразу после победы?\n\n1.\n2.\n3.\n\nПиши конкретно, без общих обещаний.");
-        String economyRulesPage=c("&6Экономика и правила\n\n&0Как ты будешь относиться к АР, торговле и спорным ситуациям?\n\nНельзя обещать дюп, раздачи или лом экономики.");
+        String economyRulesPage=c("&6��������� � �������\n\n&0��� �� ������ ���������� � ��, �������� � ������� ���������?\n\n������ ������� ���, ������� ��� ��� ���������.");
         String teamRisksPage=c("&6Команда и риски\n\n&0Кто поможет тебе?\nКакие риски ты видишь?\nКак ты будешь решать конфликты с игроками и ЦИК?");
         String finalConsentPage=c("&6Финал\n\n&0Подтверди:\n- понимаю правила выборов;\n- не подделываю голоса;\n- уважаю решение ЦИК.\n\nПодпиши книгу своим ником.");
         return List.of(candidateGuidePage,campaignProgramPage,first24HoursPage,economyRulesPage,teamRisksPage,finalConsentPage);
@@ -4210,7 +4210,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(hasCitizenVote(t,eid))return"голос принят";
         if(hasOwnedSealedBallot(t,eid))return"запечатан";
         if(hasCitizenBallot(t,eid))return"выдан";
-        return"нет";
+        return"РЅРµС‚";
     }
     private String cleanPage(List<String> pages,int i){if(i>=pages.size())return""; return ChatColor.stripColor(pages.get(i)).replace("Почему ты хочешь стать кандидатом?","").replace("Что ты сделаешь для сервера?","").replace("Почему игроки должны выбрать тебя?","").replace("Напиши ответ ниже:","").trim();}
     private void effect(Player t,int sec,int amp,String...names){PotionEffectType type=null; for(String n:names){type=PotionEffectType.getByName(n); if(type!=null)break;} if(type!=null)t.addPotionEffect(new PotionEffect(type,sec*20,amp));}
@@ -4551,7 +4551,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!(sender instanceof Player p)){warn(sender,"Only an in-game player can create a report.");return;}
         if(args.length==0){warn(p,"Напиши текст обращения: /report <проблема>");return;}
         String text=String.join(" ",args).trim();
-        if(text.length()<3){warn(p,"Слишком короткое обращение.");return;}
+        if(text.length()<3){warn(p,"������� �������� ���������.");return;}
         String id=UUID.randomUUID().toString();
         long n=now();
         Location l=p.getLocation();
@@ -4565,7 +4565,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean handleOldVoteOff(CommandSender sender,String[] args)throws Exception{
         if(args.length==0||args[0].equalsIgnoreCase("status")){
             msg(sender,"&6Clean AdminPlus CIK core: &aактивен");
-            msg(sender,"&7Старый ElectionService/SidebarService: &cубраны");
+            msg(sender,"&7Legacy ElectionService/SidebarService: &cотключен");
             msg(sender,"&7Новые выборы: &a/cmultra -> Выборы");
             msg(sender,"&7Активных выборов: &f"+safeScalar("SELECT COUNT(*) FROM elections WHERE status IN ("+liveElectionStatusSql()+")"));
             msg(sender,"&7Всего выборов: &f"+safeScalar("SELECT COUNT(*) FROM elections"));
@@ -4574,8 +4574,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         if(!hasAnyAdmin(sender)){warn(sender,"Нет прав.");return true;}
         switch(args[0].toLowerCase(Locale.ROOT)){
-            case "reset" -> {int n=0; for(Player p:Bukkit.getOnlinePlayers())if(removeOldElectionSidebar(p,true))n++; msg(sender,"&aСтарый sidebar удалён у игроков: &e"+n);}
-            case "cleanglow" -> {int n=0; for(Player p:Bukkit.getOnlinePlayers())if(p.hasPotionEffect(PotionEffectType.GLOWING)){p.removePotionEffect(PotionEffectType.GLOWING);n++;} msg(sender,"&aСвечение снято у игроков: &e"+n);}
+            case "reset" -> {int n=0; for(Player p:Bukkit.getOnlinePlayers())if(removeOldElectionSidebar(p,true))n++; msg(sender,"&aСтарый sidebar очищен у игроков: &e"+n);}
+            case "cleanglow" -> {int n=0; for(Player p:Bukkit.getOnlinePlayers())if(p.hasPotionEffect(PotionEffectType.GLOWING)){p.removePotionEffect(PotionEffectType.GLOWING);n++;} msg(sender,"&aЭффект glowing очищен у игроков: &e"+n);}
             case "unlock" -> hardUnlockOldVotes(sender);
             case "open" -> {if(sender instanceof Player p)openElections(p); else msg(sender,"Only in game.");}
             default -> {msg(sender,"&6/oldvoteoff status"); msg(sender,"&6/oldvoteoff reset"); msg(sender,"&6/oldvoteoff cleanglow"); msg(sender,"&6/oldvoteoff unlock");}
@@ -4594,7 +4594,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         int ballots=safeExec("UPDATE cmv7_ballot_issues SET used=1,notes=COALESCE(notes,'') || ?"," | INVALIDATED_BY_ADMINPLUS_"+n);
         int sidebars=0; for(Player p:Bukkit.getOnlinePlayers())if(removeOldElectionSidebar(p,true))sidebars++;
         audit(sender.getName(),"ADMINPLUS_OLD_VOTE_UNLOCK","elections="+elections+" settings="+(s7+s9+sp)+" sessions="+sessions+" ballots="+ballots,true);
-        msg(sender,"&4Разблокировка выполнена.");
+        msg(sender,"&4������������� ���������.");
         msg(sender,"&7elections закрыто: &e"+elections);
         msg(sender,"&7settings удалено: &e"+(s7+s9+sp));
         msg(sender,"&7sessions удалено: &e"+sessions+"&7, бюллетени инвалидированы: &e"+ballots);
@@ -4615,14 +4615,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 String line=cleanText(entry);
                 if(line.contains("состояние: идут")||line.contains("голоса обновляются")||line.contains("следи за выборами")||line.contains("кандидаты скоро появятся")){old=true;break;}
             }
-            if(old){obj.unregister(); if(notify)msg(p,"&aСтарый sidebar выборов удалён."); return true;}
+            if(old){obj.unregister(); if(notify)msg(p,"&a������ sidebar ������� �����."); return true;}
         }catch(Throwable ignored){}
         return false;
     }
 
     private String latestWinnerName(){
         try{List<Map<String,Object>> r=query("SELECT winner_name FROM elections WHERE COALESCE(winner_name,'')<>'' ORDER BY COALESCE(ended_at,0) DESC,COALESCE(started_at,0) DESC LIMIT 1"); return r.isEmpty()?"нет":first(s(r.get(0).get("winner_name")),"нет");}
-        catch(Throwable ignored){return"нет";}
+        catch(Throwable ignored){return"РЅРµС‚";}
     }
 
     private String safeWinnerName(String eid){
@@ -4680,7 +4680,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(hasAdmin(p))return"&c[Админ] ";
             if(isPresident(p))return"&6[Президент] ";
             if(isChair(p))return"&b[Пред. ЦИК] ";
-            if(isCurator(p))return"&3[ЦИК] ";
+            if(isCurator(p))return"&3[Р¦РРљ] ";
         }catch(Throwable ignored){}
         return"";
     }
@@ -4689,7 +4689,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(prefix.contains("Админ"))return"cmu_admin";
         if(prefix.contains("Президент"))return"cmu_president";
         if(prefix.contains("Пред. ЦИК"))return"cmu_chair";
-        if(prefix.contains("[ЦИК]"))return"cmu_cik";
+        if(prefix.contains("[Р¦РРљ]"))return"cmu_cik";
         return"cmu_player";
     }
     private void applyAllRoleScoreboardTeams(Scoreboard board){if(board==null)return; for(Player p:Bukkit.getOnlinePlayers())applyRoleScoreboardTeam(p,board);}
@@ -5077,7 +5077,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String s(Object o){return o==null?"":String.valueOf(o);}
     private long num(Object o){if(o==null)return 0; if(o instanceof Number n)return n.longValue(); try{return Long.parseLong(String.valueOf(o));}catch(Exception e){return 0;}}
     private String first(String...v){for(String x:v)if(x!=null&&!x.isBlank())return x; return "";}
-    private String shortId(String id){return id==null||id.isBlank()?"нет":id.length()<=12?id:id.substring(0,12);}
+    private String shortId(String id){return id==null||id.isBlank()?"РЅРµС‚":id.length()<=12?id:id.substring(0,12);}
     private String clipped(String x,int m){return x==null?"":x.length()<=m?x:x.substring(0,Math.max(0,m-1))+"…";}
     private String c(String s){return ChatColor.translateAlternateColorCodes('&',s==null?"":s);}
     private void msg(CommandSender s,String t){s.sendMessage(c("&2&lCopiMine Ultra7 &8| &f"+t));}
@@ -5111,7 +5111,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(lore!=null)out.addAll(lore);
         String hint=actionHint(a);
         if(!hint.isBlank()){
-            if(!out.isEmpty())out.add("&8Служебный раздел");
+            if(!out.isEmpty())out.add("&8��������� ������");
             out.add("&7"+hint);
         }
         return out;
@@ -5143,9 +5143,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(m==null||m.inv==null||m.inv.getSize()<54)return;
         btnIfNoAction(m,46,Material.COMPASS,"&2Карта админки",List.of("&8BIG_ADMIN_NAV_RAIL","&7Все большие подгруппы в одной схеме."),"open:admin-map");
         btnIfNoAction(m,47,Material.TARGET,"&aГотовность запуска",List.of("&8BIG_ADMIN_NAV_RAIL","&7Проверка после замены папки на сервере."),"open:startup-readiness");
-        btnIfNoAction(m,48,Material.ENDER_CHEST,"&aБД и оптимизация",List.of("&8BIG_ADMIN_NAV_RAIL","&7Состояние базы и безопасная оптимизация."),"open:db-health");
+        btnIfNoAction(m,48,Material.ENDER_CHEST,"&a�� � �����������",List.of("&8BIG_ADMIN_NAV_RAIL","&7��������� ���� � ���������� �����������."),"open:db-health");
         btnIfNoAction(m,50,Material.GOLDEN_HELMET,"&6Выборы",List.of("&8BIG_ADMIN_NAV_RAIL","&7Цикл, ЦИК, участки, аудит и RP."),"open:elections");
-        btnIfNoAction(m,51,Material.DIAMOND_ORE,"&bЭкономика",List.of("&8BIG_ADMIN_NAV_RAIL","&7АР, ledger, custody и защита."),"open:economy");
+        btnIfNoAction(m,51,Material.DIAMOND_ORE,"&b���������",List.of("&8BIG_ADMIN_NAV_RAIL","&7��, ledger, custody � ������."),"open:economy");
         btnIfNoAction(m,52,Material.PLAYER_HEAD,"&eИгроки",List.of("&8BIG_ADMIN_NAV_RAIL","&7Профили, проверки, приколы и массовые действия."),"open:players");
     }
     private void nav(Menu m,String back,String refresh){

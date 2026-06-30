@@ -42,6 +42,10 @@ public final class NarcoticsRecipeService {
         return ingredientEntry(stack) != null;
     }
 
+    public boolean canEnterCauldron(ItemStack stack) {
+        return cauldronIngredientEntry(stack) != null;
+    }
+
     public String ingredientKey(ItemStack stack) {
         IngredientEntry entry = ingredientEntry(stack);
         return entry == null ? null : entry.recipeKey();
@@ -64,6 +68,23 @@ public final class NarcoticsRecipeService {
         return recognizedIngredients.contains(materialKey)
                 ? new IngredientEntry(materialKey, stack.getType().name(), "", "", 1)
                 : null;
+    }
+
+    public IngredientEntry cauldronIngredientEntry(ItemStack stack) {
+        if (stack == null || stack.getType() == Material.AIR) {
+            return null;
+        }
+        if (itemFactory != null && itemFactory.isOfficialFinishedItem(stack)) {
+            return null;
+        }
+        IngredientEntry recognized = ingredientEntry(stack);
+        if (recognized != null) {
+            return recognized;
+        }
+        if (isPotion(stack)) {
+            return createPotionEntry(stack, genericPotionKey(stack));
+        }
+        return new IngredientEntry("MATERIAL:" + stack.getType().name(), stack.getType().name(), "", "", 1);
     }
 
     public NarcoticDefinition matchExact(List<IngredientEntry> ingredientEntries) {
@@ -144,6 +165,27 @@ public final class NarcoticsRecipeService {
         }
         String key = "POTION:" + type.getName().toUpperCase(Locale.ROOT);
         return recognizedIngredients.contains(key) ? key : null;
+    }
+
+    private String genericPotionKey(ItemStack stack) {
+        if (!(stack.getItemMeta() instanceof PotionMeta meta)) {
+            return "MATERIAL:" + stack.getType().name();
+        }
+        if (meta.hasCustomEffects()) {
+            for (var effect : meta.getCustomEffects()) {
+                if (effect.getType().getName() != null) {
+                    return "POTION:" + effect.getType().getName().toUpperCase(Locale.ROOT);
+                }
+            }
+        }
+        PotionType base = meta.getBasePotionType();
+        if (base != null && !base.getPotionEffects().isEmpty()) {
+            PotionEffectType type = base.getPotionEffects().get(0).getType();
+            if (type != null && type.getName() != null) {
+                return "POTION:" + type.getName().toUpperCase(Locale.ROOT);
+            }
+        }
+        return "MATERIAL:" + stack.getType().name();
     }
 
     private IngredientEntry createPotionEntry(ItemStack stack, String recipeKey) {

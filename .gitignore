@@ -90,3 +90,16 @@ minecraft/server/**
 !minecraft/server/config/
 !minecraft/server/config/paper-global.yml
 !minecraft/server/config/paper-world-defaults.yml
+!minecraft/server/plugins/
+!minecraft/server/plugins/AuthEffects.jar
+!minecraft/server/plugins/AuthEffects/
+!minecraft/server/plugins/AuthEffects/src/
+!minecraft/server/plugins/AuthEffects/src/main/
+!minecraft/server/plugins/AuthEffects/src/main/java/
+!minecraft/server/plugins/AuthEffects/src/main/java/me/
+!minecraft/server/plugins/AuthEffects/src/main/java/me/serverrp/
+!minecraft/server/plugins/AuthEffects/src/main/java/me/serverrp/autheffects/
+!minecraft/server/plugins/AuthEffects/src/main/java/me/serverrp/autheffects/AuthEffectsPlugin.java
+!minecraft/server/plugins/AuthEffects/src/main/resources/
+!minecraft/server/plugins/AuthEffects/src/main/resources/plugin.yml
+!minecraft/server/plugins/AuthEffects/pom.xml

@@ -6,6 +6,7 @@ $serverDir = Join-Path $releaseRoot 'minecraft\server'
 $srcRoot = Join-Path $pluginDir 'src'
 $classes = Join-Path $pluginDir 'build\classes'
 $jar = Join-Path $pluginDir 'CopiMineEconomyCore.jar'
+$tempJar = Join-Path $pluginDir 'build\CopiMineEconomyCore.jar'
 $serverJar = Join-Path $serverDir 'plugins\CopiMineEconomyCore.jar'
 
 $paperApi = $env:PAPER_API_JAR
@@ -35,11 +36,12 @@ if ($LASTEXITCODE -ne 0) {
   throw "javac failed for CopiMineEconomyCore with exit code $LASTEXITCODE."
 }
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force
-Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
-jar --create --file $jar -C $classes .
+Remove-Item -LiteralPath $tempJar -Force -ErrorAction SilentlyContinue
+jar --create --file $tempJar -C $classes .
 if ($LASTEXITCODE -ne 0) {
   throw "jar packaging failed for CopiMineEconomyCore with exit code $LASTEXITCODE."
 }
+Copy-Item -LiteralPath $tempJar -Destination $jar -Force
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 Write-Host "Built $jar"
 Write-Host "Copied $serverJar"

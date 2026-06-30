@@ -104,6 +104,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
         }
         Bukkit.getPluginManager().registerEvents(this, this);
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (cauldronService != null) {
+                cauldronService.runIntegritySweep();
+            }
+        }, 100L, 100L);
         getLogger().info("CopiMineNarcotics with optional CopiMineClient bridge enabled.");
     }
 
@@ -133,7 +138,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             boolean brewingAttempt = event.getAction() == Action.RIGHT_CLICK_BLOCK
                     && event.getClickedBlock() != null
                     && cauldronService.isSupportedCauldron(event.getClickedBlock())
-                    && recipeService.isRecognizedIngredient(inHand);
+                    && recipeService.canEnterCauldron(inHand);
             if (official != null || brewingAttempt) {
                 event.setCancelled(true);
                 player.sendMessage(ChatColor.YELLOW + "Наркотики временно недоступны: идёт сброс состояния.");
@@ -169,17 +174,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         Block block = event.getClickedBlock();
         if ((block.getType() == Material.CAULDRON || block.getType() == Material.WATER_CAULDRON) && !cauldronService.isSupportedCauldron(block)) {
-            if (recipeService.isRecognizedIngredient(inHand)) {
-                event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
-                event.setCancelled(true);
-                player.sendMessage(ChatColor.YELLOW + "Для варки нужен полный котёл воды.");
-            }
             return;
         }
         if (!cauldronService.isSupportedCauldron(block)) {
             return;
         }
-        if (!recipeService.isRecognizedIngredient(inHand)) {
+        if (!recipeService.canEnterCauldron(inHand)) {
             return;
         }
         if (cauldronService.tryAddIngredient(player, block, inHand)) {
@@ -191,7 +191,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler(ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
-        cauldronService.handleCauldronBroken(event.getBlock(), event.getPlayer().getLocation());
+        Block block = event.getBlock();
+        cauldronService.handleCauldronBroken(block, event.getPlayer().getLocation());
+        if (block.getType() == Material.FIRE || block.getType() == Material.SOUL_FIRE || block.getType() == Material.NETHERRACK) {
+            cauldronService.handleRigSupportBroken(block);
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -1101,4 +1105,3 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return out;
     }
 }
-

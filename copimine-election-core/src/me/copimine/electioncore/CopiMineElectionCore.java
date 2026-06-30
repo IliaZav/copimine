@@ -174,7 +174,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             ensureSchema();
             reloadProtectedBlocks();
         } catch (Exception error) {
-            getLogger().severe("РќРµ СѓРґР°Р»РѕСЃСЊ РІРєР»СЋС‡РёС‚СЊ CopiMineElectionCore: " + safeError(error));
+            getLogger().severe("Не удалось включить CopiMineElectionCore: " + safeError(error));
             Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
@@ -211,19 +211,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return false;
         }
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(color("&cРљРѕРјР°РЅРґР° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РІ РёРіСЂРµ."));
+            sender.sendMessage(color("&cКоманда доступна только в игре."));
             return true;
         }
         if (liveHidden.contains(player.getUniqueId())) {
             liveHidden.remove(player.getUniqueId());
             saveHiddenPlayers();
             renderSidebar(player, snapshot.get());
-            player.sendMessage(color("&aLive-РїР°РЅРµР»СЊ СЃРЅРѕРІР° РїРѕРєР°Р·Р°РЅР° С‚РѕР»СЊРєРѕ С‚РµР±Рµ."));
+            player.sendMessage(color("&aLive-панель снова показана только тебе."));
         } else {
             liveHidden.add(player.getUniqueId());
             saveHiddenPlayers();
             clearSidebar(player);
-            player.sendMessage(color("&eLive-РїР°РЅРµР»СЊ СЃРєСЂС‹С‚Р° С‚РѕР»СЊРєРѕ Сѓ С‚РµР±СЏ."));
+            player.sendMessage(color("&eLive-панель скрыта только у тебя."));
         }
         return true;
     }
@@ -257,12 +257,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         String root = message.substring(1).split("\\s+")[0].toLowerCase(Locale.ROOT);
-        if (Set.of("cadm", "adminhub", "copimine", "cadmin", "cpanel", "cpadmin", "cpa", "Р°РґРјРёРЅРєР°", "РєРјР°РґРјРёРЅ").contains(root) && hasElectionAdmin(event.getPlayer())) {
+        if (Set.of("cadm", "adminhub", "copimine", "cadmin", "cpanel", "cpadmin", "cpa", "админка", "кмадмин").contains(root) && hasElectionAdmin(event.getPlayer())) {
             return;
         }
         if (Set.of("cmeflow", "cmpres", "cmstations", "cmseal", "cmballotadmin", "cmvote", "voteadmin").contains(root)) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(color("&cРЎС‚Р°СЂС‹Р№ РјР°СЂС€СЂСѓС‚ Р±РѕР»СЊС€Рµ РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ."));
+            event.getPlayer().sendMessage(color("&cСтарые команды выборов больше не используются."));
         }
     }
 
@@ -282,7 +282,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (isPresidentMandate(item)) {
                 event.setCancelled(true);
                 if (!isPresident(player) && !hasElectionAdmin(player)) {
-                    player.sendMessage(color("&cРњР°РЅРґР°С‚ РїСЂРµР·РёРґРµРЅС‚Р° РґРѕСЃС‚СѓРїРµРЅ РґРµР№СЃС‚РІСѓСЋС‰РµРјСѓ РїСЂРµР·РёРґРµРЅС‚Сѓ."));
+                    player.sendMessage(color("&cМандат президента доступен действующему президенту."));
                     return;
                 }
                 openPresidentMandateMenu(player);
@@ -316,16 +316,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             Map<String, Object> station = stationById(protectedInfo.linkedId());
             if (station == null) {
-                player.sendMessage(color("&cРЈС‡Р°СЃС‚РѕРє Р±РѕР»СЊС€Рµ РЅРµ РЅР°Р№РґРµРЅ."));
+                player.sendMessage(color("&cУчасток больше не найден."));
                 return;
             }
             if (isChairForStation(player, station)) {
                 openChairStationMenu(player, protectedInfo.linkedId(), 0);
                 return;
             }
-            player.sendMessage(color("&eРЈС‡Р°СЃС‚РѕРє Р¦РРљ. Р­С‚Р°Рї: &f" + snapshot.get().stageTitle()));
+            player.sendMessage(color("&eУчасток ЦИК. Этап: &f" + snapshot.get().stageTitle()));
         } catch (Exception error) {
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РѕР±СЂР°Р±РѕС‚Р°С‚СЊ СѓС‡Р°СЃС‚РѕРє. РџРѕРґСЂРѕР±РЅРѕСЃС‚Рё РІ Р»РѕРіРµ."));
+            player.sendMessage(color("&cНе удалось обработать участок. Подробности в логе."));
             getLogger().warning("station interact: " + safeError(error));
         }
     }
@@ -344,20 +344,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         event.setCancelled(true);
         if (!hasElectionAdmin(player) && !isChair(player)) {
-            player.sendMessage(color("&cРџРµС‡Р°С‚СЊ Р¦РРљ РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РїСЂРµРґСЃРµРґР°С‚РµР»СЋ РёР»Рё Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂСѓ."));
+            player.sendMessage(color("&cПечать ЦИК доступна только председателю или администратору."));
             return;
         }
         try {
             SealContext seal = validateSealUsage(player.getInventory().getItemInMainHand(), player);
             if (seal == null) {
                 // Bulk cleanup path still exists for admin revoke flows: removeOfficialItemsFromPlayer(player, "CIK_SEAL")
-                player.sendMessage(color("&cР­С‚Р° РїРµС‡Р°С‚СЊ Р¦РРљ Р±РѕР»СЊС€Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР° Рё Р±С‹Р»Р° СѓРґР°Р»РµРЅР°."));
+                player.sendMessage(color("&cЭта печать ЦИК больше недействительна и была удалена."));
                 removeItemFromMainHandIfType(player, "CIK_SEAL");
                 return;
             }
             openSealTargetMenu(player, target, seal);
         } catch (Exception error) {
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РїРµС‡Р°С‚СЊ Р¦РРљ."));
+            player.sendMessage(color("&cНе удалось проверить печать ЦИК."));
             getLogger().warning("seal interact: " + safeError(error));
         }
     }
@@ -382,7 +382,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             try {
                 handleMenuAction(player, action, event.getClick(), holder);
             } catch (Exception error) {
-                sendUserError(player, error, "&cРќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РґРµР№СЃС‚РІРёРµ. РџРѕРґСЂРѕР±РЅРѕСЃС‚Рё РІ Р»РѕРіРµ.");
+                sendUserError(player, error, "&cНе удалось выполнить действие. Подробности в логе.");
                 getLogger().warning("menu action " + action + ": " + safeError(error));
             }
             return;
@@ -423,7 +423,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             event.setCancelled(true);
             event.getItemDrop().remove();
             destroyOneCikSeal(event.getPlayer(), readString(dropped, sealIdKey));
-            event.getPlayer().sendMessage(color("&eРџРµС‡Р°С‚СЊ Р¦РРљ СѓРЅРёС‡С‚РѕР¶РµРЅР°."));
+            event.getPlayer().sendMessage(color("&eПечать ЦИК уничтожена."));
             return;
         }
         if (isProtectedOfficialItem(dropped)) {
@@ -485,22 +485,22 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         event.setCancelled(true);
         if (!hasElectionAdmin(event.getPlayer())) {
-            event.getPlayer().sendMessage(color("&cР­С‚РѕС‚ РІС‹Р±РѕСЂРЅС‹Р№ Р±Р»РѕРє Р·Р°С‰РёС‰С‘РЅ."));
+            event.getPlayer().sendMessage(color("&cЭтот выборный блок защищён."));
             return;
         }
         ProtectedBlockInfo info = protectedBlockInfo(event.getBlock());
         if (info == null) {
-            event.getPlayer().sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РѕРїСЂРµРґРµР»РёС‚СЊ С‚РёРї Р·Р°С‰РёС‰С‘РЅРЅРѕРіРѕ Р±Р»РѕРєР°."));
+            event.getPlayer().sendMessage(color("&cНе удалось определить тип защищённого блока."));
             return;
         }
         if ("POLLING_STATION".equalsIgnoreCase(info.kind())) {
-            openConfirmationMenu(event.getPlayer(), "&cРЈРґР°Р»РёС‚СЊ СѓС‡Р°СЃС‚РѕРє", List.of(
-                    "&7Р‘Р»РѕРє СѓС‡Р°СЃС‚РєР° Р±СѓРґРµС‚ СЃРЅСЏС‚ СЃ Р·Р°С‰РёС‚С‹ Рё СѓРґР°Р»С‘РЅ РёР· Р±Р°Р·С‹.",
-                    "&7РЎРІСЏР·Р°РЅРЅС‹Рµ РЅР°РґРїРёСЃРё СЂСЏРґРѕРј С‚РѕР¶Рµ Р±СѓРґСѓС‚ РѕС‡РёС‰РµРЅС‹."
+            openConfirmationMenu(event.getPlayer(), "&cУдалить участок", List.of(
+                    "&7Блок участка будет снят с защиты и удалён из базы.",
+                    "&7Потом участок можно будет создать заново, если он снова понадобится."
             ), "apply:station:remove-protection:" + info.linkedId(), "station:view:" + info.linkedId());
             return;
         }
-        event.getPlayer().sendMessage(color("&eР”Р»СЏ СЌС‚РѕРіРѕ Р·Р°С‰РёС‰С‘РЅРЅРѕРіРѕ Р±Р»РѕРєР° РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РїСЂРѕС„РёР»СЊРЅРѕРµ РјРµРЅСЋ."));
+        event.getPlayer().sendMessage(color("&eДля этого защищённого блока используйте профильное меню."));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -676,7 +676,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("apply:stage:")) {
             String raw = action.substring("apply:stage:".length());
-            setStage(requireActiveElectionId(), ElectionStage.valueOf(raw), player.getName(), "РџРµСЂРµРІРѕРґ С‡РµСЂРµР· GUI");
+            setStage(requireActiveElectionId(), ElectionStage.valueOf(raw), player.getName(), "Перевод через GUI");
             refreshSnapshotAndPush();
             openManagementMenu(player);
             return;
@@ -748,17 +748,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("apply:tax:set:")) {
-            player.sendMessage(color("&eРџСЂРµР·РёРґРµРЅС‚СЃРєРёР№ РЅР°Р»РѕРі РѕС‚РєР»СЋС‡С‘РЅ. Р”РѕС…РѕРґ РїСЂРµР·РёРґРµРЅС‚Р° С‚РµРїРµСЂСЊ РёРґС‘С‚ РёР· Р»Р°РІРєРё AR."));
+            player.sendMessage(color("&eПрезидентский налог отключён. Доход президента теперь идёт из лавки AR."));
             openPresidentAdminMenu(player);
             return;
         }
         if (action.equals("apply:tax:create-office")) {
-            player.sendMessage(color("&eРќР°Р»РѕРіРѕРІР°СЏ РѕС‚РєР»СЋС‡РµРЅР°. РЎРѕР·РґР°РЅРёРµ РЅРѕРІС‹С… РЅР°Р»РѕРіРѕРІС‹С… Р±РѕР»СЊС€Рµ РЅРµРґРѕСЃС‚СѓРїРЅРѕ."));
+            player.sendMessage(color("&eПрезидентский налог отключён. Отдельный налоговый офис больше не используется."));
             openPresidentAdminMenu(player);
             return;
         }
         if (action.startsWith("apply:mandate:tax:")) {
-            player.sendMessage(color("&eРџСЂРµР·РёРґРµРЅС‚СЃРєРёР№ РЅР°Р»РѕРі РѕС‚РєР»СЋС‡С‘РЅ. Р”РѕС…РѕРґ РїСЂРµР·РёРґРµРЅС‚Р° С‚РµРїРµСЂСЊ РёРґС‘С‚ РёР· Р»Р°РІРєРё AR."));
+            player.sendMessage(color("&eПрезидентский налог отключён. Доход президента теперь идёт из лавки AR."));
             openPresidentMandateMenu(player);
             return;
         }
@@ -787,17 +787,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("manage:stop")) {
-            openConfirmationMenu(player, "&cРћСЃС‚Р°РЅРѕРІРёС‚СЊ РІС‹Р±РѕСЂС‹", List.of(
-                    "&7Р‘СѓРґРµС‚ РѕСЃС‚Р°РЅРѕРІР»РµРЅ С‚РѕР»СЊРєРѕ С‚РµРєСѓС‰РёР№ РІС‹Р±РѕСЂРЅС‹Р№ С†РёРєР».",
-                    "&7Р‘Р°РЅРє, AR, РёРіСЂРѕРєРё Рё РґСЂСѓРіРёРµ РјРѕРґСѓР»Рё РЅРµ Р·Р°С‚СЂР°РіРёРІР°СЋС‚СЃСЏ."
+            openConfirmationMenu(player, "&cОстановить выборы", List.of(
+                    "&7Будет остановлен только текущий выборный цикл.",
+                    "&7Банк, AR, игроки и другие модули не затрагиваются."
             ), "apply:manage:stop", "open:manage");
             return;
         }
         if (action.startsWith("stage:")) {
             String raw = action.substring("stage:".length());
-            openConfirmationMenu(player, "&6РџРѕРґС‚РІРµСЂРґРёС‚СЊ СЌС‚Р°Рї", List.of(
-                    "&7РќРѕРІС‹Р№ СЌС‚Р°Рї: &f" + ElectionStage.safeValue(raw).title(),
-                    "&7РР·РјРµРЅРµРЅРёРµ СЃСЂР°Р·Сѓ РїСЂРёРјРµРЅРёС‚СЃСЏ РєРѕ РІСЃРµРјСѓ РІС‹Р±РѕСЂРЅРѕРјСѓ С†РёРєР»Сѓ."
+            openConfirmationMenu(player, "&6Подтвердить этап", List.of(
+                    "&7Новый этап: &f" + ElectionStage.safeValue(raw).title(),
+                    "&7Изменение сразу применится ко всему выборному циклу."
             ), "apply:stage:" + raw, "open:manage");
             return;
         }
@@ -849,17 +849,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("station:remove-protection:")) {
             String stationId = action.substring("station:remove-protection:".length());
-            openConfirmationMenu(player, "&cРЎРЅСЏС‚СЊ СЃС‚Р°С‚СѓСЃ СѓС‡Р°СЃС‚РєР°", List.of(
-                    "&7Р—Р°С‰РёС‚Р° Р±Р»РѕРєР° Рё СЃРІСЏР·Р°РЅРЅР°СЏ РЅР°РґРїРёСЃСЊ Р±СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹.",
-                    "&7Р”Р°РЅРЅС‹Рµ РїРѕ РіРѕР»РѕСЃР°Рј Рё Р·Р°СЏРІРєР°Рј РѕСЃС‚Р°РЅСѓС‚СЃСЏ РІ Р¶СѓСЂРЅР°Р»Рµ."
+            openConfirmationMenu(player, "&cСнять защиту участка", List.of(
+                    "&7Защита блока и связанная надпись будут удалены.",
+                    "&7Данные по голосам и заявкам останутся в журнале."
             ), "apply:station:remove-protection:" + stationId, "station:view:" + stationId);
             return;
         }
         if (action.startsWith("station:cleanup-labels:")) {
             String stationId = action.substring("station:cleanup-labels:".length());
-            openConfirmationMenu(player, "&6РћС‡РёСЃС‚РёС‚СЊ Р»РёС€РЅРёРµ РЅР°РґРїРёСЃРё", List.of(
-                    "&7Р‘СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ С‚РѕР»СЊРєРѕ СЃРІСЏР·Р°РЅРЅС‹Рµ TextDisplay СЂСЏРґРѕРј СЃ СѓС‡Р°СЃС‚РєРѕРј.",
-                    "&7Р§СѓР¶РёРµ СЃСѓС‰РЅРѕСЃС‚Рё С‚СЂРѕРіР°С‚СЊСЃСЏ РЅРµ Р±СѓРґСѓС‚."
+            openConfirmationMenu(player, "&6Очистить лишние надписи", List.of(
+                    "&7Будут удалены только связанные TextDisplay рядом с участком.",
+                    "&7Чужие сущности трогаться не будут."
             ), "apply:station:cleanup-labels:" + stationId, "station:view:" + stationId);
             return;
         }
@@ -887,7 +887,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (parts.length >= 4) {
                 Player target = Bukkit.getPlayer(UUID.fromString(parts[3]));
                 if (target == null) {
-                    throw new IllegalStateException("РРіСЂРѕРє РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕРЅР»Р°Р№РЅ РґР»СЏ РІС‹РґР°С‡Рё Р·Р°СЏРІРєРё.");
+                    throw new IllegalStateException("Игрок должен быть онлайн для выдачи заявки.");
                 }
                 issueApplicationBookByAdmin(target, player, parts[2]);
                 refreshSnapshotAndPush();
@@ -900,7 +900,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (parts.length >= 4) {
                 Player target = Bukkit.getPlayer(UUID.fromString(parts[3]));
                 if (target == null) {
-                    throw new IllegalStateException("РРіСЂРѕРє РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕРЅР»Р°Р№РЅ РґР»СЏ РІС‹РґР°С‡Рё Р±СЋР»Р»РµС‚РµРЅСЏ.");
+                    throw new IllegalStateException("Игрок должен быть онлайн для выдачи бюллетеня.");
                 }
                 issueBallotByAdmin(target, player, parts[2]);
                 refreshSnapshotAndPush();
@@ -918,9 +918,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("cik:revoke-all")) {
-            openConfirmationMenu(player, "&cРЈРЅРёС‡С‚РѕР¶РёС‚СЊ РІСЃРµ РїРµС‡Р°С‚Рё Р¦РРљ", List.of(
-                    "&7Р’СЃРµ Р°РєС‚РёРІРЅС‹Рµ РїРµС‡Р°С‚Рё Р±СѓРґСѓС‚ РѕС‚РѕР·РІР°РЅС‹.",
-                    "&7РЎС‚Р°СЂС‹Рµ РїСЂРµРґРјРµС‚С‹ РІ СЂСѓРєР°С… Рё РёРЅРІРµРЅС‚Р°СЂСЏС… РїРµСЂРµСЃС‚Р°РЅСѓС‚ СЂР°Р±РѕС‚Р°С‚СЊ."
+            openConfirmationMenu(player, "&cУничтожить все печати ЦИК", List.of(
+                    "&7Все активные печати будут отозваны.",
+                    "&7Выданные печати у игроков сразу станут недействительными."
             ), "apply:cik:revoke-all", "open:cik:0");
             return;
         }
@@ -933,7 +933,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                         stationId
                 );
                 if (chair == null) {
-                    player.sendMessage(color("&cР”Р»СЏ СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР° РЅРµ РЅР°Р·РЅР°С‡РµРЅ РїСЂРµРґСЃРµРґР°С‚РµР»СЊ."));
+                    player.sendMessage(color("&cДля этого участка не назначен председатель."));
                 } else {
                     issueOrQueueSeal(stationId, string(chair.get("player_uuid")), string(chair.get("player_name")), player.getName());
                 }
@@ -947,17 +947,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("application:approve:")) {
             String applicationId = action.substring("application:approve:".length());
-            openConfirmationMenu(player, "&aРћРґРѕР±СЂРёС‚СЊ Р·Р°СЏРІРєСѓ", List.of(
-                    "&7РРіСЂРѕРє СЃС‚Р°РЅРµС‚ РєР°РЅРґРёРґР°С‚РѕРј РЅР° С‚РµРєСѓС‰РёС… РІС‹Р±РѕСЂР°С….",
-                    "&7РЎС‚Р°С‚СѓСЃ Р·Р°СЏРІРєРё РёР·РјРµРЅРёС‚СЃСЏ СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ."
+            openConfirmationMenu(player, "&aОдобрить заявку", List.of(
+                    "&7Игрок станет кандидатом на текущих выборах.",
+                    "&7После этого председатель сможет выдать игроку бюллетень."
             ), "apply:application:approve:" + applicationId, "application:view:" + applicationId);
             return;
         }
         if (action.startsWith("application:reject:")) {
             String applicationId = action.substring("application:reject:".length());
-            openConfirmationMenu(player, "&cРћС‚РєР»РѕРЅРёС‚СЊ Р·Р°СЏРІРєСѓ", List.of(
-                    "&7РРіСЂРѕРє РЅРµ СЃС‚Р°РЅРµС‚ РєР°РЅРґРёРґР°С‚РѕРј РЅР° СЌС‚РёС… РІС‹Р±РѕСЂР°С….",
-                    "&7Р”Р»СЏ РЅРѕРІРѕР№ РїРѕРїС‹С‚РєРё РїРѕРЅР°РґРѕР±РёС‚СЃСЏ РЅРѕРІР°СЏ Р·Р°СЏРІРєР°."
+            openConfirmationMenu(player, "&cОтклонить заявку", List.of(
+                    "&7Игрок не станет кандидатом на этих выборах.",
+                    "&7Для новой попытки понадобится новая заявка."
             ), "apply:application:reject:" + applicationId, "application:view:" + applicationId);
             return;
         }
@@ -992,24 +992,24 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("results:count")) {
-            openConfirmationMenu(player, "&6РџРѕРґСЃС‡РёС‚Р°С‚СЊ С‚СѓСЂ", List.of(
-                    "&7Р‘СѓРґСѓС‚ СѓС‡С‚РµРЅС‹ С‚РѕР»СЊРєРѕ СЃРґР°РЅРЅС‹Рµ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ Р±СЋР»Р»РµС‚РµРЅРё.",
-                    "&7РџСЂРё РЅРёС‡СЊРµР№ РѕС‚РєСЂРѕРµС‚СЃСЏ РІРѕР·РјРѕР¶РЅРѕСЃС‚СЊ РІС‚РѕСЂРѕРіРѕ С‚СѓСЂР°."
+            openConfirmationMenu(player, "&6Подсчитать тур", List.of(
+                    "&7Будут учтены только сданные подтверждённые бюллетени.",
+                    "&7При ничьей откроется возможность второго тура."
             ), "apply:results:count", "open:results");
             return;
         }
         if (action.equals("results:second-round")) {
-            openConfirmationMenu(player, "&6РћС‚РєСЂС‹С‚СЊ РІС‚РѕСЂРѕР№ С‚СѓСЂ", List.of(
-                    "&7Р’ РЅРѕРІС‹Р№ С‚СѓСЂ РїРµСЂРµР№РґСѓС‚ С‚РѕР»СЊРєРѕ Р»РёРґРµСЂС‹ СЃ СЂР°РІРЅС‹Рј РјР°РєСЃРёРјСѓРјРѕРј РіРѕР»РѕСЃРѕРІ.",
-                    "&7РЎС‚Р°СЂС‹Рµ Р±СЋР»Р»РµС‚РµРЅРё РїСЂРѕС€Р»РѕРіРѕ С‚СѓСЂР° СЃС‚Р°РЅСѓС‚ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅС‹РјРё."
+            openConfirmationMenu(player, "&6Открыть второй тур", List.of(
+                    "&7В новый тур перейдут только лидеры с равным максимумом голосов.",
+                    "&7Перед запуском убедись, что обычный подсчёт уже завершён."
             ), "apply:results:second-round", "open:results");
             return;
         }
         if (action.startsWith("results:winner:")) {
             String candidateUuid = action.substring("results:winner:".length());
-            openConfirmationMenu(player, "&aР’С‹Р±СЂР°С‚СЊ РїРѕР±РµРґРёС‚РµР»СЏ", List.of(
-                    "&7РџРѕР±РµРґРёС‚РµР»СЊ Р±СѓРґРµС‚ РЅР°Р·РЅР°С‡РµРЅ РІСЂСѓС‡РЅСѓСЋ.",
-                    "&7РџРѕСЃР»Рµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РµРјСѓ СЃСЂР°Р·Сѓ Р±СѓРґРµС‚ РІС‹РґР°РЅ РјР°РЅРґР°С‚."
+            openConfirmationMenu(player, "&aВыбрать победителя", List.of(
+                    "&7Победитель будет назначен вручную.",
+                    "&7После подтверждения ему сразу будет выдан мандат."
             ), "apply:results:winner:" + candidateUuid, "open:results");
             return;
         }
@@ -1018,25 +1018,25 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("president:remove")) {
-            openConfirmationMenu(player, "&cРЎРЅСЏС‚СЊ РїСЂРµР·РёРґРµРЅС‚Р°", List.of(
-                    "&7Р”РµР№СЃС‚РІСѓСЋС‰РёР№ РїСЂРµР·РёРґРµРЅС‚ СЃСЂР°Р·Сѓ РїРѕС‚РµСЂСЏРµС‚ РјР°РЅРґР°С‚.",
-                    "&7РЎСЂРѕРє Р·Р°РІРµСЂС€РёС‚СЃСЏ РїСЂРёРЅСѓРґРёС‚РµР»СЊРЅРѕ."
+            openConfirmationMenu(player, "&cСнять президента с должности", List.of(
+                    "&7Действующий президент сразу потеряет мандат.",
+                    "&7Мандат и права президента будут сразу отозваны."
             ), "apply:president:remove", "open:president");
             return;
         }
         if (action.startsWith("law:approve:")) {
             String lawId = action.substring("law:approve:".length());
-            openConfirmationMenu(player, "&aРћРґРѕР±СЂРёС‚СЊ Р·Р°РєРѕРЅ", List.of(
-                    "&7Р—Р°РєРѕРЅ РїРѕСЏРІРёС‚СЃСЏ РІ live-РїР°РЅРµР»Рё Рё РІ Discord.",
-                    "&7Р•СЃР»Рё СЌС‚Рѕ Р·Р°РјРµРЅР°, СЃС‚Р°СЂС‹Р№ Р·Р°РєРѕРЅ Р±СѓРґРµС‚ СЃРЅСЏС‚ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ РїСѓР±Р»РёРєР°С†РёРё."
+            openConfirmationMenu(player, "&aОдобрить закон", List.of(
+                    "&7Закон появится в live-панели и в Discord.",
+                    "&7Если это замена, старый закон будет снят только после публикации."
             ), "apply:law:approve:" + lawId, "open:president");
             return;
         }
         if (action.startsWith("law:reject:")) {
             String lawId = action.substring("law:reject:".length());
-            openConfirmationMenu(player, "&cРћС‚РєР»РѕРЅРёС‚СЊ Р·Р°РєРѕРЅ", List.of(
-                    "&7Р—Р°РєРѕРЅ РЅРµ Р±СѓРґРµС‚ РѕРїСѓР±Р»РёРєРѕРІР°РЅ.",
-                    "&7РџСЂРµР·РёРґРµРЅС‚ СЃРјРѕР¶РµС‚ РѕС‚РїСЂР°РІРёС‚СЊ РґСЂСѓРіРѕР№ С‚РµРєСЃС‚ РїРѕР·Р¶Рµ."
+            openConfirmationMenu(player, "&cОтклонить закон", List.of(
+                    "&7Закон не будет опубликован.",
+                    "&7Президент сможет отправить другой текст позже."
             ), "apply:law:reject:" + lawId, "open:president");
             return;
         }
@@ -1101,24 +1101,24 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             String stationId = action.substring("chair:issue-seal:".length());
             requireChairAccess(player, stationId);
             issueOrRefreshSeal(player, stationId, player.getName(), true);
-            player.sendMessage(color("&aРџРµС‡Р°С‚СЊ Р¦РРљ РѕР±РЅРѕРІР»РµРЅР° Рё СЃРЅРѕРІР° РїСЂРёРІСЏР·Р°РЅР° Рє С‚РµР±Рµ."));
+            player.sendMessage(color("&aПечать ЦИК обновлена и снова привязана к тебе."));
             openChairStationMenu(player, stationId, 0);
             return;
         }
         if (action.startsWith("chair:annul-ballot:")) {
             String ballotId = action.substring("chair:annul-ballot:".length());
-            openConfirmationMenu(player, "&cРђРЅРЅСѓР»РёСЂРѕРІР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ", List.of(
-                    "&7РЎС‚Р°СЂС‹Р№ Р±СЋР»Р»РµС‚РµРЅСЊ Р±РѕР»СЊС€Рµ РЅРµ СЃРјРѕР¶РµС‚ Р±С‹С‚СЊ СЃРґР°РЅ РІ СѓС‡Р°СЃС‚РѕРє.",
-                    "&7РџРѕСЃР»Рµ СЌС‚РѕРіРѕ РїСЂРµРґСЃРµРґР°С‚РµР»СЊ СЃРјРѕР¶РµС‚ РІС‹РґР°С‚СЊ РЅРѕРІС‹Р№ Р±СЋР»Р»РµС‚РµРЅСЊ."
+            openConfirmationMenu(player, "&cАннулировать бюллетень", List.of(
+                    "&7Текущий бюллетень игрока будет списан и помечен как недействительный.",
+                    "&7После этого председатель сможет выдать новый бюллетень."
             ), "apply:chair:annul-ballot:" + holder.contextId() + ":" + ballotId, "chair:ballots:" + holder.contextId() + ":0");
             return;
         }
         if (action.startsWith("vote:confirm:")) {
             String[] parts = action.split(":");
             if (parts.length >= 4) {
-                openConfirmationMenu(player, "&aРџРѕРґС‚РІРµСЂРґРёС‚СЊ РІС‹Р±РѕСЂ", List.of(
-                        "&7РџРѕСЃР»Рµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РёР·РјРµРЅРёС‚СЊ РіРѕР»РѕСЃ Р±РѕР»СЊС€Рµ РЅРµР»СЊР·СЏ.",
-                        "&7Р“РѕР»РѕСЃ Р±СѓРґРµС‚ Р·Р°СЃС‡РёС‚Р°РЅ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ СЃРґР°С‡Рё Р±СЋР»Р»РµС‚РµРЅСЏ РІ СѓС‡Р°СЃС‚РѕРє."
+                openConfirmationMenu(player, "&aПодтвердить выбор", List.of(
+                        "&7После подтверждения изменить голос больше нельзя.",
+                        "&7Голос будет засчитан только после сдачи бюллетеня в участок."
                 ), "apply:vote:confirm:" + parts[2] + ":" + parts[3], "close");
             }
             return;
@@ -1129,35 +1129,35 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("mandate:law")) {
-            startPrompt(player, new PromptContext(PromptKind.NEW_LAW, "", "", false), "&eРќР°РїРёС€Рё С‚РµРєСЃС‚ Р·Р°РєРѕРЅР° РѕРґРЅРёРј СЃРѕРѕР±С‰РµРЅРёРµРј. Р›РёРјРёС‚: &f" + LAW_TEXT_LIMIT + "&e СЃРёРјРІРѕР»РѕРІ.");
+            startPrompt(player, new PromptContext(PromptKind.NEW_LAW, "", "", false), "&eНапиши текст закона одним сообщением. Лимит: &f" + LAW_TEXT_LIMIT + "&e символов.");
             player.closeInventory();
             return;
         }
         if (action.startsWith("mandate:replace-law:")) {
-            startPrompt(player, new PromptContext(PromptKind.REPLACE_LAW, action.substring("mandate:replace-law:".length()), "", false), "&eРќР°РїРёС€Рё РЅРѕРІС‹Р№ С‚РµРєСЃС‚ Р·Р°РєРѕРЅР° РѕРґРЅРёРј СЃРѕРѕР±С‰РµРЅРёРµРј. Р›РёРјРёС‚: &f" + LAW_TEXT_LIMIT + "&e СЃРёРјРІРѕР»РѕРІ.");
+            startPrompt(player, new PromptContext(PromptKind.REPLACE_LAW, action.substring("mandate:replace-law:".length()), "", false), "&eНапиши новый текст закона одним сообщением. Лимит: &f" + LAW_TEXT_LIMIT + "&e символов.");
             player.closeInventory();
             return;
         }
         if (action.equals("mandate:broadcast:chat")) {
-            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "CHAT", "", false), "&eРќР°РїРёС€Рё РѕР±СЂР°С‰РµРЅРёРµ РїСЂРµР·РёРґРµРЅС‚РѕРј. Р›РёРјРёС‚: &f" + BROADCAST_TEXT_LIMIT + "&e СЃРёРјРІРѕР»РѕРІ.");
+            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "CHAT", "", false), "&eНапиши обращение президентом. Лимит: &f" + BROADCAST_TEXT_LIMIT + "&e символов.");
             player.closeInventory();
             return;
         }
         if (action.equals("mandate:broadcast:title")) {
-            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "TITLE", "", false), "&eРќР°РїРёС€Рё РѕР±СЂР°С‰РµРЅРёРµ РїСЂРµР·РёРґРµРЅС‚РѕРј. Р›РёРјРёС‚: &f" + BROADCAST_TEXT_LIMIT + "&e СЃРёРјРІРѕР»РѕРІ.");
+            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "TITLE", "", false), "&eНапиши обращение президентом. Лимит: &f" + BROADCAST_TEXT_LIMIT + "&e символов.");
             player.closeInventory();
             return;
         }
         if (action.equals("mandate:broadcast:actionbar")) {
-            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "ACTIONBAR", "", false), "&eРќР°РїРёС€Рё РѕР±СЂР°С‰РµРЅРёРµ РїСЂРµР·РёРґРµРЅС‚РѕРј. Р›РёРјРёС‚: &f" + BROADCAST_TEXT_LIMIT + "&e СЃРёРјРІРѕР»РѕРІ.");
+            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "ACTIONBAR", "", false), "&eНапиши обращение президентом. Лимит: &f" + BROADCAST_TEXT_LIMIT + "&e символов.");
             player.closeInventory();
             return;
         }
         if (action.startsWith("mandate:tax:")) {
             int amount = parseInt(action.substring("mandate:tax:".length()), 0);
-            openConfirmationMenu(player, "&6РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РЅР°Р»РѕРі", List.of(
-                    "&7РќРѕРІС‹Р№ СЂР°Р·РјРµСЂ РЅР°Р»РѕРіР°: &f" + Math.max(0, Math.min(50, amount)) + " AR",
-                    "&7РћРїР»Р°С‚С‹ Р±СѓРґСѓС‚ РёРґС‚Рё РЅР° Р»РёС‡РЅС‹Р№ СЃС‡С‘С‚ РїСЂРµР·РёРґРµРЅС‚Р°."
+            openConfirmationMenu(player, "&6Установить налог", List.of(
+                    "&7Новый размер налога: &f" + Math.max(0, Math.min(50, amount)) + " AR",
+                    "&7Оплаты будут идти на личный счёт президента."
             ), "apply:mandate:tax:" + amount, "president:open-mandate");
             return;
         }
@@ -1181,32 +1181,32 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void handlePrompt(Player player, PromptContext prompt, String message) {
         if (message.isBlank()) {
-            player.sendMessage(color("&cРўРµРєСЃС‚ РїСѓСЃС‚РѕР№. Р”РµР№СЃС‚РІРёРµ РѕС‚РјРµРЅРµРЅРѕ."));
+            player.sendMessage(color("&cТекст пустой. Действие отменено."));
             return;
         }
         try {
             switch (prompt.kind()) {
                 case NEW_LAW -> {
                     if (message.length() > LAW_TEXT_LIMIT) {
-                        player.sendMessage(color("&cР—Р°РєРѕРЅ СЃР»РёС€РєРѕРј РґР»РёРЅРЅС‹Р№."));
+                        player.sendMessage(color("&cЗакон слишком длинный."));
                         return;
                     }
                     submitLawForReview(player, message, "");
-                    player.sendMessage(color("&aР—Р°РєРѕРЅ РѕС‚РїСЂР°РІР»РµРЅ РЅР° РїСЂРѕРІРµСЂРєСѓ Р°РґРјРёРЅРёСЃС‚СЂР°С†РёРё."));
+                    player.sendMessage(color("&aЗакон отправлен на проверку администрации."));
                     openPresidentMandateMenu(player);
                 }
                 case REPLACE_LAW -> {
                     if (message.length() > LAW_TEXT_LIMIT) {
-                        player.sendMessage(color("&cР—Р°РєРѕРЅ СЃР»РёС€РєРѕРј РґР»РёРЅРЅС‹Р№."));
+                        player.sendMessage(color("&cЗакон слишком длинный."));
                         return;
                     }
                     submitLawForReview(player, message, prompt.value1());
-                    player.sendMessage(color("&aР—Р°РјРµРЅР° Р·Р°РєРѕРЅР° РѕС‚РїСЂР°РІР»РµРЅР° РЅР° РїСЂРѕРІРµСЂРєСѓ."));
+                    player.sendMessage(color("&aЗамена закона отправлена на проверку."));
                     openPresidentMandateMenu(player);
                 }
                 case BROADCAST -> {
                     if (message.length() > BROADCAST_TEXT_LIMIT) {
-                        player.sendMessage(color("&cРЎРѕРѕР±С‰РµРЅРёРµ СЃР»РёС€РєРѕРј РґР»РёРЅРЅРѕРµ."));
+                        player.sendMessage(color("&cПрезидентское обращение слишком длинное."));
                         return;
                     }
                     sendPresidentBroadcast(player, prompt.value1(), message);
@@ -1214,96 +1214,96 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 }
             }
         } catch (Exception error) {
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ РґРµР№СЃС‚РІРёРµ. РџРѕРґСЂРѕР±РЅРѕСЃС‚Рё РІ Р»РѕРіРµ."));
+            player.sendMessage(color("&cНе удалось завершить действие. Подробности в логе."));
             getLogger().warning("prompt " + prompt.kind() + ": " + safeError(error));
         }
     }
 
     private void openElectionRoot(Player player, int page) {
         if (!hasElectionAdmin(player)) {
-            player.sendMessage(color("&cРќРµС‚ РїСЂР°РІ РЅР° СЂР°Р·РґРµР» РІС‹Р±РѕСЂРѕРІ."));
+            player.sendMessage(color("&cНет прав на раздел выборов."));
             return;
         }
         LiveSnapshot snap = snapshot.get();
         MenuHolder holder = new MenuHolder("root", "");
-        Inventory inv = holder.create(54, color("&6Р’С‹Р±РѕСЂС‹ CopiMine"));
-        setButton(holder, 10, Material.GOLDEN_HELMET, "&6РЈРїСЂР°РІР»РµРЅРёРµ", List.of(
-                "&7РўРµРєСѓС‰РёР№ СЌС‚Р°Рї: &f" + snap.stageTitle(),
-                "&7РўРµРєСѓС‰РёР№ С‚СѓСЂ: &f" + snap.round(),
-                "&7РљР°РЅРґРёРґР°С‚РѕРІ: &f" + snap.candidates().size(),
-                "&7РЈС‡Р°СЃС‚РєРѕРІ: &f" + snap.stationCount()
+        Inventory inv = holder.create(54, color("&6Выборы CopiMine"));
+        setButton(holder, 10, Material.GOLDEN_HELMET, "&6Управление", List.of(
+                "&7Текущий этап: &f" + snap.stageTitle(),
+                "&7Текущий тур: &f" + snap.round(),
+                "&7Кандидатов: &f" + snap.candidates().size(),
+                "&7Участков: &f" + snap.stationCount()
         ), "open:manage");
-        setButton(holder, 12, Material.LECTERN, "&eРЈС‡Р°СЃС‚РєРё", List.of("&7Р—Р°С‰РёС‰С‘РЅРЅС‹Рµ Р±Р»РѕРєРё СѓС‡Р°СЃС‚РєРѕРІ Рё РїСЂРµРґСЃРµРґР°С‚РµР»Рё."), "open:stations");
-        setButton(holder, 14, Material.NAME_TAG, "&bР¦РРљ", List.of("&7РџРµС‡Р°С‚Рё, СЃРїРёСЃРѕРє РїСЂРµРґСЃРµРґР°С‚РµР»РµР№ Рё РІС‹РґР°С‡Р° РЅРѕРІС‹С… РїРµС‡Р°С‚РµР№."), "open:cik");
-        setButton(holder, 16, Material.WRITABLE_BOOK, "&6Р—Р°СЏРІРєРё", List.of("&7РќРµСЂР°СЃСЃРјРѕС‚СЂРµРЅРЅС‹Рµ, СЂРµРєРѕРјРµРЅРґРѕРІР°РЅРЅС‹Рµ Рё РѕС‚РєР»РѕРЅС‘РЅРЅС‹Рµ."), "open:applications");
-        setButton(holder, 28, Material.PAPER, "&aР РµР·СѓР»СЊС‚Р°С‚С‹", List.of("&7РС‚РѕРіРё С‚СѓСЂР°, СЂСѓС‡РЅРѕР№ РІС‹Р±РѕСЂ РїРѕР±РµРґРёС‚РµР»СЏ Рё РІС‚РѕСЂРѕР№ С‚СѓСЂ."), "open:results");
-        setButton(holder, 30, Material.NETHER_STAR, "&dРџСЂРµР·РёРґРµРЅС‚", List.of("&7РњР°РЅРґР°С‚, Р·Р°РєРѕРЅС‹, РЅР°Р»РѕРіРѕРІР°СЏ Рё РїСЂРµР·РёРґРµРЅС‚СЃРєРёР№ СЃСЂРѕРє."), "open:president");
-        setButton(holder, 32, Material.MAP, "&bLive-РїР°РЅРµР»СЊ", List.of(
-                "&7Р­С‚Р°Рї: &f" + snap.stageTitle(),
-                "&7РџСЂРµР·РёРґРµРЅС‚: &f" + first(snap.presidentName(), "РЅРµС‚"),
-                "&7РљРѕРјР°РЅРґР° РёРіСЂРѕРєР°: &f/hidelive"
+        setButton(holder, 12, Material.LECTERN, "&eУчастки", List.of("&7Защищённые блоки участков и председатели."), "open:stations");
+        setButton(holder, 14, Material.NAME_TAG, "&bЦИК", List.of("&7Печати, список председателей и выдача новых печатей."), "open:cik");
+        setButton(holder, 16, Material.WRITABLE_BOOK, "&6Заявки", List.of("&7Нерассмотренные, рекомендованные и отклонённые."), "open:applications");
+        setButton(holder, 28, Material.PAPER, "&aРезультаты", List.of("&7Подсчёт тура, ручной выбор победителя и запуск второго тура."), "open:results");
+        setButton(holder, 30, Material.NETHER_STAR, "&dПрезидент", List.of("&7Мандат, законы, доход из AR-лавки и президентский срок."), "open:president");
+        setButton(holder, 32, Material.MAP, "&bLive-панель", List.of(
+                "&7Этап: &f" + snap.stageTitle(),
+                "&7Президент: &f" + first(snap.presidentName(), "нет"),
+                "&7Команда игрока: &f/hidelive"
         ), "open:live");
-        setButton(holder, 49, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ РІ РѕР±С‰РёР№ Р°РґРјРёРЅ-С…Р°Р±."), "back:hub");
+        setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7Вернуться в общий админ-хаб."), "back:hub");
         player.openInventory(inv);
     }
 
     private void openManagementMenu(Player player) {
         LiveSnapshot snap = snapshot.get();
         MenuHolder holder = new MenuHolder("manage", "");
-        Inventory inv = holder.create(54, color("&6РЈРїСЂР°РІР»РµРЅРёРµ РІС‹Р±РѕСЂР°РјРё"));
-        setStatic(inv, 4, infoItem(Material.PAPER, "&fРЎРІРѕРґРєР°", List.of(
-                "&7Р­С‚Р°Рї: &f" + snap.stageTitle(),
-                "&7РўСѓСЂ: &f" + snap.round(),
-                "&7РљР°РЅРґРёРґР°С‚РѕРІ: &f" + snap.candidates().size() + " / " + formatLimit(snap.candidateLimit()),
-                "&7РЈС‡Р°СЃС‚РєРѕРІ: &f" + snap.stationCount(),
-                "&7РџСЂРµР·РёРґРµРЅС‚: &f" + first(snap.presidentName(), "РЅРµС‚")
+        Inventory inv = holder.create(54, color("&6Управление выборами"));
+        setStatic(inv, 4, infoItem(Material.PAPER, "&fСводка", List.of(
+                "&7Этап: &f" + snap.stageTitle(),
+                "&7Тур: &f" + snap.round(),
+                "&7Кандидатов: &f" + snap.candidates().size() + " / " + formatLimit(snap.candidateLimit()),
+                "&7Участков: &f" + snap.stationCount(),
+                "&7Президент: &f" + first(snap.presidentName(), "нет")
         )));
-        setButton(holder, 10, Material.LIME_WOOL, "&aРќР°С‡Р°С‚СЊ РІС‹Р±РѕСЂС‹", List.of("&7РЎРѕР·РґР°С‚СЊ РЅРѕРІС‹Р№ С†РёРєР» Рё РїРµСЂРµР№С‚Рё РІ РїРѕРґРіРѕС‚РѕРІРєСѓ."), "manage:start");
-        setButton(holder, 11, Material.RED_WOOL, "&cРћСЃС‚Р°РЅРѕРІРёС‚СЊ РІС‹Р±РѕСЂС‹", List.of("&7РћСЃС‚Р°РЅРѕРІРёС‚СЊ С‚РѕР»СЊРєРѕ РІС‹Р±РѕСЂРЅС‹Р№ С†РёРєР» Р±РµР· РєР°СЃР°РЅРёСЏ РґСЂСѓРіРёС… СЃРёСЃС‚РµРј."), "manage:stop");
-        setButton(holder, 13, Material.CHEST, "&eРџРѕРґРіРѕС‚РѕРІРєР°", List.of("&7Р­С‚Р°Рї РїРѕРґРіРѕС‚РѕРІРєРё СѓС‡Р°СЃС‚РєРѕРІ Рё Р»РёРјРёС‚РѕРІ."), "stage:PREPARATION");
-        setButton(holder, 14, Material.WRITABLE_BOOK, "&eРџСЂРёС‘Рј Р·Р°СЏРІРѕРє", List.of("&7РћС‚РєСЂС‹С‚СЊ РІС‹РґР°С‡Сѓ Рё СЃРґР°С‡Сѓ Р·Р°СЏРІРѕРє."), "stage:APPLICATIONS");
-        setButton(holder, 15, Material.BOOKSHELF, "&eРџСЂРѕРІРµСЂРєР° Р·Р°СЏРІРѕРє", List.of("&7РџСЂРѕРІРµСЂРєР° Р¦РРљ Рё Р°РґРјРёРЅРёСЃС‚СЂР°С†РёРµР№."), "stage:REVIEW");
-        setButton(holder, 16, Material.JUKEBOX, "&eР”РµР±Р°С‚С‹", List.of("&7РџСѓР±Р»РёС‡РЅС‹Р№ СЌС‚Р°Рї РїРµСЂРµРґ Р±СЋР»Р»РµС‚РµРЅСЏРјРё."), "stage:DEBATES");
-        setButton(holder, 19, Material.FEATHER, "&eР“РѕР»РѕСЃРѕРІР°РЅРёРµ", List.of("&7РђРєС‚РёРІРёСЂРѕРІР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅРё РґР»СЏ РёРіСЂРѕРєРѕРІ."), "stage:VOTING");
-        setButton(holder, 20, Material.CALCITE, "&eРџРѕРґСЃС‡С‘С‚", List.of("&7РЎС‡РёС‚Р°С‚СЊ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ Рё СЃРґР°РЅРЅС‹Рµ Р±СЋР»Р»РµС‚РµРЅРё."), "stage:COUNTING");
-        setButton(holder, 21, Material.COMPARATOR, "&eР’С‚РѕСЂРѕР№ С‚СѓСЂ", List.of("&7РџРµСЂРµР№С‚Рё РєРѕ РІС‚РѕСЂРѕРјСѓ С‚СѓСЂСѓ РїСЂРё РЅРёС‡СЊРµР№."), "stage:SECOND_ROUND");
-        setButton(holder, 22, Material.BEACON, "&eР—Р°РІРµСЂС€РёС‚СЊ", List.of("&7Р—Р°РІРµСЂС€РёС‚СЊ РІС‹Р±РѕСЂС‹ Рё РѕС‚РєСЂС‹С‚СЊ РїСЂРµР·РёРґРµРЅС‚СЃРєРёР№ СЃСЂРѕРє."), "stage:FINISHED");
-        setButton(holder, 24, Material.HOPPER, "&bР›РёРјРёС‚ РєР°РЅРґРёРґР°С‚РѕРІ", buildLimitLore(snap.candidateLimit()), "none");
+        setButton(holder, 10, Material.LIME_WOOL, "&aНачать выборы", List.of("&7Создать новый цикл и перевести его в подготовку."), "manage:start");
+        setButton(holder, 11, Material.RED_WOOL, "&cОстановить выборы", List.of("&7Остановить только выборный цикл без касания других систем."), "manage:stop");
+        setButton(holder, 13, Material.CHEST, "&eПодготовка", List.of("&7Этап подготовки участков и лимитов."), "stage:PREPARATION");
+        setButton(holder, 14, Material.WRITABLE_BOOK, "&eПриём заявок", List.of("&7Открыть выдачу и сдачу заявок."), "stage:APPLICATIONS");
+        setButton(holder, 15, Material.BOOKSHELF, "&eПроверка заявок", List.of("&7Проверка ЦИК и администрацией."), "stage:REVIEW");
+        setButton(holder, 16, Material.JUKEBOX, "&eДебаты", List.of("&7Публичный этап перед бюллетенями."), "stage:DEBATES");
+        setButton(holder, 19, Material.FEATHER, "&eГолосование", List.of("&7Активировать бюллетени для игроков."), "stage:VOTING");
+        setButton(holder, 20, Material.CALCITE, "&eПодсчёт", List.of("&7Подсчитать подтверждённые и сданные бюллетени."), "stage:COUNTING");
+        setButton(holder, 21, Material.COMPARATOR, "&eВторой тур", List.of("&7Перейти ко второму туру при ничьей."), "stage:SECOND_ROUND");
+        setButton(holder, 22, Material.BEACON, "&eЗавершить", List.of("&7Завершить выборы и открыть президентский срок."), "stage:FINISHED");
+        setButton(holder, 24, Material.HOPPER, "&bЛимит кандидатов", buildLimitLore(snap.candidateLimit()), "none");
         int slot = 25;
         for (int value : CANDIDATE_LIMITS) {
-            setButton(holder, slot++, Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + formatLimitLabel(value), List.of("&7РЈСЃС‚Р°РЅРѕРІРёС‚СЊ Р»РёРјРёС‚."), "manage:limit:" + value);
+            setButton(holder, slot++, Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + formatLimitLabel(value), List.of("&7Установить лимит."), "manage:limit:" + value);
         }
-        setButton(holder, 37, Material.CLOCK, "&dРЎСЂРѕРє РїСЂРµР·РёРґРµРЅС‚Р°", buildTermLore(snap.termDays()), "none");
+        setButton(holder, 37, Material.CLOCK, "&dСрок президента", buildTermLore(snap.termDays()), "none");
         int daySlot = 38;
         for (int days : TERM_DAYS) {
-            setButton(holder, daySlot++, Material.CLOCK, "&f" + days + " РґРЅ.", List.of("&7РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ СЃСЂРѕРєР°."), "manage:term:" + days);
+            setButton(holder, daySlot++, Material.CLOCK, "&f" + days + " дн.", List.of("&7Установить длительность срока."), "manage:term:" + days);
         }
-        setButton(holder, 47, Material.BARRIER, "&cРЎР±СЂРѕСЃРёС‚СЊ РІС‹Р±РѕСЂС‹", List.of("&7РўРѕР»СЊРєРѕ РІС‹Р±РѕСЂРЅС‹Рµ С‚Р°Р±Р»РёС†С‹.", "&7Р”Р°Р»СЊС€Рµ Р±СѓРґРµС‚ РґРІРѕР№РЅРѕРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ."), "manage:reset:confirm");
-        setButton(holder, 49, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ РІ СЂР°Р·РґРµР» РІС‹Р±РѕСЂРѕРІ."), "open:root");
+        setButton(holder, 47, Material.BARRIER, "&cСбросить выборы", List.of("&7Очистить только выборные данные.", "&7Банк, AR, сайт и другие модули не трогаются."), "manage:reset:confirm");
+        setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7Вернуться в раздел выборов."), "open:root");
         player.openInventory(inv);
     }
 
     private void openResetConfirmMenu(Player player) {
         MenuHolder holder = new MenuHolder("reset-confirm", "");
-        Inventory inv = holder.create(27, color("&cРЎР±СЂРѕСЃ РІС‹Р±РѕСЂРѕРІ"));
-        setStatic(inv, 13, infoItem(Material.BARRIER, "&cРЎР±СЂРѕСЃРёС‚СЊ РІС‹Р±РѕСЂС‹", List.of(
-                "&7Р‘СѓРґСѓС‚ РѕС‡РёС‰РµРЅС‹ С‚РѕР»СЊРєРѕ РІС‹Р±РѕСЂРЅС‹Рµ С‚Р°Р±Р»РёС†С‹ Рё Р·Р°С‰РёС‰С‘РЅРЅС‹Рµ РІС‹Р±РѕСЂРЅС‹Рµ Р±Р»РѕРєРё.",
-                "&7Р‘Р°РЅРє, AR, СЃР°Р№С‚, РёРіСЂРѕРєРё Рё РґСЂСѓРіРёРµ РјРѕРґСѓР»Рё РЅРµ С‚СЂРѕРіР°СЋС‚СЃСЏ."
+        Inventory inv = holder.create(27, color("&cСброс выборов"));
+        setStatic(inv, 13, infoItem(Material.BARRIER, "&cПодтверждение сброса", List.of(
+                "&7Будут очищены только выборные таблицы и защищённые выборные блоки.",
+                "&7Банк, AR, сайт, игроки и другие модули не трогаются."
         )));
-        setButton(holder, 11, Material.ORANGE_WOOL, "&6РћС‡РёСЃС‚РёС‚СЊ С‚РѕР»СЊРєРѕ РІС‹Р±РѕСЂС‹", List.of("&7РџРµСЂРµР№С‚Рё Рє С„РёРЅР°Р»СЊРЅРѕРјСѓ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЋ."), "manage:reset:only-elections");
-        setButton(holder, 15, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ РІ СѓРїСЂР°РІР»РµРЅРёРµ."), "open:manage");
+        setButton(holder, 11, Material.ORANGE_WOOL, "&6Очистить только выборы", List.of("&7Перейти к финальному подтверждению."), "manage:reset:only-elections");
+        setButton(holder, 15, Material.ARROW, "&aНазад", List.of("&7Вернуться в управление."), "open:manage");
         player.openInventory(inv);
     }
 
     private void openResetApplyMenu(Player player) {
         MenuHolder holder = new MenuHolder("reset-apply", "");
-        Inventory inv = holder.create(27, color("&4РџРѕРґС‚РІРµСЂРґРёС‚СЊ СЃР±СЂРѕСЃ"));
-        setStatic(inv, 13, infoItem(Material.RED_WOOL, "&4РџРѕРґС‚РІРµСЂРґРёС‚СЊ СЃР±СЂРѕСЃ", List.of(
-                "&7РСЃС‚РѕСЂРёСЏ РІС‹Р±РѕСЂРѕРІ РЅРµ Р°СЂС…РёРІРёСЂСѓРµС‚СЃСЏ.",
-                "&7РџРѕСЃР»Рµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РјРѕРґСѓР»СЊ РЅР°С‡РЅС‘С‚ СЃ С‡РёСЃС‚РѕРіРѕ Р»РёСЃС‚Р°."
+        Inventory inv = holder.create(27, color("&4Подтвердить сброс"));
+        setStatic(inv, 13, infoItem(Material.RED_WOOL, "&4Подтвердить сброс", List.of(
+                "&7История выборов не архивируется.",
+                "&7После подтверждения модуль начнёт с чистого листа."
         )));
-        setButton(holder, 11, Material.RED_WOOL, "&cРџРѕРґС‚РІРµСЂРґРёС‚СЊ СЃР±СЂРѕСЃ", List.of("&7РћС‡РёСЃС‚РёС‚СЊ С‚РѕР»СЊРєРѕ РІС‹Р±РѕСЂРЅС‹Р№ РєРѕРЅС‚СѓСЂ."), "manage:reset:apply");
-        setButton(holder, 15, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ Рє РїСЂРµРґС‹РґСѓС‰РµРјСѓ С€Р°РіСѓ."), "manage:reset:confirm");
+        setButton(holder, 11, Material.RED_WOOL, "&cПодтвердить сброс", List.of("&7Очистить только выборный контур."), "manage:reset:apply");
+        setButton(holder, 15, Material.ARROW, "&aНазад", List.of("&7Вернуться к предыдущему шагу."), "manage:reset:confirm");
         player.openInventory(inv);
     }
 
@@ -1312,9 +1312,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         holder.data().put("apply_action", applyAction);
         holder.data().put("back_action", backAction);
         Inventory inv = holder.create(27, color(title));
-        setStatic(inv, 13, infoItem(Material.PAPER, "&fРџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ", lines));
-        setButton(holder, 11, Material.LIME_WOOL, "&aРџРѕРґС‚РІРµСЂРґРёС‚СЊ", List.of("&7Р’С‹РїРѕР»РЅРёС‚СЊ РґРµР№СЃС‚РІРёРµ."), "confirm:apply");
-        setButton(holder, 15, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ Р±РµР· РёР·РјРµРЅРµРЅРёР№."), "confirm:back");
+        setStatic(inv, 13, infoItem(Material.PAPER, "&fПодтверждение", lines));
+        setButton(holder, 11, Material.LIME_WOOL, "&aПодтвердить", List.of("&7Выполнить действие."), "confirm:apply");
+        setButton(holder, 15, Material.ARROW, "&aНазад", List.of("&7Вернуться без изменений."), "confirm:back");
         player.openInventory(inv);
     }
 
@@ -1323,14 +1323,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 "SELECT id,world,x,y,z,chair_name,chair_uuid,active,text_display_uuid FROM polling_stations WHERE active=1 ORDER BY created_at DESC"
         );
         MenuHolder holder = new MenuHolder("stations", "");
-        Inventory inv = holder.create(54, color("&eРЈС‡Р°СЃС‚РєРё Р¦РРљ"));
-        setButton(holder, 10, Material.EMERALD_BLOCK, "&aРЎРѕР·РґР°С‚СЊ СѓС‡Р°СЃС‚РѕРє РїРѕ Р±Р»РѕРєСѓ", List.of("&7РЎРјРѕС‚СЂРё РЅР° Р±Р»РѕРє Рё РЅР°Р¶РјРё РєРЅРѕРїРєСѓ."), "stations:create");
+        Inventory inv = holder.create(54, color("&eУчастки ЦИК"));
+        setButton(holder, 10, Material.EMERALD_BLOCK, "&aСоздать участок по блоку", List.of("&7Смотри на блок и создай на нём новый участок."), "stations:create");
         int start = Math.max(0, page) * 21;
         int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
         for (int i = 0; i < slots.length && start + i < stations.size(); i++) {
             Map<String, Object> station = stations.get(start + i);
             String id = string(station.get("id"));
-            setButton(holder, slots[i], Material.LECTERN, "&fРЈС‡Р°СЃС‚РѕРє Р¦РРљ", stationLore(station, id), "station:view:" + id);
+            setButton(holder, slots[i], Material.LECTERN, "&fУчасток ЦИК", stationLore(station, id), "station:view:" + id);
         }
         pageButtons(holder, inv, page, stations.size(), 21, "open:stations:" + (page - 1), "open:stations:" + (page + 1), "open:root");
         player.openInventory(inv);
@@ -1339,38 +1339,38 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void openStationCard(Player player, String stationId) throws Exception {
         Map<String, Object> station = stationById(stationId);
         if (station == null) {
-            player.sendMessage(color("&cРЈС‡Р°СЃС‚РѕРє РЅРµ РЅР°Р№РґРµРЅ."));
+            player.sendMessage(color("&cУчасток не найден."));
             openStationsMenu(player, 0);
             return;
         }
         MenuHolder holder = new MenuHolder("station-card", stationId);
-        Inventory inv = holder.create(45, color("&eРљР°СЂС‚РѕС‡РєР° СѓС‡Р°СЃС‚РєР°"));
-        setStatic(inv, 4, infoItem(Material.LECTERN, "&fРЈС‡Р°СЃС‚РѕРє Р¦РРљ", stationLore(station, stationId)));
-        setButton(holder, 20, Material.ENDER_PEARL, "&bРўРµР»РµРїРѕСЂС‚РёСЂРѕРІР°С‚СЊСЃСЏ", List.of("&7Р‘С‹СЃС‚СЂС‹Р№ РїРµСЂРµС…РѕРґ Рє СѓС‡Р°СЃС‚РєСѓ."), "station:teleport:" + stationId);
-        setButton(holder, 21, Material.NAME_TAG, "&eРќР°Р·РЅР°С‡РёС‚СЊ РїСЂРµРґСЃРµРґР°С‚РµР»СЏ", List.of("&7Р’С‹Р±СЂР°С‚СЊ РёРіСЂРѕРєР° РґР»СЏ СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР°."), "station:assign-chair:" + stationId);
-        setButton(holder, 22, Material.BARRIER, "&cРЎРЅСЏС‚СЊ СЃС‚Р°С‚СѓСЃ СѓС‡Р°СЃС‚РєР°", List.of("&7РЎРЅСЏС‚СЊ Р·Р°С‰РёС‚Сѓ Рё СѓРґР°Р»РёС‚СЊ СЃРІСЏР·Р°РЅРЅСѓСЋ РЅР°РґРїРёСЃСЊ."), "station:remove-protection:" + stationId);
-        setButton(holder, 23, Material.BRUSH, "&dРЈРґР°Р»РёС‚СЊ Р»РёС€РЅРёРµ РЅР°РґРїРёСЃРё СЂСЏРґРѕРј", List.of("&7РўРѕР»СЊРєРѕ СЃРІСЏР·Р°РЅРЅС‹Рµ TextDisplay СЂСЏРґРѕРј СЃ СѓС‡Р°СЃС‚РєРѕРј."), "station:cleanup-labels:" + stationId);
-        setStatic(inv, 24, infoItem(Material.PAPER, "&fРЎС‚Р°С‚РёСЃС‚РёРєР°", stationStatsLore(stationId)));
-        setButton(holder, 40, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Рљ СЃРїРёСЃРєСѓ СѓС‡Р°СЃС‚РєРѕРІ."), "open:stations");
+        Inventory inv = holder.create(45, color("&eКарточка участка"));
+        setStatic(inv, 4, infoItem(Material.LECTERN, "&fУчасток ЦИК", stationLore(station, stationId)));
+        setButton(holder, 20, Material.ENDER_PEARL, "&bТелепортироваться", List.of("&7Быстрый переход к участку."), "station:teleport:" + stationId);
+        setButton(holder, 21, Material.NAME_TAG, "&eНазначить председателя", List.of("&7Выбрать игрока для этого участка."), "station:assign-chair:" + stationId);
+        setButton(holder, 22, Material.BARRIER, "&cСнять защиту и удалить участок", List.of("&7Блок участка будет отвязан и удалён из защиты.", "&7Голоса и заявки в журнале сохранятся."), "station:remove-protection:" + stationId);
+        setButton(holder, 23, Material.BRUSH, "&dОчистить лишние надписи рядом", List.of("&7Удалить только связанные TextDisplay рядом с участком."), "station:cleanup-labels:" + stationId);
+        setStatic(inv, 24, infoItem(Material.PAPER, "&fСводка участка", stationStatsLore(stationId)));
         setButton(holder, 31, Material.WRITABLE_BOOK, "&eВыдать игроку", List.of("&7Выдать заявку или бюллетень выбранному игроку."), "station:issue-target:" + stationId);
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К списку участков."), "open:stations");
         player.openInventory(inv);
     }
 
     private void openIssueTargetPicker(Player player, String stationId, int page) throws Exception {
         if (!hasElectionAdmin(player)) {
-            throw new IllegalStateException("РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РІС‹РґР°С‡Рё РІС‹Р±РѕСЂРЅС‹С… РїСЂРµРґРјРµС‚РѕРІ.");
+            throw new IllegalStateException("Недостаточно прав для выдачи выборных предметов.");
         }
         List<Player> onlinePlayers = new ArrayList<>(Bukkit.getOnlinePlayers());
         onlinePlayers.sort(Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER));
         MenuHolder holder = new MenuHolder("issue-target-picker", stationId);
-        Inventory inv = holder.create(54, color("&eР’С‹РґР°С‚СЊ РёРіСЂРѕРєСѓ"));
+        Inventory inv = holder.create(54, color("&eВыдать игроку"));
         int start = Math.max(0, page) * 21;
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
         for (int i = 0; i < slots.length && start + i < onlinePlayers.size(); i++) {
             Player target = onlinePlayers.get(start + i);
             setButton(holder, slots[i], Material.PLAYER_HEAD, "&f" + target.getName(), List.of(
                     "&7UUID: &f" + shortId(target.getUniqueId().toString()),
-                    "&7РќР°Р¶РјРё, С‡С‚РѕР±С‹ РІС‹Р±СЂР°С‚СЊ РёРіСЂРѕРєР°."
+                    "&7Нажми, чтобы выбрать игрока."
             ), "issuepicker:" + stationId + ":" + target.getUniqueId());
         }
         pageButtons(holder, inv, page, onlinePlayers.size(), 21,
@@ -1383,33 +1383,33 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void openIssueOptionsMenu(Player player, String stationId, String targetUuid) {
         Player target = Bukkit.getPlayer(UUID.fromString(targetUuid));
         if (target == null) {
-            player.sendMessage(color("&cРРіСЂРѕРє РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РѕРЅР»Р°Р№РЅ."));
+            player.sendMessage(color("&cИгрок должен быть онлайн."));
             return;
         }
         MenuHolder holder = new MenuHolder("issue-options", stationId);
-        Inventory inv = holder.create(27, color("&eР’С‹РґР°С‚СЊ РёРіСЂРѕРєСѓ"));
+        Inventory inv = holder.create(27, color("&eВыдать игроку"));
         setStatic(inv, 13, infoItem(Material.NAME_TAG, "&f" + target.getName(), List.of(
-                "&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(stationId),
-                "&7РРіСЂРѕРє: &f" + target.getName()
+                "&7Участок: &f" + shortId(stationId),
+                "&7Игрок: &f" + target.getName()
         )));
-        setButton(holder, 11, Material.WRITABLE_BOOK, "&eР’С‹РґР°С‚СЊ Р·Р°СЏРІРєСѓ", List.of("&7Р›РёС‡РЅР°СЏ РєРЅРёРіР°-Р·Р°СЏРІРєР° РґР»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РёРіСЂРѕРєР°."), "admin:issue-application:" + stationId + ":" + targetUuid);
-        setButton(holder, 15, Material.PAPER, "&eР’С‹РґР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ", List.of("&7Р›РёС‡РЅС‹Р№ Р±СЋР»Р»РµС‚РµРЅСЊ С‚РµРєСѓС‰РµРіРѕ С‚СѓСЂР°."), "admin:issue-ballot:" + stationId + ":" + targetUuid);
-        setButton(holder, 22, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ Рє РІС‹Р±РѕСЂСѓ РёРіСЂРѕРєР°."), "station:issue-target:" + stationId);
+        setButton(holder, 11, Material.WRITABLE_BOOK, "&eВыдать заявку", List.of("&7Личная книга-заявка для выбранного игрока."), "admin:issue-application:" + stationId + ":" + targetUuid);
+        setButton(holder, 15, Material.PAPER, "&eВыдать бюллетень", List.of("&7Личный бюллетень текущего тура."), "admin:issue-ballot:" + stationId + ":" + targetUuid);
+        setButton(holder, 22, Material.ARROW, "&aНазад", List.of("&7Вернуться к выбору игрока."), "station:issue-target:" + stationId);
         player.openInventory(inv);
     }
 
     private void openChairPicker(Player player, String stationId, int page) {
         List<PlayerChoice> choices = knownPlayers();
         MenuHolder holder = new MenuHolder("chair-picker", stationId);
-        Inventory inv = holder.create(54, color("&bР’С‹Р±РѕСЂ РїСЂРµРґСЃРµРґР°С‚РµР»СЏ"));
+        Inventory inv = holder.create(54, color("&bВыбор председателя ЦИК"));
         int start = Math.max(0, page) * 21;
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
         for (int i = 0; i < slots.length && start + i < choices.size(); i++) {
             PlayerChoice choice = choices.get(start + i);
             setButton(holder, slots[i], Material.PLAYER_HEAD, "&f" + choice.name(), List.of(
                     "&7UUID: &f" + shortId(choice.uuid()),
-                    "&7РЎС‚Р°С‚СѓСЃ: " + (choice.online() ? "&aРѕРЅР»Р°Р№РЅ" : "&7РѕС„С„Р»Р°Р№РЅ"),
-                    "&7РќР°Р¶РјРё, С‡С‚РѕР±С‹ РЅР°Р·РЅР°С‡РёС‚СЊ."
+                    "&7Статус: " + (choice.online() ? "&aонлайн" : "&7офлайн"),
+                    "&7Нажми, чтобы назначить."
             ), "chairpicker:" + stationId + ":" + choice.uuid() + ":" + choice.name());
         }
         pageButtons(holder, inv, page, choices.size(), 21, "station:assign-chair:" + stationId + ":page:" + (page - 1), "station:assign-chair:" + stationId + ":page:" + (page + 1), "station:view:" + stationId);
@@ -1419,11 +1419,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void openCikMenu(Player player, int page) throws Exception {
         List<Map<String, Object>> chairs = queryList("SELECT station_id,player_uuid,player_name,assigned_at,active FROM cik_chairs WHERE active=1 ORDER BY assigned_at DESC");
         MenuHolder holder = new MenuHolder("cik", "");
-        Inventory inv = holder.create(54, color("&bР¦РРљ"));
-        setButton(holder, 10, Material.NAME_TAG, "&eРЎРїРёСЃРѕРє РїСЂРµРґСЃРµРґР°С‚РµР»РµР№", List.of("&7РђРєС‚РёРІРЅС‹Рµ РїСЂРµРґСЃРµРґР°С‚РµР»Рё РїРѕ СѓС‡Р°СЃС‚РєР°Рј."), "none");
-        setButton(holder, 12, Material.WAXED_COPPER_GRATE, "&cРЈРЅРёС‡С‚РѕР¶РёС‚СЊ РІСЃРµ РїРµС‡Р°С‚Рё Р¦РРљ", List.of(
-                "&7РЎС‚Р°СЂС‹Рµ РїРµС‡Р°С‚Рё Р±СѓРґСѓС‚ РѕС‚РѕР·РІР°РЅС‹.",
-                "&7РћРЅР»Р°Р№РЅ-РёРЅРІРµРЅС‚Р°СЂРё С‚РѕР¶Рµ Р±СѓРґСѓС‚ РѕС‡РёС‰РµРЅС‹."
+        Inventory inv = holder.create(54, color("&bЦИК"));
+        setButton(holder, 10, Material.NAME_TAG, "&eПредседатели участков", List.of("&7Назначение председателей делается из карточки участка."), "none");
+        setButton(holder, 12, Material.WAXED_COPPER_GRATE, "&cУничтожить все печати ЦИК", List.of(
+                "&7Отозвать все активные печати участков.",
+                "&7Онлайн-инвентари тоже будут очищены."
         ), "cik:revoke-all");
         int start = Math.max(0, page) * 21;
         int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
@@ -1432,10 +1432,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             String stationId = string(row.get("station_id"));
             String playerName = string(row.get("player_name"));
             List<String> lore = new ArrayList<>();
-            lore.add("&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(stationId));
-            lore.add("&7Р’С‹РґР°РЅР°: &f" + formatTs(longValue(row.get("assigned_at"))));
-            lore.add("&7РќР°Р¶РјРё, С‡С‚РѕР±С‹ РїРѕСЃРјРѕС‚СЂРµС‚СЊ СѓС‡Р°СЃС‚РѕРє.");
-            setButton(holder, slots[i], Material.PLAYER_HEAD, "&f" + first(playerName, "Р±РµР· РёРјРµРЅРё"), lore, "station:view:" + stationId);
+            lore.add("&7Участок: &f" + shortId(stationId));
+            lore.add("&7Выдана: &f" + formatTs(longValue(row.get("assigned_at"))));
+            lore.add("&7Нажми, чтобы открыть участок.");
+            setButton(holder, slots[i], Material.PLAYER_HEAD, "&f" + first(playerName, "без имени"), lore, "station:view:" + stationId);
         }
         pageButtons(holder, inv, page, chairs.size(), 21, "open:cik:" + (page - 1), "open:cik:" + (page + 1), "open:root");
         player.openInventory(inv);
@@ -1458,22 +1458,22 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             );
         }
         MenuHolder holder = new MenuHolder("applications", filter);
-        Inventory inv = holder.create(54, color("&6Р—Р°СЏРІРєРё РєР°РЅРґРёРґР°С‚РѕРІ"));
-        setButton(holder, 10, Material.WRITABLE_BOOK, "&fРќРµСЂР°СЃСЃРјРѕС‚СЂРµРЅРЅС‹Рµ", List.of("&7РџРѕРєР°Р·Р°С‚СЊ Р·Р°СЏРІРєРё СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј PENDING."), "open:applications:PENDING:0");
-        setButton(holder, 11, Material.LIME_DYE, "&fР РµРєРѕРјРµРЅРґРѕРІР°РЅРЅС‹Рµ Р¦РРљ", List.of("&7РџРѕРєР°Р·Р°С‚СЊ Р·Р°СЏРІРєРё СЃ СЂРµРєРѕРјРµРЅРґР°С†РёРµР№."), "open:applications:RECOMMENDED:0");
-        setButton(holder, 12, Material.GRAY_DYE, "&fРќРµ СЂРµРєРѕРјРµРЅРґРѕРІР°РЅРЅС‹Рµ", List.of("&7РџРѕРєР°Р·Р°С‚СЊ РѕС‚СЂРёС†Р°С‚РµР»СЊРЅСѓСЋ РїРѕРјРµС‚РєСѓ Р¦РРљ."), "open:applications:NOT_RECOMMENDED:0");
-        setButton(holder, 13, Material.EMERALD, "&fРћРґРѕР±СЂРµРЅРЅС‹Рµ", List.of("&7РџРѕРєР°Р·Р°С‚СЊ РѕРґРѕР±СЂРµРЅРЅС‹Рµ Р·Р°СЏРІРєРё."), "open:applications:APPROVED:0");
-        setButton(holder, 14, Material.REDSTONE, "&fРћС‚РєР»РѕРЅС‘РЅРЅС‹Рµ", List.of("&7РџРѕРєР°Р·Р°С‚СЊ РѕС‚РєР»РѕРЅС‘РЅРЅС‹Рµ Р·Р°СЏРІРєРё."), "open:applications:REJECTED:0");
+        Inventory inv = holder.create(54, color("&6Заявки кандидатов"));
+        setButton(holder, 10, Material.WRITABLE_BOOK, "&fНерассмотренные", List.of("&7Показать заявки со статусом PENDING."), "open:applications:PENDING:0");
+        setButton(holder, 11, Material.LIME_DYE, "&fРекомендованы ЦИК", List.of("&7Показать заявки с положительной рекомендацией."), "open:applications:RECOMMENDED:0");
+        setButton(holder, 12, Material.GRAY_DYE, "&fНе рекомендованы", List.of("&7Показать заявки с отрицательной пометкой ЦИК."), "open:applications:NOT_RECOMMENDED:0");
+        setButton(holder, 13, Material.EMERALD, "&fОдобрены", List.of("&7Показать одобренные заявки."), "open:applications:APPROVED:0");
+        setButton(holder, 14, Material.REDSTONE, "&fОтклонены", List.of("&7Показать отклонённые заявки."), "open:applications:REJECTED:0");
         int start = Math.max(0, page) * 21;
         int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
         for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
             Map<String, Object> row = rows.get(start + i);
             String id = string(row.get("id"));
-            setButton(holder, slots[i], Material.BOOK, "&f" + first(string(row.get("player_name")), "РРіСЂРѕРє"), List.of(
-                    "&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(string(row.get("station_id"))),
-                    "&7Р¦РРљ: &f" + humanRecommendation(string(row.get("chair_recommendation"))),
-                    "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
-                    "&7РќР°Р¶РјРё, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ."
+            setButton(holder, slots[i], Material.BOOK, "&f" + first(string(row.get("player_name")), "Игрок"), List.of(
+                    "&7Участок: &f" + shortId(string(row.get("station_id"))),
+                    "&7ЦИК: &f" + humanRecommendation(string(row.get("chair_recommendation"))),
+                    "&7Админ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
+                    "&7Нажми, чтобы открыть."
             ), "application:view:" + id);
         }
         pageButtons(holder, inv, page, rows.size(), 21, "open:applications:" + filter + ":" + (page - 1), "open:applications:" + filter + ":" + (page + 1), "open:root");
@@ -1483,51 +1483,51 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void openApplicationDetail(Player player, String applicationId) throws Exception {
         Map<String, Object> app = applicationById(applicationId);
         if (app == null) {
-            player.sendMessage(color("&cР—Р°СЏРІРєР° РЅРµ РЅР°Р№РґРµРЅР°."));
+            player.sendMessage(color("&cЗаявка не найдена."));
             openApplicationsMenu(player, "PENDING", 0);
             return;
         }
         MenuHolder holder = new MenuHolder("application-detail", applicationId);
-        Inventory inv = holder.create(45, color("&6РљР°СЂС‚РѕС‡РєР° Р·Р°СЏРІРєРё"));
-        setStatic(inv, 4, infoItem(Material.BOOK, "&f" + first(string(app.get("player_name")), "РРіСЂРѕРє"), List.of(
-                "&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(string(app.get("station_id"))),
-                "&7Р¦РРљ: &f" + humanRecommendation(string(app.get("chair_recommendation"))),
-                "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
-                "&7РЎРґР°РЅР°: &f" + formatTs(longValue(app.get("submitted_at")))
+        Inventory inv = holder.create(45, color("&6Карточка заявки"));
+        setStatic(inv, 4, infoItem(Material.BOOK, "&f" + first(string(app.get("player_name")), "Игрок"), List.of(
+                "&7Участок: &f" + shortId(string(app.get("station_id"))),
+                "&7ЦИК: &f" + humanRecommendation(string(app.get("chair_recommendation"))),
+                "&7Админ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
+                "&7Сдана: &f" + formatTs(longValue(app.get("submitted_at")))
         )));
-        setButton(holder, 20, Material.WRITTEN_BOOK, "&eРћС‚РєСЂС‹С‚СЊ РєРЅРёРіСѓ", List.of("&7РџРѕСЃРјРѕС‚СЂРµС‚СЊ РѕС‚РІРµС‚С‹ РєР°РЅРґРёРґР°С‚Р°."), "vote:view-program:" + applicationId);
-        setButton(holder, 22, Material.LIME_WOOL, "&aРћРґРѕР±СЂРёС‚СЊ", List.of("&7РРіСЂРѕРє СЃС‚Р°РЅРµС‚ РєР°РЅРґРёРґР°С‚РѕРј."), "application:approve:" + applicationId);
-        setButton(holder, 24, Material.RED_WOOL, "&cРћС‚РєР»РѕРЅРёС‚СЊ", List.of("&7РРіСЂРѕРє РЅРµ СЃС‚Р°РЅРµС‚ РєР°РЅРґРёРґР°С‚РѕРј."), "application:reject:" + applicationId);
-        setButton(holder, 40, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Рљ СЃРїРёСЃРєСѓ Р·Р°СЏРІРѕРє."), "open:applications");
+        setButton(holder, 20, Material.WRITTEN_BOOK, "&eОткрыть книгу", List.of("&7Посмотреть ответы кандидата."), "vote:view-program:" + applicationId);
+        setButton(holder, 22, Material.LIME_WOOL, "&aОдобрить", List.of("&7Игрок станет кандидатом."), "application:approve:" + applicationId);
+        setButton(holder, 24, Material.RED_WOOL, "&cОтклонить", List.of("&7Игрок не станет кандидатом."), "application:reject:" + applicationId);
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К списку заявок."), "open:applications");
         player.openInventory(inv);
     }
 
     private void openResultsMenu(Player player) {
         LiveSnapshot snap = snapshot.get();
         MenuHolder holder = new MenuHolder("results", "");
-        Inventory inv = holder.create(54, color("&aР РµР·СѓР»СЊС‚Р°С‚С‹ РІС‹Р±РѕСЂРѕРІ"));
-        setStatic(inv, 4, infoItem(Material.PAPER, "&fРЎРІРѕРґРєР° С‚СѓСЂР°", List.of(
-                "&7Р­С‚Р°Рї: &f" + snap.stageTitle(),
-                "&7РўСѓСЂ: &f" + snap.round(),
-                "&7РЎРґР°РЅРѕ Р±СЋР»Р»РµС‚РµРЅРµР№: &f" + snap.depositedBallots(),
-                "&7РљР°РЅРґРёРґР°С‚РѕРІ: &f" + snap.candidates().size()
+        Inventory inv = holder.create(54, color("&aРезультаты выборов"));
+        setStatic(inv, 4, infoItem(Material.PAPER, "&fСводка тура", List.of(
+                "&7Этап: &f" + snap.stageTitle(),
+                "&7Тур: &f" + snap.round(),
+                "&7Сдано бюллетеней: &f" + snap.depositedBallots(),
+                "&7Кандидатов: &f" + snap.candidates().size()
         )));
-        setButton(holder, 10, Material.CALCITE, "&eРџРѕРґСЃС‡РёС‚Р°С‚СЊ С‚РµРєСѓС‰РёР№ С‚СѓСЂ", List.of("&7РЎС‡РёС‚Р°С‚СЊ С‚РѕР»СЊРєРѕ СЃРґР°РЅРЅС‹Рµ РїРѕРґС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ Р±СЋР»Р»РµС‚РµРЅРё."), "results:count");
+        setButton(holder, 10, Material.CALCITE, "&eПодсчитать текущий тур", List.of("&7Учесть только сданные подтверждённые бюллетени."), "results:count");
         if (snap.secondRoundNeeded()) {
-            setButton(holder, 12, Material.COMPARATOR, "&6РћС‚РєСЂС‹С‚СЊ РІС‚РѕСЂРѕР№ С‚СѓСЂ", List.of("&7РЎС‚Р°СЂС‹Рµ Р±СЋР»Р»РµС‚РµРЅРё Р±СѓРґСѓС‚ РёРЅРІР°Р»РёРґРёСЂРѕРІР°РЅС‹."), "results:second-round");
+            setButton(holder, 12, Material.COMPARATOR, "&6Открыть второй тур", List.of("&7Во второй тур перейдут только лидеры с равным максимумом голосов."), "results:second-round");
         }
         int slot = 19;
         for (CandidateResult result : snap.candidates()) {
             setButton(holder, slot++, Material.PLAYER_HEAD, "&f" + result.name(), List.of(
-                    "&7Р“РѕР»РѕСЃР°: &f" + result.votes(),
-                    "&7РџРѕР»РѕСЃР°: &f" + result.bar(),
-                    "&7РќР°Р¶РјРё, С‡С‚РѕР±С‹ РІС‹Р±СЂР°С‚СЊ РїРѕР±РµРґРёС‚РµР»РµРј РІСЂСѓС‡РЅСѓСЋ."
+                    "&7Голоса: &f" + result.votes(),
+                    "&7Полоса: &f" + result.bar(),
+                    "&7Нажми, чтобы выбрать победителя вручную."
             ), "results:winner:" + result.uuid());
             if (slot == 26) {
                 slot = 28;
             }
         }
-        setButton(holder, 49, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Рљ СЂР°Р·РґРµР»Сѓ РІС‹Р±РѕСЂРѕРІ."), "open:root");
+        setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:root");
         player.openInventory(inv);
     }
 
@@ -1605,21 +1605,21 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void openLiveMenu(Player player) {
         LiveSnapshot snap = snapshot.get();
         MenuHolder holder = new MenuHolder("live", "");
-        Inventory inv = holder.create(27, color("&bLive-РїР°РЅРµР»СЊ"));
-        setStatic(inv, 11, infoItem(Material.MAP, "&fРџР°РЅРµР»СЊ", List.of(
-                "&7Р­С‚Р°Рї: &f" + snap.stageTitle(),
-                "&7РџСЂРµР·РёРґРµРЅС‚: &f" + first(snap.presidentName(), "РЅРµС‚"),
-                "&7Р—Р°РєРѕРЅРѕРІ: &f" + snap.laws().size(),
-                "&7РРіСЂРѕРєРё РјРѕРіСѓС‚ СЃРєСЂС‹С‚СЊ РїР°РЅРµР»СЊ РєРѕРјР°РЅРґРѕР№ &f/hidelive"
+        Inventory inv = holder.create(27, color("&bLive-панель"));
+        setStatic(inv, 11, infoItem(Material.MAP, "&fПанель", List.of(
+                "&7Этап: &f" + snap.stageTitle(),
+                "&7Президент: &f" + first(snap.presidentName(), "нет"),
+                "&7Законов: &f" + snap.laws().size(),
+                "&7Скрыть live-панель можно командой &f/hidelive"
         )));
-        setButton(holder, 15, Material.CLOCK, "&aРћР±РЅРѕРІРёС‚СЊ", List.of("&7РџРµСЂРµСЃРѕР±СЂР°С‚СЊ СЃРЅР°РїС€РѕС‚ Рё РїРµСЂРµСЂРёСЃРѕРІР°С‚СЊ РїР°РЅРµР»СЊ."), "live:refresh");
-        setButton(holder, 22, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Рљ СЂР°Р·РґРµР»Сѓ РІС‹Р±РѕСЂРѕРІ."), "open:root");
+        setButton(holder, 15, Material.CLOCK, "&aОбновить", List.of("&7Пересобрать snapshot и перерисовать панель."), "live:refresh");
+        setButton(holder, 22, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:root");
         player.openInventory(inv);
     }
 
     private void openSealTargetMenu(Player player, Player target, SealContext sealContext) {
         if (target == null || sealContext == null || sealContext.stationId() == null || sealContext.stationId().isBlank()) {
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РѕРїСЂРµРґРµР»РёС‚СЊ СѓС‡Р°СЃС‚РѕРє РїРµС‡Р°С‚Рё Р¦РРљ."));
+            player.sendMessage(color("&cНе удалось определить участок печати ЦИК."));
             return;
         }
         MenuHolder holder = new MenuHolder("seal-target", sealContext.stationId());
@@ -1627,28 +1627,28 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         holder.data().put("station_id", sealContext.stationId());
         holder.data().put("election_id", sealContext.electionId());
         holder.data().put("chair_uuid", sealContext.playerUuid());
-        Inventory inv = holder.create(27, color("&bРџРµС‡Р°С‚СЊ Р¦РРљ"));
+        Inventory inv = holder.create(27, color("&bПечать ЦИК"));
         setStatic(inv, 13, infoItem(Material.NAME_TAG, "&f" + target.getName(), List.of(
-                "&7Р¦РµР»СЊ: &f" + target.getName(),
-                "&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(sealContext.stationId())
+                "&7Цель: &f" + target.getName(),
+                "&7Участок: &f" + shortId(sealContext.stationId())
         )));
-        setButton(holder, 11, Material.WRITABLE_BOOK, "&eР’С‹РґР°С‚СЊ Р·Р°СЏРІРєСѓ", List.of("&7Р›РёС‡РЅР°СЏ РєРЅРёРіР°-Р·Р°СЏРІРєР° РґР»СЏ СЌС‚РѕРіРѕ РёРіСЂРѕРєР°."), "seal:issue-application:" + target.getName());
-        setButton(holder, 15, Material.PAPER, "&eР’С‹РґР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ", List.of("&7Р›РёС‡РЅС‹Р№ Р±СЋР»Р»РµС‚РµРЅСЊ С‚РµРєСѓС‰РµРіРѕ С‚СѓСЂР°."), "seal:issue-ballot:" + target.getName());
+        setButton(holder, 11, Material.WRITABLE_BOOK, "&eВыдать заявку", List.of("&7Личная книга-заявка для этого игрока."), "seal:issue-application:" + target.getName());
+        setButton(holder, 15, Material.PAPER, "&eВыдать бюллетень", List.of("&7Личный бюллетень текущего тура."), "seal:issue-ballot:" + target.getName());
         player.openInventory(inv);
     }
 
     private void openChairStationMenu(Player player, String stationId, int page) throws Exception {
         requireChairAccess(player, stationId);
         MenuHolder holder = new MenuHolder("chair-station", stationId);
-        Inventory inv = holder.create(45, color("&bРЈС‡Р°СЃС‚РѕРє РїСЂРµРґСЃРµРґР°С‚РµР»СЏ Р¦РРљ"));
-        setButton(holder, 11, Material.BOOK, "&eР—Р°СЏРІРєРё СѓС‡Р°СЃС‚РєР°", List.of("&7РћС‚РєСЂС‹С‚СЊ Р·Р°СЏРІРєРё СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР°."), "chair:applications:" + stationId);
-        setButton(holder, 15, Material.PAPER, "&eР‘СЋР»Р»РµС‚РµРЅРё СѓС‡Р°СЃС‚РєР°", List.of("&7РўРµС…РЅРёС‡РµСЃРєРёР№ СЃС‚Р°С‚СѓСЃ Р±СЋР»Р»РµС‚РµРЅРµР№ Р±РµР· СЂР°СЃРєСЂС‹С‚РёСЏ РІС‹Р±РѕСЂР°."), "chair:ballots:" + stationId);
+        Inventory inv = holder.create(45, color("&bУчасток председателя ЦИК"));
+        setButton(holder, 11, Material.BOOK, "&eЗаявки участка", List.of("&7Открыть заявки этого участка."), "chair:applications:" + stationId);
+        setButton(holder, 15, Material.PAPER, "&eБюллетени участка", List.of("&7Технический статус бюллетеней без раскрытия выбора."), "chair:ballots:" + stationId);
         boolean hasSeal = hasUsableActiveSeal(player, stationId);
-        setButton(holder, 31, hasSeal ? Material.HONEYCOMB_BLOCK : Material.HONEYCOMB, hasSeal ? "&aРћР±РЅРѕРІРёС‚СЊ РїРµС‡Р°С‚СЊ Р¦РРљ" : "&eРџРѕР»СѓС‡РёС‚СЊ РїРµС‡Р°С‚СЊ Р¦РРљ", List.of(
-                hasSeal ? "&7РџРµСЂРµРІС‹РїСѓСЃС‚РёС‚СЊ Р»РёС‡РЅСѓСЋ РїРµС‡Р°С‚СЊ СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР°." : "&7Р’С‹РґР°С‚СЊ Р»РёС‡РЅСѓСЋ РїРµС‡Р°С‚СЊ СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР° СЃРµР±Рµ.",
-                "&7РџРµС‡Р°С‚СЊ РІС‹РґР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ СЏРІРЅС‹Рј РґРµР№СЃС‚РІРёРµРј РёР· РјРµРЅСЋ."
+        setButton(holder, 31, hasSeal ? Material.HONEYCOMB_BLOCK : Material.HONEYCOMB, hasSeal ? "&aОбновить печать ЦИК" : "&eПолучить печать ЦИК", List.of(
+                hasSeal ? "&7Перевыпустить личную печать этого участка." : "&7Выдать личную печать этого участка себе.",
+                "&7Печать выдаётся только явным действием из меню."
         ), "chair:issue-seal:" + stationId);
-        setButton(holder, 22, Material.BARRIER, "&cР—Р°РєСЂС‹С‚СЊ", List.of("&7Р—Р°РєСЂС‹С‚СЊ РјРµРЅСЋ."), "close");
+        setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
         player.openInventory(inv);
     }
 
@@ -1659,17 +1659,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 stationId
         );
         MenuHolder holder = new MenuHolder("chair-applications", stationId);
-        Inventory inv = holder.create(54, color("&bР—Р°СЏРІРєРё СѓС‡Р°СЃС‚РєР°"));
+        Inventory inv = holder.create(54, color("&bЗаявки участка"));
         int start = Math.max(0, page) * 21;
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
         for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
             Map<String, Object> row = rows.get(start + i);
             String applicationId = string(row.get("id"));
-            setButton(holder, slots[i], Material.WRITTEN_BOOK, "&f" + first(string(row.get("player_name")), "РРіСЂРѕРє"), List.of(
-                    "&7РЎРґР°РЅР°: &f" + formatTs(longValue(row.get("submitted_at"))),
-                    "&7Р¦РРљ: &f" + humanRecommendation(string(row.get("chair_recommendation"))),
-                    "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
-                    "&7РќР°Р¶РјРё, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ РєР°СЂС‚РѕС‡РєСѓ."
+            setButton(holder, slots[i], Material.WRITTEN_BOOK, "&f" + first(string(row.get("player_name")), "Игрок"), List.of(
+                    "&7Сдана: &f" + formatTs(longValue(row.get("submitted_at"))),
+                    "&7ЦИК: &f" + humanRecommendation(string(row.get("chair_recommendation"))),
+                    "&7Админ: &f" + humanApplicationStatus(string(row.get("admin_status"))),
+                    "&7Нажми, чтобы открыть карточку."
             ), "chair:application:view:" + stationId + ":" + applicationId);
         }
         pageButtons(holder, inv, page, rows.size(), 21, "chair:applications:" + stationId + ":" + (page - 1), "chair:applications:" + stationId + ":" + (page + 1), "chair:station:" + stationId);
@@ -1680,22 +1680,22 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         requireChairAccess(player, stationId);
         Map<String, Object> app = applicationById(applicationId);
         if (app == null || !Objects.equals(stationId, string(app.get("station_id")))) {
-            player.sendMessage(color("&cР—Р°СЏРІРєР° СѓС‡Р°СЃС‚РєР° РЅРµ РЅР°Р№РґРµРЅР°."));
+            player.sendMessage(color("&cЗаявка участка не найдена."));
             openChairApplicationsMenu(player, stationId, 0);
             return;
         }
         MenuHolder holder = new MenuHolder("chair-application-detail", stationId);
-        Inventory inv = holder.create(45, color("&bРљР°СЂС‚РѕС‡РєР° Р·Р°СЏРІРєРё"));
-        setStatic(inv, 4, infoItem(Material.BOOK, "&f" + first(string(app.get("player_name")), "РРіСЂРѕРє"), List.of(
-                "&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(stationId),
-                "&7Р¦РРљ: &f" + humanRecommendation(string(app.get("chair_recommendation"))),
-                "&7РђРґРјРёРЅ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
-                "&7РЎРґР°РЅР°: &f" + formatTs(longValue(app.get("submitted_at")))
+        Inventory inv = holder.create(45, color("&bКарточка заявки"));
+        setStatic(inv, 4, infoItem(Material.BOOK, "&f" + first(string(app.get("player_name")), "Игрок"), List.of(
+                "&7Участок: &f" + shortId(stationId),
+                "&7ЦИК: &f" + humanRecommendation(string(app.get("chair_recommendation"))),
+                "&7Админ: &f" + humanApplicationStatus(string(app.get("admin_status"))),
+                "&7Сдана: &f" + formatTs(longValue(app.get("submitted_at")))
         )));
-        setButton(holder, 20, Material.WRITTEN_BOOK, "&eРћС‚РєСЂС‹С‚СЊ РєРЅРёРіСѓ", List.of("&7РџРѕСЃРјРѕС‚СЂРµС‚СЊ РѕС‚РІРµС‚С‹ РєР°РЅРґРёРґР°С‚Р°."), "vote:view-program:" + applicationId);
-        setButton(holder, 22, Material.LIME_WOOL, "&aР РµРєРѕРјРµРЅРґРѕРІР°С‚СЊ", List.of("&7РџРµСЂРµРґР°С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅСѓСЋ РїРѕРјРµС‚РєСѓ Р¦РРљ."), "chair:application:recommend:" + stationId + ":" + applicationId);
-        setButton(holder, 24, Material.RED_WOOL, "&cРќРµ СЂРµРєРѕРјРµРЅРґРѕРІР°С‚СЊ", List.of("&7РџРµСЂРµРґР°С‚СЊ РѕС‚СЂРёС†Р°С‚РµР»СЊРЅСѓСЋ РїРѕРјРµС‚РєСѓ Р¦РРљ."), "chair:application:no-recommend:" + stationId + ":" + applicationId);
-        setButton(holder, 40, Material.ARROW, "&aРќР°Р·Р°Рґ", List.of("&7Рљ СЃРїРёСЃРєСѓ Р·Р°СЏРІРѕРє СѓС‡Р°СЃС‚РєР°."), "chair:applications:" + stationId + ":0");
+        setButton(holder, 20, Material.WRITTEN_BOOK, "&eОткрыть книгу", List.of("&7Посмотреть ответы кандидата."), "vote:view-program:" + applicationId);
+        setButton(holder, 22, Material.LIME_WOOL, "&aРекомендовать", List.of("&7Передать положительную пометку ЦИК."), "chair:application:recommend:" + stationId + ":" + applicationId);
+        setButton(holder, 24, Material.RED_WOOL, "&cНе рекомендовать", List.of("&7Передать отрицательную пометку ЦИК."), "chair:application:no-recommend:" + stationId + ":" + applicationId);
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К списку заявок участка."), "chair:applications:" + stationId + ":0");
         player.openInventory(inv);
     }
 
@@ -1706,7 +1706,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 stationId
         );
         MenuHolder holder = new MenuHolder("chair-ballots", stationId);
-        Inventory inv = holder.create(54, color("&bР‘СЋР»Р»РµС‚РµРЅРё СѓС‡Р°СЃС‚РєР°"));
+        Inventory inv = holder.create(54, color("&bБюллетени участка"));
         int start = Math.max(0, page) * 21;
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
         for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
@@ -1714,18 +1714,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             String id = string(row.get("id"));
             String status = string(row.get("status")).toUpperCase(Locale.ROOT);
             List<String> lore = new ArrayList<>();
-            lore.add("&7РЎС‚Р°С‚СѓСЃ: &f" + status);
-            lore.add("&7Р’С‹РґР°РЅ: &f" + formatTs(longValue(row.get("issued_at"))));
-            lore.add("&7РЎРґР°РЅ: &f" + formatTs(longValue(row.get("submitted_at"))));
+            lore.add("&7Статус: &f" + status);
+            lore.add("&7Выдан: &f" + formatTs(longValue(row.get("issued_at"))));
+            lore.add("&7Сдан: &f" + formatTs(longValue(row.get("submitted_at"))));
             if ("ISSUED".equals(status) || "CONFIRMED".equals(status)) {
-                lore.add("&7РќР°Р¶РјРё, С‡С‚РѕР±С‹ Р°РЅРЅСѓР»РёСЂРѕРІР°С‚СЊ.");
-                setButton(holder, slots[i], Material.PAPER, "&f" + first(string(row.get("player_name")), "РРіСЂРѕРє"), lore, "chair:annul-ballot:" + id);
+                lore.add("&7Нажми, чтобы аннулировать.");
+                setButton(holder, slots[i], Material.PAPER, "&f" + first(string(row.get("player_name")), "Игрок"), lore, "chair:annul-ballot:" + id);
             } else if ("DEPOSITED".equals(status)) {
-                lore.add("&aР“РѕР»РѕСЃ СѓР¶Рµ РїСЂРёРЅСЏС‚.");
-                setStatic(inv, slots[i], infoItem(Material.PAPER, "&f" + first(string(row.get("player_name")), "РРіСЂРѕРє"), lore));
+                lore.add("&aГолос уже принят.");
+                setStatic(inv, slots[i], infoItem(Material.PAPER, "&f" + first(string(row.get("player_name")), "Игрок"), lore));
             } else {
-                lore.add("&7РђРЅРЅСѓР»РёСЂРѕРІР°РЅРёРµ РЅРµРґРѕСЃС‚СѓРїРЅРѕ.");
-                setStatic(inv, slots[i], infoItem(Material.PAPER, "&f" + first(string(row.get("player_name")), "РРіСЂРѕРє"), lore));
+                lore.add("&7Аннулирование недоступно.");
+                setStatic(inv, slots[i], infoItem(Material.PAPER, "&f" + first(string(row.get("player_name")), "Игрок"), lore));
             }
         }
         pageButtons(holder, inv, page, rows.size(), 21, "chair:ballots:" + stationId + ":" + (page - 1), "chair:ballots:" + stationId + ":" + (page + 1), "chair:station:" + stationId);
@@ -1737,7 +1737,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         String ballotId = readString(ballot, ballotIdKey);
         Map<String, Object> ballotRow = ballotById(ballotId);
         if (ballotRow == null || !"ISSUED".equalsIgnoreCase(string(ballotRow.get("status")))) {
-            player.sendMessage(color("&cР­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ Р±РѕР»СЊС€Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»РµРЅ."));
+            player.sendMessage(color("&cЭтот бюллетень больше недействителен."));
             return;
         }
         try (Connection connection = openConnection()) {
@@ -1745,17 +1745,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (!string(ballotRow.get("election_id")).equals(context.electionId())
                     || context.stage() != ElectionStage.VOTING
                     || intValue(ballotRow.get("round_no")) != context.round()) {
-                player.sendMessage(color("&eР‘СЋР»Р»РµС‚РµРЅСЊ РЅРµ Р°РєС‚РёРІРµРЅ РЅР° С‚РµРєСѓС‰РµРј СЌС‚Р°РїРµ."));
+                player.sendMessage(color("&eБюллетень не активен на текущем этапе."));
                 return;
             }
         }
         List<Map<String, Object>> candidates = activeCandidates(string(ballotRow.get("election_id")), intValue(ballotRow.get("round_no")));
         MenuHolder holder = new MenuHolder("vote", ballotId);
-        Inventory inv = holder.create(54, color("&aР‘СЋР»Р»РµС‚РµРЅСЊ"));
+        Inventory inv = holder.create(54, color("&aБюллетень"));
         int slot = 10;
         for (Map<String, Object> candidate : candidates) {
             String candidateUuid = string(candidate.get("player_uuid"));
-            String candidateName = first(string(candidate.get("player_name")), "РљР°РЅРґРёРґР°С‚");
+            String candidateName = first(string(candidate.get("player_name")), "Кандидат");
             if (candidateUuid.equals(player.getUniqueId().toString())) {
                 continue;
             }
@@ -1763,8 +1763,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             ItemMeta meta = head.getItemMeta();
             meta.setDisplayName(color("&f" + candidateName));
             meta.setLore(List.of(
-                    color("&7Р›РљРњ: РІС‹Р±СЂР°С‚СЊ РєР°РЅРґРёРґР°С‚Р°"),
-                    color("&7РџРљРњ: РѕС‚РєСЂС‹С‚СЊ РїСЂРѕРіСЂР°РјРјСѓ РєР°РЅРґРёРґР°С‚Р°")
+                    color("&7ЛКМ: выбрать кандидата"),
+                    color("&7ПКМ: открыть программу кандидата")
             ));
             head.setItemMeta(meta);
             holder.actions().put(slot, "vote:confirm:" + ballotId + ":" + candidateUuid);
@@ -1778,10 +1778,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 slot = 19;
             }
         }
-        setButton(holder, 49, Material.BARRIER, "&cР—Р°РєСЂС‹С‚СЊ", List.of("&7Р—Р°РєСЂС‹С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ."), "close");
+        setButton(holder, 49, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть бюллетень."), "close");
         player.openInventory(inv);
         } catch (Exception error) {
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ."));
+            player.sendMessage(color("&cНе удалось открыть бюллетень."));
             getLogger().warning("vote menu: " + safeError(error));
         }
     }
@@ -1818,7 +1818,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             inv.setItem(slot, infoItem(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + digit, List.of()));
             holder.actions().put(slot, "taxpin:digit:" + digit);
         }
-        inv.setItem(13, infoItem(Material.PAPER, "&fР’РІРµРґРёС‚Рµ PIN", List.of("&7" + maskPin(pin))));
+        inv.setItem(13, infoItem(Material.PAPER, "&fВведите PIN", List.of("&7" + maskPin(pin))));
         inv.setItem(23, infoItem(Material.BARRIER, "&cCancel", List.of()));
         holder.actions().put(23, "taxpin:cancel");
         inv.setItem(32, infoItem(Material.ORANGE_WOOL, "&eClear", List.of()));
@@ -1851,15 +1851,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void pageButtons(MenuHolder holder, Inventory inv, int page, int totalRows, int pageSize, String prevAction, String nextAction, String backAction) {
-        int pages = Math.max(1, (int) Math.ceil(totalRows / (double) pageSize));
         if (page > 0) {
-            setButton(holder, 45, Material.SPECTRAL_ARROW, "&eРќР°Р·Р°Рґ", List.of("&7РџСЂРµРґС‹РґСѓС‰Р°СЏ СЃС‚СЂР°РЅРёС†Р°."), prevAction);
+            setButton(holder, 45, Material.SPECTRAL_ARROW, "&eНазад", List.of("&7Предыдущая страница."), prevAction);
         }
-        setStatic(inv, 49, infoItem(Material.PAPER, "&fРЎС‚СЂР°РЅРёС†Р° " + (page + 1) + " / " + pages, List.of()));
-        if (page + 1 < pages) {
-            setButton(holder, 53, Material.SPECTRAL_ARROW, "&eР’РїРµСЂС‘Рґ", List.of("&7РЎР»РµРґСѓСЋС‰Р°СЏ СЃС‚СЂР°РЅРёС†Р°."), nextAction);
+        if ((page + 1) * pageSize < totalRows) {
+            setButton(holder, 53, Material.SPECTRAL_ARROW, "&eДальше", List.of("&7Следующая страница."), nextAction);
         }
-        setButton(holder, 48, Material.ARROW, "&aРљ СЂР°Р·РґРµР»Сѓ", List.of("&7Р’РµСЂРЅСѓС‚СЊСЃСЏ РЅР°Р·Р°Рґ."), backAction);
+        setButton(holder, 48, Material.ARROW, "&aК разделу", List.of("&7Вернуться назад."), backAction);
     }
 
     private void setButton(MenuHolder holder, int slot, Material material, String name, List<String> lore, String action) {
@@ -1901,11 +1899,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void createPollingStationFromTarget(Player player) throws Exception {
         Block target = player.getTargetBlockExact(8);
         if (target == null) {
-            player.sendMessage(color("&cРЎРјРѕС‚СЂРё РЅР° Р±Р»РѕРє СѓС‡Р°СЃС‚РєР°."));
+            player.sendMessage(color("&cСначала посмотри на блок участка."));
             return;
         }
         if (protectedBlockInfo(target) != null) {
-            player.sendMessage(color("&eР­С‚РѕС‚ Р±Р»РѕРє СѓР¶Рµ Р·Р°С‰РёС‰С‘РЅ."));
+            player.sendMessage(color("&eЭтот блок уже защищён."));
             return;
         }
         String electionId = requireActiveElectionId();
@@ -1918,10 +1916,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             logPluginEvent(connection, "election_core", "station_created", player.getName(), stationId, "world=" + target.getWorld().getName());
             return null;
         });
-        spawnOrReplaceTextDisplay(target.getLocation(), "РЈС‡Р°СЃС‚РѕРє Р¦РРљ", "STATION_LABEL", stationId);
+        spawnOrReplaceTextDisplay(target.getLocation(), "Участок ЦИК", "STATION_LABEL", stationId);
         spawnOrReplaceProtectedBlockVisual(target.getLocation(), "POLLING_STATION", stationId, Material.PAPER, MODEL_POLLING_STATION_MARKER, "polling_station_marker");
         reloadProtectedBlocks();
-        player.sendMessage(color("&aРЈС‡Р°СЃС‚РѕРє СЃРѕР·РґР°РЅ."));
+        player.sendMessage(color("&aУчасток создан."));
     }
 
     private void createTaxOfficeFromTarget(Player player) throws Exception {
@@ -2355,26 +2353,26 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (target == null || issuer == null || sealContext == null) {
             return;
         }
-        ensureCanReceiveIssuedElectionItem(target, "РєРЅРёРіСѓ Р·Р°СЏРІРєРё");
+        ensureCanReceiveIssuedElectionItem(target, "книгу заявки");
         String applicationId = "application_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
             if (!context.electionId().equals(sealContext.electionId())) {
-                throw new IllegalStateException("Р­С‚Р° РїРµС‡Р°С‚СЊ Р¦РРљ Р±РѕР»СЊС€Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР°.");
+                throw new IllegalStateException("Эта печать ЦИК больше недействительна.");
             }
             if (context.stage() != ElectionStage.PREPARATION && context.stage() != ElectionStage.APPLICATIONS) {
-                throw new IllegalStateException("Р—Р°СЏРІРєРё СЃРµР№С‡Р°СЃ РЅРµ РІС‹РґР°СЋС‚СЃСЏ.");
+                throw new IllegalStateException("Заявки сейчас не выдаются.");
             }
             Map<String, Object> sealRow = queryOne(connection,
                     "SELECT id FROM cik_seals WHERE id=? AND election_id=? AND station_id=? AND player_uuid=? AND status='ACTIVE' LIMIT 1",
                     sealContext.sealId(), sealContext.electionId(), sealContext.stationId(), sealContext.playerUuid());
             if (sealRow == null) {
-                throw new IllegalStateException("РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РїРµС‡Р°С‚СЊ Р¦РРљ.");
+                throw new IllegalStateException("Не удалось проверить печать ЦИК.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("РРіСЂРѕРє СѓР¶Рµ СЃРІСЏР·Р°РЅ СЃ Р·Р°СЏРІРєРѕР№ РЅР° СЌС‚РёС… РІС‹Р±РѕСЂР°С….");
+                throw new IllegalStateException("Игрок уже связан с заявкой на этих выборах.");
             }
             update(connection,
                     "INSERT INTO candidate_applications(id,election_id,player_uuid,player_name,station_id,answers,status,chair_recommendation,chair_note,admin_status,admin_note,book_signed_at,submitted_at,reviewed_at,reviewed_by,issued_at,issued_by,book_token) VALUES(?,?,?,?,?,'','ISSUED','','','PENDING','',0,0,0,'',?,?,?)",
@@ -2386,31 +2384,31 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         ItemStack applicationBook = createApplicationBook(applicationId, sealContext.electionId(), sealContext.stationId(), target.getUniqueId().toString());
         giveIssuedElectionItemOrRollback(target, applicationBook,
                 () -> rollbackIssuedApplicationBook(applicationId, issuer.getName()),
-                "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РґР°С‚СЊ РєРЅРёРіСѓ Р·Р°СЏРІРєРё. Р’С‹РґР°С‡Р° РѕС‚РјРµРЅРµРЅР°.");
-        issuer.sendMessage(color("&aР—Р°СЏРІРєР° РІС‹РґР°РЅР° РёРіСЂРѕРєСѓ &f" + target.getName()));
+                "Не удалось выдать книгу заявки. Выдача отменена.");
+        issuer.sendMessage(color("&aЗаявка выдана игроку &f" + target.getName()));
     }
 
     private void issueApplicationBook(Player target, Player issuer) throws Exception {
         requireActiveElectionId();
-        throw new IllegalStateException("Р’С‹РґР°С‡Р° Р·Р°СЏРІРєРё Р±РµР· РїСЂРѕРІРµСЂРµРЅРЅРѕР№ РїРµС‡Р°С‚Рё Р¦РРљ РѕС‚РєР»СЋС‡РµРЅР°.");
+        throw new IllegalStateException("Выдача заявки без проверенной печати ЦИК отключена.");
     }
 
     private void issueApplicationBookByAdmin(Player target, Player issuer, String stationId) throws Exception {
         if (!hasElectionAdmin(issuer)) {
-            throw new IllegalStateException("РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РІС‹РґР°С‡Рё Р·Р°СЏРІРєРё.");
+            throw new IllegalStateException("Недостаточно прав для выдачи заявки.");
         }
-        ensureCanReceiveIssuedElectionItem(target, "РєРЅРёРіСѓ Р·Р°СЏРІРєРё");
+        ensureCanReceiveIssuedElectionItem(target, "книгу заявки");
         String electionId = requireActiveElectionId();
         String applicationId = "application_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
             if (context.stage() != ElectionStage.PREPARATION && context.stage() != ElectionStage.APPLICATIONS) {
-                throw new IllegalStateException("Р—Р°СЏРІРєРё СЃРµР№С‡Р°СЃ РЅРµ РІС‹РґР°СЋС‚СЃСЏ.");
+                throw new IllegalStateException("Заявки сейчас не выдаются.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("РРіСЂРѕРє СѓР¶Рµ СЃРІСЏР·Р°РЅ СЃ Р·Р°СЏРІРєРѕР№ РЅР° СЌС‚РёС… РІС‹Р±РѕСЂР°С….");
+                throw new IllegalStateException("Игрок уже связан с заявкой на этих выборах.");
             }
             update(connection,
                     "INSERT INTO candidate_applications(id,election_id,player_uuid,player_name,station_id,answers,status,chair_recommendation,chair_note,admin_status,admin_note,book_signed_at,submitted_at,reviewed_at,reviewed_by,issued_at,issued_by,book_token) VALUES(?,?,?,?,?,'','ISSUED','','','PENDING','',0,0,0,'',?,?,?)",
@@ -2422,8 +2420,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         ItemStack applicationBook = createApplicationBook(applicationId, electionId, stationId, target.getUniqueId().toString());
         giveIssuedElectionItemOrRollback(target, applicationBook,
                 () -> rollbackIssuedApplicationBook(applicationId, issuer.getName()),
-                "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РґР°С‚СЊ РєРЅРёРіСѓ Р·Р°СЏРІРєРё. Р’С‹РґР°С‡Р° РѕС‚РјРµРЅРµРЅР°.");
-        issuer.sendMessage(color("&aР—Р°СЏРІРєР° РІС‹РґР°РЅР° РёРіСЂРѕРєСѓ &f" + target.getName()));
+                "Не удалось выдать книгу заявки. Выдача отменена.");
+        issuer.sendMessage(color("&aЗаявка выдана игроку &f" + target.getName()));
     }
 
     private void submitApplicationBook(Player player, ItemStack item, String clickedStationId) throws Exception {
@@ -2431,51 +2429,51 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         String electionId = readString(item, electionIdKey);
         String stationId = readString(item, stationIdKey);
         if (applicationId.isBlank() || electionId.isBlank() || stationId.isBlank()) {
-            player.sendMessage(color("&cРљРЅРёРіР° Р·Р°СЏРІРєРё РїРѕРІСЂРµР¶РґРµРЅР°."));
+            player.sendMessage(color("&cКнига заявки повреждена."));
             return;
         }
         if (!Objects.equals(player.getUniqueId().toString(), readString(item, playerUuidKey))) {
-            player.sendMessage(color("&cР§СѓР¶СѓСЋ РєРЅРёРіСѓ Р·Р°СЏРІРєРё СЃРґР°С‚СЊ РЅРµР»СЊР·СЏ."));
+            player.sendMessage(color("&cЧужую книгу заявки сдать нельзя."));
             return;
         }
         Map<String, Object> application = applicationById(applicationId);
         if (application == null) {
-            player.sendMessage(color("&cР—Р°СЏРІРєР° Р±РѕР»СЊС€Рµ РЅРµ РЅР°Р№РґРµРЅР°."));
+            player.sendMessage(color("&cЗаявка больше не найдена."));
             return;
         }
         if (!Objects.equals(electionId, string(application.get("election_id")))
                 || !Objects.equals(stationId, string(application.get("station_id")))
                 || !Objects.equals(player.getUniqueId().toString(), string(application.get("player_uuid")))) {
-            player.sendMessage(color("&cРљРЅРёРіР° Р·Р°СЏРІРєРё Р±РѕР»СЊС€Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР°."));
+            player.sendMessage(color("&cКнига заявки больше недействительна."));
             return;
         }
         if (!"ISSUED".equalsIgnoreCase(string(application.get("status"))) || longValue(application.get("submitted_at")) > 0) {
-            player.sendMessage(color("&eР­С‚Р° Р·Р°СЏРІРєР° СѓР¶Рµ Р±С‹Р»Р° СЃРґР°РЅР° РёР»Рё Р·Р°РєСЂС‹С‚Р°."));
+            player.sendMessage(color("&eЭта заявка уже была сдана или закрыта."));
             return;
         }
         try (Connection connection = openConnection()) {
             ElectionContext context = requireActiveElectionContext(connection);
             if (!electionId.equals(context.electionId())
                     || context.stage() != ElectionStage.APPLICATIONS) {
-                player.sendMessage(color("&eРџСЂРёС‘Рј Р·Р°СЏРІРѕРє СЃРµР№С‡Р°СЃ Р·Р°РєСЂС‹С‚."));
+                player.sendMessage(color("&eПриём заявок сейчас закрыт."));
                 return;
             }
         }
         if (!stationMatchesOrFallback(stationId, clickedStationId)) {
-            player.sendMessage(color("&cР—Р°СЏРІРєСѓ РЅСѓР¶РЅРѕ СЃРґР°С‚СЊ РЅР° СЃРІРѕР№ СѓС‡Р°СЃС‚РѕРє."));
+            player.sendMessage(color("&cЗаявку нужно сдать на свой участок."));
             return;
         }
         if (item.getType() != Material.WRITTEN_BOOK) {
-            player.sendMessage(color("&cРЎРЅР°С‡Р°Р»Р° РїРѕРґРїРёС€Рё РєРЅРёРіСѓ Р·Р°СЏРІРєРё."));
+            player.sendMessage(color("&cНужна правильно подписанная книга заявки."));
             return;
         }
         if (!(item.getItemMeta() instanceof BookMeta meta) || !(item.getType() == Material.WRITTEN_BOOK || meta.hasTitle())) {
-            player.sendMessage(color("&cРЎРЅР°С‡Р°Р»Р° РїРѕРґРїРёС€Рё РєРЅРёРіСѓ Р·Р°СЏРІРєРё."));
+            player.sendMessage(color("&cНужна правильно подписанная книга заявки."));
             return;
         }
         String answers = readBook(meta);
         if (answers.isBlank()) {
-            player.sendMessage(color("&cРџСѓСЃС‚СѓСЋ Р·Р°СЏРІРєСѓ СЃРґР°С‚СЊ РЅРµР»СЊР·СЏ."));
+            player.sendMessage(color("&cПустую заявку сдать нельзя."));
             return;
         }
         long t = now();
@@ -2486,7 +2484,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return null;
         });
         consumeSingleItem(player, item);
-        player.sendMessage(color("&aР—Р°СЏРІРєР° РїСЂРёРЅСЏС‚Р°."));
+        player.sendMessage(color("&aЗаявка принята."));
         refreshSnapshotAndPush();
     }
 
@@ -2494,23 +2492,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (target == null || issuer == null || sealContext == null) {
             return;
         }
-        ensureCanReceiveIssuedElectionItem(target, "Р±СЋР»Р»РµС‚РµРЅСЊ");
+        ensureCanReceiveIssuedElectionItem(target, "бюллетень");
         String ballotId = "ballot_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         AtomicInteger roundRef = new AtomicInteger(1);
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
             if (!context.electionId().equals(sealContext.electionId())) {
-                throw new IllegalStateException("Р­С‚Р° РїРµС‡Р°С‚СЊ Р¦РРљ Р±РѕР»СЊС€Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР°.");
+                throw new IllegalStateException("Эта печать ЦИК больше недействительна.");
             }
             if (context.stage() != ElectionStage.DEBATES && context.stage() != ElectionStage.VOTING && context.stage() != ElectionStage.SECOND_ROUND) {
-                throw new IllegalStateException("Р‘СЋР»Р»РµС‚РµРЅРё СЃРµР№С‡Р°СЃ РЅРµ РІС‹РґР°СЋС‚СЃСЏ.");
+                throw new IllegalStateException("Бюллетени сейчас не выдаются.");
             }
             Map<String, Object> sealRow = queryOne(connection,
                     "SELECT id FROM cik_seals WHERE id=? AND election_id=? AND station_id=? AND player_uuid=? AND status='ACTIVE' LIMIT 1",
                     sealContext.sealId(), sealContext.electionId(), sealContext.stationId(), sealContext.playerUuid());
             if (sealRow == null) {
-                throw new IllegalStateException("РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РїРµС‡Р°С‚СЊ Р¦РРљ.");
+                throw new IllegalStateException("Не удалось проверить печать ЦИК.");
             }
             int round = currentRoundFromDb(connection, context.electionId());
             roundRef.set(round);
@@ -2518,25 +2516,25 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "SELECT COUNT(*) FROM round_candidates WHERE election_id=? AND round_no=? AND active=1",
                     context.electionId(), round);
             if (roundCandidates < 2) {
-                throw new IllegalStateException("РўРµРєСѓС‰РёР№ С‚СѓСЂ РµС‰С‘ РЅРµ РїРѕРґРіРѕС‚РѕРІР»РµРЅ РґР»СЏ РІС‹РґР°С‡Рё Р±СЋР»Р»РµС‚РµРЅРµР№.");
+                throw new IllegalStateException("Текущий тур ещё не подготовлен для выдачи бюллетеней.");
             }
             if (context.stage() == ElectionStage.SECOND_ROUND && round < 2) {
-                throw new IllegalStateException("Р’С‚РѕСЂРѕР№ С‚СѓСЂ РµС‰С‘ РЅРµ РїРѕРґРіРѕС‚РѕРІР»РµРЅ.");
+                throw new IllegalStateException("Второй тур ещё не подготовлен.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
                 // hasApplicationInElection guard stays mandatory for the current election.
-                throw new IllegalStateException("РРіСЂРѕРє СѓР¶Рµ РїРѕР»СѓС‡Р°Р» Р·Р°СЏРІРєСѓ РЅР° СЌС‚РёС… РІС‹Р±РѕСЂР°С…. Р‘СЋР»Р»РµС‚РµРЅСЊ РІС‹РґР°РІР°С‚СЊ РЅРµР»СЊР·СЏ.");
+                throw new IllegalStateException("Игрок уже получал заявку на этих выборах. Бюллетень выдавать нельзя.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidates WHERE election_id=? AND player_uuid=? AND active=1",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("РљР°РЅРґРёРґР°С‚Сѓ РЅРµР»СЊР·СЏ РІС‹РґР°РІР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ.");
+                throw new IllegalStateException("Кандидату нельзя выдавать бюллетень.");
             }
             if (scalarLong(connection,
                     "SELECT COUNT(*) FROM ballots WHERE election_id=? AND round_no=? AND player_uuid=? AND status IN ('ISSUED','CONFIRMED','DEPOSITED')",
                     context.electionId(), round, target.getUniqueId().toString()) > 0) {
                 // hasActiveBallot guard stays mandatory for the current round.
-                throw new IllegalStateException("РЈ РёРіСЂРѕРєР° СѓР¶Рµ РµСЃС‚СЊ Р°РєС‚РёРІРЅС‹Р№ Р±СЋР»Р»РµС‚РµРЅСЊ.");
+                throw new IllegalStateException("У игрока уже есть активный бюллетень.");
             }
             update(connection,
                     "INSERT INTO ballots(id,election_id,round_no,player_uuid,player_name,station_id,status,issued_at,issued_by,confirmed_candidate_uuid,confirmed_candidate_name,confirmed_at,submitted_at,submitted_station_id,annulled_at,annulled_by,annul_reason) VALUES(?,?,?,?,?,?, 'ISSUED', ?, ?, '', '', 0, 0, '', 0, '', '')",
@@ -2548,20 +2546,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         ItemStack ballot = createBallotItem(ballotId, sealContext.electionId(), sealContext.stationId(), roundRef.get(), target.getUniqueId().toString(), target.getName(), false, "", "");
         giveIssuedElectionItemOrRollback(target, ballot,
                 () -> rollbackIssuedBallot(ballotId, issuer.getName()),
-                "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РґР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ. Р’С‹РґР°С‡Р° РѕС‚РјРµРЅРµРЅР°.");
-        issuer.sendMessage(color("&aР‘СЋР»Р»РµС‚РµРЅСЊ РІС‹РґР°РЅ РёРіСЂРѕРєСѓ &f" + target.getName()));
+                "Не удалось выдать бюллетень. Выдача отменена.");
+        issuer.sendMessage(color("&aБюллетень выдан игроку &f" + target.getName()));
     }
 
     private void issueBallot(Player target, Player issuer) throws Exception {
         requireActiveElectionId();
-        throw new IllegalStateException("Р’С‹РґР°С‡Р° Р±СЋР»Р»РµС‚РµРЅСЏ Р±РµР· РїСЂРѕРІРµСЂРµРЅРЅРѕР№ РїРµС‡Р°С‚Рё Р¦РРљ РѕС‚РєР»СЋС‡РµРЅР°.");
+        throw new IllegalStateException("Выдача бюллетеня без проверенной печати ЦИК отключена.");
     }
 
     private void issueBallotByAdmin(Player target, Player issuer, String stationId) throws Exception {
         if (!hasElectionAdmin(issuer)) {
-            throw new IllegalStateException("РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РІС‹РґР°С‡Рё Р±СЋР»Р»РµС‚РµРЅСЏ.");
+            throw new IllegalStateException("Недостаточно прав для выдачи бюллетеня.");
         }
-        ensureCanReceiveIssuedElectionItem(target, "Р±СЋР»Р»РµС‚РµРЅСЊ");
+        ensureCanReceiveIssuedElectionItem(target, "бюллетень");
         String electionId = requireActiveElectionId();
         String ballotId = "ballot_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
@@ -2569,7 +2567,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
             if (context.stage() != ElectionStage.DEBATES && context.stage() != ElectionStage.VOTING && context.stage() != ElectionStage.SECOND_ROUND) {
-                throw new IllegalStateException("Р‘СЋР»Р»РµС‚РµРЅРё СЃРµР№С‡Р°СЃ РЅРµ РІС‹РґР°СЋС‚СЃСЏ.");
+                throw new IllegalStateException("Бюллетени сейчас не выдаются.");
             }
             int round = currentRoundFromDb(connection, context.electionId());
             roundRef.set(round);
@@ -2577,23 +2575,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "SELECT COUNT(*) FROM round_candidates WHERE election_id=? AND round_no=? AND active=1",
                     context.electionId(), round);
             if (roundCandidates < 2) {
-                throw new IllegalStateException("РўРµРєСѓС‰РёР№ С‚СѓСЂ РµС‰С‘ РЅРµ РїРѕРґРіРѕС‚РѕРІР»РµРЅ РґР»СЏ РІС‹РґР°С‡Рё Р±СЋР»Р»РµС‚РµРЅРµР№.");
+                throw new IllegalStateException("Текущий тур ещё не подготовлен для выдачи бюллетеней.");
             }
             if (context.stage() == ElectionStage.SECOND_ROUND && round < 2) {
-                throw new IllegalStateException("Р’С‚РѕСЂРѕР№ С‚СѓСЂ РµС‰С‘ РЅРµ РїРѕРґРіРѕС‚РѕРІР»РµРЅ.");
+                throw new IllegalStateException("Второй тур ещё не подготовлен.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("РРіСЂРѕРє СѓР¶Рµ РїРѕР»СѓС‡Р°Р» Р·Р°СЏРІРєСѓ РЅР° СЌС‚РёС… РІС‹Р±РѕСЂР°С…. Р‘СЋР»Р»РµС‚РµРЅСЊ РІС‹РґР°РІР°С‚СЊ РЅРµР»СЊР·СЏ.");
+                throw new IllegalStateException("Игрок уже получал заявку на этих выборах. Бюллетень выдавать нельзя.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidates WHERE election_id=? AND player_uuid=? AND active=1",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("РљР°РЅРґРёРґР°С‚Сѓ РЅРµР»СЊР·СЏ РІС‹РґР°РІР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ.");
+                throw new IllegalStateException("Кандидату нельзя выдавать бюллетень.");
             }
             if (scalarLong(connection,
                     "SELECT COUNT(*) FROM ballots WHERE election_id=? AND round_no=? AND player_uuid=? AND status IN ('ISSUED','CONFIRMED','DEPOSITED')",
                     context.electionId(), round, target.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("РЈ РёРіСЂРѕРєР° СѓР¶Рµ РµСЃС‚СЊ Р°РєС‚РёРІРЅС‹Р№ Р±СЋР»Р»РµС‚РµРЅСЊ.");
+                throw new IllegalStateException("У игрока уже есть активный бюллетень.");
             }
             update(connection,
                     "INSERT INTO ballots(id,election_id,round_no,player_uuid,player_name,station_id,status,issued_at,issued_by,confirmed_candidate_uuid,confirmed_candidate_name,confirmed_at,submitted_at,submitted_station_id,annulled_at,annulled_by,annul_reason) VALUES(?,?,?,?,?,?, 'ISSUED', ?, ?, '', '', 0, 0, '', 0, '', '')",
@@ -2605,8 +2603,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         ItemStack ballot = createBallotItem(ballotId, electionId, stationId, roundRef.get(), target.getUniqueId().toString(), target.getName(), false, "", "");
         giveIssuedElectionItemOrRollback(target, ballot,
                 () -> rollbackIssuedBallot(ballotId, issuer.getName()),
-                "РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РґР°С‚СЊ Р±СЋР»Р»РµС‚РµРЅСЊ. Р’С‹РґР°С‡Р° РѕС‚РјРµРЅРµРЅР°.");
-        issuer.sendMessage(color("&aР‘СЋР»Р»РµС‚РµРЅСЊ РІС‹РґР°РЅ РёРіСЂРѕРєСѓ &f" + target.getName()));
+                "Не удалось выдать бюллетень. Выдача отменена.");
+        issuer.sendMessage(color("&aБюллетень выдан игроку &f" + target.getName()));
     }
 
     private void ensureCanReceiveIssuedElectionItem(Player target, String itemName) {
@@ -2614,7 +2612,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (target.getInventory().firstEmpty() < 0) {
-            throw new IllegalStateException("РћСЃРІРѕР±РѕРґРё С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ СЃР»РѕС‚, С‡С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ " + itemName + ".");
+            throw new IllegalStateException("Освободи хотя бы один слот, чтобы получить " + itemName + ".");
         }
     }
 
@@ -2681,7 +2679,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void confirmBallotChoice(Player player, String ballotId, String candidateUuid) throws Exception {
         if (candidateUuid.equals(player.getUniqueId().toString())) {
-            player.sendMessage(color("&cРљР°РЅРґРёРґР°С‚ РЅРµ РјРѕР¶РµС‚ РіРѕР»РѕСЃРѕРІР°С‚СЊ СЃР°Рј Р·Р° СЃРµР±СЏ."));
+            player.sendMessage(color("&cКандидат не может голосовать сам за себя."));
             return;
         }
         long t = now();
@@ -2695,23 +2693,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "SELECT id,election_id,round_no,player_uuid,station_id,status FROM ballots WHERE id=? FOR UPDATE",
                     ballotId);
             if (ballot == null) {
-                throw new IllegalStateException("Р‘СЋР»Р»РµС‚РµРЅСЊ РЅРµ РЅР°Р№РґРµРЅ.");
+                throw new IllegalStateException("Бюллетень не найден.");
             }
             if (!Objects.equals(string(ballot.get("player_uuid")), player.getUniqueId().toString())) {
-                throw new IllegalStateException("Р§СѓР¶РѕР№ Р±СЋР»Р»РµС‚РµРЅСЊ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ РЅРµР»СЊР·СЏ.");
+                throw new IllegalStateException("Чужой бюллетень использовать нельзя.");
             }
             if (!context.electionId().equals(string(ballot.get("election_id"))) || context.stage() != ElectionStage.VOTING) {
-                throw new IllegalStateException("Р“РѕР»РѕСЃРѕРІР°РЅРёРµ СѓР¶Рµ Р·Р°РєСЂС‹С‚Рѕ. Р’С‹Р±РѕСЂ РЅРµР»СЊР·СЏ РїРѕРґС‚РІРµСЂРґРёС‚СЊ.");
+                throw new IllegalStateException("Голосование уже закрыто. Выбор нельзя подтвердить.");
             }
             int liveRound = currentRoundFromDb(connection, context.electionId());
             if (liveRound != intValue(ballot.get("round_no"))) {
-                throw new IllegalStateException("Р“РѕР»РѕСЃРѕРІР°РЅРёРµ СѓР¶Рµ Р·Р°РєСЂС‹С‚Рѕ. Р’С‹Р±РѕСЂ РЅРµР»СЊР·СЏ РїРѕРґС‚РІРµСЂРґРёС‚СЊ.");
+                throw new IllegalStateException("Голосование уже закрыто. Выбор нельзя подтвердить.");
             }
             if (!"ISSUED".equalsIgnoreCase(string(ballot.get("status")))) {
-                throw new IllegalStateException("Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ СѓР¶Рµ РЅРµР»СЊР·СЏ РёР·РјРµРЅРёС‚СЊ.");
+                throw new IllegalStateException("Этот бюллетень уже нельзя изменить.");
             }
             if (candidateUuid.equals(string(ballot.get("player_uuid")))) {
-                throw new IllegalStateException("РљР°РЅРґРёРґР°С‚ РЅРµ РјРѕР¶РµС‚ РіРѕР»РѕСЃРѕРІР°С‚СЊ СЃР°Рј Р·Р° СЃРµР±СЏ.");
+                throw new IllegalStateException("Кандидат не может голосовать сам за себя.");
             }
             Map<String, Object> candidate = queryOne(connection,
                     "SELECT rc.candidate_name,COALESCE(c.active,0) AS candidate_active,COALESCE(a.admin_status,'') AS admin_status " +
@@ -2721,7 +2719,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                             "WHERE rc.election_id=? AND rc.round_no=? AND rc.candidate_uuid=? AND rc.active=1 LIMIT 1",
                     context.electionId(), liveRound, candidateUuid);
             if (candidate == null || intValue(candidate.get("candidate_active")) <= 0 || !"APPROVED".equalsIgnoreCase(string(candidate.get("admin_status")))) {
-                throw new IllegalStateException("РљР°РЅРґРёРґР°С‚ Р±РѕР»СЊС€Рµ РЅРµРґРѕСЃС‚СѓРїРµРЅ РІ С‚РµРєСѓС‰РµРј С‚СѓСЂРµ.");
+                throw new IllegalStateException("Кандидат больше недоступен в текущем туре.");
             }
             update(connection, "UPDATE ballots SET status='CONFIRMED',confirmed_candidate_uuid=?,confirmed_candidate_name=?,confirmed_at=? WHERE id=?",
                     candidateUuid, string(candidate.get("candidate_name")), t, ballotId);
@@ -2732,7 +2730,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return null;
         });
         replacePlayerBallot(player, ballotId, electionIdRef.get(), stationIdRef.get(), roundRef.get(), candidateUuid, candidateNameRef.get());
-        player.sendMessage(color("&aР“РѕР»РѕСЃ РїРѕРґС‚РІРµСЂР¶РґС‘РЅ. РўРµРїРµСЂСЊ СЃРґР°Р№ Р±СЋР»Р»РµС‚РµРЅСЊ С‡РµСЂРµР· СЃРІРѕР№ СѓС‡Р°СЃС‚РѕРє."));
+        player.sendMessage(color("&aГолос подтверждён. Теперь сдай бюллетень через свой участок."));
     }
 
     private void depositBallot(Player player, ItemStack item, String clickedStationId) throws Exception {
@@ -2741,11 +2739,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         String stationId = readString(item, stationIdKey);
         int round = intValue(readString(item, roundKey));
         if (ballotId.isBlank() || electionId.isBlank() || stationId.isBlank()) {
-            player.sendMessage(color("&cР‘СЋР»Р»РµС‚РµРЅСЊ РїРѕРІСЂРµР¶РґС‘РЅ."));
+            player.sendMessage(color("&cБюллетень повреждён."));
             return;
         }
         if (!Objects.equals(player.getUniqueId().toString(), readString(item, playerUuidKey))) {
-            player.sendMessage(color("&cР§СѓР¶РѕР№ Р±СЋР»Р»РµС‚РµРЅСЊ СЃРґР°РІР°С‚СЊ РЅРµР»СЊР·СЏ."));
+            player.sendMessage(color("&cЧужой бюллетень сдавать нельзя."));
             return;
         }
         long t = now();
@@ -2755,41 +2753,41 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "SELECT status,election_id,round_no,player_uuid,station_id,confirmed_candidate_uuid,confirmed_candidate_name FROM ballots WHERE id=? FOR UPDATE",
                     ballotId);
             if (lockedBallot == null) {
-                throw new IllegalStateException("Р‘СЋР»Р»РµС‚РµРЅСЊ РЅРµ РЅР°Р№РґРµРЅ.");
+                throw new IllegalStateException("Бюллетень не найден.");
             }
             if (!Objects.equals(string(lockedBallot.get("player_uuid")), player.getUniqueId().toString())) {
-                throw new IllegalStateException("Р§СѓР¶РѕР№ Р±СЋР»Р»РµС‚РµРЅСЊ СЃРґР°РІР°С‚СЊ РЅРµР»СЊР·СЏ.");
+                throw new IllegalStateException("Чужой бюллетень сдавать нельзя.");
             }
             if (!context.electionId().equals(string(lockedBallot.get("election_id"))) || context.stage() != ElectionStage.VOTING) {
-                throw new IllegalStateException("Р“РѕР»РѕСЃРѕРІР°РЅРёРµ СѓР¶Рµ Р·Р°РєСЂС‹С‚Рѕ. Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ Р±РѕР»СЊС€Рµ РЅРµР»СЊР·СЏ СЃРґР°С‚СЊ.");
+                throw new IllegalStateException("Голосование уже закрыто. Этот бюллетень больше нельзя сдать.");
             }
             int liveRound = currentRoundFromDb(connection, context.electionId());
             if (liveRound != intValue(lockedBallot.get("round_no"))) {
-                throw new IllegalStateException("Р“РѕР»РѕСЃРѕРІР°РЅРёРµ СѓР¶Рµ Р·Р°РєСЂС‹С‚Рѕ. Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ Р±РѕР»СЊС€Рµ РЅРµР»СЊР·СЏ СЃРґР°С‚СЊ.");
+                throw new IllegalStateException("Голосование уже закрыто. Этот бюллетень больше нельзя сдать.");
             }
             if (!stationMatchesOrFallback(connection, string(lockedBallot.get("station_id")), clickedStationId)) {
-                throw new IllegalStateException("Р‘СЋР»Р»РµС‚РµРЅСЊ РЅСѓР¶РЅРѕ СЃРґР°С‚СЊ РЅР° СЃРІРѕР№ СѓС‡Р°СЃС‚РѕРє.");
+                throw new IllegalStateException("Бюллетень нужно сдать на свой участок.");
             }
             if ("DEPOSITED".equalsIgnoreCase(string(lockedBallot.get("status")))) {
-                throw new IllegalStateException("Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ СѓР¶Рµ СЃРґР°РЅ.");
+                throw new IllegalStateException("Этот бюллетень уже сдан.");
             }
             if ("ANNULLED".equalsIgnoreCase(string(lockedBallot.get("status")))) {
-                throw new IllegalStateException("Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ СѓР¶Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»РµРЅ.");
+                throw new IllegalStateException("Этот бюллетень уже недействителен.");
             }
             if (!"CONFIRMED".equalsIgnoreCase(string(lockedBallot.get("status")))) {
-                throw new IllegalStateException("РЎРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРё РєР°РЅРґРёРґР°С‚Р° Рё РїРѕРґС‚РІРµСЂРґРё РіРѕР»РѕСЃ.");
+                throw new IllegalStateException("Бюллетень нужно сначала подтвердить в меню голосования.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM votes WHERE ballot_id=?", ballotId) > 0) {
-                throw new IllegalStateException("Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ СѓР¶Рµ СЃРґР°РЅ.");
+                throw new IllegalStateException("Этот бюллетень уже сдан.");
             }
             if (scalarLong(connection, "SELECT COUNT(*) FROM votes WHERE election_id=? AND round_no=? AND voter_uuid=?", context.electionId(), liveRound, player.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("Р“РѕР»РѕСЃ СЌС‚РѕРіРѕ РёРіСЂРѕРєР° СѓР¶Рµ РїСЂРёРЅСЏС‚.");
+                throw new IllegalStateException("Голос этого игрока уже принят.");
             }
             Map<String, Object> candidate = queryOne(connection,
                     "SELECT candidate_name FROM round_candidates WHERE election_id=? AND round_no=? AND candidate_uuid=? AND active=1 LIMIT 1",
                     context.electionId(), liveRound, string(lockedBallot.get("confirmed_candidate_uuid")));
             if (candidate == null) {
-                throw new IllegalStateException("Р“РѕР»РѕСЃРѕРІР°РЅРёРµ СѓР¶Рµ Р·Р°РєСЂС‹С‚Рѕ. Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ Р±РѕР»СЊС€Рµ РЅРµР»СЊР·СЏ СЃРґР°С‚СЊ.");
+                throw new IllegalStateException("Голосование уже закрыто. Этот бюллетень больше нельзя сдать.");
             }
             update(connection, "INSERT INTO votes(id,election_id,round_no,ballot_id,voter_uuid,voter_name,candidate_uuid,candidate_name,station_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     "vote_" + UUID.randomUUID().toString().replace("-", ""), context.electionId(), liveRound, ballotId, player.getUniqueId().toString(), player.getName(),
@@ -2800,7 +2798,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return null;
         });
         consumeSingleItem(player, item);
-        player.sendTitle("", color("&aР“РѕР»РѕСЃ РїСЂРёРЅСЏС‚"), 5, 40, 10);
+        player.sendTitle("", color("&aГолос принят"), 5, 40, 10);
     }
 
     private void annulBallot(String ballotId, String stationId, Player actor, String reason) throws Exception {
@@ -2811,20 +2809,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return null;
             }
             if (!stationId.equals(string(ballot.get("station_id")))) {
-                throw new IllegalStateException("Р‘СЋР»Р»РµС‚РµРЅСЊ РЅРµ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє СЌС‚РѕРјСѓ СѓС‡Р°СЃС‚РєСѓ.");
+                throw new IllegalStateException("Бюллетень не относится к этому участку.");
             }
             Map<String, Object> chair = queryOne(connection,
                     "SELECT station_id FROM cik_chairs WHERE station_id=? AND player_uuid=? AND active=1 LIMIT 1",
                     stationId, actor.getUniqueId().toString());
             if (chair == null) {
-                throw new IllegalStateException("РЈ С‚РµР±СЏ РЅРµС‚ РґРѕСЃС‚СѓРїР° Рє Р°РЅРЅСѓР»РёСЂРѕРІР°РЅРёСЋ Р±СЋР»Р»РµС‚РµРЅРµР№ СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР°.");
+                throw new IllegalStateException("У тебя нет доступа к аннулированию бюллетеней этого участка.");
             }
             String status = string(ballot.get("status")).toUpperCase(Locale.ROOT);
             if ("DEPOSITED".equals(status)) {
-                throw new IllegalStateException("РЎРґР°РЅРЅС‹Р№ Р±СЋР»Р»РµС‚РµРЅСЊ РЅРµР»СЊР·СЏ Р°РЅРЅСѓР»РёСЂРѕРІР°С‚СЊ.");
+                throw new IllegalStateException("Сданный бюллетень уже нельзя аннулировать.");
             }
             if (!"ISSUED".equals(status) && !"CONFIRMED".equals(status)) {
-                throw new IllegalStateException("Р­С‚РѕС‚ Р±СЋР»Р»РµС‚РµРЅСЊ СѓР¶Рµ Р·Р°РєСЂС‹С‚.");
+                throw new IllegalStateException("Этот бюллетень уже закрыт.");
             }
             update(connection, "UPDATE ballots SET status='ANNULLED',annulled_at=?,annulled_by=?,annul_reason=? WHERE id=?", t, actor.getName(), reason, ballotId);
             update(connection, "UPDATE polling_stations SET ballots_annulled=ballots_annulled+1,updated_at=? WHERE id=?", t, string(ballot.get("station_id")));
@@ -2846,16 +2844,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "SELECT station_id FROM cik_chairs WHERE station_id=? AND player_uuid=? AND active=1 LIMIT 1",
                     stationId, player.getUniqueId().toString());
             if (chair == null) {
-                throw new IllegalStateException("РЈ С‚РµР±СЏ РЅРµС‚ РґРѕСЃС‚СѓРїР° Рє Р·Р°СЏРІРєР°Рј СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР°.");
+                throw new IllegalStateException("У тебя нет доступа к заявкам этого участка.");
             }
             Map<String, Object> application = queryOne(connection,
                     "SELECT station_id,admin_status FROM candidate_applications WHERE id=? LIMIT 1",
                     applicationId);
             if (application == null || !stationId.equals(string(application.get("station_id")))) {
-                throw new IllegalStateException("Р—Р°СЏРІРєР° СЌС‚РѕРіРѕ СѓС‡Р°СЃС‚РєР° РЅРµ РЅР°Р№РґРµРЅР°.");
+                throw new IllegalStateException("Заявка этого участка не найдена.");
             }
             if (!"PENDING".equalsIgnoreCase(string(application.get("admin_status")))) {
-                throw new IllegalStateException("Р­С‚Р° Р·Р°СЏРІРєР° СѓР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅР° Р°РґРјРёРЅРёСЃС‚СЂР°С†РёРµР№.");
+                throw new IllegalStateException("Эта заявка уже рассмотрена администрацией.");
             }
             update(connection, "UPDATE candidate_applications SET chair_recommendation=? WHERE id=?", recommendation, applicationId);
             return null;
@@ -2865,7 +2863,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void setCandidateLimit(Player player, int limit) throws Exception {
         String electionId = currentElectionId();
         if (electionId == null || electionId.isBlank()) {
-            player.sendMessage(color("&eРЎРЅР°С‡Р°Р»Р° РЅР°С‡РЅРёС‚Рµ РІС‹Р±РѕСЂС‹."));
+            player.sendMessage(color("&eСейчас нет активных выборов."));
             return;
         }
         update("UPDATE elections SET candidate_limit=?,updated_at=? WHERE id=?", limit, now(), electionId);
@@ -2874,7 +2872,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void setPresidentTermDays(Player player, int days) throws Exception {
         String electionId = currentElectionId();
         if (electionId == null || electionId.isBlank()) {
-            player.sendMessage(color("&eРЎРЅР°С‡Р°Р»Р° РЅР°С‡РЅРёС‚Рµ РІС‹Р±РѕСЂС‹."));
+            player.sendMessage(color("&eСейчас нет активных выборов."));
             return;
         }
         update("UPDATE elections SET president_term_days=?,updated_at=? WHERE id=?", days, now(), electionId);
@@ -2889,7 +2887,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         long activeCount = scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND active=1", electionId);
         int limit = intValue(queryOne("SELECT candidate_limit FROM elections WHERE id=?", electionId).get("candidate_limit"));
         if (limit > 0 && activeCount >= limit) {
-            throw new IllegalStateException("Р›РёРјРёС‚ РєР°РЅРґРёРґР°С‚РѕРІ СѓР¶Рµ Р·Р°РїРѕР»РЅРµРЅ.");
+            throw new IllegalStateException("Лимит кандидатов уже заполнен.");
         }
         long t = now();
         tx(connection -> {
@@ -2900,21 +2898,21 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return null;
             }
             if (!"PENDING".equalsIgnoreCase(string(lockedApp.get("admin_status"))) || longValue(lockedApp.get("submitted_at")) <= 0) {
-                throw new IllegalStateException("Р­С‚Р° Р·Р°СЏРІРєР° СѓР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅР° РёР»Рё РµС‰С‘ РЅРµ СЃРґР°РЅР°.");
+                throw new IllegalStateException("Эта заявка уже рассмотрена или ещё не сдана.");
             }
             Map<String, Object> lockedElection = queryOne(connection,
                     "SELECT candidate_limit,current_round,current_stage FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
                     electionId);
             if (lockedElection == null) {
-                throw new IllegalStateException("Р’С‹Р±РѕСЂС‹ РґР»СЏ СЌС‚РѕР№ Р·Р°СЏРІРєРё СѓР¶Рµ РЅРµ Р°РєС‚РёРІРЅС‹.");
+                throw new IllegalStateException("Выборы для этой заявки уже не активны.");
             }
             if (ElectionStage.safeValue(string(lockedElection.get("current_stage"))) != ElectionStage.REVIEW) {
-                throw new IllegalStateException("Р¤РёРЅР°Р»СЊРЅРѕРµ СЂРµС€РµРЅРёРµ РїРѕ РєР°РЅРґРёРґР°С‚Сѓ РґРѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ РЅР° СЌС‚Р°РїРµ РїСЂРѕРІРµСЂРєРё.");
+                throw new IllegalStateException("Финальное решение по кандидату доступно только на этапе проверки.");
             }
             long lockedActiveCount = scalarLong(connection, "SELECT COUNT(*) FROM candidates WHERE election_id=? AND active=1", electionId);
             int lockedLimit = intValue(lockedElection.get("candidate_limit"));
             if (lockedLimit > 0 && lockedActiveCount >= lockedLimit) {
-                throw new IllegalStateException("Р›РёРјРёС‚ РєР°РЅРґРёРґР°С‚РѕРІ СѓР¶Рµ Р·Р°РїРѕР»РЅРµРЅ.");
+                throw new IllegalStateException("Лимит кандидатов уже заполнен.");
             }
             update(connection, "UPDATE candidate_applications SET admin_status='APPROVED',status='APPROVED',reviewed_at=?,reviewed_by=? WHERE id=?", t, actor, applicationId);
             int round = Math.max(1, intValue(lockedElection.get("current_round")));
@@ -2937,16 +2935,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return null;
             }
             if (!"PENDING".equalsIgnoreCase(string(lockedApp.get("admin_status"))) || longValue(lockedApp.get("submitted_at")) <= 0) {
-                throw new IllegalStateException("Р­С‚Р° Р·Р°СЏРІРєР° СѓР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅР° РёР»Рё РµС‰С‘ РЅРµ СЃРґР°РЅР°.");
+                throw new IllegalStateException("Эта заявка уже рассмотрена или ещё не сдана.");
             }
             Map<String, Object> lockedElection = queryOne(connection,
                     "SELECT current_stage FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
                     string(lockedApp.get("election_id")));
             if (lockedElection == null) {
-                throw new IllegalStateException("Р’С‹Р±РѕСЂС‹ РґР»СЏ СЌС‚РѕР№ Р·Р°СЏРІРєРё СѓР¶Рµ РЅРµ Р°РєС‚РёРІРЅС‹.");
+                throw new IllegalStateException("Выборы для этой заявки уже не активны.");
             }
             if (ElectionStage.safeValue(string(lockedElection.get("current_stage"))) != ElectionStage.REVIEW) {
-                throw new IllegalStateException("Р¤РёРЅР°Р»СЊРЅРѕРµ СЂРµС€РµРЅРёРµ РїРѕ РєР°РЅРґРёРґР°С‚Сѓ РґРѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ РЅР° СЌС‚Р°РїРµ РїСЂРѕРІРµСЂРєРё.");
+                throw new IllegalStateException("Финальное решение по кандидату доступно только на этапе проверки.");
             }
             update(connection, "UPDATE candidate_applications SET admin_status='REJECTED',status='REJECTED',reviewed_at=?,reviewed_by=? WHERE id=?", t, actor, applicationId);
             logPluginEvent(connection, "election_core", "application_rejected", actor, applicationId, "");
@@ -3003,18 +3001,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void submitLawForReview(Player player, String text, String replacesLawId) throws Exception {
         if (!isPresident(player) && !hasElectionAdmin(player)) {
-            throw new IllegalStateException("РќРµС‚ РїСЂР°РІ РїСЂРµР·РёРґРµРЅС‚Р°.");
+            throw new IllegalStateException("Нет прав президента.");
         }
         Map<String, Object> term = activeTerm();
         if (term == null) {
-            throw new IllegalStateException("РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ РїСЂРµР·РёРґРµРЅС‚СЃРєРѕРіРѕ СЃСЂРѕРєР°.");
+            throw new IllegalStateException("Нет активного президентского срока.");
         }
         if (replacesLawId.isBlank() && publishedLaws().size() >= 5) {
-            throw new IllegalStateException("РЈ РїСЂРµР·РёРґРµРЅС‚Р° СѓР¶Рµ 5 Р·Р°РєРѕРЅРѕРІ. РСЃРїРѕР»СЊР·СѓР№ Р·Р°РјРµРЅСѓ.");
+            throw new IllegalStateException("У президента уже 5 законов. Используй замену.");
         }
         long t = now();
         if (!replacesLawId.isBlank() && t - longValue(term.get("last_law_replace_at")) < PRESIDENT_LAW_REPLACE_COOLDOWN_MS) {
-            throw new IllegalStateException("Р—Р°РєРѕРЅ РјРѕР¶РЅРѕ Р·Р°РјРµРЅСЏС‚СЊ РЅРµ С‡Р°С‰Рµ РѕРґРЅРѕРіРѕ СЂР°Р·Р° РІ 3 РґРЅСЏ.");
+            throw new IllegalStateException("Закон можно заменять не чаще одного раза в 3 дня.");
         }
         tx(connection -> {
             if (!replacesLawId.isBlank()) {
@@ -3024,7 +3022,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 if (replaced == null
                         || !string(term.get("id")).equals(string(replaced.get("term_id")))
                         || !"PUBLISHED".equalsIgnoreCase(string(replaced.get("status")))) {
-                    throw new IllegalStateException("Р­С‚РѕС‚ Р·Р°РєРѕРЅ СѓР¶Рµ РЅРµР»СЊР·СЏ Р·Р°РјРµРЅРёС‚СЊ.");
+                    throw new IllegalStateException("Этот закон уже нельзя заменить.");
                 }
             }
             update(connection, "INSERT INTO president_laws(id,term_id,president_uuid,text,status,created_at,published_at,replaced_law_id,slot_no) VALUES(?,?,?,?, 'PENDING', ?, 0, ?, 0)",
@@ -3043,7 +3041,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
             if (!electionId.equals(context.electionId()) || context.stage() != ElectionStage.VOTING) {
-                throw new IllegalStateException("РџРѕРґСЃС‡С‘С‚ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РїРѕСЃР»Рµ СЌС‚Р°РїР° РіРѕР»РѕСЃРѕРІР°РЅРёСЏ.");
+                throw new IllegalStateException("Подсчёт доступен только после этапа голосования.");
             }
             int round = currentRoundFromDb(connection, electionId);
             List<Map<String, Object>> resultRows = queryList(connection,
@@ -3062,7 +3060,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 maxVotes = Math.max(maxVotes, votes);
                 results.add(new CandidateResult(
                         string(row.get("player_uuid")),
-                        first(string(row.get("player_name")), "РљР°РЅРґРёРґР°С‚"),
+                        first(string(row.get("player_name")), "Кандидат"),
                         votes,
                         ""
                 ));
@@ -3071,7 +3069,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             List<CandidateResult> leaders = results.stream().filter(row -> row.votes() == leadingVotes).toList();
             update(connection, "UPDATE elections SET current_stage=?,updated_at=? WHERE id=?", ElectionStage.COUNTING.name(), t, electionId);
             update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
-                    electionId, ElectionStage.COUNTING.name(), round, actor, t, "РџРѕРґСЃС‡С‘С‚ Р±СЋР»Р»РµС‚РµРЅРµР№");
+                    electionId, ElectionStage.COUNTING.name(), round, actor, t, "Подсчёт бюллетеней");
             for (CandidateResult result : results) {
                 update(connection, "UPDATE candidates SET last_result=? WHERE election_id=? AND player_uuid=?", result.votes(), electionId, result.uuid());
             }
@@ -3123,13 +3121,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     .filter(row -> intValue(row.get("votes")) == maxVotes)
                     .map(row -> new CandidateResult(
                             string(row.get("player_uuid")),
-                            first(string(row.get("player_name")), "РљР°РЅРґРёРґР°С‚"),
+                            first(string(row.get("player_name")), "Кандидат"),
                             intValue(row.get("votes")),
                             ""
                     ))
                     .toList();
             if (leaders.size() < 2) {
-                throw new IllegalStateException("Р”Р»СЏ РІС‚РѕСЂРѕРіРѕ С‚СѓСЂР° РЅСѓР¶РЅР° РЅРёС‡СЊСЏ Р»РёРґРµСЂРѕРІ.");
+                throw new IllegalStateException("Для второго тура нужна ничья лидеров.");
             }
             int nextRound = round + 1;
             update(connection, "UPDATE ballots SET status='VOID' WHERE election_id=? AND round_no<? AND status IN ('ISSUED','CONFIRMED')", electionId, nextRound);
@@ -3144,7 +3142,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "UPDATE elections SET current_round=?,current_stage=?,second_round_needed=0,updated_at=? WHERE id=?",
                     nextRound, ElectionStage.SECOND_ROUND.name(), t, electionId);
             update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
-                    electionId, ElectionStage.SECOND_ROUND.name(), nextRound, actor, t, "РЎС‚Р°СЂС‚ РІС‚РѕСЂРѕРіРѕ С‚СѓСЂР°");
+                    electionId, ElectionStage.SECOND_ROUND.name(), nextRound, actor, t, "Запуск второго тура");
             logPluginEvent(connection, "election_core", "second_round_started", actor, electionId, "round=" + nextRound);
             return null;
         });
@@ -3159,14 +3157,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
             if (!electionId.equals(context.electionId()) || context.stage() != ElectionStage.COUNTING) {
-                throw new IllegalStateException("РџРѕР±РµРґРёС‚РµР»СЏ РјРѕР¶РЅРѕ СѓС‚РІРµСЂРґРёС‚СЊ С‚РѕР»СЊРєРѕ РЅР° СЌС‚Р°РїРµ РїРѕРґСЃС‡С‘С‚Р°.");
+                throw new IllegalStateException("Победителя можно утвердить только на этапе подсчёта.");
             }
             int round = currentRoundFromDb(connection, electionId);
             Map<String, Object> candidate = queryOne(connection,
                     "SELECT candidate_name FROM round_candidates WHERE election_id=? AND round_no=? AND candidate_uuid=? AND active=1 LIMIT 1",
                     electionId, round, candidateUuid);
             if (candidate == null) {
-                throw new IllegalStateException("РљР°РЅРґРёРґР°С‚ СЌС‚РѕРіРѕ С‚СѓСЂР° Р±РѕР»СЊС€Рµ РЅРµРґРѕСЃС‚СѓРїРµРЅ.");
+                throw new IllegalStateException("Кандидат этого тура больше недоступен.");
             }
             update(connection, "UPDATE rounds SET status='COUNTED',ended_at=CASE WHEN ended_at=0 THEN ? ELSE ended_at END,winner_uuid=?,winner_name=? WHERE election_id=? AND round_no=?",
                     t, candidateUuid, string(candidate.get("candidate_name")), electionId, round);
@@ -3182,14 +3180,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             Map<String, Object> term = queryOne(connection,
                     "SELECT id,last_law_replace_at FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1 FOR UPDATE");
             if (term == null) {
-                throw new IllegalStateException("РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ РїСЂРµР·РёРґРµРЅС‚СЃРєРѕРіРѕ СЃСЂРѕРєР°.");
+                throw new IllegalStateException("Нет активного президентского срока.");
             }
             Map<String, Object> law = queryOne(connection, "SELECT * FROM president_laws WHERE id=? FOR UPDATE", lawId);
             if (law == null) {
                 return null;
             }
             if (!string(term.get("id")).equals(string(law.get("term_id"))) || !"PENDING".equalsIgnoreCase(string(law.get("status")))) {
-                throw new IllegalStateException("Р­С‚РѕС‚ Р·Р°РєРѕРЅ СѓР¶Рµ РЅРµР»СЊР·СЏ РїРµСЂРµСЃРјРѕС‚СЂРµС‚СЊ.");
+                throw new IllegalStateException("Этот закон уже нельзя пересмотреть.");
             }
             update(connection, "INSERT INTO president_law_reviews(law_id,reviewer,decision,note,created_at) VALUES(?,?,?,?,?)", lawId, actor, decision, note, t);
             if ("APPROVED".equalsIgnoreCase(decision)) {
@@ -3197,11 +3195,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 int slot = nextLawSlot(connection, string(law.get("term_id")));
                 if (replaced.isBlank()
                         && scalarLong(connection, "SELECT COUNT(*) FROM president_laws WHERE term_id=? AND status='PUBLISHED'", string(law.get("term_id"))) >= 5) {
-                    throw new IllegalStateException("РЈ РїСЂРµР·РёРґРµРЅС‚Р° СѓР¶Рµ 5 Р·Р°РєРѕРЅРѕРІ. РСЃРїРѕР»СЊР·СѓР№ Р·Р°РјРµРЅСѓ.");
+                    throw new IllegalStateException("У президента уже 5 законов. Используй замену.");
                 }
                 if (!replaced.isBlank()) {
                     if (t - longValue(term.get("last_law_replace_at")) < PRESIDENT_LAW_REPLACE_COOLDOWN_MS) {
-                        throw new IllegalStateException("Р—Р°РєРѕРЅ РјРѕР¶РЅРѕ Р·Р°РјРµРЅСЏС‚СЊ РЅРµ С‡Р°С‰Рµ РѕРґРЅРѕРіРѕ СЂР°Р·Р° РІ 3 РґРЅСЏ.");
+                        throw new IllegalStateException("Закон можно заменять не чаще одного раза в 3 дня.");
                     }
                     Map<String, Object> replacedLaw = queryOne(connection,
                             "SELECT id,slot_no,status,term_id FROM president_laws WHERE id=? FOR UPDATE",
@@ -3209,7 +3207,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     if (replacedLaw == null
                             || !string(law.get("term_id")).equals(string(replacedLaw.get("term_id")))
                             || !"PUBLISHED".equalsIgnoreCase(string(replacedLaw.get("status")))) {
-                        throw new IllegalStateException("Р­С‚РѕС‚ Р·Р°РєРѕРЅ СѓР¶Рµ РЅРµР»СЊР·СЏ Р·Р°РјРµРЅРёС‚СЊ.");
+                        throw new IllegalStateException("Этот закон уже нельзя заменить.");
                     }
                     slot = Math.max(1, intValue(replacedLaw.get("slot_no")));
                     update(connection, "UPDATE president_laws SET status='REPLACED' WHERE id=?", replaced);
@@ -3228,11 +3226,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void sendPresidentBroadcast(Player player, String format, String text) throws Exception {
         Map<String, Object> term = activeTerm();
         if (term == null) {
-            throw new IllegalStateException("РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ СЃСЂРѕРєР° РїСЂРµР·РёРґРµРЅС‚Р°.");
+            throw new IllegalStateException("Нет активного срока президента.");
         }
         long t = now();
         if (t - longValue(term.get("last_broadcast_at")) < PRESIDENT_BROADCAST_COOLDOWN_MS) {
-            throw new IllegalStateException("РћР±СЂР°С‰РµРЅРёРµ РјРѕР¶РЅРѕ РѕС‚РїСЂР°РІР»СЏС‚СЊ СЂР°Р· РІ 1 С‡Р°СЃ.");
+            throw new IllegalStateException("Обращение можно отправлять раз в 1 час.");
         }
         tx(connection -> {
             update(connection, "INSERT INTO president_broadcasts(id,term_id,president_uuid,format,text,created_at) VALUES(?,?,?,?,?,?)",
@@ -3243,9 +3241,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
         for (Player online : Bukkit.getOnlinePlayers()) {
             switch (format.toUpperCase(Locale.ROOT)) {
-                case "TITLE" -> online.sendTitle(color("&6РџСЂРµР·РёРґРµРЅС‚"), color("&f" + text), 10, 50, 10);
-                case "ACTIONBAR" -> online.sendActionBar(color("&6РџСЂРµР·РёРґРµРЅС‚: &f" + text));
-                default -> online.sendMessage(color("&6РџСЂРµР·РёРґРµРЅС‚ &f" + player.getName() + "&7: &f" + text));
+                case "TITLE" -> online.sendTitle(color("&6Президент"), color("&f" + text), 10, 50, 10);
+                case "ACTIONBAR" -> online.sendActionBar(color("&6Президент: &f" + text));
+                default -> online.sendMessage(color("&6Президент &f" + player.getName() + "&7: &f" + text));
             }
         }
     }
@@ -3267,7 +3265,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private CopiMineEconomyCore.BankService requireEconomyBankService() {
         if (!(Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore") instanceof CopiMineEconomyCore economy) || !economy.isEnabled()) {
-            throw new IllegalStateException("CopiMineEconomyCore РЅРµРґРѕСЃС‚СѓРїРµРЅ.");
+            throw new IllegalStateException("CopiMineEconomyCore недоступен.");
         }
         return economy.bankService();
     }
@@ -3507,21 +3505,21 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         objective.setDisplaySlot(DisplaySlot.SIDEBAR);
         objective.numberFormat(NumberFormat.blank());
         List<String> lines = new ArrayList<>();
-        lines.add("&fР’С‹Р±РѕСЂС‹");
-        lines.add("&7Р­С‚Р°Рї: &f" + snap.stageTitle());
-        lines.add("&7РўСѓСЂ: &f" + snap.round());
-        lines.add("&fРљР°РЅРґРёРґР°С‚С‹");
+        lines.add("&fВыборы");
+        lines.add("&7Этап: &f" + snap.stageTitle());
+        lines.add("&7Тур: &f" + snap.round());
+        lines.add("&fКандидаты");
         if (snap.candidates().isEmpty()) {
-            lines.add("&7РџРѕРєР° РЅРµС‚ РєР°РЅРґРёРґР°С‚РѕРІ");
+            lines.add("&7Пока нет кандидатов");
         } else {
             for (CandidateResult row : snap.candidates().stream().limit(5).toList()) {
                 lines.add("&f" + shortText(row.name(), 10) + " &7" + row.bar() + " &f" + row.votes());
             }
         }
-        lines.add("&fРџСЂРµР·РёРґРµРЅС‚");
-        lines.add("&7" + first(snap.presidentName(), "РЅРµ РІС‹Р±СЂР°РЅ"));
+        lines.add("&fПрезидент");
+        lines.add("&7" + first(snap.presidentName(), "не выбран"));
         if (!snap.laws().isEmpty()) {
-            lines.add("&fР—Р°РєРѕРЅС‹");
+            lines.add("&fЗаконы");
             int index = 1;
             for (String law : snap.laws()) {
                 lines.add("&7" + index++ + ". " + shortText(law, 20));
@@ -3652,7 +3650,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private SealContext revalidateSealContext(Player player, MenuHolder holder) throws Exception {
         SealContext sealContext = validateSealUsage(player.getInventory().getItemInMainHand(), player);
         if (sealContext == null) {
-            throw new IllegalStateException("РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕРІРµСЂРёС‚СЊ РїРµС‡Р°С‚СЊ Р¦РРљ.");
+            throw new IllegalStateException("Не удалось проверить печать ЦИК.");
         }
         String expectedSealId = first(holder.data().get("seal_id"), "");
         String expectedStationId = first(holder.data().get("station_id"), "");
@@ -3662,7 +3660,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 || !expectedStationId.equals(sealContext.stationId())
                 || !expectedElectionId.equals(sealContext.electionId())
                 || !expectedChairUuid.equals(sealContext.playerUuid())) {
-            throw new IllegalStateException("Р­С‚Р° РїРµС‡Р°С‚СЊ Р¦РРљ Р±РѕР»СЊС€Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР°.");
+            throw new IllegalStateException("Эта печать ЦИК больше недействительна.");
         }
         return sealContext;
     }
@@ -3781,17 +3779,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void requireChairAccess(Player player, String stationId) throws Exception {
         if (player == null || stationId == null || stationId.isBlank()) {
-            throw new IllegalStateException("РЈС‡Р°СЃС‚РѕРє РїСЂРµРґСЃРµРґР°С‚РµР»СЏ РЅРµ РЅР°Р№РґРµРЅ.");
+            throw new IllegalStateException("Участок председателя не найден.");
         }
         Map<String, Object> station = queryOne(
                 "SELECT chair_uuid,active FROM polling_stations WHERE id=? LIMIT 1",
                 stationId
         );
         if (station == null || intValue(station.get("active")) <= 0) {
-            throw new IllegalStateException("РЈС‡Р°СЃС‚РѕРє РїСЂРµРґСЃРµРґР°С‚РµР»СЏ Р±РѕР»СЊС€Рµ РЅРµ Р°РєС‚РёРІРµРЅ.");
+            throw new IllegalStateException("Участок председателя больше не активен.");
         }
         if (!isChairForStation(player, station)) {
-            throw new IllegalStateException("РЈ С‚РµР±СЏ РЅРµС‚ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕРјСѓ СѓС‡Р°СЃС‚РєСѓ.");
+            throw new IllegalStateException("У тебя нет доступа к этому участку.");
         }
         if (player.hasPermission("copimine.election.admin") || player.isOp()) {
             return;
@@ -3801,7 +3799,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 stationId,
                 player.getUniqueId().toString()
         ) <= 0) {
-            throw new IllegalStateException("РЈ С‚РµР±СЏ РЅРµС‚ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕРјСѓ СѓС‡Р°СЃС‚РєСѓ.");
+            throw new IllegalStateException("У тебя нет доступа к этому участку.");
         }
     }
 
@@ -3841,7 +3839,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private String requireActiveElectionId() throws Exception {
         String electionId = currentElectionId();
         if (electionId == null || electionId.isBlank()) {
-            throw new IllegalStateException("РќРµС‚ Р°РєС‚РёРІРЅС‹С… РІС‹Р±РѕСЂРѕРІ.");
+            throw new IllegalStateException("Нет активных выборов.");
         }
         return electionId;
     }
@@ -3861,7 +3859,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "INSERT INTO rounds(id,election_id,round_no,status,started_at,ended_at,winner_uuid,winner_name) VALUES(?,?,?,?,?,0,'','')",
                     "round_" + electionId + "_1", electionId, 1, "ACTIVE", t);
             update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
-                    electionId, ElectionStage.PREPARATION.name(), 1, actor, t, "РЎРѕР·РґР°РЅ РЅРѕРІС‹Р№ С†РёРєР»");
+                    electionId, ElectionStage.PREPARATION.name(), 1, actor, t, "Старт новых выборов");
             logPluginEvent(connection, "election_core", "election_started", actor, electionId, "");
             return null;
         });
@@ -3878,7 +3876,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             int round = currentRoundFromDb(connection, electionId);
             update(connection, "UPDATE elections SET active=0,status='STOPPED',updated_at=?,ended_at=?,ended_by=? WHERE id=?", t, t, actor, electionId);
             update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
-                    electionId, ElectionStage.NONE.name(), round, actor, t, "РћСЃС‚Р°РЅРѕРІРєР° РІС‹Р±РѕСЂРѕРІ");
+                    electionId, ElectionStage.NONE.name(), round, actor, t, "Остановка выборов");
             logPluginEvent(connection, "election_core", "election_stopped", actor, electionId, "");
             return null;
         });
@@ -3968,7 +3966,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 "SELECT id,current_stage,current_round,candidate_limit,president_term_days,manual_winner_uuid,manual_winner_name,president_uuid,president_name,second_round_needed " +
                         "FROM elections WHERE active=1 ORDER BY updated_at DESC LIMIT 1 FOR UPDATE");
         if (row == null) {
-            throw new IllegalStateException("РќРµС‚ Р°РєС‚РёРІРЅС‹С… РІС‹Р±РѕСЂРѕРІ.");
+            throw new IllegalStateException("Нет активных выборов.");
         }
         return new ElectionContext(
                 string(row.get("id")),
@@ -4029,7 +4027,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("term_id", "");
         payload.put("president_uuid", "");
-        payload.put("president_name", "РљР°Р·РЅР° CopiMine");
+        payload.put("president_name", "Казна CopiMine");
         payload.put("budget_account_id", "PRESIDENT_BUDGET");
         try {
             Map<String, Object> term = activeTerm();
@@ -4138,9 +4136,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             int barCount = maxVotes <= 0 ? 1 : Math.max(1, (int) Math.round((votes * 10.0) / maxVotes));
             results.add(new CandidateResult(
                     string(row.get("player_uuid")),
-                    first(string(row.get("player_name")), "РљР°РЅРґРёРґР°С‚"),
+                    first(string(row.get("player_name")), "Кандидат"),
                     votes,
-                    "РІвЂ“в‚¬".repeat(Math.max(1, Math.min(10, barCount)))
+                    "в–€".repeat(Math.max(1, Math.min(10, barCount)))
             ));
         }
         return results;
@@ -4180,14 +4178,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void openApplicationBook(Player player, String applicationId) throws Exception {
         Map<String, Object> row = applicationById(applicationId);
         if (row == null) {
-            player.sendMessage(color("&cР—Р°СЏРІРєР° РЅРµ РЅР°Р№РґРµРЅР°."));
+            player.sendMessage(color("&cЗаявка не найдена."));
             return;
         }
         ItemStack book = new ItemStack(Material.WRITTEN_BOOK);
         BookMeta meta = (BookMeta) book.getItemMeta();
-        meta.setTitle("Р—Р°СЏРІРєР° РєР°РЅРґРёРґР°С‚Р°");
+        meta.setTitle("Заявка кандидата");
         meta.setAuthor(first(string(row.get("player_name")), "CopiMine"));
-        meta.addPage(first(string(row.get("answers")), "РўРµРєСЃС‚ Р·Р°СЏРІРєРё РїРѕРєР° РїСѓСЃС‚."));
+        meta.addPage(first(string(row.get("answers")), "Текст заявки пока пуст."));
         book.setItemMeta(meta);
         player.openBook(book);
     }
@@ -4250,7 +4248,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         String linkedId = readString(display.getPersistentDataContainer(), visualLinkedIdKey);
         String kind = readString(display.getPersistentDataContainer(), visualKindKey);
         if (linkedId.isBlank() || kind.isBlank()) {
-            player.sendMessage(color("&cР­С‚Р° РІРёР·СѓР°Р»СЊРЅР°СЏ С‚РѕС‡РєР° Р±РѕР»СЊС€Рµ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР°."));
+            player.sendMessage(color("&cЭта визуальная точка больше недействительна."));
             return true;
         }
         try {
@@ -4261,19 +4259,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if ("POLLING_STATION".equals(kind)) {
                 Map<String, Object> station = stationById(linkedId);
                 if (station == null) {
-                    player.sendMessage(color("&cРЈС‡Р°СЃС‚РѕРє Р±РѕР»СЊС€Рµ РЅРµ РЅР°Р№РґРµРЅ."));
+                    player.sendMessage(color("&cУчасток больше не найден."));
                     return true;
                 }
                 if (isChairForStation(player, station)) {
                     openChairStationMenu(player, linkedId, 0);
                 } else {
-                    player.sendMessage(color("&eРЈС‡Р°СЃС‚РѕРє Р¦РРљ. Р­С‚Р°Рї: &f" + snapshot.get().stageTitle()));
+                    player.sendMessage(color("&eУчасток ЦИК. Этап: &f" + snapshot.get().stageTitle()));
                 }
                 return true;
             }
         } catch (Exception error) {
             getLogger().warning("visual interact: " + safeError(error));
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ СЃРІСЏР·Р°РЅРЅСѓСЋ С‚РѕС‡РєСѓ."));
+            player.sendMessage(color("&cНе удалось открыть связанную точку."));
             return true;
         }
         return false;
@@ -4282,17 +4280,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void teleportToStation(Player player, String stationId) {
         Map<String, Object> station = stationById(stationId);
         if (station == null) {
-            player.sendMessage(color("&cРЈС‡Р°СЃС‚РѕРє РЅРµ РЅР°Р№РґРµРЅ."));
+            player.sendMessage(color("&cУчасток не найден."));
             return;
         }
         World world = Bukkit.getWorld(string(station.get("world")));
         if (world == null) {
-            player.sendMessage(color("&cРњРёСЂ СѓС‡Р°СЃС‚РєР° РЅРµ РЅР°Р№РґРµРЅ."));
+            player.sendMessage(color("&cМир участка не найден."));
             return;
         }
         Location location = safeStationTeleportLocation(world, intValue(station.get("x")), intValue(station.get("y")), intValue(station.get("z")));
         if (location == null) {
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё Р±РµР·РѕРїР°СЃРЅСѓСЋ С‚РѕС‡РєСѓ СЂСЏРґРѕРј СЃ СѓС‡Р°СЃС‚РєРѕРј."));
+            player.sendMessage(color("&cНе удалось найти безопасную точку рядом с участком."));
             return;
         }
         player.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN);
@@ -4353,14 +4351,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private List<String> stationLore(Map<String, Object> station, String stationId) {
         return List.of(
-                "&7РљРѕРѕСЂРґРёРЅР°С‚С‹: &f" + intValue(station.get("x")) + ", " + intValue(station.get("y")) + ", " + intValue(station.get("z")),
-                "&7РњРёСЂ: &f" + string(station.get("world")),
-                "&7РџСЂРµРґСЃРµРґР°С‚РµР»СЊ: &f" + first(string(station.get("chair_name")), "РЅРµ РЅР°Р·РЅР°С‡РµРЅ"),
-                "&7РЎС‚Р°С‚СѓСЃ РїСЂРµРґСЃРµРґР°С‚РµР»СЏ: " + (isPlayerOnline(string(station.get("chair_uuid"))) ? "&aРѕРЅР»Р°Р№РЅ" : "&7РѕС„С„Р»Р°Р№РЅ"),
-                "&7Р’С‹РґР°РЅРѕ Р·Р°СЏРІРѕРє: &f" + longValue(station.get("applications_issued")),
-                "&7Р’С‹РґР°РЅРѕ Р±СЋР»Р»РµС‚РµРЅРµР№: &f" + longValue(station.get("ballots_issued")),
-                "&7РЎРґР°РЅРѕ Р±СЋР»Р»РµС‚РµРЅРµР№: &f" + longValue(station.get("ballots_submitted")),
-                "&7РђРЅРЅСѓР»РёСЂРѕРІР°РЅРѕ Р±СЋР»Р»РµС‚РµРЅРµР№: &f" + longValue(station.get("ballots_annulled"))
+                "&7Координаты: &f" + intValue(station.get("x")) + ", " + intValue(station.get("y")) + ", " + intValue(station.get("z")),
+                "&7Мир: &f" + string(station.get("world")),
+                "&7Председатель: &f" + first(string(station.get("chair_name")), "не назначен"),
+                "&7Статус председателя: " + (isPlayerOnline(string(station.get("chair_uuid"))) ? "&aонлайн" : "&7офлайн"),
+                "&7Выдано заявок: &f" + longValue(station.get("applications_issued")),
+                "&7Выдано бюллетеней: &f" + longValue(station.get("ballots_issued")),
+                "&7Сдано бюллетеней: &f" + longValue(station.get("ballots_submitted")),
+                "&7Аннулировано бюллетеней: &f" + longValue(station.get("ballots_annulled"))
         );
     }
 
@@ -4370,47 +4368,47 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             long ballots = scalarLong("SELECT COUNT(*) FROM ballots WHERE station_id=?", stationId);
             long deposited = scalarLong("SELECT COUNT(*) FROM votes WHERE station_id=?", stationId);
             return List.of(
-                    "&7Р—Р°СЏРІРѕРє: &f" + applications,
-                    "&7Р‘СЋР»Р»РµС‚РµРЅРµР№: &f" + ballots,
-                    "&7Р“РѕР»РѕСЃРѕРІ РїСЂРёРЅСЏС‚Рѕ: &f" + deposited
+                    "&7Заявок: &f" + applications,
+                    "&7Бюллетеней: &f" + ballots,
+                    "&7Голосов принято: &f" + deposited
             );
         } catch (Exception error) {
-            return List.of("&7РЎС‚Р°С‚РёСЃС‚РёРєР° РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРЅР°.");
+            return List.of("&7Не удалось загрузить статистику участка.");
         }
     }
 
     private List<String> buildLimitLore(int current) {
-        return List.of("&7РўРµРєСѓС‰РёР№ Р»РёРјРёС‚: &f" + formatLimit(current), "&7Р’С‹Р±РµСЂРё РѕРґРЅРѕ РёР· Р·РЅР°С‡РµРЅРёР№ РЅРёР¶Рµ.");
+        return List.of("&7Текущий лимит: &f" + formatLimit(current), "&7Выбери одно из значений ниже.");
     }
 
     private List<String> buildTermLore(int current) {
-        return List.of("&7РўРµРєСѓС‰РёР№ СЃСЂРѕРє: &f" + current + " РґРЅ.", "&7Р’С‹Р±РµСЂРё РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ РЅРёР¶Рµ.");
+        return List.of("&7Текущий срок: &f" + current + " дн.", "&7Выбери длительность ниже.");
     }
 
     private String humanRecommendation(String value) {
         return switch (value == null ? "" : value.toUpperCase(Locale.ROOT)) {
-            case "RECOMMEND" -> "СЂРµРєРѕРјРµРЅРґРѕРІР°С‚СЊ";
-            case "NOT_RECOMMEND" -> "РЅРµ СЂРµРєРѕРјРµРЅРґРѕРІР°С‚СЊ";
-            default -> "РЅРµС‚";
+            case "RECOMMEND" -> "рекомендовать";
+            case "NOT_RECOMMEND" -> "не рекомендовать";
+            default -> "нет";
         };
     }
 
     private String humanApplicationStatus(String value) {
         return switch (value == null ? "" : value.toUpperCase(Locale.ROOT)) {
-            case "APPROVED" -> "РѕРґРѕР±СЂРµРЅР°";
-            case "REJECTED" -> "РѕС‚РєР»РѕРЅРµРЅР°";
-            case "RECOMMENDED" -> "СЂРµРєРѕРјРµРЅРґРѕРІР°РЅР°";
-            case "NOT_RECOMMENDED" -> "РЅРµ СЂРµРєРѕРјРµРЅРґРѕРІР°РЅР°";
-            default -> "РЅРµ СЂР°СЃСЃРјРѕС‚СЂРµРЅР°";
+            case "APPROVED" -> "одобрена";
+            case "REJECTED" -> "отклонена";
+            case "RECOMMENDED" -> "рекомендована";
+            case "NOT_RECOMMENDED" -> "не рекомендована";
+            default -> "не рассмотрена";
         };
     }
 
     private String formatLimit(int value) {
-        return value < 0 ? "Р±РµР· РѕРіСЂР°РЅРёС‡РµРЅРёСЏ" : String.valueOf(value);
+        return value < 0 ? "без ограничения" : String.valueOf(value);
     }
 
     private String formatLimitLabel(int value) {
-        return value < 0 ? "Р‘РµР· Р»РёРјРёС‚Р°" : String.valueOf(value);
+        return value < 0 ? "Без лимита" : String.valueOf(value);
     }
 
     private boolean isPlayerOnline(String uuid) {
@@ -4431,12 +4429,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private ItemStack createApplicationBook(String applicationId, String electionId, String stationId, String playerUuid) {
         ItemStack stack = new ItemStack(Material.WRITABLE_BOOK);
         BookMeta meta = (BookMeta) stack.getItemMeta();
-        meta.setTitle("Р—Р°СЏРІРєР° РєР°РЅРґРёРґР°С‚Р°");
+        meta.setTitle("Заявка кандидата");
         meta.setAuthor("CopiMine");
         meta.setPages(List.of(
-                "1. РџРѕС‡РµРјСѓ С‚С‹ С…РѕС‡РµС€СЊ СЃС‚Р°С‚СЊ РїСЂРµР·РёРґРµРЅС‚РѕРј?\\n\\n2. Р§С‚Рѕ С‚С‹ РёР·РјРµРЅРёС€СЊ РЅР° СЃРµСЂРІРµСЂРµ?",
-                "3. РљР°Рє С‚С‹ Р±СѓРґРµС€СЊ СЂР°Р·РІРёРІР°С‚СЊ СЌРєРѕРЅРѕРјРёРєСѓ?\\n\\n4. РљР°Рє С‚С‹ Р±СѓРґРµС€СЊ СЂРµС€Р°С‚СЊ РєРѕРЅС„Р»РёРєС‚С‹ РёРіСЂРѕРєРѕРІ?",
-                "5. РљР°РєРёРµ Р·Р°РєРѕРЅС‹ С…РѕС‡РµС€СЊ РїСЂРµРґР»РѕР¶РёС‚СЊ?\\n\\nРџРѕРґРїРёС€Рё РєРЅРёРіСѓ Рё СЃРґР°Р№ РµС‘ С‡РµСЂРµР· СЃРІРѕР№ СѓС‡Р°СЃС‚РѕРє."
+                "1. Почему ты хочешь стать президентом?\\n\\n2. Что ты изменишь на сервере?",
+                "3. Как ты будешь развивать экономику?\\n\\n4. Как ты будешь решать конфликты игроков?",
+                "5. Какие законы хочешь предложить?\\n\\nПодпиши книгу и сдай её через свой участок."
         ));
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(itemTypeKey, PersistentDataType.STRING, "APPLICATION_BOOK");
@@ -4451,14 +4449,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private ItemStack createBallotItem(String ballotId, String electionId, String stationId, int round, String playerUuid, String playerName, boolean confirmed, String candidateUuid, String candidateName) {
         ItemStack stack = new ItemStack(Material.PAPER);
         ItemMeta meta = stack.getItemMeta();
-        meta.setDisplayName(color(confirmed ? "&aР‘СЋР»Р»РµС‚РµРЅСЊ РїРѕРґС‚РІРµСЂР¶РґС‘РЅ" : "&fР‘СЋР»Р»РµС‚РµРЅСЊ"));
+        meta.setDisplayName(color(confirmed ? "&aБюллетень подтверждён" : "&fБюллетень"));
         List<String> lore = new ArrayList<>();
-        lore.add(color("&7РўСѓСЂ: &f" + round));
-        lore.add(color("&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(stationId)));
-        lore.add(color("&7РРіСЂРѕРє: &f" + playerName));
-        lore.add(color(confirmed ? "&7Р’С‹Р±РѕСЂ: &f" + first(candidateName, "РїРѕРґС‚РІРµСЂР¶РґС‘РЅ") : "&7РџРљРњ РІ РіРѕР»РѕСЃРѕРІР°РЅРёРµ РѕС‚РєСЂРѕРµС‚ СЃРїРёСЃРѕРє РєР°РЅРґРёРґР°С‚РѕРІ."));
+        lore.add(color("&7Тур: &f" + round));
+        lore.add(color("&7Участок: &f" + shortId(stationId)));
+        lore.add(color("&7Игрок: &f" + playerName));
+        lore.add(color(confirmed ? "&7Выбор: &f" + first(candidateName, "подтверждён") : "&7ПКМ в голосование откроет список кандидатов."));
         if (confirmed && !lore.isEmpty()) {
-            lore.set(lore.size() - 1, color("&7РЎС‚Р°С‚СѓСЃ: &aР’С‹Р±РѕСЂ РїРѕРґС‚РІРµСЂР¶РґС‘РЅ"));
+            lore.set(lore.size() - 1, color("&7Статус: &aГолос подтверждён"));
         }
         meta.setLore(lore);
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
@@ -4479,11 +4477,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private ItemStack createSealItem(String sealId, String electionId, String stationId, String playerUuid, String playerName) {
         ItemStack stack = new ItemStack(Material.NAME_TAG);
         ItemMeta meta = stack.getItemMeta();
-        meta.setDisplayName(color("&bРџРµС‡Р°С‚СЊ Р¦РРљ"));
+        meta.setDisplayName(color("&bПечать ЦИК"));
         meta.setLore(List.of(
-                color("&7РЈС‡Р°СЃС‚РѕРє: &f" + shortId(stationId)),
-                color("&7РџСЂРµРґСЃРµРґР°С‚РµР»СЊ: &f" + playerName),
-                color("&7РџРљРњ РїРѕ РёРіСЂРѕРєСѓ РѕС‚РєСЂРѕРµС‚ РІС‹РґР°С‡Сѓ.")
+                color("&7Участок: &f" + shortId(stationId)),
+                color("&7Председатель: &f" + playerName),
+                color("&7ПКМ по игроку откроет выдачу.")
         ));
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(itemTypeKey, PersistentDataType.STRING, "CIK_SEAL");
@@ -4498,11 +4496,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private ItemStack createPresidentMandate(String electionId, String playerUuid, String playerName) {
         ItemStack stack = new ItemStack(Material.NETHER_STAR);
         ItemMeta meta = stack.getItemMeta();
-        meta.setDisplayName(color("&6РњР°РЅРґР°С‚ РїСЂРµР·РёРґРµРЅС‚Р°"));
+        meta.setDisplayName(color("&6Мандат президента"));
         meta.setLore(List.of(
-                color("&7РџСЂРµР·РёРґРµРЅС‚: &f" + playerName),
-                color("&7РџРљРњ РѕС‚РєСЂРѕРµС‚ РјРµРЅСЋ РїСЂРµР·РёРґРµРЅС‚Р°."),
-                color("&8РџСЂРµРґРјРµС‚ РЅРµР»СЊР·СЏ РІС‹Р±СЂРѕСЃРёС‚СЊ Рё СЃРїСЂСЏС‚Р°С‚СЊ РІ РєРѕРЅС‚РµР№РЅРµСЂ.")
+                color("&7Президент: &f" + playerName),
+                color("&7ПКМ откроет меню президента."),
+                color("&8Предмет нельзя выбросить и спрятать в контейнер.")
         ));
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(itemTypeKey, PersistentDataType.STRING, "PRESIDENT_MANDATE");
@@ -4647,7 +4645,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void normalizePin(String pin) {
         if (pin == null || !pin.matches("\\d{4,8}")) {
-            throw new IllegalStateException("PIN РґРѕР»Р¶РµРЅ СЃРѕРґРµСЂР¶Р°С‚СЊ 4-8 С†РёС„СЂ.");
+            throw new IllegalStateException("PIN должен содержать 4-8 цифр.");
         }
     }
 
@@ -4685,17 +4683,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (meta == null) {
             return stack;
         }
-        meta.setDisplayName(color("&b&lAR &8| &fРћС„РёС†РёР°Р»СЊРЅР°СЏ СЂСѓРґР°"));
-        meta.setLore(List.of(
-                color("&7Р’Р»Р°РґРµР»РµС†: &fР“РѕСЃСѓРґР°СЂСЃС‚РІРµРЅРЅС‹Р№ РІРѕР·РІСЂР°С‚"),
-                color("&7РСЃС‚РѕС‡РЅРёРє: &fpresident_tax_refund")
-        ));
+        meta.setDisplayName(color("&bОфициальный AR"));
+        meta.setLore(List.of(color("&7Официальная руда CopiMine")));
         meta.addItemFlags(ItemFlag.values());
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(new NamespacedKey("copiminear", "type"), PersistentDataType.STRING, "certified");
-        pdc.set(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING, "");
-        pdc.set(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING, "Р“РѕСЃСѓРґР°СЂСЃС‚РІРµРЅРЅС‹Р№ РІРѕР·РІСЂР°С‚");
-        pdc.set(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING, "president_tax_refund");
+        pdc.remove(new NamespacedKey("copiminear", "owner_uuid"));
+        pdc.remove(new NamespacedKey("copiminear", "owner_name"));
+        pdc.remove(new NamespacedKey("copiminear", "source"));
         stack.setItemMeta(meta);
         return stack;
     }
@@ -4869,10 +4864,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void verifyBankPin(Connection connection, String minecraftUuid, String pin) throws Exception {
         Map<String, Object> row = queryOne(connection, "SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=?", minecraftUuid);
         if (row == null || !verifyPasswordHash(string(row.get("pin_hash")), pin)) {
-            throw new IllegalStateException("РќРµРІРµСЂРЅС‹Р№ PIN.");
+            throw new IllegalStateException("Неверный PIN.");
         }
         if (intValue(row.get("must_change")) > 0) {
-            throw new IllegalStateException("РЎРЅР°С‡Р°Р»Р° Р·Р°РјРµРЅРё РІСЂРµРјРµРЅРЅС‹Р№ PIN.");
+            throw new IllegalStateException("Сначала нужно изменить временный PIN.");
         }
     }
 
@@ -5223,7 +5218,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private String shortId(String id) {
         if (id == null || id.isBlank()) {
-            return "РІР‚вЂќ";
+            return "—";
         }
         return id.length() <= 10 ? id : id.substring(0, 10);
     }
@@ -5233,11 +5228,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (clean.length() <= max) {
             return clean;
         }
-        return clean.substring(0, Math.max(0, max - 1)) + "РІР‚В¦";
+        return clean.substring(0, Math.max(0, max - 1)) + "…";
     }
 
     private String formatTs(long ts) {
-        return ts <= 0 ? "РІР‚вЂќ" : Instant.ofEpochMilli(ts).toString();
+        return ts <= 0 ? "—" : Instant.ofEpochMilli(ts).toString();
     }
 
     private record DbSettings(String host, int port, String database, String user, String password, String schema, Path envFile) {
@@ -5320,16 +5315,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private enum ElectionStage {
-        NONE("РќРµС‚ РІС‹Р±РѕСЂРѕРІ"),
-        PREPARATION("РџРѕРґРіРѕС‚РѕРІРєР°"),
-        APPLICATIONS("РџСЂРёС‘Рј Р·Р°СЏРІРѕРє"),
-        REVIEW("РџСЂРѕРІРµСЂРєР° Р·Р°СЏРІРѕРє"),
-        DEBATES("Р”РµР±Р°С‚С‹"),
-        VOTING("Р“РѕР»РѕСЃРѕРІР°РЅРёРµ"),
-        COUNTING("РџРѕРґСЃС‡С‘С‚"),
-        SECOND_ROUND("Р’С‚РѕСЂРѕР№ С‚СѓСЂ"),
-        FINISHED("Р—Р°РІРµСЂС€РµРЅРѕ"),
-        PRESIDENT_TERM("РџСЂРµР·РёРґРµРЅС‚СЃРєРёР№ СЃСЂРѕРє");
+        NONE("Нет выборов"),
+        PREPARATION("Подготовка"),
+        APPLICATIONS("Приём заявок"),
+        REVIEW("Проверка заявок"),
+        DEBATES("Дебаты"),
+        VOTING("Голосование"),
+        COUNTING("Подсчёт"),
+        SECOND_ROUND("Второй тур"),
+        FINISHED("Завершено"),
+        PRESIDENT_TERM("Президентский срок");
 
         private final String title;
 
@@ -5391,68 +5386,68 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return switch (from) {
                 case NONE -> to == ElectionStage.PREPARATION
                         ? StageTransitionResult.allow()
-                        : StageTransitionResult.deny("Р’С‹Р±РѕСЂС‹ СЃРЅР°С‡Р°Р»Р° РЅСѓР¶РЅРѕ РїРµСЂРµРІРµСЃС‚Рё РІ РїРѕРґРіРѕС‚РѕРІРєСѓ.");
+                        : StageTransitionResult.deny("Выборы сначала нужно перевести в подготовку.");
                 case PREPARATION -> to == ElectionStage.APPLICATIONS
                         ? StageTransitionResult.allow()
-                        : StageTransitionResult.deny("РџРѕСЃР»Рµ РїРѕРґРіРѕС‚РѕРІРєРё РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ Рє РїСЂРёС‘РјСѓ Р·Р°СЏРІРѕРє.");
+                        : StageTransitionResult.deny("После подготовки можно перейти только к приёму заявок.");
                 case APPLICATIONS -> to == ElectionStage.REVIEW
                         ? StageTransitionResult.allow()
-                        : StageTransitionResult.deny("РџРѕСЃР»Рµ РїСЂРёС‘РјР° Р·Р°СЏРІРѕРє РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ Рє РїСЂРѕРІРµСЂРєРµ.");
+                        : StageTransitionResult.deny("После приёма заявок можно перейти только к проверке.");
                 case REVIEW -> {
                     if (pendingApplications > 0) {
-                        yield StageTransitionResult.deny("РЎРЅР°С‡Р°Р»Р° СЂР°СЃСЃРјРѕС‚СЂРёС‚Рµ РІСЃРµ Р·Р°СЏРІРєРё РєР°РЅРґРёРґР°С‚РѕРІ.");
+                        yield StageTransitionResult.deny("Сначала нужно разобрать все заявки кандидатов.");
                     }
                     if (to == ElectionStage.DEBATES) {
                         yield StageTransitionResult.allow();
                     }
-                    yield StageTransitionResult.deny("РџРѕСЃР»Рµ РїСЂРѕРІРµСЂРєРё Р·Р°СЏРІРѕРє РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ Рє РґРµР±Р°С‚Р°Рј.");
+                    yield StageTransitionResult.deny("После проверки заявок можно перейти только к дебатам.");
                 }
                 case DEBATES -> {
                     if (to != ElectionStage.VOTING) {
-                        yield StageTransitionResult.deny("РџРѕСЃР»Рµ РґРµР±Р°С‚РѕРІ РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ Рє РіРѕР»РѕСЃРѕРІР°РЅРёСЋ.");
+                        yield StageTransitionResult.deny("После дебатов можно перейти только к голосованию.");
                     }
                     if (pendingApplications > 0) {
-                        yield StageTransitionResult.deny("РЎРЅР°С‡Р°Р»Р° СЂР°СЃСЃРјРѕС‚СЂРёС‚Рµ РІСЃРµ Р·Р°СЏРІРєРё РєР°РЅРґРёРґР°С‚РѕРІ.");
+                        yield StageTransitionResult.deny("Сначала нужно разобрать все заявки кандидатов.");
                     }
                     if (activeCandidates < 2) {
-                        yield StageTransitionResult.deny("Р”Р»СЏ РіРѕР»РѕСЃРѕРІР°РЅРёСЏ РЅСѓР¶РЅРѕ РјРёРЅРёРјСѓРј 2 РєР°РЅРґРёРґР°С‚Р°.");
+                        yield StageTransitionResult.deny("Для голосования нужно минимум 2 кандидата.");
                     }
                     if (stations < 1) {
-                        yield StageTransitionResult.deny("РЎРЅР°С‡Р°Р»Р° СЃРѕР·РґР°Р№С‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ СѓС‡Р°СЃС‚РѕРє Р¦РРљ.");
+                        yield StageTransitionResult.deny("Сначала нужно создать хотя бы один участок.");
                     }
                     yield StageTransitionResult.allow();
                 }
                 case VOTING -> to == ElectionStage.COUNTING
                         ? StageTransitionResult.allow()
-                        : StageTransitionResult.deny("РџРѕСЃР»Рµ РіРѕР»РѕСЃРѕРІР°РЅРёСЏ РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ Рє РїРѕРґСЃС‡С‘С‚Сѓ.");
+                        : StageTransitionResult.deny("После голосования можно перейти только к подсчёту.");
                 case COUNTING -> {
                     if (to == ElectionStage.SECOND_ROUND) {
                         yield tiedLeaders >= 2
                                 ? StageTransitionResult.allow()
-                                : StageTransitionResult.deny("Р’С‚РѕСЂРѕР№ С‚СѓСЂ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РїСЂРё СЂР°РІРµРЅСЃС‚РІРµ Р»РёРґРµСЂРѕРІ.");
+                                : StageTransitionResult.deny("Второй тур доступен только при равенстве лидеров.");
                     }
                     if (to == ElectionStage.FINISHED || to == ElectionStage.PRESIDENT_TERM) {
                         yield hasWinner
                                 ? StageTransitionResult.allow()
-                                : StageTransitionResult.deny("РЎРЅР°С‡Р°Р»Р° СѓС‚РІРµСЂРґРёС‚Рµ РїРѕР±РµРґРёС‚РµР»СЏ.");
+                                : StageTransitionResult.deny("Сначала нужно определить победителя.");
                     }
-                    yield StageTransitionResult.deny("РџРѕСЃР»Рµ РїРѕРґСЃС‡С‘С‚Р° РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ РєРѕ РІС‚РѕСЂРѕРјСѓ С‚СѓСЂСѓ РёР»Рё Рє РїСЂРµР·РёРґРµРЅС‚СЃРєРѕРјСѓ СЃСЂРѕРєСѓ.");
+                    yield StageTransitionResult.deny("После подсчёта можно перейти только ко второму туру или к президентскому сроку.");
                 }
                 case SECOND_ROUND -> {
                     if (tiedLeaders < 2) {
-                        yield StageTransitionResult.deny("Р’С‚РѕСЂРѕР№ С‚СѓСЂ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РґР»СЏ РєР°РЅРґРёРґР°С‚РѕРІ СЃ СЂР°РІРЅС‹Рј РјР°РєСЃРёРјСѓРјРѕРј РіРѕР»РѕСЃРѕРІ.");
+                        yield StageTransitionResult.deny("Второй тур доступен только для кандидатов с равным максимумом голосов.");
                     }
                     if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING || to == ElectionStage.COUNTING) {
                         yield StageTransitionResult.allow();
                     }
-                    yield StageTransitionResult.deny("РР· РІС‚РѕСЂРѕРіРѕ С‚СѓСЂР° РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ Рє РґРµР±Р°С‚Р°Рј, РіРѕР»РѕСЃРѕРІР°РЅРёСЋ РёР»Рё РїРѕРґСЃС‡С‘С‚Сѓ.");
+                    yield StageTransitionResult.deny("Из второго тура можно перейти только к дебатам, голосованию или подсчёту.");
                 }
                 case FINISHED -> to == ElectionStage.PRESIDENT_TERM
-                        ? (hasWinner ? StageTransitionResult.allow() : StageTransitionResult.deny("РЎРЅР°С‡Р°Р»Р° СѓС‚РІРµСЂРґРёС‚Рµ РїРѕР±РµРґРёС‚РµР»СЏ."))
-                        : StageTransitionResult.deny("РџРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РјРѕР¶РЅРѕ РїРµСЂРµР№С‚Рё С‚РѕР»СЊРєРѕ Рє РїСЂРµР·РёРґРµРЅС‚СЃРєРѕРјСѓ СЃСЂРѕРєСѓ.");
+                        ? (hasWinner ? StageTransitionResult.allow() : StageTransitionResult.deny("Сначала нужно определить победителя."))
+                        : StageTransitionResult.deny("После завершения можно перейти только к президентскому сроку.");
                 case PRESIDENT_TERM -> to == ElectionStage.FINISHED
                         ? StageTransitionResult.allow()
-                        : StageTransitionResult.deny("РџСЂРµР·РёРґРµРЅС‚СЃРєРёР№ СЃСЂРѕРє РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ Р·Р°РІРµСЂС€РёС‚СЊ.");
+                        : StageTransitionResult.deny("Президентский срок можно только завершить.");
             };
         }
     }

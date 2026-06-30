@@ -1,32 +1,43 @@
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$admin = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
-$artifacts = Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'
-$narcotics = Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\CopiMineNarcotics.java'
+$economy = Join-Path $root 'copimine-economy-core\src\me\copimine\economycore\CopiMineEconomyCore.java'
+
+if (-not (Test-Path -LiteralPath $economy)) {
+  throw "Missing source: $economy"
+}
+
+$java = Get-Content -Raw -Encoding UTF8 $economy
 $errors = New-Object System.Collections.Generic.List[string]
 
-foreach ($path in @($admin, $artifacts, $narcotics)) {
-  if (-not (Test-Path -LiteralPath $path)) { $errors.Add("Missing source: $path") }
-}
-if (Test-Path $admin) {
-  $java = Get-Content -Raw -Encoding UTF8 $admin
-  foreach ($marker in @('bankpin:digit:','for(int i=0;i<9;i++)','bankpin:clear','bankpin:back','bankpin:confirm','atmPinSessions')) {
-    if (-not $java.Contains($marker)) { $errors.Add("AdminPlus PIN GUI missing marker: $marker") }
+foreach ($marker in @(
+  'Map<Integer, String> keypad = Map.of(',
+  '10, "1"',
+  '11, "2"',
+  '12, "3"',
+  '19, "4"',
+  '20, "5"',
+  '21, "6"',
+  '28, "7"',
+  '29, "8"',
+  '30, "9"',
+  '38, "0"',
+  'pin:digit:',
+  'pin:back',
+  'pin:clear',
+  'pin:confirm',
+  'atmPinSessions'
+)) {
+  if (-not $java.Contains($marker)) {
+    $errors.Add("Economy PIN GUI missing marker: $marker")
   }
-  if ($java -match 'ATM PIN|PIN:\s*"\s*\+\s*masked|sendMessage\(.*pin') { $errors.Add('AdminPlus PIN must not be visible in title/chat.') }
 }
-if (Test-Path $artifacts) {
-  $java = Get-Content -Raw -Encoding UTF8 $artifacts
-  foreach ($marker in @('digit:','for (int i = 0; i <= 9; i++)','pin:clear','pin:backspace','pin:submit','pinBuffer')) {
-    if (-not $java.Contains($marker)) { $errors.Add("Artifacts PIN GUI missing marker: $marker") }
-  }
+
+if ($java -match 'PIN:\s*"\s*\+\s*masked') {
+  $errors.Add('PIN GUI title must not expose the PIN mask.')
 }
-if (Test-Path $narcotics) {
-  $java = Get-Content -Raw -Encoding UTF8 $narcotics
-  foreach ($marker in @('digit:','for (int i = 1; i <= 9; i++)','clear','confirm','pinBuffers','maskedPin(player)')) {
-    if (-not $java.Contains($marker)) { $errors.Add("Narcotics PIN GUI missing marker: $marker") }
-  }
-  if ($java -match 'PIN:\s*"\s*\+\s*maskedPin') { $errors.Add('Narcotics PIN GUI title contains PIN mask.') }
+
+if ($errors.Count -gt 0) {
+  throw ("PIN GUI validation failed:`n - " + ($errors -join "`n - "))
 }
-if ($errors.Count -gt 0) { throw ("PIN GUI validation failed:`n - " + ($errors -join "`n - ")) }
+
 Write-Host 'PIN GUI validation passed.'

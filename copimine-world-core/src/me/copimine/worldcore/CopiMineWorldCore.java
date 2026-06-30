@@ -15,6 +15,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
@@ -238,7 +239,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         return List.of();
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPortal(PlayerPortalEvent event) {
         World targetWorld = event.getTo() == null ? null : event.getTo().getWorld();
         if (targetWorld == null) {
@@ -250,7 +251,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         if (event.getTo() == null || event.getTo().getWorld() == null) {
             return;
@@ -274,10 +275,15 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
         Location to = event.getTo();
         if (to == null || to.getWorld() == null) {
+            return;
+        }
+        if (isBlockedWorld(to.getWorld(), false)) {
+            event.setCancelled(true);
+            redirectPlayer(event.getPlayer(), accessFor(to.getWorld()), blockedMessage(to.getWorld()));
             return;
         }
         if (!overworldLimit.enabled() || !overworldLimit.worldNames().contains(to.getWorld().getName())) {
@@ -308,7 +314,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onWorldChange(PlayerChangedWorldEvent event) {
         World current = event.getPlayer().getWorld();
         if (isBlockedWorld(current, false)) {

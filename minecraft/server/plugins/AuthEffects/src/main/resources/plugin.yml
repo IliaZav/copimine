@@ -1,0 +1,10 @@
+name: AuthEffects
+version: '1.0.0'
+main: me.serverrp.autheffects.AuthEffectsPlugin
+api-version: '1.21'
+author: SudoKillDash9
+softdepend:
+  - nLogin
+  - nLogin-AuthMeAPI
+  - AuthMe
+description: Adds temporary slowness before login or registration through an AuthMe-compatible flow.

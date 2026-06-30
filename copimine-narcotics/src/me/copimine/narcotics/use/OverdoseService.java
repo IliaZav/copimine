@@ -198,6 +198,7 @@ public final class OverdoseService {
                 visualId = visuals.get(0);
             }
         }
+        appendUniversalOverdoseEffects(effectsToApply);
         applyConfiguredEffects(player, effectsToApply);
         if ("sbp".equals(definition.id()) || "zhuzevo".equals(definition.id())) {
             state = state.withInvertedMovementUntil(now + 120);
@@ -244,6 +245,29 @@ public final class OverdoseService {
 
     private int effectiveDuration(int baseSeconds) {
         return configService.durationOverrideSeconds() > 0 ? configService.durationOverrideSeconds() : baseSeconds;
+    }
+
+    private void appendUniversalOverdoseEffects(List<ConfiguredEffect> effects) {
+        addOrUpgrade(effects, new ConfiguredEffect("DARKNESS", 0, 45));
+        addOrUpgrade(effects, new ConfiguredEffect("WEAKNESS", 1, 300));
+        addOrUpgrade(effects, new ConfiguredEffect("INSTANT_DAMAGE", 1, 1));
+        addOrUpgrade(effects, new ConfiguredEffect("NAUSEA", 2, 180));
+        addOrUpgrade(effects, new ConfiguredEffect("MINING_FATIGUE", 2, 300));
+    }
+
+    private void addOrUpgrade(List<ConfiguredEffect> effects, ConfiguredEffect required) {
+        for (int index = 0; index < effects.size(); index++) {
+            ConfiguredEffect current = effects.get(index);
+            if (current.type().equalsIgnoreCase(required.type())) {
+                effects.set(index, new ConfiguredEffect(
+                        current.type(),
+                        Math.max(current.amplifier(), required.amplifier()),
+                        Math.max(current.durationSeconds(), required.durationSeconds())
+                ));
+                return;
+            }
+        }
+        effects.add(required);
     }
 
     public record PlayerState(UUID playerUuid, int currentScale, long lastConsumedAt, long overdoseUntil, long invertedMovementUntil, String lastItemId, long stateVersion) {

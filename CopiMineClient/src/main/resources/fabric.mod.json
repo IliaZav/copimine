@@ -14,6 +14,9 @@
       "me.copimine.client.CopiMineClient"
     ]
   },
+  "mixins": [
+    "copimineclient.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.19.3",
     "minecraft": "1.21.1",

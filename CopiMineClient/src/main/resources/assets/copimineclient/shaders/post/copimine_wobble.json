@@ -1,0 +1,20 @@
+{
+  "targets": [
+    "swap"
+  ],
+  "passes": [
+    {
+      "name": "copimineclient:wobble",
+      "intarget": "minecraft:main",
+      "outtarget": "swap",
+      "uniforms": [
+        { "name": "Intensity", "values": [0.75] }
+      ]
+    },
+    {
+      "name": "blit",
+      "intarget": "swap",
+      "outtarget": "minecraft:main"
+    }
+  ]
+}

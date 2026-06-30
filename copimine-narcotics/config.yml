@@ -34,7 +34,7 @@ client_bridge:
   fallback_to_particles: true
 
 visuals:
-  enabled: true
+  enabled: false
   mode: AUTO
   allow_client_mod_visuals: true
   allow_server_resource_pack_overlay: true

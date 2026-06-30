@@ -84,7 +84,7 @@ public final class NarcoticsConfigService {
         clearNormalEffectsBeforeNewUse = root.getBoolean("usage.clear_normal_effects_before_new_use", true);
         milkBlocksDuringOverdose = root.getBoolean("usage.milk_blocks_during_overdose", true);
         zhuzevoForcesOverdose = root.getBoolean("usage.zhuzevo_forces_overdose", true);
-        visualsEnabled = root.getBoolean("visuals.enabled", true) || root.getBoolean("runtime.strict_release_mode", true);
+        visualsEnabled = root.getBoolean("visuals.enabled", false);
         allowClientModVisuals = root.getBoolean("visuals.allow_client_mod_visuals", true);
         allowServerResourcePackOverlay = root.getBoolean("visuals.allow_server_resource_pack_overlay", true);
         allowServerParticleFallback = root.getBoolean("visuals.allow_server_particle_fallback", true);

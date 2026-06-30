@@ -3,7 +3,7 @@
 ## Auth
 - Зайти на сервер с `nLogin` и проверить обычный `/register`, затем `/login`.
 - Убедиться, что `AuthEffects` даёт замедление до входа и снимает его сразу после входа или регистрации.
-- Проверить, что связка `nLogin-AuthMeAPI` не ломает whitelist, OP и обычный join flow.
+- Проверить, что `nLogin` не ломает whitelist, OP и обычный join flow.
 
 ## CopiMineClient
 - Установить `CopiMineClient-0.1.0.jar` в клиент.

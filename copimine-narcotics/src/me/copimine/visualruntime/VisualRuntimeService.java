@@ -155,7 +155,7 @@ public final class VisualRuntimeService {
         ClientCapabilityState state = player == null ? null : clientBridge.capabilities().state(player);
         String base = clientBridge.routeHint(player, effectId);
         if (state != null && state.trueIrisShader()) {
-            return base + " (Iris shaderpack active; CopiMineClient still uses its own HUD/fullscreen overlay renderer and does not inject or replace the user's shaderpack)";
+            return base + " (Iris shaderpack active; CopiMineClient does not override the player's shaderpack, so this effect falls back to the server overlay/particle route)";
         }
         return base;
     }
@@ -183,7 +183,7 @@ public final class VisualRuntimeService {
         if (!shaderLikeSupportedManifestFlag()) {
             return "client-mod visual runtime disabled by visuals manifest";
         }
-        return "available through optional CopiMineClient fullscreen overlay runtime";
+        return "available through optional CopiMineClient post-process plus overlay runtime";
     }
 
     public String overlaySupportReason() {

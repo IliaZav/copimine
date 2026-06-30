@@ -54,6 +54,7 @@ public record BridgePayload(
     }
 
     public static BridgePayload hello(String sessionId, String version, Set<String> supportedEffects, boolean irisShaderPackActive) {
+        boolean visualsAvailable = visualsAvailableForBridge(irisShaderPackActive);
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_HELLO,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -61,9 +62,9 @@ public record BridgePayload(
                 System.currentTimeMillis(),
                 sessionId,
                 version,
-                true,
-                true,
-                true,
+                visualsAvailable,
+                visualsAvailable,
+                visualsAvailable,
                 irisShaderPackActive,
                 normalizeEffects(supportedEffects),
                 "",
@@ -78,6 +79,7 @@ public record BridgePayload(
     }
 
     public static BridgePayload capabilitiesUpdate(String sessionId, String version, Set<String> supportedEffects, boolean irisShaderPackActive) {
+        boolean visualsAvailable = visualsAvailableForBridge(irisShaderPackActive);
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_CAPABILITIES_UPDATE,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -85,9 +87,9 @@ public record BridgePayload(
                 System.currentTimeMillis(),
                 sessionId,
                 version,
-                true,
-                true,
-                true,
+                visualsAvailable,
+                visualsAvailable,
+                visualsAvailable,
                 irisShaderPackActive,
                 normalizeEffects(supportedEffects),
                 "",
@@ -101,7 +103,8 @@ public record BridgePayload(
         );
     }
 
-    public static BridgePayload heartbeat(String sessionId) {
+    public static BridgePayload heartbeat(String sessionId, boolean irisShaderPackActive) {
+        boolean visualsAvailable = visualsAvailableForBridge(irisShaderPackActive);
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_HEARTBEAT,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -109,10 +112,10 @@ public record BridgePayload(
                 System.currentTimeMillis(),
                 sessionId,
                 "",
-                true,
-                true,
-                true,
-                false,
+                visualsAvailable,
+                visualsAvailable,
+                visualsAvailable,
+                irisShaderPackActive,
                 Set.of(),
                 "",
                 0,
@@ -311,6 +314,10 @@ public record BridgePayload(
             return 1_000;
         }
         return Math.max(1_000, Math.min(600_000, durationMillis));
+    }
+
+    private static boolean visualsAvailableForBridge(boolean irisShaderPackActive) {
+        return !irisShaderPackActive;
     }
 
     private static Set<String> normalizeEffects(Set<String> supportedEffects) {

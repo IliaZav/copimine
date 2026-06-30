@@ -106,6 +106,7 @@ public final class ClientCapabilityService {
                 + ", clientOverlay=" + state.clientOverlay()
                 + ", clientShaderLike=" + state.clientShaderLike()
                 + ", irisShaderPackActive=" + state.trueIrisShader()
+                + ", fallbackOnly=" + state.trueIrisShader()
                 + ", heartbeatAgo=" + secondsSinceHeartbeat + "s"
                 + ", effects=" + state.supportedEffects().stream().sorted(String::compareToIgnoreCase).toList();
     }
@@ -117,10 +118,14 @@ public final class ClientCapabilityService {
             return problem == null || problem.isBlank() ? "missing-client" : problem;
         }
         String normalized = effectId == null ? "CHAOS" : effectId.toUpperCase(Locale.ROOT);
+        if (state.trueIrisShader()) {
+            return "iris-shaderpack-active";
+        }
         if (!state.clientModVisuals()) {
             return "client-no-visuals";
         }
-        String irisSuffix = state.trueIrisShader() ? "+iris-shaderpack-active+hud-overlay-compatible" : "+hud-overlay-compatible";
-        return state.supportedEffects().contains(normalized) ? "client-ready" + irisSuffix : "unsupported-effect" + irisSuffix;
+        return state.supportedEffects().contains(normalized)
+                ? "client-ready+post-process"
+                : "unsupported-effect+post-process";
     }
 }

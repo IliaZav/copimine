@@ -27,8 +27,6 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     private static final int EFFECT_DURATION_TICKS = 20 * 60 * 10;
     private static final int SLOWNESS_AMPLIFIER = 4;
     private static final List<String> AUTH_EVENT_CLASSES = List.of(
-            "fr.xephi.authme.events.LoginEvent",
-            "fr.xephi.authme.events.RegisterEvent",
             "com.nickuc.login.api.event.bukkit.auth.AuthenticateEvent",
             "com.nickuc.login.api.event.bukkit.auth.RegisterEvent"
     );
@@ -39,7 +37,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
         int registered = registerOptionalAuthEvents();
-        getLogger().info("AuthEffects enabled with nLogin/AuthMe compatibility support.");
+        getLogger().info("AuthEffects enabled with nLogin support.");
         getLogger().info("AuthEffects auth hooks registered: " + registered);
     }
 
@@ -162,7 +160,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         );
     }
 
-    private Player extractPlayer(org.bukkit.event.Event event) {
+    private Player extractPlayer(Event event) {
         try {
             Method getPlayer = event.getClass().getMethod("getPlayer");
             Object value = getPlayer.invoke(event);

@@ -10,8 +10,8 @@ Transport model:
 - optional client mod bridge over plugin messaging;
 - server never requires Iris or OptiFine;
 - if the client mod is missing or stops responding, the server falls back to server overlay or particle visuals;
-- if the player already runs an Iris shaderpack, CopiMineClient does not inject into that shaderpack and does not replace it: the mod uses its own fullscreen HUD overlay renderer.
-- when an Iris shaderpack is active, the client keeps the same HUD overlay route but softens the overlay alpha so the effect does not try to overpower the player's existing shaderpack.
+- primary visual route is client-side post-processing plus overlay composition inside `CopiMineClient`;
+- if the player already runs an Iris shaderpack, CopiMineClient does not inject into that shaderpack and does not replace it.
 
 Message envelope:
 1. `type:string`
@@ -79,7 +79,7 @@ Supported effect ids:
 - `CHAOS`
 
 Notes:
-- `supports_true_iris_shader=false` is intentional: the mod uses its own fullscreen overlay / shader-like rendering path and does not depend on an external shaderpack;
+- `supports_true_iris_shader=false` is intentional: the mod uses its own post-process pipeline and does not depend on an external shader loader;
 - `trueIrisShader=true` only means the player already has an Iris shaderpack enabled; it does not switch CopiMineClient into a different renderer and does not let the server force a true Iris post-process pass;
 - without the client mod, gameplay still works; only the visual route degrades to server fallback;
-- Paper cannot force true per-player post-processing shaders through a normal server resource pack, so "shader-like" here means an optional client-side fullscreen overlay runtime rather than a forced Iris/OptiFine shader.
+- Paper cannot force true per-player post-processing shaders through a normal server resource pack, so the server delegates the rich path to `CopiMineClient` and keeps honest fallback routes for everyone else.

@@ -1,0 +1,20 @@
+{
+  "targets": [
+    "swap"
+  ],
+  "passes": [
+    {
+      "name": "copimineclient:green_noise",
+      "intarget": "minecraft:main",
+      "outtarget": "swap",
+      "uniforms": [
+        { "name": "Intensity", "values": [0.78] }
+      ]
+    },
+    {
+      "name": "blit",
+      "intarget": "swap",
+      "outtarget": "minecraft:main"
+    }
+  ]
+}

@@ -33,15 +33,20 @@ public final class ClientVisualManager {
     private final MinecraftClient client = MinecraftClient.getInstance();
     private final ClientConfig config;
     private final Map<Long, ActiveVisual> active = new ConcurrentHashMap<>();
+    private ClientPostProcessController postProcessController;
     private volatile long lastServerSeq;
 
     public ClientVisualManager(ClientConfig config) {
         this.config = config;
     }
 
-    public void start(String effectId, long seq, int seconds, float intensity, String clearPolicy) {
+    public void setPostProcessController(ClientPostProcessController postProcessController) {
+        this.postProcessController = postProcessController;
+    }
+
+    public boolean start(String effectId, long seq, int seconds, float intensity, String clearPolicy) {
         if (!config.allowServerVisuals()) {
-            return;
+            return false;
         }
         if ("REPLACE_ALL_FULLSCREEN".equalsIgnoreCase(clearPolicy)) {
             clearAll("replace");
@@ -54,6 +59,11 @@ public final class ClientVisualManager {
                 clamp(intensity)
         ));
         lastServerSeq = seq;
+        if (!refreshPostProcessor()) {
+            active.remove(seq);
+            return false;
+        }
+        return true;
     }
 
     public void startLocalTest(String effectId, int seconds, float intensity) {
@@ -64,15 +74,18 @@ public final class ClientVisualManager {
                 System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1000L),
                 clamp(intensity)
         ));
+        refreshPostProcessor();
     }
 
     public void stop(String effectId) {
         String normalized = normalize(effectId);
         active.entrySet().removeIf(entry -> normalized.equals(entry.getValue().effectId()));
+        refreshPostProcessor();
     }
 
     public void clearAll(String reason) {
         active.clear();
+        refreshPostProcessor();
     }
 
     public void tick(FinishedVisualHandler finishedHandler) {
@@ -85,6 +98,9 @@ public final class ClientVisualManager {
             }
             return expired;
         });
+        if (!finished.isEmpty()) {
+            refreshPostProcessor();
+        }
         if (finishedHandler != null) {
             for (ActiveVisual visual : finished) {
                 if (visual.seq() > 0L) {
@@ -113,12 +129,13 @@ public final class ClientVisualManager {
 
     public String statusLine() {
         boolean irisActive = ClientBridgeProtocol.isIrisShaderPackActive();
-        String irisBlend = irisActive ? "softened-overlay" : "normal-overlay";
+        String irisBlend = irisActive ? "overlay-only-while-iris-pack-active" : "post-process-plus-overlay";
         if (active.isEmpty()) {
             return "CopiMineClient: active visuals = none, render_when_hud_hidden=" + config.renderWhenHudHidden()
                     + ", irisShaderPackActive=" + yesNo(irisActive)
-                    + ", route=fullscreen-hud-overlay"
-                    + ", irisBlend=" + irisBlend;
+                    + ", route=post-process+overlay"
+                    + ", irisBlend=" + irisBlend
+                    + ", post=" + (postProcessController == null ? "not-wired" : postProcessController.statusLine());
         }
         ActiveVisual first = active.values().iterator().next();
         long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1000L);
@@ -126,8 +143,9 @@ public final class ClientVisualManager {
                 + " / lastSeq=" + lastServerSeq
                 + " / render_when_hud_hidden=" + config.renderWhenHudHidden()
                 + " / irisShaderPackActive=" + yesNo(irisActive)
-                + " / route=fullscreen-hud-overlay"
-                + " / irisBlend=" + irisBlend;
+                + " / route=post-process+overlay"
+                + " / irisBlend=" + irisBlend
+                + " / post=" + (postProcessController == null ? "not-wired" : postProcessController.statusLine());
     }
 
     public String activeSummary() {
@@ -213,6 +231,25 @@ public final class ClientVisualManager {
 
     private float effectiveAlphaMultiplier() {
         return ClientBridgeProtocol.isIrisShaderPackActive() ? IRIS_ALPHA_MULTIPLIER : 1.0F;
+    }
+
+    public String lastFailureReason() {
+        return postProcessController == null ? "post-process-controller-not-wired" : postProcessController.lastFailureReason();
+    }
+
+    private boolean refreshPostProcessor() {
+        if (postProcessController == null) {
+            return false;
+        }
+        ActiveVisual strongest = active.values().stream()
+                .sorted((left, right) -> Float.compare(right.intensity(), left.intensity()))
+                .findFirst()
+                .orElse(null);
+        if (strongest == null) {
+            postProcessController.clear();
+            return true;
+        }
+        return postProcessController.apply(strongest.effectId(), strongest.intensity());
     }
 
     private int alpha(int rgb, float alpha) {

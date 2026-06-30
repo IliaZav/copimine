@@ -1,4 +1,4 @@
-# CopiMine: полная ручная матрица проверки всех плагинов
+﻿# CopiMine: полная ручная матрица проверки всех плагинов
 
 Эта таблица нужна для первого живого теста после переноса папки на Ubuntu. Запускайте сервер, заходите под админом/op, проходите строки сверху вниз и заполняйте колонку "Фактический результат".
 
@@ -9,7 +9,7 @@
 - `CopiMineUltimateAdminPlus` - главный плагин сервера. Он владеет PostgreSQL, банком, AR, PIN, выборами, админскими GUI, аудитом и официальным bridge.
 - `CopiMineArtifacts` - отдельный плагин артефактов. Он не меняет баланс сам: покупка и ремонт идут только через bridge главного плагина, с idempotency и refund при ошибке.
 - `CopiMineNarcotics` - отдельный игровой RP-плагин вымышленной контрабанды. Предметы нельзя скрафтить или выдать обычной командой; они появляются только в скрытой вкладке черного рынка, 5 случайных товаров из каталога 25+, окно открытия непредсказуемое в пределах 20 игровых суток.
-- `AuthEffects` - легкие эффекты до входа через AuthMe и очистка эффекта после успешного `/login` или `/register`.
+- `AuthEffects` - легкие эффекты до входа через nLogin и очистка эффекта после успешного `/login` или `/register`.
 
 Все тяжелые операции PostgreSQL должны идти асинхронно или через кеш. Main thread используется только для Bukkit GUI, инвентаря, звуков, частиц и выдачи предметов.
 
@@ -17,14 +17,14 @@
 
 | ID | Проверка | Действие | Ожидаемый результат | Фактический результат |
 |---:|---|---|---|---|
-| 1 | Файлы jar | Открыть `minecraft/server/plugins` | Есть `CopiMineUltimateAdminPlus.jar`, `CopiMineArtifacts.jar`, `CopiMineNarcotics.jar`, `AuthEffects.jar`, `AuthMe-5.6.0.jar` | |
+| 1 | Файлы jar | Открыть `minecraft/server/plugins` | Есть `CopiMineUltimateAdminPlus.jar`, `CopiMineArtifacts.jar`, `CopiMineNarcotics.jar`, `AuthEffects.jar`, `nLogin.jar` | |
 | 2 | Запуск сервера | Запустить сервер обычным способом | В консоли нет `Could not load plugin`, `ClassNotFound`, `NoClassDefFoundError` | |
 | 3 | Загрузка главного плагина | В консоли после старта найти `CopiMineUltimateAdminPlus` | Плагин enabled, PostgreSQL pool initialized, storage ready | |
 | 4 | Загрузка Artifacts | В консоли после старта найти `CopiMineArtifacts` | Плагин enabled, catalog loaded, bridge available | |
 | 5 | Загрузка Narcotics | В консоли после старта найти `CopiMineNarcotics` | Плагин enabled, loaded 25+ fictional RP items, bridge available | |
-| 6 | Загрузка AuthEffects | В консоли после старта найти `AuthEffects enabled` | Плагин включен после AuthMe | |
+| 6 | Загрузка AuthEffects | В консоли после старта найти `AuthEffects enabled` | Плагин включен после nLogin | |
 | 7 | Список плагинов | В игре выполнить `/plugins` | Все четыре плагина зеленые | |
-| 8 | Ошибки логов | Просмотреть последние строки `logs/latest.log` | Нет stacktrace по CopiMine, AuthEffects, PostgreSQL, bridge, AuthMe | |
+| 8 | Ошибки логов | Просмотреть последние строки `logs/latest.log` | Нет stacktrace по CopiMine, AuthEffects, PostgreSQL, bridge, nLogin | |
 
 ## Главный GUI и банк
 
@@ -140,4 +140,5 @@
 | 86 | Секреты | Проверить latest.log после тестов | Нет PIN, паролей, `.env`, токенов | |
 | 87 | Перенос Ubuntu | Перенести `opt/copimine` с заменой на стенд | Сервер стартует без ручных правок nginx/worlds/env | |
 | 88 | Финальный валидатор | Запустить `tests/Validate*.ps1` и корневые `Validate*.ps1` | Все проверки проходят | |
+
 

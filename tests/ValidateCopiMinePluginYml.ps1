@@ -6,8 +6,8 @@ $files = @{
   'copimine-admin-plugin\plugin.yml' = @('name: CopiMineUltimateAdminPlus','commands:','permissions:','copimine.bank.admin','copimine.diagnostics')
   'copimine-election-core\plugin.yml' = @('name: CopiMineElectionCore','commands:','hidelive','copimine.election.admin')
   'copimine-artifacts\plugin.yml' = @('name: CopiMineArtifacts','depend:','CopiMineUltimateAdminPlus','cmartifacts','copimine.artifacts.admin')
-  'copimine-narcotics\plugin.yml' = @('name: CopiMineNarcotics','version: ''2.0.0-phase1''','cmnarcotics','copimine.narcotics.admin','copimine.narcotics.give','copimine.narcotics.reload','copimine.narcotics.reset','copimine.narcotics.visuals')
-  'minecraft\server\plugins\AuthEffects\src\main\resources\plugin.yml' = @('name: AuthEffects','depend:','AuthMe')
+  'copimine-narcotics\plugin.yml' = @('name: CopiMineNarcotics','version: ''2.1.0-client-bridge''','cmnarcotics','copimine.narcotics.admin','copimine.narcotics.give','copimine.narcotics.reload','copimine.narcotics.reset','copimine.narcotics.visuals')
+  'minecraft\server\plugins\AuthEffects\src\main\resources\plugin.yml' = @('name: AuthEffects','softdepend:','nLogin')
 }
 
 foreach ($entry in $files.GetEnumerator()) {

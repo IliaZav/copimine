@@ -148,12 +148,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
         if (official != null) {
             event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
-            if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+            if (event.getAction() == Action.RIGHT_CLICK_BLOCK && isUnsafeConsumeTarget(event.getClickedBlock())) {
                 event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
                 event.setCancelled(true);
                 return;
             }
-            if (event.getAction() != Action.RIGHT_CLICK_AIR) {
+            if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
                 return;
             }
             event.setCancelled(true);
@@ -1070,6 +1070,19 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return null;
         }
         return parsed;
+    }
+
+    private boolean isUnsafeConsumeTarget(Block clickedBlock) {
+        if (clickedBlock == null) {
+            return false;
+        }
+        if (clickedBlock.getState() instanceof Container) {
+            return true;
+        }
+        Material type = clickedBlock.getType();
+        return type.isInteractable()
+                || type == Material.CAULDRON
+                || type == Material.WATER_CAULDRON;
     }
 
     private int migrateNearbyStorageInventories(Player player, int radius) {

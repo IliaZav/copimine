@@ -17,9 +17,12 @@ import net.minecraft.text.Text;
 public final class CopiMineClient implements ClientModInitializer {
     private final ClientConfig config = ClientConfig.load();
     private final ClientVisualManager visualManager = new ClientVisualManager(config);
+    private final ClientPostProcessController postProcessController = new ClientPostProcessController();
 
     @Override
     public void onInitializeClient() {
+        postProcessController.initializeOptionalShaderpacks();
+        visualManager.setPostProcessController(postProcessController);
         ClientBridgeProtocol.registerNetworking(visualManager);
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> visualManager.render(drawContext));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -66,7 +69,8 @@ public final class CopiMineClient implements ClientModInitializer {
                         .then(ClientCommandManager.literal("reload")
                                 .executes(context -> {
                                     config.reload();
-                                    context.getSource().sendFeedback(Text.literal("CopiMineClient: конфиг перезагружен"));
+                                    postProcessController.initializeOptionalShaderpacks();
+                                    context.getSource().sendFeedback(Text.literal("CopiMineClient: конфиг и optional shaderpacks обновлены"));
                                     return 1;
                                 }))
                         .then(ClientCommandManager.literal("visual")

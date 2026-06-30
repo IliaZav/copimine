@@ -5,6 +5,4 @@ api-version: '1.21'
 author: SudoKillDash9
 softdepend:
   - nLogin
-  - nLogin-AuthMeAPI
-  - AuthMe
-description: Adds temporary slowness before login or registration through an AuthMe-compatible flow.
+description: Adds temporary slowness before login or registration through nLogin.

@@ -1,17 +1,18 @@
 # CopiMineClient
 
-`CopiMineClient` — необязательный Fabric-клиент для красивых visual-эффектов CopiMineNarcotics.
+`CopiMineClient` — необязательный Fabric-клиент для визуальных эффектов `CopiMineNarcotics`.
 
-Что он даёт:
-- client-side fullscreen overlay / shader-like эффекты без зависимости от Iris и OptiFine;
-- handshake с сервером CopiMine;
-- локальные команды диагностики и visual test.
+Что он делает:
+- принимает команды от сервера по каналу `copimine:client_bridge`;
+- включает клиентские post-process эффекты и поверх них лёгкие overlay-слои;
+- при первом запуске выгружает встроенные optional shaderpack ZIP в `.minecraft/shaderpacks/CopiMine`;
+- не требует Iris или OptiFine для основной работы.
 
 Что он не делает:
-- не является обязательным по умолчанию;
-- не даёт преимущества в геймплее;
-- не нужен для базовой работы сервера;
-- не подменяет и не навязывает внешний shaderpack.
+- не обязателен для входа на сервер по умолчанию;
+- не даёт игровых преимуществ;
+- не подменяет чужой активный Iris shaderpack;
+- не ломает игру, если серверный модуль визуалов отключён.
 
 Установка:
 1. Установить Fabric Loader для Minecraft `1.21.1`.
@@ -25,8 +26,7 @@
 - `/copimineclient visual test DESATURATE 20`
 
 Важно:
-- сервер остаётся рабочим и без этого мода;
-- если мод отсутствует, сервер использует resource-pack overlay или particle fallback;
-- Iris и OptiFine не требуются и не используются как обязательная зависимость;
-- если у игрока уже включён Iris shaderpack, CopiMineClient не заменяет его и не вмешивается в его pipeline: мод рисует свои эффекты как отдельный fullscreen HUD overlay поверх обычного рендера;
-- при активном Iris shaderpack маршрут не меняется: CopiMineClient остаётся в режиме fullscreen HUD overlay и лишь снижает прозрачность своих эффектов, чтобы они не давили поверх уже включённого shaderpack.
+- без мода сервер остаётся рабочим и использует server overlay или particle fallback;
+- основной красивый путь — клиентский post-process runtime внутри `CopiMineClient`;
+- если у игрока уже включён Iris shaderpack, CopiMineClient не пытается его перехватить и остаётся в своём безопасном режиме;
+- optional shaderpack ZIP выгружаются локально только как дополнительные файлы для владельца клиента, а не как обязательная часть сервера.

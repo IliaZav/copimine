@@ -4,6 +4,7 @@ header-footer:
     default:
       header:
       - ""
+      - "&f&lCopiMine"
       - "&f\uE300"
       - "&8&m------------------------------------"
       - "&7Президент: &f%copimine_president%"
@@ -78,6 +79,3 @@ primary-group-finding-list:
   - admin
   - president
   - curator
-  - default
-
-debug: false

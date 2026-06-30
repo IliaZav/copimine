@@ -74,8 +74,11 @@ public final class ClientBridgeProtocol {
                         sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
                         return;
                     }
-                    manager.start(payload.effectId(), payload.seq(), payload.durationSeconds(), payload.intensity(), payload.clearPolicy());
-                    sendVisualAck(payload.seq(), payload.effectId(), "STARTED");
+                    if (manager.start(payload.effectId(), payload.seq(), payload.durationSeconds(), payload.intensity(), payload.clearPolicy())) {
+                        sendVisualAck(payload.seq(), payload.effectId(), "STARTED");
+                    } else {
+                        sendVisualError(payload.seq(), payload.effectId(), manager.lastFailureReason());
+                    }
                 });
                 case TYPE_VISUAL_STOP -> context.client().execute(() -> {
                     manager.stop(payload.effectId());
@@ -115,7 +118,7 @@ public final class ClientBridgeProtocol {
         if (!connected || !helloSent || !helloAcknowledged || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return;
         }
-        ClientPlayNetworking.send(BridgePayload.heartbeat(sessionId));
+        ClientPlayNetworking.send(BridgePayload.heartbeat(sessionId, irisShaderPackActive));
         lastHeartbeatSentAt = System.currentTimeMillis();
     }
 
@@ -216,7 +219,7 @@ public final class ClientBridgeProtocol {
                 + ", lastPing=" + ageSeconds(lastServerPingAt)
                 + ", lastAckSeq=" + lastAckSeq
                 + ", irisShaderPackActive=" + (irisShaderPackActive ? "yes" : "no")
-                + ", renderer=fullscreen-hud-overlay"
+                + ", renderer=post-process+overlay"
                 + ", lastError=" + (lastError.isBlank() ? "-" : lastError);
     }
 

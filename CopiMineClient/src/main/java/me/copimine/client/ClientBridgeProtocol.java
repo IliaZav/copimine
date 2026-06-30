@@ -52,11 +52,13 @@ public final class ClientBridgeProtocol {
     private static String clientVersion = "0.1.0";
     private static boolean irisShaderPackActive;
     private static boolean lastReportedIrisShaderPackActive;
+    private static ClientVisualManager registeredVisualManager;
 
     private ClientBridgeProtocol() {
     }
 
     public static void registerNetworking(ClientVisualManager manager) {
+        registeredVisualManager = manager;
         PayloadTypeRegistry.playC2S().register(BridgePayload.ID, BridgePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(BridgePayload.ID, BridgePayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(BridgePayload.ID, (payload, context) -> {
@@ -74,7 +76,17 @@ public final class ClientBridgeProtocol {
                         sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
                         return;
                     }
-                    if (manager.start(payload.effectId(), payload.seq(), payload.durationSeconds(), payload.intensity(), payload.clearPolicy())) {
+                    if (manager.start(
+                            payload.effectId(),
+                            payload.shaderpack(),
+                            payload.seq(),
+                            payload.durationMillis(),
+                            payload.intensity(),
+                            payload.clearPolicy(),
+                            payload.fadeInMillis(),
+                            payload.fadeOutMillis(),
+                            payload.source()
+                    )) {
                         sendVisualAck(payload.seq(), payload.effectId(), "STARTED");
                     } else {
                         sendVisualError(payload.seq(), payload.effectId(), manager.lastFailureReason());
@@ -99,7 +111,16 @@ public final class ClientBridgeProtocol {
             return false;
         }
         irisShaderPackActive = detectIrisShaderPackInUse();
-        ClientPlayNetworking.send(BridgePayload.hello(sessionId, clientVersion, supportedEffects(), irisShaderPackActive));
+        boolean visualsAvailable = detectServerVisualsAllowed();
+        boolean shaderpackRuntimeAvailable = visualsAvailable && detectShaderpackRuntimeAvailable();
+        ClientPlayNetworking.send(BridgePayload.hello(
+                sessionId,
+                clientVersion,
+                supportedEffects(),
+                visualsAvailable,
+                shaderpackRuntimeAvailable,
+                irisShaderPackActive
+        ));
         helloSent = true;
         lastReportedIrisShaderPackActive = irisShaderPackActive;
         return true;
@@ -110,7 +131,16 @@ public final class ClientBridgeProtocol {
             return;
         }
         irisShaderPackActive = detectIrisShaderPackInUse();
-        ClientPlayNetworking.send(BridgePayload.capabilitiesUpdate(sessionId, clientVersion, supportedEffects(), irisShaderPackActive));
+        boolean visualsAvailable = detectServerVisualsAllowed();
+        boolean shaderpackRuntimeAvailable = visualsAvailable && detectShaderpackRuntimeAvailable();
+        ClientPlayNetworking.send(BridgePayload.capabilitiesUpdate(
+                sessionId,
+                clientVersion,
+                supportedEffects(),
+                visualsAvailable,
+                shaderpackRuntimeAvailable,
+                irisShaderPackActive
+        ));
         lastReportedIrisShaderPackActive = irisShaderPackActive;
     }
 
@@ -118,7 +148,9 @@ public final class ClientBridgeProtocol {
         if (!connected || !helloSent || !helloAcknowledged || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return;
         }
-        ClientPlayNetworking.send(BridgePayload.heartbeat(sessionId, irisShaderPackActive));
+        boolean visualsAvailable = detectServerVisualsAllowed();
+        boolean shaderpackRuntimeAvailable = visualsAvailable && detectShaderpackRuntimeAvailable();
+        ClientPlayNetworking.send(BridgePayload.heartbeat(sessionId, visualsAvailable, shaderpackRuntimeAvailable, irisShaderPackActive));
         lastHeartbeatSentAt = System.currentTimeMillis();
     }
 
@@ -219,7 +251,8 @@ public final class ClientBridgeProtocol {
                 + ", lastPing=" + ageSeconds(lastServerPingAt)
                 + ", lastAckSeq=" + lastAckSeq
                 + ", irisShaderPackActive=" + (irisShaderPackActive ? "yes" : "no")
-                + ", renderer=post-process+overlay"
+                + ", shaderpackRuntimeAvailable=" + (detectShaderpackRuntimeAvailable() ? "yes" : "no")
+                + ", renderer=shaderpack-first+post-process-fallback"
                 + ", lastError=" + (lastError.isBlank() ? "-" : lastError);
     }
 
@@ -244,6 +277,14 @@ public final class ClientBridgeProtocol {
 
     private static boolean managerStatusAllowsServerVisuals(ClientVisualManager manager) {
         return manager != null && manager.serverVisualsAllowed();
+    }
+
+    private static boolean detectServerVisualsAllowed() {
+        return managerStatusAllowsServerVisuals(registeredVisualManager);
+    }
+
+    private static boolean detectShaderpackRuntimeAvailable() {
+        return registeredVisualManager != null && registeredVisualManager.shaderpackRuntimeAvailable();
     }
 
     private static boolean detectIrisShaderPackInUse() {

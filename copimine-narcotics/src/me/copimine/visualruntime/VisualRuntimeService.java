@@ -16,10 +16,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class VisualRuntimeService {
     public enum VisualRoute {
@@ -40,6 +42,25 @@ public final class VisualRuntimeService {
             "PENCIL", "\uE107",
             "CHAOS", "\uE108"
     );
+    private static final Map<String, String> CLIENT_SHADERPACKS = Map.of(
+            "DESATURATE", "white_sharp_1_2.zip",
+            "COLOR_CONVOLVE", "acid_shaders.zip",
+            "SCAN_PINCUSHION", "crucify.zip",
+            "GREEN_NOISE", "nms_1_6.zip",
+            "INVERT", "cursed_metamorphopsia.zip",
+            "WOBBLE", "acid_shaders.zip",
+            "BLOBS", "crucify.zip",
+            "PENCIL", "white_sharp_1_2.zip"
+    );
+    private static final List<String> RANDOM_SHADERPACKS = List.of(
+            "acid_shaders.zip",
+            "crucify.zip",
+            "cursed_metamorphopsia.zip",
+            "nms_1_6.zip",
+            "white_sharp_1_2.zip"
+    );
+    private static final int CLIENT_SHADER_FADE_IN_MILLIS = 1_500;
+    private static final int CLIENT_SHADER_FADE_OUT_MILLIS = 2_500;
 
     private final CopiMineNarcotics plugin;
     private final CopiMineClientBridge clientBridge;
@@ -122,6 +143,10 @@ public final class VisualRuntimeService {
         return detectClientShaderLikeSupport();
     }
 
+    public boolean supportsClientZipShaderpackRuntime() {
+        return detectClientShaderpackRuntime();
+    }
+
     public boolean supportsShaderRuntime() {
         return detectTrueShaderSupport();
     }
@@ -154,8 +179,11 @@ public final class VisualRuntimeService {
         }
         ClientCapabilityState state = player == null ? null : clientBridge.capabilities().state(player);
         String base = clientBridge.routeHint(player, effectId);
+        if (state != null && state.clientShaderLike()) {
+            return base + " (built-in CopiMine ZIP shaderpacks can be switched through Iris and restored after the effect)";
+        }
         if (state != null && state.trueIrisShader()) {
-            return base + " (Iris shaderpack active; CopiMineClient does not override the player's shaderpack, so this effect falls back to the server overlay/particle route)";
+            return base + " (player already has an Iris shaderpack active; CopiMineClient can override it only if the client-side config allows it)";
         }
         return base;
     }
@@ -184,6 +212,19 @@ public final class VisualRuntimeService {
             return "client-mod visual runtime disabled by visuals manifest";
         }
         return "available through optional CopiMineClient post-process plus overlay runtime";
+    }
+
+    public String clientShaderpackSupportReason() {
+        if (!configService.allowClientModVisuals()) {
+            return "client shaderpack route disabled in config";
+        }
+        if (!clientBridge.enabled() || !configService.clientBridgeEnabled()) {
+            return "client bridge disabled";
+        }
+        if (!manifestFlag("client_zip_shaderpack_runtime_supported")) {
+            return "client ZIP shaderpack runtime not declared in visuals manifest";
+        }
+        return "available through optional CopiMineClient + Iris runtime switching for built-in shaderpacks";
     }
 
     public String overlaySupportReason() {
@@ -227,8 +268,11 @@ public final class VisualRuntimeService {
             case CLIENT_MOD_VISUAL -> clientBridge.visuals().sendVisualStart(
                     player,
                     normalized,
+                    requestedClientShaderpack(normalized, overdose),
                     durationSeconds,
                     overdose ? 1.0F : 0.85F,
+                    CLIENT_SHADER_FADE_IN_MILLIS,
+                    CLIENT_SHADER_FADE_OUT_MILLIS,
                     ignoreGate ? "ADMIN_TEST" : "NARCOTICS",
                     (playerUuid, clientEffectId, seconds, intensity, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
                         Player online = plugin.getServer().getPlayer(playerUuid);
@@ -375,6 +419,10 @@ public final class VisualRuntimeService {
                 && shaderLikeSupportedManifestFlag();
     }
 
+    private boolean detectClientShaderpackRuntime() {
+        return detectClientShaderLikeSupport() && manifestFlag("client_zip_shaderpack_runtime_supported");
+    }
+
     private boolean detectTrueShaderSupport() {
         return detectClientShaderLikeSupport() && manifestFlag("true_shader_runtime_supported");
     }
@@ -493,6 +541,13 @@ public final class VisualRuntimeService {
 
     private String normalizeEffectId(String effectId) {
         return effectId == null ? "CHAOS" : effectId.toUpperCase(Locale.ROOT);
+    }
+
+    private String requestedClientShaderpack(String effectId, boolean overdose) {
+        if (overdose || "CHAOS".equalsIgnoreCase(effectId)) {
+            return RANDOM_SHADERPACKS.get(ThreadLocalRandom.current().nextInt(RANDOM_SHADERPACKS.size()));
+        }
+        return CLIENT_SHADERPACKS.getOrDefault(effectId.toUpperCase(Locale.ROOT), RANDOM_SHADERPACKS.get(0));
     }
 
     private Path projectRoot() {

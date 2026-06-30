@@ -6,10 +6,10 @@ $server = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\s
 foreach ($needle in @('PROTOCOL_VERSION = 2','TYPE_VISUAL_ACK','TYPE_VISUAL_FINISHED','sendVisualAck','sendVisualFinished','lastAckSeq')) {
   if ($client -notmatch [regex]::Escape($needle)) { throw "Client protocol v2 marker missing: $needle" }
 }
-foreach ($needle in @('long seq','visualAck','visualFinished','writeLong(Math.max(0L, seq))')) {
+foreach ($needle in @('long seq','visualAck','visualFinished','writeLong(Math.max(0L, seq))','String shaderpack','int fadeInMillis','int fadeOutMillis')) {
   if ($payload -notmatch [regex]::Escape($needle)) { throw "BridgePayload seq/ack marker missing: $needle" }
 }
-foreach ($needle in @('public static final int PROTOCOL_VERSION = 2','VISUAL_ACK','VISUAL_FINISHED','encodeVisualStart(long seq')) {
+foreach ($needle in @('public static final int PROTOCOL_VERSION = 2','VISUAL_ACK','VISUAL_FINISHED','encodeVisualStart(long seq','String shaderpack','fadeInMillis','fadeOutMillis')) {
   if ($server -notmatch [regex]::Escape($needle)) { throw "Server protocol v2 marker missing: $needle" }
 }
 Write-Host 'CopiMineClient protocol-v2 seq/ack validation passed.'

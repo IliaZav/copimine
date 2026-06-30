@@ -1,17 +1,10 @@
 package me.copimine.client;
 
 import me.copimine.client.mixin.GameRendererAccessor;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.util.Identifier;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.Locale;
 import java.util.Map;
 
@@ -27,41 +20,14 @@ public final class ClientPostProcessController {
             Map.entry("PENCIL", Identifier.of("copimineclient", "shaders/post/copimine_pencil.json")),
             Map.entry("CHAOS", Identifier.of("copimineclient", "shaders/post/copimine_chaos.json"))
     );
-    private static final Map<String, String> OPTIONAL_SHADERPACKS = Map.ofEntries(
-            Map.entry("acid_shaders.zip", "assets/copimineclient/shaderpacks/acid_shaders.zip"),
-            Map.entry("crucify.zip", "assets/copimineclient/shaderpacks/crucify.zip"),
-            Map.entry("cursed_metamorphopsia.zip", "assets/copimineclient/shaderpacks/cursed_metamorphopsia.zip"),
-            Map.entry("jelly_world.zip", "assets/copimineclient/shaderpacks/jelly_world.zip"),
-            Map.entry("nms_1_6.zip", "assets/copimineclient/shaderpacks/nms_1_6.zip"),
-            Map.entry("white_sharp_1_2.zip", "assets/copimineclient/shaderpacks/white_sharp_1_2.zip")
-    );
 
     private final MinecraftClient client = MinecraftClient.getInstance();
     private volatile String activeEffectId;
     private volatile String status = "idle";
     private volatile String lastFailureReason = "";
 
-    public void initializeOptionalShaderpacks() {
-        Path shaderpackDir = FabricLoader.getInstance().getGameDir().resolve("shaderpacks").resolve("CopiMine");
-        try {
-            Files.createDirectories(shaderpackDir);
-            for (Map.Entry<String, String> entry : OPTIONAL_SHADERPACKS.entrySet()) {
-                copyIfChanged(shaderpackDir.resolve(entry.getKey()), entry.getValue());
-            }
-            status = "optional shaderpacks exported";
-        } catch (Exception error) {
-            status = "shaderpack export failed: " + error.getClass().getSimpleName();
-        }
-    }
-
     public boolean apply(String effectId, float intensity) {
         String normalized = normalize(effectId);
-        if (ClientBridgeProtocol.isIrisShaderPackActive()) {
-            clear();
-            status = "Iris shaderpack active; CopiMineClient keeps overlay route to avoid clobbering the active shaderpack";
-            lastFailureReason = "iris-pack-active";
-            return false;
-        }
         Identifier identifier = EFFECT_POST_PROCESSORS.get(normalized);
         if (identifier == null) {
             clear();
@@ -111,33 +77,6 @@ public final class ClientPostProcessController {
 
     public String lastFailureReason() {
         return lastFailureReason == null || lastFailureReason.isBlank() ? "client-post-process-unavailable" : lastFailureReason;
-    }
-
-    private void copyIfChanged(Path target, String resourcePath) throws Exception {
-        byte[] bundled = resourceBytes(resourcePath);
-        if (bundled == null || bundled.length == 0) {
-            return;
-        }
-        if (Files.isRegularFile(target)) {
-            byte[] existing = Files.readAllBytes(target);
-            if (MessageDigest.isEqual(sha256(existing), sha256(bundled))) {
-                return;
-            }
-        }
-        Files.createDirectories(target.getParent());
-        try (OutputStream output = Files.newOutputStream(target)) {
-            output.write(bundled);
-        }
-    }
-
-    private byte[] resourceBytes(String resourcePath) throws IOException {
-        try (InputStream input = ClientPostProcessController.class.getClassLoader().getResourceAsStream(resourcePath)) {
-            return input == null ? null : input.readAllBytes();
-        }
-    }
-
-    private byte[] sha256(byte[] bytes) throws Exception {
-        return MessageDigest.getInstance("SHA-256").digest(bytes);
     }
 
     private String normalize(String effectId) {

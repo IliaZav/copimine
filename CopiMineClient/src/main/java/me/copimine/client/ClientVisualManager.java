@@ -17,7 +17,7 @@ public final class ClientVisualManager {
     }
 
     private static final int OVERLAY_TEXTURE_SIZE = 256;
-    private static final float IRIS_ALPHA_MULTIPLIER = 0.82F;
+    private static final float SHADERPACK_OVERLAY_ALPHA_MULTIPLIER = 0.32F;
     private static final Map<String, Identifier> OVERLAYS = Map.of(
             "DESATURATE", Identifier.of("copimineclient", "textures/visuals/desaturate_overlay.png"),
             "COLOR_CONVOLVE", Identifier.of("copimineclient", "textures/visuals/color_convolve_overlay.png"),
@@ -33,37 +33,48 @@ public final class ClientVisualManager {
     private final MinecraftClient client = MinecraftClient.getInstance();
     private final ClientConfig config;
     private final Map<Long, ActiveVisual> active = new ConcurrentHashMap<>();
-    private ClientPostProcessController postProcessController;
+    private ShaderRuntimeManager shaderRuntimeManager;
     private volatile long lastServerSeq;
+    private volatile String appliedRuntimeKey = "";
 
     public ClientVisualManager(ClientConfig config) {
         this.config = config;
     }
 
-    public void setPostProcessController(ClientPostProcessController postProcessController) {
-        this.postProcessController = postProcessController;
+    public void setShaderRuntimeManager(ShaderRuntimeManager shaderRuntimeManager) {
+        this.shaderRuntimeManager = shaderRuntimeManager;
     }
 
-    public boolean start(String effectId, long seq, int seconds, float intensity, String clearPolicy) {
+    public boolean start(
+            String effectId,
+            String shaderpack,
+            long seq,
+            int durationMillis,
+            float intensity,
+            String clearPolicy,
+            int fadeInMillis,
+            int fadeOutMillis,
+            String source
+    ) {
         if (!config.allowServerVisuals()) {
             return false;
         }
         if ("REPLACE_ALL_FULLSCREEN".equalsIgnoreCase(clearPolicy)) {
             clearAll("replace");
         }
-        String normalized = normalize(effectId);
-        active.put(seq, new ActiveVisual(
+        ActiveVisual visual = new ActiveVisual(
                 seq,
-                normalized,
-                System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1000L),
-                clamp(intensity)
-        ));
+                normalize(effectId),
+                shaderpack == null ? "" : shaderpack.trim(),
+                System.currentTimeMillis() + clampDuration(durationMillis),
+                clamp(intensity),
+                clampFade(fadeInMillis),
+                clampFade(fadeOutMillis),
+                source == null ? "" : source.trim()
+        );
+        active.put(seq, visual);
         lastServerSeq = seq;
-        if (!refreshPostProcessor()) {
-            active.remove(seq);
-            return false;
-        }
-        return true;
+        return refreshRuntime();
     }
 
     public void startLocalTest(String effectId, int seconds, float intensity) {
@@ -71,21 +82,53 @@ public final class ClientVisualManager {
         active.put(-1L, new ActiveVisual(
                 -1L,
                 normalize(effectId),
-                System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1000L),
-                clamp(intensity)
+                "",
+                System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1_000L),
+                clamp(intensity),
+                1_200,
+                2_000,
+                "LOCAL_TEST"
         ));
-        refreshPostProcessor();
+        refreshRuntime();
+    }
+
+    public boolean startLocalShaderTest(String shaderId, int seconds) {
+        if (shaderRuntimeManager == null) {
+            return false;
+        }
+        clearAll("local-shader-test");
+        ShaderpackRegistry.ShaderpackProfile profile = shaderRuntimeManager.registry().byId(shaderId);
+        if (profile == null) {
+            profile = shaderRuntimeManager.registry().byZipName(shaderId.endsWith(".zip") ? shaderId : shaderId + ".zip");
+        }
+        if (profile == null) {
+            return false;
+        }
+        active.put(-1L, new ActiveVisual(
+                -1L,
+                "CHAOS",
+                profile.zipName(),
+                System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1_000L),
+                1.0F,
+                1_200,
+                2_000,
+                "LOCAL_SHADER_TEST"
+        ));
+        return refreshRuntime();
     }
 
     public void stop(String effectId) {
         String normalized = normalize(effectId);
         active.entrySet().removeIf(entry -> normalized.equals(entry.getValue().effectId()));
-        refreshPostProcessor();
+        refreshRuntime();
     }
 
     public void clearAll(String reason) {
         active.clear();
-        refreshPostProcessor();
+        appliedRuntimeKey = "";
+        if (shaderRuntimeManager != null) {
+            shaderRuntimeManager.clear(reason);
+        }
     }
 
     public void tick(FinishedVisualHandler finishedHandler) {
@@ -99,7 +142,7 @@ public final class ClientVisualManager {
             return expired;
         });
         if (!finished.isEmpty()) {
-            refreshPostProcessor();
+            refreshRuntime();
         }
         if (finishedHandler != null) {
             for (ActiveVisual visual : finished) {
@@ -128,24 +171,16 @@ public final class ClientVisualManager {
     }
 
     public String statusLine() {
-        boolean irisActive = ClientBridgeProtocol.isIrisShaderPackActive();
-        String irisBlend = irisActive ? "overlay-only-while-iris-pack-active" : "post-process-plus-overlay";
         if (active.isEmpty()) {
-            return "CopiMineClient: active visuals = none, render_when_hud_hidden=" + config.renderWhenHudHidden()
-                    + ", irisShaderPackActive=" + yesNo(irisActive)
-                    + ", route=post-process+overlay"
-                    + ", irisBlend=" + irisBlend
-                    + ", post=" + (postProcessController == null ? "not-wired" : postProcessController.statusLine());
+            return "CopiMineClient: active=none, runtime=" + runtimeStatus()
+                    + ", renderWhenHudHidden=" + config.renderWhenHudHidden();
         }
         ActiveVisual first = active.values().iterator().next();
-        long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1000L);
+        long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1_000L);
         return "CopiMineClient: " + first.effectId() + " / " + secondsLeft + "s / active=" + active.size()
                 + " / lastSeq=" + lastServerSeq
-                + " / render_when_hud_hidden=" + config.renderWhenHudHidden()
-                + " / irisShaderPackActive=" + yesNo(irisActive)
-                + " / route=post-process+overlay"
-                + " / irisBlend=" + irisBlend
-                + " / post=" + (postProcessController == null ? "not-wired" : postProcessController.statusLine());
+                + " / shaderpack=" + (first.shaderpack().isBlank() ? "-" : first.shaderpack())
+                + " / runtime=" + runtimeStatus();
     }
 
     public String activeSummary() {
@@ -153,7 +188,7 @@ public final class ClientVisualManager {
             return "none";
         }
         return active.values().stream()
-                .map(visual -> visual.effectId() + "#" + visual.seq())
+                .map(visual -> visual.effectId() + "#" + visual.seq() + (visual.shaderpack().isBlank() ? "" : "[" + visual.shaderpack() + "]"))
                 .sorted(String::compareToIgnoreCase)
                 .reduce((left, right) -> left + ", " + right)
                 .orElse("none");
@@ -167,56 +202,120 @@ public final class ClientVisualManager {
         return config.allowServerVisuals();
     }
 
+    public boolean shaderpackRuntimeAvailable() {
+        return config.allowServerShaderpackRuntime()
+                && shaderRuntimeManager != null
+                && shaderRuntimeManager.shaderpackRuntimeAvailable();
+    }
+
+    public String runtimeStatus() {
+        return shaderRuntimeManager == null ? "not-wired" : shaderRuntimeManager.statusLine();
+    }
+
+    public String lastFailureReason() {
+        return shaderRuntimeManager == null ? "shader-runtime-manager-not-wired" : shaderRuntimeManager.lastFailureReason();
+    }
+
     private void drawEffect(DrawContext context, int width, int height, ActiveVisual visual, float pulse, float routeAlphaMultiplier) {
         float intensity = clamp(visual.intensity());
         float alphaFactor = (0.18F + (0.82F * intensity)) * routeAlphaMultiplier;
         float motionFactor = 0.15F + (0.85F * intensity);
         switch (visual.effectId()) {
             case "DESATURATE" -> {
-                context.fill(0, 0, width, height, alpha(0x90B0B0B0, 0.22F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.70F * pulse * alphaFactor);
+                context.fill(0, 0, width, height, alpha(0x90B0B0B0, 0.16F * pulse * alphaFactor));
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.40F * pulse * alphaFactor);
+                drawVignette(context, width, height, 0x55111111, 0.12F * alphaFactor);
             }
             case "COLOR_CONVOLVE" -> {
-                context.fill(0, 0, width, height, alpha(0x70FF66CC, 0.16F * pulse * alphaFactor));
-                context.fill(0, 0, width, height, alpha(0x7000E5FF, 0.10F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.78F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0x70FF66CC, 0.14F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0x7000E5FF, 0.08F * pulse * alphaFactor);
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.44F * pulse * alphaFactor);
             }
             case "SCAN_PINCUSHION" -> {
-                for (int y = 0; y < height; y += 6) {
-                    context.fill(0, y, width, y + 2, alpha(0xAA111111, 0.18F * alphaFactor));
-                }
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.68F * pulse * alphaFactor);
+                drawScanPulse(context, width, height, alphaFactor);
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.48F * pulse * alphaFactor);
             }
             case "GREEN_NOISE" -> {
-                context.fill(0, 0, width, height, alpha(0x8020FF80, 0.18F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.82F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x8020FF80, 0.10F * pulse * alphaFactor, 9);
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.50F * pulse * alphaFactor);
             }
             case "INVERT" -> {
-                context.fill(0, 0, width, height, alpha(0xA0000030, 0.22F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.85F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0xA0000030, 0.18F * pulse * alphaFactor);
+                drawSegmentedTexture(context, OVERLAYS.get(visual.effectId()), width, height, 3, 0.52F * pulse * alphaFactor);
             }
             case "WOBBLE" -> {
                 int offsetX = (int) Math.round(Math.sin(System.currentTimeMillis() / 120.0D) * 10.0D * motionFactor);
                 int offsetY = (int) Math.round(Math.cos(System.currentTimeMillis() / 160.0D) * 8.0D * motionFactor);
-                context.fill(0, 0, width, height, alpha(0x884422AA, 0.10F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), offsetX, offsetY, width, height, 0.76F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0x884422AA, 0.08F * pulse * alphaFactor);
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), offsetX, offsetY, width, height, 0.48F * pulse * alphaFactor);
             }
             case "BLOBS" -> {
-                context.fill(0, 0, width, height, alpha(0x663A89FF, 0.10F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.74F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x663A89FF, 0.08F * pulse * alphaFactor, 14);
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.50F * pulse * alphaFactor);
             }
             case "PENCIL" -> {
-                context.fill(0, 0, width, height, alpha(0xC0D0D0D0, 0.16F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.84F * pulse * alphaFactor);
+                drawHatch(context, width, height, alphaFactor);
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.54F * pulse * alphaFactor);
             }
             case "CHAOS" -> {
                 int jitterX = (int) Math.round(Math.sin(System.currentTimeMillis() / 55.0D) * 14.0D * motionFactor);
                 int jitterY = (int) Math.round(Math.cos(System.currentTimeMillis() / 70.0D) * 11.0D * motionFactor);
-                context.fill(0, 0, width, height, alpha(0x88FF5500, 0.11F * pulse * alphaFactor));
-                context.fill(0, 0, width, height, alpha(0x880055FF, 0.09F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), jitterX, jitterY, width, height, 0.88F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0x88FF5500, 0.09F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0x880055FF, 0.07F * pulse * alphaFactor);
+                drawSegmentedTexture(context, OVERLAYS.get(visual.effectId()), width, height, 5, 0.56F * pulse * alphaFactor);
+                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), jitterX, jitterY, width, height, 0.34F * pulse * alphaFactor);
             }
-            default -> drawFullScreenTexture(context, OVERLAYS.get("CHAOS"), 0, 0, width, height, 0.66F * pulse * alphaFactor);
+            default -> drawFullScreenTexture(context, OVERLAYS.get("CHAOS"), 0, 0, width, height, 0.40F * pulse * alphaFactor);
+        }
+    }
+
+    private void drawNoiseGrid(DrawContext context, int width, int height, int rgb, float alpha, int cell) {
+        long frame = System.currentTimeMillis() / 80L;
+        for (int x = 0; x < width; x += cell) {
+            for (int y = 0; y < height; y += cell) {
+                if (((x / cell) + (y / cell) + frame) % 3 == 0) {
+                    context.fill(x, y, Math.min(width, x + (cell / 2)), Math.min(height, y + (cell / 2)), alpha(rgb, alpha));
+                }
+            }
+        }
+    }
+
+    private void drawColorShiftPass(DrawContext context, int width, int height, int rgb, float alpha) {
+        context.fill(0, 0, width, height, alpha(rgb, alpha));
+    }
+
+    private void drawScanPulse(DrawContext context, int width, int height, float alphaFactor) {
+        long now = System.currentTimeMillis();
+        int pulseY = (int) ((now / 12L) % Math.max(1, height));
+        for (int y = 0; y < height; y += 6) {
+            context.fill(0, y, width, y + 2, alpha(0xAA111111, 0.14F * alphaFactor));
+        }
+        context.fill(0, pulseY, width, Math.min(height, pulseY + 6), alpha(0xAA66FFEE, 0.22F * alphaFactor));
+    }
+
+    private void drawVignette(DrawContext context, int width, int height, int rgb, float alpha) {
+        context.fill(0, 0, width, Math.max(18, height / 8), alpha(rgb, alpha));
+        context.fill(0, height - Math.max(18, height / 8), width, height, alpha(rgb, alpha));
+        context.fill(0, 0, Math.max(18, width / 10), height, alpha(rgb, alpha));
+        context.fill(width - Math.max(18, width / 10), 0, width, height, alpha(rgb, alpha));
+    }
+
+    private void drawHatch(DrawContext context, int width, int height, float alphaFactor) {
+        for (int x = -height; x < width; x += 18) {
+            int x2 = x + 10;
+            int y2 = Math.min(height, 10);
+            context.fill(Math.max(0, x), 0, Math.min(width, x2), y2, alpha(0x55222222, 0.14F * alphaFactor));
+        }
+    }
+
+    private void drawSegmentedTexture(DrawContext context, Identifier texture, int width, int height, int segments, float alpha) {
+        if (texture == null) {
+            return;
+        }
+        int segmentWidth = Math.max(1, width / Math.max(1, segments));
+        for (int index = 0; index < segments; index++) {
+            int offset = (index % 2 == 0 ? -1 : 1) * (index + 1);
+            drawFullScreenTexture(context, texture, offset * 3, 0, segmentWidth, height, alpha);
         }
     }
 
@@ -230,15 +329,16 @@ public final class ClientVisualManager {
     }
 
     private float effectiveAlphaMultiplier() {
-        return ClientBridgeProtocol.isIrisShaderPackActive() ? IRIS_ALPHA_MULTIPLIER : 1.0F;
+        if (shaderRuntimeManager == null) {
+            return 1.0F;
+        }
+        return shaderRuntimeManager.activeRoute() == ShaderRuntimeManager.Route.IRIS_SHADERPACK
+                ? SHADERPACK_OVERLAY_ALPHA_MULTIPLIER
+                : 1.0F;
     }
 
-    public String lastFailureReason() {
-        return postProcessController == null ? "post-process-controller-not-wired" : postProcessController.lastFailureReason();
-    }
-
-    private boolean refreshPostProcessor() {
-        if (postProcessController == null) {
+    private boolean refreshRuntime() {
+        if (shaderRuntimeManager == null) {
             return false;
         }
         ActiveVisual strongest = active.values().stream()
@@ -246,10 +346,33 @@ public final class ClientVisualManager {
                 .findFirst()
                 .orElse(null);
         if (strongest == null) {
-            postProcessController.clear();
+            if (!appliedRuntimeKey.isBlank()) {
+                shaderRuntimeManager.clear("no-active-visuals");
+                appliedRuntimeKey = "";
+            }
             return true;
         }
-        return postProcessController.apply(strongest.effectId(), strongest.intensity());
+        String runtimeKey = strongest.seq() + ":" + strongest.effectId() + ":" + strongest.shaderpack();
+        if (runtimeKey.equals(appliedRuntimeKey)) {
+            return true;
+        }
+        ShaderRuntimeManager.RuntimeResult result = shaderRuntimeManager.apply(new ShaderEffectRequest(
+                strongest.seq(),
+                strongest.effectId(),
+                strongest.shaderpack(),
+                Math.max(1_000, (int) Math.max(1L, strongest.untilMillis() - System.currentTimeMillis())),
+                strongest.intensity(),
+                strongest.fadeInMillis(),
+                strongest.fadeOutMillis(),
+                strongest.source()
+        ));
+        if (result.applied()) {
+            appliedRuntimeKey = runtimeKey;
+            return true;
+        }
+        appliedRuntimeKey = "";
+        active.remove(strongest.seq());
+        return false;
     }
 
     private int alpha(int rgb, float alpha) {
@@ -265,10 +388,23 @@ public final class ClientVisualManager {
         return Math.max(0.0F, Math.min(1.0F, value));
     }
 
-    private String yesNo(boolean value) {
-        return value ? "yes" : "no";
+    private int clampDuration(int durationMillis) {
+        return Math.max(1_000, Math.min(config.maxVisualDurationSeconds() * 1_000, durationMillis));
     }
 
-    private record ActiveVisual(long seq, String effectId, long untilMillis, float intensity) {
+    private int clampFade(int fadeMillis) {
+        return Math.max(0, Math.min(10_000, fadeMillis));
+    }
+
+    private record ActiveVisual(
+            long seq,
+            String effectId,
+            String shaderpack,
+            long untilMillis,
+            float intensity,
+            int fadeInMillis,
+            int fadeOutMillis,
+            String source
+    ) {
     }
 }

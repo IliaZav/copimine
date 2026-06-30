@@ -243,8 +243,11 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             visuals.sendVisualStart(
                     target,
                     effectId,
+                    "",
                     seconds,
                     intensity,
+                    1_500,
+                    2_500,
                     "ADMIN_TEST",
                     (playerUuid, effect, fallbackSeconds, fallbackIntensity, source, reason) -> fallbackTest.accept(target, effect + ":" + fallbackSeconds),
                     (playerUuid, effect, source, reason) -> {

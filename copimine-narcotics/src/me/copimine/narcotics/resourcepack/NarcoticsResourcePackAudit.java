@@ -150,6 +150,7 @@ public final class NarcoticsResourcePackAudit {
         }
         if (!fileContainsAll(visualsManifest, List.of(
                 "\"client_mod_visual_supported\": true",
+                "\"client_zip_shaderpack_runtime_supported\": true",
                 "\"true_shader_runtime_supported\": false",
                 "\"server_forceable_shader_supported\": false"
         ))) {

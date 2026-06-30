@@ -16,8 +16,11 @@ public final class ClientVisualCommand {
     private final String playerName;
     private final String sessionId;
     private final String effectId;
+    private final String shaderpack;
     private final int seconds;
     private final float intensity;
+    private final int fadeInMillis;
+    private final int fadeOutMillis;
     private final String source;
     private final long createdAtMillis;
     private final FallbackHandler fallbackHandler;
@@ -32,8 +35,11 @@ public final class ClientVisualCommand {
             String playerName,
             String sessionId,
             String effectId,
+            String shaderpack,
             int seconds,
             float intensity,
+            int fadeInMillis,
+            int fadeOutMillis,
             String source,
             long createdAtMillis,
             FallbackHandler fallbackHandler,
@@ -44,8 +50,11 @@ public final class ClientVisualCommand {
         this.playerName = playerName;
         this.sessionId = sessionId;
         this.effectId = effectId;
+        this.shaderpack = shaderpack;
         this.seconds = seconds;
         this.intensity = intensity;
+        this.fadeInMillis = fadeInMillis;
+        this.fadeOutMillis = fadeOutMillis;
         this.source = source;
         this.createdAtMillis = createdAtMillis;
         this.fallbackHandler = fallbackHandler;
@@ -72,12 +81,24 @@ public final class ClientVisualCommand {
         return effectId;
     }
 
+    String shaderpack() {
+        return shaderpack;
+    }
+
     int seconds() {
         return seconds;
     }
 
     float intensity() {
         return intensity;
+    }
+
+    int fadeInMillis() {
+        return fadeInMillis;
+    }
+
+    int fadeOutMillis() {
+        return fadeOutMillis;
     }
 
     String source() {

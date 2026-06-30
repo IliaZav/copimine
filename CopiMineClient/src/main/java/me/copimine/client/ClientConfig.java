@@ -15,12 +15,16 @@ public final class ClientConfig {
     private static final String KEY_DEBUG_OVERLAY = "debug_overlay";
     private static final String KEY_MAX_VISUAL_DURATION_SECONDS = "max_visual_duration_seconds";
     private static final String KEY_ALLOW_SERVER_VISUALS = "allow_server_visuals";
+    private static final String KEY_ALLOW_SERVER_SHADERPACK_RUNTIME = "allow_server_shaderpack_runtime";
+    private static final String KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK = "allow_override_existing_shaderpack";
 
     private final Path path;
     private boolean renderWhenHudHidden = true;
     private boolean debugOverlay;
     private int maxVisualDurationSeconds = 600;
     private boolean allowServerVisuals = true;
+    private boolean allowServerShaderpackRuntime = true;
+    private boolean allowOverrideExistingShaderpack = true;
 
     private ClientConfig(Path path) {
         this.path = path;
@@ -44,6 +48,8 @@ public final class ClientConfig {
         renderWhenHudHidden = parseBoolean(properties.getProperty(KEY_RENDER_WHEN_HUD_HIDDEN), true);
         debugOverlay = parseBoolean(properties.getProperty(KEY_DEBUG_OVERLAY), false);
         allowServerVisuals = parseBoolean(properties.getProperty(KEY_ALLOW_SERVER_VISUALS), true);
+        allowServerShaderpackRuntime = parseBoolean(properties.getProperty(KEY_ALLOW_SERVER_SHADERPACK_RUNTIME), true);
+        allowOverrideExistingShaderpack = parseBoolean(properties.getProperty(KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK), true);
         maxVisualDurationSeconds = clamp(parseInt(properties.getProperty(KEY_MAX_VISUAL_DURATION_SECONDS), 600), 1, 600);
         save();
     }
@@ -64,6 +70,14 @@ public final class ClientConfig {
         return allowServerVisuals;
     }
 
+    public boolean allowServerShaderpackRuntime() {
+        return allowServerShaderpackRuntime;
+    }
+
+    public boolean allowOverrideExistingShaderpack() {
+        return allowOverrideExistingShaderpack;
+    }
+
     public void setDebugOverlay(boolean enabled) {
         this.debugOverlay = enabled;
         save();
@@ -77,6 +91,8 @@ public final class ClientConfig {
             properties.setProperty(KEY_DEBUG_OVERLAY, Boolean.toString(debugOverlay));
             properties.setProperty(KEY_MAX_VISUAL_DURATION_SECONDS, Integer.toString(maxVisualDurationSeconds));
             properties.setProperty(KEY_ALLOW_SERVER_VISUALS, Boolean.toString(allowServerVisuals));
+            properties.setProperty(KEY_ALLOW_SERVER_SHADERPACK_RUNTIME, Boolean.toString(allowServerShaderpackRuntime));
+            properties.setProperty(KEY_ALLOW_OVERRIDE_EXISTING_SHADERPACK, Boolean.toString(allowOverrideExistingShaderpack));
             try (OutputStream out = Files.newOutputStream(path)) {
                 properties.store(out, "CopiMineClient settings");
             }

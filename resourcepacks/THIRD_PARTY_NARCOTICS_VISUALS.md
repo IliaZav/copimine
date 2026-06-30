@@ -40,13 +40,13 @@ Permissive asset candidates reviewed:
 
 ## Decision
 
-No third-party narcotics overlay, font, or shader asset was embedded in this client-bridge patch.
+No third-party narcotics overlay, font, or server resource-pack shader asset was embedded in the CopiMine resource pack.
 
 Reasons:
 
 - the CopiMineNarcotics baseline must remain honest and fully playable in fallback mode;
 - the server must not require client shader mods;
-- the optional `CopiMineClient` mod reuses existing self-made CopiMine overlays and does not need external art to become functional;
+- the optional `CopiMineClient` mod reuses existing self-made CopiMine overlays and can also bundle owner-supplied local shaderpack ZIP archives for client-side runtime switching;
 - Paper cannot force Iris/OptiFine shaderpacks and therefore must not claim true server-side shaders.
 - Paper server cannot reliably force true client post-processing shaders, so shader descriptors stay documentation/client-profile only and the live server path resolves to client-mod visuals, resource-pack overlay, or particle fallback.
 
@@ -59,6 +59,18 @@ This patch uses only self-made assets for narcotics:
 - font provider manifest in `src/assets/copimine/font/narcotics_overlay.json`;
 - shader/profile descriptor JSON files in `src/assets/copimine/shaders/narcotics/`;
 - optional client mod copies/adaptations in `CopiMineClient/src/main/resources/assets/copimineclient/textures/visuals/`.
+
+The optional client mod also bundles the following owner-supplied local shaderpack ZIP files in `CopiMineClient/src/main/resources/assets/copimineclient/shaderpacks/`:
+- `acid_shaders.zip`
+- `crucify.zip`
+- `cursed_metamorphopsia.zip`
+- `jelly_world.zip`
+- `nms_1_6.zip`
+- `white_sharp_1_2.zip`
+
+Runtime handling:
+- Iris-compatible ZIPs are exported to `.minecraft/shaderpacks/CopiMine` and used as the primary live route when Iris runtime switching is available.
+- `jelly_world.zip` is exported too, but it is treated honestly as a fallback/reference archive because its structure is a vanilla shader override resource pack rather than an Iris shaderpack.
 
 ## Restrictions
 

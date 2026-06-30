@@ -41,8 +41,11 @@ public final class ClientVisualEffectService {
     public long sendVisualStart(
             Player player,
             String effectId,
+            String shaderpack,
             int seconds,
             float intensity,
+            int fadeInMillis,
+            int fadeOutMillis,
             String source,
             ClientVisualCommand.FallbackHandler fallbackHandler,
             ClientVisualCommand.FinishHandler finishHandler
@@ -63,8 +66,11 @@ public final class ClientVisualEffectService {
                 player.getName(),
                 state.sessionId(),
                 effectId.toUpperCase(Locale.ROOT),
+                shaderpack == null ? "" : shaderpack,
                 Math.max(1, Math.min(600, seconds)),
                 ClientBridgePayloads.clampIntensity(intensity),
+                Math.max(0, Math.min(10_000, fadeInMillis)),
+                Math.max(0, Math.min(10_000, fadeOutMillis)),
                 source == null || source.isBlank() ? "NARCOTICS" : source,
                 now,
                 fallbackHandler,
@@ -78,7 +84,17 @@ public final class ClientVisualEffectService {
         player.sendPluginMessage(
                 plugin,
                 ClientBridgePayloads.CHANNEL,
-                ClientBridgePayloads.encodeVisualStart(seq, state.sessionId(), command.effectId(), command.seconds(), command.intensity(), command.source())
+                ClientBridgePayloads.encodeVisualStart(
+                        seq,
+                        state.sessionId(),
+                        command.effectId(),
+                        command.shaderpack(),
+                        command.seconds(),
+                        command.intensity(),
+                        command.fadeInMillis(),
+                        command.fadeOutMillis(),
+                        command.source()
+                )
         );
         return seq;
     }
@@ -260,7 +276,17 @@ public final class ClientVisualEffectService {
                 player.sendPluginMessage(
                         plugin,
                         ClientBridgePayloads.CHANNEL,
-                        ClientBridgePayloads.encodeVisualStart(command.seq(), command.sessionId(), command.effectId(), command.seconds(), command.intensity(), command.source())
+                        ClientBridgePayloads.encodeVisualStart(
+                                command.seq(),
+                                command.sessionId(),
+                                command.effectId(),
+                                command.shaderpack(),
+                                command.seconds(),
+                                command.intensity(),
+                                command.fadeInMillis(),
+                                command.fadeOutMillis(),
+                                command.source()
+                        )
                 );
                 continue;
             }

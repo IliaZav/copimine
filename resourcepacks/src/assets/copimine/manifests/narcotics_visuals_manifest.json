@@ -2,6 +2,8 @@
   "schema": 2,
   "server_overlay_supported": true,
   "client_mod_visual_supported": true,
+  "client_zip_shaderpack_runtime_supported": true,
+  "client_zip_shaderpack_runtime_requires_iris": true,
   "true_shader_runtime_supported": false,
   "server_forceable_shader_supported": false,
   "visual_route_priority": [
@@ -23,6 +25,8 @@
     "optional_by_default": true,
     "mod_id": "copimineclient",
     "channel": "copimine:client_bridge",
+    "supports_builtin_zip_shaderpacks": true,
+    "requires_iris_for_zip_shaderpacks": true,
     "supports_true_iris_shader": false,
     "supports_client_shader_like": true,
     "source": "self-made",

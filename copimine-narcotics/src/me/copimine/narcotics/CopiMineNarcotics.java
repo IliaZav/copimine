@@ -615,6 +615,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(ChatColor.GRAY + "Настроенный режим: " + configService.visualMode().name());
             sender.sendMessage(ChatColor.GRAY + "Client bridge включён: " + configService.clientBridgeEnabled());
             sender.sendMessage(ChatColor.GRAY + "Client visuals разрешены: " + configService.allowClientModVisuals());
+            sender.sendMessage(ChatColor.GRAY + "Client ZIP shaderpack runtime поддерживается: " + visualRuntime.supportsClientZipShaderpackRuntime());
+            sender.sendMessage(ChatColor.GRAY + "Причина ZIP shaderpack runtime: " + visualRuntime.clientShaderpackSupportReason());
             sender.sendMessage(ChatColor.GRAY + "Server overlay поддерживается: " + visualRuntime.supportsServerOverlayRuntime());
             sender.sendMessage(ChatColor.GRAY + "Причина overlay: " + visualRuntime.serverOverlaySupportReason());
             sender.sendMessage(ChatColor.GRAY + "Server fallback поддерживается: " + visualRuntime.supportsServerParticleFallback());
@@ -761,6 +763,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(message("selfcheck_ok"));
         sender.sendMessage(ChatColor.GRAY + "Client bridge enabled: " + configService.clientBridgeEnabled());
         sender.sendMessage(ChatColor.GRAY + "Client visuals allowed: " + configService.allowClientModVisuals());
+        sender.sendMessage(ChatColor.GRAY + "Client ZIP shaderpack runtime supported: " + visualRuntime.supportsClientZipShaderpackRuntime());
+        sender.sendMessage(ChatColor.GRAY + "Client ZIP shaderpack runtime reason: " + visualRuntime.clientShaderpackSupportReason());
         sender.sendMessage(ChatColor.GRAY + "Server overlay supported: " + visualRuntime.supportsServerOverlayRuntime());
         sender.sendMessage(ChatColor.GRAY + "Server fallback supported: " + visualRuntime.supportsServerParticleFallback());
         sender.sendMessage(ChatColor.GRAY + "Client visual runtime supported: " + visualRuntime.supportsClientShaderLikeRuntime());

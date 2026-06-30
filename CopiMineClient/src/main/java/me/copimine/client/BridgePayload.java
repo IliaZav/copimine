@@ -26,8 +26,11 @@ public record BridgePayload(
         boolean trueIrisShader,
         Set<String> supportedEffects,
         String effectId,
+        String shaderpack,
         int durationMillis,
         float intensity,
+        int fadeInMillis,
+        int fadeOutMillis,
         String mode,
         String clearPolicy,
         String source,
@@ -44,6 +47,7 @@ public record BridgePayload(
         clientVersion = safe(clientVersion);
         supportedEffects = supportedEffects == null ? Set.of() : Set.copyOf(supportedEffects);
         effectId = normalizeEffectId(effectId);
+        shaderpack = normalizeShaderpack(shaderpack);
         mode = safe(mode);
         clearPolicy = safe(clearPolicy);
         source = safe(source);
@@ -51,10 +55,11 @@ public record BridgePayload(
         status = safe(status);
         durationMillis = clampDuration(durationMillis);
         intensity = clampIntensity(intensity);
+        fadeInMillis = clampFade(fadeInMillis);
+        fadeOutMillis = clampFade(fadeOutMillis);
     }
 
-    public static BridgePayload hello(String sessionId, String version, Set<String> supportedEffects, boolean irisShaderPackActive) {
-        boolean visualsAvailable = visualsAvailableForBridge(irisShaderPackActive);
+    public static BridgePayload hello(String sessionId, String version, Set<String> supportedEffects, boolean visualsAvailable, boolean shaderpackRuntimeAvailable, boolean irisShaderPackActive) {
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_HELLO,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -64,12 +69,15 @@ public record BridgePayload(
                 version,
                 visualsAvailable,
                 visualsAvailable,
-                visualsAvailable,
+                shaderpackRuntimeAvailable,
                 irisShaderPackActive,
                 normalizeEffects(supportedEffects),
                 "",
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -78,8 +86,7 @@ public record BridgePayload(
         );
     }
 
-    public static BridgePayload capabilitiesUpdate(String sessionId, String version, Set<String> supportedEffects, boolean irisShaderPackActive) {
-        boolean visualsAvailable = visualsAvailableForBridge(irisShaderPackActive);
+    public static BridgePayload capabilitiesUpdate(String sessionId, String version, Set<String> supportedEffects, boolean visualsAvailable, boolean shaderpackRuntimeAvailable, boolean irisShaderPackActive) {
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_CAPABILITIES_UPDATE,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -89,12 +96,15 @@ public record BridgePayload(
                 version,
                 visualsAvailable,
                 visualsAvailable,
-                visualsAvailable,
+                shaderpackRuntimeAvailable,
                 irisShaderPackActive,
                 normalizeEffects(supportedEffects),
                 "",
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -103,8 +113,7 @@ public record BridgePayload(
         );
     }
 
-    public static BridgePayload heartbeat(String sessionId, boolean irisShaderPackActive) {
-        boolean visualsAvailable = visualsAvailableForBridge(irisShaderPackActive);
+    public static BridgePayload heartbeat(String sessionId, boolean visualsAvailable, boolean shaderpackRuntimeAvailable, boolean irisShaderPackActive) {
         return new BridgePayload(
                 ClientBridgeProtocol.TYPE_HEARTBEAT,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
@@ -114,12 +123,15 @@ public record BridgePayload(
                 "",
                 visualsAvailable,
                 visualsAvailable,
-                visualsAvailable,
+                shaderpackRuntimeAvailable,
                 irisShaderPackActive,
                 Set.of(),
                 "",
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "",
                 "",
                 "SYSTEM",
@@ -142,8 +154,11 @@ public record BridgePayload(
                 false,
                 Set.of(),
                 effectId,
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -166,8 +181,11 @@ public record BridgePayload(
                 false,
                 Set.of(),
                 effectId,
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -190,8 +208,11 @@ public record BridgePayload(
                 false,
                 Set.of(),
                 effectId,
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -226,8 +247,11 @@ public record BridgePayload(
                 out.writeUTF(supportedEffect.toUpperCase(Locale.ROOT));
             }
             out.writeUTF(effectId);
+            out.writeUTF(shaderpack);
             out.writeInt(durationMillis);
             out.writeFloat(intensity);
+            out.writeInt(fadeInMillis);
+            out.writeInt(fadeOutMillis);
             out.writeUTF(mode);
             out.writeUTF(clearPolicy);
             out.writeUTF(source);
@@ -260,8 +284,11 @@ public record BridgePayload(
                 supportedEffects.add(normalizeEffectId(in.readUTF()));
             }
             String effectId = normalizeEffectId(in.readUTF());
+            String shaderpack = normalizeShaderpack(in.readUTF());
             int durationMillis = clampDuration(in.readInt());
             float intensity = clampIntensity(in.readFloat());
+            int fadeInMillis = clampFade(in.readInt());
+            int fadeOutMillis = clampFade(in.readInt());
             String mode = safe(in.readUTF());
             String clearPolicy = safe(in.readUTF());
             String source = safe(in.readUTF());
@@ -280,8 +307,11 @@ public record BridgePayload(
                     trueIrisShader,
                     supportedEffects,
                     effectId,
+                    shaderpack,
                     durationMillis,
                     intensity,
+                    fadeInMillis,
+                    fadeOutMillis,
                     mode,
                     clearPolicy,
                     source,
@@ -316,8 +346,19 @@ public record BridgePayload(
         return Math.max(1_000, Math.min(600_000, durationMillis));
     }
 
-    private static boolean visualsAvailableForBridge(boolean irisShaderPackActive) {
-        return !irisShaderPackActive;
+    private static int clampFade(int fadeMillis) {
+        return Math.max(0, Math.min(10_000, fadeMillis));
+    }
+
+    private static String normalizeShaderpack(String shaderpack) {
+        if (shaderpack == null) {
+            return "";
+        }
+        String normalized = shaderpack.trim();
+        if (normalized.length() > 96) {
+            return normalized.substring(0, 96);
+        }
+        return normalized;
     }
 
     private static Set<String> normalizeEffects(Set<String> supportedEffects) {

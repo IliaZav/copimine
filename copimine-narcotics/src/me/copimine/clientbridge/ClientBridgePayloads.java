@@ -38,6 +38,7 @@ public final class ClientBridgePayloads {
     private static final int MAX_CLIENT_VERSION_LENGTH = 64;
     private static final int MAX_SESSION_ID_LENGTH = 96;
     private static final int MAX_MODE_LENGTH = 48;
+    private static final int MAX_SHADERPACK_LENGTH = 96;
     private static final int MAX_REASON_LENGTH = 256;
     private static final int MAX_STATUS_LENGTH = 32;
     private static final int MAX_SOURCE_LENGTH = 32;
@@ -70,8 +71,11 @@ public final class ClientBridgePayloads {
                 false,
                 normalizeSupportedEffects(supportedEffects),
                 "",
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -94,8 +98,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 "",
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "",
                 "",
                 "SYSTEM",
@@ -118,8 +125,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 normalizeEffectId(effectId),
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -142,8 +152,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 normalizeEffectId(effectId),
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -166,8 +179,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 normalizeEffectId(effectId),
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -176,7 +192,7 @@ public final class ClientBridgePayloads {
         );
     }
 
-    public static byte[] encodeVisualStart(long seq, String sessionId, String effectId, int seconds, float intensity, String source) {
+    public static byte[] encodeVisualStart(long seq, String sessionId, String effectId, String shaderpack, int seconds, float intensity, int fadeInMillis, int fadeOutMillis, String source) {
         return encode(new Message(
                 VISUAL_START,
                 PROTOCOL_VERSION,
@@ -190,8 +206,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 normalizeEffectId(effectId),
+                normalizeShaderpack(shaderpack),
                 clampDurationMillis(seconds * 1000),
                 clampIntensity(intensity),
+                clampFadeMillis(fadeInMillis),
+                clampFadeMillis(fadeOutMillis),
                 "CLIENT_MOD",
                 CLEAR_POLICY_REPLACE_ALL_FULLSCREEN,
                 normalizeBounded(source, MAX_SOURCE_LENGTH).toUpperCase(Locale.ROOT),
@@ -214,8 +233,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 normalizeEffectId(effectId),
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 "",
                 "SYSTEM",
@@ -238,8 +260,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 "",
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "CLIENT_MOD",
                 CLEAR_POLICY_REPLACE_ALL_FULLSCREEN,
                 "SYSTEM",
@@ -262,8 +287,11 @@ public final class ClientBridgePayloads {
                 false,
                 Set.of(),
                 "",
+                "",
                 0,
                 0.0F,
+                0,
+                0,
                 "",
                 "",
                 "SYSTEM",
@@ -291,8 +319,11 @@ public final class ClientBridgePayloads {
                 out.writeUTF(supportedEffect);
             }
             out.writeUTF(normalizeEffectId(message.effectId()));
+            out.writeUTF(normalizeShaderpack(message.shaderpack()));
             out.writeInt(clampDurationMillis(message.durationMillis()));
             out.writeFloat(clampIntensity(message.intensity()));
+            out.writeInt(clampFadeMillis(message.fadeInMillis()));
+            out.writeInt(clampFadeMillis(message.fadeOutMillis()));
             out.writeUTF(normalizeBounded(message.mode(), MAX_MODE_LENGTH));
             out.writeUTF(normalizeBounded(message.clearPolicy(), MAX_MODE_LENGTH));
             out.writeUTF(normalizeBounded(message.source(), MAX_SOURCE_LENGTH));
@@ -332,8 +363,11 @@ public final class ClientBridgePayloads {
                 }
             }
             String effectId = normalizeEffectId(in.readUTF());
+            String shaderpack = normalizeShaderpack(in.readUTF());
             int durationMillis = clampDurationMillis(in.readInt());
             float intensity = clampIntensity(in.readFloat());
+            int fadeInMillis = clampFadeMillis(in.readInt());
+            int fadeOutMillis = clampFadeMillis(in.readInt());
             String mode = normalizeBounded(in.readUTF(), MAX_MODE_LENGTH);
             String clearPolicy = normalizeBounded(in.readUTF(), MAX_MODE_LENGTH);
             String source = normalizeBounded(in.readUTF(), MAX_SOURCE_LENGTH).toUpperCase(Locale.ROOT);
@@ -362,8 +396,11 @@ public final class ClientBridgePayloads {
                     trueIrisShader,
                     Set.copyOf(effects),
                     effectId,
+                    shaderpack,
                     durationMillis,
                     intensity,
+                    fadeInMillis,
+                    fadeOutMillis,
                     mode,
                     clearPolicy,
                     source,
@@ -385,6 +422,10 @@ public final class ClientBridgePayloads {
         return Math.max(1_000, Math.min(600_000, durationMillis));
     }
 
+    private static int clampFadeMillis(int fadeMillis) {
+        return Math.max(0, Math.min(10_000, fadeMillis));
+    }
+
     private static String normalizeEffectId(String effectId) {
         if (effectId == null) {
             return "";
@@ -401,6 +442,10 @@ public final class ClientBridgePayloads {
 
     private static String normalizeReason(String reason) {
         return normalizeBounded(reason, MAX_REASON_LENGTH);
+    }
+
+    private static String normalizeShaderpack(String shaderpack) {
+        return normalizeBounded(shaderpack, MAX_SHADERPACK_LENGTH);
     }
 
     private static String normalizeBounded(String value, int maxLength) {
@@ -440,8 +485,11 @@ public final class ClientBridgePayloads {
             boolean trueIrisShader,
             Set<String> supportedEffects,
             String effectId,
+            String shaderpack,
             int durationMillis,
             float intensity,
+            int fadeInMillis,
+            int fadeOutMillis,
             String mode,
             String clearPolicy,
             String source,

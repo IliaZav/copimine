@@ -1,12 +1,22 @@
 # CopiMineClient Asset Licenses
 
-Все visual assets в `src/main/resources/assets/copimineclient/textures/visuals` на текущем этапе основаны на self-made fallback overlay PNG из серверного resource pack CopiMine.
+Client overlay textures in `src/main/resources/assets/copimineclient/textures/visuals` are adapted from CopiMine self-made fallback assets:
+- source: `resourcepacks/src/assets/copimine/textures/gui/narcotics/`
+- status: internal CopiMine self-made assets
+- hotlinking: none
+- runtime external downloads: none
 
-- Источник: `D:\Desktop\Copimine\opt\copimine\resourcepacks\src\assets\copimine\textures\gui\narcotics`
-- Статус: internal CopiMine self-made assets
-- Внешние runtime downloads: отсутствуют
-- Hotlink: отсутствует
+Utility textures such as `noise.png`, `vignette.png`, and `scanlines.png` are local CopiMine helper assets for fallback rendering.
 
-Файлы `noise.png`, `vignette.png`, `scanlines.png` являются локальными служебными текстурами для client-side post-process и overlay renderer.
+Bundled ZIP shaderpacks in `src/main/resources/assets/copimineclient/shaderpacks` are local project assets supplied by the project owner for CopiMineClient runtime testing and bundled distribution:
+- `acid_shaders.zip`
+- `crucify.zip`
+- `cursed_metamorphopsia.zip`
+- `jelly_world.zip`
+- `nms_1_6.zip`
+- `white_sharp_1_2.zip`
 
-Каталог `src/main/resources/assets/copimineclient/shaderpacks` содержит optional ZIP-архивы, которые были добавлены владельцем проекта как локальный reference/source material для тестов клиента. Основной runtime мода не зависит от них и не требует их обязательного включения.
+Runtime note:
+- when Iris runtime switching is available, CopiMineClient uses built-in compatible ZIP shaderpacks as the primary live route;
+- when a bundled ZIP is not Iris-compatible, CopiMineClient falls back to its internal post-process runtime instead of pretending the ZIP was enabled;
+- no external shaderpack download is required from the player.

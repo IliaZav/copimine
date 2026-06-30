@@ -87,7 +87,7 @@ public final class ClientBridgeProtocol {
                             payload.fadeOutMillis(),
                             payload.source()
                     )) {
-                        sendVisualAck(payload.seq(), payload.effectId(), "STARTED");
+                        sendVisualAck(payload.seq(), payload.effectId(), "STARTED:" + manager.activeRuntimeRouteName());
                     } else {
                         sendVisualError(payload.seq(), payload.effectId(), manager.lastFailureReason());
                     }

@@ -87,6 +87,9 @@ public final class CopiMineClient implements ClientModInitializer {
                                 .then(ClientCommandManager.literal("status")
                                         .executes(context -> {
                                             context.getSource().sendFeedback(Text.literal(shaderRuntimeManager.statusLine()));
+                                            for (String line : shaderRuntimeManager.exporterSummaryLines()) {
+                                                context.getSource().sendFeedback(Text.literal(" - " + line));
+                                            }
                                             return 1;
                                         }))
                                 .then(ClientCommandManager.literal("test")
@@ -95,7 +98,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                                     String shaderId = StringArgumentType.getString(context, "shaderId");
                                                     boolean applied = visualManager.startLocalShaderTest(shaderId, 30);
                                                     context.getSource().sendFeedback(Text.literal(applied
-                                                            ? "Local shader test started: " + shaderId
+                                                            ? "Local shader test started: " + shaderId + " / route=" + visualManager.activeRuntimeRouteName() + " / " + visualManager.runtimeStatus()
                                                             : "Local shader test failed: " + shaderId + " / " + visualManager.lastFailureReason()));
                                                     return applied ? 1 : 0;
                                                 })
@@ -105,7 +108,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                                             int seconds = IntegerArgumentType.getInteger(context, "seconds");
                                                             boolean applied = visualManager.startLocalShaderTest(shaderId, seconds);
                                                             context.getSource().sendFeedback(Text.literal(applied
-                                                                    ? "Local shader test started: " + shaderId + " / " + seconds + "s"
+                                                                    ? "Local shader test started: " + shaderId + " / " + seconds + "s / route=" + visualManager.activeRuntimeRouteName() + " / " + visualManager.runtimeStatus()
                                                                     : "Local shader test failed: " + shaderId + " / " + visualManager.lastFailureReason()));
                                                             return applied ? 1 : 0;
                                                         }))))

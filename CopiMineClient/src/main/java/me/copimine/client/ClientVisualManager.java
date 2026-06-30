@@ -106,7 +106,7 @@ public final class ClientVisualManager {
         }
         active.put(-1L, new ActiveVisual(
                 -1L,
-                "CHAOS",
+                profile.normalizedFallbackEffectId(),
                 profile.zipName(),
                 System.currentTimeMillis() + (Math.max(1, Math.min(config.maxVisualDurationSeconds(), seconds)) * 1_000L),
                 1.0F,
@@ -210,6 +210,10 @@ public final class ClientVisualManager {
 
     public String runtimeStatus() {
         return shaderRuntimeManager == null ? "not-wired" : shaderRuntimeManager.statusLine();
+    }
+
+    public String activeRuntimeRouteName() {
+        return shaderRuntimeManager == null ? "NONE" : shaderRuntimeManager.activeRouteName();
     }
 
     public String lastFailureReason() {

@@ -18,10 +18,19 @@ public final class ShaderpackRegistry {
             String zipName,
             String resourcePath,
             RuntimeKind runtimeKind,
+            String fallbackEffectId,
+            boolean darkPreferred,
+            String originalName,
             String note
     ) {
         public boolean irisCompatible() {
             return runtimeKind == RuntimeKind.IRIS_SHADERPACK;
+        }
+
+        public String normalizedFallbackEffectId() {
+            return fallbackEffectId == null || fallbackEffectId.isBlank()
+                    ? "CHAOS"
+                    : fallbackEffectId.trim().toUpperCase(Locale.ROOT);
         }
     }
 
@@ -29,21 +38,24 @@ public final class ShaderpackRegistry {
     private static final Map<String, String> EFFECT_TO_SHADERPACK = new LinkedHashMap<>();
 
     static {
-        register("acid_shaders", "acid_shaders.zip", RuntimeKind.IRIS_SHADERPACK, "psychedelic hue shift and saturation");
-        register("crucify", "crucify.zip", RuntimeKind.IRIS_SHADERPACK, "high-contrast dark distortion");
-        register("cursed_metamorphopsia", "cursed_metamorphopsia.zip", RuntimeKind.IRIS_SHADERPACK, "warped cursed world look");
-        register("jelly_world", "jelly_world.zip", RuntimeKind.FALLBACK_ONLY, "vanilla shader override resource pack, not an Iris shaderpack");
-        register("nms_1_6", "nms_1_6.zip", RuntimeKind.IRIS_SHADERPACK, "glow-heavy green ambient pack");
-        register("white_sharp_1_2", "white_sharp_1_2.zip", RuntimeKind.IRIS_SHADERPACK, "sharp bright clarity pack");
+        register("acid_shaders", "acid_shaders.zip", RuntimeKind.IRIS_SHADERPACK, "COLOR_CONVOLVE", false, "Acid Shaders.zip", "psychedelic hue shift and saturation");
+        register("crucify", "crucify.zip", RuntimeKind.IRIS_SHADERPACK, "INVERT", true, "Crucify.zip", "high-contrast dark distortion");
+        register("cursed_metamorphopsia", "cursed_metamorphopsia.zip", RuntimeKind.IRIS_SHADERPACK, "WOBBLE", true, "Cursed Shader (Metamorphopsia).zip", "warped cursed world look");
+        register("jelly_world", "jelly_world.zip", RuntimeKind.FALLBACK_ONLY, "BLOBS", false, "JELLY WORLD.zip", "vanilla shader override resource pack, not an Iris shaderpack");
+        register("nms_1_6", "nms_1_6.zip", RuntimeKind.IRIS_SHADERPACK, "GREEN_NOISE", true, "NMS 1.6.zip", "glow-heavy green ambient pack");
+        register("white_sharp_1_2", "white_sharp_1_2.zip", RuntimeKind.IRIS_SHADERPACK, "DESATURATE", false, "white sharp shader_1.2.zip", "sharp bright clarity pack");
+        register("ctr_vcr", "ctr_vcr.zip", RuntimeKind.IRIS_SHADERPACK, "SCAN_PINCUSHION", true, "CTR-VCR_v1.4.4.zip", "CRT and VHS-like scan distortion");
+        register("lsd_shader", "lsd_shader.zip", RuntimeKind.IRIS_SHADERPACK, "COLOR_CONVOLVE", false, "LSD_Sshader_v1_3.zip", "rainbow warp and lsd-style color shift");
+        register("trippy_shaderpack", "trippy_shaderpack.zip", RuntimeKind.IRIS_SHADERPACK, "DESATURATE", false, "Trippy-Shaderpack master.zip", "strong psychedelic distortion with adjustable curvature and waviness");
 
-        EFFECT_TO_SHADERPACK.put("DESATURATE", "white_sharp_1_2.zip");
-        EFFECT_TO_SHADERPACK.put("COLOR_CONVOLVE", "acid_shaders.zip");
-        EFFECT_TO_SHADERPACK.put("SCAN_PINCUSHION", "crucify.zip");
-        EFFECT_TO_SHADERPACK.put("GREEN_NOISE", "nms_1_6.zip");
-        EFFECT_TO_SHADERPACK.put("INVERT", "cursed_metamorphopsia.zip");
-        EFFECT_TO_SHADERPACK.put("WOBBLE", "acid_shaders.zip");
-        EFFECT_TO_SHADERPACK.put("BLOBS", "crucify.zip");
-        EFFECT_TO_SHADERPACK.put("PENCIL", "white_sharp_1_2.zip");
+        EFFECT_TO_SHADERPACK.put("DESATURATE", "trippy_shaderpack.zip");
+        EFFECT_TO_SHADERPACK.put("COLOR_CONVOLVE", "ctr_vcr.zip");
+        EFFECT_TO_SHADERPACK.put("SCAN_PINCUSHION", "cursed_metamorphopsia.zip");
+        EFFECT_TO_SHADERPACK.put("GREEN_NOISE", "lsd_shader.zip");
+        EFFECT_TO_SHADERPACK.put("INVERT", "crucify.zip");
+        EFFECT_TO_SHADERPACK.put("WOBBLE", "nms_1_6.zip");
+        EFFECT_TO_SHADERPACK.put("BLOBS", "acid_shaders.zip");
+        EFFECT_TO_SHADERPACK.put("PENCIL", "cursed_metamorphopsia.zip");
         EFFECT_TO_SHADERPACK.put("CHAOS", "random");
     }
 
@@ -85,6 +97,10 @@ public final class ShaderpackRegistry {
         return profile == null ? randomIrisCompatible() : profile;
     }
 
+    public ShaderpackProfile resolveRandom(boolean darkOnly) {
+        return randomIrisCompatible(darkOnly);
+    }
+
     public boolean isKnownShaderpack(String value) {
         return resolveExplicit(value) != null;
     }
@@ -98,9 +114,17 @@ public final class ShaderpackRegistry {
     }
 
     public ShaderpackProfile randomIrisCompatible() {
+        return randomIrisCompatible(false);
+    }
+
+    public ShaderpackProfile randomIrisCompatible(boolean darkOnly) {
         List<ShaderpackProfile> irisCompatible = PROFILES.values().stream()
                 .filter(ShaderpackProfile::irisCompatible)
+                .filter(profile -> !darkOnly || profile.darkPreferred())
                 .toList();
+        if (irisCompatible.isEmpty() && darkOnly) {
+            return randomIrisCompatible(false);
+        }
         return irisCompatible.get(ThreadLocalRandom.current().nextInt(irisCompatible.size()));
     }
 
@@ -123,12 +147,15 @@ public final class ShaderpackRegistry {
         return byId(normalized.replace(".zip", ""));
     }
 
-    private static void register(String id, String zipName, RuntimeKind runtimeKind, String note) {
+    private static void register(String id, String zipName, RuntimeKind runtimeKind, String fallbackEffectId, boolean darkPreferred, String originalName, String note) {
         PROFILES.put(id, new ShaderpackProfile(
                 id,
                 zipName,
                 "assets/copimineclient/shaderpacks/" + zipName,
                 runtimeKind,
+                fallbackEffectId,
+                darkPreferred,
+                originalName,
                 note
         ));
     }

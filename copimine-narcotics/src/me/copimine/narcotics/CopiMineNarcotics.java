@@ -679,18 +679,29 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 sender.sendMessage(message("player_not_found"));
                 return true;
             }
-            String effectId = args[3].toUpperCase(Locale.ROOT);
+            String requestedId = args[3].toLowerCase(Locale.ROOT);
+            boolean overdoseTest = "overdose".equalsIgnoreCase(requestedId);
+            String effectId;
+            if (configService.items().containsKey(requestedId)) {
+                effectId = configService.items().get(requestedId).visualEffectId();
+                overdoseTest = overdoseTest || "zhuzevo".equalsIgnoreCase(requestedId);
+            } else {
+                effectId = args[3].toUpperCase(Locale.ROOT);
+            }
             if (!configService.visualEffectIds().contains(effectId)) {
-                sender.sendMessage(ChatColor.RED + "Неизвестный visual effect id.");
+                sender.sendMessage(ChatColor.RED + "Unknown visual effect id or narcotic id.");
                 return true;
             }
             Integer seconds = parseBoundedInt(sender, args.length >= 5 ? args[4] : "30", "duration", 1, 600, false);
             if (seconds == null) {
                 return true;
             }
-            visualRuntime.apply(target, effectId, seconds, false);
-            database.auditAsync(sender.getName(), "visual_test", target.getName() + "," + effectId + "," + seconds);
-            sender.sendMessage(ChatColor.GREEN + "Тест визуала запущен для: " + target.getName());
+            visualRuntime.apply(target, effectId, seconds, overdoseTest);
+            database.auditAsync(sender.getName(), "visual_test", target.getName() + "," + requestedId + "," + effectId + "," + seconds + "," + overdoseTest);
+            sender.sendMessage(ChatColor.GREEN + "Visual test started: " + target.getName()
+                    + " / request=" + requestedId
+                    + " / effect=" + effectId
+                    + (overdoseTest ? " / overdose-route" : ""));
             return true;
         }
         sendHelpV2(sender);
@@ -998,7 +1009,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
         sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");
@@ -1022,7 +1033,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId> [seconds]");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
         sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");

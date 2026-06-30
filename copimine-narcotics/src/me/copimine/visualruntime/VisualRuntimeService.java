@@ -43,21 +43,30 @@ public final class VisualRuntimeService {
             "CHAOS", "\uE108"
     );
     private static final Map<String, String> CLIENT_SHADERPACKS = Map.of(
-            "DESATURATE", "white_sharp_1_2.zip",
-            "COLOR_CONVOLVE", "acid_shaders.zip",
-            "SCAN_PINCUSHION", "crucify.zip",
-            "GREEN_NOISE", "nms_1_6.zip",
-            "INVERT", "cursed_metamorphopsia.zip",
-            "WOBBLE", "acid_shaders.zip",
-            "BLOBS", "crucify.zip",
-            "PENCIL", "white_sharp_1_2.zip"
+            "DESATURATE", "trippy_shaderpack.zip",
+            "COLOR_CONVOLVE", "ctr_vcr.zip",
+            "SCAN_PINCUSHION", "cursed_metamorphopsia.zip",
+            "GREEN_NOISE", "lsd_shader.zip",
+            "INVERT", "crucify.zip",
+            "WOBBLE", "nms_1_6.zip",
+            "BLOBS", "acid_shaders.zip",
+            "PENCIL", "cursed_metamorphopsia.zip"
     );
     private static final List<String> RANDOM_SHADERPACKS = List.of(
             "acid_shaders.zip",
             "crucify.zip",
             "cursed_metamorphopsia.zip",
+            "ctr_vcr.zip",
+            "lsd_shader.zip",
             "nms_1_6.zip",
+            "trippy_shaderpack.zip",
             "white_sharp_1_2.zip"
+    );
+    private static final List<String> RANDOM_DARK_SHADERPACKS = List.of(
+            "crucify.zip",
+            "cursed_metamorphopsia.zip",
+            "ctr_vcr.zip",
+            "nms_1_6.zip"
     );
     private static final int CLIENT_SHADER_FADE_IN_MILLIS = 1_500;
     private static final int CLIENT_SHADER_FADE_OUT_MILLIS = 2_500;
@@ -544,7 +553,10 @@ public final class VisualRuntimeService {
     }
 
     private String requestedClientShaderpack(String effectId, boolean overdose) {
-        if (overdose || "CHAOS".equalsIgnoreCase(effectId)) {
+        if (overdose) {
+            return RANDOM_DARK_SHADERPACKS.get(ThreadLocalRandom.current().nextInt(RANDOM_DARK_SHADERPACKS.size()));
+        }
+        if ("CHAOS".equalsIgnoreCase(effectId)) {
             return RANDOM_SHADERPACKS.get(ThreadLocalRandom.current().nextInt(RANDOM_SHADERPACKS.size()));
         }
         return CLIENT_SHADERPACKS.getOrDefault(effectId.toUpperCase(Locale.ROOT), RANDOM_SHADERPACKS.get(0));

@@ -37,6 +37,63 @@ processResources {
     }
 }
 
+def shaderpackRoot = file("src/main/resources/assets/copimineclient/shaderpacks")
+
+tasks.register("validateShaderpacks") {
+    group = "verification"
+    description = "Validates bundled CopiMine shaderpack ZIP resources."
+    doLast {
+        if (!shaderpackRoot.exists()) {
+            throw new GradleException("Shaderpack directory not found: ${shaderpackRoot}")
+        }
+        def zipFiles = shaderpackRoot.listFiles()?.findAll { it.isFile() && it.name.toLowerCase(Locale.ROOT).endsWith(".zip") }?.sort { a, b -> a.name <=> b.name } ?: []
+        if (zipFiles.isEmpty()) {
+            throw new GradleException("No shaderpack ZIP files found in ${shaderpackRoot}")
+        }
+        zipFiles.each { zipFile ->
+            def hasEntries = false
+            def hasRootShaders = false
+            def hasWrappedRootShaders = false
+            def hasVanillaOverrides = false
+            new java.util.zip.ZipFile(zipFile).withCloseable { archive ->
+                archive.entries().each { entry ->
+                    if (!entry.directory) {
+                        hasEntries = true
+                        def normalized = entry.name.replace('\\', '/')
+                        if (normalized.startsWith("shaders/")) {
+                            hasRootShaders = true
+                        }
+                        if (!hasRootShaders && normalized ==~ /^[^\/]+\/shaders\/.*/) {
+                            hasWrappedRootShaders = true
+                        }
+                        if (normalized.startsWith("assets/minecraft/shaders/")) {
+                            hasVanillaOverrides = true
+                        }
+                    }
+                }
+            }
+            if (!hasEntries) {
+                throw new GradleException("Shaderpack ZIP is empty: ${zipFile.name}")
+            }
+            if (!hasRootShaders && !hasVanillaOverrides) {
+                throw new GradleException("Shaderpack ZIP has no usable shader root: ${zipFile.name}")
+            }
+            def mode = hasRootShaders
+                    ? (hasWrappedRootShaders ? "iris-compatible (wrapped root also detected)" : "iris-compatible")
+                    : "fallback-only vanilla shader override"
+            logger.lifecycle("validateShaderpacks: ${zipFile.name} -> ${mode}")
+        }
+    }
+}
+
+tasks.named("processResources") {
+    dependsOn(tasks.named("validateShaderpacks"))
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("validateShaderpacks"))
+}
+
 tasks.withType(JavaCompile).configureEach {
     it.options.encoding = 'UTF-8'
     it.options.release = 21

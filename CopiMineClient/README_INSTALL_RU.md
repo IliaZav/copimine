@@ -14,6 +14,7 @@
 - OptiFine не требуется;
 - внешний shaderpack вручную скачивать не нужно;
 - `jelly_world.zip` выгружается вместе с остальными, но используется только как fallback/reference asset, потому что это не обычный Iris shaderpack;
+- в сборку также включены `ctr_vcr.zip`, `lsd_shader.zip` и `trippy_shaderpack.zip`;
 - если у игрока уже включён свой Iris shaderpack, CopiMineClient может временно подменить его только если это разрешено в `config/copimineclient.properties`, после чего возвращает прежнее состояние.
 
 Установка:
@@ -27,5 +28,9 @@
 - `/copimineclient protocol`
 - `/copimineclient shader status`
 - `/copimineclient shader test acid_shaders 20`
+- `/copimineclient shader test ctr_vcr 20`
+- `/copimineclient shader test lsd_shader 20`
+- `/copimineclient shader test trippy_shaderpack 20`
+- `/copimineclient shader test jelly_world 20`
 - `/copimineclient shader restore`
 - `/copimineclient visual test DESATURATE 20`

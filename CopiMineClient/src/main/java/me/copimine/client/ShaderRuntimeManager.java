@@ -50,7 +50,10 @@ public final class ShaderRuntimeManager {
                 lastFailureReason = "";
                 return new RuntimeResult(true, activeRoute, status, activeShaderpack);
             }
-            lastFailureReason = iris.reason();
+            ShaderpackExporter.ExportResult export = exporter.result(profile.zipName());
+            lastFailureReason = export == null
+                    ? iris.reason()
+                    : iris.reason() + ":" + export.status();
             status = "fallback-after-" + iris.reason();
         } else {
             lastFailureReason = "missing-shaderpack-profile";
@@ -95,6 +98,10 @@ public final class ShaderRuntimeManager {
         return activeShaderpack;
     }
 
+    public String activeRouteName() {
+        return activeRoute.name();
+    }
+
     public String statusLine() {
         return "route=" + activeRoute.name()
                 + ", shaderpack=" + (activeShaderpack.isBlank() ? "-" : activeShaderpack)
@@ -110,5 +117,9 @@ public final class ShaderRuntimeManager {
 
     public ShaderpackRegistry registry() {
         return registry;
+    }
+
+    public java.util.List<String> exporterSummaryLines() {
+        return exporter.summaryLines();
     }
 }

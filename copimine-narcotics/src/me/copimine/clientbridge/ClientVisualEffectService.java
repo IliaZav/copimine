@@ -219,7 +219,7 @@ public final class ClientVisualEffectService {
         }
         String status = message.status().toUpperCase(Locale.ROOT);
         lastAckByPlayer.put(player.getUniqueId(), status + ":" + pending.effectId() + "#" + pending.seq());
-        if (ClientBridgePayloads.STATUS_STARTED.equals(status)) {
+        if (status.startsWith(ClientBridgePayloads.STATUS_STARTED)) {
             runningCommands.put(pending.seq(), pending);
             activeSeqByPlayer.put(player.getUniqueId(), pending.seq());
             return;

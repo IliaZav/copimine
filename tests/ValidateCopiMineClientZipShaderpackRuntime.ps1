@@ -22,7 +22,7 @@ foreach ($needle in @('Route.IRIS_SHADERPACK','shaderpack-first','fallback-post-
 foreach ($needle in @('switchToShaderpack','restoreState','copimineclient-shader-runtime.properties')) {
   if ($iris -notmatch [regex]::Escape($needle)) { throw "Iris shader runtime marker missing: $needle" }
 }
-foreach ($needle in @('acid_shaders.zip','crucify.zip','cursed_metamorphopsia.zip','jelly_world.zip','nms_1_6.zip','white_sharp_1_2.zip')) {
+foreach ($needle in @('acid_shaders.zip','crucify.zip','ctr_vcr.zip','cursed_metamorphopsia.zip','jelly_world.zip','lsd_shader.zip','nms_1_6.zip','trippy_shaderpack.zip','white_sharp_1_2.zip')) {
   if ($registry -notmatch [regex]::Escape($needle)) { throw "Shaderpack registry is missing bundled ZIP: $needle" }
 }
 foreach ($needle in @('shaderpackRuntimeAvailable','renderer=shaderpack-first+post-process-fallback','payload.shaderpack()')) {

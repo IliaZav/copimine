@@ -44,6 +44,7 @@ Server -> Client:
   - fields used now: `seq`, `effectId`, `shaderpack`, `durationMillis`, `intensity`, `fadeInMillis`, `fadeOutMillis`, `source`, `clearPolicy`
   - client tries built-in ZIP shaderpack switching first
   - if that fails, client falls back to local post-processing
+  - `visual_ack` status now distinguishes real routes such as `STARTED:IRIS_SHADERPACK` and `STARTED:FALLBACK_POST_PROCESS`
 - `visual_stop`
 - `visual_clear_all`
 - `ping`
@@ -61,4 +62,5 @@ Runtime rules:
 - if Iris runtime switching works, CopiMineClient stores the previous shaderpack state, enables the requested CopiMine pack, then restores the old state after the effect;
 - if the player already had an Iris shaderpack active, the previous state is restored after the CopiMine effect unless local config blocks override;
 - if Iris is absent, unsupported, or a ZIP is not Iris-compatible, CopiMineClient uses fallback post-processing;
+- `jelly_world.zip` is treated honestly as fallback-only because it is a vanilla shader override pack rather than an Iris shaderpack;
 - the server still applies gameplay effects even when no client mod is present.

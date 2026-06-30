@@ -49,6 +49,7 @@ out/
 !thirdparty/**/*.txt
 !thirdparty/**/*.json
 !thirdparty/**/*.yml
+!CopiMineClient/src/main/resources/assets/copimineclient/shaderpacks/*.zip
 
 # Local secrets / runtime state
 .env

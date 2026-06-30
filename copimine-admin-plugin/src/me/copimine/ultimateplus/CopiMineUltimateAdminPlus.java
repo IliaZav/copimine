@@ -1387,7 +1387,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         rows.add(new StartupCheckRow("STARTUP_CHUNKY_SEEMORE",pluginReady("Chunky")&&pluginReady("SeeMore"),Material.MAP,"Chunky + SeeMore","Chunky: "+pluginState("Chunky")+", SeeMore: "+pluginState("SeeMore"),"none"));
         rows.add(new StartupCheckRow("STARTUP_AR_GUARD",tableExists("cmv7_official_item_bindings")&&tableExists("cmv7_ar_guard_incidents"),Material.DIAMOND_ORE,"������ ���������","������� official items � guard-���������� �������.","none"));
         rows.add(new StartupCheckRow("STARTUP_SIDEBAR",sidebarTask!=null&&!sidebarTask.isCancelled(),Material.MAP,"Live-панель","Scoreboard task активен, красные числа скрываются при поддержке API.","open:sidebar"));
-        rows.add(new StartupCheckRow("STARTUP_AUTH_MODE",!Bukkit.getOnlineMode(),Material.ENDER_EYE,"nLogin / offline-режим",Bukkit.getOnlineMode()?"online-mode=true":"offline-mode=false: проверь nLogin, proxy и привязку сайта перед публичным запуском.","none"));
+        rows.add(new StartupCheckRow("STARTUP_AUTH_MODE",!Bukkit.getOnlineMode(),Material.ENDER_EYE,"AuthMe / offline-режим",Bukkit.getOnlineMode()?"online-mode=true":"offline-mode=false: проверь AuthMe, proxy и привязку сайта перед публичным запуском.","none"));
         return rows;
     }
 

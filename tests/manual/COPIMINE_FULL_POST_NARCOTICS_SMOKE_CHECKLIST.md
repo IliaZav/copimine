@@ -1,9 +1,9 @@
 # CopiMine Full Post-Narcotics Smoke Checklist
 
 ## Auth
-- Зайти на сервер с `nLogin` и проверить обычный `/register`, затем `/login`.
+- Зайти на сервер с `AuthMe` и проверить обычный `/register`, затем `/login`.
 - Убедиться, что `AuthEffects` даёт замедление до входа и снимает его сразу после входа или регистрации.
-- Проверить, что `nLogin` не ломает whitelist, OP и обычный join flow.
+- Проверить, что `AuthMe` не ломает whitelist, OP и обычный join flow.
 
 ## CopiMineClient
 - Установить `CopiMineClient-0.1.0.jar` в клиент.

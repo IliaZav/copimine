@@ -6502,7 +6502,7 @@ def source_registry_sync() -> dict[str, Any]:
         "LuckPerms": ["players", "permissions"],
         "Essentials": ["players", "punishments", "teleports"],
         "CoreProtect": ["logs", "block_logs", "containers"],
-        "nLogin": ["security", "auth"],
+        "AuthMe": ["security", "auth"],
         "Simple Voice Chat": ["voice"],
         "TAB": ["players", "display"],
         "Vault": ["economy_bridge"],

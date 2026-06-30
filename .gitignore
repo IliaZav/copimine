@@ -92,7 +92,7 @@ minecraft/server/**
 !minecraft/server/config/paper-global.yml
 !minecraft/server/config/paper-world-defaults.yml
 !minecraft/server/plugins/
-!minecraft/server/plugins/nLogin.jar
+!minecraft/server/plugins/AuthMe-5.6.0.jar
 !minecraft/server/plugins/AuthEffects.jar
 !minecraft/server/plugins/AuthEffects/
 !minecraft/server/plugins/AuthEffects/src/

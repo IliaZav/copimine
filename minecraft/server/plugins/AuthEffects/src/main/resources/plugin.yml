@@ -4,5 +4,5 @@ main: me.serverrp.autheffects.AuthEffectsPlugin
 api-version: '1.21'
 author: SudoKillDash9
 softdepend:
-  - nLogin
-description: Adds temporary slowness before login or registration through nLogin.
+  - AuthMe
+description: Adds temporary slowness before login or registration through AuthMe.

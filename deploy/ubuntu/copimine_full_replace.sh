@@ -155,7 +155,7 @@ if [[ -d "$PROJECT_ROOT" ]]; then
     "minecraft/server/banned-ips.json" \
     "minecraft/server/usercache.json" \
     "minecraft/server/plugins/LuckPerms" \
-    "minecraft/server/plugins/nLogin"
+    "minecraft/server/plugins/AuthMe"
   do
     copy_preserved_path "$PROJECT_ROOT/$relative" "$PRESERVE_ROOT"
   done
@@ -195,7 +195,7 @@ for relative in \
   "minecraft/server/banned-ips.json" \
   "minecraft/server/usercache.json" \
   "minecraft/server/plugins/LuckPerms" \
-  "minecraft/server/plugins/nLogin"
+  "minecraft/server/plugins/AuthMe"
 do
   restore_preserved_path "$PROJECT_ROOT/$relative" "$PRESERVE_ROOT" ""
 done

@@ -23,6 +23,8 @@ import java.util.zip.ZipOutputStream;
 public final class ShaderpackExporter {
     public record ExportResult(
             Path target,
+            Path runtimeTarget,
+            String runtimeName,
             boolean validZip,
             boolean irisCompatible,
             boolean vanillaShaderOverride,
@@ -34,18 +36,21 @@ public final class ShaderpackExporter {
 
     private final ShaderpackRegistry registry;
     private final Path shaderpackDir;
+    private final Path runtimeShaderpackDir;
     private final Map<String, ExportResult> exports = new LinkedHashMap<>();
     private volatile String status = "idle";
 
     public ShaderpackExporter(ShaderpackRegistry registry) {
         this.registry = registry;
-        this.shaderpackDir = FabricLoader.getInstance().getGameDir().resolve("shaderpacks").resolve("CopiMine");
+        this.runtimeShaderpackDir = FabricLoader.getInstance().getGameDir().resolve("shaderpacks");
+        this.shaderpackDir = runtimeShaderpackDir.resolve("CopiMine");
     }
 
     public void initialize() {
         exports.clear();
         try {
             Files.createDirectories(shaderpackDir);
+            Files.createDirectories(runtimeShaderpackDir);
             for (ShaderpackRegistry.ShaderpackProfile profile : registry.profiles()) {
                 exports.put(profile.zipName().toLowerCase(Locale.ROOT), exportProfile(profile));
             }
@@ -90,6 +95,7 @@ public final class ShaderpackExporter {
                     }
                     return profile.id()
                             + " -> file=" + profile.zipName()
+                            + ", runtimeName=" + result.runtimeName()
                             + ", runtime=" + profile.runtimeKind().name()
                             + ", irisCompatible=" + yesNo(result.irisCompatible())
                             + ", validZip=" + yesNo(result.validZip())
@@ -103,18 +109,28 @@ public final class ShaderpackExporter {
     private ExportResult exportProfile(ShaderpackRegistry.ShaderpackProfile profile) throws Exception {
         byte[] bundled = resourceBytes(profile.resourcePath());
         if (bundled == null || bundled.length == 0) {
-            return new ExportResult(shaderpackDir.resolve(profile.zipName()), false, false, false, false, "", "missing-resource");
+            return new ExportResult(
+                    shaderpackDir.resolve(profile.zipName()),
+                    runtimeShaderpackDir.resolve(registry.shaderpackRuntimeName(profile.zipName())),
+                    registry.shaderpackRuntimeName(profile.zipName()),
+                    false,
+                    false,
+                    false,
+                    false,
+                    "",
+                    "missing-resource"
+            );
         }
         PreparedZip prepared = prepareZip(profile, bundled);
         Path target = shaderpackDir.resolve(profile.zipName());
-        if (!Files.isRegularFile(target) || !MessageDigest.isEqual(sha256(Files.readAllBytes(target)), sha256(prepared.bytes()))) {
-            Files.createDirectories(target.getParent());
-            try (OutputStream output = Files.newOutputStream(target)) {
-                output.write(prepared.bytes());
-            }
-        }
+        String runtimeName = registry.shaderpackRuntimeName(profile.zipName());
+        Path runtimeTarget = runtimeShaderpackDir.resolve(runtimeName);
+        writeIfChanged(target, prepared.bytes());
+        writeIfChanged(runtimeTarget, prepared.bytes());
         return new ExportResult(
                 target,
+                runtimeTarget,
+                runtimeName,
                 prepared.validation().validZip(),
                 prepared.validation().irisCompatible(),
                 prepared.validation().vanillaShaderOverride(),
@@ -148,6 +164,16 @@ public final class ShaderpackExporter {
                         "repaired-wrapped-root-to-iris-compatible"
                 )
         );
+    }
+
+    private void writeIfChanged(Path target, byte[] bytes) throws Exception {
+        if (Files.isRegularFile(target) && MessageDigest.isEqual(sha256(Files.readAllBytes(target)), sha256(bytes))) {
+            return;
+        }
+        Files.createDirectories(target.getParent());
+        try (OutputStream output = Files.newOutputStream(target)) {
+            output.write(bytes);
+        }
     }
 
     private ValidationResult validateZip(ShaderpackRegistry.ShaderpackProfile profile, byte[] bytes) throws Exception {

@@ -129,7 +129,11 @@ public final class ShaderpackRegistry {
     }
 
     public String shaderpackRuntimeName(String zipName) {
-        return "CopiMine/" + zipName;
+        ShaderpackProfile profile = byZipName(zipName);
+        if (profile == null) {
+            return "copimine_" + (zipName == null ? "unknown.zip" : zipName.toLowerCase(Locale.ROOT));
+        }
+        return "copimine_" + profile.id() + ".zip";
     }
 
     private ShaderpackProfile resolveExplicit(String requestedShaderpack) {

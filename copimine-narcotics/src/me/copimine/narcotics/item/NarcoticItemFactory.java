@@ -46,11 +46,8 @@ public final class NarcoticItemFactory {
         if (meta == null) {
             return stack;
         }
-        meta.setDisplayName(color(definition.displayName()));
-        meta.setLore(List.of(
-                color("&7Официальный RP-предмет CopiMine"),
-                color("&7Используется только в системе CopiMineNarcotics.")
-        ));
+        meta.setDisplayName(color("&e" + plainName(definition.displayName())));
+        meta.setLore(List.of());
         if (configService.textureMode() == NarcoticsConfigService.TextureMode.CUSTOM && definition.customModelData() > 0) {
             meta.setCustomModelData(definition.customModelData());
         }
@@ -171,5 +168,9 @@ public final class NarcoticItemFactory {
 
     private String color(String text) {
         return ChatColor.translateAlternateColorCodes('&', text == null ? "" : text);
+    }
+
+    private String plainName(String text) {
+        return ChatColor.stripColor(color(text == null ? "" : text));
     }
 }

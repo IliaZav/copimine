@@ -200,9 +200,6 @@ public final class OverdoseService {
         }
         appendUniversalOverdoseEffects(effectsToApply);
         applyConfiguredEffects(player, effectsToApply);
-        if ("sbp".equals(definition.id()) || "zhuzevo".equals(definition.id())) {
-            state = state.withInvertedMovementUntil(now + 120);
-        }
         int duration = effectiveDuration(Math.max(30, maxDuration(effectsToApply)));
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 30, 0.45D, 0.55D, 0.45D, 0.01D);
         visualRuntime.apply(player, visualId, duration, true);
@@ -230,7 +227,7 @@ public final class OverdoseService {
         return switch (normalized) {
             case "CONFUSION" -> PotionEffectType.NAUSEA;
             case "HARM", "INSTANT_DAMAGE" -> PotionEffectType.INSTANT_DAMAGE;
-            case "WEAVING", "UNLUCK", "BAD_OMEN", "LUCK", "DARKNESS" -> PotionEffectType.getByName(normalized);
+            case "UNLUCK", "BAD_OMEN", "LUCK", "DARKNESS" -> PotionEffectType.getByName(normalized);
             default -> PotionEffectType.getByName(normalized);
         };
     }
@@ -249,10 +246,10 @@ public final class OverdoseService {
 
     private void appendUniversalOverdoseEffects(List<ConfiguredEffect> effects) {
         addOrUpgrade(effects, new ConfiguredEffect("DARKNESS", 0, 45));
-        addOrUpgrade(effects, new ConfiguredEffect("WEAKNESS", 1, 300));
-        addOrUpgrade(effects, new ConfiguredEffect("INSTANT_DAMAGE", 1, 1));
+        addOrUpgrade(effects, new ConfiguredEffect("WEAKNESS", 0, 300));
+        addOrUpgrade(effects, new ConfiguredEffect("INSTANT_DAMAGE", 0, 1));
         addOrUpgrade(effects, new ConfiguredEffect("NAUSEA", 2, 180));
-        addOrUpgrade(effects, new ConfiguredEffect("MINING_FATIGUE", 2, 300));
+        addOrUpgrade(effects, new ConfiguredEffect("MINING_FATIGUE", 4, 300));
     }
 
     private void addOrUpgrade(List<ConfiguredEffect> effects, ConfiguredEffect required) {

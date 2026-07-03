@@ -93,20 +93,28 @@ import sys
 path = Path(sys.argv[1])
 if not path.exists():
     raise SystemExit(0)
+
 text = path.read_text(encoding="utf-8")
 lines = text.splitlines()
 
 header_line = '      - "&f\\uE300"'
-president_line = '      - "&7Президент: &f%copimine_president%"'
-online_line = '      - "&7Онлайн: &f%online% &8| &7Админов: &f%staffonline%"'
+president_line = '      - "&7\\u041f\\u0440\\u0435\\u0437\\u0438\\u0434\\u0435\\u043d\\u0442: &6%copimine_president%"'
+online_line = '      - "&7\\u041e\\u043d\\u043b\\u0430\\u0439\\u043d: &f%online% &8| &7\\u0410\\u0434\\u043c\\u0438\\u043d\\u043e\\u0432: &f%staffonline%"'
+player_line = '      - "&f%player% &8| &7Ping: &a%ping% ms"'
+footer_line = '      - "&7TPS: &f%tps% &8| &7MSPT: &f%mspt% &8| &7Ping: &f%ping% ms"'
 
 for idx, line in enumerate(lines):
-    if line.strip() == '- "&fРѕРЉР‚"' or line.strip() == '- "&f\\uE300"' or line.strip() == '- "&f"':
+    stripped = line.strip()
+    if stripped in {'- "&f\\uE300"', '- "&f\\ue300"'}:
         lines[idx] = header_line
-    elif "Президент:" in line or "Р СџРЎР‚" in line:
+    elif "%copimine_president%" in line:
         lines[idx] = president_line
-    elif "Онлайн:" in line or "Р С›Р Р…Р В»" in line:
+    elif "%online%" in line and "%staffonline%" in line:
         lines[idx] = online_line
+    elif "%player%" in line and "%ping%" in line:
+        lines[idx] = player_line
+    elif "%tps%" in line and "%mspt%" in line:
+        lines[idx] = footer_line
 
 text = "\n".join(lines) + "\n"
 if header_line not in text and "header:" in text:
@@ -118,7 +126,7 @@ PY
 echo "[7/8] Starting services"
 systemctl daemon-reload
 systemctl start "$WEB_SERVICE"
-systemctl start "$BOT_SERVICE"
+systemctl start "$BOT_SERVICE" 2>/dev/null || true
 systemctl start "$MC_SERVICE"
 sleep 8
 

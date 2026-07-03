@@ -323,7 +323,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 openChairStationMenu(player, protectedInfo.linkedId(), 0);
                 return;
             }
-            player.sendMessage(color("&eУчасток ЦИК. Этап: &f" + snapshot.get().stageTitle()));
+            openStationCard(player, protectedInfo.linkedId());
         } catch (Exception error) {
             player.sendMessage(color("&cНе удалось обработать участок. Подробности в логе."));
             getLogger().warning("station interact: " + safeError(error));
@@ -687,6 +687,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             openStationsMenu(player, 0);
             return;
         }
+        if (action.startsWith("apply:station:self-chair:")) {
+            String stationId = action.substring("apply:station:self-chair:".length());
+            claimChairForStation(player, stationId);
+            refreshSnapshotAndPush();
+            openStationCard(player, stationId);
+            return;
+        }
+        if (action.startsWith("apply:station:remove-chair:")) {
+            String stationId = action.substring("apply:station:remove-chair:".length());
+            removeChairFromStation(stationId, player.getName());
+            refreshSnapshotAndPush();
+            openStationCard(player, stationId);
+            return;
+        }
         if (action.startsWith("apply:station:cleanup-labels:")) {
             String stationId = action.substring("apply:station:cleanup-labels:".length());
             cleanupNearbyTextDisplays(stationId);
@@ -845,6 +859,22 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("station:assign-chair:")) {
             openChairPicker(player, action.substring("station:assign-chair:".length()), 0);
+            return;
+        }
+        if (action.startsWith("station:self-chair:")) {
+            String stationId = action.substring("station:self-chair:".length());
+            openConfirmationMenu(player, "&aСтать председателем ЦИК", List.of(
+                    "&7Ты станешь председателем этого участка.",
+                    "&7После подтверждения будет выдана печать ЦИК."
+            ), "apply:station:self-chair:" + stationId, "station:view:" + stationId);
+            return;
+        }
+        if (action.startsWith("station:remove-chair:")) {
+            String stationId = action.substring("station:remove-chair:".length());
+            openConfirmationMenu(player, "&cРазжаловать председателя ЦИК", List.of(
+                    "&7Активный председатель участка будет снят.",
+                    "&7Печать ЦИК будет автоматически отозвана."
+            ), "apply:station:remove-chair:" + stationId, "station:view:" + stationId);
             return;
         }
         if (action.startsWith("station:remove-protection:")) {
@@ -1345,13 +1375,39 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         MenuHolder holder = new MenuHolder("station-card", stationId);
         Inventory inv = holder.create(45, color("&eКарточка участка"));
+        boolean adminAccess = hasElectionAdmin(player);
+        String chairUuid = string(station.get("chair_uuid"));
+        String chairName = first(string(station.get("chair_name")), "");
+        boolean hasChair = !chairUuid.isBlank() && !chairName.isBlank();
         setStatic(inv, 4, infoItem(Material.LECTERN, "&fУчасток ЦИК", stationLore(station, stationId)));
         setButton(holder, 20, Material.ENDER_PEARL, "&bТелепортироваться", List.of("&7Быстрый переход к участку."), "station:teleport:" + stationId);
-        setButton(holder, 21, Material.NAME_TAG, "&eНазначить председателя", List.of("&7Выбрать игрока для этого участка."), "station:assign-chair:" + stationId);
-        setButton(holder, 22, Material.BARRIER, "&cСнять защиту и удалить участок", List.of("&7Блок участка будет отвязан и удалён из защиты.", "&7Голоса и заявки в журнале сохранятся."), "station:remove-protection:" + stationId);
-        setButton(holder, 23, Material.BRUSH, "&dОчистить лишние надписи рядом", List.of("&7Удалить только связанные TextDisplay рядом с участком."), "station:cleanup-labels:" + stationId);
+        if (adminAccess) {
+            setButton(holder, 21, Material.NAME_TAG, "&eНазначить председателя", List.of("&7Выбрать игрока для этого участка."), "station:assign-chair:" + stationId);
+            if (hasChair) {
+                setButton(holder, 22, Material.REDSTONE_BLOCK, "&cРазжаловать председателя", List.of(
+                        "&7Снять председателя с участка.",
+                        "&7Печать ЦИК будет отозвана автоматически."
+                ), "station:remove-chair:" + stationId);
+            } else {
+                setStatic(inv, 22, infoItem(Material.LIME_STAINED_GLASS_PANE, "&aПредседатель не назначен", List.of("&7На этом участке пока нет председателя ЦИК.")));
+            }
+            setButton(holder, 23, Material.BRUSH, "&dОчистить лишние надписи рядом", List.of("&7Удалить только связанные TextDisplay рядом с участком."), "station:cleanup-labels:" + stationId);
+            setStatic(inv, 24, infoItem(Material.PAPER, "&fСводка участка", stationStatsLore(stationId)));
+            setButton(holder, 31, Material.WRITABLE_BOOK, "&eВыдать игроку", List.of("&7Выдать заявку или бюллетень выбранному игроку."), "station:issue-target:" + stationId);
+            setButton(holder, 32, Material.BARRIER, "&cСнять защиту и удалить участок", List.of("&7Блок участка будет отвязан и удалён из защиты.", "&7Голоса и заявки в журнале сохранятся."), "station:remove-protection:" + stationId);
+        } else if (!hasChair) {
+            setButton(holder, 21, Material.NAME_TAG, "&aСтать председателем ЦИК", List.of(
+                    "&7Подтвердить назначение себя председателем этого участка.",
+                    "&7После подтверждения ты получишь активную печать ЦИК."
+            ), "station:self-chair:" + stationId);
+            setStatic(inv, 22, infoItem(Material.LIME_STAINED_GLASS_PANE, "&aПредседатель не назначен", List.of("&7Этот участок пока свободен.")));
+        } else {
+            setStatic(inv, 21, infoItem(Material.NAME_TAG, "&fПредседатель: &e" + chairName, List.of(
+                    "&7Игрок уже назначен председателем этого участка.",
+                    "&7Сменить его может администратор."
+            )));
+        }
         setStatic(inv, 24, infoItem(Material.PAPER, "&fСводка участка", stationStatsLore(stationId)));
-        setButton(holder, 31, Material.WRITABLE_BOOK, "&eВыдать игроку", List.of("&7Выдать заявку или бюллетень выбранному игроку."), "station:issue-target:" + stationId);
         setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К списку участков."), "open:stations");
         player.openInventory(inv);
     }
@@ -2268,6 +2324,49 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Player online = Bukkit.getPlayer(UUID.fromString(playerUuid));
         if (online != null) {
             issueOrRefreshSeal(online, stationId, playerName, false);
+        }
+    }
+
+    private void claimChairForStation(Player player, String stationId) throws Exception {
+        if (player == null) {
+            return;
+        }
+        Map<String, Object> station = stationById(stationId);
+        if (station == null || intValue(station.get("active")) <= 0) {
+            throw new IllegalStateException("Участок больше не активен.");
+        }
+        if (!string(station.get("chair_uuid")).isBlank()) {
+            throw new IllegalStateException("У участка уже есть председатель ЦИК.");
+        }
+        assignChairToStation(stationId, player.getUniqueId().toString(), player.getName(), player.getName());
+    }
+
+    private void removeChairFromStation(String stationId, String actor) throws Exception {
+        Map<String, Object> station = stationById(stationId);
+        if (station == null) {
+            return;
+        }
+        String chairUuid = string(station.get("chair_uuid"));
+        String chairName = string(station.get("chair_name"));
+        if (chairUuid.isBlank()) {
+            return;
+        }
+        long t = now();
+        tx(connection -> {
+            update(connection, "UPDATE polling_stations SET chair_uuid='',chair_name='',updated_at=? WHERE id=?", t, stationId);
+            update(connection, "UPDATE cik_chairs SET active=0 WHERE station_id=?", stationId);
+            update(connection, "UPDATE cik_seals SET status='REVOKED',revoked_at=?,revoked_by=? WHERE station_id=? AND status='ACTIVE'", t, actor, stationId);
+            logPluginEvent(connection, "election_core", "chair_removed", actor, stationId, "player=" + first(chairName, chairUuid));
+            return null;
+        });
+        try {
+            UUID chairPlayerUuid = UUID.fromString(chairUuid);
+            officialRestore.remove(chairPlayerUuid);
+            Player online = Bukkit.getPlayer(chairPlayerUuid);
+            if (online != null) {
+                removeOfficialItemsFromPlayer(online, "CIK_SEAL");
+            }
+        } catch (IllegalArgumentException ignored) {
         }
     }
 

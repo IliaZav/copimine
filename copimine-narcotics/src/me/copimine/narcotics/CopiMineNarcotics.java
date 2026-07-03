@@ -150,8 +150,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
             if (event.getAction() == Action.RIGHT_CLICK_BLOCK && isUnsafeConsumeTarget(event.getClickedBlock())) {
                 event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
-                event.setCancelled(true);
-                return;
             }
             if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
                 return;

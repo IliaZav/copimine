@@ -1,0 +1,7 @@
+body.player-mode[data-copimine-tab="cabinet"] .panel:first-child {
+  box-shadow: 0 24px 40px rgba(7, 27, 15, 0.18);
+}
+
+body.player-mode[data-app-route="cabinet"] .topbar {
+  border-color: rgba(79, 145, 92, 0.22);
+}

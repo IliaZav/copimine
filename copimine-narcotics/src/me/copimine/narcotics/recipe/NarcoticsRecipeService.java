@@ -125,6 +125,28 @@ public final class NarcoticsRecipeService {
         return false;
     }
 
+    public int minimumRecipeSize() {
+        int min = Integer.MAX_VALUE;
+        for (NarcoticDefinition definition : items.values()) {
+            if (definition.recipeIngredients().isEmpty()) {
+                continue;
+            }
+            min = Math.min(min, definition.recipeIngredients().size());
+        }
+        return min == Integer.MAX_VALUE ? 3 : min;
+    }
+
+    public int maximumRecipeSize() {
+        int max = 0;
+        for (NarcoticDefinition definition : items.values()) {
+            if (definition.recipeIngredients().isEmpty()) {
+                continue;
+            }
+            max = Math.max(max, definition.recipeIngredients().size());
+        }
+        return Math.max(max, 3);
+    }
+
     public List<ItemStack> ingredientDrops(List<IngredientEntry> ingredientEntries) {
         List<ItemStack> drops = new ArrayList<>();
         for (IngredientEntry entry : ingredientEntries) {

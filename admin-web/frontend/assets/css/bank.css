@@ -1,0 +1,17 @@
+body.player-mode[data-copimine-tab="bank"] .metric,
+body.player-mode[data-copimine-tab="history"] .metric {
+  border-color: var(--copimine-player-strong-line);
+}
+
+body.player-mode[data-copimine-tab="bank"] .panel:first-child {
+  box-shadow: 0 24px 40px rgba(7, 27, 15, 0.18);
+}
+
+body.player-mode[data-app-route="bank"] .topbar,
+body.player-mode[data-app-route="history"] .topbar {
+  border-color: rgba(45, 125, 63, 0.22);
+}
+
+body.player-mode[data-app-route="bank"] .side-brand {
+  border-color: var(--copimine-player-strong-line);
+}

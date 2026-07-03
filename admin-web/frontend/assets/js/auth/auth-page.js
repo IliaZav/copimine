@@ -38,9 +38,9 @@ function humanError(payload, fallback) {
     const errorDetail = payload.error?.detail;
     const detail = payload.detail;
     const message = payload.message;
-    return String(errorMessage || errorDetail || detail || message || fallback || "Не удалось выполнить запрос").trim();
+    return String(errorMessage || errorDetail || detail || message || fallback || "Request failed").trim();
   }
-  return String(fallback || "Не удалось выполнить запрос").trim();
+  return String(fallback || "Request failed").trim();
 }
 
 async function requestJson(url, init = {}) {
@@ -52,7 +52,9 @@ async function requestJson(url, init = {}) {
   }
   if (method !== "GET" && method !== "HEAD" && !headers.has(CSRF_HEADER)) {
     const csrf = readCookie(CSRF_COOKIE);
-    if (csrf) headers.set(CSRF_HEADER, csrf);
+    if (csrf) {
+      headers.set(CSRF_HEADER, csrf);
+    }
   }
   const response = await fetch(url, {
     credentials: "same-origin",
@@ -67,7 +69,7 @@ async function requestJson(url, init = {}) {
     payload = null;
   }
   if (!response.ok) {
-    throw new Error(humanError(payload, `Ошибка ${response.status}`));
+    throw new Error(humanError(payload, `HTTP ${response.status}`));
   }
   return payload;
 }
@@ -108,7 +110,7 @@ async function submitAuth(event) {
   const username = String($("username")?.value || "").trim();
   const password = String($("password")?.value || "");
   if (!username || !password) {
-    setError("Заполните логин и пароль.");
+    setError("Enter username and password.");
     return;
   }
 
@@ -122,12 +124,28 @@ async function submitAuth(event) {
   try {
     await ensureCsrfCookie();
   } catch (_error) {
-    // Keep going: the real request will surface a user-facing error if the backend is unavailable.
+    // Backend failure will surface on the real request below.
   }
-  const data = await requestJson(endpoint, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+
+  let data;
+  try {
+    data = await requestJson(endpoint, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/csrf/i.test(message)) {
+      await ensureCsrfCookie();
+      data = await requestJson(endpoint, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      throw error;
+    }
+  }
+
   const role = String(data.role || "player").trim().toLowerCase() || "player";
   redirectToRoleHome(role);
 }
@@ -157,7 +175,7 @@ export async function initAuthPage() {
       try {
         await submitAuth(event);
       } catch (error) {
-        setError(error instanceof Error ? error.message : "Не удалось выполнить вход");
+        setError(error instanceof Error ? error.message : "Login failed");
       }
     });
   }

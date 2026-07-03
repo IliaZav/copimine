@@ -2483,6 +2483,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             case "kick" -> t.kickPlayer(c("&cКикнут администрацией CopiMine.")); case "ipban" -> {if(click!=ClickType.SHIFT_RIGHT){warn(admin,"Только Shift+ПКМ.");return;} if(t.getAddress()!=null){String ip=t.getAddress().getAddress().getHostAddress(); Bukkit.getBanList(BanList.Type.IP).addBan(ip,"IP-ban CopiMine",(Date)null,admin.getName()); t.kickPlayer(c("&cIP-ban"));}} case "burn5" -> t.setFireTicks(100); case "slow10" -> {effect(t,10,5,"SLOWNESS","SLOW"); effect(t,10,2,"MINING_FATIGUE","SLOW_DIGGING");}
             case "check-start" -> startCheck(admin,t); case "check-stop" -> stopCheck(admin,t,false); case "check-stop-return" -> stopCheck(admin,t,true); case "check-remind" -> {t.sendTitle(c("&c&l��������"),c("&f���� �� ����� � ������� �������������"),10,80,10); sound(t,"BLOCK_NOTE_BLOCK_PLING",1f,.8f);}
         }
+        if("cleanse".equals(act)){
+            PluginCommand narcoticsCommand=Bukkit.getPluginCommand("cmnarcotics");
+            if(narcoticsCommand!=null){
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(),"cmnarcotics clearoverdose "+t.getName());
+            }
+        }
         audit(admin.getName(),"ULTRA7_PLAYER_"+act.toUpperCase(Locale.ROOT),t.getName(),true);
         snapshotOnlineInventory(t,"admin_"+act);
     }

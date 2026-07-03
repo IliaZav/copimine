@@ -1,0 +1,10 @@
+body.player-mode[data-app-route="dashboard"] .topbar {
+  border-color: rgba(104, 169, 127, 0.26);
+  background:
+    linear-gradient(180deg, rgba(245, 250, 246, 0.98), rgba(236, 245, 239, 0.98)),
+    radial-gradient(circle at top right, rgba(122, 214, 157, 0.1), transparent 58%);
+}
+
+:root[data-theme="dark"] body.player-mode[data-app-route="dashboard"] .topbar {
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(124, 255, 167, 0.08) inset;
+}

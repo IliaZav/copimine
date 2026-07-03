@@ -123,7 +123,12 @@ public final class CauldronBrewingService {
                 finishBrewing(block, key, exact, nextVersion);
                 return true;
             }
-            if (!recipeService.canStillBecomeRecipe(current)) {
+            boolean impossible = !recipeService.canStillBecomeRecipe(current);
+            int minimumRecipeSize = recipeService.minimumRecipeSize();
+            int maximumRecipeSize = recipeService.maximumRecipeSize();
+            boolean wrongMixtureReady = current.size() >= maximumRecipeSize
+                    || (impossible && current.size() >= Math.max(2, minimumRecipeSize));
+            if (wrongMixtureReady) {
                 NarcoticDefinition zhuzevo = configService.items().get("zhuzevo");
                 if (zhuzevo != null) {
                     finishBrewing(block, key, zhuzevo, nextVersion);

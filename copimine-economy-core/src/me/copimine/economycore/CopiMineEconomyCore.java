@@ -466,6 +466,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
+        normalizeOfficialArItems(event.getPlayer());
         Bukkit.getScheduler().runTaskLater(this, () -> processPendingArSettlements(event.getPlayer(), true), 20L);
     }
 
@@ -1388,6 +1389,59 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.remove(new NamespacedKey("copiminear", "source"));
         stack.setItemMeta(meta);
         return stack;
+    }
+
+    private void normalizeOfficialArItems(Player player) {
+        if (player == null) {
+            return;
+        }
+        boolean updated = normalizeOfficialArInventory(player.getInventory());
+        updated = normalizeOfficialArInventory(player.getEnderChest()) || updated;
+        ItemStack offHand = player.getInventory().getItemInOffHand();
+        if (isOfficialAr(offHand) && needsOfficialArNormalization(offHand)) {
+            player.getInventory().setItemInOffHand(createOfficialArStack(Math.max(1, offHand.getAmount()), player.getUniqueId().toString(), player.getName(), "join-normalize"));
+            updated = true;
+        }
+        if (updated) {
+            player.updateInventory();
+        }
+    }
+
+    private boolean normalizeOfficialArInventory(Inventory inventory) {
+        if (inventory == null) {
+            return false;
+        }
+        boolean updated = false;
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!isOfficialAr(stack) || !needsOfficialArNormalization(stack)) {
+                continue;
+            }
+            inventory.setItem(slot, createOfficialArStack(Math.max(1, stack.getAmount()), "", "", "normalize"));
+            updated = true;
+        }
+        return updated;
+    }
+
+    private boolean needsOfficialArNormalization(ItemStack stack) {
+        if (!isOfficialAr(stack)) {
+            return false;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null) {
+            return false;
+        }
+        if (!color("&bОфициальный AR").equals(meta.getDisplayName())) {
+            return true;
+        }
+        if (meta.lore() != null && !meta.lore().isEmpty()) {
+            return true;
+        }
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        return pdc.has(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING)
+                || pdc.has(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING)
+                || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING)
+                || stack.getType() != Material.DIAMOND_ORE;
     }
 
     private int countOfficialAr(Inventory inventory) {

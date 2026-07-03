@@ -219,7 +219,13 @@ POSTGRES_POOL_MIN_SIZE = max(1, int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1")))
 POSTGRES_POOL_MAX_SIZE = max(POSTGRES_POOL_MIN_SIZE, int(os.getenv("POSTGRES_POOL_MAX_SIZE", "8")))
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cm_session")
 AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "cm_refresh")
-AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "1").lower() in {"1", "true", "yes", "on"}
+ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080").rstrip("/")
+AUTH_COOKIE_SECURE_RAW = os.getenv("AUTH_COOKIE_SECURE", "").strip().lower()
+AUTH_COOKIE_SECURE = (
+    AUTH_COOKIE_SECURE_RAW in {"1", "true", "yes", "on"}
+    if AUTH_COOKIE_SECURE_RAW
+    else ADMIN_PUBLIC_BASE_URL.lower().startswith("https://")
+)
 AUTH_BEARER_FALLBACK_ENABLED = os.getenv("AUTH_BEARER_FALLBACK_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")
 CSRF_HEADER_NAME = "X-CSRF-Token"
@@ -241,7 +247,6 @@ DISCORD_REPORTS_CHANNEL_ID = os.getenv("DISCORD_REPORTS_CHANNEL_ID", "").strip()
 DISCORD_ADMIN_ROLE_ID = os.getenv("DISCORD_ADMIN_ROLE_ID", "").strip()
 DISCORD_ADMIN_ALLOWLIST = {x.strip() for x in os.getenv("DISCORD_ADMIN_ALLOWLIST", "").split(",") if x.strip()}
 DISCORD_BOT_API_KEY = os.getenv("DISCORD_BOT_API_KEY", "")
-ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080").rstrip("/")
 DISCORD_RATE_BUCKETS: dict[str, list[int]] = {}
 TRUSTED_PROXY_IPS = {x.strip() for x in os.getenv("TRUSTED_PROXY_IPS", "127.0.0.1,::1").split(",") if x.strip()}
 RCON_WEB_COMMAND_ALLOWLIST = [
@@ -958,6 +963,7 @@ def clear_auth_cookies(response: Response) -> None:
 def csrf_exempt_paths() -> set[str]:
     return {
         "/api/auth/login",
+        "/api/session/login",
         "/api/player/login",
         "/api/player/register",
     }

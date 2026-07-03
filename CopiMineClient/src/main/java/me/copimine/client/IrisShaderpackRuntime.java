@@ -107,6 +107,11 @@ public final class IrisShaderpackRuntime {
             status = lastFailureReason;
             return new ApplyResult(false, "NONE", lastFailureReason);
         }
+        if (!irisAcceptsRuntimeTarget(export.runtimeTarget())) {
+            lastFailureReason = "iris-rejected-runtime-zip:" + export.runtimeName();
+            status = lastFailureReason;
+            return new ApplyResult(false, "NONE", lastFailureReason);
+        }
         try {
             PreviousState current = snapshotCurrentState();
             if (previousState == null) {
@@ -116,9 +121,9 @@ public final class IrisShaderpackRuntime {
                     return new ApplyResult(false, "NONE", lastFailureReason);
                 }
                 previousState = current;
-                saveState(previousState, registry.shaderpackRuntimeName(profile.zipName()));
+                saveState(previousState, export.runtimeName());
             }
-            switchToShaderpack(registry.shaderpackRuntimeName(profile.zipName()), true);
+            switchToShaderpack(export.runtimeName(), true);
             activeShaderpack = profile.zipName();
             lastFailureReason = "";
             status = "iris-shaderpack-active:" + profile.zipName();
@@ -206,6 +211,19 @@ public final class IrisShaderpackRuntime {
         reload.invoke(null);
     }
 
+    private boolean irisAcceptsRuntimeTarget(Path runtimeTarget) {
+        if (runtimeTarget == null || !Files.isRegularFile(runtimeTarget)) {
+            return false;
+        }
+        try {
+            Class<?> irisClass = Class.forName("net.irisshaders.iris.Iris");
+            Object result = irisClass.getMethod("isValidShaderpack", Path.class).invoke(null, runtimeTarget);
+            return result instanceof Boolean valid && valid;
+        } catch (Throwable ignored) {
+            return true;
+        }
+    }
+
     private Object irisConfig() throws Exception {
         Class<?> irisClass = Class.forName("net.irisshaders.iris.Iris");
         return irisClass.getMethod("getIrisConfig").invoke(null);
@@ -273,7 +291,7 @@ public final class IrisShaderpackRuntime {
     }
 
     private boolean isCopiMineRuntimeName(String runtimeName) {
-        return runtimeName != null && runtimeName.toLowerCase(Locale.ROOT).startsWith("copimine/");
+        return runtimeName != null && runtimeName.toLowerCase(Locale.ROOT).startsWith("copimine_");
     }
 
     private String yesNo(boolean value) {

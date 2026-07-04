@@ -20,12 +20,14 @@ import org.bukkit.entity.ItemDisplay;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class CauldronBrewingService {
     private static final String DISPLAY_TAG = "copimine_narcotics_cauldron_display";
+    private static final long STALE_BREW_STATE_MILLIS = 15L * 60L * 1000L;
 
     private final CopiMineNarcotics plugin;
     private NarcoticsConfigService configService;
@@ -34,6 +36,7 @@ public final class CauldronBrewingService {
     private NarcoticItemFactory itemFactory;
     private final Map<BlockKey, CauldronState> cache = new ConcurrentHashMap<>();
     private final Map<BlockKey, Object> locks = new ConcurrentHashMap<>();
+    private final int animationTaskId;
 
     public CauldronBrewingService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, NarcoticsRecipeService recipeService, NarcoticItemFactory itemFactory) {
         this.plugin = plugin;
@@ -41,6 +44,7 @@ public final class CauldronBrewingService {
         this.database = database;
         this.recipeService = recipeService;
         this.itemFactory = itemFactory;
+        this.animationTaskId = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tickFloatingVisuals, 4L, 4L).getTaskId();
     }
 
     public void reload(NarcoticsConfigService configService, NarcoticsRecipeService recipeService, NarcoticItemFactory itemFactory) {
@@ -54,16 +58,7 @@ public final class CauldronBrewingService {
         if (!configService.preloadBrewingCacheOnEnable()) {
             return;
         }
-        database.loadBrewingStates().thenAccept(states -> {
-                    for (Map.Entry<BlockKey, NarcoticsDatabase.LoadedBrewingState> entry : states.entrySet()) {
-                        cache.compute(entry.getKey(), (ignored, current) -> {
-                            if (current != null && current.version() > entry.getValue().version()) {
-                                return current;
-                            }
-                            return new CauldronState(entry.getValue().ingredients(), entry.getValue().version());
-                        });
-                    }
-                })
+        database.clearBrewingStates().thenRun(() -> plugin.getLogger().info("Temporary cauldron brew states cleared on enable."))
                 .exceptionally(error -> {
                     plugin.getLogger().warning("Brewing cache preload failed: " + error.getMessage());
                     return null;
@@ -71,6 +66,7 @@ public final class CauldronBrewingService {
     }
 
     public void runIntegritySweep() {
+        long nowMillis = System.currentTimeMillis();
         for (Map.Entry<BlockKey, CauldronState> entry : List.copyOf(cache.entrySet())) {
             BlockKey key = entry.getKey();
             World world = plugin.getServer().getWorld(key.world());
@@ -79,6 +75,10 @@ public final class CauldronBrewingService {
             }
             Block block = world.getBlockAt(key.x(), key.y(), key.z());
             if (!isSupportedCauldron(block)) {
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
+                continue;
+            }
+            if (entry.getValue().isStale(nowMillis)) {
                 handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
                 continue;
             }
@@ -92,6 +92,9 @@ public final class CauldronBrewingService {
         if (block == null || block.getType() != Material.WATER_CAULDRON) {
             return false;
         }
+        if (!hasBrewingRig(block)) {
+            return false;
+        }
         if (!configService.requireFullWater()) {
             return true;
         }
@@ -99,10 +102,13 @@ public final class CauldronBrewingService {
         if (!(data instanceof Levelled levelled)) {
             return false;
         }
-        return levelled.getLevel() >= levelled.getMaximumLevel() && hasBrewingRig(block);
+        return isFullWaterLevel(levelled);
     }
 
     public boolean tryAddIngredient(org.bukkit.entity.Player player, Block block, ItemStack stack) {
+        if (!isSupportedCauldron(block)) {
+            return false;
+        }
         if (itemFactory.isOfficialFinishedItem(stack)) {
             return false;
         }
@@ -112,7 +118,12 @@ public final class CauldronBrewingService {
             return false;
         }
         synchronized (lockFor(key)) {
-            CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L));
+            long nowMillis = System.currentTimeMillis();
+            CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis));
+            if (!base.ingredients().isEmpty() && !hasFloatingVisuals(block, key)) {
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
+                base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis));
+            }
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
             long nextVersion = base.version() + 1L;
@@ -123,11 +134,11 @@ public final class CauldronBrewingService {
                 finishBrewing(block, key, exact, nextVersion);
                 return true;
             }
-            boolean impossible = !recipeService.canStillBecomeRecipe(current);
             int minimumRecipeSize = recipeService.minimumRecipeSize();
             int maximumRecipeSize = recipeService.maximumRecipeSize();
-            boolean wrongMixtureReady = current.size() >= maximumRecipeSize
-                    || (impossible && current.size() >= Math.max(2, minimumRecipeSize));
+            boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
+            boolean wrongMixtureReady = current.size() >= Math.max(2, minimumRecipeSize)
+                    && (current.size() >= maximumRecipeSize || !canStillBecomeRecipe);
             if (wrongMixtureReady) {
                 NarcoticDefinition zhuzevo = configService.items().get("zhuzevo");
                 if (zhuzevo != null) {
@@ -138,7 +149,7 @@ public final class CauldronBrewingService {
                 return true;
             }
             List<IngredientEntry> frozen = List.copyOf(current);
-            cache.put(key, new CauldronState(frozen, nextVersion));
+            cache.put(key, new CauldronState(frozen, nextVersion, nowMillis));
             updateFloatingVisuals(block, key, frozen);
             database.saveBrewingState(key, nextVersion, frozen).exceptionally(error -> {
                 plugin.getLogger().warning("Brewing state save failed for " + key + ": " + error.getMessage());
@@ -188,7 +199,10 @@ public final class CauldronBrewingService {
         if (!cache.containsKey(key)) {
             return;
         }
-        boolean stillFull = newState instanceof Levelled levelled && levelled.getLevel() >= levelled.getMaximumLevel() && block.getType() == Material.WATER_CAULDRON;
+        boolean stillFull = block.getType() == Material.WATER_CAULDRON
+                && newState instanceof Levelled levelled
+                && (!configService.requireFullWater() || isFullWaterLevel(levelled))
+                && hasBrewingRig(block);
         if (!stillFull) {
             handleCauldronBroken(block, block.getLocation().add(0.5D, 0.5D, 0.5D));
         }
@@ -205,6 +219,7 @@ public final class CauldronBrewingService {
     }
 
     public void shutdown() {
+        plugin.getServer().getScheduler().cancelTask(animationTaskId);
         cache.keySet().forEach(this::clearFloatingVisuals);
         cache.clear();
         locks.clear();
@@ -240,6 +255,12 @@ public final class CauldronBrewingService {
                 && fuel.getType() == Material.NETHERRACK;
     }
 
+    private boolean isFullWaterLevel(Levelled levelled) {
+        int level = levelled.getLevel();
+        int max = levelled.getMaximumLevel();
+        return level == 0 || level >= max;
+    }
+
     private void extinguishRig(Block cauldron) {
         Block fire = cauldron.getRelative(BlockFace.DOWN);
         if (fire.getType() == Material.FIRE || fire.getType() == Material.SOUL_FIRE) {
@@ -267,6 +288,48 @@ public final class CauldronBrewingService {
                 spawned.addScoreboardTag(displayTagFor(key));
             });
             display.setRotation((float) Math.toDegrees(angle), 0.0F);
+        }
+    }
+
+    private void tickFloatingVisuals() {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<BlockKey, CauldronState> entry : List.copyOf(cache.entrySet())) {
+            BlockKey key = entry.getKey();
+            World world = plugin.getServer().getWorld(key.world());
+            if (world == null) {
+                continue;
+            }
+            Block cauldron = world.getBlockAt(key.x(), key.y(), key.z());
+            if (!isSupportedCauldron(cauldron)) {
+                continue;
+            }
+            List<ItemDisplay> displays = world.getNearbyEntities(
+                            cauldron.getLocation().add(0.5D, 1.0D, 0.5D),
+                            1.2D,
+                            1.4D,
+                            1.2D,
+                            entity -> entity instanceof ItemDisplay
+                                    && entity.getScoreboardTags().contains(DISPLAY_TAG)
+                                    && entity.getScoreboardTags().contains(displayTagFor(key)))
+                    .stream()
+                    .filter(ItemDisplay.class::isInstance)
+                    .map(ItemDisplay.class::cast)
+                    .sorted(Comparator.comparing(entity -> entity.getUniqueId().toString()))
+                    .toList();
+            if (displays.isEmpty()) {
+                continue;
+            }
+            Location center = cauldron.getLocation().add(0.5D, 1.2D, 0.5D);
+            int total = Math.max(1, displays.size());
+            for (int index = 0; index < displays.size(); index++) {
+                ItemDisplay display = displays.get(index);
+                double orbit = (now / 700.0D) + ((Math.PI * 2.0D * index) / total);
+                double radius = total == 1 ? 0.0D : 0.22D;
+                double bob = 0.04D * Math.sin((now / 220.0D) + index);
+                Location target = center.clone().add(Math.cos(orbit) * radius, bob + 0.05D * (index % 2), Math.sin(orbit) * radius);
+                display.teleport(target);
+                display.setRotation((float) Math.toDegrees(orbit) + 90.0F, 0.0F);
+            }
         }
     }
 
@@ -306,6 +369,9 @@ public final class CauldronBrewingService {
         return locks.computeIfAbsent(key, ignored -> new Object());
     }
 
-    private record CauldronState(List<IngredientEntry> ingredients, long version) {
+    private record CauldronState(List<IngredientEntry> ingredients, long version, long updatedAtMillis) {
+        private boolean isStale(long nowMillis) {
+            return updatedAtMillis > 0L && nowMillis - updatedAtMillis >= STALE_BREW_STATE_MILLIS;
+        }
     }
 }

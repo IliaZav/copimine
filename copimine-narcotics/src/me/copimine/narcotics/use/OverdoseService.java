@@ -227,6 +227,7 @@ public final class OverdoseService {
         return switch (normalized) {
             case "CONFUSION" -> PotionEffectType.NAUSEA;
             case "HARM", "INSTANT_DAMAGE" -> PotionEffectType.INSTANT_DAMAGE;
+            case "WEAVING" -> null;
             case "UNLUCK", "BAD_OMEN", "LUCK", "DARKNESS" -> PotionEffectType.getByName(normalized);
             default -> PotionEffectType.getByName(normalized);
         };

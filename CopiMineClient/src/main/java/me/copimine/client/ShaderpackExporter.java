@@ -142,16 +142,26 @@ public final class ShaderpackExporter {
 
     private PreparedZip prepareZip(ShaderpackRegistry.ShaderpackProfile profile, byte[] bundled) throws Exception {
         ValidationResult validation = validateZip(profile, bundled);
-        if (validation.irisCompatible() || !validation.wrappedRootShaders()) {
+        if (!validation.usesBackslashes() && !validation.wrappedRootShaders()) {
             return new PreparedZip(bundled, validation);
         }
-        byte[] repairedBytes = flattenWrappedRoot(bundled);
+        byte[] repairedBytes = normalizeZip(bundled, validation.wrappedRootShaders());
         if (repairedBytes == null) {
             return new PreparedZip(bundled, validation);
         }
         ValidationResult repairedValidation = validateZip(profile, repairedBytes);
-        if (!repairedValidation.irisCompatible()) {
+        if (validation.irisCompatible() && !repairedValidation.irisCompatible()) {
             return new PreparedZip(bundled, validation);
+        }
+        String repairedStatus;
+        if (validation.wrappedRootShaders() && validation.usesBackslashes()) {
+            repairedStatus = "repaired-backslashes-and-wrapped-root";
+        } else if (validation.wrappedRootShaders()) {
+            repairedStatus = "repaired-wrapped-root-to-iris-compatible";
+        } else if (validation.usesBackslashes()) {
+            repairedStatus = "repaired-backslash-entries";
+        } else {
+            repairedStatus = repairedValidation.status();
         }
         return new PreparedZip(
                 repairedBytes,
@@ -161,7 +171,8 @@ public final class ShaderpackExporter {
                         repairedValidation.vanillaShaderOverride(),
                         true,
                         repairedValidation.wrappedRootShaders(),
-                        "repaired-wrapped-root-to-iris-compatible"
+                        repairedValidation.usesBackslashes(),
+                        repairedStatus
                 )
         );
     }
@@ -182,6 +193,7 @@ public final class ShaderpackExporter {
         boolean hasShadersProperties = false;
         boolean hasVanillaShaderOverride = false;
         boolean hasWrappedRootShaders = false;
+        boolean usesBackslashes = false;
         Set<String> topLevelSegments = new LinkedHashSet<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(bytes))) {
             java.util.zip.ZipEntry entry;
@@ -190,7 +202,11 @@ public final class ShaderpackExporter {
                     continue;
                 }
                 hasAnyEntries = true;
-                String name = entry.getName().replace('\\', '/');
+                String rawName = entry.getName();
+                if (rawName.indexOf('\\') >= 0) {
+                    usesBackslashes = true;
+                }
+                String name = rawName.replace('\\', '/');
                 if (name.startsWith("shaders/")) {
                     hasRootShaders = true;
                 }
@@ -232,14 +248,11 @@ public final class ShaderpackExporter {
             status = "unknown-structure";
         }
         boolean canRepairWrappedRoot = hasWrappedRootShaders && !hasRootShaders && topLevelSegments.size() == 1;
-        return new ValidationResult(validZip, irisCompatible, hasVanillaShaderOverride, false, canRepairWrappedRoot, status);
+        return new ValidationResult(validZip, irisCompatible, hasVanillaShaderOverride, false, canRepairWrappedRoot, usesBackslashes, status);
     }
 
-    private byte[] flattenWrappedRoot(byte[] bytes) throws IOException {
-        String rootPrefix = wrappedRootPrefix(bytes);
-        if (rootPrefix == null || rootPrefix.isBlank()) {
-            return null;
-        }
+    private byte[] normalizeZip(byte[] bytes, boolean flattenWrappedRoot) throws IOException {
+        String rootPrefix = flattenWrappedRoot ? wrappedRootPrefix(bytes) : null;
         try (ByteArrayOutputStream output = new ByteArrayOutputStream();
              ZipOutputStream zipOut = new ZipOutputStream(output);
              ZipInputStream zipIn = new ZipInputStream(new ByteArrayInputStream(bytes))) {
@@ -249,14 +262,16 @@ public final class ShaderpackExporter {
                     continue;
                 }
                 String normalized = entry.getName().replace('\\', '/');
-                if (!normalized.startsWith(rootPrefix + "/")) {
-                    return null;
+                if (rootPrefix != null && !rootPrefix.isBlank()) {
+                    if (!normalized.startsWith(rootPrefix + "/")) {
+                        return null;
+                    }
+                    normalized = normalized.substring(rootPrefix.length() + 1);
                 }
-                String flattened = normalized.substring(rootPrefix.length() + 1);
-                if (flattened.isBlank()) {
+                if (normalized.isBlank()) {
                     continue;
                 }
-                ZipEntry repairedEntry = new ZipEntry(flattened);
+                ZipEntry repairedEntry = new ZipEntry(normalized);
                 zipOut.putNextEntry(repairedEntry);
                 zipOut.write(zipIn.readAllBytes());
                 zipOut.closeEntry();
@@ -323,6 +338,7 @@ public final class ShaderpackExporter {
             boolean vanillaShaderOverride,
             boolean repaired,
             boolean wrappedRootShaders,
+            boolean usesBackslashes,
             String status
     ) {
     }

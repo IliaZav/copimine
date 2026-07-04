@@ -80,7 +80,7 @@ public final class NarcoticsDatabase {
             Map<BlockKey, LoadedBrewingState> states = new LinkedHashMap<>();
             try (Connection connection = openConnection();
                  PreparedStatement statement = connection.prepareStatement("""
-                         SELECT world_name,x,y,z,state_payload,state_version,deleted,ingredients_csv
+                         SELECT world_name,x,y,z,state_payload,state_version,deleted,ingredients_csv,updated_at
                          FROM narcotics_brewing_states
                          """)) {
                 try (ResultSet rs = statement.executeQuery()) {
@@ -91,8 +91,9 @@ public final class NarcoticsDatabase {
                         boolean deleted = rs.getBoolean(7);
                         String legacyCsv = rs.getString(8);
                         List<IngredientEntry> entries = parseEntriesPayload(payload, legacyCsv);
+                        long updatedAt = rs.getLong(9);
                         if (!deleted && !entries.isEmpty()) {
-                            states.put(key, new LoadedBrewingState(entries, version));
+                            states.put(key, new LoadedBrewingState(entries, version, updatedAt));
                         }
                     }
                 }
@@ -152,6 +153,15 @@ public final class NarcoticsDatabase {
                 statement.setLong(7, version);
                 statement.setBoolean(8, true);
                 statement.setLong(9, Instant.now().getEpochSecond());
+                statement.executeUpdate();
+            }
+            return null;
+        }));
+    }
+
+    public CompletableFuture<Void> clearBrewingStates() {
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("DELETE FROM narcotics_brewing_states")) {
                 statement.executeUpdate();
             }
             return null;
@@ -535,7 +545,7 @@ public final class NarcoticsDatabase {
         void run() throws Exception;
     }
 
-    public record LoadedBrewingState(List<IngredientEntry> ingredients, long version) {
+    public record LoadedBrewingState(List<IngredientEntry> ingredients, long version, long updatedAtEpochSeconds) {
     }
 
     private record DbSettings(String host, int port, String database, String user, String password, String schema, Path envFile) {

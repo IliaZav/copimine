@@ -36,8 +36,11 @@ Require-Contains 'runPreflightRepair' 'Preflight must expose a safe repair/preve
 Require-Contains 'preflight:repair' 'Preflight UI must provide a repair action button.'
 Require-Regex 'runPreflightRepair[\s\S]*purgeTemporaryApplicationBooks[\s\S]*restorePendingOfficialItems[\s\S]*reloadSidebarAll' 'Preflight repair must clean temp books, retry official item restores, and refresh sidebar.'
 
-Require-Regex 'onInteract[\s\S]*isPollingStationBlock[\s\S]*giveRoleOfficialItemsAtStation' 'Polling station click must auto-issue president/chair official items before opening/printing info.'
+Require-Regex 'onInteract[\s\S]*isPollingStationBlock[\s\S]*depositSealedBallotAtStation[\s\S]*sendPollingStationCitizenInfo[\s\S]*openPollingStationHub' 'Polling station click must try ballot deposit first, then show citizen info, then open the station hub.'
 Require-Regex 'giveRoleOfficialItemsAtStation[\s\S]*giveCikSealIfNeeded[\s\S]*givePresidentMandateIfNeeded' 'Station role auto-issue must cover both CIK seal and president mandate.'
+Require-Regex 'private boolean isOfficialArItem\(ItemStack it\)[\s\S]*return isOfficialAr\(it\)\|\|isLegacyArItem\(it\);' 'Official AR detection must rely on plugin markers, not plain renamed text.'
+Require-Regex 'deleteArPlacedBlock\(Block b\)[\s\S]*REMOVED_FROM_WORLD[\s\S]*AR_PLACED_BLOCK_REMOVED' 'Placed AR blocks must leave official circulation when the world block is removed.'
+Require-Regex 'onOfficialArCreative\(InventoryCreativeEvent e\)[\s\S]*isOfficialArItem\(e\.getCursor\(\)\)[\s\S]*setCancelled\(true\)' 'Creative inventory must not duplicate official AR.'
 if ([regex]::IsMatch($text, 'openPollingStationHub\(Player p,Block block\)(?:(?!private void sendPollingStationCitizenInfo)[\s\S])*official:recover', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
   $errors.Add('Compact polling station GUI must not expose role recovery buttons to ordinary station flow.')
 }

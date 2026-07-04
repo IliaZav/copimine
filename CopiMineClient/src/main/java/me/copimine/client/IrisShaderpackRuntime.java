@@ -12,6 +12,8 @@ import java.util.Optional;
 import java.util.Properties;
 
 public final class IrisShaderpackRuntime {
+    private static final int APPLY_POLL_ATTEMPTS = 20;
+    private static final long APPLY_POLL_SLEEP_MILLIS = 25L;
     public record ApplyResult(boolean applied, String route, String reason) {
     }
 
@@ -41,11 +43,14 @@ public final class IrisShaderpackRuntime {
         try {
             Class<?> iris = Class.forName("net.irisshaders.iris.Iris");
             Class<?> irisConfig = Class.forName("net.irisshaders.iris.config.IrisConfig");
+            Class<?> irisApiConfig = Class.forName("net.irisshaders.iris.api.v0.IrisApiConfig");
             iris.getMethod("getIrisConfig");
             iris.getMethod("reload");
+            iris.getMethod("loadShaderpack");
+            iris.getMethod("isValidShaderpack", Path.class);
             irisConfig.getMethod("getShaderPackName");
             irisConfig.getMethod("setShaderPackName", String.class);
-            irisConfig.getMethod("setShadersEnabled", boolean.class);
+            irisApiConfig.getMethod("setShadersEnabledAndApply", boolean.class);
             return true;
         } catch (Throwable ignored) {
             return false;
@@ -204,11 +209,51 @@ public final class IrisShaderpackRuntime {
         Object config = irisConfig();
         invokeIfPresent(config, "load");
         invokeString(config, "setShaderPackName", runtimeName == null ? "" : runtimeName);
-        invokeBooleanArg(config, "setShadersEnabled", enabled);
         invokeIfPresent(config, "save");
+        Object publicConfig = irisApiConfig();
         Class<?> irisClass = Class.forName("net.irisshaders.iris.Iris");
         Method reload = irisClass.getMethod("reload");
+        invokeIfPresentStatic(irisClass, "loadShaderpack");
         reload.invoke(null);
+        invokeBooleanArg(publicConfig, "setShadersEnabledAndApply", enabled);
+        if (enabled) {
+            confirmEnabledShaderpack(irisClass, runtimeName);
+        } else {
+            confirmDisabledShaderpack(irisClass);
+        }
+    }
+
+    private void confirmEnabledShaderpack(Class<?> irisClass, String runtimeName) throws Exception {
+        for (int attempt = 0; attempt < APPLY_POLL_ATTEMPTS; attempt++) {
+            String storedError = storedErrorSummary(irisClass);
+            if (!storedError.isBlank()) {
+                throw new IllegalStateException("iris-stored-error:" + storedError);
+            }
+            String currentPackName = invokeStaticString(irisClass, "getCurrentPackName");
+            if (runtimeNameMatches(runtimeName, currentPackName) && isShaderPackInUse()) {
+                return;
+            }
+            Thread.sleep(APPLY_POLL_SLEEP_MILLIS);
+        }
+        String currentPackName = invokeStaticString(irisClass, "getCurrentPackName");
+        if (!runtimeNameMatches(runtimeName, currentPackName)) {
+            throw new IllegalStateException("iris-pack-not-active:" + currentPackName);
+        }
+        throw new IllegalStateException("iris-pack-reported-disabled");
+    }
+
+    private void confirmDisabledShaderpack(Class<?> irisClass) throws Exception {
+        for (int attempt = 0; attempt < APPLY_POLL_ATTEMPTS; attempt++) {
+            String storedError = storedErrorSummary(irisClass);
+            if (!storedError.isBlank()) {
+                throw new IllegalStateException("iris-stored-error:" + storedError);
+            }
+            if (!isShaderPackInUse()) {
+                return;
+            }
+            Thread.sleep(APPLY_POLL_SLEEP_MILLIS);
+        }
+        throw new IllegalStateException("iris-pack-remained-enabled:" + invokeStaticString(irisClass, "getCurrentPackName"));
     }
 
     private boolean irisAcceptsRuntimeTarget(Path runtimeTarget) {
@@ -290,8 +335,54 @@ public final class IrisShaderpackRuntime {
         }
     }
 
+    private void invokeIfPresentStatic(Class<?> type, String method) throws Exception {
+        try {
+            type.getMethod(method).invoke(null);
+        } catch (NoSuchMethodException ignored) {
+        }
+    }
+
+    private String invokeStaticString(Class<?> type, String method) throws Exception {
+        Object value = type.getMethod(method).invoke(null);
+        return value == null ? "" : value.toString();
+    }
+
+    private boolean isShaderPackInUse() throws Exception {
+        Class<?> irisApiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+        Object irisApi = irisApiClass.getMethod("getInstance").invoke(null);
+        Object value = irisApiClass.getMethod("isShaderPackInUse").invoke(irisApi);
+        return value instanceof Boolean enabled && enabled;
+    }
+
+    private String storedErrorSummary(Class<?> irisClass) throws Exception {
+        Object value = irisClass.getMethod("getStoredError").invoke(null);
+        if (!(value instanceof Optional<?> optional) || optional.isEmpty() || optional.get() == null) {
+            return "";
+        }
+        Object error = optional.get();
+        return error.getClass().getSimpleName();
+    }
+
     private boolean isCopiMineRuntimeName(String runtimeName) {
         return runtimeName != null && runtimeName.toLowerCase(Locale.ROOT).startsWith("copimine_");
+    }
+
+    private boolean runtimeNameMatches(String requested, String actual) {
+        String left = normalizeRuntimeName(requested);
+        String right = normalizeRuntimeName(actual);
+        return !left.isBlank() && left.equals(right);
+    }
+
+    private String normalizeRuntimeName(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.trim().replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        if (slash >= 0) {
+            normalized = normalized.substring(slash + 1);
+        }
+        return normalized.toLowerCase(Locale.ROOT);
     }
 
     private String yesNo(boolean value) {

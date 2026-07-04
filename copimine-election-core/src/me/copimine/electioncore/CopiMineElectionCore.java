@@ -4783,7 +4783,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return stack;
         }
         meta.setDisplayName(color("&bОфициальный AR"));
-        meta.setLore(List.of(color("&7Официальная руда CopiMine")));
+        meta.setLore(List.of());
         meta.addItemFlags(ItemFlag.values());
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(new NamespacedKey("copiminear", "type"), PersistentDataType.STRING, "certified");

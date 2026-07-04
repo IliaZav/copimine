@@ -66,9 +66,7 @@ public final class ClientPostProcessController {
         disableProcessor();
         activeEffectId = null;
         lastFailureReason = "";
-        if (!status.startsWith("shaderpack export failed")) {
-            status = "idle";
-        }
+        status = "idle";
     }
 
     public String statusLine() {

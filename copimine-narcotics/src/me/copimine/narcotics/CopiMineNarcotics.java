@@ -46,6 +46,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -199,6 +200,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     @EventHandler(ignoreCancelled = true)
     public void onCauldronLevelChange(CauldronLevelChangeEvent event) {
         cauldronService.handleCauldronLevelChange(event.getBlock(), event.getNewState().getBlockData());
+    }
+
+    @EventHandler
+    public void onChunkLoad(ChunkLoadEvent event) {
+        if (cauldronService.cachedStateCount() <= 0) {
+            return;
+        }
+        getServer().getScheduler().runTaskLater(this, cauldronService::runIntegritySweep, 1L);
     }
 
     @EventHandler(ignoreCancelled = true)

@@ -45,6 +45,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private WorldAccess netherAccess;
     private WorldAccess endAccess;
     private final Set<UUID> warnedOutside = new LinkedHashSet<>();
+    private final Map<UUID, String> blockedWorldWarnings = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -247,7 +248,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
         if (isBlockedWorld(targetWorld, true)) {
             event.setCancelled(true);
-            redirectPlayer(event.getPlayer(), accessFor(targetWorld), blockedMessage(targetWorld));
+            event.getPlayer().sendMessage(blockedMessage(targetWorld));
         }
     }
 
@@ -263,7 +264,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         };
         if (isBlockedWorld(targetWorld, portalTeleport)) {
             event.setCancelled(true);
-            redirectPlayer(event.getPlayer(), accessFor(targetWorld), blockedMessage(targetWorld));
+            event.getPlayer().sendMessage(blockedMessage(targetWorld));
             return;
         }
         if (overworldLimit.enabled()
@@ -281,11 +282,13 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if (to == null || to.getWorld() == null) {
             return;
         }
-        if (isBlockedWorld(to.getWorld(), false)) {
-            event.setCancelled(true);
+        WorldAccess blockedAccess = accessFor(to.getWorld());
+        if (blockedAccess != null && !blockedAccess.enabled()) {
             redirectPlayer(event.getPlayer(), accessFor(to.getWorld()), blockedMessage(to.getWorld()));
+            warnedOutside.remove(event.getPlayer().getUniqueId());
             return;
         }
+        blockedWorldWarnings.remove(event.getPlayer().getUniqueId());
         if (!overworldLimit.enabled() || !overworldLimit.worldNames().contains(to.getWorld().getName())) {
             warnedOutside.remove(event.getPlayer().getUniqueId());
             return;
@@ -317,14 +320,18 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onWorldChange(PlayerChangedWorldEvent event) {
         World current = event.getPlayer().getWorld();
-        if (isBlockedWorld(current, false)) {
-            redirectPlayer(event.getPlayer(), accessFor(current), blockedMessage(current));
+        WorldAccess blockedAccess = accessFor(current);
+        if (blockedAccess != null && !blockedAccess.enabled()) {
+            redirectPlayer(event.getPlayer(), blockedAccess, blockedMessage(current));
+            return;
         }
+        blockedWorldWarnings.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         warnedOutside.remove(event.getPlayer().getUniqueId());
+        blockedWorldWarnings.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -401,10 +408,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private void enforceWorldAccessAndBorders() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             World world = player.getWorld();
-            if (isBlockedWorld(world, false)) {
-                redirectPlayer(player, accessFor(world), blockedMessage(world));
+            WorldAccess blockedAccess = accessFor(world);
+            if (blockedAccess != null && !blockedAccess.enabled()) {
+                redirectPlayer(player, blockedAccess, blockedMessage(world));
                 continue;
             }
+            blockedWorldWarnings.remove(player.getUniqueId());
             if (overworldLimit.enabled()
                     && overworldLimit.worldNames().contains(world.getName())
                     && isOutsideLimit(player.getLocation(), overworldLimit)) {
@@ -546,7 +555,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if (access == null || access.enabled()) {
             return false;
         }
-        return portal || !access.allowCommandsTeleport();
+        return true;
     }
 
     private String blockedMessage(World world) {
@@ -581,7 +590,18 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private void redirectPlayer(Player player, WorldAccess access, String message) {
-        if (access == null) {
+        if (access == null || player == null) {
+            return;
+        }
+        boolean denyOnlyMode = true;
+        if (denyOnlyMode) {
+            World world = player.getWorld();
+            String worldName = world == null ? access.redirectWorld() : world.getName();
+            String previous = blockedWorldWarnings.get(player.getUniqueId());
+            if (!worldName.equalsIgnoreCase(previous)) {
+                player.sendMessage(message);
+                blockedWorldWarnings.put(player.getUniqueId(), worldName);
+            }
             return;
         }
         World target = Bukkit.getWorld(access.redirectWorld());

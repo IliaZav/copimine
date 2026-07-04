@@ -1,0 +1,13 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "copimine:gui/tab/copimine_logo.png",
+      "ascent": 42,
+      "height": 52,
+      "chars": [
+        "\uE300"
+      ]
+    }
+  ]
+}

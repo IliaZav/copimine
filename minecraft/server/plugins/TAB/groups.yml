@@ -1,0 +1,30 @@
+owner:
+  tabprefix: "&2[Владелец] &f"
+  tagprefix: "&2[Владелец] &f"
+
+admin:
+  tabprefix: "&b[Админ] &f"
+  tagprefix: "&b[Админ] &f"
+
+president:
+  tabprefix: "&a[Президент] &f"
+  tagprefix: "&a[Президент] &f"
+
+cik_chair:
+  tabprefix: "&3[Пред. ЦИК] &f"
+  tagprefix: "&3[Пред. ЦИК] &f"
+
+curator:
+  tabprefix: "&6[Куратор] &f"
+  tagprefix: "&6[Куратор] &f"
+
+default:
+  tabprefix: "&7[Игрок] &f"
+  tagprefix: "&7[Игрок] &f"
+
+_DEFAULT_:
+  tabprefix: "%luckperms-prefix%"
+  tagprefix: "%luckperms-prefix%"
+  customtabname: "%player%"
+  tabsuffix: "%luckperms-suffix%"
+  tagsuffix: "%luckperms-suffix%"

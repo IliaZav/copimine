@@ -3768,12 +3768,28 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     private void setArOwnerMeta(ItemStack it,String ownerUuid,String ownerName,String source){
         ItemMeta meta=it==null?null:it.getItemMeta(); if(meta==null)return;
+        if(now()>=0L){
+            var normalizedData=meta.getPersistentDataContainer();
+            normalizedData.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");
+            meta.setDisplayName(c("&bОфициальный AR"));
+            meta.setLore(List.of());
+            if(meta.hasCustomModelData())meta.setCustomModelData(null);
+            meta.addItemFlags(ItemFlag.values());
+            normalizedData.remove(arKey("source"));
+            normalizedData.remove(arKey("owner_uuid"));
+            normalizedData.remove(arKey("owner_name"));
+            normalizedData.remove(arKey("batch_id"));
+            normalizedData.remove(arKey("asset_id"));
+            it.setItemMeta(meta);
+            return;
+        }
         boolean normalizedCertifiedAr = true;
         if(normalizedCertifiedAr){
             var d=meta.getPersistentDataContainer();
             d.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");
             meta.setDisplayName(c("&bОфициальный AR"));
             meta.setLore(List.of());
+            meta.setDisplayName(c("&bОфициальный AR"));
             if(meta.hasCustomModelData())meta.setCustomModelData(null);
             meta.addItemFlags(ItemFlag.values());
             d.remove(arKey("source"));
@@ -3806,6 +3822,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         d.set(arKey("asset_id"),org.bukkit.persistence.PersistentDataType.STRING,"batch:"+batch);
         meta.setDisplayName(c("&bОфициальный AR"));
         meta.setLore(List.of());
+        meta.setDisplayName(c("&bОфициальный AR"));
         meta.addItemFlags(ItemFlag.values());
         d.remove(arKey("source"));
         d.remove(arKey("owner_uuid"));

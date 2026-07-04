@@ -49,7 +49,7 @@ public final class ClientBridgeProtocol {
     private static long lastAckSeq;
     private static String lastError = "";
     private static String sessionId = "";
-    private static String clientVersion = "0.1.0";
+    private static String clientVersion = CopiMineClient.CLIENT_VERSION;
     private static boolean irisShaderPackActive;
     private static boolean lastReportedIrisShaderPackActive;
     private static ClientVisualManager registeredVisualManager;
@@ -64,15 +64,19 @@ public final class ClientBridgeProtocol {
         ClientPlayNetworking.registerGlobalReceiver(BridgePayload.ID, (payload, context) -> {
             if (payload.protocol() != PROTOCOL_VERSION) {
                 lastError = "protocol-mismatch:" + payload.protocol();
+                CopiMineClientLogger.warn("Rejected bridge payload because of protocol mismatch: " + payload.protocol());
                 return;
             }
+            CopiMineClientLogger.info("Received bridge payload: type=" + payload.type() + ", seq=" + payload.seq() + ", effect=" + payload.effectId() + ", shaderpack=" + payload.shaderpack());
             switch (payload.type()) {
                 case TYPE_PING -> {
                     lastServerPingAt = System.currentTimeMillis();
                     helloAcknowledged = true;
+                    CopiMineClientLogger.info("Bridge ping acknowledged");
                 }
                 case TYPE_VISUAL_START -> context.client().execute(() -> {
                     if (!managerStatusAllowsServerVisuals(manager)) {
+                        CopiMineClientLogger.warn("Rejected visual start because server visuals are disabled");
                         sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
                         return;
                     }
@@ -87,17 +91,22 @@ public final class ClientBridgeProtocol {
                             payload.fadeOutMillis(),
                             payload.source()
                     )) {
-                        sendVisualAck(payload.seq(), payload.effectId(), "STARTED:" + manager.activeRuntimeRouteName());
+                        String route = manager.activeRuntimeRouteName();
+                        CopiMineClientLogger.info("Visual started: seq=" + payload.seq() + ", effect=" + payload.effectId() + ", route=" + route);
+                        sendVisualAck(payload.seq(), payload.effectId(), "STARTED_" + route);
                     } else {
+                        CopiMineClientLogger.warn("Visual start failed: seq=" + payload.seq() + ", effect=" + payload.effectId() + ", reason=" + manager.lastFailureReason());
                         sendVisualError(payload.seq(), payload.effectId(), manager.lastFailureReason());
                     }
                 });
                 case TYPE_VISUAL_STOP -> context.client().execute(() -> {
                     manager.stop(payload.effectId());
+                    CopiMineClientLogger.info("Visual stop received: seq=" + payload.seq() + ", effect=" + payload.effectId());
                     sendVisualAck(payload.seq(), payload.effectId(), "STOPPED");
                 });
                 case TYPE_VISUAL_CLEAR_ALL -> context.client().execute(() -> {
                     manager.clearAll("server_clear");
+                    CopiMineClientLogger.info("Visual clear-all received");
                     sendVisualAck(payload.seq(), "", "CLEARED");
                 });
                 default -> {
@@ -123,6 +132,7 @@ public final class ClientBridgeProtocol {
         ));
         helloSent = true;
         lastReportedIrisShaderPackActive = irisShaderPackActive;
+        CopiMineClientLogger.info("Bridge hello sent: session=" + sessionId + ", shaderpackRuntimeAvailable=" + shaderpackRuntimeAvailable + ", irisActive=" + irisShaderPackActive);
         return true;
     }
 
@@ -142,6 +152,7 @@ public final class ClientBridgeProtocol {
                 irisShaderPackActive
         ));
         lastReportedIrisShaderPackActive = irisShaderPackActive;
+        CopiMineClientLogger.info("Bridge capabilities update sent: irisActive=" + irisShaderPackActive + ", shaderpackRuntimeAvailable=" + shaderpackRuntimeAvailable);
     }
 
     public static void sendHeartbeat() {
@@ -175,6 +186,7 @@ public final class ClientBridgeProtocol {
         }
         lastError = reason == null ? "" : reason;
         ClientPlayNetworking.send(BridgePayload.visualError(sessionId, seq, effectId, reason));
+        CopiMineClientLogger.warn("Visual error reported to server: seq=" + seq + ", effect=" + effectId + ", reason=" + reason);
     }
 
     public static void onJoin() {
@@ -190,6 +202,7 @@ public final class ClientBridgeProtocol {
         lastError = "";
         irisShaderPackActive = false;
         lastReportedIrisShaderPackActive = false;
+        CopiMineClientLogger.info("Bridge session opened: " + sessionId);
     }
 
     public static void onDisconnect() {
@@ -205,6 +218,7 @@ public final class ClientBridgeProtocol {
         sessionId = "";
         irisShaderPackActive = false;
         lastReportedIrisShaderPackActive = false;
+        CopiMineClientLogger.info("Bridge session closed");
     }
 
     public static void tickNetwork(MinecraftClient client) {
@@ -237,7 +251,8 @@ public final class ClientBridgeProtocol {
         try {
             helloAttempts++;
             sendHello();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException error) {
+            CopiMineClientLogger.error("Bridge hello retry failed", error);
         }
     }
 

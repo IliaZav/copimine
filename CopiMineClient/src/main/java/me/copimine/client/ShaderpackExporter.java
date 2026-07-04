@@ -52,11 +52,22 @@ public final class ShaderpackExporter {
             Files.createDirectories(shaderpackDir);
             Files.createDirectories(runtimeShaderpackDir);
             for (ShaderpackRegistry.ShaderpackProfile profile : registry.profiles()) {
-                exports.put(profile.zipName().toLowerCase(Locale.ROOT), exportProfile(profile));
+                ExportResult result = exportProfile(profile);
+                exports.put(profile.zipName().toLowerCase(Locale.ROOT), result);
+                CopiMineClientLogger.info(
+                        "Shaderpack export: "
+                                + profile.id()
+                                + " -> runtime=" + profile.runtimeKind().name()
+                                + ", validZip=" + result.validZip()
+                                + ", irisCompatible=" + result.irisCompatible()
+                                + ", repaired=" + result.repaired()
+                                + ", status=" + result.status()
+                );
             }
             status = "exported=" + exports.size();
         } catch (Exception error) {
             status = "export-failed:" + error.getClass().getSimpleName();
+            CopiMineClientLogger.error("Shaderpack export failed", error);
         }
     }
 

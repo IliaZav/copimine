@@ -798,7 +798,8 @@ async def on_shutdown() -> None:
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next: Callable[..., Any]) -> Response:
-    if request.url.path.startswith("/api/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+    request_path = normalized_request_path(request)
+    if request_path.startswith("/api/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
         if not is_plugin_key_request(request):
             origin = (request.headers.get("origin") or "").strip()
             if origin and not origin_allowed(request, origin):
@@ -806,13 +807,13 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
             sec_fetch_site = (request.headers.get("sec-fetch-site") or "").strip().lower()
             if sec_fetch_site and sec_fetch_site not in {"same-origin", "same-site", "none"}:
                 return JSONResponse(status_code=403, content={"detail": "Cross-site запрос отклонён политикой безопасности"})
-            if request.url.path not in csrf_exempt_paths():
+            if request_path not in csrf_exempt_paths():
                 cookie_token = (request.cookies.get(CSRF_COOKIE_NAME) or "").strip()
                 header_token = (request.headers.get(CSRF_HEADER_NAME) or "").strip()
                 if not cookie_token or not header_token or cookie_token != header_token or not verify_csrf_token(cookie_token):
                     return JSONResponse(status_code=403, content={"detail": "CSRF-подтверждение отсутствует или недействительно"})
     response = await call_next(request)
-    if request.url.path.startswith("/api/"):
+    if request_path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -963,10 +964,23 @@ def clear_auth_cookies(response: Response) -> None:
 def csrf_exempt_paths() -> set[str]:
     return {
         "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/auth/logout",
         "/api/session/login",
+        "/api/session/logout",
         "/api/player/login",
+        "/api/player/refresh",
         "/api/player/register",
     }
+
+
+def normalized_request_path(request: Request) -> str:
+    path = str(request.url.path or "").strip()
+    if not path:
+        return "/"
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+    return path or "/"
 
 
 def origin_allowed(request: Request, origin: str) -> bool:

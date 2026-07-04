@@ -124,6 +124,10 @@ public final class CauldronBrewingService {
                 handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
                 base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis));
             }
+            if (!base.ingredients().isEmpty() && !recipeService.canStillBecomeRecipe(base.ingredients())) {
+                clearState(block, key, base.version() + 1L);
+                base = new CauldronState(List.of(), 0L, nowMillis);
+            }
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
             long nextVersion = base.version() + 1L;
@@ -136,6 +140,9 @@ public final class CauldronBrewingService {
             }
             int minimumRecipeSize = recipeService.minimumRecipeSize();
             int maximumRecipeSize = recipeService.maximumRecipeSize();
+            if (current.size() < Math.max(2, minimumRecipeSize)) {
+                return queueIngredients(block, key, current, nextVersion, nowMillis);
+            }
             boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
             boolean wrongMixtureReady = current.size() >= Math.max(2, minimumRecipeSize)
                     && (current.size() >= maximumRecipeSize || !canStillBecomeRecipe);
@@ -148,15 +155,7 @@ public final class CauldronBrewingService {
                 }
                 return true;
             }
-            List<IngredientEntry> frozen = List.copyOf(current);
-            cache.put(key, new CauldronState(frozen, nextVersion, nowMillis));
-            updateFloatingVisuals(block, key, frozen);
-            database.saveBrewingState(key, nextVersion, frozen).exceptionally(error -> {
-                plugin.getLogger().warning("Brewing state save failed for " + key + ": " + error.getMessage());
-                return null;
-            });
-            particle(block.getLocation().add(0.5D, 0.9D, 0.5D), Particle.SMOKE, 8);
-            return true;
+            return queueIngredients(block, key, current, nextVersion, nowMillis);
         }
     }
 
@@ -229,6 +228,18 @@ public final class CauldronBrewingService {
         block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), itemFactory.createOfficialItem(definition, 1));
         particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH, "zhuzevo".equals(definition.id()) ? 24 : 12);
         clearState(block, key, version);
+    }
+
+    private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis) {
+        List<IngredientEntry> frozen = List.copyOf(current);
+        cache.put(key, new CauldronState(frozen, version, nowMillis));
+        updateFloatingVisuals(block, key, frozen);
+        database.saveBrewingState(key, version, frozen).exceptionally(error -> {
+            plugin.getLogger().warning("Brewing state save failed for " + key + ": " + error.getMessage());
+            return null;
+        });
+        particle(block.getLocation().add(0.5D, 0.9D, 0.5D), Particle.SMOKE, 8);
+        return true;
     }
 
     private void clearState(Block block, BlockKey key, long version) {

@@ -16,6 +16,9 @@ commands:
   hidelive:
     description: Hide or restore the election live sidebar for yourself
     usage: /hidelive
+  presidentsay:
+    description: President broadcast command for chat/title/actionbar
+    usage: /presidentsay <chat|title|actionbar> <message>
 permissions:
   copimine.election.admin:
     description: Full CopiMine election administration
@@ -25,6 +28,9 @@ permissions:
     default: false
   copimine.election.president:
     description: President actions
+    default: false
+  copimine.election.broadcast:
+    description: President broadcast command access
     default: false
   copimine.election.debug:
     description: Election and sidebar debug access

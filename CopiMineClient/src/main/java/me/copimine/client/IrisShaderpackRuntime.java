@@ -14,6 +14,7 @@ import java.util.Properties;
 public final class IrisShaderpackRuntime {
     private static final int APPLY_POLL_ATTEMPTS = 20;
     private static final long APPLY_POLL_SLEEP_MILLIS = 25L;
+    private static volatile String lastRuntimeAvailabilityFailure = "";
     public record ApplyResult(boolean applied, String route, String reason) {
     }
 
@@ -47,12 +48,21 @@ public final class IrisShaderpackRuntime {
             iris.getMethod("getIrisConfig");
             iris.getMethod("reload");
             iris.getMethod("loadShaderpack");
+            iris.getMethod("loadShaderpackWhenPossible");
             iris.getMethod("isValidShaderpack", Path.class);
+            iris.getMethod("isValidToShowPack", Path.class);
+            iris.getMethod("getCurrentPackName");
             irisConfig.getMethod("getShaderPackName");
             irisConfig.getMethod("setShaderPackName", String.class);
+            irisConfig.getMethod("setShadersEnabled", boolean.class);
             irisApiConfig.getMethod("setShadersEnabledAndApply", boolean.class);
             return true;
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            String message = error.getClass().getSimpleName() + ":" + String.valueOf(error.getMessage());
+            if (!message.equals(lastRuntimeAvailabilityFailure)) {
+                lastRuntimeAvailabilityFailure = message;
+                CopiMineClientLogger.warn("Iris runtime API is unavailable: " + message);
+            }
             return false;
         }
     }
@@ -79,9 +89,11 @@ public final class IrisShaderpackRuntime {
             activeShaderpack = "";
             status = "recovered-previous-shaderpack";
             lastFailureReason = "";
+            CopiMineClientLogger.info("Iris runtime recovered previous shaderpack");
         } catch (Exception error) {
             status = "recovery-failed:" + error.getClass().getSimpleName();
             lastFailureReason = "iris-recovery-failed";
+            CopiMineClientLogger.error("Iris runtime recovery failed", error);
         }
     }
 
@@ -132,10 +144,12 @@ public final class IrisShaderpackRuntime {
             activeShaderpack = profile.zipName();
             lastFailureReason = "";
             status = "iris-shaderpack-active:" + profile.zipName();
+            CopiMineClientLogger.info("Iris shaderpack active: " + profile.id() + " (" + export.runtimeName() + ")");
             return new ApplyResult(true, "IRIS_SHADERPACK", status);
         } catch (Exception error) {
             lastFailureReason = "iris-switch-failed:" + error.getClass().getSimpleName();
             status = lastFailureReason;
+            CopiMineClientLogger.error("Iris shaderpack activation failed for " + profile.id(), error);
             return new ApplyResult(false, "NONE", lastFailureReason);
         }
     }
@@ -168,9 +182,11 @@ public final class IrisShaderpackRuntime {
             deleteStateFile();
             lastFailureReason = "";
             status = "restored-previous-shaderpack";
+            CopiMineClientLogger.info("Iris runtime restored previous shaderpack");
         } catch (Exception error) {
             lastFailureReason = "iris-restore-failed:" + error.getClass().getSimpleName();
             status = lastFailureReason;
+            CopiMineClientLogger.error("Iris runtime restore failed", error);
         }
     }
 
@@ -209,13 +225,16 @@ public final class IrisShaderpackRuntime {
         Object config = irisConfig();
         invokeIfPresent(config, "load");
         invokeString(config, "setShaderPackName", runtimeName == null ? "" : runtimeName);
+        invokeBooleanArg(config, "setShadersEnabled", enabled);
         invokeIfPresent(config, "save");
         Object publicConfig = irisApiConfig();
         Class<?> irisClass = Class.forName("net.irisshaders.iris.Iris");
-        Method reload = irisClass.getMethod("reload");
         invokeIfPresentStatic(irisClass, "loadShaderpack");
+        invokeIfPresentStatic(irisClass, "loadShaderpackWhenPossible");
+        Method reload = irisClass.getMethod("reload");
         reload.invoke(null);
         invokeBooleanArg(publicConfig, "setShadersEnabledAndApply", enabled);
+        invokeIfPresentStatic(irisClass, "loadShaderpackWhenPossible");
         if (enabled) {
             confirmEnabledShaderpack(irisClass, runtimeName);
         } else {
@@ -262,9 +281,11 @@ public final class IrisShaderpackRuntime {
         }
         try {
             Class<?> irisClass = Class.forName("net.irisshaders.iris.Iris");
-            Object result = irisClass.getMethod("isValidShaderpack", Path.class).invoke(null, runtimeTarget);
-            return result instanceof Boolean valid && valid;
-        } catch (Throwable ignored) {
+            boolean validShaderpack = invokeStaticBoolean(irisClass, "isValidShaderpack", runtimeTarget);
+            boolean validToShow = invokeStaticBoolean(irisClass, "isValidToShowPack", runtimeTarget);
+            return validShaderpack || validToShow;
+        } catch (Throwable error) {
+            CopiMineClientLogger.warn("Iris validation API failed for " + runtimeTarget + "; deferring validation to runtime switch: " + error.getClass().getSimpleName());
             return true;
         }
     }
@@ -302,7 +323,8 @@ public final class IrisShaderpackRuntime {
     private void deleteStateFile() {
         try {
             Files.deleteIfExists(stateFile);
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            CopiMineClientLogger.warn("Failed to delete Iris restore-state file " + stateFile + ": " + error.getClass().getSimpleName());
         }
     }
 
@@ -345,6 +367,11 @@ public final class IrisShaderpackRuntime {
     private String invokeStaticString(Class<?> type, String method) throws Exception {
         Object value = type.getMethod(method).invoke(null);
         return value == null ? "" : value.toString();
+    }
+
+    private boolean invokeStaticBoolean(Class<?> type, String method, Path value) throws Exception {
+        Object result = type.getMethod(method, Path.class).invoke(null, value);
+        return result instanceof Boolean flag && flag;
     }
 
     private boolean isShaderPackInUse() throws Exception {

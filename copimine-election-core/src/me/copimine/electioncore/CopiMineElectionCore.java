@@ -179,6 +179,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         Objects.requireNonNull(getCommand("hidelive"), "hidelive command").setExecutor(this);
+        Objects.requireNonNull(getCommand("presidentsay"), "presidentsay command").setExecutor(this);
         Bukkit.getPluginManager().registerEvents(this, this);
         try {
             repairProtectedBlockVisuals();
@@ -207,6 +208,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (command.getName().equalsIgnoreCase("presidentsay")) {
+            return handlePresidentSayCommand(sender, args);
+        }
         if (!command.getName().equalsIgnoreCase("hidelive")) {
             return false;
         }
@@ -319,11 +323,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 player.sendMessage(color("&cУчасток больше не найден."));
                 return;
             }
+            if (hasElectionAdmin(player)) {
+                openStationAccessMenu(player, protectedInfo.linkedId(), station);
+                return;
+            }
             if (isChairForStation(player, station)) {
                 openChairStationMenu(player, protectedInfo.linkedId(), 0);
                 return;
             }
-            openStationCard(player, protectedInfo.linkedId());
+            sendStationInfoToPlayer(player, station, protectedInfo.linkedId());
         } catch (Exception error) {
             player.sendMessage(color("&cНе удалось обработать участок. Подробности в логе."));
             getLogger().warning("station interact: " + safeError(error));
@@ -562,6 +570,42 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
+    private boolean handlePresidentSayCommand(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(color("&cКоманда доступна только в игре."));
+            return true;
+        }
+        if (!isPresident(player) && !hasElectionAdmin(player) && !player.hasPermission("copimine.election.broadcast")) {
+            player.sendMessage(color("&cНет доступа к президентскому обращению."));
+            return true;
+        }
+        if (args.length < 2) {
+            player.sendMessage(color("&eИспользование: &f/presidentsay <chat|title|actionbar> <текст>"));
+            return true;
+        }
+        String format = args[0].trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("CHAT", "TITLE", "ACTIONBAR").contains(format)) {
+            player.sendMessage(color("&cФормат должен быть chat, title или actionbar."));
+            return true;
+        }
+        String text = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)).trim();
+        if (text.isBlank()) {
+            player.sendMessage(color("&cНужно указать текст обращения."));
+            return true;
+        }
+        if (text.length() > BROADCAST_TEXT_LIMIT) {
+            player.sendMessage(color("&cСлишком длинное сообщение. Лимит: &f" + BROADCAST_TEXT_LIMIT));
+            return true;
+        }
+        try {
+            sendPresidentBroadcast(player, format, text);
+            player.sendMessage(color("&aОбращение отправлено."));
+        } catch (Exception error) {
+            player.sendMessage(color("&cНе удалось отправить обращение: &f" + safeError(error)));
+        }
+        return true;
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onChatPrompt(AsyncPlayerChatEvent event) {
         PromptContext prompt = prompts.remove(event.getPlayer().getUniqueId());
@@ -622,6 +666,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             openCikMenu(player, parsePage(action));
             return;
         }
+        if (action.equals("open:cik-chairs")) {
+            openCikChairManagementMenu(player, 0);
+            return;
+        }
+        if (action.startsWith("open:cik-chairs:")) {
+            openCikChairManagementMenu(player, parsePage(action));
+            return;
+        }
         if (action.equals("open:applications")) {
             openApplicationsMenu(player, "PENDING", 0);
             return;
@@ -643,6 +695,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.equals("open:live")) {
             openLiveMenu(player);
+            return;
+        }
+        if (action.startsWith("station:access:admin:")) {
+            openStationCard(player, action.substring("station:access:admin:".length()));
+            return;
+        }
+        if (action.startsWith("station:access:chair:")) {
+            openChairStationMenu(player, action.substring("station:access:chair:".length()), 0);
+            return;
+        }
+        if (action.startsWith("station:access:info:")) {
+            String stationId = action.substring("station:access:info:".length());
+            Map<String, Object> station = stationById(stationId);
+            if (station != null) {
+                sendStationInfoToPlayer(player, station, stationId);
+            }
+            player.closeInventory();
             return;
         }
         if (action.startsWith("station:assign-chair:") && action.contains(":page:")) {
@@ -1168,6 +1237,24 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.closeInventory();
             return;
         }
+        if (action.equals("mandate:show-command:chat")) {
+            player.sendMessage(color("&eКоманда для обращения: &f/presidentsay chat <текст>"));
+            player.sendMessage(color("&7Лимит: &f" + BROADCAST_TEXT_LIMIT + "&7 символов."));
+            player.closeInventory();
+            return;
+        }
+        if (action.equals("mandate:show-command:title")) {
+            player.sendMessage(color("&eКоманда для обращения: &f/presidentsay title <текст>"));
+            player.sendMessage(color("&7Лимит: &f" + BROADCAST_TEXT_LIMIT + "&7 символов."));
+            player.closeInventory();
+            return;
+        }
+        if (action.equals("mandate:show-command:actionbar")) {
+            player.sendMessage(color("&eКоманда для обращения: &f/presidentsay actionbar <текст>"));
+            player.sendMessage(color("&7Лимит: &f" + BROADCAST_TEXT_LIMIT + "&7 символов."));
+            player.closeInventory();
+            return;
+        }
         if (action.equals("mandate:broadcast:chat")) {
             startPrompt(player, new PromptContext(PromptKind.BROADCAST, "CHAT", "", false), "&eНапиши обращение президентом. Лимит: &f" + BROADCAST_TEXT_LIMIT + "&e символов.");
             player.closeInventory();
@@ -1412,6 +1499,30 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         player.openInventory(inv);
     }
 
+    private void openStationAccessMenu(Player player, String stationId, Map<String, Object> station) {
+        MenuHolder holder = new MenuHolder("station-access", stationId);
+        Inventory inv = holder.create(27, color("&eВыбор режима участка"));
+        String chairName = first(string(station.get("chair_name")), "");
+        setStatic(inv, 13, infoItem(Material.LECTERN, "&fУчасток ЦИК", List.of(
+                "&7Участок: &f" + shortId(stationId),
+                "&7Председатель: &f" + (chairName.isBlank() ? "не назначен" : chairName)
+        )));
+        setButton(holder, 11, Material.COMPASS, "&bОкно администратора", List.of("&7Назначение, разжалование и служебные действия."), "station:access:admin:" + stationId);
+        setButton(holder, 15, Material.NAME_TAG, "&aОкно председателя", List.of("&7Открыть рабочее меню участка так, как его видит председатель."), "station:access:chair:" + stationId);
+        setButton(holder, 22, Material.PAPER, "&fКраткая сводка", List.of("&7Показать общую информацию в чат без открытия GUI."), "station:access:info:" + stationId);
+        player.openInventory(inv);
+    }
+
+    private void sendStationInfoToPlayer(Player player, Map<String, Object> station, String stationId) {
+        player.sendMessage(color("&6[ЦИК] &fУчасток " + shortId(stationId)));
+        for (String line : stationLore(station, stationId)) {
+            player.sendMessage(color(line));
+        }
+        if (string(station.get("chair_uuid")).isBlank()) {
+            player.sendMessage(color("&7Председатель пока не назначен. Назначение доступно через меню выборов."));
+        }
+    }
+
     private void openIssueTargetPicker(Player player, String stationId, int page) throws Exception {
         if (!hasElectionAdmin(player)) {
             throw new IllegalStateException("Недостаточно прав для выдачи выборных предметов.");
@@ -1494,6 +1605,34 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             setButton(holder, slots[i], Material.PLAYER_HEAD, "&f" + first(playerName, "без имени"), lore, "station:view:" + stationId);
         }
         pageButtons(holder, inv, page, chairs.size(), 21, "open:cik:" + (page - 1), "open:cik:" + (page + 1), "open:root");
+        setButton(holder, 10, Material.NAME_TAG, "&eПредседатели ЦИК", List.of("&7Открыть список участков и управлять председателями."), "open:cik-chairs");
+        player.openInventory(inv);
+    }
+
+    private void openCikChairManagementMenu(Player player, int page) throws Exception {
+        List<Map<String, Object>> stations = queryList(
+                "SELECT id,world,x,y,z,chair_uuid,chair_name,active FROM polling_stations WHERE active=1 ORDER BY created_at DESC"
+        );
+        MenuHolder holder = new MenuHolder("cik-chair-management", "");
+        Inventory inv = holder.create(54, color("&bПредседатели ЦИК"));
+        setStatic(inv, 4, infoItem(Material.NAME_TAG, "&fУправление председателями", List.of(
+                "&7Назначай любого игрока председателем через карточку участка.",
+                "&7Разжалование здесь же снимает печать автоматически."
+        )));
+        int start = Math.max(0, page) * 21;
+        int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
+        for (int i = 0; i < slots.length && start + i < stations.size(); i++) {
+            Map<String, Object> station = stations.get(start + i);
+            String stationId = string(station.get("id"));
+            String chairName = first(string(station.get("chair_name")), "не назначен");
+            setButton(holder, slots[i], Material.LECTERN, "&fУчасток " + shortId(stationId), List.of(
+                    "&7Председатель: &f" + chairName,
+                    "&7Мир: &f" + string(station.get("world")),
+                    "&7Координаты: &f" + intValue(station.get("x")) + ", " + intValue(station.get("y")) + ", " + intValue(station.get("z")),
+                    "&7Нажми, чтобы открыть карточку участка."
+            ), "station:view:" + stationId);
+        }
+        pageButtons(holder, inv, page, stations.size(), 21, "open:cik-chairs:" + (page - 1), "open:cik-chairs:" + (page + 1), "open:cik");
         player.openInventory(inv);
     }
 
@@ -1631,9 +1770,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         for (Map<String, Object> law : publishedLaws()) {
             setButton(holder, replaceSlot++, Material.PAPER, "&f\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c: " + shortText(string(law.get("text")), 22), List.of("&7\u0417\u0430\u043c\u0435\u043d\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u043d\u0435 \u0447\u0430\u0449\u0435 \u0440\u0430\u0437\u0430 \u0432 3 \u0434\u043d\u044f."), "mandate:replace-law:" + string(law.get("id")));
         }
-        setButton(holder, 19, Material.PAPER, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 \u0447\u0430\u0442", List.of("&7\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0438\u0433\u0440\u043e\u043a\u0430\u043c \u0447\u0435\u0440\u0435\u0437 \u0447\u0430\u0442."), "mandate:broadcast:chat");
-        setButton(holder, 20, Material.BELL, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u043d\u0430 \u044d\u043a\u0440\u0430\u043d", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0438\u0433\u0440\u043e\u043a\u0430\u043c \u043d\u0430 \u044d\u043a\u0440\u0430\u043d\u0435."), "mandate:broadcast:title");
-        setButton(holder, 21, Material.CLOCK, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 ActionBar", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0432 action bar."), "mandate:broadcast:actionbar");
+        setButton(holder, 19, Material.PAPER, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 \u0447\u0430\u0442", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0434\u043b\u044f \u0440\u0443\u0447\u043d\u043e\u0433\u043e \u043e\u0431\u0449\u0435\u0433\u043e \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f."), "mandate:show-command:chat");
+        setButton(holder, 20, Material.BELL, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u043d\u0430 \u044d\u043a\u0440\u0430\u043d", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0434\u043b\u044f title-\u043e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u044f."), "mandate:show-command:title");
+        setButton(holder, 21, Material.CLOCK, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 ActionBar", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0434\u043b\u044f actionbar-\u043e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u044f."), "mandate:show-command:actionbar");
         setStatic(inv, 31, infoItem(Material.GOLD_INGOT, "&6\u041d\u0430\u043b\u043e\u0433\u0438 \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u044b", List.of("&7\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442 \u043f\u043e\u043b\u0443\u0447\u0430\u0435\u0442 \u0432\u044b\u0440\u0443\u0447\u043a\u0443", "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0438\u0437 AR-\u043b\u0430\u0432\u043a\u0438.")));
         setButton(holder, 40, Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0437\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443."), "mandate:payments");
         setButton(holder, 44, Material.BARRIER, "&c\u0417\u0430\u043a\u0440\u044b\u0442\u044c", List.of("&7\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e."), "close");

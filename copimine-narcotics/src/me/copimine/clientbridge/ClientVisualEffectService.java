@@ -220,6 +220,20 @@ public final class ClientVisualEffectService {
         String status = message.status().toUpperCase(Locale.ROOT);
         lastAckByPlayer.put(player.getUniqueId(), status + ":" + pending.effectId() + "#" + pending.seq());
         if (status.startsWith(ClientBridgePayloads.STATUS_STARTED)) {
+            if (!status.contains("IRIS_SHADERPACK")) {
+                String route = status.replace(ClientBridgePayloads.STATUS_STARTED, "").replaceFirst("^[:_\\-]+", "");
+                if (route.isBlank()) {
+                    route = "UNKNOWN_CLIENT_ROUTE";
+                }
+                lastErrorByPlayer.put(player.getUniqueId(), pending.effectId() + ":client-route-" + route.toLowerCase(Locale.ROOT));
+                plugin.getLogger().warning("CopiMineClient visual started without Iris shaderpack for "
+                        + player.getName()
+                        + ": effect=" + pending.effectId()
+                        + ", route=" + route
+                        + ", shaderpack=" + pending.shaderpack());
+            } else {
+                lastErrorByPlayer.remove(player.getUniqueId());
+            }
             runningCommands.put(pending.seq(), pending);
             activeSeqByPlayer.put(player.getUniqueId(), pending.seq());
             return;

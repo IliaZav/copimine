@@ -38,9 +38,9 @@ function humanError(payload, fallback) {
     const errorDetail = payload.error?.detail;
     const detail = payload.detail;
     const message = payload.message;
-    return String(errorMessage || errorDetail || detail || message || fallback || "Request failed").trim();
+    return String(errorMessage || errorDetail || detail || message || fallback || "Запрос завершился ошибкой").trim();
   }
-  return String(fallback || "Request failed").trim();
+  return String(fallback || "Запрос завершился ошибкой").trim();
 }
 
 async function requestJson(url, init = {}) {
@@ -57,7 +57,7 @@ async function requestJson(url, init = {}) {
     }
   }
   const response = await fetch(url, {
-    credentials: "same-origin",
+    credentials: "include",
     ...init,
     method,
     headers,
@@ -110,7 +110,7 @@ async function submitAuth(event) {
   const username = String($("username")?.value || "").trim();
   const password = String($("password")?.value || "");
   if (!username || !password) {
-    setError("Enter username and password.");
+    setError("Введите логин и пароль.");
     return;
   }
 
@@ -175,7 +175,7 @@ export async function initAuthPage() {
       try {
         await submitAuth(event);
       } catch (error) {
-        setError(error instanceof Error ? error.message : "Login failed");
+        setError(error instanceof Error ? error.message : "Не удалось выполнить вход");
       }
     });
   }

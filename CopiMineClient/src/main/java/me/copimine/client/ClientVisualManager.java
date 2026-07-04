@@ -375,7 +375,7 @@ public final class ClientVisualManager {
             return true;
         }
         appliedRuntimeKey = "";
-        active.remove(strongest.seq());
+        CopiMineClientLogger.warn("Visual runtime apply failed, keeping overlay fallback active: effect=" + strongest.effectId() + ", shaderpack=" + strongest.shaderpack() + ", reason=" + lastFailureReason());
         return false;
     }
 

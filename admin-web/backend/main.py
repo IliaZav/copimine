@@ -71,7 +71,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from commerce_catalog import ar_catalog_snapshot, donation_catalog_snapshot
+from backend.download_manager import artifact_file_response, artifact_metadata
+from backend.deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from backend.envfile import load_env_file_to_os, resolve_env_file
+from backend.startup_checks import run_startup_checks
 from plugin_registry import (
     PluginRegistryError,
     apply_registry_values,
@@ -119,6 +122,7 @@ OWNER_ONLY_SERVER_PROPERTY_KEYS = {
 }
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PLUGIN_REGISTRY_MANIFEST = APP_ROOT / "backend" / "plugin_registry_manifest.json"
+APP_VERSION = "2.2.0"
 
 load_env_file_to_os(resolve_env_file(APP_ROOT / ".env"))
 
@@ -367,6 +371,7 @@ class SimplePgPool:
 
 
 _PG_POOL: Optional[SimplePgPool] = None
+_STARTUP_REPORT: dict[str, Any] = {}
 
 
 class LoginIn(BaseModel):
@@ -763,7 +768,7 @@ _copimine_fastapi_routing.serialize_response = _copimine_serialize_response_safe
 
 
 
-app = FastAPI(title="CopiMine Ultimate Admin", version="2.1.0")
+app = FastAPI(title="CopiMine Ultimate Admin", version=APP_VERSION)
 if ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
@@ -776,6 +781,15 @@ if ALLOWED_ORIGINS:
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    global _STARTUP_REPORT
+    _STARTUP_REPORT = run_startup_checks()
+    if not _STARTUP_REPORT.get("ok", False):
+        failed = [
+            f"{item.get('key')}: {item.get('summary')}"
+            for item in _STARTUP_REPORT.get("checks", [])
+            if item.get("status") == "fail" and item.get("required", True)
+        ]
+        raise RuntimeError("CopiMine startup self-check failed: " + "; ".join(failed[:12]))
     if pg_ready():
         try:
             pool = pg_pool()
@@ -988,6 +1002,16 @@ def origin_allowed(request: Request, origin: str) -> bool:
         str(request.base_url).rstrip("/"),
         ADMIN_PUBLIC_BASE_URL.rstrip("/"),
     }
+    public_panel_url = str(os.getenv("PUBLIC_PANEL_URL", "")).strip()
+    backend_internal = str(os.getenv("BACKEND_INTERNAL_BASE_URL", "")).strip()
+    if public_panel_url:
+        allowed.add(public_panel_url.rstrip("/"))
+    if backend_internal:
+        allowed.add(backend_internal.rstrip("/"))
+    forwarded_host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").strip().lower()
+    if forwarded_host:
+        allowed.add(f"{forwarded_proto}://{forwarded_host}".rstrip("/"))
     allowed.update(ALLOWED_ORIGINS)
     return origin.rstrip("/") in {item.rstrip("/") for item in allowed if item}
 
@@ -5939,20 +5963,17 @@ def public_modpack_sync() -> dict[str, Any]:
             manifest = json.loads(MODPACK_MANIFEST.read_text(encoding="utf-8"))
         except Exception:
             manifest = {}
-    sha1 = ""
-    if MODPACK_SHA1_FILE.exists():
-        try:
-            sha1 = MODPACK_SHA1_FILE.read_text(encoding="utf-8", errors="replace").strip()
-        except Exception:
-            sha1 = ""
-    available = MODPACK_ZIP.exists()
+    metadata = artifact_metadata("downloads", "CopiMineMods.zip")
+    sha1 = str(metadata.get("recordedSha1") or metadata.get("sha1") or "")
+    available = bool(metadata.get("exists"))
     return {
         "available": available,
         "downloadUrl": "/downloads/CopiMineMods.zip",
         "filename": MODPACK_ZIP.name,
         "sha1": sha1,
-        "size": MODPACK_ZIP.stat().st_size if available else 0,
-        "modified": int(MODPACK_ZIP.stat().st_mtime) if available else None,
+        "sha256": str(metadata.get("sha256") or ""),
+        "size": int(metadata.get("size") or 0),
+        "modified": metadata.get("modified"),
         "manifest": manifest,
     }
 
@@ -9261,14 +9282,10 @@ def resourcepack_status_sync() -> dict[str, Any]:
     url = props.get("resource-pack", "")
     sha1 = props.get("resource-pack-sha1", "")
     required = props.get("require-resource-pack", "false")
-    local_exists = MANAGED_RESOURCEPACK_ZIP.exists()
-    local_path = str(MANAGED_RESOURCEPACK_ZIP)
-    local_sha1 = ""
-    if local_exists:
-        try:
-            local_sha1 = read_managed_resourcepack_sha1()
-        except HTTPException:
-            local_sha1 = ""
+    metadata = artifact_metadata("resourcepacks", "CopiMineResourcePack.zip")
+    local_exists = bool(metadata.get("exists"))
+    local_path = str(metadata.get("path") or MANAGED_RESOURCEPACK_ZIP)
+    local_sha1 = str(metadata.get("recordedSha1") or metadata.get("sha1") or "")
     return {
         "url": url,
         "sha1": sha1,
@@ -9277,6 +9294,8 @@ def resourcepack_status_sync() -> dict[str, Any]:
         "localExists": local_exists,
         "managedUrl": MANAGED_RESOURCEPACK_URL,
         "managedSha1": local_sha1,
+        "managedSha256": str(metadata.get("sha256") or ""),
+        "managedSize": int(metadata.get("size") or 0),
         "sha1MatchesServerProperties": bool(local_sha1) and sha1.lower() == local_sha1.lower(),
     }
 
@@ -9351,9 +9370,38 @@ async def backups_download(name: str, _: str = Depends(require_admin)) -> FileRe
 
 @app.get("/downloads/CopiMineMods.zip")
 async def modpack_download() -> FileResponse:
-    if not MODPACK_ZIP.exists() or MODPACK_ZIP.parent != THIRDPARTY_DIR:
-        raise HTTPException(status_code=404, detail="Архив модов пока не подготовлен")
-    return FileResponse(MODPACK_ZIP, filename=MODPACK_ZIP.name, media_type="application/zip")
+    try:
+        return artifact_file_response("downloads", "CopiMineMods.zip")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Архив модов пока не подготовлен") from exc
+
+
+@app.get("/downloads/{filename}")
+async def managed_download(filename: str) -> FileResponse:
+    try:
+        return artifact_file_response("downloads", Path(filename).name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Файл не входит в опубликованный набор CopiMine downloads") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Файл пока не подготовлен для скачивания") from exc
+
+
+@app.get("/resourcepacks/CopiMineResourcePack.zip")
+async def managed_resourcepack_download() -> FileResponse:
+    try:
+        return artifact_file_response("resourcepacks", "CopiMineResourcePack.zip")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Ресурс-пак пока не подготовлен") from exc
+
+
+@app.get("/resourcepacks/{filename}")
+async def managed_resourcepack_named(filename: str) -> FileResponse:
+    try:
+        return artifact_file_response("resourcepacks", Path(filename).name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Файл не входит в опубликованный набор CopiMine resourcepacks") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Ресурс-пак пока не подготовлен") from exc
 
 
 @app.delete("/api/backups/{name}")
@@ -10790,7 +10838,29 @@ async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "name": "CopiMine Ultimate Admin", "version": "2.1.0", "time": int(time.time())}
+    report = _STARTUP_REPORT or run_startup_checks()
+    return {
+        "ok": bool(report.get("ok", False)),
+        "name": "CopiMine Ultimate Admin",
+        "version": APP_VERSION,
+        "time": int(time.time()),
+        "summary": report.get("summary", {}),
+        "checks": report.get("checks", []),
+    }
+
+
+@app.get("/api/runtime")
+async def runtime(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
+    report = _STARTUP_REPORT or run_startup_checks()
+    snapshot = managed_runtime_snapshot(PROJECT_ROOT, APP_ROOT)
+    return {
+        "ok": bool(report.get("ok", False)),
+        "name": "CopiMine Ultimate Admin",
+        "version": APP_VERSION,
+        "time": int(time.time()),
+        "startup": report,
+        "runtime": snapshot,
+    }
 
 
 @app.get("/favicon.ico")

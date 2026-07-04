@@ -5,6 +5,7 @@ PROJECT_ROOT="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
 STAGE="$PROJECT_ROOT/thirdparty/_modpack_stage"
 ZIP="$PROJECT_ROOT/thirdparty/CopiMineMods.zip"
 SHA="$PROJECT_ROOT/thirdparty/CopiMineMods.sha1"
+SHA256="$PROJECT_ROOT/thirdparty/CopiMineMods.sha256"
 FRONTEND_PUBLIC_DATA_DIR="$PROJECT_ROOT/admin-web/frontend/assets/public-data"
 FRONTEND_SNAPSHOT="$FRONTEND_PUBLIC_DATA_DIR/modpack_snapshot.json"
 
@@ -36,9 +37,10 @@ done
 rm -f "$ZIP"
 (cd "$STAGE" && zip -qr "$ZIP" .)
 sha1sum "$ZIP" | awk '{print $1}' > "$SHA"
+sha256sum "$ZIP" | awk '{print $1}' > "$SHA256"
 
 mkdir -p "$FRONTEND_PUBLIC_DATA_DIR"
-python3 - <<'PY' "$PROJECT_ROOT/thirdparty/modpack_manifest.json" "$ZIP" "$SHA" "$FRONTEND_SNAPSHOT"
+python3 - <<'PY' "$PROJECT_ROOT/thirdparty/modpack_manifest.json" "$ZIP" "$SHA" "$SHA256" "$FRONTEND_SNAPSHOT"
 import json
 import os
 import pathlib
@@ -47,16 +49,19 @@ import sys
 manifest_path = pathlib.Path(sys.argv[1])
 zip_path = pathlib.Path(sys.argv[2])
 sha_path = pathlib.Path(sys.argv[3])
-snapshot_path = pathlib.Path(sys.argv[4])
+sha256_path = pathlib.Path(sys.argv[4])
+snapshot_path = pathlib.Path(sys.argv[5])
 
 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 sha1 = sha_path.read_text(encoding="utf-8").strip()
+sha256 = sha256_path.read_text(encoding="utf-8").strip()
 snapshot = {
     "available": True,
     "filename": zip_path.name,
     "downloadUrl": "/downloads/CopiMineMods.zip",
     "size": zip_path.stat().st_size,
     "sha1": sha1,
+    "sha256": sha256,
     "modified": int(zip_path.stat().st_mtime),
     "manifest": manifest,
 }
@@ -66,3 +71,4 @@ PY
 echo "Built modpack:"
 echo "  zip: $ZIP"
 echo "  sha1: $(cat "$SHA")"
+echo "  sha256: $(cat "$SHA256")"

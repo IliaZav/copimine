@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$scriptPath = Join-Path $root "admin-web\deploy\copimine-live-smoke.sh"
+$scriptPath = Join-Path $root "deploy\ubuntu\verify.sh"
 $readme = Join-Path $root "admin-web\README_RU.md"
 $guide = Join-Path (Split-Path -Parent (Split-Path -Parent $root)) "COPIMINE_TRANSFER_GUIDE.txt"
 $errors = New-Object System.Collections.Generic.List[string]
@@ -13,11 +13,10 @@ foreach ($path in @($scriptPath, $readme, $guide)) {
 $script = (Get-Content -Raw -Encoding UTF8 -LiteralPath $scriptPath) -replace "`r", ""
 foreach ($needle in @(
   "systemctl is-active --quiet copimine-admin",
-  "systemctl is-active --quiet copimine-discord-bot",
   "curl -fsS",
-  "scripts/backend_smoketest.py",
-  "psql",
-  "CopiMine live smoke OK"
+  "/api/health",
+  "/api/runtime",
+  "copimine_verify_runtime"
 )) {
   if (-not $script.Contains($needle)) { $errors.Add("Live smoke script missing: $needle") }
 }

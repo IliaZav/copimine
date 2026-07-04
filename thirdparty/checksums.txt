@@ -1,2 +1,8 @@
-SHA1  thirdparty/client-mods/CopiMineClient-0.1.0.jar  46c83fb1c2b0e076efb645c8cbae1d40fb31f589
-SHA1  thirdparty/CopiMineMods.zip  44bf5d1327d2a681a3768173964967229e0bc47b
+﻿SHA1  thirdparty/client-mods/CopiMineClient-0.1.0.jar  46c83fb1c2b0e076efb645c8cbae1d40fb31f589
+SHA1  thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar  9be2a237e27f20d2d00f0036a8be53d7d66c5df5
+SHA1  thirdparty/client-mods/fabric-api-0.116.11+1.21.1.jar  65f4e8b9dcbad6697b2fb32fa0bb937ec5efcd84
+SHA1  thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar  01cf165c232282eadd8256cad6a78e7caa67deb1
+SHA1  thirdparty/client-mods/iris-fabric-1.8.8+mc1.21.1.jar  4e0df4011503b4b36ba69877ea7247c1a47fea00
+SHA1  thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar  928a2598178c3a58b0638bab842f467d2e49251a
+SHA1  thirdparty/server-plugins/CoreProtect-CE-23.0.jar  50d90f470c26dcbe276554cda15204e14bb99bda
+SHA1  thirdparty/server-plugins/emotecraft-2.4.12-bukkit.jar  fa6abee428393a207aa7cf970d267b97ed9a3e20

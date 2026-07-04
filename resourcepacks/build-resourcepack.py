@@ -198,8 +198,11 @@ def pack_zip() -> tuple[Path, str]:
         if broken is not None:
             raise RuntimeError(f"Zip integrity check failed on {broken}")
 
-    sha1 = hashlib.sha1(zip_path.read_bytes()).hexdigest()
+    zip_bytes = zip_path.read_bytes()
+    sha1 = hashlib.sha1(zip_bytes).hexdigest()
+    sha256 = hashlib.sha256(zip_bytes).hexdigest()
     (BUILD / "CopiMineResourcePack.sha1").write_text(sha1 + "\n", encoding="utf-8")
+    (BUILD / "CopiMineResourcePack.sha256").write_text(sha256 + "\n", encoding="utf-8")
     return zip_path, sha1
 
 

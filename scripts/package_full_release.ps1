@@ -25,11 +25,15 @@ $buildModpackScript = Join-Path $ProjectRoot "scripts\thirdparty\build_modpack.p
 $resourcepackScript = Join-Path $ProjectRoot "resourcepacks\build-resourcepack.py"
 $resourcepackZip = Join-Path $ProjectRoot "resourcepacks\build\CopiMineResourcePack.zip"
 $resourcepackShaFile = Join-Path $ProjectRoot "resourcepacks\build\CopiMineResourcePack.sha1"
+$resourcepackSha256File = Join-Path $ProjectRoot "resourcepacks\build\CopiMineResourcePack.sha256"
 $modpackZip = Join-Path $ProjectRoot "thirdparty\CopiMineMods.zip"
 $modpackShaFile = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha1"
+$modpackSha256File = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha256"
 $thirdpartyManifestPath = Join-Path $ProjectRoot "thirdparty\thirdparty_manifest.json"
 $releaseManifestPath = Join-Path $ProjectRoot "deploy\release_manifest.json"
-$deployScript = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
+$deployInstall = Join-Path $ProjectRoot "deploy\ubuntu\install.sh"
+$deployUpdate = Join-Path $ProjectRoot "deploy\ubuntu\update.sh"
+$deployVerify = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
 
 function Invoke-Checked {
     param(
@@ -88,7 +92,9 @@ if (-not (Test-Path -LiteralPath $modpackZip)) {
 }
 
 $resourcepackSha1 = (Get-Content -Raw -Encoding UTF8 $resourcepackShaFile).Trim()
+$resourcepackSha256 = (Get-Content -Raw -Encoding UTF8 $resourcepackSha256File).Trim()
 $modpackSha1 = (Get-Content -Raw -Encoding UTF8 $modpackShaFile).Trim()
+$modpackSha256 = (Get-Content -Raw -Encoding UTF8 $modpackSha256File).Trim()
 $clientSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $thirdpartyClientJar).Hash.ToLowerInvariant()
 $commit = (git -C $ProjectRoot rev-parse --short HEAD).Trim()
 
@@ -109,11 +115,13 @@ $releaseManifest = [ordered]@{
     resourcePack = [ordered]@{
         path = "resourcepacks/build/CopiMineResourcePack.zip"
         sha1 = $resourcepackSha1
+        sha256 = $resourcepackSha256
         downloadUrl = "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
     }
     modpack = [ordered]@{
         path = "thirdparty/CopiMineMods.zip"
         sha1 = $modpackSha1
+        sha256 = $modpackSha256
         downloadUrl = "/downloads/CopiMineMods.zip"
     }
     clientMod = [ordered]@{
@@ -202,14 +210,20 @@ try {
     Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "[8/8] Export deploy helper"
-$deployCopy = Join-Path $ReleaseDir "copimine_full_replace.sh"
-Copy-Item -LiteralPath $deployScript -Destination $deployCopy -Force
+Write-Host "[8/8] Export deploy helpers"
+$deployInstallCopy = Join-Path $ReleaseDir "copimine_install.sh"
+$deployUpdateCopy = Join-Path $ReleaseDir "copimine_update.sh"
+$deployVerifyCopy = Join-Path $ReleaseDir "copimine_verify.sh"
+Copy-Item -LiteralPath $deployInstall -Destination $deployInstallCopy -Force
+Copy-Item -LiteralPath $deployUpdate -Destination $deployUpdateCopy -Force
+Copy-Item -LiteralPath $deployVerify -Destination $deployVerifyCopy -Force
 
 Write-Host ""
 Write-Host "RELEASE READY"
 Write-Host "Archive: $archivePath"
-Write-Host "Deploy script: $deployCopy"
+Write-Host "Deploy install: $deployInstallCopy"
+Write-Host "Deploy update: $deployUpdateCopy"
+Write-Host "Deploy verify: $deployVerifyCopy"
 Write-Host "Git commit: $commit"
 Write-Host "Resource pack SHA1: $resourcepackSha1"
 Write-Host "Modpack SHA1: $modpackSha1"

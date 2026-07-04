@@ -11,6 +11,7 @@ if (-not $ProjectRoot) {
 $stage = Join-Path $ProjectRoot "thirdparty\_modpack_stage"
 $zip = Join-Path $ProjectRoot "thirdparty\CopiMineMods.zip"
 $sha = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha1"
+$sha256 = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha256"
 $frontendPublicDataDir = Join-Path $ProjectRoot "admin-web\frontend\assets\public-data"
 $frontendSnapshot = Join-Path $frontendPublicDataDir "modpack_snapshot.json"
 
@@ -55,7 +56,9 @@ if (Test-Path -LiteralPath $zip) {
 }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
 $zipSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $zip).Hash.ToLowerInvariant()
+$zipSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
 Set-Content -LiteralPath $sha -Value $zipSha1 -Encoding UTF8
+Set-Content -LiteralPath $sha256 -Value $zipSha256 -Encoding UTF8
 
 if (-not (Test-Path -LiteralPath $frontendPublicDataDir)) {
     New-Item -ItemType Directory -Force -Path $frontendPublicDataDir | Out-Null
@@ -71,6 +74,7 @@ $snapshot = [ordered]@{
     downloadUrl = "/downloads/CopiMineMods.zip"
     size = [int64]$zipItem.Length
     sha1 = $zipSha1
+    sha256 = $zipSha256
     modified = $modifiedUnix
     manifest = $manifestData
 }
@@ -79,3 +83,4 @@ $snapshot = [ordered]@{
 Write-Host "Built modpack:"
 Write-Host "  zip: $zip"
 Write-Host "  sha1: $zipSha1"
+Write-Host "  sha256: $zipSha256"

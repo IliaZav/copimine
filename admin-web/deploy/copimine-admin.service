@@ -10,6 +10,7 @@ EnvironmentFile=/opt/copimine/admin-web/.env
 Environment=COPIMINE_ENV_FILE=/opt/copimine/admin-web/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/opt/copimine/admin-web/backend:/opt/copimine/admin-web
+ExecStartPre=/opt/copimine/admin-web/.venv/bin/python -m backend.startup_checks --strict
 ExecStart=/opt/copimine/admin-web/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8090 --proxy-headers
 Restart=always
 RestartSec=3

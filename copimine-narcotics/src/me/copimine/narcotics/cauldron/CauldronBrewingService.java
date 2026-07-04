@@ -144,9 +144,13 @@ public final class CauldronBrewingService {
                 return queueIngredients(block, key, current, nextVersion, nowMillis);
             }
             boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
-            boolean wrongMixtureReady = current.size() >= Math.max(2, minimumRecipeSize)
-                    && (current.size() >= maximumRecipeSize || !canStillBecomeRecipe);
-            if (wrongMixtureReady) {
+            if (canStillBecomeRecipe && current.size() < maximumRecipeSize) {
+                return queueIngredients(block, key, current, nextVersion, nowMillis);
+            }
+            if (current.size() < maximumRecipeSize) {
+                return queueIngredients(block, key, current, nextVersion, nowMillis);
+            }
+            if (current.size() >= Math.max(2, minimumRecipeSize)) {
                 NarcoticDefinition zhuzevo = configService.items().get("zhuzevo");
                 if (zhuzevo != null) {
                     finishBrewing(block, key, zhuzevo, nextVersion);

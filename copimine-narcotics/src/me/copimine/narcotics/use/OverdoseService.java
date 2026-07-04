@@ -69,7 +69,7 @@ public final class OverdoseService {
         overdose = overdose || newScale >= configService.overdoseThreshold();
 
         if (configService.clearNormalEffectsBeforeNewUse()) {
-            clearTransientEffects(player);
+            clearTransientEffects(player, true);
         }
 
         PlayerState updated = new PlayerState(
@@ -123,7 +123,7 @@ public final class OverdoseService {
     }
 
     public void clearActiveEffects(Player player, boolean preserveState) {
-        clearTransientEffects(player);
+        clearTransientEffects(player, true);
         if (preserveState) {
             return;
         }
@@ -143,7 +143,60 @@ public final class OverdoseService {
         }
     }
 
-    private void clearTransientEffects(Player player) {
+    public void clearPlayer(Player player) {
+        clearTransientEffects(player, true);
+        PlayerState previous = states.get(player.getUniqueId());
+        long nextVersion = previous == null ? 1L : previous.stateVersion() + 1L;
+        PlayerState cleared = new PlayerState(player.getUniqueId(), 0, 0L, 0L, 0L, "", nextVersion);
+        states.put(player.getUniqueId(), cleared);
+        database.savePlayerState(cleared);
+    }
+
+    public void runDrugTest(Player player, NarcoticDefinition definition, int durationSeconds, boolean includeVisuals) {
+        clearTransientEffects(player, false);
+        applyConfiguredEffects(player, definition.normalEffects(), durationSeconds);
+        if (includeVisuals) {
+            visualRuntime.apply(player, definition.visualEffectId(), Math.max(1, durationSeconds), false);
+        }
+        long now = System.currentTimeMillis() / 1000L;
+        PlayerState previous = states.getOrDefault(player.getUniqueId(), PlayerState.empty(player.getUniqueId()));
+        PlayerState updated = new PlayerState(
+                player.getUniqueId(),
+                previous.currentScale(),
+                now,
+                0L,
+                0L,
+                definition.id(),
+                previous.stateVersion() + 1L
+        );
+        states.put(player.getUniqueId(), updated);
+        database.savePlayerState(updated);
+    }
+
+    public void runOverdoseTest(Player player, NarcoticDefinition definition, int durationSeconds, boolean includeVisuals) {
+        clearTransientEffects(player, false);
+        List<ConfiguredEffect> effectsToApply = buildOverdoseEffects(definition);
+        int effectiveSeconds = Math.max(1, durationSeconds);
+        applyConfiguredEffects(player, effectsToApply, effectiveSeconds);
+        if (includeVisuals) {
+            visualRuntime.apply(player, resolveOverdoseVisual(definition), effectiveSeconds, true);
+        }
+        long now = System.currentTimeMillis() / 1000L;
+        PlayerState previous = states.getOrDefault(player.getUniqueId(), PlayerState.empty(player.getUniqueId()));
+        PlayerState updated = new PlayerState(
+                player.getUniqueId(),
+                0,
+                now,
+                now + effectiveSeconds,
+                0L,
+                definition.id(),
+                previous.stateVersion() + 1L
+        );
+        states.put(player.getUniqueId(), updated);
+        database.savePlayerState(updated);
+    }
+
+    private void clearTransientEffects(Player player, boolean clearVisuals) {
         Set<PotionEffectType> effects = trackedEffects.remove(player.getUniqueId());
         if (effects != null) {
             for (PotionEffectType effect : effects) {
@@ -152,7 +205,9 @@ public final class OverdoseService {
         }
         player.removePotionEffect(PotionEffectType.DARKNESS);
         player.removePotionEffect(PotionEffectType.NAUSEA);
-        visualRuntime.clear(player);
+        if (clearVisuals) {
+            visualRuntime.clear(player);
+        }
     }
 
     public void clearAllCachedState() {
@@ -163,7 +218,7 @@ public final class OverdoseService {
     }
 
     public void forceClearOverdose(Player player) {
-        clearTransientEffects(player);
+        clearTransientEffects(player, true);
         PlayerState previous = states.get(player.getUniqueId());
         long nextVersion = previous == null ? 1L : previous.stateVersion() + 1L;
         PlayerState cleared = new PlayerState(player.getUniqueId(), 0, 0L, 0L, 0L, "", nextVersion);
@@ -176,47 +231,64 @@ public final class OverdoseService {
     }
 
     private PlayerState applyOverdose(Player player, NarcoticDefinition definition, PlayerState state, long now) {
-        List<ConfiguredEffect> effectsToApply = new ArrayList<>(definition.overdoseEffects());
-        String visualId = definition.visualEffectId();
-        if ("zhuzevo".equals(definition.id())) {
-            effectsToApply.clear();
-            List<ConfiguredEffect> pool = new ArrayList<>();
-            List<String> visuals = new ArrayList<>();
-            for (NarcoticDefinition source : configService.items().values()) {
-                if ("zhuzevo".equals(source.id())) {
-                    continue;
-                }
-                pool.addAll(source.overdoseEffects());
-                visuals.add(source.visualEffectId());
-            }
-            Collections.shuffle(pool);
-            Collections.shuffle(visuals);
-            for (int index = 0; index < Math.min(4, pool.size()); index++) {
-                effectsToApply.add(pool.get(index));
-            }
-            if (!visuals.isEmpty()) {
-                visualId = visuals.get(0);
-            }
-        }
-        appendUniversalOverdoseEffects(effectsToApply);
+        List<ConfiguredEffect> effectsToApply = buildOverdoseEffects(definition);
         applyConfiguredEffects(player, effectsToApply);
         int duration = effectiveDuration(Math.max(30, maxDuration(effectsToApply)));
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 30, 0.45D, 0.55D, 0.45D, 0.01D);
-        visualRuntime.apply(player, visualId, duration, true);
+        visualRuntime.apply(player, resolveOverdoseVisual(definition), duration, true);
         return new PlayerState(state.playerUuid(), 0, state.lastConsumedAt(), now + duration, state.invertedMovementUntil(), state.lastItemId(), state.stateVersion());
     }
 
     private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects) {
+        applyConfiguredEffects(player, configuredEffects, -1);
+    }
+
+    private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects, int overrideDurationSeconds) {
         Set<PotionEffectType> tracked = trackedEffects.computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet());
         for (ConfiguredEffect configured : configuredEffects) {
             PotionEffectType type = resolveEffect(configured.type());
             if (type == null) {
                 continue;
             }
-            int ticks = Math.max(1, effectiveDuration(configured.durationSeconds())) * 20;
+            int effectSeconds = overrideDurationSeconds > 0 ? overrideDurationSeconds : effectiveDuration(configured.durationSeconds());
+            int ticks = Math.max(1, effectSeconds) * 20;
             player.addPotionEffect(new PotionEffect(type, ticks, Math.max(0, configured.amplifier()), false, false, true));
             tracked.add(type);
         }
+    }
+
+    private List<ConfiguredEffect> buildOverdoseEffects(NarcoticDefinition definition) {
+        List<ConfiguredEffect> effectsToApply = new ArrayList<>(definition.overdoseEffects());
+        if ("zhuzevo".equals(definition.id())) {
+            effectsToApply.clear();
+            List<ConfiguredEffect> pool = new ArrayList<>();
+            for (NarcoticDefinition source : configService.items().values()) {
+                if ("zhuzevo".equals(source.id())) {
+                    continue;
+                }
+                pool.addAll(source.overdoseEffects());
+            }
+            Collections.shuffle(pool);
+            for (int index = 0; index < Math.min(4, pool.size()); index++) {
+                effectsToApply.add(pool.get(index));
+            }
+        }
+        appendUniversalOverdoseEffects(effectsToApply);
+        return effectsToApply;
+    }
+
+    private String resolveOverdoseVisual(NarcoticDefinition definition) {
+        if (!"zhuzevo".equals(definition.id())) {
+            return definition.visualEffectId();
+        }
+        List<String> visuals = new ArrayList<>();
+        for (NarcoticDefinition source : configService.items().values()) {
+            if (!"zhuzevo".equals(source.id())) {
+                visuals.add(source.visualEffectId());
+            }
+        }
+        Collections.shuffle(visuals);
+        return visuals.isEmpty() ? definition.visualEffectId() : visuals.get(0);
     }
 
     private PotionEffectType resolveEffect(String raw) {

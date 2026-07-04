@@ -429,14 +429,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             return;
         }
         Block clicked=e.getClickedBlock();
+        if(clicked!=null&&isPollingStationBlock(clicked)) return;
         if(clicked!=null&&isPollingStationBlock(clicked)){
             e.setCancelled(true);
             try{
-                if(isSealedBallot(e.getItem())){
-                    depositSealedBallotAtStation(p,e.getItem(),pollingStationId(clicked));
-                }
-                sendPollingStationCitizenInfo(p,clicked);
-                openPollingStationHub(p,clicked);
+                legacyPollingStationFlow(p,clicked,e.getItem());
             }catch(Exception ex){
                 warn(p,"Не удалось открыть участок ЦИК. Подробности записаны в лог.");
                 getLogger().warning("polling station interact: "+ex);
@@ -2072,6 +2069,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         giveTemporaryApplicationBook(p,eid,candidateUuid);
     }
 
+    private void legacyPollingStationFlow(Player p,Block block,ItemStack item)throws Exception{
+        if(isSealedBallot(item)){
+            depositSealedBallotAtStation(p,item,pollingStationId(block));
+        }
+        sendPollingStationCitizenInfo(p,block);
+        openPollingStationHub(p,block);
+    }
+
     private void openPollingStationHub(Player p,Block block)throws Exception{
         if(legacyElectionRuntimeDisabled()){
             redirectLegacyElectionAction(p);
@@ -2558,7 +2563,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if("cleanse".equals(act)){
             PluginCommand narcoticsCommand=Bukkit.getPluginCommand("cmnarcotics");
             if(narcoticsCommand!=null){
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(),"cmnarcotics clearoverdose "+t.getName());
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(),"cmnarcotics clear "+t.getName());
             }
         }
         audit(admin.getName(),"ULTRA7_PLAYER_"+act.toUpperCase(Locale.ROOT),t.getName(),true);
@@ -3769,23 +3774,24 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     private void setArOwnerMeta(ItemStack it,String ownerUuid,String ownerName,String source){
         ItemMeta meta=it==null?null:it.getItemMeta(); if(meta==null)return;
-        if(now()>=0L){
+        if(it!=null){
             it.setType(Material.DIAMOND_ORE);
             var normalizedData=meta.getPersistentDataContainer();
             normalizedData.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");
             meta.setDisplayName(c("&bОфициальный AR"));
             meta.setLore(List.of());
+            meta.setDisplayName(c("&bОфициальный AR"));
             if(meta.hasCustomModelData())meta.setCustomModelData(null);
             meta.addItemFlags(ItemFlag.values());
             normalizedData.remove(arKey("source"));
             normalizedData.remove(arKey("owner_uuid"));
             normalizedData.remove(arKey("owner_name"));
-            normalizedData.remove(arKey("batch_id"));
+            normalizedData.set(arKey("batch_id"),org.bukkit.persistence.PersistentDataType.STRING,"official-ar-stack");
             normalizedData.remove(arKey("asset_id"));
             it.setItemMeta(meta);
             return;
         }
-        boolean normalizedCertifiedAr = true;
+        boolean normalizedCertifiedAr = it!=null;
         if(normalizedCertifiedAr){
             var d=meta.getPersistentDataContainer();
             d.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");

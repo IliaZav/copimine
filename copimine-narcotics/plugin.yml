@@ -12,6 +12,7 @@ commands:
   cmnarcotics:
     description: Управление системой CopiMineNarcotics
     usage: /cmnarcotics
+    aliases: [narcotics]
   cmclient:
     description: Проверка и тестирование необязательного клиента CopiMineClient
     usage: /cmclient

@@ -345,7 +345,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 case "give" -> handleGive(sender, args);
                 case "reload" -> handleReload(sender);
                 case "reset-state", "reset" -> handleResetState(sender, args);
-                case "clearoverdose" -> handleClearOverdoseV2(sender, args);
+                case "clear", "clearoverdose" -> handleClearPlayer(sender, args);
+                case "test" -> handleDrugTest(sender, args);
+                case "effects" -> handleEffectsOnlyTest(sender, args);
+                case "shader" -> handleShaderOnlyTest(sender, args);
+                case "overdose" -> handleOverdoseTest(sender, args);
+                case "stop" -> handleStopVisuals(sender, args);
                 case "texture", "texture-mode" -> handleTextureV2(sender, args);
                 case "visuals" -> handleVisualsV3(sender, args);
                 case "visual-mode" -> handleVisualMode(sender, args);
@@ -389,7 +394,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return List.of();
         }
         if (args.length == 1) {
-            return prefix(List.of("give", "reload", "reset", "clearoverdose", "texture", "visuals", "selfcheck", "info", "setweight", "setthreshold", "setwindow", "setduration"), args[0]);
+            return prefix(List.of("give", "reload", "reset", "clear", "clearoverdose", "test", "effects", "shader", "overdose", "stop", "texture", "visuals", "selfcheck", "info", "setweight", "setthreshold", "setwindow", "setduration"), args[0]);
         }
         if (args.length == 2 && "give".equalsIgnoreCase(args[0])) {
             return prefix(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
@@ -399,8 +404,20 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             values.add("all");
             return prefix(values, args[2]);
         }
-        if (args.length == 2 && ("clearoverdose".equalsIgnoreCase(args[0]) || "info".equalsIgnoreCase(args[0]))) {
+        if (args.length == 2 && ("clear".equalsIgnoreCase(args[0]) || "clearoverdose".equalsIgnoreCase(args[0]) || "info".equalsIgnoreCase(args[0]) || "overdose".equalsIgnoreCase(args[0]) || "stop".equalsIgnoreCase(args[0]))) {
             return prefix(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[1]);
+        }
+        if (args.length == 2 && ("test".equalsIgnoreCase(args[0]) || "effects".equalsIgnoreCase(args[0]))) {
+            return prefix(new ArrayList<>(configService.itemIds()), args[1]);
+        }
+        if (args.length == 2 && "shader".equalsIgnoreCase(args[0])) {
+            List<String> values = new ArrayList<>(configService.visualEffectIds());
+            values.addAll(configService.itemIds());
+            values.add("overdose");
+            return prefix(values.stream().distinct().toList(), args[1]);
+        }
+        if (args.length == 3 && ("test".equalsIgnoreCase(args[0]) || "effects".equalsIgnoreCase(args[0]) || "shader".equalsIgnoreCase(args[0]))) {
+            return prefix(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[2]);
         }
         if (args.length == 2 && ("texture".equalsIgnoreCase(args[0]) || "texture-mode".equalsIgnoreCase(args[0]))) {
             return prefix(List.of("mode", "migrate"), args[1]);
@@ -529,7 +546,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return true;
     }
 
-    private boolean handleClearOverdoseV2(CommandSender sender, String[] args) {
+    private boolean handleClearPlayer(CommandSender sender, String[] args) {
         if (!hasPermission(sender, "copimine.narcotics.clearoverdose")) {
             sender.sendMessage(message("no_permission"));
             return true;
@@ -543,9 +560,158 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(message("player_not_found"));
             return true;
         }
-        overdoseService.forceClearOverdose(target);
-        database.auditAsync(sender.getName(), "clearoverdose", "target=" + target.getName());
+        overdoseService.clearPlayer(target);
+        clientBridge.visuals().clearVisuals(target, "admin-clear");
+        visualRuntime.clear(target);
+        database.auditAsync(sender.getName(), "clear", "target=" + target.getName());
         sender.sendMessage(ChatColor.GREEN + "Состояние очищено: " + target.getName());
+        return true;
+    }
+
+    private boolean handleDrugTest(CommandSender sender, String[] args) {
+        if (!hasPermission(sender, "copimine.narcotics.admin")) {
+            sender.sendMessage(message("no_permission"));
+            return true;
+        }
+        if (args.length < 3) {
+            sendHelpV2(sender);
+            return true;
+        }
+        NarcoticDefinition definition = configService.items().get(args[1].toLowerCase(Locale.ROOT));
+        if (definition == null) {
+            sender.sendMessage(message("unknown_item"));
+            return true;
+        }
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) {
+            sender.sendMessage(message("player_not_found"));
+            return true;
+        }
+        Integer seconds = parseBoundedInt(sender, args.length >= 4 ? args[3] : String.valueOf(Math.max(15, definition.maxEffectDurationSeconds(false))), "duration", 1, 600, false);
+        if (seconds == null) {
+            return true;
+        }
+        overdoseService.runDrugTest(target, definition, seconds, true);
+        database.auditAsync(sender.getName(), "test", definition.id() + "," + target.getName() + "," + seconds);
+        sender.sendMessage(ChatColor.GREEN + "Тест наркотика запущен: " + definition.plainDisplayName() + " -> " + target.getName());
+        return true;
+    }
+
+    private boolean handleEffectsOnlyTest(CommandSender sender, String[] args) {
+        if (!hasPermission(sender, "copimine.narcotics.admin")) {
+            sender.sendMessage(message("no_permission"));
+            return true;
+        }
+        if (args.length < 3) {
+            sendHelpV2(sender);
+            return true;
+        }
+        NarcoticDefinition definition = configService.items().get(args[1].toLowerCase(Locale.ROOT));
+        if (definition == null) {
+            sender.sendMessage(message("unknown_item"));
+            return true;
+        }
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) {
+            sender.sendMessage(message("player_not_found"));
+            return true;
+        }
+        Integer seconds = parseBoundedInt(sender, args.length >= 4 ? args[3] : String.valueOf(Math.max(15, definition.maxEffectDurationSeconds(false))), "duration", 1, 600, false);
+        if (seconds == null) {
+            return true;
+        }
+        overdoseService.runDrugTest(target, definition, seconds, false);
+        database.auditAsync(sender.getName(), "effects", definition.id() + "," + target.getName() + "," + seconds);
+        sender.sendMessage(ChatColor.GREEN + "Тест эффектов запущен: " + definition.plainDisplayName() + " -> " + target.getName());
+        return true;
+    }
+
+    private boolean handleShaderOnlyTest(CommandSender sender, String[] args) {
+        if (!hasPermission(sender, "copimine.narcotics.visuals")) {
+            sender.sendMessage(message("no_permission"));
+            return true;
+        }
+        if (args.length < 3) {
+            sendHelpV2(sender);
+            return true;
+        }
+        String requestedId = args[1].toLowerCase(Locale.ROOT);
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) {
+            sender.sendMessage(message("player_not_found"));
+            return true;
+        }
+        String effectId;
+        boolean overdoseRoute = "overdose".equalsIgnoreCase(requestedId);
+        NarcoticDefinition definition = configService.items().get(requestedId);
+        if (definition != null) {
+            effectId = definition.visualEffectId();
+            overdoseRoute = overdoseRoute || "zhuzevo".equalsIgnoreCase(definition.id());
+        } else {
+            effectId = args[1].toUpperCase(Locale.ROOT);
+        }
+        if (!configService.visualEffectIds().contains(effectId)) {
+            sender.sendMessage(ChatColor.RED + "Unknown visual effect id or narcotic id.");
+            return true;
+        }
+        Integer seconds = parseBoundedInt(sender, args.length >= 4 ? args[3] : "30", "duration", 1, 600, false);
+        if (seconds == null) {
+            return true;
+        }
+        visualRuntime.apply(target, effectId, seconds, overdoseRoute);
+        database.auditAsync(sender.getName(), "shader", requestedId + "," + target.getName() + "," + effectId + "," + seconds + "," + overdoseRoute);
+        sender.sendMessage(ChatColor.GREEN + "Тест шейдера запущен: " + requestedId + " -> " + target.getName());
+        return true;
+    }
+
+    private boolean handleOverdoseTest(CommandSender sender, String[] args) {
+        if (!hasPermission(sender, "copimine.narcotics.admin")) {
+            sender.sendMessage(message("no_permission"));
+            return true;
+        }
+        if (args.length < 2) {
+            sendHelpV2(sender);
+            return true;
+        }
+        Player target = Bukkit.getPlayerExact(args[1]);
+        if (target == null) {
+            sender.sendMessage(message("player_not_found"));
+            return true;
+        }
+        Integer seconds = parseBoundedInt(sender, args.length >= 3 ? args[2] : "45", "duration", 1, 600, false);
+        if (seconds == null) {
+            return true;
+        }
+        NarcoticDefinition definition = configService.items().getOrDefault("zhuzevo", configService.items().values().stream().findFirst().orElse(null));
+        if (definition == null) {
+            sender.sendMessage(ChatColor.RED + "Нет доступных конфигов наркотиков для теста овердоза.");
+            return true;
+        }
+        overdoseService.runOverdoseTest(target, definition, seconds, true);
+        database.auditAsync(sender.getName(), "overdose", target.getName() + "," + definition.id() + "," + seconds);
+        sender.sendMessage(ChatColor.GREEN + "Тест овердоза запущен: " + target.getName());
+        return true;
+    }
+
+    private boolean handleStopVisuals(CommandSender sender, String[] args) {
+        if (!hasPermission(sender, "copimine.narcotics.visuals")) {
+            sender.sendMessage(message("no_permission"));
+            return true;
+        }
+        if (args.length < 2) {
+            sendHelpV2(sender);
+            return true;
+        }
+        Player target = Bukkit.getPlayerExact(args[1]);
+        if (target == null) {
+            sender.sendMessage(message("player_not_found"));
+            return true;
+        }
+        overdoseService.clearActiveEffects(target, true);
+        clientBridge.visuals().clearVisuals(target, "admin-stop");
+        visualRuntime.clear(target);
+        database.auditAsync(sender.getName(), "stop", "target=" + target.getName());
+        sender.sendMessage(ChatColor.GREEN + "Текущий эффект остановлен: " + target.getName());
         return true;
     }
 
@@ -716,7 +882,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     }
 
     private boolean handleClearOverdose(CommandSender sender, String[] args) {
-        return handleClearOverdoseV2(sender, args);
+        return handleClearPlayer(sender, args);
     }
 
     private boolean handleTexture(CommandSender sender, String[] args) {

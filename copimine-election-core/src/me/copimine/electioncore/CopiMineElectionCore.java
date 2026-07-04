@@ -331,6 +331,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 openChairStationMenu(player, protectedInfo.linkedId(), 0);
                 return;
             }
+            if (string(station.get("chair_uuid")).isBlank()) {
+                openStationCard(player, protectedInfo.linkedId());
+                return;
+            }
             sendStationInfoToPlayer(player, station, protectedInfo.linkedId());
         } catch (Exception error) {
             player.sendMessage(color("&cНе удалось обработать участок. Подробности в логе."));
@@ -674,6 +678,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             openCikChairManagementMenu(player, parsePage(action));
             return;
         }
+        if (action.equals("open:cik-chair-requests")) {
+            openChairRemovalRequestsMenu(player, 0);
+            return;
+        }
+        if (action.startsWith("open:cik-chair-requests:")) {
+            openChairRemovalRequestsMenu(player, parsePage(action));
+            return;
+        }
         if (action.equals("open:applications")) {
             openApplicationsMenu(player, "PENDING", 0);
             return;
@@ -780,6 +792,27 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             revokeAllSeals(player.getName());
             refreshSnapshotAndPush();
             openCikMenu(player, 0);
+            return;
+        }
+        if (action.startsWith("apply:chair:request-removal:")) {
+            String stationId = action.substring("apply:chair:request-removal:".length());
+            submitChairRemovalRequest(player, stationId);
+            refreshSnapshotAndPush();
+            openChairStationMenu(player, stationId, 0);
+            return;
+        }
+        if (action.startsWith("apply:chairreq:approve:")) {
+            long requestId = parseLong(action.substring("apply:chairreq:approve:".length()), 0L);
+            reviewChairRemovalRequest(player, requestId, true);
+            refreshSnapshotAndPush();
+            openChairRemovalRequestsMenu(player, 0);
+            return;
+        }
+        if (action.startsWith("apply:chairreq:reject:")) {
+            long requestId = parseLong(action.substring("apply:chairreq:reject:".length()), 0L);
+            reviewChairRemovalRequest(player, requestId, false);
+            refreshSnapshotAndPush();
+            openChairRemovalRequestsMenu(player, 0);
             return;
         }
         if (action.startsWith("apply:application:approve:")) {
@@ -954,6 +987,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             ), "apply:station:remove-protection:" + stationId, "station:view:" + stationId);
             return;
         }
+        if (action.startsWith("chair:request-removal:")) {
+            String stationId = action.substring("chair:request-removal:".length());
+            openConfirmationMenu(player, "&cПопросить снять с должности", List.of(
+                    "&7Будет создана заявка администратору.",
+                    "&7До решения администратора твой доступ останется активным."
+            ), "apply:chair:request-removal:" + stationId, "chair:station:" + stationId);
+            return;
+        }
         if (action.startsWith("station:cleanup-labels:")) {
             String stationId = action.substring("station:cleanup-labels:".length());
             openConfirmationMenu(player, "&6Очистить лишние надписи", List.of(
@@ -1021,6 +1062,26 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "&7Все активные печати будут отозваны.",
                     "&7Выданные печати у игроков сразу станут недействительными."
             ), "apply:cik:revoke-all", "open:cik:0");
+            return;
+        }
+        if (action.startsWith("chairreq:view:")) {
+            openChairRemovalRequestDetail(player, parseLong(action.substring("chairreq:view:".length()), 0L));
+            return;
+        }
+        if (action.startsWith("chairreq:approve:")) {
+            long requestId = parseLong(action.substring("chairreq:approve:".length()), 0L);
+            openConfirmationMenu(player, "&aОдобрить снятие председателя", List.of(
+                    "&7Председатель будет снят с участка.",
+                    "&7Активная печать участка будет сразу отозвана."
+            ), "apply:chairreq:approve:" + requestId, "chairreq:view:" + requestId);
+            return;
+        }
+        if (action.startsWith("chairreq:reject:")) {
+            long requestId = parseLong(action.substring("chairreq:reject:".length()), 0L);
+            openConfirmationMenu(player, "&cОтклонить заявку", List.of(
+                    "&7Председатель сохранит должность.",
+                    "&7Заявка будет закрыта как отклонённая."
+            ), "apply:chairreq:reject:" + requestId, "chairreq:view:" + requestId);
             return;
         }
         if (action.startsWith("cik:issue-seal:")) {
@@ -1442,6 +1503,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         MenuHolder holder = new MenuHolder("stations", "");
         Inventory inv = holder.create(54, color("&eУчастки ЦИК"));
         setButton(holder, 10, Material.EMERALD_BLOCK, "&aСоздать участок по блоку", List.of("&7Смотри на блок и создай на нём новый участок."), "stations:create");
+        setButton(holder, 12, Material.WRITABLE_BOOK, "&6Заявки на снятие", List.of("&7Очередь заявок от действующих председателей."), "open:cik-chair-requests");
+        setButton(holder, 14, Material.WAXED_COPPER_GRATE, "&cУничтожить все печати ЦИК", List.of(
+                "&7Отозвать все активные печати участков.",
+                "&7После проверки их можно выдать заново."
+        ), "cik:revoke-all");
         int start = Math.max(0, page) * 21;
         int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
         for (int i = 0; i < slots.length && start + i < stations.size(); i++) {
@@ -1633,6 +1699,76 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             ), "station:view:" + stationId);
         }
         pageButtons(holder, inv, page, stations.size(), 21, "open:cik-chairs:" + (page - 1), "open:cik-chairs:" + (page + 1), "open:cik");
+        player.openInventory(inv);
+    }
+
+    private void openChairRemovalRequestsMenu(Player player, int page) throws Exception {
+        if (!hasElectionAdmin(player)) {
+            throw new IllegalStateException("Нет доступа к заявкам председателей.");
+        }
+        List<Map<String, Object>> requests = queryList(
+                "SELECT id,station_id,chair_uuid,chair_name,status,requested_at,reviewed_at,reviewed_by FROM cik_chair_removal_requests ORDER BY requested_at DESC, id DESC"
+        );
+        MenuHolder holder = new MenuHolder("cik-chair-requests", "");
+        Inventory inv = holder.create(54, color("&6Заявки на снятие председателей"));
+        setStatic(inv, 4, infoItem(Material.WRITABLE_BOOK, "&fОчередь заявок", List.of(
+                "&7Здесь отображаются просьбы председателей снять их с должности.",
+                "&7Одобрение снимает председателя и отзывает печать."
+        )));
+        int start = Math.max(0, page) * 21;
+        int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
+        for (int i = 0; i < slots.length && start + i < requests.size(); i++) {
+            Map<String, Object> row = requests.get(start + i);
+            long requestId = longValue(row.get("id"));
+            String stationId = string(row.get("station_id"));
+            String status = first(string(row.get("status")), "PENDING");
+            List<String> lore = new ArrayList<>();
+            lore.add("&7Участок: &f" + shortId(stationId));
+            lore.add("&7Председатель: &f" + first(string(row.get("chair_name")), "неизвестно"));
+            lore.add("&7Статус: &f" + status);
+            lore.add("&7Подано: &f" + formatTs(longValue(row.get("requested_at"))));
+            if (!first(string(row.get("reviewed_by")), "").isBlank()) {
+                lore.add("&7Решение: &f" + first(string(row.get("reviewed_by")), "система"));
+            }
+            lore.add("&7Нажми, чтобы открыть карточку заявки.");
+            Material icon = "PENDING".equalsIgnoreCase(status) ? Material.CLOCK : ("APPROVED".equalsIgnoreCase(status) ? Material.LIME_WOOL : Material.RED_WOOL);
+            setButton(holder, slots[i], icon, "&fЗаявка #" + requestId, lore, "chairreq:view:" + requestId);
+        }
+        pageButtons(holder, inv, page, requests.size(), 21, "open:cik-chair-requests:" + (page - 1), "open:cik-chair-requests:" + (page + 1), "open:cik");
+        player.openInventory(inv);
+    }
+
+    private void openChairRemovalRequestDetail(Player player, long requestId) throws Exception {
+        if (!hasElectionAdmin(player)) {
+            throw new IllegalStateException("Нет доступа к заявкам председателей.");
+        }
+        Map<String, Object> request = chairRemovalRequestById(requestId);
+        if (request == null) {
+            player.sendMessage(color("&cЗаявка на снятие не найдена."));
+            openChairRemovalRequestsMenu(player, 0);
+            return;
+        }
+        String status = first(string(request.get("status")), "PENDING");
+        MenuHolder holder = new MenuHolder("cik-chair-request-detail", Long.toString(requestId));
+        Inventory inv = holder.create(45, color("&6Заявка на снятие #" + requestId));
+        setStatic(inv, 4, infoItem(Material.LECTERN, "&fДетали заявки", List.of(
+                "&7Участок: &f" + shortId(string(request.get("station_id"))),
+                "&7Председатель: &f" + first(string(request.get("chair_name")), "неизвестно"),
+                "&7Статус: &f" + status,
+                "&7Подано: &f" + formatTs(longValue(request.get("requested_at"))),
+                "&7Комментарий: &f" + first(string(request.get("request_note")), "без комментария"),
+                "&7Рассмотрел: &f" + first(string(request.get("reviewed_by")), "ещё не рассмотрено")
+        )));
+        if ("PENDING".equalsIgnoreCase(status)) {
+            setButton(holder, 20, Material.LIME_WOOL, "&aОдобрить", List.of("&7Снять председателя и отозвать печать участка."), "chairreq:approve:" + requestId);
+            setButton(holder, 24, Material.RED_WOOL, "&cОтклонить", List.of("&7Оставить председателя на должности."), "chairreq:reject:" + requestId);
+        } else {
+            setStatic(inv, 22, infoItem(Material.PAPER, "&fРешение уже принято", List.of(
+                    "&7Статус: &f" + status,
+                    "&7Время: &f" + formatTs(longValue(request.get("reviewed_at")))
+            )));
+        }
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К очереди заявок."), "open:cik-chair-requests");
         player.openInventory(inv);
     }
 
@@ -1834,15 +1970,42 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void openChairStationMenu(Player player, String stationId, int page) throws Exception {
         requireChairAccess(player, stationId);
+        Map<String, Object> station = stationById(stationId);
+        if (station == null) {
+            throw new IllegalStateException("Участок председателя больше не найден.");
+        }
         MenuHolder holder = new MenuHolder("chair-station", stationId);
         Inventory inv = holder.create(45, color("&bУчасток председателя ЦИК"));
         setButton(holder, 11, Material.BOOK, "&eЗаявки участка", List.of("&7Открыть заявки этого участка."), "chair:applications:" + stationId);
         setButton(holder, 15, Material.PAPER, "&eБюллетени участка", List.of("&7Технический статус бюллетеней без раскрытия выбора."), "chair:ballots:" + stationId);
+        setStatic(inv, 4, infoItem(Material.LECTERN, "&fИнформация по участку", List.of(
+                "&7Участок: &f" + shortId(stationId),
+                "&7Мир: &f" + string(station.get("world")),
+                "&7Координаты: &f" + intValue(station.get("x")) + ", " + intValue(station.get("y")) + ", " + intValue(station.get("z")),
+                "&7Председатель: &f" + first(string(station.get("chair_name")), player.getName()),
+                "&7Заявок выдано: &f" + longValue(station.get("applications_issued")),
+                "&7Бюллетеней выдано: &f" + longValue(station.get("ballots_issued")),
+                "&7Бюллетеней сдано: &f" + longValue(station.get("ballots_submitted")),
+                "&7Аннулировано: &f" + longValue(station.get("ballots_annulled"))
+        )));
         boolean hasSeal = hasUsableActiveSeal(player, stationId);
-        setButton(holder, 31, hasSeal ? Material.HONEYCOMB_BLOCK : Material.HONEYCOMB, hasSeal ? "&aОбновить печать ЦИК" : "&eПолучить печать ЦИК", List.of(
+        setButton(holder, 29, hasSeal ? Material.HONEYCOMB_BLOCK : Material.HONEYCOMB, hasSeal ? "&aОбновить печать ЦИК" : "&eПолучить печать ЦИК", List.of(
                 hasSeal ? "&7Перевыпустить личную печать этого участка." : "&7Выдать личную печать этого участка себе.",
                 "&7Печать выдаётся только явным действием из меню."
         ), "chair:issue-seal:" + stationId);
+        Long pendingRemovalId = pendingChairRemovalRequest(stationId);
+        if (pendingRemovalId != null) {
+            setStatic(inv, 33, infoItem(Material.CLOCK, "&eЗаявка уже отправлена", List.of(
+                    "&7Ожидает решения администратора.",
+                    "&7Номер заявки: &f#" + pendingRemovalId
+            )));
+        } else {
+            setButton(holder, 33, Material.BARRIER, "&cПопросить снять с должности", List.of(
+                    "&7Создать заявку администратору на снятие.",
+                    "&7Самостоятельно должность не снимается."
+            ), "chair:request-removal:" + stationId);
+        }
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К меню ЦИК."), "open:cik");
         setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
         player.openInventory(inv);
     }
@@ -2495,6 +2658,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "UPDATE polling_stations SET chair_uuid='',chair_name='',updated_at=? WHERE id=?", t, stationId);
             update(connection, "UPDATE cik_chairs SET active=0 WHERE station_id=?", stationId);
             update(connection, "UPDATE cik_seals SET status='REVOKED',revoked_at=?,revoked_by=? WHERE station_id=? AND status='ACTIVE'", t, actor, stationId);
+            update(connection, "UPDATE cik_chair_removal_requests SET status='CLOSED',reviewed_at=?,reviewed_by=?,review_note=? WHERE station_id=? AND status='PENDING'", t, actor, "chair-removed", stationId);
             logPluginEvent(connection, "election_core", "chair_removed", actor, stationId, "player=" + first(chairName, chairUuid));
             return null;
         });
@@ -2506,6 +2670,81 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 removeOfficialItemsFromPlayer(online, "CIK_SEAL");
             }
         } catch (IllegalArgumentException ignored) {
+        }
+    }
+
+    private Long pendingChairRemovalRequest(String stationId) {
+        try {
+            Map<String, Object> row = queryOne(
+                    "SELECT id FROM cik_chair_removal_requests WHERE station_id=? AND status='PENDING' ORDER BY requested_at DESC, id DESC LIMIT 1",
+                    stationId
+            );
+            return row == null ? null : longValue(row.get("id"));
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> chairRemovalRequestById(long requestId) throws Exception {
+        if (requestId <= 0L) {
+            return null;
+        }
+        return queryOne("SELECT * FROM cik_chair_removal_requests WHERE id=? LIMIT 1", requestId);
+    }
+
+    private void submitChairRemovalRequest(Player player, String stationId) throws Exception {
+        requireChairAccess(player, stationId);
+        Map<String, Object> station = stationById(stationId);
+        if (station == null) {
+            throw new IllegalStateException("Участок председателя больше не найден.");
+        }
+        if (pendingChairRemovalRequest(stationId) != null) {
+            throw new IllegalStateException("Заявка на снятие уже отправлена.");
+        }
+        long t = now();
+        tx(connection -> {
+            update(connection,
+                    "INSERT INTO cik_chair_removal_requests(station_id,chair_uuid,chair_name,status,requested_at,requested_by,request_note,reviewed_at,reviewed_by,review_note) VALUES(?,?,?,'PENDING',?,?,?,0,'','')",
+                    stationId,
+                    player.getUniqueId().toString(),
+                    player.getName(),
+                    t,
+                    player.getName(),
+                    "chair-self-request");
+            logPluginEvent(connection, "election_core", "chair_removal_requested", player.getName(), stationId, "player=" + player.getName());
+            return null;
+        });
+    }
+
+    private void reviewChairRemovalRequest(Player reviewer, long requestId, boolean approve) throws Exception {
+        if (reviewer == null || !hasElectionAdmin(reviewer)) {
+            throw new IllegalStateException("Нет доступа к рассмотрению заявок.");
+        }
+        if (requestId <= 0L) {
+            throw new IllegalStateException("Заявка на снятие не найдена.");
+        }
+        Map<String, Object> request = chairRemovalRequestById(requestId);
+        if (request == null) {
+            throw new IllegalStateException("Заявка на снятие не найдена.");
+        }
+        if (!"PENDING".equalsIgnoreCase(string(request.get("status")))) {
+            throw new IllegalStateException("Эта заявка уже была рассмотрена.");
+        }
+        String stationId = string(request.get("station_id"));
+        long t = now();
+        tx(connection -> {
+            update(connection,
+                    "UPDATE cik_chair_removal_requests SET status=?,reviewed_at=?,reviewed_by=?,review_note=? WHERE id=?",
+                    approve ? "APPROVED" : "REJECTED",
+                    t,
+                    reviewer.getName(),
+                    approve ? "approved" : "rejected",
+                    requestId);
+            logPluginEvent(connection, "election_core", approve ? "chair_removal_approved" : "chair_removal_rejected", reviewer.getName(), stationId, "request=" + requestId);
+            return null;
+        });
+        if (approve) {
+            removeChairFromStation(stationId, reviewer.getName());
         }
     }
 
@@ -4148,6 +4387,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "round_candidates",
                     "candidates",
                     "candidate_applications",
+                    "cik_chair_removal_requests",
                     "cik_seals",
                     "cik_chairs",
                     "polling_stations",
@@ -4500,10 +4740,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     player.sendMessage(color("&cУчасток больше не найден."));
                     return true;
                 }
-                if (isChairForStation(player, station)) {
+                if (hasElectionAdmin(player)) {
+                    openStationAccessMenu(player, linkedId, station);
+                } else if (isChairForStation(player, station)) {
                     openChairStationMenu(player, linkedId, 0);
+                } else if (string(station.get("chair_uuid")).isBlank()) {
+                    openStationCard(player, linkedId);
                 } else {
-                    player.sendMessage(color("&eУчасток ЦИК. Этап: &f" + snapshot.get().stageTitle()));
+                    sendStationInfoToPlayer(player, station, linkedId);
                 }
                 return true;
             }
@@ -4966,6 +5210,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE TABLE IF NOT EXISTS election_stages(id BIGSERIAL PRIMARY KEY,election_id TEXT NOT NULL,stage TEXT NOT NULL,round_no INTEGER NOT NULL DEFAULT 1,actor TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,notes TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS polling_stations(id TEXT PRIMARY KEY,election_id TEXT NOT NULL DEFAULT '',world TEXT NOT NULL DEFAULT '',x INTEGER NOT NULL DEFAULT 0,y INTEGER NOT NULL DEFAULT 0,z INTEGER NOT NULL DEFAULT 0,chair_uuid TEXT NOT NULL DEFAULT '',chair_name TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,text_display_uuid TEXT NOT NULL DEFAULT '',applications_issued INTEGER NOT NULL DEFAULT 0,ballots_issued INTEGER NOT NULL DEFAULT 0,ballots_submitted INTEGER NOT NULL DEFAULT 0,ballots_annulled INTEGER NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS cik_chairs(id BIGSERIAL PRIMARY KEY,station_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',assigned_at BIGINT NOT NULL DEFAULT 0,assigned_by TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1)");
+            update(connection, "CREATE TABLE IF NOT EXISTS cik_chair_removal_requests(id BIGSERIAL PRIMARY KEY,station_id TEXT NOT NULL,chair_uuid TEXT NOT NULL DEFAULT '',chair_name TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',requested_at BIGINT NOT NULL DEFAULT 0,requested_by TEXT NOT NULL DEFAULT '',request_note TEXT NOT NULL DEFAULT '',reviewed_at BIGINT NOT NULL DEFAULT 0,reviewed_by TEXT NOT NULL DEFAULT '',review_note TEXT NOT NULL DEFAULT '')");
+            update(connection, "CREATE INDEX IF NOT EXISTS idx_cik_chair_removal_requests_status ON cik_chair_removal_requests(status, requested_at DESC)");
             update(connection, "CREATE TABLE IF NOT EXISTS cik_seals(id TEXT PRIMARY KEY,station_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',election_id TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'ACTIVE',issued_at BIGINT NOT NULL DEFAULT 0,issued_by TEXT NOT NULL DEFAULT '',revoked_at BIGINT NOT NULL DEFAULT 0,revoked_by TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS candidate_applications(id TEXT PRIMARY KEY,election_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',station_id TEXT NOT NULL DEFAULT '',answers TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'ISSUED',chair_recommendation TEXT NOT NULL DEFAULT '',chair_note TEXT NOT NULL DEFAULT '',admin_status TEXT NOT NULL DEFAULT 'PENDING',admin_note TEXT NOT NULL DEFAULT '',book_signed_at BIGINT NOT NULL DEFAULT 0,submitted_at BIGINT NOT NULL DEFAULT 0,reviewed_at BIGINT NOT NULL DEFAULT 0,reviewed_by TEXT NOT NULL DEFAULT '',issued_at BIGINT NOT NULL DEFAULT 0,issued_by TEXT NOT NULL DEFAULT '',book_token TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS candidates(id TEXT PRIMARY KEY,election_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',application_id TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,last_result INTEGER NOT NULL DEFAULT 0)");
@@ -5438,6 +5684,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return Long.parseLong(String.valueOf(value));
         } catch (Exception error) {
             return 0L;
+        }
+    }
+
+    private long parseLong(String value, long fallback) {
+        try {
+            return Long.parseLong(value);
+        } catch (Exception error) {
+            return fallback;
         }
     }
 

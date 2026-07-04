@@ -3690,7 +3690,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private int legacySyncArOnline(String actor)throws Exception{int n=0; for(Player p:Bukkit.getOnlinePlayers()){legacySyncAr(p); n++;} recordEconomySnapshot(actor, n); return n;}
     private void legacySyncAr(Player p)throws Exception{int inv=countAr(p.getInventory()), end=countAr(p.getEnderChest()), total=inv+end; String uuid=p.getUniqueId().toString(), name=p.getName(); long t=now(); dbAsync("AR balance sync",()->tx(c->{exec(c,"INSERT INTO cmv7_ar_balances(uuid,name,balance,inventory_balance,ender_balance,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(uuid) DO UPDATE SET name=excluded.name,balance=excluded.balance,inventory_balance=excluded.inventory_balance,ender_balance=excluded.ender_balance,updated_at=excluded.updated_at",uuid,name,total,inv,end,t); ensureV4BankAccount(c,uuid,name); return null;})); recordPlayerActivity(p,"AR_SYNC",p.getLocation(),"balance="+total+" inv="+inv+" ender="+end,true); snapshotOnlineInventory(p,"ar_sync");}
     private int countAr(Inventory inv){int n=0; for(ItemStack it:inv.getContents())n+=countArItem(it); return n;}
-    private int countArItem(ItemStack it){ if(!arMaterial(it==null?Material.AIR:it.getType()))return 0; return isOfficialAr(it)?it.getAmount():0; }
+    private int countArItem(ItemStack it){ if(!arMaterial(it==null?Material.AIR:it.getType()))return 0; return isOfficialArItem(it)?it.getAmount():0; }
     private boolean useFreeArPlacementFlow(){ return true; }
     private boolean legacyArTransferEnabled(){ return false; }
     private boolean blockOfficialArSmelting(){ return true; }
@@ -3709,11 +3709,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         for(int i=0;i<inv.getSize();i++){
             ItemStack it=inv.getItem(i);
             if(!isOfficialArItem(it))continue;
-            String before=arString(it,"batch_id")+":"+arString(it,"owner_uuid")+":"+arString(it,"owner_name")+":"+arString(it,"source");
+            Material beforeType=it.getType();
+            String before=beforeType.name()+":"+arString(it,"batch_id")+":"+arString(it,"owner_uuid")+":"+arString(it,"owner_name")+":"+arString(it,"source");
             setArOwnerMeta(it,"","","");
             ItemMeta meta=it.getItemMeta();
             String name=meta!=null&&meta.hasDisplayName()?meta.getDisplayName():"";
-            if(!before.equals(":::")||!ChatColor.stripColor(name).equalsIgnoreCase("Официальный AR")||(meta!=null&&meta.hasLore()&&meta.getLore()!=null&&!meta.getLore().isEmpty()))changed=true;
+            if(!before.equals(Material.DIAMOND_ORE.name()+"::::")||it.getType()!=Material.DIAMOND_ORE||!ChatColor.stripColor(name).equalsIgnoreCase("Официальный AR")||(meta!=null&&meta.hasLore()&&meta.getLore()!=null&&!meta.getLore().isEmpty()))changed=true;
             inv.setItem(i,it);
         }
         return changed;
@@ -3769,6 +3770,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void setArOwnerMeta(ItemStack it,String ownerUuid,String ownerName,String source){
         ItemMeta meta=it==null?null:it.getItemMeta(); if(meta==null)return;
         if(now()>=0L){
+            it.setType(Material.DIAMOND_ORE);
             var normalizedData=meta.getPersistentDataContainer();
             normalizedData.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");
             meta.setDisplayName(c("&bОфициальный AR"));

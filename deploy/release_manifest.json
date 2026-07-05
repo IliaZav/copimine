@@ -1,18 +1,18 @@
 ﻿{
-    "generatedAtUtc":  "2026-07-05T18:00:46.2842387Z",
-    "gitCommit":  "1d26b8f",
+    "generatedAtUtc":  "2026-07-05T18:20:37.0253872Z",
+    "gitCommit":  "21d8160",
     "sourceTreeDirty":  true,
     "projectRoot":  "copimine",
     "resourcePack":  {
                          "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                         "sha1":  "4ad7cf36aacd5266a04aa937281435990eb61503",
-                         "sha256":  "a9e6bc8dd45529f3b293063604b1485f3c2f2239650e20958d87d0f346bd1554",
+                         "sha1":  "75226d7af366e598a1a2432be1ac193a910f1419",
+                         "sha256":  "85b08dd295cd3b130ba39fa4ca9ce0c373dc6cb34574f9589da09d9175fc7ef7",
                          "downloadUrl":  "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "d0ec144a3c06dd2f09fb586291751af7ea066bea",
-                    "sha256":  "10d425d36cfbca1ad98aef0a27096eedf8d186422eb9d737434d93e25931642e",
+                    "sha1":  "b9edfc13b69eb395ea46cfd6cb02131206f383d5",
+                    "sha256":  "0bdbbd452d3b76d1d45ad1cf8452a0327413fd904847e730c8e65e9c9431db3f",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {

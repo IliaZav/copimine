@@ -428,8 +428,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                     depositSealedBallotAtStation(p,e.getItem(),stationId);
                     return;
                 }
-                sendPollingStationCitizenInfo(p,clicked);
-                openPollingStationHub(p,clicked);
+                sendPollingStationCitizenInfoV2(p,clicked);
+                openPollingStationHubV2(p,clicked);
             }catch(Exception ex){
                 warn(p,"Не удалось открыть участок ЦИК. Подробности записаны в лог.");
                 getLogger().warning("polling station interact: "+ex);
@@ -2141,6 +2141,71 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         p.sendMessage(c("&7Бюллетень работает только у владельца. Чужие документы участок не принимает."));
         }
         p.sendMessage(c("&7Бюллетень работает только у владельца. Чужие документы участок не принимает."));
+        sound(p,"BLOCK_AMETHYST_BLOCK_CHIME",0.55f,1.35f);
+    }
+
+    private void openPollingStationHubV2(Player p,Block block)throws Exception{
+        if(legacyElectionRuntimeDisabled()){
+            redirectLegacyElectionAction(p);
+            return;
+        }
+        String eid=activeOrLatestElectionId();
+        String station=block==null?"station-gui":pollingStationId(block);
+        Menu m=new Menu("polling-station");
+        create(m,27,"&b&lУчасток ЦИК &8| &f"+p.getName());
+        if(eid==null){
+            btn(m,13,Material.BARRIER,"&cВыборы не идут",List.of("&8STATION_MINIMAL_GUI_V3","&7ЦИК ещё не открыл текущий цикл."),"none");
+        }else{
+            Map<String,String> st=electionSettings(eid);
+            boolean ballot=hasCitizenBallot(p,eid), voted=hasCitizenVote(p,eid), sealed=hasOwnedSealedBallot(p,eid);
+            btn(m,4,Material.LECTERN,"&b&lОфициальный участок",List.of(
+                    "&8STATION_MINIMAL_GUI_V3",
+                    "&8STATION_RIGHT_CLICK_DEPOSIT_ONLY_V5",
+                    "&7Этап: &f"+humanStage(st.getOrDefault("stage","?")),
+                    "&7Голосование: "+(onOff(st.get(COL_VOTE_OPEN))==1?"&aоткрыто":"&eзакрыто"),
+                    "&7Бюллетень: "+(ballot?"&aесть":"&cнет"),
+                    "&7Статус голоса: "+(voted?"&aучтён":(sealed?"&eзапечатан, опусти в участок":"&7не выбран"))
+            ),"none");
+            btn(m,10,Material.PLAYER_HEAD,"&aИгроки и профили",List.of("&7Открыть карточки игроков, инвентарь,","&7перемещение, timeline и приколы."),"open:players-daily");
+            btn(m,12,ballot?Material.PAPER:Material.MAP,ballot?"&aБюллетень":"&eНужен бюллетень",List.of(
+                    ballot?"&7Открой свой бюллетень и выбери кандидата.":"&7Попроси председателя ЦИК выдать бюллетень.",
+                    "&7Чужой бюллетень участок не откроет."
+            ),ballot?"open:station-ballot:"+station:"none");
+            List<String> urnLore=voted
+                    ?List.of("&7Голос уже принят и записан.")
+                    :sealed
+                    ?List.of("&7Возьми запечатанный бюллетень в руку","&7и кликни ПКМ по самому участку.")
+                    :List.of("&7Сначала выбери кандидата в бюллетене.");
+            btn(m,14,voted?Material.EMERALD_BLOCK:(sealed?Material.CAULDRON:Material.CLOCK),voted?"&aГолос принят":(sealed?"&aОпусти бюллетень в участок":"&eУрна ждёт бюллетень"),urnLore,"none");
+            btn(m,16,Material.COMPASS,"&6Что дальше",List.of("&7Короткая подсказка по текущему шагу.","&7Команды для голосования не нужны."),"open:citizen-guide");
+        }
+        btn(m,22,Material.BARRIER,"&cЗакрыть",List.of(),"close");
+        btn(m,26,Material.EMERALD,"&aОбновить",List.of(),"open:station-hub:"+station);
+        p.openInventory(m.inv);
+    }
+
+    private void sendPollingStationCitizenInfoV2(Player p,Block block)throws Exception{
+        String eid=activeOrLatestElectionId();
+        p.sendMessage(c("&6&lЦИК &8» &fИнформация об участке видна только тебе."));
+        if(eid==null){
+            p.sendMessage(c("&7Выборный цикл сейчас не открыт. Когда ЦИК начнёт процесс, здесь появятся кандидаты и бюллетени."));
+            sound(p,"BLOCK_NOTE_BLOCK_BASS",0.55f,0.8f);
+            return;
+        }
+        Map<String,String> st=electionSettings(eid);
+        boolean votingOpen=onOff(st.get(COL_VOTE_OPEN))==1;
+        boolean ballot=hasCitizenBallot(p,eid), sealed=hasOwnedSealedBallot(p,eid), voted=hasCitizenVote(p,eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        p.sendMessage(c("&eЭтап: &f"+humanStage(st.getOrDefault("stage","?"))+" &8| &eКандидатов: &f"+candidates+" &8| &eПриём бюллетеней: "+(votingOpen?"&aоткрыт":"&eзакрыт")));
+        if(voted){
+            p.sendMessage(c("&aТвой бюллетень уже принят. Новых действий на участке не требуется."));
+        }else if(sealed){
+            p.sendMessage(c("&aУ тебя есть запечатанный бюллетень. Возьми его в руку и кликни по участку, чтобы опустить в урну."));
+        }else if(ballot){
+            p.sendMessage(c("&fОткрой бюллетень в руке, прочитай заявки кандидатов, выбери одного и вернись к участку."));
+        }else{
+            p.sendMessage(c("&7Бюллетень работает только у владельца. Чужие документы участок не принимает."));
+        }
         sound(p,"BLOCK_AMETHYST_BLOCK_CHIME",0.55f,1.35f);
     }
 

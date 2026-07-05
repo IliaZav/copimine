@@ -1,30 +1,36 @@
 owner:
-  tabprefix: "&2[Владелец] &f"
+  tabprefix: ""
   tagprefix: "&2[Владелец] &f"
+  customtabname: "%player% &7Ping: &f%ping%"
 
 admin:
-  tabprefix: "&b[Админ] &f"
+  tabprefix: ""
   tagprefix: "&b[Админ] &f"
+  customtabname: "%player% &7Ping: &f%ping%"
 
 president:
-  tabprefix: "&a[Президент] &f"
+  tabprefix: ""
   tagprefix: "&a[Президент] &f"
+  customtabname: "%player% &7Ping: &f%ping%"
 
 cik_chair:
-  tabprefix: "&3[Пред. ЦИК] &f"
+  tabprefix: ""
   tagprefix: "&3[Пред. ЦИК] &f"
+  customtabname: "%player% &7Ping: &f%ping%"
 
 curator:
-  tabprefix: "&6[Куратор] &f"
+  tabprefix: ""
   tagprefix: "&6[Куратор] &f"
+  customtabname: "%player% &7Ping: &f%ping%"
 
 default:
-  tabprefix: "&7[Игрок] &f"
+  tabprefix: ""
   tagprefix: "&7[Игрок] &f"
+  customtabname: "%player% &7Ping: &f%ping%"
 
 _DEFAULT_:
-  tabprefix: "%luckperms-prefix%"
+  tabprefix: ""
   tagprefix: "%luckperms-prefix%"
-  customtabname: "%player%"
-  tabsuffix: "%luckperms-suffix%"
+  customtabname: "%player% &7Ping: &f%ping%"
+  tabsuffix: ""
   tagsuffix: "%luckperms-suffix%"

@@ -5,16 +5,16 @@ header-footer:
       header:
       - ""
       - "&f\uE300"
-      - "&8┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
-      - "&fПрезидент: &a%copimine_president%"
-      - "&fОнлайн: &a%online% &8| &fАдминистраторов: &b%staffonline%"
-      - "&8┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
-      - "&fИгроки"
+      - "&8────────────────────────"
+      - "&fПрезидент: %copimine_president%"
+      - "&fОнлайн: &a%online% &fигроков &8| &fАдминов: &b%staffonline%"
+      - "&8────────────────────────"
       - ""
       footer:
       - ""
-      - "&8┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
+      - "&8────────────────────────"
       - "&fTPS: &a%tps% &8| &fMSPT: &e%mspt% &8| &fPing: &a%ping% ms"
+      - "&8────────────────────────"
       - ""
 
 tablist-name-formatting:
@@ -33,7 +33,7 @@ scoreboard-teams:
 playerlist-objective:
   enabled: true
   value: "%ping%"
-  fancy-value: "&a%ping% ms"
+  fancy-value: "&a%ping%"
   title: "&fПинг"
   render-type: INTEGER
 
@@ -61,7 +61,10 @@ layout:
 ping-spoof:
   enabled: false
 
+permission-refresh-interval: 3000
+
 placeholders:
+  default-refresh-interval: 2000
   date-format: "dd.MM.yyyy"
   time-format: "HH:mm:ss"
   time-offset: 0

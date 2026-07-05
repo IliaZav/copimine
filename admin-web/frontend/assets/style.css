@@ -18,3 +18,9 @@
 @import url("./css/legacy.css");
 @import url("./css/site-redesign.css");
 @import url("./css/responsive.css");
+
+.anticheat-signal {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+}

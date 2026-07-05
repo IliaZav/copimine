@@ -16,6 +16,9 @@ commands:
     description: CopiMine artifacts autocashier and admin tools
     usage: /cmartifacts
     aliases: [cartifacts, artifactshop]
+  setprice:
+    description: Update artifact or donation item price in game
+    usage: /setprice <item_id> <price> or /setprice <item_id> <ar|donation> <price>
 permissions:
   copimine.artifacts.admin:
     description: Manage artifact shops and configuration
@@ -25,6 +28,7 @@ permissions:
       copimine.artifacts.shop.remove: true
       copimine.artifacts.shop.list: true
       copimine.artifacts.reload: true
+      copimine.artifacts.price.set: true
   copimine.artifacts.shop.create:
     description: Create artifact shop blocks
     default: op
@@ -36,6 +40,9 @@ permissions:
     default: op
   copimine.artifacts.reload:
     description: Reload artifact catalog and config
+    default: op
+  copimine.artifacts.price.set:
+    description: Change artifact and donation item prices
     default: op
   copimine.artifacts.use:
     description: Use artifact shops

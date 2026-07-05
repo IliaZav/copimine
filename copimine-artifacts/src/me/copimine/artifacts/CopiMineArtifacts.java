@@ -245,6 +245,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var2.setTabCompleter(this);
             }
 
+            PluginCommand setPriceCommand = this.getCommand("setprice");
+            if (setPriceCommand != null) {
+               setPriceCommand.setExecutor(this);
+               setPriceCommand.setTabCompleter(this);
+            }
+
             Bukkit.getPluginManager().registerEvents(this, this);
             this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
             this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
@@ -1498,6 +1504,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    public boolean onCommand(CommandSender var1, Command var2, String var3, String[] var4) {
+      if ("setprice".equalsIgnoreCase(var2.getName())) {
+         return this.handleSetPriceCommand(var1, var4);
+      }
+
       if (var1 instanceof Player var5) {
          if (var4.length == 0) {
             if (this.isArtifactsAdmin(var5)) {
@@ -1561,6 +1571,61 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.sendMessage("Players only.");
          return true;
       }
+   }
+
+   private boolean handleSetPriceCommand(CommandSender sender, String[] args) {
+      if (!(sender instanceof Player player)) {
+         sender.sendMessage("Players only.");
+         return true;
+      }
+
+      if (!this.hasArtifactPermission(player, "copimine.artifacts.price.set")) {
+         this.noPermission(player);
+         return true;
+      }
+
+      if (args.length != 2 && args.length != 3) {
+         player.sendMessage(this.color("&eИспользование: &f/setprice <item_id> <price>"));
+         player.sendMessage(this.color("&eИли: &f/setprice <item_id> <ar|donation> <price>"));
+         return true;
+      }
+
+      String itemId = args[0].trim().toLowerCase(Locale.ROOT);
+      String requestedKind = args.length == 3 ? args[1].trim().toLowerCase(Locale.ROOT) : "";
+      String priceText = args.length == 3 ? args[2].trim() : args[1].trim();
+      Long price = this.tryParseNonNegativeLong(priceText);
+      if (price == null) {
+         player.sendMessage(this.color("&cЦена должна быть целым числом 0 или больше."));
+         return true;
+      }
+
+      String resolvedKind = this.resolvePriceCatalogKind(itemId, requestedKind);
+      if (resolvedKind == null) {
+         if ("ar".equals(requestedKind) || "donation".equals(requestedKind)) {
+            player.sendMessage(this.color("&cТовар &f" + itemId + " &cне найден в разделе &f" + requestedKind + "&c."));
+         } else {
+            player.sendMessage(this.color("&cТовар &f" + itemId + " &cне найден в каталоге."));
+         }
+
+         return true;
+      }
+
+      try {
+         this.updateItemPriceInConfig(itemId, resolvedKind, price);
+         this.loadCatalogFromConfig();
+         this.syncCatalogToPostgres();
+         this.audit(player.getName(), "set_price", itemId, "kind=" + resolvedKind + " price=" + price);
+         player.sendMessage(
+            this.color(
+               "&aЦена обновлена: &f" + itemId + " &7(" + resolvedKind + ") &a-> &f" + price + ("donation".equals(resolvedKind) ? " Donation" : " AR")
+            )
+         );
+      } catch (Exception error) {
+         this.getLogger().log(Level.WARNING, "Artifact setprice failed for " + itemId, error);
+         player.sendMessage(this.color("&cНе удалось обновить цену. Подробности записаны в лог. Код: ARTIFACT_SET_PRICE_FAILED"));
+      }
+
+      return true;
    }
 
    private boolean handleShopCommand(Player var1, String[] var2) {
@@ -2139,6 +2204,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    public List<String> onTabComplete(CommandSender var1, Command var2, String var3, String[] var4) {
+      if ("setprice".equalsIgnoreCase(var2.getName())) {
+         if (var4.length == 1) {
+            return this.prefix(new ArrayList<>(this.catalogById.keySet()), var4[0]);
+         }
+
+         if (var4.length == 2) {
+            return this.prefix(List.of("ar", "donation"), var4[1]);
+         }
+
+         if (var4.length == 3 && ("ar".equalsIgnoreCase(var4[1]) || "donation".equalsIgnoreCase(var4[1]))) {
+            return List.of("<price>");
+         }
+
+         return Collections.emptyList();
+      }
+
       if (var4.length == 1) {
          return this.prefix(List.of("admin", "claim", "repair", "reload", "shop"), var4[0]);
       } else {
@@ -9232,6 +9313,91 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private List<String> prefix(List<String> var1, String var2) {
       String var3 = var2 == null ? "" : var2.toLowerCase(Locale.ROOT);
       return var1.stream().filter(var1x -> var1x.startsWith(var3)).toList();
+   }
+
+   private Long tryParseNonNegativeLong(String value) {
+      try {
+         long parsed = Long.parseLong(value);
+         return parsed < 0L ? null : parsed;
+      } catch (NumberFormatException error) {
+         return null;
+      }
+   }
+
+   private String resolvePriceCatalogKind(String itemId, String requestedKind) {
+      boolean inDonationCatalog = this.donationCatalogById.containsKey(itemId);
+      boolean inArCatalog = this.catalogById.containsKey(itemId) && !inDonationCatalog;
+      if ("donation".equals(requestedKind)) {
+         return inDonationCatalog ? "donation" : null;
+      }
+
+      if ("ar".equals(requestedKind)) {
+         return inArCatalog ? "ar" : null;
+      }
+
+      if (!requestedKind.isBlank()) {
+         return null;
+      }
+
+      if (inDonationCatalog) {
+         return "donation";
+      }
+
+      return inArCatalog ? "ar" : null;
+   }
+
+   private void updateItemPriceInConfig(String itemId, String kind, long price) throws IOException {
+      File itemsFile = new File(this.getDataFolder(), "items.yml");
+      YamlConfiguration config = YamlConfiguration.loadConfiguration(itemsFile);
+      boolean updated = false;
+
+      if ("ar".equals(kind)) {
+         List<Map<?, ?>> items = config.getMapList("items");
+         ArrayList<Map<String, Object>> updatedItems = new ArrayList<>();
+
+         for (Map<?, ?> row : items) {
+            LinkedHashMap<String, Object> normalizedRow = new LinkedHashMap<>();
+
+            for (Entry<?, ?> entry : row.entrySet()) {
+               normalizedRow.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+
+            if (itemId.equalsIgnoreCase(this.str(row.get("id")))) {
+               normalizedRow.put("price_ar", price);
+               updated = true;
+            }
+
+            updatedItems.add(normalizedRow);
+         }
+
+         config.set("items", updatedItems);
+      } else if ("donation".equals(kind)) {
+         List<Map<?, ?>> items = config.getMapList("donation-catalog.items");
+         ArrayList<Map<String, Object>> updatedItems = new ArrayList<>();
+
+         for (Map<?, ?> row : items) {
+            LinkedHashMap<String, Object> normalizedRow = new LinkedHashMap<>();
+
+            for (Entry<?, ?> entry : row.entrySet()) {
+               normalizedRow.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+
+            if (itemId.equalsIgnoreCase(this.str(row.get("item-id")))) {
+               normalizedRow.put("price-donation", price);
+               updated = true;
+            }
+
+            updatedItems.add(normalizedRow);
+         }
+
+         config.set("donation-catalog.items", updatedItems);
+      }
+
+      if (!updated) {
+         throw new IOException("Item " + itemId + " was not found in " + kind + " catalog.");
+      }
+
+      config.save(itemsFile);
    }
 
    private final class ArtifactBridgeAdapter {

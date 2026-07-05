@@ -1912,6 +1912,14 @@ function showGuestPages() {
     window.location.href = "index.html";
   }
 
+function syncTopbarActions() {
+    const guestButton = $("guestPagesBtn");
+    if (!guestButton) return;
+    const playerMode = isPlayerRole();
+    guestButton.hidden = playerMode;
+    guestButton.textContent = playerMode ? "" : "Публичный сайт";
+  }
+
 async function showCabinetFromPublic() {
     if (!state.role && !state.cookieAuth) {
       window.location.href = authLandingHref("signin");
@@ -2119,7 +2127,7 @@ async function bootAuthed(options = {}) {
     const username = isPlayerRole() ? (state.user.username || "player") : (state.user.username || "admin");
     $("userBadge").textContent = isPlayerRole()
       ? `${username} · игрок`
-      : `${username}${isJuniorAdminRole() ? " · младший админ" : (state.owner ? " · владелец" : "")}`;
+      : `${username}${isJuniorAdminRole() ? " · младший админ" : (state.owner ? " · владелец" : " · админ")}`;
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
     if (isCabinetPage()) {
@@ -2130,6 +2138,7 @@ async function bootAuthed(options = {}) {
     return;
   }
   syncWorkspaceMode();
+  syncTopbarActions();
   renderPublicAuthState();
   renderNav();
   setTab(state.tab);
@@ -4183,9 +4192,7 @@ function wire() {
     if (!confirm("Выйти из кабинета CopiMine?")) return;
     logout(true);
   });
-  if ($("guestPagesBtn")) {
-    $("guestPagesBtn").textContent = "Сайт";
-  }
+  syncTopbarActions();
   $("guestPagesBtn")?.addEventListener("click", showGuestPages);
   $("refreshBtn")?.addEventListener("click", () => loadCurrent());
   if ($("mobileNavToggle")) {

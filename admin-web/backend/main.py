@@ -929,7 +929,7 @@ def set_csrf_cookie(response: Response, token: Optional[str] = None, max_age: Op
     response.set_cookie(
         CSRF_COOKIE_NAME,
         value,
-        max_age=SESSION_TTL_SECONDS,
+        max_age=max_age,
         httponly=False,
         secure=AUTH_COOKIE_SECURE,
         samesite="lax",
@@ -1003,6 +1003,10 @@ def normalized_request_path(request: Request) -> str:
     return path or "/"
 
 
+def _first_forwarded_value(raw_value: str) -> str:
+    return str(raw_value or "").split(",", 1)[0].strip()
+
+
 def origin_allowed(request: Request, origin: str) -> bool:
     allowed = {
         str(request.base_url).rstrip("/"),
@@ -1014,10 +1018,15 @@ def origin_allowed(request: Request, origin: str) -> bool:
         allowed.add(public_panel_url.rstrip("/"))
     if backend_internal:
         allowed.add(backend_internal.rstrip("/"))
-    forwarded_host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
-    forwarded_proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").strip().lower()
+    forwarded_host = _first_forwarded_value(request.headers.get("x-forwarded-host") or request.headers.get("host") or "")
+    forwarded_proto = _first_forwarded_value(request.headers.get("x-forwarded-proto") or request.url.scheme or "http").lower()
     if forwarded_host:
         allowed.add(f"{forwarded_proto}://{forwarded_host}".rstrip("/"))
+        allowed.add(f"http://{forwarded_host}".rstrip("/"))
+        allowed.add(f"https://{forwarded_host}".rstrip("/"))
+    forwarded_origin = _first_forwarded_value(request.headers.get("x-forwarded-origin") or "")
+    if forwarded_origin:
+        allowed.add(forwarded_origin.rstrip("/"))
     allowed.update(ALLOWED_ORIGINS)
     return origin.rstrip("/") in {item.rstrip("/") for item in allowed if item}
 

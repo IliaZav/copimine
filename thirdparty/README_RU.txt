@@ -1,22 +1,22 @@
-CopiMine: клиентский набор для первого входа
+CopiMine client pack for first launch
 
-Этот архив рассчитан на Minecraft 1.21.1 с Fabric Loader.
+This archive is prepared for Minecraft 1.21.1 with Fabric Loader.
 
-Что уже лежит внутри:
-- CopiMineClient-0.1.0.jar — клиентский мод CopiMine, визуалы и игровые интеграции
-- Emotecraft fabric 2.4.12 — анимации и эмоции
-- Fabric API 0.116.11+1.21.1 — обязательная библиотека для Fabric-модов
-- Simple Voice Chat 2.6.16 — голосовой чат
-- Iris 1.8.8 — клиентская поддержка шейдеров
-- Sodium 0.6.13 — оптимизация производительности
+Included:
+- CopiMineClient-0.1.0.jar - CopiMine client mod, visuals and in-game integrations
+- Emotecraft fabric 2.4.12 - animations and emotes
+- Fabric API 0.116.11+1.21.1 - required Fabric library
+- Simple Voice Chat 2.6.16 - voice chat
+- Iris 1.8.8 - client shader support
+- Sodium 0.6.13 - performance optimization
 
-Как установить:
-1. Установите Fabric Loader для Minecraft 1.21.1.
-2. Откройте папку `.minecraft/mods`.
-3. Скопируйте туда все jar из папки `mods` этого архива.
-4. Если у вас уже стоят старые версии этих модов, замените их файлами из архива.
+Install steps:
+1. Install Fabric Loader for Minecraft 1.21.1.
+2. Open `.minecraft/mods`.
+3. Copy all jar files from the `mods` folder in this archive.
+4. If you already have older versions of these mods, replace them with the files from this archive.
 
-Важно:
-- CoreProtect и Emotecraft Bukkit сюда не входят.
-- Iris и Sodium уже добавлены в комплект, но не обязательны для входа на сервер.
-- CopiMineClient можно использовать вместе с Iris, Sodium, Emotecraft и Voice Chat без отдельных ручных скачиваний.
+Notes:
+- CoreProtect and Emotecraft Bukkit are not part of the client archive.
+- Iris and Sodium are included, but they are not required to join the server.
+- CopiMineClient can be used together with Iris, Sodium, Emotecraft and Voice Chat without separate manual downloads.

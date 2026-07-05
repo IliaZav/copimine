@@ -15,6 +15,15 @@ $sha256 = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha256"
 $frontendPublicDataDir = Join-Path $ProjectRoot "admin-web\frontend\assets\public-data"
 $frontendSnapshot = Join-Path $frontendPublicDataDir "modpack_snapshot.json"
 
+function Write-Utf8NoBomJson {
+    param(
+        [Parameter(Mandatory = $true)][string]$LiteralPath,
+        [Parameter(Mandatory = $true)][string]$Content
+    )
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($LiteralPath, $Content + [Environment]::NewLine, $utf8NoBom)
+}
+
 if (Test-Path -LiteralPath $stage) {
     Remove-Item -LiteralPath $stage -Recurse -Force
 }
@@ -78,7 +87,7 @@ $snapshot = [ordered]@{
     modified = $modifiedUnix
     manifest = $manifestData
 }
-($snapshot | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $frontendSnapshot -Encoding UTF8
+Write-Utf8NoBomJson -LiteralPath $frontendSnapshot -Content ($snapshot | ConvertTo-Json -Depth 12)
 
 Write-Host "Built modpack:"
 Write-Host "  zip: $zip"

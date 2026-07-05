@@ -10,7 +10,7 @@
       "component": "CopiMineClient",
       "version": "0.1.0",
       "license": "Proprietary",
-      "feature": "Клиентский мод CopiMine, визуалы и связка с сервером",
+      "feature": "\u041a\u043b\u0438\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043c\u043e\u0434 CopiMine, \u0432\u0438\u0437\u0443\u0430\u043b\u044b \u0438 \u0441\u0432\u044f\u0437\u043a\u0430 \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c",
       "required": true
     },
     {
@@ -19,7 +19,7 @@
       "version": "2.4.12+1.21.1-fabric",
       "license": "GPL-3.0-or-later",
       "source": "https://modrinth.com/project/pZ2wrerK",
-      "feature": "Анимации и эмоции",
+      "feature": "\u0410\u043d\u0438\u043c\u0430\u0446\u0438\u0438 \u0438 \u044d\u043c\u043e\u0446\u0438\u0438",
       "required": true
     },
     {
@@ -28,7 +28,7 @@
       "version": "0.116.11+1.21.1",
       "license": "Apache-2.0",
       "source": "https://modrinth.com/project/P7dR8mSH",
-      "feature": "Базовая библиотека для CopiMineClient и клиентских модов",
+      "feature": "\u0411\u0430\u0437\u043e\u0432\u0430\u044f \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 \u0434\u043b\u044f CopiMineClient \u0438 \u043a\u043b\u0438\u0435\u043d\u0442\u0441\u043a\u0438\u0445 \u043c\u043e\u0434\u043e\u0432",
       "required": true
     },
     {
@@ -37,7 +37,7 @@
       "version": "2.6.16+1.21.1-fabric",
       "license": "All Rights Reserved",
       "source": "https://modrinth.com/mod/simple-voice-chat",
-      "feature": "Голосовой чат в игре",
+      "feature": "\u0413\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0439 \u0447\u0430\u0442 \u0432 \u0438\u0433\u0440\u0435",
       "required": true
     },
     {
@@ -46,7 +46,7 @@
       "version": "1.8.8+mc1.21.1",
       "license": "GPL-3.0-only",
       "source": "https://modrinth.com/mod/iris",
-      "feature": "Поддержка шейдеров на клиенте",
+      "feature": "\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0448\u0435\u0439\u0434\u0435\u0440\u043e\u0432 \u043d\u0430 \u043a\u043b\u0438\u0435\u043d\u0442\u0435",
       "required": false
     },
     {
@@ -55,20 +55,20 @@
       "version": "0.6.13+mc1.21.1",
       "license": "LGPL-3.0-only",
       "source": "https://modrinth.com/mod/sodium",
-      "feature": "Оптимизация производительности клиента",
+      "feature": "\u041e\u043f\u0442\u0438\u043c\u0438\u0437\u0430\u0446\u0438\u044f \u043f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u0438 \u043a\u043b\u0438\u0435\u043d\u0442\u0430",
       "required": false
     }
   ],
   "requiredExternal": [],
   "installSteps": [
-    "Установите Fabric Loader для Minecraft 1.21.1.",
-    "Скопируйте все jar из папки mods архива CopiMineMods.zip в .minecraft/mods.",
-    "Если у вас уже стоят другие версии Fabric API, Iris, Sodium или Voice Chat, замените их файлами из архива."
+    "\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u0435 Fabric Loader \u0434\u043b\u044f Minecraft 1.21.1.",
+    "\u0421\u043a\u043e\u043f\u0438\u0440\u0443\u0439\u0442\u0435 \u0432\u0441\u0435 jar \u0438\u0437 \u043f\u0430\u043f\u043a\u0438 mods \u0430\u0440\u0445\u0438\u0432\u0430 CopiMineMods.zip \u0432 .minecraft/mods.",
+    "\u0415\u0441\u043b\u0438 \u0443 \u0432\u0430\u0441 \u0443\u0436\u0435 \u0441\u0442\u043e\u044f\u0442 \u0434\u0440\u0443\u0433\u0438\u0435 \u0432\u0435\u0440\u0441\u0438\u0438 Fabric API, Iris, Sodium \u0438\u043b\u0438 Voice Chat, \u0437\u0430\u043c\u0435\u043d\u0438\u0442\u0435 \u0438\u0445 \u0444\u0430\u0439\u043b\u0430\u043c\u0438 \u0438\u0437 \u0430\u0440\u0445\u0438\u0432\u0430."
   ],
   "notes": [
-    "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris и Sodium.",
-    "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
-    "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
-    "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."
+    "\u0410\u0440\u0445\u0438\u0432 \u0443\u0436\u0435 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris \u0438 Sodium.",
+    "Iris \u0438 Sodium \u043b\u0435\u0436\u0430\u0442 \u0432 \u0430\u0440\u0445\u0438\u0432\u0435 \u043a\u0430\u043a \u0433\u043e\u0442\u043e\u0432\u044b\u0439 \u043a\u043b\u0438\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043a\u043e\u043c\u043f\u043b\u0435\u043a\u0442, \u043d\u043e \u043d\u0435 \u0442\u0440\u0435\u0431\u0443\u044e\u0442\u0441\u044f \u0434\u043b\u044f \u0432\u0445\u043e\u0434\u0430 \u043d\u0430 \u0441\u0435\u0440\u0432\u0435\u0440.",
+    "CoreProtect \u0438 Emotecraft Bukkit \u043d\u0435 \u0432\u0445\u043e\u0434\u044f\u0442 \u0432 \u043a\u043b\u0438\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u0430\u0440\u0445\u0438\u0432.",
+    "\u0421\u043a\u0430\u0447\u0438\u0432\u0430\u043d\u0438\u0435 \u0438\u0434\u0451\u0442 \u043e\u0434\u043d\u0438\u043c zip \u0431\u0435\u0437 \u0432\u043d\u0435\u0448\u043d\u0438\u0445 \u043b\u0430\u0443\u043d\u0447\u0435\u0440\u043e\u0432 \u0438 \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u044b\u0445 \u0441\u0441\u044b\u043b\u043e\u043a."
   ]
 }

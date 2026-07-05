@@ -44,6 +44,15 @@ $serverPropertiesPath = Join-Path $ProjectRoot "minecraft\server\server.properti
 $resourcePackDownloadUrl = "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
 $modpackDownloadUrl = "/downloads/CopiMineMods.zip"
 
+function Write-Utf8NoBomFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$LiteralPath,
+        [Parameter(Mandatory = $true)][string]$Content
+    )
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($LiteralPath, $Content + [Environment]::NewLine, $utf8NoBom)
+}
+
 function Invoke-Checked {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -122,7 +131,7 @@ foreach ($artifact in $thirdpartyManifest.artifacts.clientMods) {
         $artifact.sha1 = $clientSha1
     }
 }
-($thirdpartyManifest | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath $thirdpartyManifestPath -Encoding UTF8
+Write-Utf8NoBomFile -LiteralPath $thirdpartyManifestPath -Content ($thirdpartyManifest | ConvertTo-Json -Depth 16)
 
 $releaseManifest = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
@@ -152,7 +161,7 @@ $releaseManifest = [ordered]@{
         note = "If no live PostgreSQL dump is bundled, the replace script keeps the existing database or restores an external dump passed as argument 2."
     }
 }
-($releaseManifest | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $releaseManifestPath -Encoding UTF8
+Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content ($releaseManifest | ConvertTo-Json -Depth 12)
 
 $installerManifest = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
@@ -210,7 +219,7 @@ $installerManifest = [ordered]@{
         }
     }
 }
-($installerManifest | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath $installerManifestPath -Encoding UTF8
+Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerManifest | ConvertTo-Json -Depth 16)
 
 Write-Host "[6/8] Stage Linux replacement payload"
 $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-release-" + [guid]::NewGuid().ToString())
@@ -319,7 +328,7 @@ $bootstrapManifest = [ordered]@{
         verify = [System.IO.Path]::GetFileName($deployVerifyCopy)
     }
 }
-($bootstrapManifest | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $bootstrapManifestPath -Encoding UTF8
+Write-Utf8NoBomFile -LiteralPath $bootstrapManifestPath -Content ($bootstrapManifest | ConvertTo-Json -Depth 12)
 
 try {
     Invoke-Checked -FilePath "powershell" -Arguments @(

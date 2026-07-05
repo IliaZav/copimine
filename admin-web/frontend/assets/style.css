@@ -24,3 +24,38 @@
   align-items: center;
   min-height: 2rem;
 }
+.release-readiness-card {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(108, 138, 188, 0.22);
+  background: linear-gradient(180deg, rgba(11, 19, 34, 0.92), rgba(15, 24, 42, 0.86));
+  box-shadow: 0 22px 48px rgba(5, 10, 22, 0.18);
+}
+
+.release-readiness-card strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.release-readiness-card p {
+  margin: 10px 0 0;
+}
+
+.safety-rail {
+  position: relative;
+  overflow: hidden;
+}
+
+.safety-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #53d18b, #2d7df6);
+  opacity: 0.9;
+}
+
+.login-copy {
+  color: var(--text-primary, #eef4ff);
+}

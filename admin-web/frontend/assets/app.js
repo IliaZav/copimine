@@ -13,3 +13,9 @@ export async function loadAnticheat() {
 
 export const ANTICHEAT_ENDPOINT = "/api/anticheat/status";
 export const ANTICHEAT_EVENTS_TABLE_ID = "anticheat-events";
+export const ECONOMY_LEDGER_COMPAT = Object.freeze({
+  transactionPanelClass: "economy-transactions",
+  assetPanelClass: "economy-assets",
+  transactionPath: "ledger.transactions",
+  assetPath: "ledger.assets",
+});

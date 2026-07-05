@@ -2,6 +2,7 @@ package me.copimine.clientbridge;
 
 import me.copimine.narcotics.CopiMineNarcotics;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -226,6 +227,7 @@ public final class ClientVisualEffectService {
                     route = "UNKNOWN_CLIENT_ROUTE";
                 }
                 lastErrorByPlayer.put(player.getUniqueId(), pending.effectId() + ":client-route-" + route.toLowerCase(Locale.ROOT));
+                notifyPlayer(player, ChatColor.YELLOW, "Шейдер для эффекта " + pending.effectId() + " не поднялся через Iris. Активирован маршрут: " + describeRoute(route) + ".");
                 plugin.getLogger().warning("CopiMineClient visual started without Iris shaderpack for "
                         + player.getName()
                         + ": effect=" + pending.effectId()
@@ -263,7 +265,9 @@ public final class ClientVisualEffectService {
             return;
         }
         activeSeqByPlayer.remove(player.getUniqueId(), command.seq());
-        lastErrorByPlayer.put(player.getUniqueId(), command.effectId() + ":" + (message.reason().isBlank() ? "client-error" : message.reason()));
+        String reason = message.reason().isBlank() ? "client-error" : message.reason();
+        lastErrorByPlayer.put(player.getUniqueId(), command.effectId() + ":" + reason);
+        notifyPlayer(player, ChatColor.RED, "Клиентский визуальный эффект " + command.effectId() + " не запустился: " + describeReason(reason) + ".");
         if (command.fallbackHandler() != null) {
             command.fallbackHandler().onFallback(
                     player.getUniqueId(),
@@ -271,7 +275,7 @@ public final class ClientVisualEffectService {
                     command.seconds(),
                     command.intensity(),
                     command.source(),
-                    message.reason().isBlank() ? "client-error" : message.reason()
+                    reason
             );
         }
     }
@@ -309,6 +313,10 @@ public final class ClientVisualEffectService {
         for (ClientVisualCommand command : timedOut) {
             pendingAcks.remove(command.seq());
             activeSeqByPlayer.remove(command.playerUuid(), command.seq());
+            Player player = Bukkit.getPlayer(command.playerUuid());
+            if (player != null && player.isOnline()) {
+                notifyPlayer(player, ChatColor.RED, "Клиент не подтвердил запуск визуального эффекта " + command.effectId() + ". Оставлен только серверный fallback.");
+            }
             if (command.fallbackHandler() != null) {
                 command.fallbackHandler().onFallback(
                         command.playerUuid(),
@@ -357,6 +365,39 @@ public final class ClientVisualEffectService {
             }
             lastFinishedByPlayer.put(command.playerUuid(), command.effectId() + ":client-unavailable");
         }
+    }
+
+    private void notifyPlayer(Player player, ChatColor color, String message) {
+        if (player == null || !player.isOnline() || message == null || message.isBlank()) {
+            return;
+        }
+        player.sendMessage(ChatColor.DARK_AQUA + "[CopiMine] " + color + message);
+    }
+
+    private String describeRoute(String route) {
+        return switch (route.toUpperCase(Locale.ROOT)) {
+            case "FALLBACK_POST_PROCESS" -> "post-process fallback";
+            case "CANVAS_UNAVAILABLE" -> "Canvas недоступен";
+            case "OPTIFINE_UNAVAILABLE" -> "OptiFine runtime недоступен";
+            case "CUSTOM_UNAVAILABLE" -> "кастомный runtime недоступен";
+            case "UNKNOWN_CLIENT_ROUTE" -> "неизвестный клиентский маршрут";
+            default -> route;
+        };
+    }
+
+    private String describeReason(String reason) {
+        String normalized = reason == null ? "" : reason.toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "no-ack" -> "клиент не отправил ACK";
+            case "client-error" -> "клиент вернул общую ошибку";
+            case "client-unavailable" -> "клиентский runtime пропал во время эффекта";
+            case "server-visuals-disabled" -> "серверные визуалы отключены в клиентском моде";
+            case "iris-runtime-unavailable" -> "Iris runtime недоступен";
+            case "missing-exported-zip" -> "shaderpack не был экспортирован";
+            case "zip-not-iris-compatible", "profile-not-iris-runtime" -> "shaderpack не совместим с Iris";
+            case "pack-not-active-after-switch", "switch-failed", "pipeline-failed" -> "runtime не подтвердил переключение shaderpack";
+            default -> reason == null || reason.isBlank() ? "неизвестная причина" : reason;
+        };
     }
 
     private void removePlayerCommands(UUID playerUuid) {

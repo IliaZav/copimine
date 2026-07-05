@@ -9236,10 +9236,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private final class ArtifactBridgeAdapter {
       private ArtifactsBridge resolveBridge() {
-         Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
-         if (var1 instanceof CopiMineEconomyCore var2 && var1.isEnabled()) {
+         Plugin plugin = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
+         if (plugin instanceof CopiMineEconomyCore main && plugin.isEnabled()) {
             try {
-               return var2.artifactsBridge();
+               return main.artifactsBridge();
             } catch (Exception var4) {
                if (CopiMineArtifacts.this.bridgeWarned.compareAndSet(false, true)) {
                   CopiMineArtifacts.this.getLogger().warning("Artifacts bridge is unavailable: " + CopiMineArtifacts.this.safeErr(var4));
@@ -9305,12 +9305,32 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       }
 
-      CopiMineArtifacts.BridgeTxnResult charge(Player var1, long var2, String var4, String var5, String var6, String var7) {
-         return this.invokeTxn("charge", var1, var2, var4, var5, var6, var7);
+      CopiMineArtifacts.BridgeTxnResult charge(Player player, long amount, String pin, String idempotencyKey, String action, String details) {
+         ArtifactsBridge bridge = this.resolveBridge();
+         if (bridge == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         }
+
+         try {
+            TxnResult result = bridge.charge(player.getUniqueId(), player.getName(), amount, pin, idempotencyKey, action, details);
+            return new CopiMineArtifacts.BridgeTxnResult(result.ok, result.code, result.message, result.balanceAfter, result.txId);
+         } catch (Exception error) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(error), 0L, "");
+         }
       }
 
-      CopiMineArtifacts.BridgeTxnResult refund(Player var1, long var2, String var4, String var5, String var6) {
-         return this.invokeTxn("refund", var1, var2, "", var4, var5, var6);
+      CopiMineArtifacts.BridgeTxnResult refund(Player player, long amount, String idempotencyKey, String action, String details) {
+         ArtifactsBridge bridge = this.resolveBridge();
+         if (bridge == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         }
+
+         try {
+            TxnResult result = bridge.refund(player.getUniqueId(), player.getName(), amount, idempotencyKey, action, details);
+            return new CopiMineArtifacts.BridgeTxnResult(result.ok, result.code, result.message, result.balanceAfter, result.txId);
+         } catch (Exception error) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(error), 0L, "");
+         }
       }
 
       CopiMineArtifacts.BridgeTxnResult credit(UUID var1, String var2, long var3, String var5, String var6, String var7) {

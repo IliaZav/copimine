@@ -124,11 +124,27 @@ public final class ClientVisualManager {
     }
 
     public void clearAll(String reason) {
+        clearAll(null, reason);
+    }
+
+    public void clearAll(FinishedVisualHandler finishedHandler, String reason) {
+        List<ActiveVisual> cleared = new ArrayList<>(active.values());
         active.clear();
         appliedRuntimeKey = "";
         if (shaderRuntimeManager != null) {
             shaderRuntimeManager.clear(reason);
         }
+        if (finishedHandler != null) {
+            for (ActiveVisual visual : cleared) {
+                if (visual.seq() > 0L) {
+                    finishedHandler.onFinished(visual.seq(), visual.effectId(), reason);
+                }
+            }
+        }
+    }
+
+    public boolean hasActiveVisuals() {
+        return !active.isEmpty();
     }
 
     public void tick(FinishedVisualHandler finishedHandler) {

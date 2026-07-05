@@ -40,14 +40,17 @@ public final class CopiMineClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> visualManager.render(drawContext));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
+            if (client.player != null && client.player.isDead() && visualManager.hasActiveVisuals()) {
+                visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death");
+            }
             ClientBridgeProtocol.tickNetwork(client);
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ClientBridgeProtocol.onJoin());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ClientBridgeProtocol.onDisconnect();
-            visualManager.clearAll("disconnect");
+            visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "disconnect");
         });
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll("world_change"));
+        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change"));
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
         CopiMineClientLogger.info("CopiMineClient bootstrap finished");
     }
@@ -179,7 +182,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                                         + " / lastFailure=" + visualManager.lastFailureReason();
                                                 context.getSource().sendFeedback(Text.literal(line));
                                                 CopiMineClientLogger.info("shader selftest: " + line);
-                                                visualManager.clearAll("shader-selftest");
+                                                visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "shader-selftest");
                                                 if (applied) {
                                                     passed++;
                                                 } else if (unsupportedByDesign) {
@@ -193,7 +196,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                         }))
                                 .then(ClientCommandManager.literal("restore")
                                         .executes(context -> {
-                                            visualManager.clearAll("manual-restore");
+                                            visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "manual-restore");
                                             context.getSource().sendFeedback(Text.literal("CopiMineClient: shader runtime restored"));
                                             return 1;
                                         })))
@@ -234,7 +237,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                                 })))
                                 .then(ClientCommandManager.literal("clear")
                                         .executes(context -> {
-                                            visualManager.clearAll("manual");
+                                            visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "manual");
                                             context.getSource().sendFeedback(Text.literal("Visuals cleared"));
                                             return 1;
                                         })))

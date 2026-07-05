@@ -63,6 +63,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class CopiMineNarcotics extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+    /*
+     * Runtime note for premium/admin scenarios:
+     * if a future narcotics flow ever needs an AR-backed gate, it must resolve
+     * CopiMineUltimateAdminPlus.ArtifactsBridge through main.artifactsBridge()
+     * and only then call bridge.charge(...) with an explicit idempotency key.
+     */
     private static final Set<String> VALID_TEXTURE_MODES = Set.of("VANILLA", "CUSTOM");
     private static final Set<String> VALID_VISUAL_MODES = Set.of("AUTO", "CLIENT_MOD", "SERVER_OVERLAY", "SERVER_FALLBACK");
 
@@ -869,7 +875,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             if (seconds == null) {
                 return true;
             }
-            visualRuntime.apply(target, effectId, seconds, overdoseTest);
+            if (overdoseTest) {
+                visualRuntime.apply(target, effectId, seconds, true);
+            } else {
+                visualRuntime.apply(target, effectId, seconds, false);
+            }
             database.auditAsync(sender.getName(), "visual_test", target.getName() + "," + requestedId + "," + effectId + "," + seconds + "," + overdoseTest);
             sender.sendMessage(ChatColor.GREEN + "Visual test started: " + target.getName()
                     + " / request=" + requestedId

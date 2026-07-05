@@ -1449,6 +1449,55 @@ body {
   color: #f2f7fb;
 }
 
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  backdrop-filter: blur(16px);
+}
+
+body.player-mode input,
+body.player-mode select,
+body.player-mode textarea,
+body.panel-admin-mode input,
+body.panel-admin-mode select,
+body.panel-admin-mode textarea,
+body.junior-admin-mode input,
+body.junior-admin-mode select,
+body.junior-admin-mode textarea {
+  color: var(--ink);
+  background-color: rgba(255, 255, 255, 0.96);
+}
+
+:root[data-theme="dark"] body.player-mode input,
+:root[data-theme="dark"] body.player-mode select,
+:root[data-theme="dark"] body.player-mode textarea,
+:root[data-theme="dark"] body.panel-admin-mode input,
+:root[data-theme="dark"] body.panel-admin-mode select,
+:root[data-theme="dark"] body.panel-admin-mode textarea,
+:root[data-theme="dark"] body.junior-admin-mode input,
+:root[data-theme="dark"] body.junior-admin-mode select,
+:root[data-theme="dark"] body.junior-admin-mode textarea {
+  background-color: rgba(11, 19, 30, 0.98);
+}
+
+body.player-mode .panel .notice,
+body.panel-admin-mode .panel .notice,
+body.junior-admin-mode .panel .notice {
+  color: var(--ink);
+}
+
+:root[data-theme="light"] body.player-mode .panel .notice,
+:root[data-theme="light"] body.panel-admin-mode .panel .notice,
+:root[data-theme="light"] body.junior-admin-mode .panel .notice {
+  background: rgba(240, 247, 255, 0.96);
+  border-color: rgba(67, 85, 112, 0.16);
+}
+
+.form-grid select,
+.form-grid input[list] {
+  width: 100%;
+}
+
 @media (max-width: 1180px) {
   .public-hero,
   .modpack-shell,

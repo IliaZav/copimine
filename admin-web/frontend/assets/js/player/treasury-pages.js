@@ -21,11 +21,31 @@ export function createPlayerTreasuryPages(deps) {
     setStoredUiState,
   } = deps;
 
+  let recipientCache = [];
+
   function bankPinStateTone(pin) {
     if (pin.locked) return "bad";
     if (pin.mustChange || pin.status === "temporary-expired") return "warn";
     if (pin.set) return "good";
     return "warn";
+  }
+
+  async function loadRecipients(query = "") {
+    const data = await api(`/api/player/bank/recipients?q=${encodeURIComponent(query)}`);
+    recipientCache = asArray(data.recipients || []);
+    return recipientCache;
+  }
+
+  function recipientOptions(rows) {
+    return asArray(rows)
+      .map((row) => {
+        const name = String(row.name || "").trim();
+        if (!name) return "";
+        const meta = [row.username, row.bankLinked ? "банк привязан" : ""].filter(Boolean).join(" · ");
+        return `<option value="${esc(name)}">${esc(meta || name)}</option>`;
+      })
+      .filter(Boolean)
+      .join("");
   }
 
   async function loadPlayerBank() {
@@ -41,7 +61,10 @@ export function createPlayerTreasuryPages(deps) {
       return;
     }
 
-    const bank = await api("/api/player/bank");
+    const [bank, recipients] = await Promise.all([
+      api("/api/player/bank"),
+      loadRecipients(""),
+    ]);
     const accounts = asArray(bank.accounts);
     if (!accounts.some((row) => String(row.scope || "").toUpperCase() === state.playerBankScope)) {
       state.playerBankScope = "PERSONAL";
@@ -70,23 +93,27 @@ export function createPlayerTreasuryPages(deps) {
     setView(`
       <section class="layout-grid grid-4">
         ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна" : "Личный счёт", "good")}
-        ${metric("Последние операции", ledger.length, "Подтверждённые записи", "neutral")}
+        ${metric("Операции", ledger.length, "Подтверждённые записи", "neutral")}
         ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinStateTone(pin))}
         ${metric("Minecraft", state.user.minecraftName || "—", "Привязан", "good")}
       </section>
+
       ${accountTabs}
+
       ${safetyRail([
-        ["Счёт", usingTreasury ? "Доступен президенту и админам" : "Сайт, банкомат и игровые оплаты", "good"],
+        ["Счёт", usingTreasury ? "Доступен президенту и администраторам" : "Сайт, банкомат и игровые оплаты", "good"],
         ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задайте PIN казны") : (tempPin.code ? "Сейчас действует временный PIN" : (pin.set ? "PIN уже задан" : "Задайте PIN")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
-        ["Блокировка", usingTreasury ? "Лимит попыток действует и для казны" : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "После ошибок PIN временно блокируется"), pin.locked && !usingTreasury ? "bad" : "neutral"],
+        ["Блокировка", usingTreasury ? "Ограничение по ошибкам действует и для казны" : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "После ошибок PIN временно блокируется"), pin.locked && !usingTreasury ? "bad" : "neutral"],
       ])}
+
       ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Сначала войди по нему, потом задай новый.", kv([
         ["Временный PIN", tempPin.code],
         ["Выдан", dt(tempPin.createdAt)],
         ["Истекает", dt(tempPin.expiresAt)],
       ])) : ""}
+
       <section class="layout-grid grid-2">
-        ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "PIN казны виден президенту и админам." : (tempPin.code ? "Сначала введи временный PIN." : "PIN нужен для переводов."), `
+        ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "PIN казны виден президенту и администраторам." : (tempPin.code ? "Сначала введи временный PIN." : "PIN нужен для переводов."), `
           <div class="form-grid">
             ${usingTreasury ? `<div class="notice full">Текущий PIN казны: <strong>${esc(treasuryPin.visiblePin || "не задан")}</strong></div>` : ""}
             <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${usingTreasury ? "Текущий PIN казны, если уже задан" : (tempPin.code ? "Текущий временный PIN" : "Текущий PIN, если уже задан")}" />
@@ -94,11 +121,16 @@ export function createPlayerTreasuryPages(deps) {
             <button class="btn btn-primary full" data-click="playerSetPin()">Сохранить PIN</button>
           </div>
         `)}
-        ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Доступно президенту и админам." : "Перевод на другой счёт."), (!usingTreasury && transferLocked) ? `
+
+        ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Доступно президенту и администраторам." : "Выбери получателя из списка или введи ник вручную."), (!usingTreasury && transferLocked) ? `
           <div class="notice">${pin.status === "temporary-expired" ? "Временный PIN истёк. Попроси команду сервера сбросить его ещё раз." : "Сначала задай личный PIN. После этого переводы и ATM-операции откроются автоматически."}</div>
         ` : `
           <div class="form-grid">
-            <input id="bankRecipient" placeholder="Логин получателя или Minecraft-ник" />
+            <div class="field-stack full">
+              <label for="bankRecipient">Получатель</label>
+              <input id="bankRecipient" list="bankRecipientList" placeholder="Начни вводить ник игрока" />
+              <datalist id="bankRecipientList">${recipientOptions(recipients)}</datalist>
+            </div>
             <input id="bankAmount" type="number" min="1" step="1" placeholder="Сумма" />
             <input id="bankPinInput" type="password" inputmode="numeric" placeholder="PIN" />
             <input id="bankNote" class="full" placeholder="Комментарий, необязательно" />
@@ -106,6 +138,7 @@ export function createPlayerTreasuryPages(deps) {
           </div>
         `)}
       </section>
+
       ${panel("Журнал операций", "Переводы, оплаты и покупки.", transactionFeed(ledger, 18))}
     `);
   }

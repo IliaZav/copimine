@@ -3734,6 +3734,46 @@ def resolve_bank_recipient(conn: Any, recipient: str) -> tuple[str, str]:
     raise HTTPException(status_code=404, detail="Recipient is not linked to CopiMine")
 
 
+def list_player_bank_recipients_sync(account: dict[str, Any], q: str = "", limit: int = 40) -> dict[str, Any]:
+    account_uuid = str(account.get("minecraft_uuid") or "").strip()
+    query = str(q or "").strip().lower()
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    capped_limit = max(1, min(int(limit or 40), 100))
+    with connect_db() as conn:
+        candidates = conn.execute(
+            """
+            SELECT minecraft_uuid,minecraft_name,username,last_login_at,updated_at,created_at
+            FROM site_accounts
+            WHERE enabled=1 AND minecraft_uuid<>'' AND minecraft_name<>''
+            ORDER BY COALESCE(last_login_at, updated_at, created_at) DESC
+            LIMIT 400
+            """
+        ).fetchall()
+        for row in candidates:
+            minecraft_uuid = str(row["minecraft_uuid"] or "").strip()
+            minecraft_name = str(row["minecraft_name"] or "").strip()
+            username = str(row["username"] or "").strip()
+            if not minecraft_uuid or not minecraft_name or minecraft_uuid == account_uuid:
+                continue
+            haystack = f"{minecraft_name} {username} {minecraft_uuid}".lower()
+            if query and query not in haystack:
+                continue
+            lowered_name = minecraft_name.lower()
+            if lowered_name in seen:
+                continue
+            seen.add(lowered_name)
+            rows.append({
+                "uuid": minecraft_uuid,
+                "name": minecraft_name,
+                "username": username,
+                "bankLinked": True,
+            })
+            if len(rows) >= capped_limit:
+                break
+    return {"recipients": rows, "count": len(rows)}
+
+
 def lock_bank_accounts_ordered(conn: Any, first_account_id: str, second_account_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     safe_first = str(first_account_id or "")
     safe_second = str(second_account_id or "")
@@ -7935,6 +7975,11 @@ async def player_link_confirm(data: PlayerLinkConfirmIn, account: dict[str, Any]
 @app.get("/api/player/bank")
 async def player_bank(account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     return await bg(player_bank_overview_sync, account)
+
+
+@app.get("/api/player/bank/recipients")
+async def player_bank_recipients(q: str = "", account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    return await bg(list_player_bank_recipients_sync, account, q)
 
 
 @app.post("/api/player/bank/pin")

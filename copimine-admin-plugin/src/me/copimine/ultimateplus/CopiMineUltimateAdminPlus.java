@@ -2206,6 +2206,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         btn(m,22,Material.BARRIER,"&cЗакрыть",List.of(),"close");
         btn(m,26,Material.EMERALD,"&aОбновить",List.of(),"open:station-hub:"+station);
+        btn(m,22,Material.EMERALD,"&a&lР›Р°РІРєРё",List.of(
+                "&7Управление лавками артефактов и donation-предметов.",
+                "&7Создание и привязка лавки по блоку,",
+                "&7каталог, выдача и обслуживание витрин."),"open:shops");
         p.openInventory(m.inv);
     }
 

@@ -302,6 +302,83 @@ body.junior-admin-mode textarea:focus {
   box-shadow: 0 0 0 4px var(--accent-2);
 }
 
+body.player-mode input,
+body.player-mode select,
+body.player-mode textarea,
+body.panel-admin-mode input,
+body.panel-admin-mode select,
+body.panel-admin-mode textarea,
+body.junior-admin-mode input,
+body.junior-admin-mode select,
+body.junior-admin-mode textarea {
+  color: var(--ink);
+  caret-color: var(--accent);
+}
+
+body.player-mode input::placeholder,
+body.player-mode textarea::placeholder,
+body.panel-admin-mode input::placeholder,
+body.panel-admin-mode textarea::placeholder,
+body.junior-admin-mode input::placeholder,
+body.junior-admin-mode textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.88;
+}
+
+body.player-mode select option,
+body.panel-admin-mode select option,
+body.junior-admin-mode select option {
+  color: #0f1720;
+  background: #f6fbff;
+}
+
+:root[data-theme="dark"] body.player-mode select option,
+:root[data-theme="dark"] body.panel-admin-mode select option,
+:root[data-theme="dark"] body.junior-admin-mode select option {
+  color: #eff8f0;
+  background: #122019;
+}
+
+.field-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.field-stack label {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.compact-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.top-actions .btn,
+.top-actions .theme-toggle,
+.top-actions .status-pill {
+  min-height: 42px;
+}
+
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  overflow: visible;
+}
+
+body.player-mode .page-heading,
+body.panel-admin-mode .page-heading,
+body.junior-admin-mode .page-heading {
+  min-width: 0;
+}
+
+body.player-mode .page-heading p,
+body.panel-admin-mode .page-heading p,
+body.junior-admin-mode .page-heading p {
+  max-width: 62ch;
+}
+
 body.panel-admin-mode .action-strip,
 body.junior-admin-mode .action-strip {
   gap: 10px;

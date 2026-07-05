@@ -9,8 +9,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.deploy_runtime import app_root_from_backend, artifact_snapshot, managed_artifacts, project_root_from_backend, release_manifest
-from backend.envfile import parse_env_file, resolve_env_file
+from .deploy_runtime import app_root_from_backend, artifact_snapshot, managed_artifacts, project_root_from_backend, release_manifest
+from .envfile import parse_env_file, resolve_env_file
 
 try:
     import psycopg  # type: ignore

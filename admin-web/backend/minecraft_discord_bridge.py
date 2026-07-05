@@ -5,7 +5,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from backend.envfile import parse_env_file, resolve_env_file
+from .envfile import parse_env_file, resolve_env_file
 
 APP_ROOT = Path("/opt/copimine/admin-web")
 ENV_FILE = resolve_env_file(APP_ROOT / ".env")

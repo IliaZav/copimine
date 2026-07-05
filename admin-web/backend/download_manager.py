@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi.responses import FileResponse
 
-from backend.deploy_runtime import artifact_by_route, artifact_snapshot, project_root_from_backend
+from .deploy_runtime import artifact_by_route, artifact_snapshot, project_root_from_backend
 
 
 def artifact_metadata(bucket: str, filename: str) -> dict[str, Any]:

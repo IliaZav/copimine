@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from backend.envfile import parse_env_file, resolve_env_file
+from .envfile import parse_env_file, resolve_env_file
 
 
 @dataclass(frozen=True)

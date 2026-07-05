@@ -950,6 +950,31 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
     }
 
+    private boolean openArtifactsShopHub(Player p){
+        if(isRestrictedJuniorAdmin(p)){
+            warn(p,"Младшему админу недоступно управление лавками.");
+            return false;
+        }
+        Plugin plugin=Bukkit.getPluginManager().getPlugin("CopiMineArtifacts");
+        if(plugin==null||!plugin.isEnabled()){
+            warn(p,"CopiMineArtifacts недоступен.");
+            return false;
+        }
+        try{
+            var method=plugin.getClass().getDeclaredMethod("openAdminShops",Player.class);
+            method.setAccessible(true);
+            method.invoke(plugin,p);
+            return true;
+        }catch(NoSuchMethodException ignored){
+            return Bukkit.dispatchCommand(p,"cmartifacts shop");
+        }catch(Exception e){
+            getLogger().warning("artifacts hub: "+e);
+            if(Bukkit.dispatchCommand(p,"cmartifacts shop"))return true;
+            warn(p,"Не удалось открыть управление лавками.");
+            return false;
+        }
+    }
+
     private void openAdminMap(Player p)throws Exception{
         if(!hasAnyAdmin(p)){warn(p,"Доступ к этой панели закрыт."); return;}
         openMainHub(p);
@@ -2601,7 +2626,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(a.equals("citizen:sidebar-hide")){sidebarHidden.add(p.getUniqueId()); hideSidebar(p,true); openCitizenElectionHub(p);return;} if(a.equals("citizen:sidebar-show")){sidebarHidden.remove(p.getUniqueId()); sidebarPersonal.add(p.getUniqueId()); updateSidebar(p,true); openCitizenElectionHub(p);return;}
         if(a.equals("sidebar:show")){showSidebarAll(true); p.closeInventory(); return;}
         if(a.equals("sidebar:show-me")){sidebarHidden.remove(p.getUniqueId()); sidebarPersonal.add(p.getUniqueId()); updateSidebar(p,true); p.closeInventory(); return;}
-        if(a.equals("open:hub")){openMainHub(p);return;} if(a.equals("open:admin-map")){openAdminMap(p);return;} if(a.equals("open:db-health")){openDatabaseHealthAsync(p);return;} if(a.equals("open:startup-readiness")){openStartupReadiness(p);return;} if(a.equals("open:elections")){openElections(p);return;} if(a.equals("open:election-operations")){openElectionOperations(p);return;} if(a.equals("open:election-ledgers")){openElectionLedgers(p);return;} if(a.equals("open:election-recovery-advanced")){openElectionRecoveryAdvanced(p);return;} if(a.equals("open:sidebar")){openSidebar(p);return;} if(a.equals("open:election-settings")){openElectionSettings(p);return;} if(a.equals("open:lifecycle")){openElectionLifecycle(p);return;} if(a.equals("open:preflight")){openElectionPreflight(p);return;} if(a.equals("open:election-integrity")){openElectionIntegrity(p);return;} if(a.equals("open:election-release")){openElectionReleaseBoard(p);return;} if(a.equals("open:election-ceremony")){openElectionCeremony(p);return;}
+        if(a.equals("open:hub")){openMainHub(p);return;} if(a.equals("open:admin-map")){openAdminMap(p);return;} if(a.equals("open:db-health")){openDatabaseHealthAsync(p);return;} if(a.equals("open:startup-readiness")){openStartupReadiness(p);return;} if(a.equals("open:elections")){openElections(p);return;} if(a.equals("open:election-operations")){openElectionOperations(p);return;} if(a.equals("open:election-ledgers")){openElectionLedgers(p);return;} if(a.equals("open:election-recovery-advanced")){openElectionRecoveryAdvanced(p);return;} if(a.equals("open:sidebar")){openSidebar(p);return;} if(a.equals("open:election-settings")){openElectionSettings(p);return;} if(a.equals("open:lifecycle")){openElectionLifecycle(p);return;} if(a.equals("open:preflight")){openElectionPreflight(p);return;} if(a.equals("open:election-integrity")){openElectionIntegrity(p);return;} if(a.equals("open:election-release")){openElectionReleaseBoard(p);return;} if(a.equals("open:election-ceremony")){openElectionCeremony(p);return;} if(a.equals("open:shops")){openArtifactsShopHub(p);return;}
         if(a.equals("open:worlds")){if(openWorldCoreHub(p))return; return;}
         if(a.equals("open:president")){openPresidentPanelAsync(p);return;} if(a.equals("open:chair")){openChairPanel(p);return;}
         if(a.equals("open:polling-stations")){openPollingStations(p);return;}
@@ -5051,6 +5076,15 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean tableExists(String t)throws SQLException{
         return scalarLong("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=current_schema() AND table_name=?",t)>0;
     }
+    private boolean tableExists(Connection c,String t)throws SQLException{
+        return scalarLong(c,"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=current_schema() AND table_name=?",t)>0;
+    }
+    private void purgeTable(Connection c,Map<String,Long> counts,String table)throws SQLException{
+        if(!tableExists(c,table)){counts.put(table,0L); return;}
+        long rows=scalarLong(c,"SELECT COUNT(*) FROM "+ident(table));
+        exec(c,"DELETE FROM "+ident(table));
+        counts.put(table,rows);
+    }
     private List<String> cols(String table)throws SQLException{
         List<String> out=new ArrayList<>();
         for(Map<String,Object> r:query("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=? ORDER BY ordinal_position",table))out.add(s(r.get("column_name")).toLowerCase(Locale.ROOT));
@@ -5483,14 +5517,81 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 case "election","sidebar","issueapp","issueballot","annulapp","annulballot" -> {msg(sender,"&eУправление выборами перенесено в новый GUI CopiMineElectionCore через /cadm -> Выборы. Техническая команда игрока: &f/hidelive"); return true;}
                 case "ar" -> {if(args.length>=2&&args[1].equalsIgnoreCase("sync")){if(sender instanceof Player p){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} warn(sender,"AR sync перенесён в CopiMineEconomyCore."); economy.openAdminEconomyHub(p);} else msg(sender,"AR sync перенесён в CopiMineEconomyCore.");}}
                 case "check" -> {if(!(sender instanceof Player a)){warn(sender,"Только из игры.");return true;} if(args.length<3){msg(sender,"&6/cmultra check start|stop|return <player>");return true;} Player t=Bukkit.getPlayerExact(args[2]); if(t==null){warn(sender,"Игрок оффлайн.");return true;} if(args[1].equalsIgnoreCase("start"))startCheck(a,t); else if(args[1].equalsIgnoreCase("stop"))stopCheck(a,t,false); else if(args[1].equalsIgnoreCase("return"))stopCheck(a,t,true);}
+                case "resetworldobjects" -> {return handleResetWorldObjectsCommand(sender,args);}
+                case "clearfloatingtexts" -> {return handleClearFloatingTextsCommand(sender,args);}
                 default -> help(sender);
             }
         }catch(Exception e){warn(sender,"Не удалось выполнить команду. Подробности записаны в лог."); getLogger().warning("cmd: "+e);}
         return true;
     }
     private String joinArgs(String[] args,int start){if(args==null||args.length<=start)return"emergency"; return String.join(" ",Arrays.copyOfRange(args,start,args.length)).trim();}
-    private void help(CommandSender s){msg(s,"&6/cmultra &7- меню"); msg(s,"&6/cmbank &7- открыть раздел экономики"); msg(s,"&6/cmultra ar sync"); msg(s,"&6/cmultra check start|stop|return <player>"); msg(s,"&6/cadm &7- общий хаб, раздел &fВыборы &7открывает CopiMineElectionCore"); msg(s,"&6/hidelive &7- скрыть live-панель выборов только у себя");}
-    @Override public List<String> onTabComplete(CommandSender s,Command c,String a,String[] args){String root=c.getName().toLowerCase(Locale.ROOT); if(root.equals("cmbank"))return List.of(); if(root.equals("rpguard")&&args.length==1)return List.of("status","test").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==1)return List.of("menu","ar","check").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&args[0].equalsIgnoreCase("check"))return Bukkit.getOnlinePlayers().stream().map(Player::getName).filter(x->x.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); return List.of();}
+    private boolean handleResetWorldObjectsCommand(CommandSender sender,String[] args)throws Exception{
+        requireMainAdmin(sender);
+        if(args.length<2||!args[1].equalsIgnoreCase("confirm")){
+            msg(sender,"&cКоманда удалит из PostgreSQL все лавки, участки ЦИК, печати, защитные блоки, text-display связи и банкоматы.");
+            msg(sender,"&7Балансы игроков и банковый ledger не затрагиваются.");
+            msg(sender,"&6/cmultra resetworldobjects confirm");
+            return true;
+        }
+        Map<String,Long> removed=tx(c->{
+            LinkedHashMap<String,Long> counts=new LinkedHashMap<>();
+            purgeTable(c,counts,"artifact_shops");
+            purgeTable(c,counts,"polling_stations");
+            purgeTable(c,counts,"cik_chairs");
+            purgeTable(c,counts,"cik_seals");
+            purgeTable(c,counts,"protected_blocks");
+            purgeTable(c,counts,"text_display_links");
+            purgeTable(c,counts,"ar_atms");
+            purgeTable(c,counts,"atm_sessions");
+            purgeTable(c,counts,"atm_events");
+            purgeTable(c,counts,"atm_audit");
+            return counts;
+        });
+        String summary=removed.entrySet().stream().map(entry->entry.getKey()+"="+entry.getValue()).reduce((left,right)->left+", "+right).orElse("nothing");
+        audit(sender.getName(),"RESET_WORLD_OBJECTS",summary,true);
+        pluginEvent("adminplus","RESET_WORLD_OBJECTS",sender.getName(),"world-objects",summary);
+        msg(sender,"&aМировые объекты очищены: &f"+summary);
+        msg(sender,"&7Если какие-то GUI или hologram уже были загружены, перезапусти сервер для чистой перезагрузки runtime.");
+        return true;
+    }
+    private boolean handleClearFloatingTextsCommand(CommandSender sender,String[] args)throws Exception{
+        requireMainAdmin(sender);
+        if(args.length<2||!args[1].equalsIgnoreCase("confirm")){
+            msg(sender,"&cКоманда удалит все связанные election TextDisplay из мира и очистит registry в PostgreSQL.");
+            msg(sender,"&6/cmultra clearfloatingtexts confirm");
+            return true;
+        }
+        LinkedHashMap<String,Long> counts=tx(c->{
+            LinkedHashMap<String,Long> rows=new LinkedHashMap<>();
+            purgeTable(c,rows,"text_display_links");
+            if(tableExists(c,"polling_stations"))c.createStatement().executeUpdate("UPDATE polling_stations SET text_display_uuid='',updated_at="+now());
+            rows.put("text_display_entities",(long)purgeManagedFloatingTexts());
+            return rows;
+        });
+        String summary=counts.entrySet().stream().map(entry->entry.getKey()+"="+entry.getValue()).reduce((left,right)->left+", "+right).orElse("nothing");
+        audit(sender.getName(),"CLEAR_FLOATING_TEXTS",summary,true);
+        pluginEvent("adminplus","CLEAR_FLOATING_TEXTS",sender.getName(),"text-displays",summary);
+        msg(sender,"&aПлавающие надписи очищены: &f"+summary);
+        return true;
+    }
+    private int purgeManagedFloatingTexts(){
+        int removed=0;
+        for(World world:Bukkit.getWorlds()){
+            for(org.bukkit.entity.TextDisplay display:world.getEntitiesByClass(org.bukkit.entity.TextDisplay.class)){
+                boolean managed=display.getPersistentDataContainer().getKeys().stream().anyMatch(key->{
+                    String namespace=key.getNamespace().toLowerCase(Locale.ROOT);
+                    String localKey=key.getKey().toLowerCase(Locale.ROOT);
+                    return namespace.contains("copimineelectioncore")||localKey.contains("text_linked_id")||localKey.contains("text_type");
+                });
+                if(!managed)continue;
+                display.remove();
+                removed++;
+            }
+        }
+        return removed;
+    }
+    private void help(CommandSender s){msg(s,"&6/cmultra &7- меню"); msg(s,"&6/cmbank &7- открыть раздел экономики"); msg(s,"&6/cmultra ar sync"); msg(s,"&6/cmultra check start|stop|return <player>"); msg(s,"&6/cmultra resetworldobjects confirm &7- очистить лавки, участки и ATM из БД"); msg(s,"&6/cmultra clearfloatingtexts confirm &7- очистить все election TextDisplay"); msg(s,"&6/cadm &7- общий хаб, раздел &fВыборы &7открывает CopiMineElectionCore"); msg(s,"&6/hidelive &7- скрыть live-панель выборов только у себя");}
+    @Override public List<String> onTabComplete(CommandSender s,Command c,String a,String[] args){String root=c.getName().toLowerCase(Locale.ROOT); if(root.equals("cmbank"))return List.of(); if(root.equals("rpguard")&&args.length==1)return List.of("status","test").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==1)return List.of("menu","ar","check","resetworldobjects","clearfloatingtexts").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&args[0].equalsIgnoreCase("check"))return Bukkit.getOnlinePlayers().stream().map(Player::getName).filter(x->x.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&(args[0].equalsIgnoreCase("resetworldobjects")||args[0].equalsIgnoreCase("clearfloatingtexts")))return List.of("confirm").stream().filter(x->x.startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); return List.of();}
 
     private record PgSettings(String host,int port,String database,String user,String password,String schema,int poolSize,int connectTimeoutMs,int statementTimeoutMs,Path envFile){
         String jdbcUrl(){return "jdbc:postgresql://"+host+":"+port+"/"+database;}

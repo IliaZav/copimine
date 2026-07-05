@@ -3,7 +3,7 @@
     "generatedFor":  "CopiMine release hardening",
     "clientArchive":  {
                           "path":  "thirdparty/CopiMineMods.zip",
-                          "sha1":  "3117c3996c5d5b136a2a629cd4f2286a08dc9d86",
+                          "sha1":  "c1c26dbc365da95832ee34424ed1946e9f2cb33a",
                           "downloadPath":  "/downloads/CopiMineMods.zip"
                       },
     "requiredExternal":  [
@@ -15,7 +15,7 @@
                                              "name":  "CopiMineClient",
                                              "version":  "0.1.0",
                                              "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
-                                             "sha1":  "9266e3cec1d5e4e2f0cf31122c7fbe99302b30ac",
+                                             "sha1":  "93100b833088b8883a5095aad98f5fe28d899196",
                                              "license":  "Proprietary"
                                          },
                                          {

@@ -59,6 +59,33 @@
           <div class="auth-links">
             <a href="/signin.html">Уже есть аккаунт? Войти</a>
           </div>
+
+          <section class="auth-recovery-card">
+            <h3>Восстановить доступ</h3>
+            <p>Если ник уже был добавлен в whitelist, получите код в игре и задайте новый пароль.</p>
+            <label for="recoveryMinecraftName">Minecraft-ник</label>
+            <input id="recoveryMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Тот же ник, что и на сервере" />
+
+            <div class="auth-inline-actions">
+              <button id="recoveryStartBtn" type="button" class="btn btn-secondary">Отправить код в игру</button>
+            </div>
+
+            <label for="recoveryCode">Код восстановления</label>
+            <input id="recoveryCode" autocomplete="one-time-code" spellcheck="false" placeholder="Введите код из игры" />
+
+            <label for="recoveryPassword">Новый пароль</label>
+            <input id="recoveryPassword" type="password" autocomplete="new-password" placeholder="Новый пароль для сайта" />
+
+            <label class="auth-checkbox" for="recoveryRememberMe">
+              <input id="recoveryRememberMe" type="checkbox" />
+              <span>Сразу запомнить восстановленный вход</span>
+            </label>
+
+            <div class="auth-inline-actions">
+              <button id="recoveryConfirmBtn" type="button" class="btn btn-primary">Восстановить доступ</button>
+            </div>
+            <div id="recoveryStatus" class="form-error"></div>
+          </section>
         </section>
       </div>
     </section>

@@ -461,6 +461,17 @@ class PlayerLinkConfirmIn(BaseModel):
     code: str = Field(min_length=6, max_length=16)
 
 
+class PlayerRecoveryStartIn(BaseModel):
+    minecraft_name: str = Field(min_length=3, max_length=16)
+
+
+class PlayerRecoveryConfirmIn(BaseModel):
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    code: str = Field(min_length=6, max_length=16)
+    new_password: str = Field(min_length=8, max_length=128)
+    remember_me: bool = False
+
+
 class PlayerPinSetIn(BaseModel):
     old_pin: Optional[str] = Field(default=None, min_length=4, max_length=8)
     new_pin: str = Field(min_length=4, max_length=8)
@@ -2937,6 +2948,27 @@ def player_account_by_username(conn: Any, username: str) -> Optional[dict[str, A
     return dict(row) if row else None
 
 
+def player_account_by_minecraft_name(conn: Any, minecraft_name: str) -> Optional[dict[str, Any]]:
+    normalized = str(minecraft_name or "").strip().lower()
+    if not normalized:
+        return None
+    row = conn.execute("SELECT * FROM site_accounts WHERE LOWER(minecraft_name)=%s ORDER BY updated_at DESC LIMIT 1", (normalized,)).fetchone()
+    if row:
+        return dict(row)
+    row = conn.execute(
+        """
+        SELECT sa.*
+        FROM whitelist_account_links wal
+        JOIN site_accounts sa ON sa.id=wal.site_account_id
+        WHERE LOWER(wal.minecraft_name)=%s
+        ORDER BY sa.updated_at DESC
+        LIMIT 1
+        """,
+        (normalized,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def require_player(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
     token = request_auth_token(request, authorization)
     if not token:
@@ -4386,7 +4418,7 @@ def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[
     code = "".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(8))
     uuid = find_player_uuid(minecraft_name) or ""
     now = donation_now_ms()
-    expires = now + 10 * 60
+    expires = now + (10 * 60 * 1000)
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         conn.execute(
@@ -4445,6 +4477,80 @@ def confirm_link_code_sync(account: dict[str, Any], code: str) -> dict[str, Any]
         )
         conn.commit()
     pg_record_auth_state("last_link_confirmation", {"minecraftUuid": minecraft_uuid, "minecraftName": minecraft_name, "at": now})
+    account = dict(account)
+    account.update({"minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name})
+    return {"ok": True, "account": public_player_account(account)}
+
+
+def create_player_recovery_code_sync(minecraft_name: str) -> dict[str, Any]:
+    if not valid_minecraft_name(minecraft_name):
+        raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
+    delivered = False
+    now = donation_now_ms()
+    expires = now + (10 * 60 * 1000)
+    code = "".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(8))
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        account = player_account_by_minecraft_name(conn, minecraft_name)
+        if not account:
+            raise HTTPException(status_code=404, detail="Аккаунт для этого Minecraft-ника не найден")
+        conn.execute(
+            "UPDATE one_time_link_codes SET status='EXPIRED' WHERE site_account_id=%s AND status='PENDING'",
+            (account["id"],),
+        )
+        minecraft_uuid = str(account.get("minecraft_uuid") or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
+        conn.execute(
+            "INSERT INTO one_time_link_codes(id,site_account_id,minecraft_name,minecraft_uuid,code_hash,status,created_at,expires_at) VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)",
+            (secrets.token_hex(12), account["id"], minecraft_name, minecraft_uuid, sha256_hex(code), now, expires),
+        )
+        conn.commit()
+        if RCON_PASSWORD:
+            try:
+                rcon_quick(f'tellraw {minecraft_name} {{"text":"CopiMine recovery code: {code}","color":"gold"}}')
+                delivered = True
+            except Exception:
+                delivered = False
+    return {"ok": True, "deliveredInGame": delivered, "expiresAt": expires, "minecraftName": minecraft_name}
+
+
+def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_password: str) -> dict[str, Any]:
+    if not valid_minecraft_name(minecraft_name):
+        raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
+    ok, reason = password_policy_ok(new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        account = player_account_by_minecraft_name(conn, minecraft_name)
+        if not account:
+            raise HTTPException(status_code=404, detail="Аккаунт для этого Minecraft-ника не найден")
+        row = conn.execute(
+            "SELECT * FROM one_time_link_codes WHERE site_account_id=%s AND status='PENDING' AND expires_at>%s ORDER BY created_at DESC LIMIT 1",
+            (account["id"], now),
+        ).fetchone()
+        if not row or not hmac.compare_digest(str(row["code_hash"] or ""), sha256_hex(str(code).strip().upper())):
+            raise HTTPException(status_code=403, detail="Неверный или просроченный код восстановления")
+        minecraft_uuid = str(account.get("minecraft_uuid") or row["minecraft_uuid"] or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
+        updated_at = now_ts()
+        conn.execute("UPDATE one_time_link_codes SET status='USED',used_at=%s WHERE id=%s", (now, row["id"]))
+        conn.execute(
+            "UPDATE site_accounts SET password_hash=%s,minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
+            (make_password_hash(new_password), minecraft_uuid, minecraft_name, updated_at, account["id"]),
+        )
+        conn.execute(
+            """
+            INSERT INTO whitelist_account_links(minecraft_uuid,minecraft_name,site_account_id,whitelisted,synced_at)
+            VALUES(%s,%s,%s,1,%s)
+            ON CONFLICT (minecraft_uuid) DO UPDATE SET
+                minecraft_name=EXCLUDED.minecraft_name,
+                site_account_id=EXCLUDED.site_account_id,
+                whitelisted=1,
+                synced_at=EXCLUDED.synced_at
+            """,
+            (minecraft_uuid, minecraft_name, account["id"], updated_at),
+        )
+        conn.commit()
     account = dict(account)
     account.update({"minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name})
     return {"ok": True, "account": public_player_account(account)}
@@ -7684,6 +7790,8 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
         ensure_v4_schema(conn)
         if player_account_by_username(conn, username):
             raise HTTPException(status_code=409, detail="Такой логин уже занят")
+        if minecraft_name and player_account_by_minecraft_name(conn, minecraft_name):
+            raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже привязан. Используйте восстановление доступа.")
         same_ip = conn.execute("SELECT COUNT(*) AS c FROM site_accounts WHERE registration_ip=%s", (registration_ip,)).fetchone()
         if int((same_ip or {}).get("c") or 0) >= 5:
             conn.commit()
@@ -7755,6 +7863,29 @@ async def player_login(data: PlayerLoginIn, request: Request, response: Response
     set_auth_cookies(response, access_token, refresh_token, data.remember_me)
     account["last_login_at"] = now_ts()
     return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
+
+
+@app.post("/api/player/recovery/start")
+async def player_recovery_start(data: PlayerRecoveryStartIn) -> dict[str, Any]:
+    return await bg(create_player_recovery_code_sync, data.minecraft_name.strip())
+
+
+@app.post("/api/player/recovery/confirm")
+async def player_recovery_confirm(data: PlayerRecoveryConfirmIn, request: Request, response: Response) -> dict[str, Any]:
+    result = await bg(confirm_player_recovery_code_sync, data.minecraft_name.strip(), data.code.strip().upper(), data.new_password)
+    account = dict(result.get("account") or {})
+    access_token, refresh_token = issue_player_auth_pair(
+        {
+            "id": account.get("id"),
+            "username": account.get("username"),
+            "minecraft_uuid": account.get("minecraftUuid") or "",
+            "minecraft_name": account.get("minecraftName") or "",
+        },
+        request,
+        remember_me=data.remember_me,
+    )
+    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
+    return {"ok": True, "role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": account}
 
 
 @app.post("/api/player/refresh")

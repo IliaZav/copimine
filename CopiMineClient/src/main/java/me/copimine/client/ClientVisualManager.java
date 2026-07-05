@@ -2,7 +2,6 @@ package me.copimine.client;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.util.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,20 +14,6 @@ public final class ClientVisualManager {
     public interface FinishedVisualHandler {
         void onFinished(long seq, String effectId, String reason);
     }
-
-    private static final int OVERLAY_TEXTURE_SIZE = 256;
-    private static final float SHADERPACK_OVERLAY_ALPHA_MULTIPLIER = 0.32F;
-    private static final Map<String, Identifier> OVERLAYS = Map.of(
-            "DESATURATE", Identifier.of("copimineclient", "textures/visuals/desaturate_overlay.png"),
-            "COLOR_CONVOLVE", Identifier.of("copimineclient", "textures/visuals/color_convolve_overlay.png"),
-            "SCAN_PINCUSHION", Identifier.of("copimineclient", "textures/visuals/scan_pincushion_overlay.png"),
-            "GREEN_NOISE", Identifier.of("copimineclient", "textures/visuals/green_noise_overlay.png"),
-            "INVERT", Identifier.of("copimineclient", "textures/visuals/invert_overlay.png"),
-            "WOBBLE", Identifier.of("copimineclient", "textures/visuals/wobble_overlay.png"),
-            "BLOBS", Identifier.of("copimineclient", "textures/visuals/blobs_overlay.png"),
-            "PENCIL", Identifier.of("copimineclient", "textures/visuals/pencil_overlay.png"),
-            "CHAOS", Identifier.of("copimineclient", "textures/visuals/chaos_overlay.png")
-    );
 
     private final MinecraftClient client = MinecraftClient.getInstance();
     private final ClientConfig config;
@@ -176,10 +161,9 @@ public final class ClientVisualManager {
         int width = client.getWindow().getScaledWidth();
         int height = client.getWindow().getScaledHeight();
         long now = System.currentTimeMillis();
-        float routeAlphaMultiplier = effectiveAlphaMultiplier();
         for (ActiveVisual visual : active.values()) {
             float pulse = 0.6F + (float) ((Math.sin((now / 180.0D) + visual.effectId().hashCode()) + 1.0D) * 0.2D);
-            drawEffect(context, width, height, visual, pulse, routeAlphaMultiplier);
+            drawEffect(context, width, height, visual, pulse);
         }
         if (config.debugOverlay()) {
             context.drawText(client.textRenderer, statusLine(), 8, 8, 0xFFFFFFFF, true);
@@ -236,56 +220,54 @@ public final class ClientVisualManager {
         return shaderRuntimeManager == null ? "shader-runtime-manager-not-wired" : shaderRuntimeManager.lastFailureReason();
     }
 
-    private void drawEffect(DrawContext context, int width, int height, ActiveVisual visual, float pulse, float routeAlphaMultiplier) {
+    private void drawEffect(DrawContext context, int width, int height, ActiveVisual visual, float pulse) {
         float intensity = clamp(visual.intensity());
-        float alphaFactor = (0.18F + (0.82F * intensity)) * routeAlphaMultiplier;
+        float alphaFactor = 0.18F + (0.82F * intensity);
         float motionFactor = 0.15F + (0.85F * intensity);
         switch (visual.effectId()) {
             case "DESATURATE" -> {
                 context.fill(0, 0, width, height, alpha(0x90B0B0B0, 0.16F * pulse * alphaFactor));
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.40F * pulse * alphaFactor);
                 drawVignette(context, width, height, 0x55111111, 0.12F * alphaFactor);
             }
             case "COLOR_CONVOLVE" -> {
                 drawColorShiftPass(context, width, height, 0x70FF66CC, 0.14F * pulse * alphaFactor);
                 drawColorShiftPass(context, width, height, 0x7000E5FF, 0.08F * pulse * alphaFactor);
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.44F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x44FFCC66, 0.06F * pulse * alphaFactor, 18);
             }
             case "SCAN_PINCUSHION" -> {
                 drawScanPulse(context, width, height, alphaFactor);
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.48F * pulse * alphaFactor);
+                drawVignette(context, width, height, 0x66141414, 0.08F * alphaFactor);
             }
             case "GREEN_NOISE" -> {
                 drawNoiseGrid(context, width, height, 0x8020FF80, 0.10F * pulse * alphaFactor, 9);
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.50F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x4010AA55, 0.06F * pulse * alphaFactor, 5);
             }
             case "INVERT" -> {
                 drawColorShiftPass(context, width, height, 0xA0000030, 0.18F * pulse * alphaFactor);
-                drawSegmentedTexture(context, OVERLAYS.get(visual.effectId()), width, height, 3, 0.52F * pulse * alphaFactor);
+                drawScanPulse(context, width, height, 0.55F * alphaFactor);
             }
             case "WOBBLE" -> {
-                int offsetX = (int) Math.round(Math.sin(System.currentTimeMillis() / 120.0D) * 10.0D * motionFactor);
-                int offsetY = (int) Math.round(Math.cos(System.currentTimeMillis() / 160.0D) * 8.0D * motionFactor);
                 drawColorShiftPass(context, width, height, 0x884422AA, 0.08F * pulse * alphaFactor);
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), offsetX, offsetY, width, height, 0.48F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x443366AA, 0.05F * pulse * alphaFactor, Math.max(6, 16 - Math.round(6.0F * motionFactor)));
             }
             case "BLOBS" -> {
                 drawNoiseGrid(context, width, height, 0x663A89FF, 0.08F * pulse * alphaFactor, 14);
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.50F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0x442070D0, 0.04F * pulse * alphaFactor);
             }
             case "PENCIL" -> {
                 drawHatch(context, width, height, alphaFactor);
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), 0, 0, width, height, 0.54F * pulse * alphaFactor);
+                drawVignette(context, width, height, 0x66262626, 0.09F * alphaFactor);
             }
             case "CHAOS" -> {
-                int jitterX = (int) Math.round(Math.sin(System.currentTimeMillis() / 55.0D) * 14.0D * motionFactor);
-                int jitterY = (int) Math.round(Math.cos(System.currentTimeMillis() / 70.0D) * 11.0D * motionFactor);
                 drawColorShiftPass(context, width, height, 0x88FF5500, 0.09F * pulse * alphaFactor);
                 drawColorShiftPass(context, width, height, 0x880055FF, 0.07F * pulse * alphaFactor);
-                drawSegmentedTexture(context, OVERLAYS.get(visual.effectId()), width, height, 5, 0.56F * pulse * alphaFactor);
-                drawFullScreenTexture(context, OVERLAYS.get(visual.effectId()), jitterX, jitterY, width, height, 0.34F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x66FF33AA, 0.08F * pulse * alphaFactor, Math.max(4, 12 - Math.round(5.0F * motionFactor)));
+                drawScanPulse(context, width, height, 0.6F * alphaFactor);
             }
-            default -> drawFullScreenTexture(context, OVERLAYS.get("CHAOS"), 0, 0, width, height, 0.40F * pulse * alphaFactor);
+            default -> {
+                drawColorShiftPass(context, width, height, 0x66AA44FF, 0.07F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x44FFFFFF, 0.04F * pulse * alphaFactor, 16);
+            }
         }
     }
 
@@ -326,35 +308,6 @@ public final class ClientVisualManager {
             int y2 = Math.min(height, 10);
             context.fill(Math.max(0, x), 0, Math.min(width, x2), y2, alpha(0x55222222, 0.14F * alphaFactor));
         }
-    }
-
-    private void drawSegmentedTexture(DrawContext context, Identifier texture, int width, int height, int segments, float alpha) {
-        if (texture == null) {
-            return;
-        }
-        int segmentWidth = Math.max(1, width / Math.max(1, segments));
-        for (int index = 0; index < segments; index++) {
-            int offset = (index % 2 == 0 ? -1 : 1) * (index + 1);
-            drawFullScreenTexture(context, texture, offset * 3, 0, segmentWidth, height, alpha);
-        }
-    }
-
-    private void drawFullScreenTexture(DrawContext context, Identifier texture, int x, int y, int width, int height, float alpha) {
-        if (texture == null) {
-            return;
-        }
-        context.setShaderColor(1.0F, 1.0F, 1.0F, Math.max(0.0F, Math.min(1.0F, alpha)));
-        context.drawTexture(texture, x, y, 0, 0.0F, 0.0F, width, height, OVERLAY_TEXTURE_SIZE, OVERLAY_TEXTURE_SIZE);
-        context.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-    }
-
-    private float effectiveAlphaMultiplier() {
-        if (shaderRuntimeManager == null) {
-            return 1.0F;
-        }
-        return shaderRuntimeManager.activeRoute() == ShaderRuntimeManager.Route.IRIS_SHADERPACK
-                ? SHADERPACK_OVERLAY_ALPHA_MULTIPLIER
-                : 1.0F;
     }
 
     private boolean refreshRuntime() {

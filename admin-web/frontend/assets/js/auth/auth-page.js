@@ -94,6 +94,13 @@ function setError(message = "") {
   }
 }
 
+function setRecoveryStatus(message = "", error = false) {
+  const root = $("recoveryStatus");
+  if (!root) return;
+  root.textContent = String(message || "");
+  root.dataset.state = error ? "error" : "ok";
+}
+
 function syncAuthForm() {
   const register = isRegisterPage();
   $("minecraftNameGroup")?.classList.toggle("hidden", !register);
@@ -151,6 +158,48 @@ async function submitAuth(event) {
   redirectToRoleHome(role);
 }
 
+async function startRecovery(event) {
+  event?.preventDefault?.();
+  const minecraftName = String($("recoveryMinecraftName")?.value || "").trim();
+  if (!minecraftName) {
+    setRecoveryStatus("Укажите Minecraft-ник для восстановления.", true);
+    return;
+  }
+  setRecoveryStatus("");
+  await ensureCsrfCookie();
+  const data = await requestJson("/api/player/recovery/start", {
+    method: "POST",
+    body: JSON.stringify({ minecraft_name: minecraftName }),
+  });
+  const delivered = data.deliveredInGame ? "Код отправлен в игру." : "Код создан, но RCON не подтвердил доставку.";
+  setRecoveryStatus(`${delivered} Срок действия: 10 минут.`);
+}
+
+async function confirmRecovery(event) {
+  event?.preventDefault?.();
+  const minecraftName = String($("recoveryMinecraftName")?.value || "").trim();
+  const code = String($("recoveryCode")?.value || "").trim().toUpperCase();
+  const newPassword = String($("recoveryPassword")?.value || "");
+  const rememberMe = Boolean($("recoveryRememberMe")?.checked);
+  if (!minecraftName || !code || !newPassword) {
+    setRecoveryStatus("Заполните ник, код и новый пароль.", true);
+    return;
+  }
+  setRecoveryStatus("");
+  await ensureCsrfCookie();
+  const data = await requestJson("/api/player/recovery/confirm", {
+    method: "POST",
+    body: JSON.stringify({
+      minecraft_name: minecraftName,
+      code,
+      new_password: newPassword,
+      remember_me: rememberMe,
+    }),
+  });
+  const role = String(data.role || "player").trim().toLowerCase() || "player";
+  redirectToRoleHome(role);
+}
+
 export async function initAuthPage() {
   document.documentElement.dataset.legacyRuntime = "auth-page";
   syncAuthForm();
@@ -177,6 +226,30 @@ export async function initAuthPage() {
         await submitAuth(event);
       } catch (error) {
         setError(error instanceof Error ? error.message : "Не удалось выполнить вход.");
+      }
+    });
+  }
+
+  const recoveryStart = $("recoveryStartBtn");
+  if (recoveryStart && recoveryStart.dataset.bound !== "true") {
+    recoveryStart.dataset.bound = "true";
+    recoveryStart.addEventListener("click", async (event) => {
+      try {
+        await startRecovery(event);
+      } catch (error) {
+        setRecoveryStatus(error instanceof Error ? error.message : "Не удалось отправить код восстановления.", true);
+      }
+    });
+  }
+
+  const recoveryConfirm = $("recoveryConfirmBtn");
+  if (recoveryConfirm && recoveryConfirm.dataset.bound !== "true") {
+    recoveryConfirm.dataset.bound = "true";
+    recoveryConfirm.addEventListener("click", async (event) => {
+      try {
+        await confirmRecovery(event);
+      } catch (error) {
+        setRecoveryStatus(error instanceof Error ? error.message : "Не удалось восстановить доступ.", true);
       }
     });
   }

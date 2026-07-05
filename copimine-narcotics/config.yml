@@ -154,7 +154,7 @@ items:
       - type:LUCK,amplifier:0,duration_seconds:300
       - type:INVISIBILITY,amplifier:0,duration_seconds:180
     overdose_effects:
-      - type:WEAVING,amplifier:0,duration_seconds:180
+      - type:SLOW_DIGGING,amplifier:4,duration_seconds:300
       - type:CONFUSION,amplifier:0,duration_seconds:120
 
   sos:

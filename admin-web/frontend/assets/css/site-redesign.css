@@ -1173,6 +1173,34 @@ body {
   color: #667585;
 }
 
+.auth-recovery-card {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid rgba(56, 78, 111, 0.16);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(245, 250, 255, 0.92), rgba(238, 245, 252, 0.94));
+}
+
+.auth-recovery-card h3 {
+  margin: 0 0 8px;
+  color: #122033;
+}
+
+.auth-recovery-card p {
+  margin: 0 0 14px;
+  color: #5f7185;
+}
+
+.auth-inline-actions {
+  display: flex;
+  gap: 12px;
+  margin: 10px 0 14px;
+}
+
+#recoveryStatus[data-state="ok"] {
+  color: #2a8f53;
+}
+
 :root[data-theme="dark"] .auth-shell {
   background:
     radial-gradient(circle at 50% -8%, rgba(125, 216, 255, 0.18), transparent 32%),
@@ -1192,6 +1220,23 @@ body {
 
 :root[data-theme="dark"] .auth-card-copy p {
   color: var(--showcase-muted);
+}
+
+:root[data-theme="dark"] .auth-recovery-card {
+  border-color: rgba(124, 255, 167, 0.16);
+  background: linear-gradient(180deg, rgba(12, 18, 28, 0.86), rgba(16, 23, 35, 0.92));
+}
+
+:root[data-theme="dark"] .auth-recovery-card h3 {
+  color: var(--showcase-heading);
+}
+
+:root[data-theme="dark"] .auth-recovery-card p {
+  color: var(--showcase-muted);
+}
+
+:root[data-theme="dark"] #recoveryStatus[data-state="ok"] {
+  color: #7cff9c;
 }
 
 :root[data-theme="light"] body.player-mode .app,

@@ -69,7 +69,7 @@ public final class OverdoseService {
         overdose = overdose || newScale >= configService.overdoseThreshold();
 
         if (configService.clearNormalEffectsBeforeNewUse()) {
-            clearTransientEffects(player, true);
+            clearTransientEffects(player, false);
         }
 
         PlayerState updated = new PlayerState(

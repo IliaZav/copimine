@@ -41,12 +41,6 @@ RUNTIME_PATHS=(
   "minecraft/server/plugins/nLogin"
   "minecraft/server/plugins/FastLogin"
   "minecraft/server/logs"
-  "resourcepacks/build"
-  "thirdparty/CopiMineMods.zip"
-  "thirdparty/CopiMineMods.sha1"
-  "thirdparty/CopiMineMods.sha256"
-  "thirdparty/modpack_manifest.json"
-  "deploy/runtime_metadata.json"
 )
 
 REQUIRED_PAYLOAD_PATHS=(
@@ -446,8 +440,18 @@ fix_permissions() {
   fi
 }
 
+refresh_managed_release_artifacts() {
+  log "[12/14] Refresh managed hashes and runtime metadata"
+  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
+  # shellcheck source=/dev/null
+  source "$common_script"
+  copimine_refresh_release_artifacts
+  copimine_validate_release_contract
+}
+
 install_system_files() {
-  log "[12/14] Refresh systemd and nginx config"
+  log "[13/15] Refresh systemd and nginx config"
   for item in "${SYSTEM_FILES[@]}"; do
     local source_name="${item%%:*}"
     local target_path="${item#*:}"
@@ -494,7 +498,7 @@ validate_java_artifacts() {
 }
 
 validate_release_tree() {
-  log "[13/14] Validate extracted release"
+  log "[14/15] Validate extracted release"
   python_backend_check
   validate_java_artifacts
   if [[ -f "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" ]]; then
@@ -547,7 +551,7 @@ http_check() {
 }
 
 verify_runtime() {
-  log "[14/14] Start services and run health checks"
+  log "[15/15] Start services and run health checks"
   restart_services
   for service in "${SERVICES[@]}"; do
     if systemctl list-unit-files | grep -q "^${service}\.service"; then
@@ -590,6 +594,7 @@ main() {
   atomic_swap
   restore_database
   fix_permissions
+  refresh_managed_release_artifacts
   install_system_files
   validate_release_tree
   verify_runtime

@@ -57,8 +57,8 @@ if (Test-Path -LiteralPath $zip) {
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
 $zipSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $zip).Hash.ToLowerInvariant()
 $zipSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
-Set-Content -LiteralPath $sha -Value $zipSha1 -Encoding UTF8
-Set-Content -LiteralPath $sha256 -Value $zipSha256 -Encoding UTF8
+Set-Content -LiteralPath $sha -Value $zipSha1 -Encoding ascii
+Set-Content -LiteralPath $sha256 -Value $zipSha256 -Encoding ascii
 
 if (-not (Test-Path -LiteralPath $frontendPublicDataDir)) {
     New-Item -ItemType Directory -Force -Path $frontendPublicDataDir | Out-Null

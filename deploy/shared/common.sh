@@ -12,6 +12,8 @@ COPIMINE_SERVER_PROPERTIES="${COPIMINE_SERVER_PROPERTIES:-$COPIMINE_SERVER_DIR/s
 COPIMINE_WORLD_SEED="${COPIMINE_WORLD_SEED:--1861153001556076901}"
 COPIMINE_BACKUP_DIR="${COPIMINE_BACKUP_DIR:-/opt/copimine-backups}"
 COPIMINE_RUNTIME_METADATA="${COPIMINE_RUNTIME_METADATA:-$COPIMINE_ROOT/deploy/runtime_metadata.json}"
+COPIMINE_RELEASE_MANIFEST="${COPIMINE_RELEASE_MANIFEST:-$COPIMINE_ROOT/deploy/release_manifest.json}"
+COPIMINE_INSTALLER_MANIFEST="${COPIMINE_INSTALLER_MANIFEST:-$COPIMINE_ROOT/deploy/installer_manifest.json}"
 COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-18080.conf}"
 COPIMINE_NGINX_AVAILABLE="${COPIMINE_NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 COPIMINE_NGINX_ENABLED="${COPIMINE_NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
@@ -205,20 +207,52 @@ copimine_build_assets() {
   fi
 }
 
-copimine_sync_server_properties() {
-  local resourcepack_sha1
-  resourcepack_sha1="$(sha1sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
-  python3 - "$COPIMINE_SERVER_PROPERTIES" "$resourcepack_sha1" <<'PY'
+copimine_release_value() {
+  local dotted_path="$1"
+  if [[ ! -f "$COPIMINE_RELEASE_MANIFEST" ]]; then
+    return 0
+  fi
+  python3 - "$COPIMINE_RELEASE_MANIFEST" "$dotted_path" <<'PY'
 from pathlib import Path
 import json
 import sys
 
+manifest_path = Path(sys.argv[1])
+dotted = sys.argv[2]
+payload = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+current = payload
+for part in dotted.split("."):
+    if isinstance(current, dict) and part in current:
+        current = current[part]
+    else:
+        current = ""
+        break
+if current is None:
+    current = ""
+print(current)
+PY
+}
+
+copimine_sync_server_properties() {
+  local resourcepack_sha1
+  resourcepack_sha1="$(sha1sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
+  local resourcepack_url
+  resourcepack_url="$(copimine_release_value "resourcePack.downloadUrl")"
+  if [[ -z "$resourcepack_url" ]]; then
+    resourcepack_url="http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
+  fi
+  python3 - "$COPIMINE_SERVER_PROPERTIES" "$resourcepack_sha1" "$resourcepack_url" "$COPIMINE_WORLD_SEED" <<'PY'
+from pathlib import Path
+import sys
+
 path = Path(sys.argv[1])
 sha1 = sys.argv[2]
+resource_pack_url = sys.argv[3].replace(":", r"\:")
+world_seed = sys.argv[4]
 lines = path.read_text(encoding="utf-8").splitlines()
 updates = {
-    "level-seed": "-1861153001556076901",
-    "resource-pack": r"http\://admin.copimine.ru\:18080/resourcepacks/CopiMineResourcePack.zip",
+    "level-seed": world_seed,
+    "resource-pack": resource_pack_url,
     "resource-pack-sha1": sha1,
 }
 seen = set()
@@ -238,6 +272,18 @@ for key, value in updates.items():
         output.append(f"{key}={value}")
 path.write_text("\n".join(output) + "\n", encoding="utf-8")
 PY
+}
+
+copimine_write_modpack_hashes() {
+  local modpack_zip="$COPIMINE_ROOT/thirdparty/CopiMineMods.zip"
+  local sha1_path="$COPIMINE_ROOT/thirdparty/CopiMineMods.sha1"
+  local sha256_path="$COPIMINE_ROOT/thirdparty/CopiMineMods.sha256"
+  [[ -f "$modpack_zip" ]] || copimine_fail "Missing modpack zip: $modpack_zip"
+  local modpack_sha1 modpack_sha256
+  modpack_sha1="$(sha1sum "$modpack_zip" | awk '{print $1}')"
+  modpack_sha256="$(sha256sum "$modpack_zip" | awk '{print $1}')"
+  printf '%s\n' "$modpack_sha1" > "$sha1_path"
+  printf '%s\n' "$modpack_sha256" > "$sha256_path"
 }
 
 copimine_install_system_files() {
@@ -275,6 +321,116 @@ payload = {
 }
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+copimine_refresh_release_artifacts() {
+  copimine_write_modpack_hashes
+  copimine_sync_server_properties
+  copimine_write_runtime_metadata
+}
+
+copimine_validate_release_contract() {
+  python3 - "$COPIMINE_ROOT" "$COPIMINE_RELEASE_MANIFEST" "$COPIMINE_INSTALLER_MANIFEST" "$COPIMINE_SERVER_PROPERTIES" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import hashlib
+import json
+import sys
+
+root = Path(sys.argv[1])
+release_manifest_path = Path(sys.argv[2])
+installer_manifest_path = Path(sys.argv[3])
+server_properties_path = Path(sys.argv[4])
+errors: list[str] = []
+
+def read_json(path: Path) -> dict:
+    if not path.is_file():
+        errors.append(f"Missing manifest: {path}")
+        return {}
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+def sha1(path: Path) -> str:
+    return hashlib.sha1(path.read_bytes()).hexdigest()
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+release_manifest = read_json(release_manifest_path)
+installer_manifest = read_json(installer_manifest_path)
+
+modpack = root / "thirdparty" / "CopiMineMods.zip"
+modpack_sha1_path = root / "thirdparty" / "CopiMineMods.sha1"
+modpack_sha256_path = root / "thirdparty" / "CopiMineMods.sha256"
+resource_pack = root / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
+client_mod = root / "thirdparty" / "client-mods" / "CopiMineClient-0.1.0.jar"
+modpack_snapshot = root / "admin-web" / "frontend" / "assets" / "public-data" / "modpack_snapshot.json"
+
+for required in (modpack, modpack_sha1_path, modpack_sha256_path, resource_pack, client_mod, modpack_snapshot, server_properties_path):
+    if not required.is_file():
+        errors.append(f"Missing required release file: {required}")
+
+if not errors:
+    actual_modpack_sha1 = sha1(modpack)
+    actual_modpack_sha256 = sha256(modpack)
+    actual_resource_sha1 = sha1(resource_pack)
+    actual_resource_sha256 = sha256(resource_pack)
+    actual_client_sha1 = sha1(client_mod)
+    sidecar_sha1 = modpack_sha1_path.read_text(encoding="utf-8-sig").strip()
+    sidecar_sha256 = modpack_sha256_path.read_text(encoding="utf-8-sig").strip()
+
+    if actual_modpack_sha1 != sidecar_sha1:
+        errors.append(f"Modpack SHA1 mismatch: sidecar={sidecar_sha1} actual={actual_modpack_sha1}")
+    if actual_modpack_sha256 != sidecar_sha256:
+        errors.append(f"Modpack SHA256 mismatch: sidecar={sidecar_sha256} actual={actual_modpack_sha256}")
+
+    release_modpack = release_manifest.get("modpack", {})
+    release_resource = release_manifest.get("resourcePack", {})
+    release_client = release_manifest.get("clientMod", {})
+    if release_modpack.get("sha1") != actual_modpack_sha1:
+        errors.append(f"release_manifest modpack.sha1 mismatch: manifest={release_modpack.get('sha1')} actual={actual_modpack_sha1}")
+    if release_modpack.get("sha256") != actual_modpack_sha256:
+        errors.append(f"release_manifest modpack.sha256 mismatch: manifest={release_modpack.get('sha256')} actual={actual_modpack_sha256}")
+    if release_resource.get("sha1") != actual_resource_sha1:
+        errors.append(f"release_manifest resourcePack.sha1 mismatch: manifest={release_resource.get('sha1')} actual={actual_resource_sha1}")
+    if release_resource.get("sha256") != actual_resource_sha256:
+        errors.append(f"release_manifest resourcePack.sha256 mismatch: manifest={release_resource.get('sha256')} actual={actual_resource_sha256}")
+    if release_client.get("sha1") != actual_client_sha1:
+        errors.append(f"release_manifest clientMod.sha1 mismatch: manifest={release_client.get('sha1')} actual={actual_client_sha1}")
+
+    snapshot = json.loads(modpack_snapshot.read_text(encoding="utf-8-sig"))
+    if snapshot.get("sha1") != actual_modpack_sha1:
+        errors.append(f"modpack_snapshot sha1 mismatch: snapshot={snapshot.get('sha1')} actual={actual_modpack_sha1}")
+    if snapshot.get("sha256") != actual_modpack_sha256:
+        errors.append(f"modpack_snapshot sha256 mismatch: snapshot={snapshot.get('sha256')} actual={actual_modpack_sha256}")
+    if snapshot.get("downloadUrl") != "/downloads/CopiMineMods.zip":
+        errors.append(f"modpack_snapshot downloadUrl mismatch: {snapshot.get('downloadUrl')}")
+
+    installer_hashes = installer_manifest.get("artifacts", {})
+    if installer_hashes.get("modpack", {}).get("sha1") != actual_modpack_sha1:
+        errors.append("installer_manifest modpack SHA1 mismatch")
+    if installer_hashes.get("modpack", {}).get("sha256") != actual_modpack_sha256:
+        errors.append("installer_manifest modpack SHA256 mismatch")
+    if installer_hashes.get("resourcePack", {}).get("sha1") != actual_resource_sha1:
+        errors.append("installer_manifest resourcePack SHA1 mismatch")
+    if installer_hashes.get("resourcePack", {}).get("sha256") != actual_resource_sha256:
+        errors.append("installer_manifest resourcePack SHA256 mismatch")
+    if installer_hashes.get("clientMod", {}).get("sha1") != actual_client_sha1:
+        errors.append("installer_manifest clientMod SHA1 mismatch")
+
+    props = {}
+    for raw in server_properties_path.read_text(encoding="utf-8").splitlines():
+        if "=" in raw and not raw.startswith("#"):
+            k, v = raw.split("=", 1)
+            props[k] = v
+    if props.get("resource-pack-sha1") != actual_resource_sha1:
+        errors.append(f"server.properties resource-pack-sha1 mismatch: props={props.get('resource-pack-sha1')} actual={actual_resource_sha1}")
+
+if errors:
+    for entry in errors:
+        print(entry, file=sys.stderr)
+    sys.exit(1)
 PY
 }
 
@@ -348,7 +504,7 @@ copimine_install_flow() {
   copimine_ensure_postgres "$postgres_password"
   copimine_python_env
   copimine_build_assets
-  copimine_sync_server_properties
+  copimine_refresh_release_artifacts
   copimine_install_system_files
-  copimine_write_runtime_metadata
+  copimine_validate_release_contract
 }

@@ -15,6 +15,8 @@ BUILD = ROOT / "build"
 STAGE = BUILD / "_stage"
 COMBINED_MANIFEST = ROOT / "models_manifest.json"
 SERVER_PROPERTIES = ROOT.parent / "minecraft" / "server" / "server.properties"
+DEFAULT_RESOURCE_PACK_URL = r"http\://admin.copimine.ru\:18080/resourcepacks/CopiMineResourcePack.zip"
+DEFAULT_WORLD_SEED = "-1861153001556076901"
 
 REQUIRED_SOURCE_FILES = [
     "pack.mcmeta",
@@ -110,14 +112,25 @@ def update_server_properties_sha1(sha1: str) -> None:
     lines = SERVER_PROPERTIES.read_text(encoding="utf-8").splitlines()
     output: list[str] = []
     updated = False
+    seen: set[str] = set()
     for line in lines:
         if line.startswith("resource-pack-sha1="):
             output.append(f"resource-pack-sha1={sha1}")
-            updated = True
+            seen.add("resource-pack-sha1")
+        elif line.startswith("resource-pack="):
+            output.append(f"resource-pack={DEFAULT_RESOURCE_PACK_URL}")
+            seen.add("resource-pack")
+        elif line.startswith("level-seed="):
+            output.append(f"level-seed={DEFAULT_WORLD_SEED}")
+            seen.add("level-seed")
         else:
             output.append(line)
-    if not updated:
+    if "resource-pack-sha1" not in seen:
         output.append(f"resource-pack-sha1={sha1}")
+    if "resource-pack" not in seen:
+        output.append(f"resource-pack={DEFAULT_RESOURCE_PACK_URL}")
+    if "level-seed" not in seen:
+        output.append(f"level-seed={DEFAULT_WORLD_SEED}")
     SERVER_PROPERTIES.write_text("\n".join(output) + "\n", encoding="utf-8")
 
 

@@ -1,0 +1,56 @@
+﻿{
+    "generatedAtUtc":  "2026-07-05T16:44:59.0638756Z",
+    "gitCommit":  "7cbe04e",
+    "sourceTreeDirty":  true,
+    "artifacts":  {
+                      "resourcePack":  {
+                                           "path":  "resourcepacks/build/CopiMineResourcePack.zip",
+                                           "sha1":  "0aaf317cc957e58f4c2ca5031634201ad8014cca",
+                                           "sha256":  "e930a66ef1869f2e1304a6e18a26cf0b14e28f54540d0c8c685e08cc7f28af9e"
+                                       },
+                      "modpack":  {
+                                      "path":  "thirdparty/CopiMineMods.zip",
+                                      "sha1":  "117747b42e790dc1cee1991a3fd6a87440366ae8",
+                                      "sha256":  "0826186b17fba23f42de20dfb67b5c0108ccb1292c06794f770c230105767bb7"
+                                  },
+                      "clientMod":  {
+                                        "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
+                                        "sha1":  "9266e3cec1d5e4e2f0cf31122c7fbe99302b30ac",
+                                        "sha256":  "a9da419db5e0e40e8b0017b717ee67934a08920ab2431718fd4351e833671358"
+                                    }
+                  },
+    "deploy":  {
+                   "scripts":  {
+                                   "unpackAndVerify":  {
+                                                           "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
+                                                           "sha256":  "691e18c57d7356c6d2c15d8e7f6e4cbbfe3295e51faf073e58ef327735bc2280"
+                                                       },
+                                   "fullReplace":  {
+                                                       "path":  "deploy/ubuntu/copimine_full_replace.sh",
+                                                       "sha256":  "2497ef166f80767b4fee15ad0c8674c65827191e9aa97393fa1a88a4ef017163"
+                                                   },
+                                   "sharedCommon":  {
+                                                        "path":  "deploy/shared/common.sh",
+                                                        "sha256":  "9032126f39c59d0a13503d2c88899624e273c1d81282069fb00356779fd5c21e"
+                                                    }
+                               },
+                   "routes":  {
+                                  "modpack":  "/downloads/CopiMineMods.zip",
+                                  "resourcePack":  "/resourcepacks/CopiMineResourcePack.zip"
+                              }
+               },
+    "frontend":  {
+                     "modpackSnapshot":  {
+                                             "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
+                                             "sha256":  "387de9cea5fd6cce78f2eb81748718f14c40f75b06d11e5e64d6abe9bb6cd35e"
+                                         }
+                 },
+    "serverProperties":  {
+                             "path":  "minecraft/server/server.properties",
+                             "required":  {
+                                              "levelSeed":  "-1861153001556076901",
+                                              "resourcePack":  "http\\://admin.copimine.ru\\:18080/resourcepacks/CopiMineResourcePack.zip",
+                                              "resourcePackSha1":  "0aaf317cc957e58f4c2ca5031634201ad8014cca"
+                                          }
+                         }
+}

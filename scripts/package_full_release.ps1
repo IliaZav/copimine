@@ -29,11 +29,20 @@ $resourcepackSha256File = Join-Path $ProjectRoot "resourcepacks\build\CopiMineRe
 $modpackZip = Join-Path $ProjectRoot "thirdparty\CopiMineMods.zip"
 $modpackShaFile = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha1"
 $modpackSha256File = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha256"
+$modpackSnapshotPath = Join-Path $ProjectRoot "admin-web\frontend\assets\public-data\modpack_snapshot.json"
 $thirdpartyManifestPath = Join-Path $ProjectRoot "thirdparty\thirdparty_manifest.json"
 $releaseManifestPath = Join-Path $ProjectRoot "deploy\release_manifest.json"
+$installerManifestPath = Join-Path $ProjectRoot "deploy\installer_manifest.json"
 $deployInstall = Join-Path $ProjectRoot "deploy\ubuntu\install.sh"
 $deployUpdate = Join-Path $ProjectRoot "deploy\ubuntu\update.sh"
 $deployVerify = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
+$validateReleaseScript = Join-Path $ProjectRoot "scripts\validate_release_bundle.ps1"
+$embeddedUnpackScript = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
+$embeddedReplaceScript = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
+$embeddedCommonScript = Join-Path $ProjectRoot "deploy\shared\common.sh"
+$serverPropertiesPath = Join-Path $ProjectRoot "minecraft\server\server.properties"
+$resourcePackDownloadUrl = "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
+$modpackDownloadUrl = "/downloads/CopiMineMods.zip"
 
 function Invoke-Checked {
     param(
@@ -44,6 +53,11 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) {
         throw "Command failed: $FilePath $($Arguments -join ' ')"
     }
+}
+
+function Get-Sha256Lower {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
 }
 
 function Write-Checksums {
@@ -65,7 +79,7 @@ function Write-Checksums {
         $sha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $full).Hash.ToLowerInvariant()
         "SHA1  $($relative -replace '\\','/')  $sha1"
     }
-    Set-Content -LiteralPath (Join-Path $ProjectRoot "thirdparty\checksums.txt") -Value ($lines -join "`n") -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $ProjectRoot "thirdparty\checksums.txt") -Value ($lines -join "`n") -Encoding ascii
 }
 
 Write-Host "[1/8] Build CopiMineClient"
@@ -96,9 +110,11 @@ $resourcepackSha256 = (Get-Content -Raw -Encoding UTF8 $resourcepackSha256File).
 $modpackSha1 = (Get-Content -Raw -Encoding UTF8 $modpackShaFile).Trim()
 $modpackSha256 = (Get-Content -Raw -Encoding UTF8 $modpackSha256File).Trim()
 $clientSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $thirdpartyClientJar).Hash.ToLowerInvariant()
+$clientSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $thirdpartyClientJar).Hash.ToLowerInvariant()
 $commit = (git -C $ProjectRoot rev-parse --short HEAD).Trim()
+$gitDirty = -not [string]::IsNullOrWhiteSpace((git -C $ProjectRoot status --short))
 
-Write-Host "[5/8] Update third-party manifest and release manifest"
+Write-Host "[5/8] Update release manifests"
 $thirdpartyManifest = Get-Content -Raw -Encoding UTF8 $thirdpartyManifestPath | ConvertFrom-Json
 $thirdpartyManifest.clientArchive.sha1 = $modpackSha1
 foreach ($artifact in $thirdpartyManifest.artifacts.clientMods) {
@@ -111,22 +127,24 @@ foreach ($artifact in $thirdpartyManifest.artifacts.clientMods) {
 $releaseManifest = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
     gitCommit = $commit
+    sourceTreeDirty = $gitDirty
     projectRoot = "copimine"
     resourcePack = [ordered]@{
         path = "resourcepacks/build/CopiMineResourcePack.zip"
         sha1 = $resourcepackSha1
         sha256 = $resourcepackSha256
-        downloadUrl = "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
+        downloadUrl = $resourcePackDownloadUrl
     }
     modpack = [ordered]@{
         path = "thirdparty/CopiMineMods.zip"
         sha1 = $modpackSha1
         sha256 = $modpackSha256
-        downloadUrl = "/downloads/CopiMineMods.zip"
+        downloadUrl = $modpackDownloadUrl
     }
     clientMod = [ordered]@{
         path = "thirdparty/client-mods/CopiMineClient-0.1.0.jar"
         sha1 = $clientSha1
+        sha256 = $clientSha256
     }
     database = [ordered]@{
         bundledDump = [bool](($DbDumpPath) -and (Test-Path -LiteralPath $DbDumpPath))
@@ -135,6 +153,64 @@ $releaseManifest = [ordered]@{
     }
 }
 ($releaseManifest | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $releaseManifestPath -Encoding UTF8
+
+$installerManifest = [ordered]@{
+    generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+    gitCommit = $commit
+    sourceTreeDirty = $gitDirty
+    artifacts = [ordered]@{
+        resourcePack = [ordered]@{
+            path = "resourcepacks/build/CopiMineResourcePack.zip"
+            sha1 = $resourcepackSha1
+            sha256 = $resourcepackSha256
+        }
+        modpack = [ordered]@{
+            path = "thirdparty/CopiMineMods.zip"
+            sha1 = $modpackSha1
+            sha256 = $modpackSha256
+        }
+        clientMod = [ordered]@{
+            path = "thirdparty/client-mods/CopiMineClient-0.1.0.jar"
+            sha1 = $clientSha1
+            sha256 = $clientSha256
+        }
+    }
+    deploy = [ordered]@{
+        scripts = [ordered]@{
+            unpackAndVerify = [ordered]@{
+                path = "deploy/ubuntu/copimine_unpack_and_verify.sh"
+                sha256 = (Get-Sha256Lower -LiteralPath $embeddedUnpackScript)
+            }
+            fullReplace = [ordered]@{
+                path = "deploy/ubuntu/copimine_full_replace.sh"
+                sha256 = (Get-Sha256Lower -LiteralPath $embeddedReplaceScript)
+            }
+            sharedCommon = [ordered]@{
+                path = "deploy/shared/common.sh"
+                sha256 = (Get-Sha256Lower -LiteralPath $embeddedCommonScript)
+            }
+        }
+        routes = [ordered]@{
+            modpack = $modpackDownloadUrl
+            resourcePack = "/resourcepacks/CopiMineResourcePack.zip"
+        }
+    }
+    frontend = [ordered]@{
+        modpackSnapshot = [ordered]@{
+            path = "admin-web/frontend/assets/public-data/modpack_snapshot.json"
+            sha256 = (Get-Sha256Lower -LiteralPath $modpackSnapshotPath)
+        }
+    }
+    serverProperties = [ordered]@{
+        path = "minecraft/server/server.properties"
+        required = [ordered]@{
+            levelSeed = "-1861153001556076901"
+            resourcePack = ($resourcePackDownloadUrl -replace ':','\:')
+            resourcePackSha1 = $resourcepackSha1
+        }
+    }
+}
+($installerManifest | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath $installerManifestPath -Encoding UTF8
 
 Write-Host "[6/8] Stage Linux replacement payload"
 $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-release-" + [guid]::NewGuid().ToString())
@@ -210,7 +286,7 @@ try {
     Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "[8/8] Export deploy helpers"
+Write-Host "[8/8] Finalize release metadata and validate bundle"
 $deployInstallCopy = Join-Path $ReleaseDir "copimine_install.sh"
 $deployUpdateCopy = Join-Path $ReleaseDir "copimine_update.sh"
 $deployVerifyCopy = Join-Path $ReleaseDir "copimine_verify.sh"
@@ -218,12 +294,57 @@ Copy-Item -LiteralPath $deployInstall -Destination $deployInstallCopy -Force
 Copy-Item -LiteralPath $deployUpdate -Destination $deployUpdateCopy -Force
 Copy-Item -LiteralPath $deployVerify -Destination $deployVerifyCopy -Force
 
+$archiveSha256 = Get-Sha256Lower -LiteralPath $archivePath
+$archiveShaPath = "$archivePath.sha256"
+Set-Content -LiteralPath $archiveShaPath -Value $archiveSha256 -Encoding ascii
+
+$bootstrapManifestPath = [System.IO.Path]::ChangeExtension($archivePath, ".bootstrap.json")
+$bootstrapManifest = [ordered]@{
+    generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+    archive = [ordered]@{
+        file = [System.IO.Path]::GetFileName($archivePath)
+        sha256 = $archiveSha256
+        sizeBytes = (Get-Item -LiteralPath $archivePath).Length
+    }
+    embedded = [ordered]@{
+        payloadRoot = "copimine"
+        unpackAndVerify = "copimine/deploy/ubuntu/copimine_unpack_and_verify.sh"
+        fullReplace = "copimine/deploy/ubuntu/copimine_full_replace.sh"
+        releaseManifest = "copimine/deploy/release_manifest.json"
+        installerManifest = "copimine/deploy/installer_manifest.json"
+    }
+    exportedHelpers = [ordered]@{
+        install = [System.IO.Path]::GetFileName($deployInstallCopy)
+        update = [System.IO.Path]::GetFileName($deployUpdateCopy)
+        verify = [System.IO.Path]::GetFileName($deployVerifyCopy)
+    }
+}
+($bootstrapManifest | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $bootstrapManifestPath -Encoding UTF8
+
+try {
+    Invoke-Checked -FilePath "powershell" -Arguments @(
+        "-ExecutionPolicy", "Bypass",
+        "-File", $validateReleaseScript,
+        "-ProjectRoot", $ProjectRoot,
+        "-ArchivePath", $archivePath,
+        "-BootstrapManifestPath", $bootstrapManifestPath
+    )
+} catch {
+    Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $archiveShaPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $bootstrapManifestPath -Force -ErrorAction SilentlyContinue
+    throw
+}
+
 Write-Host ""
 Write-Host "RELEASE READY"
 Write-Host "Archive: $archivePath"
+Write-Host "Archive SHA256: $archiveSha256"
 Write-Host "Deploy install: $deployInstallCopy"
 Write-Host "Deploy update: $deployUpdateCopy"
 Write-Host "Deploy verify: $deployVerifyCopy"
+Write-Host "Bootstrap manifest: $bootstrapManifestPath"
 Write-Host "Git commit: $commit"
+Write-Host "Source tree dirty: $gitDirty"
 Write-Host "Resource pack SHA1: $resourcepackSha1"
 Write-Host "Modpack SHA1: $modpackSha1"

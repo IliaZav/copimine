@@ -59,9 +59,6 @@ PRESERVE_PATHS=(
   "minecraft/server/plugins/FastLogin"
   "minecraft/server/plugins/nLogin"
   "minecraft/server/logs"
-  "thirdparty/CopiMineMods.sha1"
-  "thirdparty/CopiMineMods.sha256"
-  "thirdparty/modpack_manifest.json"
 )
 
 SYSTEMD_UNITS=(
@@ -408,8 +405,18 @@ fix_permissions() {
   [[ -f "$PROJECT_ROOT/admin-web/.env" ]] && chmod 600 "$PROJECT_ROOT/admin-web/.env"
 }
 
+refresh_managed_release_artifacts() {
+  log "[12/16] Refresh managed hashes and runtime metadata"
+  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ -f "$common_script" ]] || die "Missing shared deploy helpers: $common_script"
+  # shellcheck source=/dev/null
+  source "$common_script"
+  copimine_refresh_release_artifacts
+  copimine_validate_release_contract
+}
+
 install_system_files() {
-  log "[12/16] Install system files"
+  log "[13/16] Install system files"
   local deploy_dir="$PROJECT_ROOT/admin-web/deploy"
   [[ -d "$deploy_dir" ]] || return 0
   for unit in "${SYSTEMD_UNITS[@]}"; do
@@ -428,7 +435,7 @@ install_system_files() {
 }
 
 validate_runtime_tree() {
-  log "[13/16] Validate runtime tree"
+  log "[14/16] Validate runtime tree"
   require_dir "$PROJECT_ROOT/admin-web/backend"
   require_dir "$PROJECT_ROOT/minecraft/server/plugins"
   python3 -m compileall "$PROJECT_ROOT/admin-web/backend" >/dev/null || die "FastAPI backend compile check failed"
@@ -484,7 +491,7 @@ wait_for_service() {
 }
 
 verify_services() {
-  log "[14/16] Start services"
+  log "[15/16] Start services"
   restart_services
   for service in "${SERVICES[@]}"; do
     if systemctl list-unit-files | grep -q "^${service}\.service"; then
@@ -497,7 +504,7 @@ verify_services() {
 }
 
 verify_http() {
-  log "[15/16] HTTP verification"
+  log "[16/16] HTTP verification"
   curl -fsS http://127.0.0.1:8090/api/health >/dev/null || die "/api/health failed"
   curl -fsS http://127.0.0.1:8090/api/runtime >/dev/null || die "/api/runtime failed"
   curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip >/dev/null || die "Modpack download route failed"
@@ -505,7 +512,7 @@ verify_http() {
 }
 
 final_summary() {
-  log "[16/16] Summary"
+  log "[17/17] Summary"
   log "Release installed successfully."
   log "Project root: $PROJECT_ROOT"
   log "Previous release backup: $PREVIOUS_RELEASE"
@@ -527,6 +534,7 @@ main() {
   wipe_worlds_if_requested
   restore_database_if_requested
   fix_permissions
+  refresh_managed_release_artifacts
   install_system_files
   validate_runtime_tree
   verify_services

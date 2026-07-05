@@ -1,17 +1,17 @@
 ﻿{
-    "generatedAtUtc":  "2026-07-05T16:44:59.0638756Z",
-    "gitCommit":  "7cbe04e",
+    "generatedAtUtc":  "2026-07-05T18:00:46.2896907Z",
+    "gitCommit":  "1d26b8f",
     "sourceTreeDirty":  true,
     "artifacts":  {
                       "resourcePack":  {
                                            "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                                           "sha1":  "0aaf317cc957e58f4c2ca5031634201ad8014cca",
-                                           "sha256":  "e930a66ef1869f2e1304a6e18a26cf0b14e28f54540d0c8c685e08cc7f28af9e"
+                                           "sha1":  "4ad7cf36aacd5266a04aa937281435990eb61503",
+                                           "sha256":  "a9e6bc8dd45529f3b293063604b1485f3c2f2239650e20958d87d0f346bd1554"
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "117747b42e790dc1cee1991a3fd6a87440366ae8",
-                                      "sha256":  "0826186b17fba23f42de20dfb67b5c0108ccb1292c06794f770c230105767bb7"
+                                      "sha1":  "d0ec144a3c06dd2f09fb586291751af7ea066bea",
+                                      "sha256":  "10d425d36cfbca1ad98aef0a27096eedf8d186422eb9d737434d93e25931642e"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -42,7 +42,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "387de9cea5fd6cce78f2eb81748718f14c40f75b06d11e5e64d6abe9bb6cd35e"
+                                             "sha256":  "1c4fe818cc08eb8923cd8b3c0211bb35d2a90ccb8c8d83a1e143a93484709968"
                                          }
                  },
     "serverProperties":  {
@@ -50,7 +50,7 @@
                              "required":  {
                                               "levelSeed":  "-1861153001556076901",
                                               "resourcePack":  "http\\://admin.copimine.ru\\:18080/resourcepacks/CopiMineResourcePack.zip",
-                                              "resourcePackSha1":  "0aaf317cc957e58f4c2ca5031634201ad8014cca"
+                                              "resourcePackSha1":  "4ad7cf36aacd5266a04aa937281435990eb61503"
                                           }
                          }
 }

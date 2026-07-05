@@ -70,12 +70,12 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
-from commerce_catalog import ar_catalog_snapshot, donation_catalog_snapshot
+from backend.commerce_catalog import ar_catalog_snapshot, donation_catalog_snapshot
 from backend.download_manager import artifact_file_response, artifact_metadata
 from backend.deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from backend.envfile import load_env_file_to_os, resolve_env_file
 from backend.startup_checks import run_startup_checks
-from plugin_registry import (
+from backend.plugin_registry import (
     PluginRegistryError,
     apply_registry_values,
     backup_registry_config,

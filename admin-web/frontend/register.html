@@ -7,40 +7,59 @@
   <title>CopiMine - Регистрация</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260704b" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260705a" />
 </head>
 <body data-page-kind="register" data-auth-flow="register" class="auth-screen">
   <div id="toast" class="toast-root" aria-live="polite"></div>
 
   <main class="auth-shell">
-    <section class="auth-card">
+    <section class="auth-card auth-card-wide">
       <div class="auth-card-head">
         <img class="auth-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <div class="auth-card-copy">
           <span class="auth-kicker">CopiMine</span>
-          <h1>Регистрация</h1>
-          <p>Создание аккаунта CopiMine.</p>
+          <h1>Регистрация аккаунта</h1>
+          <p>Укажите логин, пароль и игровой ник. Если ник заполнен, сайт сразу добавит его в whitelist сервера.</p>
         </div>
       </div>
 
-      <form id="loginForm" class="auth-form" autocomplete="on">
-        <label for="username">Логин</label>
-        <input id="username" autocomplete="username" spellcheck="false" placeholder="Придумайте логин" />
+      <div class="auth-card-grid">
+        <section class="auth-card-section auth-card-section-note">
+          <span class="auth-section-kicker">Правила</span>
+          <h2>Что учитывает система</h2>
+          <ul class="auth-check-list">
+            <li>Один IP может создать до пяти аккаунтов.</li>
+            <li>Minecraft-ник должен совпадать с тем, под которым вы зайдёте на сервер.</li>
+            <li>Банк и игровые действия откроются после привязки и настройки PIN.</li>
+          </ul>
+        </section>
 
-        <label for="password">Пароль</label>
-        <input id="password" type="password" autocomplete="new-password" placeholder="Минимум 8 символов" />
+        <section class="auth-card-section">
+          <form id="loginForm" class="auth-form" autocomplete="on">
+            <label for="username">Логин</label>
+            <input id="username" autocomplete="username" spellcheck="false" placeholder="Придумайте логин" />
 
-        <div id="minecraftNameGroup">
-          <label for="playerMinecraftName">Minecraft-ник</label>
-          <input id="playerMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Например, Cells" />
-        </div>
+            <label for="password">Пароль</label>
+            <input id="password" type="password" autocomplete="new-password" placeholder="Минимум 8 символов" />
 
-        <button type="submit" class="btn btn-primary btn-wide">Создать аккаунт</button>
-        <div id="loginError" class="form-error"></div>
-      </form>
+            <div id="minecraftNameGroup">
+              <label for="playerMinecraftName">Minecraft-ник</label>
+              <input id="playerMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Например, Cells" />
+            </div>
 
-      <div class="auth-links">
-        <a href="/signin.html">Уже есть аккаунт? Войти</a>
+            <label class="auth-checkbox" for="rememberMe">
+              <input id="rememberMe" type="checkbox" />
+              <span>Сразу запомнить вход на этом устройстве</span>
+            </label>
+
+            <button type="submit" class="btn btn-primary btn-wide">Создать аккаунт</button>
+            <div id="loginError" class="form-error"></div>
+          </form>
+
+          <div class="auth-links">
+            <a href="/signin.html">Уже есть аккаунт? Войти</a>
+          </div>
+        </section>
       </div>
     </section>
   </main>

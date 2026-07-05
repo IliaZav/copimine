@@ -7,7 +7,7 @@
   <title>CopiMine - Лавки</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260627b" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260705a" />
 </head>
 <body data-page-kind="public-shops">
   <main class="public-site public-site-compact">
@@ -16,16 +16,18 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>AR и donation-витрины</small>
+          <small>AR и donation-магазины</small>
         </span>
       </a>
       <nav aria-label="Разделы сайта">
         <a href="/index.html">Главная</a>
         <a href="/server.html">Сервер</a>
         <a href="/shops.html" aria-current="page">Лавки</a>
-        <a href="/mods.html">Моды</a>
-        <a href="/signin.html">Вход</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Открыть кабинет</button>
+        <a href="/mods.html">Модпак</a>
+        <a id="publicSigninLink" href="/signin.html">Войти</a>
+        <a id="publicRegisterLink" href="/register.html">Регистрация</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+        <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
         <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
       </nav>
     </header>
@@ -37,16 +39,16 @@
             <span class="hero-kicker">Лавки</span>
             <span class="route-chip">Каталог</span>
           </div>
-          <h1>Лавки CopiMine.</h1>
-          <p>AR и donation разделены. Каталог здесь, выдача в игре.</p>
+          <h1>Игровые магазины CopiMine.</h1>
+          <p>Каталоги доступны на сайте, а выдача, возврат и физическое получение предметов происходят уже на сервере.</p>
         </div>
 
         <aside class="public-hero-side">
           <article class="scene-card scene-card-shops">
             <div class="scene-card-copy">
-              <span class="hero-kicker">Лавки</span>
-              <strong>AR-лавка и donation</strong>
-              <p>Каталог на сайте. Выдача и возврат в игре.</p>
+              <span class="hero-kicker">Каталоги</span>
+              <strong>AR и donation разделены</strong>
+              <p>Для AR и донатной валюты используются разные балансы, разные операции и разные сценарии выдачи.</p>
             </div>
           </article>
 
@@ -56,11 +58,11 @@
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/totem_of_undying.png" alt="" /></span>
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/barrel_top.png" alt="" /></span>
             </div>
-            <span class="hero-kicker">Правила</span>
+            <span class="hero-kicker">Принцип работы</span>
             <ul class="hero-check-list">
-              <li>AR-предметы покупаются и чинятся за AR.</li>
-              <li>Donation-предметы идут через отдельный баланс.</li>
-              <li>Выдача и возврат проходят через игровую лавку.</li>
+              <li>AR-предметы оплачиваются из банка AR.</li>
+              <li>Донат-предметы оплачиваются с donation-баланса.</li>
+              <li>После оплаты создаётся выдача, которую игрок забирает в игре.</li>
             </ul>
           </article>
         </aside>
@@ -70,17 +72,18 @@
         <div class="section-head">
           <span>Витрины</span>
           <h2>Каталог AR и donation.</h2>
-          <p>Покупка на сайте. Выдача и возврат в игре.</p>
+          <p>Ниже показываются текущие товары, цены и базовые параметры выдачи.</p>
         </div>
 
         <div class="public-shop-board">
           <article class="public-shop-card public-shop-card-ar">
             <div class="public-shop-card-head">
               <div>
-                <span class="hero-kicker">AR-лавка</span>
+                <span class="hero-kicker">AR-магазин</span>
                 <h3>Официальные предметы за AR</h3>
-                <p>Игровые товары, ремонт и контроль экземпляров.</p>
+                <p>Игровые покупки, ремонт и выдачи под контролем сервера.</p>
               </div>
+              <button id="openArShopBtn" class="btn btn-secondary" type="button">Открыть AR-магазин</button>
             </div>
             <div id="publicArShopPreview" class="shop-rail">
               <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
@@ -90,39 +93,15 @@
           <article class="public-shop-card public-shop-card-donation">
             <div class="public-shop-card-head">
               <div>
-                <span class="hero-kicker">Donation-лавка</span>
+                <span class="hero-kicker">Донат-магазин</span>
                 <h3>Именные предметы за donation</h3>
-                <p>Отдельный баланс, выдача в игре и возврат утерянных предметов.</p>
+                <p>Отдельный баланс, отдельная история покупок и управление выдачами.</p>
               </div>
+              <button id="openDonationShopBtn" class="btn btn-secondary" type="button">Открыть донат-магазин</button>
             </div>
             <div id="publicDonationShopPreview" class="shop-rail">
               <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
             </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="public-section public-brief-section">
-        <div class="section-head">
-          <span>Выдача</span>
-          <h2>Как получить предмет.</h2>
-        </div>
-
-        <div class="public-brief-grid">
-          <article class="public-brief-card">
-            <span>01</span>
-            <strong>Выбери товар</strong>
-            <p>Цена, эффект, кулдаун и ограничения.</p>
-          </article>
-          <article class="public-brief-card">
-            <span>02</span>
-            <strong>Оплати покупку</strong>
-            <p>После покупки создаётся выдача.</p>
-          </article>
-          <article class="public-brief-card">
-            <span>03</span>
-            <strong>Забери в игре</strong>
-            <p>Предмет выдаётся через игровую лавку.</p>
           </article>
         </div>
       </section>

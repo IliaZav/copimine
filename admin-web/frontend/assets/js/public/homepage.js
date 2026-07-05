@@ -75,6 +75,7 @@ async function loadPublicPageByKind(kind, authState) {
       renderer.renderBudget(payload.budget || {});
       renderer.renderPresidentCard(payload.president || payload.budget || {});
       renderer.renderHistory(payload.history.items || []);
+      renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState);
       renderer.renderAuthState(authState);
     }
   }

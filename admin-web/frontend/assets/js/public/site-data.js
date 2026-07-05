@@ -5,7 +5,7 @@ async function fetchJson(path, fallback = {}) {
   const timeout = window.setTimeout(() => controller.abort(), PUBLIC_FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(path, {
-      credentials: "same-origin",
+      credentials: "include",
       headers: {
         Accept: "application/json",
       },

@@ -38,9 +38,9 @@ function humanError(payload, fallback) {
     const errorDetail = payload.error?.detail;
     const detail = payload.detail;
     const message = payload.message;
-    return String(errorMessage || errorDetail || detail || message || fallback || "Запрос завершился ошибкой").trim();
+    return String(errorMessage || errorDetail || detail || message || fallback || "Запрос завершился ошибкой.").trim();
   }
-  return String(fallback || "Запрос завершился ошибкой").trim();
+  return String(fallback || "Запрос завершился ошибкой.").trim();
 }
 
 async function requestJson(url, init = {}) {
@@ -109,13 +109,14 @@ async function submitAuth(event) {
   setError("");
   const username = String($("username")?.value || "").trim();
   const password = String($("password")?.value || "");
+  const rememberMe = Boolean($("rememberMe")?.checked);
   if (!username || !password) {
     setError("Введите логин и пароль.");
     return;
   }
 
   const register = isRegisterPage();
-  const payload = { username, password };
+  const payload = { username, password, remember_me: rememberMe };
   if (register) {
     payload.minecraft_name = String($("playerMinecraftName")?.value || "").trim();
   }
@@ -175,7 +176,7 @@ export async function initAuthPage() {
       try {
         await submitAuth(event);
       } catch (error) {
-        setError(error instanceof Error ? error.message : "Не удалось выполнить вход");
+        setError(error instanceof Error ? error.message : "Не удалось выполнить вход.");
       }
     });
   }

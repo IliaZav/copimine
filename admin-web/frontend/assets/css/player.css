@@ -150,6 +150,10 @@ body.player-mode .top-actions {
   align-items: center;
 }
 
+body.player-mode #guestPagesBtn {
+  display: none;
+}
+
 body.player-mode .page-heading h1,
 body.player-mode .panel-title,
 body.player-mode .metric-value {

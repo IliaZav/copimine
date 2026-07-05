@@ -2,6 +2,8 @@ import { makeElement, replaceChildrenSafe } from "../shared/dom.js";
 import { appRouteHref, authLandingHref, defaultAppRouteForRole } from "../shared/app-routes.js";
 
 const MC_ICON_ROOT = "/assets/mc-icons/item";
+const CSRF_COOKIE = "cm_csrf";
+const CSRF_HEADER = "X-CSRF-Token";
 
 function mcIcon(fileName) {
   return `${MC_ICON_ROOT}/${fileName}`;
@@ -94,16 +96,54 @@ function roleRoute(role) {
 function roleLabel(role) {
   switch (String(role || "")) {
     case "player":
-      return "Открыть кабинет";
+      return "Личный кабинет";
     case "junior_admin":
-      return "Открыть кабинет";
     case "admin":
-      return "Открыть кабинет";
     case "owner":
-      return "Открыть кабинет";
+      return "Панель управления";
     default:
-      return "Открыть кабинет";
+      return "Личный кабинет";
   }
+}
+
+function readCookie(name) {
+  const prefix = `${String(name || "")}=`;
+  return String(document.cookie || "")
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length) || "";
+}
+
+async function requestJson(url, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set("Accept", "application/json");
+  const method = String(init.method || "GET").toUpperCase();
+  if (init.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (method !== "GET" && method !== "HEAD" && !headers.has(CSRF_HEADER)) {
+    const csrf = readCookie(CSRF_COOKIE);
+    if (csrf) headers.set(CSRF_HEADER, csrf);
+  }
+  const response = await fetch(url, {
+    credentials: "include",
+    ...init,
+    method,
+    headers,
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  try {
+    return await response.json();
+  } catch (_error) {
+    return {};
+  }
+}
+
+async function ensureCsrfCookie() {
+  await requestJson("/api/auth/csrf");
 }
 
 function cardStrong(title, value, note = "", iconPath = "") {
@@ -141,9 +181,9 @@ function buildExternalModCard(row = {}) {
   if (row.distribution) meta.append(makeElement("span", "", String(row.distribution)));
   card.append(
     icon,
-    makeElement("span", "modpack-file-badge", "official"),
+    makeElement("span", "modpack-file-badge", "external"),
     makeElement("strong", "", String(row.component || "Внешний мод")),
-    makeElement("p", "", String(row.feature || row.reason || "Отдельная загрузка с официальной страницы.")),
+    makeElement("p", "", String(row.feature || row.reason || "Загружается отдельно с официальной страницы.")),
     meta,
   );
   const links = makeElement("div", "public-actions public-actions-compact");
@@ -210,7 +250,10 @@ export function createHomepageRenderer() {
   const downloadModsBtn = document.getElementById("downloadModsBtn");
   const statusGrid = document.getElementById("publicStatusGrid");
   const onlineBoard = document.getElementById("publicOnlineBoard");
+  const publicSigninLink = document.getElementById("publicSigninLink");
+  const publicRegisterLink = document.getElementById("publicRegisterLink");
   const cabinetButton = document.getElementById("publicCabinetBtn");
+  const logoutButton = document.getElementById("publicLogoutBtn");
   const heroMiniTitle = document.getElementById("heroMiniTitle");
   const heroMiniText = document.getElementById("heroMiniText");
   const modpackSummaryLead = document.getElementById("modpackSummaryLead");
@@ -260,14 +303,34 @@ export function createHomepageRenderer() {
     window.location.href = authLandingHref("signin");
   }
 
+  async function logoutFromPublic() {
+    if (!window.confirm("Выйти из кабинета CopiMine?")) return;
+    try {
+      await ensureCsrfCookie();
+      await requestJson("/api/auth/logout", { method: "POST", body: "{}" });
+    } catch (_error) {
+      // Cookie cleanup still happens server-side on the next valid call.
+    }
+    currentAuth = { role: "", cookieAuth: false };
+    renderAuthState(currentAuth);
+    window.location.href = publicPageRoute("index.html");
+  }
+
   function bindCabinetButton() {
-    if (!cabinetButton || cabinetButton.dataset.bound === "true") return;
-    cabinetButton.dataset.bound = "true";
-    cabinetButton.addEventListener("click", () => {
-      const routeTarget = cabinetButton.dataset.routeTarget || "";
-      if (!routeTarget) return;
-      window.location.href = routeTarget;
-    });
+    if (cabinetButton && cabinetButton.dataset.bound !== "true") {
+      cabinetButton.dataset.bound = "true";
+      cabinetButton.addEventListener("click", () => {
+        const routeTarget = cabinetButton.dataset.routeTarget || "";
+        if (!routeTarget) return;
+        window.location.href = routeTarget;
+      });
+    }
+    if (logoutButton && logoutButton.dataset.bound !== "true") {
+      logoutButton.dataset.bound = "true";
+      logoutButton.addEventListener("click", () => {
+        void logoutFromPublic();
+      });
+    }
   }
 
   function bindCommerceButtons() {
@@ -285,13 +348,13 @@ export function createHomepageRenderer() {
     if (arShopMount) {
       const cards = Array.isArray(arCatalog.items) && arCatalog.items.length
         ? arCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "ar"))
-        : [cardStrong("AR-лавка недоступна", "Каталог временно недоступен.", "", mcIcon("diamond_ore.png"))];
+        : [cardStrong("AR-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("diamond_ore.png"))];
       replaceChildrenSafe(arShopMount, cards);
     }
     if (donationShopMount) {
       const cards = Array.isArray(donationCatalog.items) && donationCatalog.items.length
         ? donationCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "donation"))
-        : [cardStrong("Donation-лавка недоступна", "Каталог временно недоступен.", "", mcIcon("totem_of_undying.png"))];
+        : [cardStrong("Донат-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("totem_of_undying.png"))];
       replaceChildrenSafe(donationShopMount, cards);
     }
   }
@@ -304,28 +367,25 @@ export function createHomepageRenderer() {
     const available = Boolean(modpack.available);
     const downloadUrl = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
 
-    const pageKind = String(document.body?.dataset?.pageKind || "").toLowerCase();
     if (heroMiniTitle) {
       heroMiniTitle.textContent = available
         ? (modpack.filename || "CopiMineMods.zip")
-        : "Клиент и моды";
+        : "Клиент и модпак";
     }
     if (heroMiniText) {
       if (available) {
         const versionText = `${manifest.loader || "Fabric"} ${manifest.minecraftVersion || config.serverVersion || ""}`.trim();
-        const fileText = `файлов ${files.length || 0}`;
-        const extraText = requiredExternal.length ? ` · отдельно ${requiredExternal.length}` : "";
-        heroMiniText.textContent = pageKind === "public-home"
-          ? `${versionText} · ${fileText}`
-          : `${versionText} · ${fileText}${extraText}`;
+        const fileText = `${files.length || 0} файлов`;
+        const externalText = requiredExternal.length ? `, отдельно ещё ${requiredExternal.length}` : "";
+        heroMiniText.textContent = `${versionText} · ${fileText}${externalText}`;
       } else {
-        heroMiniText.textContent = "Архив модов недоступен.";
+        heroMiniText.textContent = "Архив модов сейчас недоступен.";
       }
     }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
-        ? `Размер ${formatMegabytes(modpack.size || 0)}`
-        : "Архив модов недоступен.";
+        ? `Размер архива ${formatMegabytes(modpack.size || 0)} · SHA1 ${shortSha(modpack.sha1 || manifest.sha1 || "")}`
+        : "Проверьте состояние downloads и сборки клиента.";
     }
     if (modpackMetaGrid) {
       replaceChildrenSafe(modpackMetaGrid, [
@@ -338,10 +398,10 @@ export function createHomepageRenderer() {
       ]);
     }
     if (modpackFileGrid) {
-        if (!available || !files.length) {
-          replaceChildrenSafe(modpackFileGrid, [
-            cardStrong("Архив недоступен", "Список файлов недоступен.", "", mcIcon("bundle.png")),
-          ]);
+      if (!available || !files.length) {
+        replaceChildrenSafe(modpackFileGrid, [
+          cardStrong("Архив недоступен", "Список файлов пока не загружен.", "", mcIcon("bundle.png")),
+        ]);
       } else {
         replaceChildrenSafe(
           modpackFileGrid,
@@ -367,14 +427,14 @@ export function createHomepageRenderer() {
     if (modpackExternalGrid) {
       if (!requiredExternal.length) {
         replaceChildrenSafe(modpackExternalGrid, [
-          cardStrong("Дополнительные моды не нужны", "Всё нужное уже внутри архива.", "", mcIcon("book.png")),
+          cardStrong("Дополнительные загрузки не нужны", "Всё обязательное уже включено в архив.", "", mcIcon("book.png")),
         ]);
       } else {
         replaceChildrenSafe(modpackExternalGrid, requiredExternal.map((row) => buildExternalModCard(row)));
       }
     }
     if (modpackNotes) {
-      const noteCards = (notes.length ? notes : ["Сверь версию Minecraft и состав архива."]).map((note) => {
+      const noteCards = (notes.length ? notes : ["Проверьте версию Minecraft, Fabric и состав архива перед запуском."]).map((note) => {
         const card = makeElement("article", "modpack-note-card");
         card.append(
           makeElement("strong", "", "Примечание"),
@@ -394,7 +454,7 @@ export function createHomepageRenderer() {
     const serverAddress = String(config.serverAddress || "").trim();
     const address = serverAddress || "copimine.ru";
     const onlineText = server.online
-      ? `Онлайн ${formatPlayers(server)} · задержка ${formatLatency(server.latencyMs)}`
+      ? `Онлайн ${formatPlayers(server)} · отклик ${formatLatency(server.latencyMs)}`
       : "Сервер не ответил";
 
     if (serverIpText) {
@@ -407,14 +467,12 @@ export function createHomepageRenderer() {
     if (downloadModsBtn) {
       if (modpack.available) {
         downloadModsBtn.href = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
-        downloadModsBtn.textContent = `Скачать моды (${formatMegabytes(modpack.size || 0)})`;
+        downloadModsBtn.textContent = `Скачать модпак (${formatMegabytes(modpack.size || 0)})`;
         downloadModsBtn.classList.remove("btn-disabled");
         downloadModsBtn.removeAttribute("aria-disabled");
-      } else {
+      } else if (document.body?.dataset.pageKind === "public-home") {
         downloadModsBtn.href = publicPageRoute("mods.html");
-        downloadModsBtn.textContent = "Архив недоступен";
-        downloadModsBtn.classList.add("btn-disabled");
-        downloadModsBtn.setAttribute("aria-disabled", "true");
+        downloadModsBtn.textContent = "Открыть раздел модпака";
       }
     }
     renderModpack(modpack, config);
@@ -430,11 +488,11 @@ export function createHomepageRenderer() {
           `голосов ${Number(elections.votes || 0)}`,
           elections.stations ? `участков ${Number(elections.stations || 0)}` : "",
         ].filter(Boolean).join(" · ")
-      : "Голосование не запущено";
+      : "Голосование сейчас не запущено";
     replaceChildrenSafe(statusGrid, [
       cardStrong("Сервер", server.online ? "Онлайн" : "Нет ответа", formatLatency(server.latencyMs), mcIcon("beacon.png")),
-      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список открыт" : "Список скрыт", mcIcon("totem_of_undying.png")),
-      cardStrong("Выборы", elections.active ? "Активны" : "Пауза", electionDetail, mcIcon("written_book.png")),
+      cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков открыт" : "Список игроков скрыт", mcIcon("totem_of_undying.png")),
+      cardStrong("Выборы", elections.active ? "Идут" : "Пауза", electionDetail, mcIcon("written_book.png")),
       cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Ресурспак обязателен" : "Ресурспак опционален", mcIcon("compass_00.png")),
     ]);
   }
@@ -444,13 +502,13 @@ export function createHomepageRenderer() {
     const players = Array.isArray(server.samplePlayers) ? server.samplePlayers.filter(Boolean) : [];
     if (!players.length) {
       replaceChildrenSafe(onlineBoard, [
-        cardStrong("Игроки онлайн", "Список скрыт.", "", mcIcon("filled_map.png")),
+        cardStrong("Игроки онлайн", "Никого нет или список скрыт.", "", mcIcon("filled_map.png")),
       ]);
       return;
     }
     replaceChildrenSafe(
       onlineBoard,
-      players.slice(0, 12).map((player) => cardStrong("Онлайн", String(player))),
+      players.slice(0, 12).map((player) => cardStrong("Игрок", String(player))),
     );
   }
 
@@ -459,7 +517,7 @@ export function createHomepageRenderer() {
     const rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
       replaceChildrenSafe(historyMount, [
-        cardStrong("Операций нет", "Открытых движений казны нет.", "", mcIcon("book.png")),
+        cardStrong("Открытых операций нет", "Публичных движений казны пока нет.", "", mcIcon("book.png")),
       ]);
       return;
     }
@@ -474,7 +532,7 @@ export function createHomepageRenderer() {
         );
         card.append(
           head,
-          makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || "Операция казны")),
+          makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || "Публичная операция казны")),
           makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)),
         );
         return card;
@@ -487,8 +545,8 @@ export function createHomepageRenderer() {
     const name = String(president.current_president_name || president.ownerName || "").trim();
     const uuid = String(president.current_president_uuid || president.ownerUuid || "").trim();
     if (!name) {
-      presidentName.textContent = "Президент пока не избран";
-      presidentMeta.textContent = "Действующего президента нет.";
+      presidentName.textContent = "Президент пока не выбран";
+      presidentMeta.textContent = "Должность свободна.";
       skinShell?.classList.add("hidden");
       if (skinImage) skinImage.removeAttribute("src");
       return;
@@ -509,13 +567,13 @@ export function createHomepageRenderer() {
     const currentPresidentName = String(payload.current_president_name || payload.ownerName || "").trim();
     if (budgetOwner) {
       budgetOwner.textContent = currentPresidentName
-        ? `Казной управляет ${currentPresidentName}`
+        ? `Казна закреплена за ${currentPresidentName}`
         : "Активный президент не назначен";
     }
     if (budgetDetail) {
       budgetDetail.textContent = payload.updated_at || payload.updatedAt
         ? `Обновлено ${formatDate(payload.updated_at || payload.updatedAt)}`
-        : "Баланс казны.";
+        : "Публичный баланс казны.";
     }
     animateCounter(balance);
     renderPresidentCard(payload);
@@ -546,28 +604,34 @@ export function createHomepageRenderer() {
     currentAuth = auth || { role: "", cookieAuth: false };
     const role = String(auth.role || "");
     const authed = Boolean(role || auth.cookieAuth);
+
+    if (publicSigninLink) publicSigninLink.classList.toggle("hidden", authed);
+    if (publicRegisterLink) publicRegisterLink.classList.toggle("hidden", authed);
     if (cabinetButton) {
       cabinetButton.classList.toggle("hidden", !authed);
       cabinetButton.dataset.routeTarget = authed ? roleRoute(role) : "";
       cabinetButton.textContent = roleLabel(role);
     }
+    if (logoutButton) {
+      logoutButton.classList.toggle("hidden", !authed);
+    }
     if (openArShopBtn) {
-      openArShopBtn.textContent = authed ? "Открыть AR-лавку" : "AR-лавка";
+      openArShopBtn.textContent = authed ? "Открыть AR-магазин" : "Перейти к входу";
     }
     if (openDonationShopBtn) {
-      openDonationShopBtn.textContent = authed ? "Открыть донат-лавку" : "Донат-лавка";
+      openDonationShopBtn.textContent = authed ? "Открыть донат-магазин" : "Перейти к входу";
     }
   }
 
   function renderUnavailableState() {
     if (budgetDetail) {
-      budgetDetail.textContent = "Данные по казне недоступны.";
+      budgetDetail.textContent = "Публичные данные казны недоступны.";
     }
     if (serverPulseText) {
-      serverPulseText.textContent = "Свежих данных нет.";
+      serverPulseText.textContent = "Свежих данных по серверу нет.";
     }
     if (modpackSummaryLead) {
-      modpackSummaryLead.textContent = "Данные по архиву модов недоступны.";
+      modpackSummaryLead.textContent = "Состояние архива модов пока не удалось получить.";
     }
   }
 

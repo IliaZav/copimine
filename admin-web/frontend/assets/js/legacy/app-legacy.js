@@ -4179,7 +4179,10 @@ function wire() {
   wireDataInputDelegation();
   wirePublicSite();
   $("loginForm")?.addEventListener("submit", login);
-  $("logout")?.addEventListener("click", () => logout(true));
+  $("logout")?.addEventListener("click", () => {
+    if (!confirm("Выйти из кабинета CopiMine?")) return;
+    logout(true);
+  });
   if ($("guestPagesBtn")) {
     $("guestPagesBtn").textContent = "Сайт";
   }

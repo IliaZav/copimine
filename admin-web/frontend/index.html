@@ -7,7 +7,7 @@
   <title>CopiMine - Главная</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260627b" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260705a" />
 </head>
 <body data-page-kind="public-home">
   <main class="public-site public-site-compact">
@@ -19,14 +19,15 @@
           <small>Сервер Minecraft</small>
         </span>
       </a>
-      <button id="mobileNavToggle" class="btn icon-btn mobile-only hidden" type="button" aria-hidden="true" tabindex="-1">☰</button>
       <nav aria-label="Разделы сайта">
         <a href="/index.html" aria-current="page">Главная</a>
         <a href="/server.html">Сервер</a>
         <a href="/shops.html">Лавки</a>
-        <a href="/mods.html">Моды</a>
-        <a href="/signin.html">Вход</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Открыть кабинет</button>
+        <a href="/mods.html">Модпак</a>
+        <a id="publicSigninLink" href="/signin.html">Войти</a>
+        <a id="publicRegisterLink" href="/register.html">Регистрация</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+        <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
         <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
       </nav>
     </header>
@@ -35,18 +36,18 @@
       <div class="public-hero-copy">
         <div class="page-kicker-row">
           <span class="hero-kicker">CopiMine</span>
-          <span class="route-chip">Главная</span>
+          <span class="route-chip">Старт</span>
         </div>
-          <h1>CopiMine. Сервер, лавки и кабинет.</h1>
-          <p>IP сервера, онлайн, выборы, казна и клиентская сборка.</p>
-          <div class="hero-inline-status">
-            <div class="hero-inline-card">
-              <span>Адрес</span>
-              <strong id="serverIpText">copimine.ru</strong>
+        <h1>Сервер, модпак, банк и кабинеты в одном контуре.</h1>
+        <p>На главной собраны IP, текущий статус сервера, выборы, казна и актуальная клиентская сборка.</p>
+        <div class="hero-inline-status">
+          <div class="hero-inline-card">
+            <span>Адрес</span>
+            <strong id="serverIpText">copimine.ru</strong>
           </div>
           <div class="hero-inline-card">
-              <span>Статус</span>
-            <strong id="serverPulseText">Загружаем онлайн</strong>
+            <span>Статус</span>
+            <strong id="serverPulseText">Загружаем статус сервера</strong>
           </div>
         </div>
       </div>
@@ -57,9 +58,9 @@
             <img src="/assets/brand/copimine-title.png" alt="CopiMine" />
           </div>
           <div class="hero-media-copy">
-            <span class="hero-kicker">CopiMine</span>
-            <strong>Клиентская сборка CopiMine</strong>
-            <p>CopiMineClient, моды и готовый архив.</p>
+            <span class="hero-kicker">Сборка клиента</span>
+            <strong>Актуальный CopiMineMods.zip</strong>
+            <p>На странице модпака доступны версия Minecraft, состав сборки, размер архива и отдельные внешние загрузки.</p>
             <div class="hero-sprite-strip" aria-hidden="true">
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/written_book.png" alt="" /></span>
@@ -71,12 +72,12 @@
         <article class="hero-side-card hero-side-card-compact">
           <div class="public-actions public-actions-tight">
             <button id="copyIpBtn" class="btn btn-primary" type="button">Скопировать copimine.ru</button>
-            <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
+            <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать модпак</a>
           </div>
           <div class="hero-side-note">
             <span class="hero-kicker">Архив модов</span>
             <strong id="heroMiniTitle">CopiMineMods.zip</strong>
-            <p id="heroMiniText">Fabric 1.21.1 и готовая сборка для входа.</p>
+            <p id="heroMiniText">Проверяем состав и версию клиентской сборки.</p>
           </div>
         </article>
       </aside>
@@ -84,9 +85,9 @@
 
     <section class="public-section public-home-summary">
       <div class="section-head">
-        <span>Статус</span>
-        <h2>Главное по серверу.</h2>
-        <p>Онлайн, выборы, президент и казна.</p>
+        <span>Сейчас</span>
+        <h2>Основные данные по серверу.</h2>
+        <p>Публичный онлайн, выборы, президент и баланс казны.</p>
       </div>
 
       <div class="public-dashboard-grid">
@@ -104,7 +105,7 @@
           <div class="public-panel-head">
             <div>
               <span class="hero-kicker">Казна</span>
-              <h3 id="presidentBudgetOwner">Загружаем казну</h3>
+              <h3 id="presidentBudgetOwner">Загружаем текущий статус казны</h3>
             </div>
           </div>
           <div class="budget-counter-shell">
@@ -119,8 +120,8 @@
         <article class="public-panel president-panel" id="presidentCardMount">
           <div class="president-card-copy">
             <span class="hero-kicker">Президент</span>
-            <h3 id="presidentCardName">Президент пока не избран</h3>
-            <p id="presidentCardMeta">Действующий срок не найден.</p>
+            <h3 id="presidentCardName">Президент пока не выбран</h3>
+            <p id="presidentCardMeta">Должность свободна.</p>
           </div>
         </article>
 
@@ -134,7 +135,7 @@
           <div id="publicTreasuryHistory" class="treasury-history-grid">
             <article class="showcase-card">
               <strong>Загружаем историю</strong>
-              <p>Открытые операции загружаются.</p>
+              <p>Открытые операции казны появятся здесь.</p>
             </article>
           </div>
         </article>
@@ -144,8 +145,8 @@
     <section class="public-section public-route-section">
       <div class="section-head">
         <span>Разделы</span>
-        <h2>Основные разделы.</h2>
-        <p>Сервер, лавки, клиент и кабинет.</p>
+        <h2>Что можно сделать через сайт.</h2>
+        <p>Публичный доступ к серверу и быстрый вход в игровые сервисы CopiMine.</p>
       </div>
 
       <div class="public-route-board">
@@ -154,8 +155,8 @@
             <img src="/assets/mc-icons/item/beacon.png" alt="" />
           </div>
           <span class="hero-kicker">Сервер</span>
-          <strong>Адрес, онлайн и статус</strong>
-          <p>IP, выборы, президент и публичная казна.</p>
+          <strong>IP, отклик, онлайн и выборы</strong>
+          <p>Открытый статус сервера, информация по президенту и публичная казна.</p>
         </article>
 
         <article class="public-route-card public-route-card-shop">
@@ -163,17 +164,17 @@
             <img src="/assets/mc-icons/item/diamond_sword.png" alt="" />
           </div>
           <span class="hero-kicker">Лавки</span>
-          <strong>AR-лавка и donation-лавка</strong>
-          <p>Каталог товаров, цены и выдача в игре.</p>
+          <strong>AR-магазин и донат-магазин</strong>
+          <p>Каталог товаров доступен на сайте, выдача и возврат происходят уже в игре.</p>
         </article>
 
         <article class="public-route-card public-route-card-client">
           <div class="route-card-icon" aria-hidden="true">
             <img src="/assets/mc-icons/item/bundle_filled.png" alt="" />
           </div>
-          <span class="hero-kicker">Клиент</span>
-          <strong>Клиент и моды</strong>
-          <p>Архив модов, версия Minecraft и размер файла.</p>
+          <span class="hero-kicker">Модпак</span>
+          <strong>Клиент, сборка и контроль версий</strong>
+          <p>Актуальный архив, список файлов, размер и обязательные внешние компоненты.</p>
         </article>
 
         <article class="public-route-card public-route-card-auth">
@@ -181,8 +182,8 @@
             <img src="/assets/mc-icons/item/filled_map.png" alt="" />
           </div>
           <span class="hero-kicker">Кабинет</span>
-          <strong>Личный кабинет</strong>
-          <p>Банк, покупки, история и админ-разделы после входа.</p>
+          <strong>Банк, история и админ-доступ</strong>
+          <p>После входа доступны личный кабинет игрока, банк AR и админ-панель проекта.</p>
         </article>
       </div>
     </section>

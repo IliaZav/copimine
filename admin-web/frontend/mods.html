@@ -4,10 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <title>CopiMine - Клиент и моды</title>
+  <title>CopiMine - Модпак</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260627b" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260705a" />
 </head>
 <body data-page-kind="public-mods">
   <main class="public-site public-site-compact">
@@ -16,16 +16,18 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>Клиент и архив модов</small>
+          <small>Клиент и модпак</small>
         </span>
       </a>
       <nav aria-label="Разделы сайта">
         <a href="/index.html">Главная</a>
         <a href="/server.html">Сервер</a>
         <a href="/shops.html">Лавки</a>
-        <a href="/mods.html" aria-current="page">Моды</a>
-        <a href="/signin.html">Вход</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Открыть кабинет</button>
+        <a href="/mods.html" aria-current="page">Модпак</a>
+        <a id="publicSigninLink" href="/signin.html">Войти</a>
+        <a id="publicRegisterLink" href="/register.html">Регистрация</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+        <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
         <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
       </nav>
     </header>
@@ -34,22 +36,22 @@
       <section class="public-hero public-hero-slim public-mods-hero">
         <div class="public-hero-copy">
           <div class="page-kicker-row">
-            <span class="hero-kicker">Клиент</span>
-            <span class="route-chip">Архив</span>
+            <span class="hero-kicker">Модпак</span>
+            <span class="route-chip">Клиент</span>
           </div>
-          <h1>Архив модов CopiMine.</h1>
-          <p>CopiMineClient, версия Minecraft и состав сборки.</p>
+          <h1>Актуальный архив клиента CopiMine.</h1>
+          <p>На этой странице доступны версия Minecraft, loader, список модов, размер архива и обязательные внешние компоненты.</p>
           <div class="public-actions">
-            <a id="downloadModsBtn" class="btn btn-primary" href="/downloads/CopiMineMods.zip">Скачать моды</a>
+            <a id="downloadModsBtn" class="btn btn-primary" href="/downloads/CopiMineMods.zip">Скачать модпак</a>
           </div>
         </div>
 
         <aside class="public-hero-side">
           <article class="scene-card scene-card-mods">
             <div class="scene-card-copy">
-              <span class="hero-kicker">Клиент</span>
+              <span class="hero-kicker">Сборка</span>
               <strong>CopiMineClient и моды</strong>
-              <p>Fabric 1.21.1, архив модов и клиент сервера.</p>
+              <p>Архив сайта должен совпадать с фактической клиентской сборкой сервера.</p>
             </div>
           </article>
 
@@ -59,11 +61,11 @@
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/knowledge_book.png" alt="" /></span>
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/compass_00.png" alt="" /></span>
             </div>
-            <span class="hero-kicker">Архив</span>
+            <span class="hero-kicker">Контроль</span>
             <ul class="hero-check-list">
               <li>Версия Minecraft и Fabric.</li>
-              <li>Файлы архива и внешние моды.</li>
-              <li>Размер файла и состав сборки.</li>
+              <li>Состав архива и внешние зависимости.</li>
+              <li>Размер, дата обновления и SHA архива.</li>
             </ul>
           </article>
         </aside>
@@ -73,7 +75,7 @@
         <div class="section-head">
           <span>Архив</span>
           <h2>Состав клиентской сборки.</h2>
-          <p>Версия, моды, отдельные загрузки и размер архива.</p>
+          <p>Всё, что нужно для входа на сервер, должно отражаться здесь без расхождения с runtime.</p>
         </div>
 
         <div class="modpack-shell">
@@ -81,8 +83,8 @@
             <div class="modpack-summary-copy">
               <span class="hero-kicker">CopiMineMods.zip</span>
               <h3 id="heroMiniTitle">Клиентская сборка</h3>
-          <p id="heroMiniText">Minecraft 1.21.1, Fabric и архив модов.</p>
-          <p id="modpackSummaryLead">Размер архива и состав файлов.</p>
+              <p id="heroMiniText">Проверяем версию и состав клиентского архива.</p>
+              <p id="modpackSummaryLead">Размер архива, контрольные суммы и сведения по составу.</p>
             </div>
             <div id="modpackMetaGrid" class="modpack-meta-grid">
               <article class="modpack-stat">
@@ -95,52 +97,27 @@
           <div class="modpack-side-stack">
             <div id="modpackFileGrid" class="modpack-file-grid">
               <article class="modpack-file-card">
-              <span class="modpack-file-badge">mods</span>
-              <strong>Список файлов</strong>
-              <p>Ждём данные архива.</p>
-            </article>
-          </div>
+                <span class="modpack-file-badge">mods</span>
+                <strong>Список файлов</strong>
+                <p>Ждём данные архива.</p>
+              </article>
+            </div>
 
             <div id="modpackExternalGrid" class="modpack-file-grid">
               <article class="modpack-file-card">
-              <span class="modpack-file-badge">official</span>
-              <strong>Внешние моды</strong>
-              <p>Отдельные загрузки и ссылки.</p>
-            </article>
-          </div>
+                <span class="modpack-file-badge">external</span>
+                <strong>Внешние компоненты</strong>
+                <p>Если часть файлов не вшивается в архив, они будут перечислены здесь.</p>
+              </article>
+            </div>
 
             <div id="modpackNotes" class="modpack-note-grid">
               <article class="modpack-note-card">
-              <strong>Примечание</strong>
-              <p>Версия, состав и требования.</p>
-            </article>
+                <strong>Примечание</strong>
+                <p>Перед запуском сверяйте версию клиента, loader и список зависимостей.</p>
+              </article>
+            </div>
           </div>
-        </div>
-        </div>
-      </section>
-
-      <section class="public-section public-brief-section">
-        <div class="section-head">
-          <span>Установка</span>
-          <h2>Как подключиться.</h2>
-        </div>
-
-        <div class="public-brief-grid">
-          <article class="public-brief-card">
-            <span>01</span>
-            <strong>Скачай архив</strong>
-            <p>Скачай архив и проверь версию клиента.</p>
-          </article>
-          <article class="public-brief-card">
-            <span>02</span>
-            <strong>Проверь состав</strong>
-            <p>Проверь версию Minecraft и список файлов.</p>
-          </article>
-          <article class="public-brief-card">
-            <span>03</span>
-            <strong>Запусти клиент</strong>
-            <p>После распаковки открой игру и зайди на `copimine.ru`.</p>
-          </article>
         </div>
       </section>
     </div>

@@ -377,6 +377,7 @@ _STARTUP_REPORT: dict[str, Any] = {}
 class LoginIn(BaseModel):
     username: str
     password: str
+    remember_me: bool = False
 
 
 class TicketIn(BaseModel):
@@ -443,11 +444,13 @@ class PlayerRegisterIn(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=8, max_length=128)
     minecraft_name: Optional[str] = Field(default=None, max_length=16)
+    remember_me: bool = False
 
 
 class PlayerLoginIn(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=128)
+    remember_me: bool = False
 
 
 class PlayerLinkRequestIn(BaseModel):
@@ -921,7 +924,7 @@ def verify_csrf_token(token: str) -> bool:
     return hmac.compare_digest(signature, expected)
 
 
-def set_csrf_cookie(response: Response, token: Optional[str] = None) -> str:
+def set_csrf_cookie(response: Response, token: Optional[str] = None, max_age: Optional[int] = SESSION_TTL_SECONDS) -> str:
     value = token or make_csrf_token()
     response.set_cookie(
         CSRF_COOKIE_NAME,
@@ -939,7 +942,7 @@ def clear_csrf_cookie(response: Response) -> None:
     response.delete_cookie(CSRF_COOKIE_NAME, path="/")
 
 
-def set_access_cookie(response: Response, token: str, max_age: int = ACCESS_TOKEN_TTL_SECONDS) -> None:
+def set_access_cookie(response: Response, token: str, max_age: Optional[int] = ACCESS_TOKEN_TTL_SECONDS) -> None:
     response.set_cookie(
         AUTH_COOKIE_NAME,
         token,
@@ -951,7 +954,7 @@ def set_access_cookie(response: Response, token: str, max_age: int = ACCESS_TOKE
     )
 
 
-def set_refresh_cookie(response: Response, token: str, max_age: int = REFRESH_TOKEN_TTL_SECONDS) -> None:
+def set_refresh_cookie(response: Response, token: str, max_age: Optional[int] = REFRESH_TOKEN_TTL_SECONDS) -> None:
     response.set_cookie(
         AUTH_REFRESH_COOKIE_NAME,
         token,
@@ -963,10 +966,13 @@ def set_refresh_cookie(response: Response, token: str, max_age: int = REFRESH_TO
     )
 
 
-def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
-    set_access_cookie(response, access_token)
-    set_refresh_cookie(response, refresh_token)
-    set_csrf_cookie(response)
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str, remember_me: bool = False) -> None:
+    access_max_age = ACCESS_TOKEN_TTL_SECONDS if remember_me else None
+    refresh_max_age = REFRESH_TOKEN_TTL_SECONDS if remember_me else None
+    csrf_max_age = REFRESH_TOKEN_TTL_SECONDS if remember_me else None
+    set_access_cookie(response, access_token, access_max_age)
+    set_refresh_cookie(response, refresh_token, refresh_max_age)
+    set_csrf_cookie(response, max_age=csrf_max_age)
 
 
 def clear_auth_cookies(response: Response) -> None:
@@ -2667,7 +2673,14 @@ def make_token(username: str, role: str, request: Optional[Request] = None, ttl:
     return token
 
 
-def make_refresh_token(subject_id: str, role: str, request: Optional[Request] = None, ttl: int = REFRESH_TOKEN_TTL_SECONDS, family_id: str = "") -> str:
+def make_refresh_token(
+    subject_id: str,
+    role: str,
+    request: Optional[Request] = None,
+    ttl: int = REFRESH_TOKEN_TTL_SECONDS,
+    family_id: str = "",
+    extra_claims: Optional[dict[str, Any]] = None,
+) -> str:
     issued = now_ts()
     expires = issued + ttl
     jti = secrets.token_urlsafe(18)
@@ -2683,6 +2696,8 @@ def make_refresh_token(subject_id: str, role: str, request: Optional[Request] = 
         "exp": expires,
         "iat": issued,
     }
+    if extra_claims:
+        payload.update(extra_claims)
     token = encode_signed_token(payload)
     save_refresh_session(jti, subject_id, role, family, token, request, issued, expires)
     return token
@@ -2943,13 +2958,23 @@ def public_player_account(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def issue_admin_auth_pair(username: str, role: str, request: Optional[Request]) -> tuple[str, str]:
-    access = make_token(username, role, request, extra_claims={"display_name": username})
-    refresh = make_refresh_token(username, role, request)
+def issue_admin_auth_pair(
+    username: str,
+    role: str,
+    request: Optional[Request],
+    remember_me: bool = False,
+) -> tuple[str, str]:
+    access = make_token(username, role, request, extra_claims={"display_name": username, "remember": remember_me})
+    refresh = make_refresh_token(username, role, request, extra_claims={"remember": remember_me})
     return access, refresh
 
 
-def issue_player_auth_pair(account: Mapping[str, Any] | dict[str, Any], request: Optional[Request], family_id: str = "") -> tuple[str, str]:
+def issue_player_auth_pair(
+    account: Mapping[str, Any] | dict[str, Any],
+    request: Optional[Request],
+    family_id: str = "",
+    remember_me: bool = False,
+) -> tuple[str, str]:
     account_id = str(account.get("id") or "")
     access = make_token(
         account_id,
@@ -2958,9 +2983,10 @@ def issue_player_auth_pair(account: Mapping[str, Any] | dict[str, Any], request:
         extra_claims={
             "display_name": str(account.get("username") or ""),
             "player_uuid": str(account.get("minecraft_uuid") or ""),
+            "remember": remember_me,
         },
     )
-    refresh = make_refresh_token(account_id, "player", request, family_id=family_id)
+    refresh = make_refresh_token(account_id, "player", request, family_id=family_id, extra_claims={"remember": remember_me})
     return access, refresh
 
 
@@ -2969,6 +2995,7 @@ def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Req
     role = str(payload.get("role") or "")
     subject = str(payload.get("sub") or "")
     family_id = str(payload.get("family") or row.get("family_id") or "")
+    remember_me = bool(payload.get("remember"))
     if audience == "player":
         if role != "player":
             raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к кабинету игрока")
@@ -2982,7 +3009,7 @@ def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Req
                 revoke_refresh_session(str(payload.get("jti") or ""))
                 raise HTTPException(status_code=403, detail="Аккаунт игрока отключён")
             conn.commit()
-        access_token, refresh_token_new = issue_player_auth_pair(account, request, family_id=family_id)
+        access_token, refresh_token_new = issue_player_auth_pair(account, request, family_id=family_id, remember_me=remember_me)
         refresh_payload = decode_signed_token(refresh_token_new)
         revoke_refresh_session(str(payload.get("jti") or ""), str(refresh_payload.get("jti") or ""))
         return {
@@ -2994,6 +3021,7 @@ def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Req
             "account": public_player_account(account),
             "accessToken": access_token,
             "refreshToken": refresh_token_new,
+            "rememberMe": remember_me,
         }
     if role == "player":
         raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к админ-панели")
@@ -3008,8 +3036,8 @@ def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Req
     access_ok, access_errors = minecraft_access_ok(real_username)
     if not access_ok:
         raise HTTPException(status_code=403, detail="Minecraft-доступ отозван: " + "; ".join(access_errors))
-    access_token = make_token(real_username, current_role, request, extra_claims={"display_name": real_username})
-    refresh_token_new = make_refresh_token(real_username, current_role, request, family_id=family_id)
+    access_token = make_token(real_username, current_role, request, extra_claims={"display_name": real_username, "remember": remember_me})
+    refresh_token_new = make_refresh_token(real_username, current_role, request, family_id=family_id, extra_claims={"remember": remember_me})
     refresh_payload = decode_signed_token(refresh_token_new)
     revoke_refresh_session(str(payload.get("jti") or ""), str(refresh_payload.get("jti") or ""))
     return {
@@ -3021,6 +3049,7 @@ def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Req
         "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
         "accessToken": access_token,
         "refreshToken": refresh_token_new,
+        "rememberMe": remember_me,
     }
 
 
@@ -7360,8 +7389,8 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
     role = normalize_admin_role(meta.get("role"))
     if not is_panel_admin_role(role):
         raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
-    access_token, refresh_token = issue_admin_auth_pair(real_username, role, request)
-    set_auth_cookies(response, access_token, refresh_token)
+    access_token, refresh_token = issue_admin_auth_pair(real_username, role, request, data.remember_me)
+    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
     audit_event(real_username, "auth.login", status="ok", details={"ip": get_client_ip(request)})
     append_panel_event("admin-panel", "admin_login", actor=real_username, metadata={"ip": get_client_ip(request)}, tags=["security"])
     pg_record_auth_state("admin_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "user": real_username})
@@ -7393,8 +7422,8 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
             register_failed_login(request, "session:" + username)
             raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
         clear_failed_login(request, "session:" + username)
-        access_token, refresh_token = issue_admin_auth_pair(real_username, role, request)
-        set_auth_cookies(response, access_token, refresh_token)
+        access_token, refresh_token = issue_admin_auth_pair(real_username, role, request, data.remember_me)
+        set_auth_cookies(response, access_token, refresh_token, data.remember_me)
         audit_event(real_username, "auth.session_login", status="ok", details={"role": role, "ip": get_client_ip(request)})
         return {
             "username": real_username,
@@ -7417,8 +7446,8 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
             conn.commit()
             clear_failed_login(request, "session:" + username)
             pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
-            access_token, refresh_token = issue_player_auth_pair(account, request)
-            set_auth_cookies(response, access_token, refresh_token)
+            access_token, refresh_token = issue_player_auth_pair(account, request, remember_me=data.remember_me)
+            set_auth_cookies(response, access_token, refresh_token, data.remember_me)
             account["last_login_at"] = now_ts()
             audit_event(username, "auth.session_login", status="ok", details={"role": "player", "ip": get_client_ip(request)})
             return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
@@ -7445,7 +7474,12 @@ async def auth_refresh(request: Request, response: Response) -> dict[str, Any]:
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh-сессия отсутствует")
     result = await bg(rotate_auth_pair_from_refresh_sync, refresh_token, request, "admin")
-    set_auth_cookies(response, str(result.pop("accessToken")), str(result.pop("refreshToken")))
+    set_auth_cookies(
+        response,
+        str(result.pop("accessToken")),
+        str(result.pop("refreshToken")),
+        bool(result.pop("rememberMe", False)),
+    )
     return result
 
 
@@ -7627,25 +7661,25 @@ async def public_donation_shop_catalog() -> dict[str, Any]:
 async def player_register(data: PlayerRegisterIn, request: Request, response: Response) -> dict[str, Any]:
     username = data.username.strip()
     if not valid_site_username(username):
-        raise HTTPException(status_code=400, detail="Invalid username")
+        raise HTTPException(status_code=400, detail="Укажи корректный логин")
     ok, reason = password_policy_ok(data.password)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
     minecraft_name = (data.minecraft_name or "").strip()
     if minecraft_name and not valid_minecraft_name(minecraft_name):
-        raise HTTPException(status_code=400, detail="Invalid Minecraft name")
+        raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
     registration_ip = get_client_ip(request)
     account_id = secrets.token_hex(16)
     now = now_ts()
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         if player_account_by_username(conn, username):
-            raise HTTPException(status_code=409, detail="Username already exists")
+            raise HTTPException(status_code=409, detail="Такой логин уже занят")
         same_ip = conn.execute("SELECT COUNT(*) AS c FROM site_accounts WHERE registration_ip=%s", (registration_ip,)).fetchone()
         if int((same_ip or {}).get("c") or 0) >= 5:
             conn.commit()
             await bg(create_ip_alert_sync, registration_ip, username, minecraft_name, "site-account-limit", {"limit": 5, "stage": "register"})
-            raise HTTPException(status_code=400, detail="С этого IP уже создано слишком много аккаунтов. Напиши администрации, если это ошибка.")
+            raise HTTPException(status_code=400, detail="Ошибка регистрации. Проверьте данные и попробуйте позже.")
         conn.execute(
             """
             INSERT INTO site_accounts(id,username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip)
@@ -7657,15 +7691,35 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
             "INSERT INTO auth_effects_disable_audit(actor,target_uuid,created_at,details) VALUES(%s,%s,%s,%s)",
             (username, "", now, "site registration entered staged auth flow"),
         )
+        if minecraft_name:
+            minecraft_uuid = offline_uuid_for_name(minecraft_name)
+            add_player_to_whitelist_sync(minecraft_uuid, minecraft_name)
+            conn.execute(
+                """
+                INSERT INTO whitelist_account_links(minecraft_uuid,minecraft_name,site_account_id,whitelisted,synced_at)
+                VALUES(%s,%s,%s,1,%s)
+                ON CONFLICT (minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    site_account_id=EXCLUDED.site_account_id,
+                    whitelisted=1,
+                    synced_at=EXCLUDED.synced_at
+                """,
+                (minecraft_uuid, minecraft_name, account_id, now),
+            )
         conn.commit()
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
-    access_token, refresh_token = issue_player_auth_pair({"id": account_id, "username": username, "minecraft_uuid": "", "minecraft_name": minecraft_name}, request)
-    set_auth_cookies(response, access_token, refresh_token)
+    minecraft_uuid = offline_uuid_for_name(minecraft_name) if minecraft_name else ""
+    access_token, refresh_token = issue_player_auth_pair(
+        {"id": account_id, "username": username, "minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name},
+        request,
+        remember_me=data.remember_me,
+    )
+    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
     return {
         "role": "player",
         "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
         "cookieAuth": True,
-        "account": {"id": account_id, "username": username, "minecraftName": minecraft_name, "linked": False},
+        "account": {"id": account_id, "username": username, "minecraftName": minecraft_name, "linked": bool(minecraft_uuid)},
     }
 
 
@@ -7679,7 +7733,7 @@ async def player_login(data: PlayerLoginIn, request: Request, response: Response
         account = player_account_by_username(conn, username)
         if not account or not bool(int(account.get("enabled") or 0)) or not verify_password_hash(str(account.get("password_hash") or ""), data.password):
             register_failed_login(request, "player:" + username)
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+            raise HTTPException(status_code=401, detail="Неверный логин или пароль")
         conn.execute("UPDATE site_accounts SET last_login_at=%s WHERE id=%s", (now_ts(), account["id"]))
         conn.execute(
             "INSERT INTO auth_effects_disable_audit(actor,target_uuid,created_at,details) VALUES(%s,%s,%s,%s)",
@@ -7688,8 +7742,8 @@ async def player_login(data: PlayerLoginIn, request: Request, response: Response
         conn.commit()
     clear_failed_login(request, "player:" + username)
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
-    access_token, refresh_token = issue_player_auth_pair(account, request)
-    set_auth_cookies(response, access_token, refresh_token)
+    access_token, refresh_token = issue_player_auth_pair(account, request, remember_me=data.remember_me)
+    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
     account["last_login_at"] = now_ts()
     return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
 
@@ -7700,7 +7754,12 @@ async def player_refresh(request: Request, response: Response) -> dict[str, Any]
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh-сессия отсутствует")
     result = await bg(rotate_auth_pair_from_refresh_sync, refresh_token, request, "player")
-    set_auth_cookies(response, str(result.pop("accessToken")), str(result.pop("refreshToken")))
+    set_auth_cookies(
+        response,
+        str(result.pop("accessToken")),
+        str(result.pop("refreshToken")),
+        bool(result.pop("rememberMe", False)),
+    )
     return result
 
 

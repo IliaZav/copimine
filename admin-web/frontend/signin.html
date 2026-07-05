@@ -7,35 +7,54 @@
   <title>CopiMine - Вход</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260704b" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260705a" />
 </head>
 <body data-page-kind="signin" data-auth-flow="login" class="auth-screen">
   <div id="toast" class="toast-root" aria-live="polite"></div>
 
   <main id="signin" class="auth-shell">
-    <section class="auth-card">
+    <section class="auth-card auth-card-wide">
       <div class="auth-card-head">
         <img class="auth-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <div class="auth-card-copy">
           <span class="auth-kicker">CopiMine</span>
-          <h1>Вход</h1>
-          <p>Вход в кабинет CopiMine.</p>
+          <h1>Вход в кабинет</h1>
+          <p>Используйте логин и пароль сайта. После входа откроется личный кабинет игрока или админ-панель.</p>
         </div>
       </div>
 
-      <form id="loginForm" class="auth-form" autocomplete="on">
-        <label for="username">Логин</label>
-        <input id="username" autocomplete="username" spellcheck="false" placeholder="Введите логин" />
+      <div class="auth-card-grid">
+        <section class="auth-card-section auth-card-section-note">
+          <span class="auth-section-kicker">Доступ</span>
+          <h2>Что доступно после входа</h2>
+          <ul class="auth-check-list">
+            <li>Банк AR, история операций и переводы.</li>
+            <li>Привязка игрового аккаунта и установка PIN.</li>
+            <li>Админ-панель с управлением игроками, выборами и экономикой.</li>
+          </ul>
+        </section>
 
-        <label for="password">Пароль</label>
-        <input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" />
+        <section class="auth-card-section">
+          <form id="loginForm" class="auth-form" autocomplete="on">
+            <label for="username">Логин</label>
+            <input id="username" autocomplete="username" spellcheck="false" placeholder="Введите логин" />
 
-        <button type="submit" class="btn btn-primary btn-wide">Войти</button>
-        <div id="loginError" class="form-error"></div>
-      </form>
+            <label for="password">Пароль</label>
+            <input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль" />
 
-      <div class="auth-links">
-        <a href="/register.html">Нет аккаунта? Зарегистрироваться</a>
+            <label class="auth-checkbox" for="rememberMe">
+              <input id="rememberMe" type="checkbox" />
+              <span>Запомнить меня на этом устройстве</span>
+            </label>
+
+            <button type="submit" class="btn btn-primary btn-wide">Войти</button>
+            <div id="loginError" class="form-error"></div>
+          </form>
+
+          <div class="auth-links">
+            <a href="/register.html">Нет аккаунта? Создать новый</a>
+          </div>
+        </section>
       </div>
     </section>
   </main>

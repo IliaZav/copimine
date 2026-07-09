@@ -62,7 +62,7 @@ if (Test-Path $zipPath) {
       'assets/minecraft/models/item/white_dye.json',
       'assets/minecraft/models/item/sugar.json',
       'assets/minecraft/models/item/slime_ball.json',
-      'assets/minecraft/models/item/gold_nugget.json',
+      'assets/minecraft/models/item/gold_ingot.json',
       'assets/minecraft/models/item/bone_meal.json',
       'assets/minecraft/models/item/paper.json',
       'assets/minecraft/models/item/blue_stained_glass_pane.json',

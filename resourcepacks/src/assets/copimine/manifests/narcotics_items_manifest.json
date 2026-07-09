@@ -41,7 +41,7 @@
     {
       "id": "sbp",
       "display_name": "СБП",
-      "base_material": "GOLD_NUGGET",
+      "base_material": "GOLD_INGOT",
       "custom_model_data": 810004,
       "model": "copimine:item/sbp",
       "texture": "copimine:item/narcotics/sbp",

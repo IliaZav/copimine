@@ -248,7 +248,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             return;
         }
         registerRpCommandGuard();
-        for(String commandName:List.of("cmultra","rpguard","cadm","ar","cmbank","appeal","report")){
+        for(String commandName:List.of("cmultra","rpguard","cadm","ar","cmbank","appeal","report","oldvoteoff","cmsealdrop")){
             PluginCommand pc=getCommand(commandName);
             if(pc!=null){pc.setExecutor(this); pc.setTabCompleter(this);}
         }
@@ -5467,6 +5467,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         try{
             String root=command.getName().toLowerCase(Locale.ROOT);
             if(root.equals("rpguard"))return handleRpGuardCommand(sender,args);
+            if(root.equals("oldvoteoff"))return handleOldVoteOff(sender,args);
+            if(root.equals("cmsealdrop"))return handleSealDropCommand(sender,args);
             if(root.equals("report")||root.equals("appeal")){handleReport(sender,args);return true;}
             if(root.equals("cadm")){if(sender instanceof Player p&&hasAnyAdmin(p))openMainHub(p);else warn(sender,"Нет прав."); return true;}
             if(root.equals("ar")||root.equals("cmbank")){if(sender instanceof Player p&&hasEconomyAdmin(p)){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} economy.openAdminEconomyHub(p);}else msg(sender,"Банк и AR управляются через /cmultra."); return true;}

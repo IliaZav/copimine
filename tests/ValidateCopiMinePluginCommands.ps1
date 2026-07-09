@@ -79,7 +79,12 @@ $allowedCommands = @(
   'rpguard',
   'cmsealdrop',
   'cmartifacts',
-  'hidelive'
+  'hidelive',
+  'presidentsay',
+  'cmworld',
+  'cmclient',
+  'cmnarcotics',
+  'setprice'
 )
 
 $forbiddenCommands = @(

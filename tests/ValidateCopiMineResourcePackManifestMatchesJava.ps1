@@ -20,7 +20,7 @@ if ((Test-Path $manifestPath) -and (Test-Path $artifactsJavaPath) -and (Test-Pat
     @{ Id = 'feta'; Cmd = '810001'; Material = 'white_dye' },
     @{ Id = 'kola'; Cmd = '810002'; Material = 'sugar' },
     @{ Id = 'girion'; Cmd = '810003'; Material = 'slime_ball' },
-    @{ Id = 'sbp'; Cmd = '810004'; Material = 'gold_nugget' },
+    @{ Id = 'sbp'; Cmd = '810004'; Material = 'gold_ingot' },
     @{ Id = 'sos'; Cmd = '810005'; Material = 'bone_meal' },
     @{ Id = 'drun'; Cmd = '810006'; Material = 'paper' },
     @{ Id = 'chups'; Cmd = '810007'; Material = 'blue_stained_glass_pane' },

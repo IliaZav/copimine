@@ -7,7 +7,7 @@ foreach ($pair in @(
   @{ Id='feta'; Cmd='810001'; Material='WHITE_DYE' },
   @{ Id='kola'; Cmd='810002'; Material='SUGAR' },
   @{ Id='girion'; Cmd='810003'; Material='SLIME_BALL' },
-  @{ Id='sbp'; Cmd='810004'; Material='GOLD_NUGGET' },
+  @{ Id='sbp'; Cmd='810004'; Material='GOLD_INGOT' },
   @{ Id='sos'; Cmd='810005'; Material='BONE_MEAL' },
   @{ Id='drun'; Cmd='810006'; Material='PAPER' },
   @{ Id='chups'; Cmd='810007'; Material='BLUE_STAINED_GLASS_PANE' },

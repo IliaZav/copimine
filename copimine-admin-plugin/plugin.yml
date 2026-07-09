@@ -44,6 +44,14 @@ commands:
     description: "Merged RP command restrictions diagnostics"
     usage: /rpguard
     aliases: [cmrpguard, rpcommands]
+  oldvoteoff:
+    description: "Legacy election runtime cleanup diagnostics"
+    usage: /oldvoteoff status|reset|cleanglow|unlock
+    aliases: [oldvotesoff, electionoff, oldelectionoff]
+  cmsealdrop:
+    description: "Safely destroy a CIK seal from inventory"
+    usage: /cmsealdrop trash|status
+    aliases: [ciksealdrop, sealdrop]
 permissions:
   copimine.admin:
     description: Full CopiMine admin access

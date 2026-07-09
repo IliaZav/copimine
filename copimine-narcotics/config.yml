@@ -129,7 +129,7 @@ items:
     visual_effect: SCAN_PINCUSHION
     recipe:
       - material:SLIME_BLOCK
-      - material:TURTLE_HELMET
+      - material:TURTLE_SCUTE
       - material:EMERALD
     normal_effects:
       - type:REGENERATION,amplifier:0,duration_seconds:90

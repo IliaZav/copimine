@@ -319,14 +319,14 @@ export function createAdminCommercePages(deps) {
 
   async function adminDonationMarkPaid(sessionId) {
     try {
-      const headers = await dangerConfirm(`Отметить session ${sessionId} как PAID?`, "DONATION_MARK_PAID");
+      const headers = await dangerConfirm(`Отметить платёж ${sessionId} как оплаченный?`, "DONATION_MARK_PAID");
       if (!headers) return;
       await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/mark-paid`, {
         method: "POST",
         headers,
         body: JSON.stringify({ note: "admin mark paid" }),
       });
-      toast("Сессия отмечена как PAID");
+      toast("Платёж отмечен как оплаченный");
       await loadEconomy();
     } catch (err) {
       toast(err.message, true);
@@ -335,7 +335,7 @@ export function createAdminCommercePages(deps) {
 
   async function adminDonationCancelSession(sessionId) {
     try {
-      const headers = await dangerConfirm(`Отменить session ${sessionId}?`, "DONATION_CANCEL_SESSION");
+      const headers = await dangerConfirm(`Отменить платёж ${sessionId}?`, "DONATION_CANCEL_SESSION");
       if (!headers) return;
       await api(`/api/admin/donation/sbp/session/${encodeURIComponent(sessionId)}/cancel`, {
         method: "POST",

@@ -1716,6 +1716,33 @@ def ensure_v4_schema(conn: Any) -> None:
         )
         """
     )
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS station_id TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS answers TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ISSUED'")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS chair_recommendation TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS chair_note TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS admin_status TEXT NOT NULL DEFAULT 'PENDING'")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS book_signed_at BIGINT NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS submitted_at BIGINT NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS reviewed_at BIGINT NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS reviewed_by TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS issued_at BIGINT NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS issued_by TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS book_token TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS id TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS application_id TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1")
+    conn.execute("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_result INTEGER NOT NULL DEFAULT 0")
+    conn.execute(
+        "UPDATE candidates SET id='candidate_' || election_id || '_' || player_uuid "
+        "WHERE COALESCE(id,'')='' AND COALESCE(election_id,'')<>'' AND COALESCE(player_uuid,'')<>''"
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS ballots(
@@ -2285,6 +2312,8 @@ def ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_election_petitions_created ON election_petitions(created_at DESC,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_polling_stations_active ON polling_stations(active,created_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_candidate_applications_status ON candidate_applications(election_id,admin_status,submitted_at DESC)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_candidate_applications_election_player ON candidate_applications(election_id,player_uuid)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_candidates_election_player ON candidates(election_id,player_uuid)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ballots_player ON ballots(election_id,round_no,player_uuid,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_round_candidate ON votes(election_id,round_no,candidate_uuid)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_president_laws_status ON president_laws(status,published_at DESC)")

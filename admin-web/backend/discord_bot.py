@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import hashlib
 import json
 import os
@@ -15,6 +16,11 @@ from typing import Any
 from .envfile import load_env_file_to_os, resolve_env_file
 
 try:
+    import fcntl
+except Exception:
+    fcntl = None
+
+try:
     import psycopg
     from psycopg.rows import dict_row
 except Exception as exc:
@@ -24,7 +30,9 @@ except Exception as exc:
 APP_ROOT = Path("/opt/copimine/admin-web")
 ENV_FILE = resolve_env_file(APP_ROOT / ".env")
 STATE_FILE = APP_ROOT / "data" / "discord_bot_state.json"
+LOCK_FILE = APP_ROOT / "data" / "discord_bot.lock"
 DISCORD_BOT_STATE_KEY = "discord_bot_runtime_state"
+_BOT_LOCK_HANDLE = None
 
 DEFAULT_STATUS_CHANNEL_ID = "1501623987468370161"
 
@@ -100,6 +108,41 @@ def pg_sql(sql: str) -> str:
     if inserted_ignore and "ON CONFLICT" not in text.upper():
         text = text.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
     return text
+
+def acquire_single_instance_lock() -> bool:
+    global _BOT_LOCK_HANDLE
+    if fcntl is None:
+        return True
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(LOCK_FILE, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return False
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    _BOT_LOCK_HANDLE = handle
+    atexit.register(release_single_instance_lock)
+    return True
+
+def release_single_instance_lock() -> None:
+    global _BOT_LOCK_HANDLE
+    handle = _BOT_LOCK_HANDLE
+    if handle is None:
+        return
+    try:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+    try:
+        handle.close()
+    except Exception:
+        pass
+    _BOT_LOCK_HANDLE = None
 
 class PgCompatConnection:
     def __init__(self) -> None:
@@ -1844,6 +1887,10 @@ async def main() -> None:
         print("DISCORD_BOT_TOKEN is not set in .env", flush=True)
         while True:
             await asyncio.sleep(3600)
+    if not acquire_single_instance_lock():
+        print("Another CopiMine Discord bot instance already owns discord_bot.lock; this process will stay idle.", flush=True)
+        while True:
+            await asyncio.sleep(3600)
     backoff = DISCORD_RECONNECT_INITIAL_SECONDS
     while True:
         try:
@@ -1856,7 +1903,7 @@ async def main() -> None:
             kind = type(exc).__name__
             print(f"Discord bot connection failed: {kind}: {exc}; reconnect in {backoff}s", flush=True)
             if kind in {"LoginFailure", "PrivilegedIntentsRequired"}:
-                backoff = DISCORD_RECONNECT_MAX_SECONDS
+                backoff = max(DISCORD_RECONNECT_MAX_SECONDS, 21600)
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, DISCORD_RECONNECT_MAX_SECONDS)
 

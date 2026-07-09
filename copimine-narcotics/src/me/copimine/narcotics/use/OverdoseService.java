@@ -250,15 +250,21 @@ public final class OverdoseService {
     private PlayerState applyZhuzevo(Player player, NarcoticDefinition definition, PlayerState state, long now) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         int duration = random.nextInt(240, 301);
-        List<ConfiguredEffect> effects = new ArrayList<>();
-        effects.add(new ConfiguredEffect("DARKNESS", 0, duration));
-        effects.add(new ConfiguredEffect("HUNGER", random.nextInt(0, 3), duration));
-        effects.add(new ConfiguredEffect("SLOWNESS", random.nextInt(0, 2), duration));
-        effects.add(new ConfiguredEffect("MINING_FATIGUE", random.nextInt(1, 4), duration));
-        effects.add(new ConfiguredEffect("NAUSEA", random.nextInt(0, 2), duration));
-        if (random.nextInt(10) == 0) {
+        List<ConfiguredEffect> pool = new ArrayList<>();
+        pool.add(new ConfiguredEffect("DARKNESS", 0, duration));
+        pool.add(new ConfiguredEffect("HUNGER", random.nextInt(0, 3), duration));
+        pool.add(new ConfiguredEffect("SLOWNESS", random.nextInt(0, 3), duration));
+        pool.add(new ConfiguredEffect("MINING_FATIGUE", random.nextInt(1, 5), duration));
+        pool.add(new ConfiguredEffect("NAUSEA", random.nextInt(0, 3), duration));
+        Collections.shuffle(pool);
+        int take = random.nextInt(4, 6);
+        List<ConfiguredEffect> effects = new ArrayList<>(pool.subList(0, Math.min(take, pool.size())));
+        boolean luckyShader = random.nextInt(10) == 0;
+        if (luckyShader) {
             effects.add(new ConfiguredEffect("WITHER", 0, Math.min(duration, 60)));
             visualRuntime.apply(player, resolveOverdoseVisual(definition), duration, false);
+        } else if (state.overdoseUntil() <= now) {
+            visualRuntime.clear(player);
         }
         applyConfiguredEffects(player, effects, duration);
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 18, 0.35D, 0.45D, 0.35D, 0.01D);

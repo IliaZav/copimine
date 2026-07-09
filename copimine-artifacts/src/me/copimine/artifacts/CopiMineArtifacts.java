@@ -9258,7 +9258,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private String maskedPin(String var1) {
-      return var1 != null && !var1.isEmpty() ? "*".repeat(var1.length()) : "вЂў вЂў вЂў вЂў";
+      return var1 != null && !var1.isEmpty() ? "*".repeat(var1.length()) : "••••";
    }
 
    private String nice(String var1) {

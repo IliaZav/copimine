@@ -117,6 +117,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private static final Pattern SAFE_SCHEMA = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final long PRESIDENT_BROADCAST_COOLDOWN_MS = 2L * 60L * 60L * 1000L;
     private static final long PRESIDENT_LAW_REPLACE_COOLDOWN_MS = 3L * 24L * 60L * 60L * 1000L;
+    private static final boolean PRESIDENT_TAX_FEATURE_ENABLED = false;
+    private static final long PRESIDENT_TAX_PERIOD_MS = 24L * 60L * 60L * 1000L;
     private static final int LAW_TEXT_LIMIT = 80;
     private static final int BROADCAST_TEXT_LIMIT = 80;
     private static final Pattern PRESIDENT_TEXT_FORBIDDEN = Pattern.compile(
@@ -2176,6 +2178,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openTaxOfficeMenu(Player player, String taxId, String mode, String pinBuffer) {
+        if (!PRESIDENT_TAX_FEATURE_ENABLED) {
+            MenuHolder holder = new MenuHolder("tax-office-disabled", first(taxId, ""));
+            Inventory inv = holder.create(27, color("&6Налоги скрыты"));
+            setStatic(inv, 11, infoItem(Material.GOLD_INGOT, "&fПрезидентский налог пока отключён", List.of(
+                    "&7Каркас оставлен в коде, но игрокам",
+                    "&7налоги сейчас не показываются и не начисляются.",
+                    "&7При включении период оплаты: &f24 часа&7."
+            )));
+            setButton(holder, 15, Material.BOOKSHELF, "&aПоступления из лавки", List.of("&7Открыть последние зачисления президенту."), "mandate:payments");
+            setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть это меню."), "close");
+            player.openInventory(inv);
+            return;
+        }
         MenuHolder holder = new MenuHolder("tax-office", first(taxId, ""));
         Inventory inv = holder.create(27, color("&6\u041d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430"));
         setStatic(inv, 11, infoItem(Material.GOLD_INGOT, "&f\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u0443\u0431\u0440\u0430\u043d", List.of(
@@ -4648,7 +4663,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     string(row.get("player_uuid")),
                     first(string(row.get("player_name")), "Кандидат"),
                     votes,
-                    "в–€".repeat(Math.max(1, Math.min(10, barCount)))
+                    "█".repeat(Math.max(1, Math.min(10, barCount)))
             ));
         }
         return results;

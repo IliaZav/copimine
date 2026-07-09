@@ -53,18 +53,21 @@ async function loadPublicPageByKind(kind, authState) {
       renderer.renderPresidentCard(payload.president || payload.budget || {});
       renderer.renderHistory(payload.history.items || []);
       renderer.renderAuthState(authState);
+      renderer.renderCms(payload.cms || {}, kind);
       return;
     }
     case "public-shops": {
       const payload = await loadPublicShopsPageData();
       renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState);
       renderer.renderAuthState(authState);
+      renderer.renderCms(payload.cms || {}, kind);
       return;
     }
     case "public-mods": {
       const payload = await loadPublicModsPageData();
       renderer.renderModpack(payload.modpack || {}, payload.config || {});
       renderer.renderAuthState(authState);
+      renderer.renderCms(payload.cms || {}, kind);
       return;
     }
     case "public-home":
@@ -77,6 +80,7 @@ async function loadPublicPageByKind(kind, authState) {
       renderer.renderHistory(payload.history.items || []);
       renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState);
       renderer.renderAuthState(authState);
+      renderer.renderCms(payload.cms || {}, kind);
     }
   }
 }

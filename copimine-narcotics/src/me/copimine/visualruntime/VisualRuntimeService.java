@@ -427,27 +427,17 @@ public final class VisualRuntimeService {
         try {
             String content = Files.readString(manifest, StandardCharsets.UTF_8);
             return content.contains("\"" + key + "\": true");
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            plugin.getLogger().warning("Could not read narcotics visual manifest: " + error.getMessage());
             return false;
         }
     }
 
     private void applyServerOverlay(Player player, String effectId, int durationSeconds, boolean overdose) {
-        if (!configService.serverOverlayUseTitles()) {
-            return;
-        }
-        String glyph = GLYPHS.getOrDefault(effectId, GLYPHS.get("CHAOS"));
-        Component overlay = Component.text(glyph).font(Key.key("copimine:narcotics_overlay"));
-        int safeSeconds = Math.max(1, Math.min(configService.serverOverlayMaxDurationSeconds(), durationSeconds));
-        Title title = Title.title(
-                Component.empty(),
-                overlay,
-                Title.Times.times(Duration.ZERO, Duration.ofSeconds(safeSeconds), Duration.ofMillis(120))
-        );
-        player.showTitle(title);
-        if (overdose) {
-            player.sendActionBar(Component.text(glyph).font(Key.key("copimine:narcotics_overlay")));
-        }
+        // The old title/actionbar overlay rendered large resource-pack pictures over the screen.
+        // Real shaderpacks and particle fallback stay active; legacy fullscreen glyphs are cleared.
+        player.clearTitle();
+        player.sendActionBar(Component.empty());
     }
 
     private void applyOverlay(Player player, String effectId, int durationSeconds, boolean overdose) {
@@ -456,7 +446,7 @@ public final class VisualRuntimeService {
 
     private void clearServerVisualSurface(Player player) {
         VisualSession session = clearHints.remove(player.getUniqueId());
-        if (session != null && session.route() == VisualRoute.SERVER_RESOURCE_PACK_OVERLAY && configService.serverOverlayClearOnStop()) {
+        if (session != null && (session.route() == VisualRoute.SERVER_RESOURCE_PACK_OVERLAY || configService.serverOverlayClearOnStop())) {
             player.clearTitle();
             player.sendActionBar(Component.empty());
         }

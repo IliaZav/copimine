@@ -1,16 +1,25 @@
 {
   "providers": [
     {
-      "type": "reference",
-      "id": "minecraft:include/space"
-    },
-    {
-      "type": "reference",
-      "id": "minecraft:include/default"
-    },
-    {
-      "type": "reference",
-      "id": "minecraft:include/unifont"
+      "type": "space",
+      "advances": {
+        "\uE001": -128,
+        "\uE002": -96,
+        "\uE003": -80,
+        "\uE004": -64,
+        "\uE005": -48,
+        "\uE006": -32,
+        "\uE007": -16,
+        "\uE008": 8,
+        "\uE009": 16,
+        "\uE00A": 24,
+        "\uE00B": 32,
+        "\uE00C": 48,
+        "\uE00D": 64,
+        "\uE00E": 80,
+        "\uE00F": 96,
+        "\uE010": 128
+      }
     },
     {
       "type": "bitmap",
@@ -19,6 +28,15 @@
       "height": 52,
       "chars": [
         "\uE300"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "minecraft:gui/copimine_tab.png",
+      "ascent": 14,
+      "height": 30,
+      "chars": [
+        "\uE000"
       ]
     }
   ]

@@ -106,6 +106,22 @@ function roleLabel(role) {
   }
 }
 
+function cmsEntry(payload = {}, key = "") {
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  return items.find((item) => String(item.key || item.entry_key || "") === key && item.enabled !== false) || null;
+}
+
+function setCmsText(selector, text, mode = "text") {
+  const node = document.querySelector(selector);
+  const value = String(text || "").trim();
+  if (!node || !value) return;
+  if (mode === "href") {
+    node.setAttribute("href", value);
+    return;
+  }
+  node.textContent = value;
+}
+
 function readCookie(name) {
   const prefix = `${String(name || "")}=`;
   return String(document.cookie || "")
@@ -356,6 +372,30 @@ export function createHomepageRenderer() {
         ? donationCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "donation"))
         : [cardStrong("Донат-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("totem_of_undying.png"))];
       replaceChildrenSafe(donationShopMount, cards);
+    }
+  }
+
+  function renderCms(payload = {}, pageKind = "") {
+    const home = cmsEntry(payload, "home_status");
+    if (home) {
+      setCmsText(".public-hero-copy h1", home.title);
+      setCmsText(".public-hero-copy p", home.body);
+      if (home.imagePath || home.image_path) {
+        const image = document.querySelector(".hero-media-art img");
+        if (image) image.src = String(home.imagePath || home.image_path);
+      }
+      if (home.linkUrl || home.link_url) {
+        setCmsText("#downloadModsBtn", home.linkUrl || home.link_url, "href");
+      }
+    }
+    const shops = cmsEntry(payload, "shops_note");
+    if (shops && (pageKind === "public-shops" || pageKind === "public-home")) {
+      setCmsText(".public-section .section-head h2", shops.title);
+      setCmsText(".public-section .section-head p", shops.body);
+    }
+    const rules = cmsEntry(payload, "rules_short");
+    if (rules && pageKind === "public-server") {
+      setCmsText(".public-panel-head h3", rules.title);
     }
   }
 
@@ -675,5 +715,6 @@ export function createHomepageRenderer() {
     renderAuthState,
     renderUnavailableState,
     renderModpack,
+    renderCms,
   };
 }

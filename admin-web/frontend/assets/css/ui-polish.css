@@ -13,7 +13,7 @@ body.junior-admin-mode #guestPagesBtn {
 body.player-mode .topbar,
 body.panel-admin-mode .topbar,
 body.junior-admin-mode .topbar {
-  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-soft, 0 16px 34px rgba(0, 0, 0, 0.18));
 }
 
 body.player-mode .top-actions,

@@ -24,25 +24,25 @@ usage:
 textures:
   mode: VANILLA
 
-  client_bridge:
-    enabled: true
-    require_client_mod: false
-    kick_if_missing_client: false
-    handshake_timeout_seconds: 10
-    prefer_client_visuals: true
-    fallback_to_server_overlay: false
-    fallback_to_particles: true
+client_bridge:
+  enabled: true
+  require_client_mod: false
+  kick_if_missing_client: false
+  handshake_timeout_seconds: 10
+  prefer_client_visuals: true
+  fallback_to_server_overlay: false
+  fallback_to_particles: true
 
-  visuals:
-    enabled: true
-    mode: AUTO
-    allow_client_mod_visuals: true
-    allow_server_resource_pack_overlay: false
-    allow_server_particle_fallback: true
-    server_overlay:
-      use_titles: false
-      max_duration_seconds: 60
-      clear_on_stop: true
+visuals:
+  enabled: true
+  mode: AUTO
+  allow_client_mod_visuals: true
+  allow_server_resource_pack_overlay: false
+  allow_server_particle_fallback: true
+  server_overlay:
+    use_titles: false
+    max_duration_seconds: 60
+    clear_on_stop: true
   effects:
     DESATURATE: true
     COLOR_CONVOLVE: true
@@ -129,7 +129,7 @@ items:
     visual_effect: SCAN_PINCUSHION
     recipe:
       - material:SLIME_BLOCK
-      - material:TURTLE_SCUTE
+      - material:TURTLE_HELMET
       - material:EMERALD
     normal_effects:
       - type:REGENERATION,amplifier:0,duration_seconds:90

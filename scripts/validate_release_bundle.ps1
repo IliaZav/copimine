@@ -91,6 +91,37 @@ try {
     $unpackScriptPath = Join-Path $payloadRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
     $replaceScriptPath = Join-Path $payloadRoot "deploy\ubuntu\copimine_full_replace.sh"
     $commonScriptPath = Join-Path $payloadRoot "deploy\shared\common.sh"
+    $forbiddenPayloadPaths = @(
+        "admin-web\.env",
+        "admin-web\.venv",
+        "admin-web\data",
+        "admin-web\backups",
+        "minecraft\server\logs",
+        "minecraft\server\cache",
+        "minecraft\server\libraries",
+        "minecraft\server\CopiMine",
+        "minecraft\server\CopiMine_nether",
+        "minecraft\server\CopiMine_the_end",
+        "minecraft\server\world",
+        "minecraft\server\world_nether",
+        "minecraft\server\world_the_end",
+        "minecraft\server\world_test",
+        "minecraft\server\world_test_nether",
+        "minecraft\server\world_test_the_end",
+        "minecraft\server\worldTestCP",
+        "minecraft\server\worldTestCP_nether",
+        "minecraft\server\worldTestCP_the_end",
+        "minecraft\server\ops.json",
+        "minecraft\server\usercache.json",
+        "minecraft\server\whitelist.json",
+        "minecraft\server\banned-players.json",
+        "minecraft\server\banned-ips.json",
+        "minecraft\server\plugins\.paper-remapped",
+        "minecraft\server\plugins\TAB\anti-override.log",
+        "minecraft\server\plugins\TAB\playerdata.yml",
+        "minecraft\server\plugins\TAB\skincache.yml",
+        "minecraft\server\plugins\TAB\users.yml"
+    )
 
     foreach ($required in @(
         $releaseManifestPath,
@@ -112,6 +143,19 @@ try {
         if (-not (Test-Path -LiteralPath $required)) {
             $errors.Add("Missing file in archive: $required")
         }
+    }
+
+    foreach ($relative in $forbiddenPayloadPaths) {
+        $forbiddenPath = Join-Path $payloadRoot $relative
+        if (Test-Path -LiteralPath $forbiddenPath) {
+            $errors.Add("Runtime-only file must not be bundled in release archive: $relative")
+        }
+    }
+
+    $forbiddenWorldDirs = Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(world|world_|CopiMine|CopiMine_|paper-world)' }
+    foreach ($worldDir in $forbiddenWorldDirs) {
+        $errors.Add("Runtime world directory must not be bundled in release archive: minecraft/server/$($worldDir.Name)")
     }
 
     if ($errors.Count -eq 0) {

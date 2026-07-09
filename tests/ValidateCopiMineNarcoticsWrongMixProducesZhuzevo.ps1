@@ -6,7 +6,7 @@ foreach ($marker in @(
   'finishWrongMix(block, key, nextVersion, current.size())',
   'finishBrewing(block, key, zhuzevo, version, ingredientCount, true)',
   'Particle.EXPLOSION',
-  'damage(6.0D)'
+  'ThreadLocalRandom.current().nextDouble(6.0D, 15.0001D)'
 )) {
   if ($source -notmatch [regex]::Escape($marker)) { throw "Wrong-mix zhuzevo marker missing: $marker" }
 }

@@ -138,7 +138,17 @@ export function createAdminCommercePages(deps) {
             ["Последнее обновление каталога", dt(donationCatalog.updatedAt || 0)],
           ])}
         `)}
-        ${panel("Ручное пополнение и тестовая выдача", "Выбор игрока и предмета через списки, без ручного набора ников.", `
+        ${panel("Ручное пополнение", "Выбор игрока через список, без ручного набора ников.", `
+          <div class="field-stack">
+            <label for="arAdminPlayer">Игрок для AR-баланса</label>
+            <select id="arAdminPlayer">${playerOptions(players, firstPlayer)}</select>
+          </div>
+          <div class="form-grid compact-grid">
+            <input id="arAdminAmount" type="number" min="1" step="1" placeholder="Сумма AR" />
+            <input id="arAdminReason" placeholder="Причина, например qa-topup" />
+          </div>
+          <button class="btn btn-primary full" data-click="adminArAddBalance()">Пополнить AR-баланс</button>
+          <div class="spacer-16"></div>
           <div class="field-stack">
             <label for="donationAdminPlayer">Игрок для donation-баланса</label>
             <select id="donationAdminPlayer">${playerOptions(players, firstPlayer)}</select>
@@ -262,6 +272,29 @@ export function createAdminCommercePages(deps) {
     }
   }
 
+  async function adminArAddBalance() {
+    try {
+      const player = selectedPlayerBySelect("arAdminPlayer");
+      const headers = await dangerConfirm(`Пополнить AR-баланс игрока ${player.name || "без имени"}`, "AR_ADD_BALANCE");
+      if (!headers) return;
+      await api("/api/admin/economy/ar/add-balance", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          minecraft_uuid: player.uuid || "",
+          minecraft_name: player.name || "",
+          amount: number($("arAdminAmount")?.value || 0),
+          reason: $("arAdminReason")?.value?.trim() || "admin-ar-topup",
+          idempotency_key: randomActionKey("ar-admin-topup"),
+        }),
+      });
+      toast("AR-баланс пополнен");
+      await loadEconomy();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
   async function adminDonationTestPurchase() {
     try {
       const player = selectedPlayerBySelect("donationTestPlayer");
@@ -341,6 +374,7 @@ export function createAdminCommercePages(deps) {
     loadEconomy,
     createEconomySnapshot,
     scanAresWorld,
+    adminArAddBalance,
     adminDonationAddBalance,
     adminDonationTestPurchase,
     adminDonationMarkPaid,

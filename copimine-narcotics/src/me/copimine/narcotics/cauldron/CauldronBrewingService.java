@@ -231,7 +231,7 @@ public final class CauldronBrewingService {
         world.spawnParticle(Particle.SMOKE, center, 42, 0.55D, 0.35D, 0.55D, 0.03D);
         for (org.bukkit.entity.Player nearby : world.getPlayers()) {
             if (nearby.getLocation().distanceSquared(center) <= 25.0D) {
-                nearby.damage(6.0D);
+                nearby.damage(ThreadLocalRandom.current().nextDouble(6.0D, 15.0001D));
             }
         }
     }

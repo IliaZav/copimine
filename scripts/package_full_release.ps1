@@ -91,6 +91,14 @@ function Write-Checksums {
     Set-Content -LiteralPath (Join-Path $ProjectRoot "thirdparty\checksums.txt") -Value ($lines -join "`n") -Encoding ascii
 }
 
+function Remove-PayloadPath {
+    param([Parameter(Mandatory = $true)][string]$RelativePath)
+    $path = Join-Path $payloadRoot $RelativePath
+    if (Test-Path -LiteralPath $path) {
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "[1/8] Build CopiMineClient"
 Invoke-Checked -FilePath "powershell" -Arguments @("-ExecutionPolicy", "Bypass", "-File", $clientBuildScript)
 if (-not (Test-Path -LiteralPath $clientJar)) {
@@ -246,17 +254,98 @@ foreach ($entry in $sourceDirs) {
 }
 
 foreach ($relative in @(
+    "admin-web.zip",
+    "admin-web\.env",
+    "admin-web\.venv",
+    "admin-web\backups",
+    "admin-web\data",
+    "admin-web\backend\__pycache__",
+    "admin-web\scripts\__pycache__",
+    "copimine-admin-plugin\build",
+    "copimine-artifacts\build",
+    "copimine-economy-core\build",
+    "copimine-election-core\build",
+    "copimine-narcotics\build",
+    "copimine-world-core\build",
     "CopiMineClient\.gradle",
     "CopiMineClient\.gradle-dist",
     "CopiMineClient\build\tmp",
     "CopiMineClient\build\reports",
     "CopiMineClient\build\test-results",
+    "minecraft\server\.console_history",
+    "minecraft\server\.vscode",
+    "minecraft\server\cache",
+    "minecraft\server\config-backups",
+    "minecraft\server\crash-reports",
+    "minecraft\server\debug",
+    "minecraft\server\libraries",
+    "minecraft\server\logs",
+    "minecraft\server\paper-world-defaults",
+    "minecraft\server\CopiMine",
+    "minecraft\server\CopiMine_nether",
+    "minecraft\server\CopiMine_the_end",
+    "minecraft\server\world",
+    "minecraft\server\world_nether",
+    "minecraft\server\world_the_end",
+    "minecraft\server\world_test",
+    "minecraft\server\world_test_nether",
+    "minecraft\server\world_test_the_end",
+    "minecraft\server\worldTestCP",
+    "minecraft\server\worldTestCP_nether",
+    "minecraft\server\worldTestCP_the_end",
+    "minecraft\server\banned-ips.json",
+    "minecraft\server\banned-players.json",
+    "minecraft\server\ops.json",
+    "minecraft\server\usercache.json",
+    "minecraft\server\whitelist.json",
+    "minecraft\server\map-color-cache.dat",
+    "minecraft\server\plugins\.paper-remapped",
+    "minecraft\server\plugins\AuthEffects\target",
+    "minecraft\server\plugins\TAB\anti-override.log",
+    "minecraft\server\plugins\TAB\playerdata.yml",
+    "minecraft\server\plugins\TAB\skincache.yml",
+    "minecraft\server\plugins\TAB\users.yml",
     "thirdparty\_modpack_stage"
 )) {
-    $path = Join-Path $payloadRoot $relative
-    if (Test-Path -LiteralPath $path) {
-        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
-    }
+    Remove-PayloadPath -RelativePath $relative
+}
+
+Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -like "*.bak*" -or
+        $_.Name -like "*.old" -or
+        $_.Name -like "*.backup*" -or
+        $_.Name -like "*.before-*"
+    } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server\plugins\TAB") -Force -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -like "*.bak*" -or
+        $_.Name -like "*.log"
+    } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+Get-ChildItem -LiteralPath (Join-Path $payloadRoot "admin-web\backend") -Force -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -like "*.backup-*" -or
+        $_.Name -like "*.before-*" -or
+        $_.Name -like "*.broken-*"
+    } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+Get-ChildItem -LiteralPath $payloadRoot -Force -Recurse -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -eq "__pycache__" -or
+        $_.Name -like "*.pyc" -or
+        $_.Name -like "*.pyo"
+    } |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+if (Test-Path -LiteralPath (Join-Path $payloadRoot "minecraft\server")) {
+    Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -Directory |
+        Where-Object { $_.Name -match '^(world|world_|CopiMine|CopiMine_|paper-world)' } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"

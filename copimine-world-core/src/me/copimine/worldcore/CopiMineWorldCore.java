@@ -242,6 +242,16 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPortal(PlayerPortalEvent event) {
+        if (event.getCause() == PlayerTeleportEvent.TeleportCause.END_PORTAL && !endAccess.enabled()) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(color("&eЭнд сейчас закрыт."));
+            return;
+        }
+        if (event.getCause() == PlayerTeleportEvent.TeleportCause.NETHER_PORTAL && !netherAccess.enabled()) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(color("&eНижний мир сейчас закрыт."));
+            return;
+        }
         World targetWorld = event.getTo() == null ? null : event.getTo().getWorld();
         if (targetWorld == null) {
             return;

@@ -18,6 +18,7 @@
 @import url("./css/legacy.css");
 @import url("./css/site-redesign.css");
 @import url("./css/responsive.css");
+@import url("./css/ui-polish.css");
 
 .anticheat-signal {
   display: inline-flex;

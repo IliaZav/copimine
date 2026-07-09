@@ -59,12 +59,17 @@ async function fetchDonationCatalogPayload() {
   return fetchJson("/api/public/shop/donation-items", { ok: false, data: { items: [] } });
 }
 
+async function fetchCmsPayload() {
+  return fetchJson("/api/public/cms", { items: [], sections: [] });
+}
+
 export async function loadPublicHomePageData() {
-  const [configPayload, statusPayload, modpackPayload, staticModpack] = await Promise.all([
+  const [configPayload, statusPayload, modpackPayload, staticModpack, cmsPayload] = await Promise.all([
     fetchConfigPayload(),
     fetchStatusPayload(),
     fetchModpackPayload(),
     fetchStaticModpackSnapshot(),
+    fetchCmsPayload(),
   ]);
 
   const apiModpack = modpackPayload?.data || {};
@@ -76,6 +81,7 @@ export async function loadPublicHomePageData() {
     config: configPayload?.data || {},
     status: statusPayload?.data || {},
     modpack: resolvedModpack,
+    cms: cmsPayload || { items: [], sections: [] },
   };
 }
 
@@ -86,12 +92,14 @@ export async function loadPublicServerPageData() {
     budgetPayload,
     historyPayload,
     presidentPayload,
+    cmsPayload,
   ] = await Promise.all([
     fetchConfigPayload(),
     fetchStatusPayload(),
     fetchBudgetPayload(),
     fetchBudgetHistoryPayload(6),
     fetchPresidentPayload(),
+    fetchCmsPayload(),
   ]);
 
   return {
@@ -100,26 +108,30 @@ export async function loadPublicServerPageData() {
     budget: budgetPayload?.data || {},
     history: historyPayload?.data || {},
     president: presidentPayload?.data || {},
+    cms: cmsPayload || { items: [], sections: [] },
   };
 }
 
 export async function loadPublicShopsPageData() {
-  const [arCatalogPayload, donationCatalogPayload] = await Promise.all([
+  const [arCatalogPayload, donationCatalogPayload, cmsPayload] = await Promise.all([
     fetchArCatalogPayload(),
     fetchDonationCatalogPayload(),
+    fetchCmsPayload(),
   ]);
 
   return {
     arCatalog: arCatalogPayload?.data || { items: [] },
     donationCatalog: donationCatalogPayload?.data || { items: [] },
+    cms: cmsPayload || { items: [], sections: [] },
   };
 }
 
 export async function loadPublicModsPageData() {
-  const [configPayload, modpackPayload, staticModpack] = await Promise.all([
+  const [configPayload, modpackPayload, staticModpack, cmsPayload] = await Promise.all([
     fetchConfigPayload(),
     fetchModpackPayload(),
     fetchStaticModpackSnapshot(),
+    fetchCmsPayload(),
   ]);
 
   const apiModpack = modpackPayload?.data || {};
@@ -130,6 +142,7 @@ export async function loadPublicModsPageData() {
   return {
     config: configPayload?.data || {},
     modpack: resolvedModpack,
+    cms: cmsPayload || { items: [], sections: [] },
   };
 }
 
@@ -149,6 +162,7 @@ export async function loadPublicHomepageData() {
     president: server.president,
     arCatalog: shops.arCatalog,
     donationCatalog: shops.donationCatalog,
+    cms: home.cms || shops.cms || { items: [], sections: [] },
   };
 }
 

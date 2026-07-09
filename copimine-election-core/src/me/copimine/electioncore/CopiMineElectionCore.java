@@ -3424,7 +3424,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             update(connection, "UPDATE candidate_applications SET admin_status='APPROVED',status='APPROVED',reviewed_at=?,reviewed_by=? WHERE id=?", t, actor, applicationId);
             int round = Math.max(1, intValue(lockedElection.get("current_round")));
-            update(connection, "INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result) VALUES(?,?,?,?,?,?,1,0) ON CONFLICT(id) DO NOTHING",
+            update(connection, "INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result) VALUES(?,?,?,?,?,?,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,application_id=excluded.application_id,active=1",
                     "candidate_" + electionId + "_" + string(lockedApp.get("player_uuid")), electionId, string(lockedApp.get("player_uuid")), string(lockedApp.get("player_name")), applicationId, t);
             update(connection, "INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) VALUES(?,?,?,?,1,?,?) ON CONFLICT(election_id,round_no,candidate_uuid) DO UPDATE SET candidate_name=excluded.candidate_name,active=1",
                     electionId, round, string(lockedApp.get("player_uuid")), string(lockedApp.get("player_name")), t, actor);
@@ -4695,7 +4695,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         BookMeta meta = (BookMeta) book.getItemMeta();
         meta.setTitle("Заявка кандидата");
         meta.setAuthor(first(string(row.get("player_name")), "CopiMine"));
-        meta.addPage(first(string(row.get("answers")), "Текст заявки пока пуст."));
+        meta.setPages(paginateBookText(first(string(row.get("answers")), "Текст заявки пока пуст.")));
         book.setItemMeta(meta);
         player.openBook(book);
     }
@@ -4946,9 +4946,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         meta.setTitle("Заявка кандидата");
         meta.setAuthor("CopiMine");
         meta.setPages(List.of(
-                "1. Почему ты хочешь стать президентом?\\n\\n2. Что ты изменишь на сервере?",
-                "3. Как ты будешь развивать экономику?\\n\\n4. Как ты будешь решать конфликты игроков?",
-                "5. Какие законы хочешь предложить?\\n\\nПодпиши книгу и сдай её через свой участок."
+                "1. Почему ты хочешь стать президентом?",
+                "2. Что ты изменишь на сервере?",
+                "3. Как ты будешь развивать экономику?",
+                "4. Как ты будешь решать конфликты игроков?",
+                "5. Какие законы хочешь предложить?\n\nПодпиши книгу и сдай её через свой участок."
         ));
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(itemTypeKey, PersistentDataType.STRING, "APPLICATION_BOOK");
@@ -5121,9 +5123,46 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (!builder.isEmpty()) {
                 builder.append("\n\n");
             }
-            builder.append(ChatColor.stripColor(page));
+            builder.append(normalizeBookText(ChatColor.stripColor(page)));
         }
         return builder.toString().trim();
+    }
+
+    private List<String> paginateBookText(String raw) {
+        String text = normalizeBookText(raw);
+        if (text.isBlank()) {
+            return List.of("Текст заявки пока пуст.");
+        }
+        List<String> pages = new ArrayList<>();
+        String[] chunks = text.split("\\n\\s*\\n");
+        StringBuilder page = new StringBuilder();
+        for (String chunk : chunks) {
+            String clean = chunk.trim();
+            if (clean.isEmpty()) {
+                continue;
+            }
+            if (page.length() > 0 && page.length() + clean.length() + 2 > 220) {
+                pages.add(page.toString());
+                page.setLength(0);
+            }
+            if (page.length() > 0) {
+                page.append("\n\n");
+            }
+            page.append(clean);
+        }
+        if (page.length() > 0) {
+            pages.add(page.toString());
+        }
+        return pages.isEmpty() ? List.of("Текст заявки пока пуст.") : pages;
+    }
+
+    private String normalizeBookText(String raw) {
+        return first(raw, "")
+                .replace("\\r\\n", "\n")
+                .replace("\\n", "\n")
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .trim();
     }
 
     private void consumeSingleItem(Player player, ItemStack stack) {
@@ -5290,12 +5329,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS issued_at BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS issued_by TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS book_token TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS id TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS application_id TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_result INTEGER NOT NULL DEFAULT 0");
+            update(connection, "UPDATE candidates SET id='candidate_' || election_id || '_' || player_uuid WHERE COALESCE(id,'')='' AND COALESCE(election_id,'')<>'' AND COALESCE(player_uuid,'')<>''");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS station_id TEXT NOT NULL DEFAULT ''");

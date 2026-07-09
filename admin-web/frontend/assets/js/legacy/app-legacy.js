@@ -1,5 +1,6 @@
 import { getStoredUiState, removeStoredUiState, setStoredUiState } from "../shared/browser-state.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "../shared/dom.js";
+import { createAdminCmsPages } from "../admin/cms-pages.js";
 import { createAdminCommercePages } from "../admin/commerce-pages.js";
 import { createPluginRegistryPages } from "../admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "../player/account-pages.js";
@@ -231,6 +232,7 @@ const navGroups = [
       ["admins", "Админы", "Аккаунты команды и вход в панель", "А"],
       ["security", "Доступ", "Команда и права доступа", "Д"],
       ["sources", "Источники", "Плагины и файлы", ""],
+      ["cms", "CMS", "Тексты, баннеры и страницы", "C"],
       ["settings", "Настройки", "Конфигурация", "Н"]
     ]
   }
@@ -568,21 +570,27 @@ function wireDataClickDelegation() {
   });
 }
 
+function handleDataInputEvent(event) {
+  const node = event.target.closest("[data-input]");
+  if (!node) return;
+  const action = node.getAttribute("data-input");
+  if (action === "filterTable") {
+    const handler = dataInputHandlers.filterTable || window.filterTable;
+    handler?.(node.getAttribute("data-input-id") || "", node.value || "");
+    return;
+  }
+  if (action === "filterPlayers") {
+    const handler = dataInputHandlers.filterPlayers || window.filterPlayers;
+    handler?.(node.value || "");
+    return;
+  }
+  const handler = dataInputHandlers[action] || window[action];
+  if (typeof handler === "function") handler(node.value || "", node);
+}
+
 function wireDataInputDelegation() {
-  document.addEventListener("input", (event) => {
-    const node = event.target.closest("[data-input]");
-    if (!node) return;
-    const action = node.getAttribute("data-input");
-    if (action === "filterTable") {
-      const handler = dataInputHandlers.filterTable || window.filterTable;
-      handler?.(node.getAttribute("data-input-id") || "", node.value || "");
-      return;
-    }
-    if (action === "filterPlayers") {
-      const handler = dataInputHandlers.filterPlayers || window.filterPlayers;
-      handler?.(node.value || "");
-    }
-  });
+  document.addEventListener("input", handleDataInputEvent);
+  document.addEventListener("change", handleDataInputEvent);
 }
 
 async function refreshCsrfCookie() {
@@ -2210,7 +2218,7 @@ function activityTimeline(rows) {
       <div class="activity-main">
         <div class="activity-head">
           <strong>${esc(row.type || "событие")}</strong>
-          <span>${esc(row.source || "server")} В· ${dt(row.time || row.createdAt || row.timestamp)}</span>
+          <span>${esc(row.source || "server")} · ${dt(row.time || row.createdAt || row.timestamp)}</span>
         </div>
         <div class="activity-meta">
           ${row.actor ? `<span>админ: ${esc(row.actor)}</span>` : ""}
@@ -2802,6 +2810,8 @@ async function loadEconomy() {
 window.createEconomySnapshot = async () => getAdminCommercePages().createEconomySnapshot();
 
 window.scanAresWorld = async () => getAdminCommercePages().scanAresWorld();
+
+window.adminArAddBalance = async () => getAdminCommercePages().adminArAddBalance();
 
 window.adminDonationAddBalance = async () => getAdminCommercePages().adminDonationAddBalance();
 
@@ -3857,6 +3867,7 @@ window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {
 
 let playerDonationPages;
 let adminCommercePages;
+let adminCmsPages;
 let pluginRegistryPages;
 let playerAccountPages;
 let playerTreasuryPages;
@@ -3893,6 +3904,31 @@ function getAdminCommercePages() {
     });
   }
   return adminCommercePages;
+}
+
+function getAdminCmsPages() {
+  if (!adminCmsPages) {
+    adminCmsPages = createAdminCmsPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      table,
+      pill,
+      esc,
+      cleanText,
+      short,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminCmsPages;
 }
 
 function getPluginRegistryPages() {
@@ -4028,9 +4064,10 @@ window.selectPlayerBankScope = async (scope = "PERSONAL") => getPlayerTreasuryPa
 
 async function loadPlayerArtifacts() {
   setLoading("Загрузка предметов");
-  const [data, catalogPayload] = await Promise.all([
+  const [data, catalogPayload, bank] = await Promise.all([
     safeApi("/api/player/artifacts", { linked: false, purchases: [], pending: [], repairs: [] }),
-    safeApi("/api/player/shop/ar-items", { items: [] })
+    safeApi("/api/player/shop/ar-items", { items: [] }),
+    safeApi("/api/player/bank", { account: { balance: 0 }, pin: { set: false }, linked: false })
   ]);
   if (!data.linked) {
     setView(panel("Артефакты", "Сначала привяжи Minecraft-аккаунт", empty("Minecraft-ник не привязан", "После привязки здесь будут покупки, выдача и ремонт предметов.")));
@@ -4044,15 +4081,18 @@ async function loadPlayerArtifacts() {
     ...row,
     limit_text: row.per_player_limit > 0 ? `${number(row.per_player_limit)} на игрока` : "без лимита",
     cooldown_text: row.cooldown_seconds ? `${number(row.cooldown_seconds)} сек.` : "—",
+    action_html: row.enabled
+      ? `<button class="btn btn-primary btn-small" data-click='playerBuyArItem(${JSON.stringify(String(row.item_id || ""))}, ${JSON.stringify(cleanText(row.display_name || row.name || row.item_id || "предмет"))}, ${number(row.price_ar || 0)})'>Купить</button>`
+      : `<span class="btn btn-secondary btn-small disabled">Недоступно</span>`,
   }));
   const catalogMetric = metric("AR-каталог", catalog.length, "Цены и лимиты каталога", catalog.length ? "good" : "neutral");
   setView(`
     <section class="layout-grid grid-4">
       ${catalogMetric}
+      ${metric("Баланс AR", formatAr(bank.account?.balance || 0), bank.pin?.set ? "PIN настроен" : "Нужно задать PIN", bank.pin?.set ? "good" : "warn")}
       ${metric("Покупки", purchases.length, "Подтверждённые покупки", purchases.length ? "good" : "neutral")}
       ${metric("Ожидают выдачи", pending.length, "Предметы ждут выдачи", pending.length ? "warn" : "good")}
       ${metric("Ремонты", repairs.length, "История ремонтов")}
-      ${metric("Донат", "включён", "Баланс, витрина и возврат", "neutral")}
     </section>
     <section class="layout-grid grid-2">
       ${panel("Мои покупки", "Купленные предметы.", table("player-artifact-purchases", purchases, [
@@ -4074,7 +4114,8 @@ async function loadPlayerArtifacts() {
       { key: "effect_description", label: "Эффект", render: (value) => short(value || "", 110) || "Без отдельного описания" },
       { key: "cooldown_text", label: "Кулдаун" },
       { key: "limit_text", label: "Лимит" },
-    ], { pageSize: 10 }), `<div class="notice">Покупка и ремонт проходят через игровую лавку. На сайте можно посмотреть каталог и историю.</div>`)}
+      { key: "action_html", label: "Действие", render: (value) => value },
+    ], { pageSize: 10 }), `<div class="notice">После покупки предмет появится в очереди выдачи. В игре забери его командой /cmartifacts claim.</div>`)}
     ${panel("Ремонт", "В Minecraft можно восстановить официальный предмет в лавке или командой /cmartifacts repair.", table("player-artifact-repairs", repairs, [
       { key: "created_at", label: "Время", render: v => dt(v) },
       { key: "item_id", label: "Предмет" },
@@ -4083,6 +4124,28 @@ async function loadPlayerArtifacts() {
     ], { pageSize: 12 }), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои донат-предметы</button>`)}
   `);
 }
+
+window.playerBuyArItem = async (itemId, displayName = "предмет", price = 0) => {
+  try {
+    const cleanName = cleanText(displayName || itemId || "предмет");
+    if (!window.confirm(`Купить «${cleanName}» за ${formatAr(price)}?`)) return;
+    const pin = window.prompt("PIN банка AR", "") || "";
+    if (!pin.trim()) return toast("Покупка отменена: PIN не введён.", true);
+    const result = await api("/api/player/shop/ar-purchase-intent", {
+      method: "POST",
+      body: JSON.stringify({
+        item_id: String(itemId || ""),
+        pin,
+        idempotency_key: randomActionKey("ar-buy"),
+      }),
+    });
+    toast(`Покупка создана: ${result.itemId}. Забери предмет в игре через /cmartifacts claim.`);
+    await loadPlayerArtifacts();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 async function loadPlayerHistory() {
   setLoading("Загрузка истории игрока");
   const [bank, artifacts, donation, owned] = await Promise.all([
@@ -4181,6 +4244,7 @@ async function loadCurrent(silent = false) {
     logs: loadLogs,
     investigations: loadInvestigations,
     sources: loadSources,
+    cms: () => getAdminCmsPages().loadCms(),
     settings: loadSettings,
     admins: loadAdmins,
     security: loadSecurity,
@@ -4263,10 +4327,15 @@ async function boot() {
 }
 
 Object.assign(dataClickHandlers, {
+  adminArAddBalance: fromWindow("adminArAddBalance"),
   adminDonationAddBalance: fromWindow("adminDonationAddBalance"),
   adminDonationCancelSession: fromWindow("adminDonationCancelSession"),
   adminDonationMarkPaid: fromWindow("adminDonationMarkPaid"),
   adminDonationTestPurchase: fromWindow("adminDonationTestPurchase"),
+  adminCmsDisable: (...args) => getAdminCmsPages().adminCmsDisable(...args),
+  adminCmsEdit: (...args) => getAdminCmsPages().adminCmsEdit(...args),
+  adminCmsNew: () => getAdminCmsPages().adminCmsNew(),
+  adminCmsSave: () => getAdminCmsPages().adminCmsSave(),
   adminSetTreasuryPin: fromWindow("adminSetTreasuryPin"),
   approveWhitelistRequest: fromWindow("approveWhitelistRequest"),
   closeModal: fromWindow("closeModal"),
@@ -4281,6 +4350,7 @@ Object.assign(dataClickHandlers, {
   openElectionApplicationBook: fromWindow("openElectionApplicationBook"),
   pageTable: fromWindow("pageTable"),
   playerAction: fromWindow("playerAction"),
+  playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
   playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
   playerCopyDonationPaymentUrl: fromWindow("playerCopyDonationPaymentUrl"),
@@ -4317,6 +4387,7 @@ Object.assign(dataClickHandlers, {
 });
 
 Object.assign(dataInputHandlers, {
+  adminCmsSelect: () => getAdminCmsPages().adminCmsSelect(),
   filterPlayers: fromWindow("filterPlayers"),
   filterTable: fromWindow("filterTable"),
 });

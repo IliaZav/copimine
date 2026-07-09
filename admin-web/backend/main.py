@@ -505,9 +505,23 @@ class PlayerDonationPurchaseIntentIn(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class PlayerArPurchaseIntentIn(BaseModel):
+    item_id: str = Field(min_length=2, max_length=120)
+    pin: str = Field(min_length=4, max_length=8)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
 class AdminWhitelistApproveIn(BaseModel):
     request_id: str = Field(min_length=8, max_length=120)
     note: str = Field(default="", max_length=240)
+
+
+class AdminArBalanceIn(BaseModel):
+    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    amount: int = Field(gt=0, le=1000000000)
+    reason: str = Field(min_length=2, max_length=160)
+    idempotency_key: str = Field(min_length=8, max_length=120)
 
 
 class AdminDonationBalanceIn(BaseModel):
@@ -526,6 +540,17 @@ class AdminDonationTestPurchaseIn(BaseModel):
 
 class AdminDonationSessionActionIn(BaseModel):
     note: str = Field(default="", max_length=240)
+
+
+class SiteCmsEntryIn(BaseModel):
+    entry_key: str = Field(min_length=2, max_length=80)
+    section: str = Field(min_length=2, max_length=40)
+    title: str = Field(min_length=1, max_length=160)
+    body: str = Field(default="", max_length=3000)
+    image_path: str = Field(default="", max_length=240)
+    link_url: str = Field(default="", max_length=240)
+    sort_order: int = Field(default=100, ge=0, le=100000)
+    enabled: bool = True
 
 
 class PluginRegistryConfigIn(BaseModel):
@@ -1439,6 +1464,22 @@ def ensure_v4_schema(conn: Any) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS site_cms_entries(
+            entry_key TEXT PRIMARY KEY,
+            section TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            body TEXT NOT NULL DEFAULT '',
+            image_path TEXT NOT NULL DEFAULT '',
+            link_url TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 100,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at BIGINT NOT NULL DEFAULT 0,
+            updated_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS cmv4_bank_accounts(
             account_id TEXT PRIMARY KEY,
             owner_uuid TEXT NOT NULL,
@@ -2085,6 +2126,27 @@ def ensure_v4_schema(conn: Any) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS artifact_revenue_payouts(
+            purchase_id TEXT PRIMARY KEY,
+            president_uuid TEXT NOT NULL DEFAULT '',
+            president_name TEXT NOT NULL DEFAULT '',
+            recipient_account_id TEXT NOT NULL DEFAULT 'PRESIDENT_BUDGET',
+            buyer_uuid TEXT NOT NULL DEFAULT '',
+            buyer_name TEXT NOT NULL DEFAULT '',
+            item_id TEXT NOT NULL DEFAULT '',
+            shop_id TEXT NOT NULL DEFAULT '',
+            amount_ar BIGINT NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            bank_tx_id TEXT NOT NULL DEFAULT '',
+            idempotency_key TEXT NOT NULL DEFAULT '',
+            last_error TEXT NOT NULL DEFAULT '',
+            created_at BIGINT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS donation_accounts(
             player_uuid TEXT PRIMARY KEY,
             player_name TEXT NOT NULL DEFAULT '',
@@ -2192,6 +2254,7 @@ def ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_failed_pin_attempts_uuid_time ON failed_pin_attempts(minecraft_uuid,attempted_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_account_lockouts_until ON account_lockouts(locked_until DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_security_events_time ON security_events(time DESC,action)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_site_cms_section_order ON site_cms_entries(section,enabled,sort_order,entry_key)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_owner_type_active ON cmv4_bank_accounts(owner_uuid,account_type,currency) WHERE status='ACTIVE'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cmv4_bank_accounts_owner ON cmv4_bank_accounts(owner_uuid,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cmv4_bank_ledger_account_time ON cmv4_bank_ledger(account_id,created_at DESC)")
@@ -2228,6 +2291,7 @@ def ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_effects_disable_audit_time ON auth_effects_disable_audit(created_at DESC)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_shops_block ON artifact_shops(world_name,block_x,block_y,block_z)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_artifact_purchases_player_time ON artifact_purchases(player_uuid,created_at DESC)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_artifact_purchases_idempotency ON artifact_purchases(idempotency_key) WHERE idempotency_key<>''")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_artifact_instances_item ON artifact_item_instances(item_id,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_artifact_instances_owner_item_status ON artifact_item_instances(owner_uuid,item_id,status)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_artifact_instances_owner_item_live ON artifact_item_instances(owner_uuid,item_id) WHERE status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')")
@@ -4313,6 +4377,179 @@ def sanitize_public_plain_text(value: Any, max_len: int = 160) -> str:
     text = re.sub(r"[<>{}\r\n\t]+", " ", str(value or ""))
     text = re.sub(r"\s+", " ", text).strip()
     return text[:max_len]
+
+
+CMS_SECTIONS = {"home", "news", "faq", "rules", "shops", "banners"}
+DEFAULT_CMS_ENTRIES: list[dict[str, Any]] = [
+    {
+        "entry_key": "home_status",
+        "section": "home",
+        "title": "CopiMine",
+        "body": "IP, модпак, банк AR и игровые выборы собраны в одном кабинете.",
+        "sort_order": 10,
+    },
+    {
+        "entry_key": "shops_note",
+        "section": "shops",
+        "title": "Лавки",
+        "body": "AR-покупки проходят через банковский PIN. Донат-предметы оплачиваются с отдельного donation-баланса.",
+        "sort_order": 20,
+    },
+    {
+        "entry_key": "rules_short",
+        "section": "rules",
+        "title": "Правила",
+        "body": "Играйте честно, не дублируйте предметы, не обходите ограничения банка и выборов.",
+        "sort_order": 30,
+    },
+]
+
+
+def normalize_cms_key(value: Any) -> str:
+    key = re.sub(r"[^a-z0-9_.:-]+", "-", str(value or "").strip().lower())
+    key = key.strip("-._:")
+    if len(key) < 2:
+        raise HTTPException(status_code=400, detail="CMS key is too short")
+    return key[:80]
+
+
+def normalize_cms_section(value: Any) -> str:
+    section = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-")
+    if section not in CMS_SECTIONS:
+        raise HTTPException(status_code=400, detail="Неизвестный раздел CMS")
+    return section
+
+
+def sanitize_cms_text(value: Any, max_len: int) -> str:
+    text = re.sub(r"[<>{}\x00-\x08\x0b\x0c\x0e-\x1f]+", " ", str(value or ""))
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text.replace("\r\n", "\n").replace("\r", "\n"))
+    return text.strip()[:max_len]
+
+
+def sanitize_cms_asset_path(value: Any) -> str:
+    path = str(value or "").strip()
+    if not path:
+        return ""
+    if path.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="CMS image must be a local asset path")
+    if not path.startswith("/assets/"):
+        raise HTTPException(status_code=400, detail="CMS image must live under /assets/")
+    if any(part in path for part in ["..", "\\", "<", ">"]):
+        raise HTTPException(status_code=400, detail="CMS image path is invalid")
+    return path[:240]
+
+
+def sanitize_cms_link(value: Any) -> str:
+    link = str(value or "").strip()
+    if not link:
+        return ""
+    if link.startswith("/"):
+        return link[:240]
+    if re.fullmatch(r"https://[A-Za-z0-9.-]+(/[^\s<>]*)?", link):
+        return link[:240]
+    raise HTTPException(status_code=400, detail="CMS link must be relative or HTTPS")
+
+
+def seed_site_cms_defaults(conn: Any) -> None:
+    now = donation_now_ms()
+    for entry in DEFAULT_CMS_ENTRIES:
+        conn.execute(
+            """
+            INSERT INTO site_cms_entries(entry_key,section,title,body,image_path,link_url,sort_order,enabled,updated_at,updated_by)
+            VALUES(%s,%s,%s,%s,'','',%s,1,%s,'system')
+            ON CONFLICT(entry_key) DO NOTHING
+            """,
+            (
+                normalize_cms_key(entry["entry_key"]),
+                normalize_cms_section(entry["section"]),
+                sanitize_cms_text(entry["title"], 160),
+                sanitize_cms_text(entry["body"], 3000),
+                int(entry["sort_order"]),
+                now,
+            ),
+        )
+
+
+def public_cms_entry(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "key": str(row.get("entry_key") or ""),
+        "section": str(row.get("section") or ""),
+        "title": sanitize_cms_text(row.get("title") or "", 160),
+        "body": sanitize_cms_text(row.get("body") or "", 3000),
+        "imagePath": str(row.get("image_path") or ""),
+        "linkUrl": str(row.get("link_url") or ""),
+        "sortOrder": int(row.get("sort_order") or 0),
+        "enabled": bool(int(row.get("enabled") or 0)),
+        "updatedAt": int(row.get("updated_at") or 0),
+    }
+
+
+def read_site_cms_sync(include_disabled: bool = False) -> dict[str, Any]:
+    if not pg_ready():
+        items = [public_cms_entry({**entry, "enabled": 1, "updated_at": 0}) for entry in DEFAULT_CMS_ENTRIES]
+        return {"items": items, "sections": sorted(CMS_SECTIONS), "source": "defaults"}
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        seed_site_cms_defaults(conn)
+        where = "" if include_disabled else "WHERE enabled=1"
+        rows = conn.execute(
+            f"""
+            SELECT entry_key,section,title,body,image_path,link_url,sort_order,enabled,updated_at,updated_by
+            FROM site_cms_entries
+            {where}
+            ORDER BY section ASC, sort_order ASC, entry_key ASC
+            """
+        ).fetchall()
+        conn.commit()
+    items = [public_cms_entry(dict(row)) for row in rows]
+    return {"items": items, "sections": sorted(CMS_SECTIONS), "source": "postgresql"}
+
+
+def upsert_site_cms_entry_sync(data: SiteCmsEntryIn, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    key = normalize_cms_key(data.entry_key)
+    section = normalize_cms_section(data.section)
+    title = sanitize_cms_text(data.title, 160)
+    body = sanitize_cms_text(data.body, 3000)
+    image_path = sanitize_cms_asset_path(data.image_path)
+    link_url = sanitize_cms_link(data.link_url)
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO site_cms_entries(entry_key,section,title,body,image_path,link_url,sort_order,enabled,updated_at,updated_by)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(entry_key) DO UPDATE SET
+                section=EXCLUDED.section,
+                title=EXCLUDED.title,
+                body=EXCLUDED.body,
+                image_path=EXCLUDED.image_path,
+                link_url=EXCLUDED.link_url,
+                sort_order=EXCLUDED.sort_order,
+                enabled=EXCLUDED.enabled,
+                updated_at=EXCLUDED.updated_at,
+                updated_by=EXCLUDED.updated_by
+            """,
+            (key, section, title, body, image_path, link_url, int(data.sort_order), 1 if data.enabled else 0, now, actor),
+        )
+        conn.commit()
+    audit_event(actor, "cms.entry.save", target=key, details={"section": section, "enabled": data.enabled})
+    return {"ok": True, "entry": {"key": key, "section": section, "title": title, "enabled": bool(data.enabled), "updatedAt": now}}
+
+
+def delete_site_cms_entry_sync(entry_key: str, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    key = normalize_cms_key(entry_key)
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute("UPDATE site_cms_entries SET enabled=0,updated_at=%s,updated_by=%s WHERE entry_key=%s", (donation_now_ms(), actor, key))
+        conn.commit()
+    audit_event(actor, "cms.entry.disable", target=key, details={})
+    return {"ok": True, "key": key, "enabled": False}
 
 
 def public_president_budget_payload_sync() -> dict[str, Any]:
@@ -7727,6 +7964,11 @@ async def public_config() -> dict[str, Any]:
     return {"ok": True, "data": await bg(public_site_config_sync)}
 
 
+@app.get("/api/public/cms")
+async def public_cms() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(read_site_cms_sync, False)}
+
+
 @app.get("/api/public/status")
 async def public_status() -> dict[str, Any]:
     return {"ok": True, "data": await bg(public_site_status_sync)}
@@ -10533,6 +10775,183 @@ def purchase_donation_item_sync(player_uuid: str, player_name: str, item_id: str
     }
 
 
+def artifact_purchase_count_sync(conn: Any, item_id: str, player_uuid: str = "") -> int:
+    if player_uuid:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM artifact_purchases
+            WHERE player_uuid=%s
+              AND item_id=%s
+              AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')
+            """,
+            (player_uuid, item_id),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM artifact_purchases
+            WHERE item_id=%s
+              AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')
+            """,
+            (item_id,),
+        ).fetchone()
+    return int((row or {}).get("c") or 0)
+
+
+def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentIn) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    player_uuid = str(account.get("minecraft_uuid") or "").strip()
+    player_name = str(account.get("minecraft_name") or account.get("username") or "").strip()
+    if not player_uuid:
+        raise HTTPException(status_code=400, detail="Сначала привяжи Minecraft-ник")
+    catalog = ar_catalog_snapshot_sync()
+    item = dict(catalog.get("byId", {}).get(str(data.item_id or "").strip().lower()) or {})
+    if not item or not bool(item.get("enabled")):
+        raise HTTPException(status_code=404, detail="AR-предмет недоступен")
+    if str(item.get("category") or "").upper() == "RP":
+        raise HTTPException(status_code=409, detail="Эта категория пока недоступна для покупки на сайте")
+    price = int(item.get("price_ar") or 0)
+    if price <= 0:
+        raise HTTPException(status_code=409, detail="Для предмета не задана цена AR")
+    key = str(data.idempotency_key or "").strip()
+    if len(key) < 8 or len(key) > 120:
+        raise HTTPException(status_code=400, detail="idempotency_key обязателен")
+    now = donation_now_ms()
+    purchase_key = f"web-ar-purchase-{key}"
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (purchase_key,))
+        existing = conn.execute(
+            "SELECT purchase_id,unique_item_id,item_id,status,price_ar FROM artifact_purchases WHERE idempotency_key=%s LIMIT 1",
+            (purchase_key,),
+        ).fetchone()
+        if existing:
+            row = dict(existing)
+            return {
+                "ok": True,
+                "itemId": row.get("item_id"),
+                "purchaseId": row.get("purchase_id"),
+                "uniqueItemId": row.get("unique_item_id"),
+                "status": row.get("status"),
+                "priceAr": int(row.get("price_ar") or 0),
+                "pickupHint": "Заберите предмет в игре через /cmartifacts claim.",
+            }
+        verify_bank_pin(conn, account, data.pin)
+        item_id = str(item.get("item_id") or "").strip()
+        supply_limit = int(item.get("supply_limit") or 0)
+        per_player_limit = int(item.get("per_player_limit") or 0)
+        if supply_limit > 0 and artifact_purchase_count_sync(conn, item_id) >= supply_limit:
+            raise HTTPException(status_code=409, detail="Лимит поставки для этого предмета исчерпан")
+        if per_player_limit > 0 and artifact_purchase_count_sync(conn, item_id, player_uuid) >= per_player_limit:
+            raise HTTPException(status_code=409, detail="Персональный лимит на этот предмет уже достигнут")
+        player_bank = ensure_player_bank_account(conn, player_uuid, player_name)
+        treasury_bank = ensure_treasury_bank_account(conn)
+        player_locked, treasury_locked = lock_bank_accounts_ordered(conn, str(player_bank["account_id"]), str(treasury_bank["account_id"]))
+        before = int(player_locked.get("balance") or 0)
+        if before < price:
+            raise HTTPException(status_code=409, detail="Недостаточно AR на банковском счёте")
+        after = before - price
+        treasury_after = int(treasury_locked.get("balance") or 0) + price
+        tx_id = f"ar-web-{secrets.token_hex(12)}"
+        purchase_id = f"web-ar-purchase-{secrets.token_hex(10)}"
+        unique_item_id = f"web-ar-item-{uuid.uuid4()}"
+        delivery_id = f"web-ar-delivery-{secrets.token_hex(10)}"
+        details = json.dumps({"item": item_id, "source": "site-shop", "displayName": item.get("display_name") or item_id}, ensure_ascii=False)
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (after, now, player_locked["account_id"]))
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (treasury_after, now, treasury_locked["account_id"]))
+        conn.execute(
+            "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR','COMMITTED',%s,%s,%s,%s)",
+            (tx_id, player_locked["account_id"], treasury_locked["account_id"], price, purchase_key, now, player_name or player_uuid, details),
+        )
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR_SHOP_PURCHASE',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id + ":out", player_locked["account_id"], treasury_locked["account_id"], player_uuid, price, after, purchase_key + ":out", now, player_name or player_uuid, details),
+        )
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR_SHOP_PURCHASE',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id + ":in", treasury_locked["account_id"], player_locked["account_id"], player_uuid, price, treasury_after, purchase_key + ":in", now, player_name or player_uuid, details),
+        )
+        conn.execute(
+            """
+            INSERT INTO artifact_purchases(purchase_id,unique_item_id,player_uuid,player_name,item_id,shop_id,price_ar,bank_tx_id,idempotency_key,status,delivery_mode,created_at,updated_at)
+            VALUES(%s,%s,%s,%s,%s,'site-shop',%s,%s,%s,'PENDING_DELIVERY','PENDING',%s,%s)
+            """,
+            (purchase_id, unique_item_id, player_uuid, player_name, item_id, price, tx_id, purchase_key, now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at)
+            VALUES(%s,%s,%s,%s,'PENDING_DELIVERY',0,%s,%s)
+            """,
+            (unique_item_id, item_id, player_uuid, purchase_id, now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at)
+            VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)
+            """,
+            (delivery_id, purchase_id, unique_item_id, player_uuid, item_id, now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO artifact_revenue_payouts(purchase_id,president_uuid,president_name,recipient_account_id,buyer_uuid,buyer_name,item_id,shop_id,amount_ar,status,bank_tx_id,idempotency_key,last_error,created_at,updated_at)
+            VALUES(%s,'',%s,%s,%s,%s,%s,'site-shop',%s,'CREDITED',%s,%s,'',%s,%s)
+            ON CONFLICT(purchase_id) DO NOTHING
+            """,
+            (purchase_id, TREASURY_ACCOUNT_LABEL, TREASURY_ACCOUNT_ID, player_uuid, player_name, item_id, price, tx_id, f"artifact-president-budget-{purchase_id}", now, now),
+        )
+        conn.commit()
+    audit_event(str(account.get("username") or player_name or player_uuid), "artifact.purchase.web", target=player_name or player_uuid, details={"purchaseId": purchase_id, "itemId": item_id, "price": price})
+    append_panel_event("artifacts", "web_purchase", actor=str(account.get("username") or player_name or player_uuid), target=player_name or player_uuid, metadata={"purchaseId": purchase_id, "itemId": item_id, "price": price}, tags=["artifacts", "shop"])
+    return {
+        "ok": True,
+        "itemId": item_id,
+        "purchaseId": purchase_id,
+        "uniqueItemId": unique_item_id,
+        "deliveryId": delivery_id,
+        "status": "PENDING_DELIVERY",
+        "priceAr": price,
+        "balanceAfter": after,
+        "pickupHint": "Заберите предмет в игре через /cmartifacts claim.",
+    }
+
+
+def admin_add_ar_balance_sync(player_uuid: str, player_name: str, amount: int, reason: str, actor: str, idempotency_key: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    player_uuid, player_name = normalize_donation_player_target(player_uuid, player_name)
+    safe_amount = int(amount or 0)
+    if safe_amount <= 0:
+        raise HTTPException(status_code=400, detail="Сумма AR должна быть больше нуля")
+    safe_key = str(idempotency_key or "").strip()
+    if len(safe_key) < 8 or len(safe_key) > 120:
+        raise HTTPException(status_code=400, detail="idempotency_key обязателен")
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"admin-ar-topup:{safe_key}",))
+        existing = conn.execute("SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=%s LIMIT 1", (f"admin-ar-topup-{safe_key}",)).fetchone()
+        if existing:
+            return {"ok": True, "txId": existing["tx_id"], "balanceAfter": int(existing["balance_after"] or 0), "idempotent": True}
+        bank = ensure_player_bank_account(conn, player_uuid, player_name)
+        locked = conn.execute("SELECT * FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE", (bank["account_id"],)).fetchone()
+        before = int((locked or {}).get("balance") or 0)
+        after = before + safe_amount
+        tx_id = f"admin-ar-{secrets.token_hex(12)}"
+        note = json.dumps({"reason": sanitize_public_plain_text(reason, 160), "source": "admin-web"}, ensure_ascii=False)
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s,owner_name=%s WHERE account_id=%s", (after, now, player_name, bank["account_id"]))
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,'',%s,'ADMIN_AR_TOPUP',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id, bank["account_id"], player_uuid, safe_amount, after, f"admin-ar-topup-{safe_key}", now, actor, note),
+        )
+        conn.commit()
+    audit_event(actor, "ar.balance.add", target=player_name, details={"uuid": player_uuid, "amount": safe_amount, "reason": reason})
+    return {"ok": True, "txId": tx_id, "balanceBefore": before, "balanceAfter": after}
+
+
 def admin_create_donation_test_purchase_sync(player_uuid: str, player_name: str, item_id: str, actor: str) -> dict[str, Any]:
     if not pg_ready():
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
@@ -10837,6 +11256,12 @@ async def player_donation_purchase_intent(data: PlayerDonationPurchaseIntentIn, 
     return result
 
 
+@app.post("/api/player/shop/ar-purchase-intent")
+async def player_ar_purchase_intent(data: PlayerArPurchaseIntentIn, request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    check_rate_limit(request, "player-ar-purchase", limit=8, window_seconds=60)
+    return await bg(purchase_ar_item_sync, account, data)
+
+
 @app.post("/api/player/donation/claim")
 async def player_donation_claim(data: PlayerDonationClaimIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     uuid = str(account.get("minecraft_uuid") or "")
@@ -10855,6 +11280,15 @@ async def admin_donation_shop_items(_: str = Depends(require_admin)) -> dict[str
 async def admin_ar_shop_items(_: str = Depends(require_admin)) -> dict[str, Any]:
     catalog = await bg(ar_catalog_snapshot_sync)
     return {"items": catalog.get("items", []), "count": len(catalog.get("items", []))}
+
+
+@app.post("/api/admin/economy/ar/add-balance")
+async def admin_ar_add_balance(data: AdminArBalanceIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "AR_ADD_BALANCE")
+    check_rate_limit(request, "admin-ar-add-balance", limit=10, window_seconds=60)
+    result = await bg(admin_add_ar_balance_sync, data.minecraft_uuid, data.minecraft_name, data.amount, data.reason, username, data.idempotency_key)
+    append_panel_event("economy", "ar_balance_add", actor=username, target=data.minecraft_name, metadata={"amount": data.amount, "reason": data.reason}, tags=["economy", "admin"])
+    return result
 
 
 @app.get("/api/admin/donation/sessions")
@@ -11022,6 +11456,25 @@ async def admin_whitelist_approve(data: AdminWhitelistApproveIn, request: Reques
     result = await bg(approve_whitelist_request_sync, data.request_id, username, data.note, "web")
     audit_event(username, "whitelist.approve", target=result.get("minecraftName", ""), details={"requestId": data.request_id, "note": data.note})
     return result
+
+
+@app.get("/api/admin/cms")
+async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(read_site_cms_sync, True)
+
+
+@app.post("/api/admin/cms/entries")
+async def admin_cms_save_entry(data: SiteCmsEntryIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "CMS_SAVE")
+    check_rate_limit(request, "admin-cms-save", limit=20, window_seconds=60)
+    return await bg(upsert_site_cms_entry_sync, data, username)
+
+
+@app.delete("/api/admin/cms/entries/{entry_key}")
+async def admin_cms_disable_entry(entry_key: str, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "CMS_DISABLE")
+    check_rate_limit(request, "admin-cms-disable", limit=20, window_seconds=60)
+    return await bg(delete_site_cms_entry_sync, entry_key, username)
 
 
 @app.get("/api/admin/security/ip-alerts")

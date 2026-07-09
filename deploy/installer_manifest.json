@@ -1,17 +1,17 @@
 {
-    "generatedAtUtc":  "2026-07-05T21:17:42.3388818Z",
-    "gitCommit":  "33027ae",
+    "generatedAtUtc":  "2026-07-09T14:55:53.9767985Z",
+    "gitCommit":  "eb1b131",
     "sourceTreeDirty":  true,
     "artifacts":  {
                       "resourcePack":  {
                                            "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                                           "sha1":  "f9f1f54b824741981ce3507d7efe3fa8421f4190",
-                                           "sha256":  "556157586ade09f66728a3b6da92a30075641ed1f965c818680b159973130f95"
+                                           "sha1":  "c8d1ec0e7b5b7c7c1cb69e92bbc8fec202538f0d",
+                                           "sha256":  "652e63f15ce6bc56921086dfa4279e1d4012226a004baeddd45b4f62bb5fd89d"
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "c1c26dbc365da95832ee34424ed1946e9f2cb33a",
-                                      "sha256":  "e2f895f93fe3475dedc176183719fc8437974b6e0c7e03f6bbb715116624bb0e"
+                                      "sha1":  "15a2fd481c1eba0b30098e46a0e4d5866c2014dd",
+                                      "sha256":  "9c7e0e4439ff86c8c4b6eee027674853255ed9e1d40d59dbcdd591bcd02ebeb6"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -23,15 +23,15 @@
                    "scripts":  {
                                    "unpackAndVerify":  {
                                                            "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
-                                                           "sha256":  "691e18c57d7356c6d2c15d8e7f6e4cbbfe3295e51faf073e58ef327735bc2280"
+                                                           "sha256":  "13eb17c4f0a702735cc861be23aea20c9ee5ab1c494fdf5943e1e38c729faacd"
                                                        },
                                    "fullReplace":  {
                                                        "path":  "deploy/ubuntu/copimine_full_replace.sh",
-                                                       "sha256":  "2497ef166f80767b4fee15ad0c8674c65827191e9aa97393fa1a88a4ef017163"
+                                                       "sha256":  "3f5bda8801ae3460a69e8c8001661420a6cd7d38b881ac691cefd2e22f9daa2c"
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
-                                                        "sha256":  "9032126f39c59d0a13503d2c88899624e273c1d81282069fb00356779fd5c21e"
+                                                        "sha256":  "9e0f2b1e74d1a1a3f1e21d8a52c9f4bd288884213090ef595534aa99c97a9eb8"
                                                     }
                                },
                    "routes":  {
@@ -42,7 +42,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "352aa01965a5febf9f19c844f2b070e9913e06d8263279409428095f146c654a"
+                                             "sha256":  "75b2a1aaf4521a5586e5006567fcb73339f88c43f4a2e281fdc980b793993d64"
                                          }
                  },
     "serverProperties":  {
@@ -50,7 +50,7 @@
                              "required":  {
                                               "levelSeed":  "-1861153001556076901",
                                               "resourcePack":  "http\\://admin.copimine.ru\\:18080/resourcepacks/CopiMineResourcePack.zip",
-                                              "resourcePackSha1":  "f9f1f54b824741981ce3507d7efe3fa8421f4190"
+                                              "resourcePackSha1":  "c8d1ec0e7b5b7c7c1cb69e92bbc8fec202538f0d"
                                           }
                          }
 }

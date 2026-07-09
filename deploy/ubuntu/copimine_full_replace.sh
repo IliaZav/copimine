@@ -8,6 +8,7 @@ APP_USER="${APP_USER:-$(stat -c '%U' "$PROJECT_ROOT" 2>/dev/null || echo copimin
 APP_GROUP="${APP_GROUP:-$(stat -c '%G' "$PROJECT_ROOT" 2>/dev/null || echo "$APP_USER")}"
 ARCHIVE_PATH="${1:-}"
 DB_DUMP_PATH="${2:-}"
+CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
 LOG_FILE="${LOG_FILE:-/var/log/copimine-installer.log}"
 TMP_ROOT=""
 EXTRACT_ROOT=""
@@ -429,6 +430,18 @@ restore_database() {
   esac
 }
 
+clean_world_state_if_requested() {
+  if [[ "$CLEAN_WORLD_STATE" != "1" ]]; then
+    return 0
+  fi
+  log "[10b/14] Clean world-bound database state"
+  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
+  # shellcheck source=/dev/null
+  source "$common_script"
+  copimine_apply_clean_world_state
+}
+
 fix_permissions() {
   log "[11/14] Fix ownership and permissions"
   chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT"
@@ -593,6 +606,7 @@ main() {
   stage_payload
   atomic_swap
   restore_database
+  clean_world_state_if_requested
   fix_permissions
   refresh_managed_release_artifacts
   install_system_files

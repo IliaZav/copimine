@@ -70,7 +70,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
      * and only then call bridge.charge(...) with an explicit idempotency key.
      */
     private static final Set<String> VALID_TEXTURE_MODES = Set.of("VANILLA", "CUSTOM");
-    private static final Set<String> VALID_VISUAL_MODES = Set.of("AUTO", "CLIENT_MOD", "SERVER_OVERLAY", "SERVER_FALLBACK");
+    private static final Set<String> VALID_VISUAL_MODES = Set.of("AUTO", "CLIENT_MOD", "SERVER_FALLBACK");
 
     private final ConcurrentHashMap<UUID, Long> consumeCooldownUntil = new ConcurrentHashMap<>();
     private volatile boolean resetInProgress = false;
@@ -163,12 +163,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
             event.setCancelled(true);
             long now = Instant.now().getEpochSecond();
-            long cooldownUntil = consumeCooldownUntil.getOrDefault(player.getUniqueId(), 0L);
-            if (cooldownUntil > now) {
-                player.sendMessage(message("consume_cooldown", String.valueOf(cooldownUntil - now)));
-                return;
+            int cooldownSeconds = configService.consumeCooldownSeconds();
+            if (cooldownSeconds > 0) {
+                long cooldownUntil = consumeCooldownUntil.getOrDefault(player.getUniqueId(), 0L);
+                if (cooldownUntil > now) {
+                    player.sendMessage(message("consume_cooldown", String.valueOf(cooldownUntil - now)));
+                    return;
+                }
+                consumeCooldownUntil.put(player.getUniqueId(), now + cooldownSeconds);
             }
-            consumeCooldownUntil.put(player.getUniqueId(), now + configService.consumeCooldownSeconds());
             itemFactory.consumeOne(player, inHand);
             overdoseService.consume(player, official);
             return;
@@ -443,7 +446,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return prefix(values, args[2]);
         }
         if (args.length == 3 && "visuals".equalsIgnoreCase(args[0]) && "mode".equalsIgnoreCase(args[1])) {
-            return prefix(List.of("AUTO", "CLIENT_MOD", "SERVER_OVERLAY", "SERVER_FALLBACK"), args[2]);
+            return prefix(List.of("AUTO", "CLIENT_MOD", "SERVER_FALLBACK"), args[2]);
         }
         if (args.length == 3 && "visuals".equalsIgnoreCase(args[0]) && "test".equalsIgnoreCase(args[1])) {
             return prefix(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), args[2]);
@@ -918,7 +921,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         String mode = args[1].toUpperCase(Locale.ROOT);
         if (!VALID_VISUAL_MODES.contains(mode)) {
-            sender.sendMessage(ChatColor.RED + "Неверный visual mode. Доступно: AUTO, CLIENT_MOD, SERVER_OVERLAY, SERVER_FALLBACK.");
+            sender.sendMessage(ChatColor.RED + "Неверный visual mode. Доступно: AUTO, CLIENT_MOD, SERVER_FALLBACK.");
             return true;
         }
         configService.setVisualMode(mode);
@@ -1191,7 +1194,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals status");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_fallback>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
@@ -1215,7 +1218,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals status");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals enable <effectId|all>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals disable <effectId|all>");
-        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_overlay|server_fallback>");
+        sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals mode <auto|client_mod|server_fallback>");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics visuals test <игрок> <effectId|narcoticId|overdose> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmnarcotics selfcheck");
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");

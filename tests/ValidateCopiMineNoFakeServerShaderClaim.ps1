@@ -9,7 +9,8 @@ if ($runtime -match 'supportsShaderRuntime\(\)\s*\{\s*return false;\s*\}') {
 foreach ($needle in @(
   'public boolean supportsShaderRuntime()',
   'detectTrueShaderSupport()',
-  'true post-processing shaders are not server-forceable on Paper'
+  'CopiMineClient uses built-in ZIP shaderpacks through Iris when available',
+  'server falls back to light particles only'
 )) {
   if ($runtime -notmatch [regex]::Escape($needle)) {
     throw "Runtime honesty marker missing: $needle"

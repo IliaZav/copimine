@@ -125,6 +125,15 @@ public final class NarcoticsRecipeService {
         return false;
     }
 
+    public boolean containsUnrecognizedIngredient(List<IngredientEntry> ingredientEntries) {
+        for (IngredientEntry entry : ingredientEntries) {
+            if (entry == null || !recognizedIngredients.contains(entry.recipeKey())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public int minimumRecipeSize() {
         int min = Integer.MAX_VALUE;
         for (NarcoticDefinition definition : items.values()) {

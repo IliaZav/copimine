@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -64,11 +65,18 @@ public final class OverdoseService {
         if (now - state.lastConsumedAt() > configService.usageWindowSeconds()) {
             state = state.withCurrentScale(0);
         }
+        boolean activeOverdose = state.overdoseUntil() > now;
+        if ("zhuzevo".equals(definition.id())) {
+            PlayerState updated = applyZhuzevo(player, definition, state, now);
+            states.put(player.getUniqueId(), updated);
+            database.savePlayerState(updated);
+            return;
+        }
         int newScale = state.currentScale() + Math.max(0, configService.overdoseWeightFor(definition));
-        boolean overdose = "zhuzevo".equals(definition.id()) && configService.zhuzevoForcesOverdose();
+        boolean overdose = activeOverdose || ("zhuzevo".equals(definition.id()) && configService.zhuzevoForcesOverdose());
         overdose = overdose || newScale >= configService.overdoseThreshold();
 
-        if (configService.clearNormalEffectsBeforeNewUse()) {
+        if (configService.clearNormalEffectsBeforeNewUse() && !activeOverdose) {
             clearTransientEffects(player, false);
         }
 
@@ -188,7 +196,7 @@ public final class OverdoseService {
                 0,
                 now,
                 now + effectiveSeconds,
-                0L,
+                now + effectiveSeconds,
                 definition.id(),
                 previous.stateVersion() + 1L
         );
@@ -236,7 +244,25 @@ public final class OverdoseService {
         int duration = effectiveDuration(Math.max(30, maxDuration(effectsToApply)));
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 30, 0.45D, 0.55D, 0.45D, 0.01D);
         visualRuntime.apply(player, resolveOverdoseVisual(definition), duration, true);
-        return new PlayerState(state.playerUuid(), 0, state.lastConsumedAt(), now + duration, state.invertedMovementUntil(), state.lastItemId(), state.stateVersion());
+        return new PlayerState(state.playerUuid(), 0, state.lastConsumedAt(), now + duration, now + duration, state.lastItemId(), state.stateVersion());
+    }
+
+    private PlayerState applyZhuzevo(Player player, NarcoticDefinition definition, PlayerState state, long now) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        int duration = random.nextInt(240, 301);
+        List<ConfiguredEffect> effects = new ArrayList<>();
+        effects.add(new ConfiguredEffect("DARKNESS", 0, duration));
+        effects.add(new ConfiguredEffect("HUNGER", random.nextInt(0, 3), duration));
+        effects.add(new ConfiguredEffect("SLOWNESS", random.nextInt(0, 2), duration));
+        effects.add(new ConfiguredEffect("MINING_FATIGUE", random.nextInt(1, 4), duration));
+        effects.add(new ConfiguredEffect("NAUSEA", random.nextInt(0, 2), duration));
+        if (random.nextInt(10) == 0) {
+            effects.add(new ConfiguredEffect("WITHER", 0, Math.min(duration, 60)));
+            visualRuntime.apply(player, resolveOverdoseVisual(definition), duration, false);
+        }
+        applyConfiguredEffects(player, effects, duration);
+        player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 18, 0.35D, 0.45D, 0.35D, 0.01D);
+        return new PlayerState(state.playerUuid(), state.currentScale(), now, state.overdoseUntil(), state.invertedMovementUntil(), definition.id(), state.stateVersion() + 1L);
     }
 
     private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects) {
@@ -318,7 +344,9 @@ public final class OverdoseService {
     }
 
     private void appendUniversalOverdoseEffects(List<ConfiguredEffect> effects) {
-        addOrUpgrade(effects, new ConfiguredEffect("DARKNESS", 0, 45));
+        if (ThreadLocalRandom.current().nextInt(10) == 0) {
+            addOrUpgrade(effects, new ConfiguredEffect("DARKNESS", 0, 45));
+        }
         addOrUpgrade(effects, new ConfiguredEffect("WEAKNESS", 0, 300));
         addOrUpgrade(effects, new ConfiguredEffect("INSTANT_DAMAGE", 0, 1));
         addOrUpgrade(effects, new ConfiguredEffect("NAUSEA", 2, 180));

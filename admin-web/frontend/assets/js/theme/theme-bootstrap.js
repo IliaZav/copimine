@@ -14,11 +14,11 @@
   function preferredTheme() {
     const stored = readStoredTheme();
     if (stored) return stored;
-    return "dark";
+    return "light";
   }
 
   function applyTheme(theme, persist) {
-    const next = THEMES.has(theme) ? theme : "dark";
+    const next = THEMES.has(theme) ? theme : "light";
     const root = document.documentElement;
     root.dataset.theme = next;
     root.style.colorScheme = next === "dark" ? "dark" : "light";
@@ -40,11 +40,11 @@
     key: KEY,
     current: preferredTheme(),
     getTheme() {
-      return document.documentElement.dataset.theme || this.current || "dark";
+      return document.documentElement.dataset.theme || this.current || "light";
     },
     setTheme(theme) {
       applyTheme(theme, true);
-      this.current = document.documentElement.dataset.theme || "dark";
+      this.current = document.documentElement.dataset.theme || "light";
       window.dispatchEvent(new CustomEvent("copimine:theme-change", { detail: { theme: this.current } }));
       return this.current;
     },

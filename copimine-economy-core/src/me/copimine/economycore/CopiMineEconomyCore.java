@@ -1374,7 +1374,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private ItemStack createOfficialArStack(int amount, String ownerUuid, String ownerName, String source) {
-        ItemStack stack = new ItemStack(Material.DIAMOND_ORE, Math.max(1, amount));
+        return createOfficialArStack(Material.DIAMOND_ORE, amount, ownerUuid, ownerName, source);
+    }
+
+    private ItemStack createOfficialArStack(Material material, int amount, String ownerUuid, String ownerName, String source) {
+        Material arMaterial = material == Material.DEEPSLATE_DIAMOND_ORE ? Material.DEEPSLATE_DIAMOND_ORE : Material.DIAMOND_ORE;
+        ItemStack stack = new ItemStack(arMaterial, Math.max(1, amount));
         ItemMeta meta = stack.getItemMeta();
         if (meta == null) {
             return stack;
@@ -1399,7 +1404,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         updated = normalizeOfficialArInventory(player.getEnderChest()) || updated;
         ItemStack offHand = player.getInventory().getItemInOffHand();
         if (isOfficialAr(offHand) && needsOfficialArNormalization(offHand)) {
-            player.getInventory().setItemInOffHand(createOfficialArStack(Math.max(1, offHand.getAmount()), player.getUniqueId().toString(), player.getName(), "join-normalize"));
+            player.getInventory().setItemInOffHand(createOfficialArStack(offHand.getType(), Math.max(1, offHand.getAmount()), player.getUniqueId().toString(), player.getName(), "join-normalize"));
             updated = true;
         }
         if (updated) {
@@ -1417,7 +1422,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (!isOfficialAr(stack) || !needsOfficialArNormalization(stack)) {
                 continue;
             }
-            inventory.setItem(slot, createOfficialArStack(Math.max(1, stack.getAmount()), "", "", "normalize"));
+            inventory.setItem(slot, createOfficialArStack(stack.getType(), Math.max(1, stack.getAmount()), "", "", "normalize"));
             updated = true;
         }
         return updated;
@@ -1440,8 +1445,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         return pdc.has(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING)
                 || pdc.has(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING)
-                || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING)
-                || stack.getType() != Material.DIAMOND_ORE;
+                || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING);
     }
 
     private int countOfficialAr(Inventory inventory) {

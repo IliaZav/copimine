@@ -20,6 +20,7 @@ ARCHIVE_SHA256="${2:-}"
 DB_DUMP_PATH="${3:-}"
 WIPE_WORLDS="${WIPE_WORLDS:-0}"
 WORLD_SEED="${WORLD_SEED:--1861153001556076901}"
+CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
 
 APP_USER="${APP_USER:-$(stat -c '%U' "$PROJECT_ROOT" 2>/dev/null || echo qwerty)}"
 APP_GROUP="${APP_GROUP:-$(stat -c '%G' "$PROJECT_ROOT" 2>/dev/null || echo "$APP_USER")}"
@@ -396,6 +397,22 @@ PY
   log "Database restored from: $selected_dump"
 }
 
+clean_world_state_if_requested() {
+  local should_clean="$CLEAN_WORLD_STATE"
+  if [[ "$WIPE_WORLDS" == "1" ]]; then
+    should_clean="1"
+  fi
+  if [[ "$should_clean" != "1" ]]; then
+    return 0
+  fi
+  log "[10b/16] Clean world-bound database state"
+  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ -f "$common_script" ]] || die "Missing shared deploy helpers: $common_script"
+  # shellcheck source=/dev/null
+  source "$common_script"
+  copimine_apply_clean_world_state
+}
+
 fix_permissions() {
   log "[11/16] Fix ownership and permissions"
   chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT"
@@ -533,6 +550,7 @@ main() {
   install_payload
   wipe_worlds_if_requested
   restore_database_if_requested
+  clean_world_state_if_requested
   fix_permissions
   refresh_managed_release_artifacts
   install_system_files

@@ -250,7 +250,7 @@ const playerNavGroups = [
       ["donation-shop", "Донат-лавка", "Каталог и покупка предметов", "Д"],
       ["donation-items", "Мои донат-предметы", "Выдачи, активные экземпляры и возврат", "И"],
       ["history", "История", "Банк, лавка и события", ""],
-      ["settings", "Настройки", "Профиль и интерфейс", "Н"],
+      ["settings", "Аккаунт", "Профиль и интерфейс", "А"],
       ["security", "Безопасность", "Пароль, PIN и сессии", "Б"],
       ["support", "Поддержка", "Помощь и обращения", "П"],
       ["artifacts", "Артефакты", "Покупки и выдача", "А"],
@@ -371,6 +371,19 @@ function bytes(value) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function playerChoiceRows(rows) {
+  return asArray(rows)
+    .map((row) => cleanText(row.name || row.username || row.player || row.minecraft_name || row.minecraftName || row.uuid))
+    .filter(isMinecraftName)
+    .filter((name, index, all) => all.indexOf(name) === index)
+    .sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+function playerDatalistHtml(id, rows) {
+  const options = playerChoiceRows(rows).map((name) => `<option value="${esc(name)}"></option>`).join("");
+  return `<datalist id="${esc(id)}">${options}</datalist>`;
 }
 
 function firstArray(...values) {
@@ -2916,14 +2929,16 @@ async function loadArtifacts() {
 
 async function loadRequests() {
   setLoading("Загружаю заявки");
-  const [status, applications, reports] = await Promise.all([
+  const [status, applications, reports, playersData] = await Promise.all([
     safeApi("/api/" + String.fromCharCode(100,105,115,99,111,114,100) + "/status", {}),
     safeApi("/api/applications", { applications: [] }),
-    safeApi("/api/reports", { reports: [] })
+    safeApi("/api/reports", { reports: [] }),
+    safeApi("/api/players", { players: [] })
   ]);
   const configured = status.configured || {};
   const ready = Object.values(configured).filter(Boolean).length;
   const total = Object.keys(configured).length || 1;
+  const requestPlayers = asArray(playersData.players);
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Готовность", `${ready}/${total}`, "токен, guild, каналы, роль, api key", ready === total ? "good" : "warn")}
@@ -2934,16 +2949,17 @@ async function loadRequests() {
     <section class="layout-grid grid-2">
       ${panel("Новая заявка", "Создаётся в кабинете и попадает в очередь обработки", `
         <div class="form-grid">
-          <input id="appPlayer" placeholder="Ник игрока" />
-          <input id="appContact" placeholder="Контакт или игровой ник" />
+          <input id="appPlayer" placeholder="Ник игрока" list="requestPlayersDatalist" />
+          <input id="appContact" placeholder="Контакт или игровой ник" list="requestPlayersDatalist" />
           <textarea id="appWhy" class="full" placeholder="Почему игрок хочет участвовать / стать кандидатом"></textarea>
           <button class="btn btn-primary full" data-click="createRequestApplication()">Создать заявку</button>
         </div>
+        ${playerDatalistHtml("requestPlayersDatalist", requestPlayers)}
       `)}
       ${panel("Новая жалоба", "Быстрое создание обращения с целью и координатами", `
         <div class="form-grid">
-          <input id="repReporter" placeholder="Кто жалуется" />
-          <input id="repTarget" placeholder="На кого / цель" />
+          <input id="repReporter" placeholder="Кто жалуется" list="requestPlayersDatalist" />
+          <input id="repTarget" placeholder="На кого / цель" list="requestPlayersDatalist" />
           <select id="repSeverity"><option value="normal">normal</option><option value="high">high</option><option value="critical">critical</option></select>
           <input id="repWorld" placeholder="world" />
           <textarea id="repMessage" class="full" placeholder="Описание проблемы"></textarea>
@@ -3229,21 +3245,24 @@ async function loadLogs() {
 
 async function loadInvestigations() {
   setLoading("Готовлю расследования");
-  const [sources, rows] = await Promise.all([
+  const [sources, rows, playersData] = await Promise.all([
     safeApi("/api/investigations/sources", { tables: [] }),
-    safeApi("/api/investigations/block-logs?limit=120", { rows: [] })
+    safeApi("/api/investigations/block-logs?limit=120", { rows: [] }),
+    safeApi("/api/players", { players: [] })
   ]);
+  const investigationPlayers = asArray(playersData.players);
   setView(`
     <section class="layout-grid grid-wide">
       ${panel("Поиск CoreProtect", "Фильтры по игроку, координатам и радиусу", `
         <div class="toolbar">
-          <input id="invPlayer" placeholder="Игрок" />
+          <input id="invPlayer" placeholder="Игрок" list="investigationPlayersDatalist" />
           <input id="invX" placeholder="X" />
           <input id="invY" placeholder="Y" />
           <input id="invZ" placeholder="Z" />
           <input id="invRadius" placeholder="Радиус" value="0" />
           <button class="btn btn-primary" data-click="searchInvestigation()">Искать</button>
         </div>
+        ${playerDatalistHtml("investigationPlayersDatalist", investigationPlayers)}
         <div id="investigationResults">${table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 })}</div>
       `)}
       ${panel("Источники расследований", "Таблицы и колонки для поиска.", table("investigation-sources", asArray(sources.tables).map(t => ({ table: t.name, columns: asArray(t.columns).join(", ") })), [
@@ -3292,14 +3311,16 @@ async function loadAudit() {
 
 async function loadSecurity() {
   setLoading("Загружаю доступы");
-  const [access, lists, whitelist, ipAlerts] = await Promise.all([
+  const [access, lists, whitelist, ipAlerts, playersData] = await Promise.all([
     safeApi("/api/security/access", {}),
     safeApi("/api/minecraft/access-lists", {}),
     safeApi("/api/admin/whitelist/requests?limit=60", { requests: [], count: 0 }),
-    safeApi("/api/admin/security/ip-alerts?limit=60", { alerts: [], count: 0 })
+    safeApi("/api/admin/security/ip-alerts?limit=60", { alerts: [], count: 0 }),
+    safeApi("/api/players", { players: [] })
   ]);
   const whitelistRows = asArray(whitelist.requests);
   const alertRows = asArray(ipAlerts.alerts);
+  const securityPlayers = asArray(playersData.players);
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Whitelist", asArray(lists.whitelist).length, "Игроки с доступом к серверу")}
@@ -3324,7 +3345,7 @@ async function loadSecurity() {
       `)}
       ${panel("Minecraft-доступ", "Выдай доступ, права или ограничение без лишних команд.", `
         <div class="form-grid">
-          <input id="accessPlayer" placeholder="Ник игрока" />
+          <input id="accessPlayer" placeholder="Ник игрока" list="securityPlayersDatalist" />
           <select id="accessAction">
             <option value="whitelist_add">Разрешить вход</option>
             <option value="whitelist_remove">Убрать доступ</option>
@@ -3336,6 +3357,7 @@ async function loadSecurity() {
           <input id="accessReason" class="full" placeholder="Причина" />
           <button class="btn btn-primary full" data-click="runAccessAction()">Выполнить</button>
         </div>
+        ${playerDatalistHtml("securityPlayersDatalist", securityPlayers)}
         <div class="spacer-12"></div>
         ${kv([
           ["Требуется OP для входа", access.requireOp],
@@ -3549,72 +3571,74 @@ async function loadPlayerCabinet() {
   setLoading("Загрузка кабинета игрока");
   const me = await api("/api/player/me");
   state.user = me.account || {};
-  let bank = null;
-  if (state.user.linked) bank = await safeApi("/api/player/bank", { account: null, pin: {}, ledger: [] });
-  const donation = await safeApi("/api/player/donation/balance", { linked: false, balance: 0 });
+  const [bank, donation, donationHistory] = await Promise.all([
+    state.user.linked ? safeApi("/api/player/bank", { account: null, pin: {}, ledger: [] }) : Promise.resolve(null),
+    safeApi("/api/player/donation/balance", { linked: false, balance: 0 }),
+    safeApi("/api/player/donation/history", { history: [] })
+  ]);
   const linked = Boolean(state.user.linked);
   const whitelisted = Boolean(state.user.whitelisted);
   const whitelistRequest = state.user.whitelistRequest || null;
-  const pin = bank?.pin || {};
-  const tempPin = bank?.temporaryPin || {};
   const balance = linked ? number(bank?.account?.balance || 0) : 0;
   const donationBalance = donation?.linked ? number(donation.balance || 0) : 0;
   const whitelistStatus = whitelisted ? "одобрен" : (whitelistRequest?.status || (linked ? "не отправлен" : "нужна привязка"));
+  const historyRows = [
+    ...asArray(bank?.ledger).map((row) => ({
+      title: humanizeBankAction(row),
+      section: "Банк AR",
+      details: cleanText(row.details || row.note || ""),
+      amount: formatAr(row.amount || 0),
+      time: row.created_at || row.time || row.updated_at || 0
+    })),
+    ...asArray(donationHistory.history).map((row) => ({
+      title: `Донат: ${cleanText(row.reason || row.source || "операция")}`,
+      section: "Донат",
+      details: cleanText(row.reason || row.source || ""),
+      amount: formatDonate(row.delta || row.amount || 0),
+      time: row.created_at || row.time || row.updated_at || 0
+    }))
+  ].sort((a, b) => Number(b.time || 0) - Number(a.time || 0)).slice(0, 14);
   setMiniHealthSummary(state.user.username || "игрок", [
     `Привязка: ${linked ? "есть" : "нет"}`,
     `Банк AR: ${formatAr(balance)}`,
   ]);
   setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Логин сайта", state.user.username || "игрок", linked ? "Minecraft уже привязан" : "Нужна привязка", linked ? "good" : "warn")}
-      ${metric("Minecraft", state.user.minecraftName || "Не привязан", linked ? "Связан с кабинетом" : "Запроси код привязки", linked ? "good" : "warn")}
-      ${metric("Баланс AR", linked ? formatAr(balance) : "—", linked ? "Доступен в игре и на сайте" : "Сначала привяжи Minecraft", linked ? "good" : "neutral")}
-      ${metric("Whitelist", whitelistStatus, whitelisted ? "Доступ к серверу уже открыт" : "Заявка отправляется один раз", whitelisted ? "good" : (whitelistRequest?.status === "PENDING" ? "warn" : "neutral"))}
+    <section class="layout-grid grid-2 account-ledger-head">
+      ${metric("Банк AR", linked ? formatAr(balance) : "нужна привязка", linked ? "Игровой и сайт-счёт" : "Открой вкладку Minecraft", linked ? "good" : "warn")}
+      ${metric("Донат-баланс", donation?.linked ? formatDonate(donationBalance) : "нужна привязка", donation?.linked ? "Покупки и выдачи" : "Привяжи Minecraft", donation?.linked ? "good" : "warn")}
     </section>
-    ${panel("Личный кабинет", "Профиль, доступ, банк и привязка.", kv([
-      ["Логин", state.user.username || "—"],
-      ["Роль", state.user.role || "игрок"],
-      ["Minecraft-ник", state.user.minecraftName || "—"],
-      ["Привязан", linked],
-      ["Создан", dt(state.user.createdAt)],
-      ["Последний вход", dt(state.user.lastLoginAt)]
-    ]))}
-    ${linked ? panel("Банк", "Баланс, переводы и история.", kv([
-      ["Счёт", bank?.account?.accountId ? "открыт" : "не открыт"],
-      ["Баланс", formatAr(balance)],
-      ["PIN задан", pin.set],
-      ["PIN заблокирован", pin.locked],
-      ["Состояние PIN", bankPinState(pin)],
-      ["Нужно сменить временный PIN", pin.mustChange],
-      ["Временный PIN истекает", tempPin.expiresAt ? dt(tempPin.expiresAt) : "--"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('bank')">Открыть банк</button>`) : panel("Привязка Minecraft", "Свяжи аккаунт сайта с игровым ником.", `
-      <div class="notice">Запроси код в игре и подтверди его здесь.</div>
-    `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`)}
-    ${panel("Whitelist", "Заявка на доступ к серверу.", `
-      ${kv([
-        ["Статус", whitelistStatus],
-        ["Одобрил", whitelistRequest?.approvedBy || "—"],
-        ["Обновлён", dt(whitelistRequest?.updatedAt || whitelistRequest?.createdAt || 0)],
-        ["Комментарий", whitelistRequest?.note || "—"]
-      ])}
+    ${panel("История платежей", "", historyRows.length ? `
+      <div class="transaction-feed">
+        ${historyRows.map((row) => `
+          <article class="transaction-row">
+            <div class="transaction-main">
+              <strong>${esc(row.title)}</strong>
+              <span>${esc([row.section, row.details || "без комментария"].filter(Boolean).join(" · "))}</span>
+            </div>
+            <div class="transaction-side">
+              <strong>${esc(row.amount)}</strong>
+              <span>${dt(row.time)}</span>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    ` : empty("История пока пустая", "Операции появятся после первого перевода, покупки или пополнения."))}
+    ${panel("Действия", "", `
+      <div class="action-strip account-actions">
+        <button class="btn btn-primary" data-click="setTab('bank')">Открыть банк</button>
+        <button class="btn btn-secondary" data-click="setTab('donation-shop')">Донат-лавка</button>
+        <button class="btn btn-secondary" data-click="setTab('link')">Minecraft</button>
+        <button class="btn btn-secondary" data-click="setTab('settings')">Аккаунт</button>
+        ${linked && !whitelisted && !whitelistRequest ? `<button class="btn btn-secondary" data-click="playerRequestWhitelist()">Whitelist</button>` : ""}
+      </div>
       <div class="spacer-12"></div>
-      ${!linked ? `<div class="notice">Сначала привяжи Minecraft-ник, затем появится кнопка whitelist-заявки.</div>` : ""}
-      ${linked && !whitelisted && !whitelistRequest ? `<button class="btn btn-primary" data-click="playerRequestWhitelist()">Отправить whitelist-заявку</button>` : ""}
-      ${linked && whitelistRequest?.status === "PENDING" ? `<div class="notice">Заявка отправлена. Ждёт решения администрации.</div>` : ""}
-      ${whitelisted ? `<div class="notice">Игрок уже добавлен в whitelist. Повторная заявка не нужна.</div>` : ""}
+      ${kv([
+        ["Логин", state.user.username || "—"],
+        ["Minecraft", state.user.minecraftName || "не привязан"],
+        ["Whitelist", whitelistStatus],
+        ["Последний вход", dt(state.user.lastLoginAt)]
+      ])}
     `)}
-    ${panel("Донат-баланс", "Баланс донат-предметов.", kv([
-        ["Статус", donation?.linked ? "доступен" : "требуется привязка Minecraft"],
-      ["Баланс", donation?.linked ? formatDonate(donationBalance) : "—"],
-      ["Покупки", "через вкладку Артефакты / Донат"],
-      ["Оплата", "Тестовый провайдер, пополнение через фиксированные пакеты"]
-    ]), `<button class="btn btn-secondary" data-click="setTab('donation-balance')">Открыть донат</button>`)}
-    ${tempPin.code ? panel("Временный PIN", "Сначала войди по нему, потом задай новый.", kv([
-      ["Временный PIN", tempPin.code],
-      ["Выдан", dt(tempPin.createdAt)],
-      ["Истекает", dt(tempPin.expiresAt)]
-    ]), `<button class="btn btn-primary" data-click="setTab('bank')">Заменить PIN</button>`) : ""}
-    ${panel("Запрос привязки", "Последний одноразовый код.", playerLinkSummary(state.playerLinkRequest))}
   `);
 }
 

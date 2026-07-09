@@ -13,7 +13,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/opt/copimine/admin-web/backend:/opt/copimine/admin-web
 ExecStart=/opt/copimine/admin-web/.venv/bin/python -m backend.discord_bot
 Restart=always
-RestartSec=5
+RestartSec=300
 NoNewPrivileges=true
 PrivateTmp=true
 

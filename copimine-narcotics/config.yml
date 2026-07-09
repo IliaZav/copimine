@@ -13,36 +13,36 @@ cauldron:
   drop_ingredients_on_break_or_water_loss: true
 
 usage:
-  consume_cooldown_seconds: 15
+  consume_cooldown_seconds: 0
   usage_window_seconds: 900
   overdose_threshold: 100
   duration_override_seconds: 0
   clear_normal_effects_before_new_use: true
   milk_blocks_during_overdose: true
-  zhuzevo_forces_overdose: true
+  zhuzevo_forces_overdose: false
 
 textures:
   mode: VANILLA
 
-client_bridge:
-  enabled: true
-  require_client_mod: false
-  kick_if_missing_client: false
-  handshake_timeout_seconds: 10
-  prefer_client_visuals: true
-  fallback_to_server_overlay: true
-  fallback_to_particles: true
+  client_bridge:
+    enabled: true
+    require_client_mod: false
+    kick_if_missing_client: false
+    handshake_timeout_seconds: 10
+    prefer_client_visuals: true
+    fallback_to_server_overlay: false
+    fallback_to_particles: true
 
-visuals:
-  enabled: true
-  mode: AUTO
-  allow_client_mod_visuals: true
-  allow_server_resource_pack_overlay: true
-  allow_server_particle_fallback: true
-  server_overlay:
-    use_titles: true
-    max_duration_seconds: 60
-    clear_on_stop: true
+  visuals:
+    enabled: true
+    mode: AUTO
+    allow_client_mod_visuals: true
+    allow_server_resource_pack_overlay: false
+    allow_server_particle_fallback: true
+    server_overlay:
+      use_titles: false
+      max_duration_seconds: 60
+      clear_on_stop: true
   effects:
     DESATURATE: true
     COLOR_CONVOLVE: true
@@ -129,7 +129,7 @@ items:
     visual_effect: SCAN_PINCUSHION
     recipe:
       - material:SLIME_BLOCK
-      - material:TURTLE_HELMET
+      - material:TURTLE_SCUTE
       - material:EMERALD
     normal_effects:
       - type:REGENERATION,amplifier:0,duration_seconds:90
@@ -141,13 +141,13 @@ items:
 
   sbp:
     display_name: "&6СБП"
-    material: GOLD_NUGGET
+    material: GOLD_INGOT
     texture_key: narcotic_sbp
     custom_model_data: 810004
     overdose_weight: 30
     visual_effect: GREEN_NOISE
     recipe:
-      - material:GOLD_NUGGET
+      - material:GOLD_INGOT
       - material:GOLDEN_CARROT
       - material:STRING
     normal_effects:
@@ -240,7 +240,7 @@ items:
     fallback_material: ROTTEN_FLESH
     texture_key: narcotic_zhuzevo
     custom_model_data: 810009
-    overdose_weight: 100
+    overdose_weight: 0
     visual_effect: CHAOS
     recipe: []
     normal_effects: []

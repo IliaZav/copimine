@@ -14,6 +14,7 @@ COPIMINE_BACKUP_DIR="${COPIMINE_BACKUP_DIR:-/opt/copimine-backups}"
 COPIMINE_RUNTIME_METADATA="${COPIMINE_RUNTIME_METADATA:-$COPIMINE_ROOT/deploy/runtime_metadata.json}"
 COPIMINE_RELEASE_MANIFEST="${COPIMINE_RELEASE_MANIFEST:-$COPIMINE_ROOT/deploy/release_manifest.json}"
 COPIMINE_INSTALLER_MANIFEST="${COPIMINE_INSTALLER_MANIFEST:-$COPIMINE_ROOT/deploy/installer_manifest.json}"
+COPIMINE_CLEAN_WORLD_STATE_SQL="${COPIMINE_CLEAN_WORLD_STATE_SQL:-$COPIMINE_ROOT/db/runtime/clean_world_state.sql}"
 COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-18080.conf}"
 COPIMINE_NGINX_AVAILABLE="${COPIMINE_NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 COPIMINE_NGINX_ENABLED="${COPIMINE_NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
@@ -188,6 +189,38 @@ GRANT ALL ON SCHEMA copimine TO copimine;
 ALTER DEFAULT PRIVILEGES IN SCHEMA copimine GRANT ALL ON TABLES TO copimine;
 ALTER DEFAULT PRIVILEGES IN SCHEMA copimine GRANT ALL ON SEQUENCES TO copimine;
 SQL
+}
+
+copimine_env_value() {
+  local key="$1"
+  copimine_require_path "$COPIMINE_ENV_FILE"
+  python3 - "$COPIMINE_ENV_FILE" "$key" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+for raw in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    left, value = line.split("=", 1)
+    if left.strip() == key:
+        print(value.strip().strip('"').strip("'"))
+        break
+PY
+}
+
+copimine_apply_clean_world_state() {
+  copimine_need psql
+  copimine_require_path "$COPIMINE_CLEAN_WORLD_STATE_SQL"
+  local pg_user pg_db pg_password
+  pg_user="$(copimine_env_value POSTGRES_USER)"
+  pg_db="$(copimine_env_value POSTGRES_DB)"
+  pg_password="$(copimine_env_value POSTGRES_PASSWORD)"
+  [[ -n "$pg_user" && -n "$pg_db" && -n "$pg_password" ]] || copimine_fail "PostgreSQL credentials are incomplete in $COPIMINE_ENV_FILE"
+  PGPASSWORD="$pg_password" psql -h 127.0.0.1 -U "$pg_user" -v ON_ERROR_STOP=1 -d "$pg_db" -f "$COPIMINE_CLEAN_WORLD_STATE_SQL" >/dev/null
+  copimine_log "Cleaned world-bound runtime state in PostgreSQL."
 }
 
 copimine_python_env() {
@@ -469,6 +502,7 @@ if not updated:
     lines.append(f"level-seed={seed}")
 path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
+  copimine_apply_clean_world_state
 }
 
 copimine_verify_runtime() {

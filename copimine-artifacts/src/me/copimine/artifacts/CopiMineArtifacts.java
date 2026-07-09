@@ -810,14 +810,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!this.chainedTreeBreaks.remove(this.blockKey(var1.getBlock().getLocation()))) {
          CopiMineArtifacts.Shop var2 = this.shopsByLocation.get(this.blockKey(var1.getBlock().getLocation()));
          if (var2 != null) {
+            var1.setCancelled(true);
             if (!this.isArtifactsAdmin(var1.getPlayer())) {
-               var1.setCancelled(true);
                var1.getPlayer()
                   .sendMessage(
                      this.color(
-                        "&cЛавка CopiMineArtifacts снимается только через /cmartifacts shop remove."
+                        "&cЛавку CopiMineArtifacts может снять только администратор."
                      )
                   );
+            } else {
+               this.removeShopWithCleanup(var1.getPlayer(), var2);
             }
          } else {
             Player var3 = var1.getPlayer();
@@ -1821,6 +1823,38 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          );
          return true;
       }
+   }
+
+   private void removeShopWithCleanup(Player player, CopiMineArtifacts.Shop shop) {
+      if (player == null || shop == null) {
+         return;
+      }
+      this.runAsync(
+         () -> {
+            try {
+               this.deleteShop(shop.shopId());
+               this.shopsByLocation.remove(shop.locationKey());
+               this.audit(player.getName(), "shop_remove", shop.shopId(), shop.locationKey());
+               this.runSync(
+                  () -> {
+                     try {
+                        this.cleanupProtectedBlockVisuals("ARTIFACT_SHOP", shop.shopId());
+                     } catch (Exception visualError) {
+                        this.getLogger().log(Level.WARNING, "Artifact shop visual cleanup failed", (Throwable)visualError);
+                     }
+                     player.sendMessage(this.color("&aЛавка удалена: &f" + shop.shopId()));
+                  }
+               );
+            } catch (SQLException error) {
+               this.getLogger().log(Level.WARNING, "Artifact shop remove failed", (Throwable)error);
+               this.runSync(
+                  () -> player.sendMessage(
+                     this.color("&cНе удалось удалить лавку. Ошибка записана в лог. Код: ARTIFACT_SHOP_REMOVE_FAILED")
+                  )
+               );
+            }
+         }
+      );
    }
 
    private void openArtifactsAdminMenu(Player var1) {

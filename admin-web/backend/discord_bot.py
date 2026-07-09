@@ -52,12 +52,14 @@ MC_PORT = int(os.getenv("MC_PORT", "25565") or "25565")
 MINECRAFT_SERVICE = os.getenv("MINECRAFT_SERVICE", "copimine-minecraft").strip() or "copimine-minecraft"
 MC_SERVER_DIR = Path("/opt/copimine/minecraft/server")
 
-POLL_SECONDS = 1.0
+POLL_SECONDS = max(10.0, float(os.getenv("DISCORD_BOT_POLL_SECONDS", "15") or "15"))
 STATUS_EDIT_TIMEOUT_SECONDS = 20
-STATUS_ONLINE_CONFIRM_SECONDS = 3
-DISCORD_MESSAGE_HISTORY_ADOPT_LIMIT = 250
-CHANNEL_RENAME_MIN_SECONDS = 60
-STATUS_OFFLINE_CONFIRM_SECONDS = 90
+STATUS_ONLINE_CONFIRM_SECONDS = max(10, int(os.getenv("DISCORD_STATUS_ONLINE_CONFIRM_SECONDS", "15") or "15"))
+DISCORD_MESSAGE_HISTORY_ADOPT_LIMIT = max(20, min(120, int(os.getenv("DISCORD_MESSAGE_HISTORY_ADOPT_LIMIT", "80") or "80")))
+CHANNEL_RENAME_MIN_SECONDS = max(300, int(os.getenv("DISCORD_CHANNEL_RENAME_MIN_SECONDS", "600") or "600"))
+STATUS_OFFLINE_CONFIRM_SECONDS = max(90, int(os.getenv("DISCORD_STATUS_OFFLINE_CONFIRM_SECONDS", "180") or "180"))
+DISCORD_RECONNECT_INITIAL_SECONDS = max(60, int(os.getenv("DISCORD_RECONNECT_INITIAL_SECONDS", "300") or "300"))
+DISCORD_RECONNECT_MAX_SECONDS = max(DISCORD_RECONNECT_INITIAL_SECONDS, int(os.getenv("DISCORD_RECONNECT_MAX_SECONDS", "3600") or "3600"))
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", os.getenv("PGHOST", "127.0.0.1")).strip() or "127.0.0.1"
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", os.getenv("PGPORT", "5432")) or "5432")
@@ -1842,8 +1844,21 @@ async def main() -> None:
         print("DISCORD_BOT_TOKEN is not set in .env", flush=True)
         while True:
             await asyncio.sleep(3600)
-    async with Bot() as bot:
-        await bot.start(TOKEN)
+    backoff = DISCORD_RECONNECT_INITIAL_SECONDS
+    while True:
+        try:
+            async with Bot() as bot:
+                await bot.start(TOKEN)
+            print(f"Discord bot stopped without an exception; reconnect in {backoff}s", flush=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            kind = type(exc).__name__
+            print(f"Discord bot connection failed: {kind}: {exc}; reconnect in {backoff}s", flush=True)
+            if kind in {"LoginFailure", "PrivilegedIntentsRequired"}:
+                backoff = DISCORD_RECONNECT_MAX_SECONDS
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, DISCORD_RECONNECT_MAX_SECONDS)
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -137,7 +137,7 @@ public final class VisualRuntimeService {
     }
 
     public boolean supportsServerOverlayRuntime() {
-        return detectServerOverlaySupport();
+        return false;
     }
 
     public boolean supportsServerParticleFallback() {
@@ -161,22 +161,7 @@ public final class VisualRuntimeService {
     }
 
     public String serverOverlaySupportReason() {
-        if (!configService.allowServerResourcePackOverlay()) {
-            return "server overlay mode disabled in config";
-        }
-        if (!configService.serverOverlayUseTitles()) {
-            return "server overlay title glyph route disabled in config";
-        }
-        if (!Files.isRegularFile(projectRoot().resolve("resourcepacks").resolve("src").resolve("assets").resolve("copimine").resolve("font").resolve("narcotics_overlay.json"))) {
-            return "overlay font manifest missing";
-        }
-        if (!hasAllOverlayAssets()) {
-            return "overlay texture assets missing";
-        }
-        if (!overlaySupportedManifestFlag()) {
-            return "overlay runtime disabled by visuals manifest";
-        }
-        return "supported via title glyph fallback; may temporarily override other titles";
+        return "server title overlay disabled: CopiMine now uses Iris shaderpacks, client post-process fallback, or light particles only";
     }
 
     public String clientVisualSupportReason(Player player, String effectId) {
@@ -202,7 +187,7 @@ public final class VisualRuntimeService {
             return clientShaderLikeSupportReason();
         }
         if (!manifestFlag("true_shader_runtime_supported")) {
-            return "CopiMineClient does not force Iris/OptiFine shaders; true post-processing shaders are not server-forceable on Paper, so the client uses optional shader-like fullscreen overlays instead";
+            return "CopiMineClient uses built-in ZIP shaderpacks through Iris when available; without client support the server falls back to light particles only";
         }
         return "available through optional CopiMineClient runtime";
     }
@@ -220,7 +205,7 @@ public final class VisualRuntimeService {
         if (!shaderLikeSupportedManifestFlag()) {
             return "client-mod visual runtime disabled by visuals manifest";
         }
-        return "available through optional CopiMineClient post-process plus overlay runtime";
+        return "available through optional CopiMineClient post-process and Iris shaderpack runtime";
     }
 
     public String clientShaderpackSupportReason() {
@@ -369,9 +354,9 @@ public final class VisualRuntimeService {
         if (allowClientFirst && clientRouteAvailable(player, effectId)) {
             return VisualRoute.CLIENT_MOD_VISUAL;
         }
-        if (allowServerOverlay && overlayRouteAvailable(player)) {
-            return VisualRoute.SERVER_RESOURCE_PACK_OVERLAY;
-        }
+        // Fullscreen server title overlays were retired: they looked like static
+        // pictures over the world. Keep the enum for old saved sessions, but do
+        // not select this route for new effects.
         if (configService.allowServerParticleFallback() && configService.fallbackToParticles()) {
             return VisualRoute.SERVER_PARTICLE_FALLBACK;
         }
@@ -382,9 +367,6 @@ public final class VisualRuntimeService {
     }
 
     private VisualRoute forcedServerRoute(Player player, String effectId) {
-        if (overlayRouteAvailable(player)) {
-            return VisualRoute.SERVER_RESOURCE_PACK_OVERLAY;
-        }
         return configService.allowServerParticleFallback() ? VisualRoute.SERVER_PARTICLE_FALLBACK : VisualRoute.DISABLED;
     }
 
@@ -398,22 +380,11 @@ public final class VisualRuntimeService {
     }
 
     private boolean overlayRouteAvailable(Player player) {
-        if (player == null) {
-            return false;
-        }
-        Boolean ready = resourcePackReady.get(player.getUniqueId());
-        return configService.allowServerResourcePackOverlay()
-                && configService.fallbackToServerOverlay()
-                && detectServerOverlaySupport()
-                && (ready == null || ready);
+        return false;
     }
 
     private boolean detectServerOverlaySupport() {
-        if (!configService.allowServerResourcePackOverlay()) {
-            return false;
-        }
-        Path fontManifest = projectRoot().resolve("resourcepacks").resolve("src").resolve("assets").resolve("copimine").resolve("font").resolve("narcotics_overlay.json");
-        return Files.isRegularFile(fontManifest) && hasAllOverlayAssets() && overlaySupportedManifestFlag();
+        return false;
     }
 
     private boolean detectOverlaySupport() {

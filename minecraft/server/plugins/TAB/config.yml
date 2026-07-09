@@ -3,19 +3,19 @@ header-footer:
   designs:
     default:
       header:
-      - ""
-      - "&f\uE300"
-      - "&8────────────────────────"
-      - "&fПрезидент: %copimine_president%"
-      - "&fОнлайн: &a%online% &fигроков &8| &fАдминов: &b%staffonline%"
-      - "&8────────────────────────"
-      - ""
+        - ""
+        - "&f\uE300"
+        - "&8────────────────────────"
+        - "&fПрезидент: %copimine_president%"
+        - "&fОнлайн: &a%online% &fигроков &8| &fАдминов: &b%staffonline%"
+        - "&8────────────────────────"
+        - ""
       footer:
-      - ""
-      - "&8────────────────────────"
-      - "&fTPS: &a%tps% &8| &fMSPT: &e%mspt% &8| &fPing: &a%ping% ms"
-      - "&8────────────────────────"
-      - ""
+        - ""
+        - "&8────────────────────────"
+        - "&fTPS: &a%tps% &8| &fMSPT: &e%mspt% &8| &fPing: &a%ping% ms"
+        - "&8────────────────────────"
+        - ""
 
 tablist-name-formatting:
   enabled: true
@@ -27,8 +27,8 @@ scoreboard-teams:
   can-see-friendly-invisibles: false
   case-sensitive-sorting: true
   sorting-types:
-  - GROUPS:owner,admin,president,cik_chair,curator,default
-  - PLACEHOLDER_A_TO_Z:%player%
+    - GROUPS:owner,admin,president,cik_chair,curator,default
+    - PLACEHOLDER_A_TO_Z:%player%
 
 playerlist-objective:
   enabled: true
@@ -75,16 +75,11 @@ placeholder-output-replacements:
     "yes": "&7| Vanished"
     "no": ""
   "%copimine_president%":
-    "":
-      "&6не выбран"
-    "не выбран":
-      "&6не выбран"
-    "не избран":
-      "&6не выбран"
-    "none":
-      "&6не выбран"
-    "null":
-      "&6не выбран"
+    "": "&6не выбран"
+    "не выбран": "&6не выбран"
+    "не избран": "&6не выбран"
+    "none": "&6не выбран"
+    "null": "&6не выбран"
 
 assign-groups-by-permissions: false
 

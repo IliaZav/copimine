@@ -4456,7 +4456,7 @@ def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[
     if not valid_minecraft_name(minecraft_name):
         raise HTTPException(status_code=400, detail="Invalid Minecraft name")
     code = "".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(8))
-    uuid = find_player_uuid(minecraft_name) or ""
+    uuid = find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name)
     now = donation_now_ms()
     expires = now + (10 * 60 * 1000)
     with auth_conn() as conn:
@@ -4482,18 +4482,18 @@ def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[
 
 def confirm_link_code_sync(account: dict[str, Any], code: str) -> dict[str, Any]:
     now = donation_now_ms()
+    code_hash = sha256_hex(str(code).strip().upper())
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        row = conn.execute(
-            "SELECT * FROM one_time_link_codes WHERE site_account_id=%s AND status='PENDING' AND expires_at>%s ORDER BY created_at DESC LIMIT 1",
+        rows = conn.execute(
+            "SELECT * FROM one_time_link_codes WHERE site_account_id=%s AND status='PENDING' AND expires_at>%s ORDER BY created_at DESC LIMIT 8",
             (account["id"], now),
-        ).fetchone()
-        if not row or not hmac.compare_digest(str(row["code_hash"] or ""), sha256_hex(str(code).strip().upper())):
+        ).fetchall()
+        row = next((candidate for candidate in rows if hmac.compare_digest(str(candidate["code_hash"] or ""), code_hash)), None)
+        if not row:
             raise HTTPException(status_code=403, detail="Invalid or expired link code")
         minecraft_name = str(row["minecraft_name"] or "")
-        minecraft_uuid = str(row["minecraft_uuid"] or find_player_uuid(minecraft_name) or "")
-        if not minecraft_uuid:
-            raise HTTPException(status_code=404, detail="Minecraft UUID was not found")
+        minecraft_uuid = str(row["minecraft_uuid"] or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
         conn.execute("UPDATE one_time_link_codes SET status='USED',used_at=%s WHERE id=%s", (now, row["id"]))
         conn.execute(
             "UPDATE site_accounts SET minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
@@ -4560,16 +4560,18 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
     now = donation_now_ms()
+    code_hash = sha256_hex(str(code).strip().upper())
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         account = player_account_by_minecraft_name(conn, minecraft_name)
         if not account:
             raise HTTPException(status_code=404, detail="Аккаунт для этого Minecraft-ника не найден")
-        row = conn.execute(
-            "SELECT * FROM one_time_link_codes WHERE site_account_id=%s AND status='PENDING' AND expires_at>%s ORDER BY created_at DESC LIMIT 1",
+        rows = conn.execute(
+            "SELECT * FROM one_time_link_codes WHERE site_account_id=%s AND status='PENDING' AND expires_at>%s ORDER BY created_at DESC LIMIT 8",
             (account["id"], now),
-        ).fetchone()
-        if not row or not hmac.compare_digest(str(row["code_hash"] or ""), sha256_hex(str(code).strip().upper())):
+        ).fetchall()
+        row = next((candidate for candidate in rows if hmac.compare_digest(str(candidate["code_hash"] or ""), code_hash)), None)
+        if not row:
             raise HTTPException(status_code=403, detail="Неверный или просроченный код восстановления")
         minecraft_uuid = str(account.get("minecraft_uuid") or row["minecraft_uuid"] or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
         updated_at = now_ts()

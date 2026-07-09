@@ -1,0 +1,195 @@
+/*
+  Final UI guardrail layer.
+  Keeps cabinet/admin readable after theme changes and prevents CMS images from
+  escaping their cards.
+*/
+
+body.player-mode #guestPagesBtn,
+body.panel-admin-mode #guestPagesBtn,
+body.junior-admin-mode #guestPagesBtn {
+  display: inline-flex !important;
+}
+
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  backdrop-filter: blur(18px);
+}
+
+body.player-mode .top-actions,
+body.panel-admin-mode .top-actions,
+body.junior-admin-mode .top-actions {
+  max-width: 620px;
+}
+
+body.player-mode .top-actions .last-update,
+body.panel-admin-mode .top-actions .last-update,
+body.junior-admin-mode .top-actions .last-update {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.player-mode img,
+body.panel-admin-mode img,
+body.junior-admin-mode img {
+  max-width: 100%;
+  height: auto;
+}
+
+body.player-mode .view img:not(.side-brand-logo):not(.qr-image),
+body.panel-admin-mode .view img:not(.side-brand-logo):not(.qr-image),
+body.junior-admin-mode .view img:not(.side-brand-logo):not(.qr-image) {
+  display: block;
+  max-height: 360px;
+  border-radius: 22px;
+  object-fit: contain;
+}
+
+body.player-mode .panel,
+body.panel-admin-mode .panel,
+body.junior-admin-mode .panel,
+body.player-mode .metric,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .metric {
+  isolation: isolate;
+}
+
+body.player-mode .panel > *,
+body.panel-admin-mode .panel > *,
+body.junior-admin-mode .panel > *,
+body.player-mode .metric > *,
+body.panel-admin-mode .metric > *,
+body.junior-admin-mode .metric > * {
+  position: relative;
+  z-index: 1;
+}
+
+body.player-mode input,
+body.player-mode select,
+body.player-mode textarea,
+body.panel-admin-mode input,
+body.panel-admin-mode select,
+body.panel-admin-mode textarea,
+body.junior-admin-mode input,
+body.junior-admin-mode select,
+body.junior-admin-mode textarea {
+  color: var(--ink) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] body.player-mode input,
+:root[data-theme="dark"] body.player-mode select,
+:root[data-theme="dark"] body.player-mode textarea,
+:root[data-theme="dark"] body.panel-admin-mode input,
+:root[data-theme="dark"] body.panel-admin-mode select,
+:root[data-theme="dark"] body.panel-admin-mode textarea,
+:root[data-theme="dark"] body.junior-admin-mode input,
+:root[data-theme="dark"] body.junior-admin-mode select,
+:root[data-theme="dark"] body.junior-admin-mode textarea {
+  color: #f2f7fb !important;
+  background: rgba(9, 16, 25, 0.98) !important;
+  border-color: rgba(125, 216, 255, 0.18) !important;
+}
+
+:root[data-theme="light"] body.player-mode input,
+:root[data-theme="light"] body.player-mode select,
+:root[data-theme="light"] body.player-mode textarea,
+:root[data-theme="light"] body.panel-admin-mode input,
+:root[data-theme="light"] body.panel-admin-mode select,
+:root[data-theme="light"] body.panel-admin-mode textarea,
+:root[data-theme="light"] body.junior-admin-mode input,
+:root[data-theme="light"] body.junior-admin-mode select,
+:root[data-theme="light"] body.junior-admin-mode textarea {
+  color: #142033 !important;
+  background: #ffffff !important;
+  border-color: rgba(42, 64, 96, 0.18) !important;
+}
+
+body.player-mode input::placeholder,
+body.player-mode textarea::placeholder,
+body.panel-admin-mode input::placeholder,
+body.panel-admin-mode textarea::placeholder,
+body.junior-admin-mode input::placeholder,
+body.junior-admin-mode textarea::placeholder {
+  color: var(--muted) !important;
+  opacity: 0.78;
+}
+
+body.player-mode select option,
+body.panel-admin-mode select option,
+body.junior-admin-mode select option {
+  color: #142033;
+  background: #ffffff;
+}
+
+:root[data-theme="dark"] body.player-mode select option,
+:root[data-theme="dark"] body.panel-admin-mode select option,
+:root[data-theme="dark"] body.junior-admin-mode select option {
+  color: #f2f7fb;
+  background: #0b1420;
+}
+
+body.player-mode[data-copimine-tab="cabinet"] .layout-grid:first-child,
+body.player-mode[data-copimine-tab="bank"] .layout-grid:first-child {
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+}
+
+body.player-mode[data-copimine-tab="cabinet"] .metric,
+body.player-mode[data-copimine-tab="bank"] .metric {
+  min-height: 116px;
+}
+
+body.player-mode .account-ledger-head {
+  margin-bottom: 2px;
+}
+
+body.player-mode .account-ledger-head .metric {
+  min-height: 138px;
+  padding: 22px;
+}
+
+body.player-mode .account-ledger-head .metric-value {
+  font-size: clamp(30px, 3vw, 48px);
+  letter-spacing: -0.06em;
+}
+
+body.player-mode .account-actions {
+  align-items: center;
+  gap: 10px;
+}
+
+body.player-mode .account-actions .btn {
+  min-width: 136px;
+}
+
+body.player-mode table,
+body.panel-admin-mode table,
+body.junior-admin-mode table {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] body.player-mode table,
+:root[data-theme="dark"] body.panel-admin-mode table,
+:root[data-theme="dark"] body.junior-admin-mode table {
+  color: #edf5fb;
+}
+
+@media (max-width: 860px) {
+  body.player-mode .topbar,
+  body.panel-admin-mode .topbar,
+  body.junior-admin-mode .topbar {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  body.player-mode .top-actions,
+  body.panel-admin-mode .top-actions,
+  body.junior-admin-mode .top-actions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+}

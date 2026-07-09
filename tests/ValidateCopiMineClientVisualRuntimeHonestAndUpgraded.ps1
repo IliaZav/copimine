@@ -20,10 +20,10 @@ $registry = Read-Utf8 (Join-Path $clientRoot 'src\main\java\me\copimine\client\S
 Require-Contains $runtime 'public boolean supportsOverlayRuntime()' 'VisualRuntimeService must expose overlay capability checks.'
 Require-Contains $runtime 'public boolean supportsShaderRuntime()' 'VisualRuntimeService must expose shader capability checks.'
 Require-Contains $runtime 'supportsClientZipShaderpackRuntime()' 'VisualRuntimeService must expose ZIP shaderpack capability checks.'
-Require-Contains $runtime 'supported via title glyph fallback; may temporarily override other titles' 'Server overlay path must describe its limitation honestly.'
+Require-Contains $runtime 'server falls back to light particles only' 'Server fallback path must describe its limitation honestly.'
 Require-Contains $runtime 'client visuals disabled in config' 'VisualRuntimeService must explain fallback reasons.'
 Require-Contains $runtime 'client_zip_shaderpack_runtime_supported' 'VisualRuntimeService must use the ZIP shaderpack manifest flag.'
-foreach ($marker in @('drawNoiseGrid','drawColorShiftPass','drawScanPulse','drawVignette','drawHatch','drawSegmentedTexture')) {
+foreach ($marker in @('drawEffect','drawNoiseGrid','drawColorShiftPass','drawScanPulse','drawVignette','drawHatch')) {
   Require-Contains $client $marker "ClientVisualManager must contain upgraded renderer helper $marker."
 }
 foreach ($marker in @('Route.IRIS_SHADERPACK','Route.FALLBACK_POST_PROCESS','fallback-post-process')) {

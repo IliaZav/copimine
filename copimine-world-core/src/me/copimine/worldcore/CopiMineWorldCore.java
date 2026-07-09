@@ -559,7 +559,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private String blockedMessage(World world) {
-        if (world != null && endAccess.worldNames().contains(world.getName())) {
+        WorldAccess access = accessFor(world);
+        if (access == endAccess || (world != null && world.getEnvironment() == World.Environment.THE_END)) {
             return color("&eЭнд сейчас закрыт.");
         }
         return color("&eНижний мир сейчас закрыт.");

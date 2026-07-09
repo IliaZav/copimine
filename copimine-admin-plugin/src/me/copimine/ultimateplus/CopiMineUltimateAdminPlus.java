@@ -826,9 +826,15 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     public void onOfficialArCreative(InventoryCreativeEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
         if(!isOfficialArItem(e.getCursor())&&!isOfficialArItem(e.getCurrentItem()))return;
+        Inventory clicked=e.getClickedInventory();
+        boolean playerInventory=clicked!=null&&clicked.equals(e.getView().getBottomInventory());
+        if(playerInventory&&e.getAction()!=InventoryAction.CLONE_STACK&&e.getClick()!=ClickType.CREATIVE){
+            queueArSync("AR_CREATIVE_PLAYER_MOVE");
+            return;
+        }
         e.setCancelled(true);
         p.updateInventory();
-        warn(p,"Официальный AR нельзя дублировать через creative-инвентарь.");
+        warn(p,"Официальный AR нельзя создавать или клонировать через creative-инвентарь.");
     }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
@@ -2206,7 +2212,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         btn(m,22,Material.BARRIER,"&cЗакрыть",List.of(),"close");
         btn(m,26,Material.EMERALD,"&aОбновить",List.of(),"open:station-hub:"+station);
-        btn(m,22,Material.EMERALD,"&a&lР›Р°РІРєРё",List.of(
+        btn(m,22,Material.EMERALD,"&a&lЛавки",List.of(
                 "&7Управление лавками артефактов и donation-предметов.",
                 "&7Создание и привязка лавки по блоку,",
                 "&7каталог, выдача и обслуживание витрин."),"open:shops");
@@ -3866,7 +3872,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             setArOwnerMeta(it,"","","");
             ItemMeta meta=it.getItemMeta();
             String name=meta!=null&&meta.hasDisplayName()?meta.getDisplayName():"";
-            if(!before.equals(Material.DIAMOND_ORE.name()+"::::")||it.getType()!=Material.DIAMOND_ORE||!ChatColor.stripColor(name).equalsIgnoreCase("Официальный AR")||(meta!=null&&meta.hasLore()&&meta.getLore()!=null&&!meta.getLore().isEmpty()))changed=true;
+            if(!before.equals(beforeType.name()+"::::")||it.getType()!=beforeType||!ChatColor.stripColor(name).equalsIgnoreCase("Официальный AR")||(meta!=null&&meta.hasLore()&&meta.getLore()!=null&&!meta.getLore().isEmpty()))changed=true;
             inv.setItem(i,it);
         }
         return changed;
@@ -3920,70 +3926,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return batch;
     }
     private void setArOwnerMeta(ItemStack it,String ownerUuid,String ownerName,String source){
-        ItemMeta meta=it==null?null:it.getItemMeta(); if(meta==null)return;
-        if(it!=null){
-            it.setType(Material.DIAMOND_ORE);
-            var normalizedData=meta.getPersistentDataContainer();
-            normalizedData.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");
-            meta.setDisplayName(c("&bОфициальный AR"));
-            meta.setLore(List.of());
-            meta.setDisplayName(c("&bОфициальный AR"));
-            if(meta.hasCustomModelData())meta.setCustomModelData(null);
-            meta.addItemFlags(ItemFlag.values());
-            normalizedData.remove(arKey("source"));
-            normalizedData.remove(arKey("owner_uuid"));
-            normalizedData.remove(arKey("owner_name"));
-            normalizedData.set(arKey("batch_id"),org.bukkit.persistence.PersistentDataType.STRING,"official-ar-stack");
-            normalizedData.remove(arKey("asset_id"));
-            it.setItemMeta(meta);
-            return;
-        }
-        boolean normalizedCertifiedAr = it!=null;
-        if(normalizedCertifiedAr){
-            var d=meta.getPersistentDataContainer();
-            d.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");
-            meta.setDisplayName(c("&bОфициальный AR"));
-            meta.setLore(List.of());
-            meta.setDisplayName(c("&bОфициальный AR"));
-            if(meta.hasCustomModelData())meta.setCustomModelData(null);
-            meta.addItemFlags(ItemFlag.values());
-            d.remove(arKey("source"));
-            d.remove(arKey("owner_uuid"));
-            d.remove(arKey("owner_name"));
-            d.remove(arKey("batch_id"));
-            d.remove(arKey("asset_id"));
-            it.setItemMeta(meta);
-            return;
-        }
-        String batch=ensureArStackBatch(meta);
-        int amount=Math.max(1,it.getAmount());
-        meta.setDisplayName(c("&b&lАР &8| &fсертифицированная руда"));
-        // AR_STACK_BATCH_LABEL / AR_STACK_VISIBLE_ID / AR_STACK_UNIQUE_COUNT
-        meta.setLore(List.of(
-                c("&7Владелец: &f"+first(ownerName,"неизвестно")),
-                c("&7Партия: &f"+shortId(batch)),
-                c("&7AR-ID: &f"+shortId(batch)+" &8x&f"+amount),
-                c("&7Уникальных АР в стаке: &f"+amount),
-                c("&7Передача: &fвыбросить и дать подобрать"),
-                c("&7Алмаз: &fтолько через переплавку"),
-                c("&8Не горит, не despawn, не ставится, не идет в механизмы")
-        ));
+        if(it==null||!arMaterial(it.getType()))return;
+        ItemMeta meta=it.getItemMeta(); if(meta==null)return;
         var d=meta.getPersistentDataContainer();
         d.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");
-        d.set(arKey("source"),org.bukkit.persistence.PersistentDataType.STRING,first(source,"mined"));
-        d.set(arKey("owner_uuid"),org.bukkit.persistence.PersistentDataType.STRING,first(ownerUuid,""));
-        d.set(arKey("owner_name"),org.bukkit.persistence.PersistentDataType.STRING,first(ownerName,""));
-        d.set(arKey("batch_id"),org.bukkit.persistence.PersistentDataType.STRING,batch);
-        d.set(arKey("asset_id"),org.bukkit.persistence.PersistentDataType.STRING,"batch:"+batch);
-        meta.setDisplayName(c("&bОфициальный AR"));
-        meta.setLore(List.of());
-        meta.setDisplayName(c("&bОфициальный AR"));
-        meta.addItemFlags(ItemFlag.values());
         d.remove(arKey("source"));
         d.remove(arKey("owner_uuid"));
         d.remove(arKey("owner_name"));
         d.remove(arKey("batch_id"));
         d.remove(arKey("asset_id"));
+        meta.setDisplayName(c("&bОфициальный AR"));
+        meta.setLore(List.of());
+        if(meta.hasCustomModelData())meta.setCustomModelData(null);
+        meta.addItemFlags(ItemFlag.values());
         it.setItemMeta(meta);
     }
     private void ensureArAsset(ItemStack it,Player owner,String source,Location loc){
@@ -5532,36 +5487,47 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean handleResetWorldObjectsCommand(CommandSender sender,String[] args)throws Exception{
         requireMainAdmin(sender);
         if(args.length<2||!args[1].equalsIgnoreCase("confirm")){
-            msg(sender,"&cКоманда удалит из PostgreSQL все лавки, участки ЦИК, печати, защитные блоки, text-display связи и банкоматы.");
-            msg(sender,"&7Балансы игроков и банковый ledger не затрагиваются.");
+            msg(sender,"&cКоманда удалит из PostgreSQL лавки, участки ЦИК, печати, защитные блоки, визуалы, заявки выдачи и банкоматы.");
+            msg(sender,"&7Балансы игроков, банковский ledger, whitelist и учётные записи не затрагиваются.");
             msg(sender,"&6/cmultra resetworldobjects confirm");
             return true;
         }
         Map<String,Long> removed=tx(c->{
             LinkedHashMap<String,Long> counts=new LinkedHashMap<>();
+            purgeTable(c,counts,"artifact_pending_deliveries");
             purgeTable(c,counts,"artifact_shops");
             purgeTable(c,counts,"polling_stations");
+            purgeTable(c,counts,"cmv7_polling_stations");
             purgeTable(c,counts,"cik_chairs");
             purgeTable(c,counts,"cik_seals");
             purgeTable(c,counts,"protected_blocks");
+            purgeTable(c,counts,"protected_block_visuals");
             purgeTable(c,counts,"text_display_links");
             purgeTable(c,counts,"ar_atms");
             purgeTable(c,counts,"atm_sessions");
             purgeTable(c,counts,"atm_events");
             purgeTable(c,counts,"atm_audit");
+            purgeTable(c,counts,"cmv7_ar_placed_blocks");
+            purgeTable(c,counts,"cmv7_ar_scan_reports");
+            purgeTable(c,counts,"cmv7_ar_guard_incidents");
+            purgeTable(c,counts,"cmv7_ar_events");
+            purgeTable(c,counts,"cmv7_ar_transactions");
+            purgeTable(c,counts,"cmv7_ar_economy_snapshots");
+            purgeTable(c,counts,"one_time_link_codes");
             return counts;
         });
         String summary=removed.entrySet().stream().map(entry->entry.getKey()+"="+entry.getValue()).reduce((left,right)->left+", "+right).orElse("nothing");
         audit(sender.getName(),"RESET_WORLD_OBJECTS",summary,true);
         pluginEvent("adminplus","RESET_WORLD_OBJECTS",sender.getName(),"world-objects",summary);
+        purgeManagedFloatingTexts();
         msg(sender,"&aМировые объекты очищены: &f"+summary);
-        msg(sender,"&7Если какие-то GUI или hologram уже были загружены, перезапусти сервер для чистой перезагрузки runtime.");
+        msg(sender,"&7Для полной очистки runtime-кэшей перезапусти Minecraft-сервис после команды.");
         return true;
     }
     private boolean handleClearFloatingTextsCommand(CommandSender sender,String[] args)throws Exception{
         requireMainAdmin(sender);
         if(args.length<2||!args[1].equalsIgnoreCase("confirm")){
-            msg(sender,"&cКоманда удалит все связанные election TextDisplay из мира и очистит registry в PostgreSQL.");
+            msg(sender,"&cКоманда удалит связанные election TextDisplay из мира и очистит registry в PostgreSQL.");
             msg(sender,"&6/cmultra clearfloatingtexts confirm");
             return true;
         }

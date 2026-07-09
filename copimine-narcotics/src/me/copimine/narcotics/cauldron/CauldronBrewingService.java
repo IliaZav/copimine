@@ -11,6 +11,7 @@ import me.copimine.narcotics.util.BlockKey;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.Block;
@@ -26,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class CauldronBrewingService {
     private static final long STALE_BREW_STATE_MILLIS = 15L * 60L * 1000L;
+    private static final int MINIMUM_RECIPE_CHECK_SIZE = 3;
 
     private final CopiMineNarcotics plugin;
     private NarcoticsConfigService configService;
@@ -114,36 +116,28 @@ public final class CauldronBrewingService {
         synchronized (lockFor(key)) {
             long nowMillis = System.currentTimeMillis();
             CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis));
-            if (!base.ingredients().isEmpty() && !recipeService.canStillBecomeRecipe(base.ingredients())) {
-                clearState(block, key, base.version() + 1L);
-                base = new CauldronState(List.of(), 0L, nowMillis);
-            }
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
             long nextVersion = base.version() + 1L;
             itemFactory.consumeOne(player, stack);
 
             NarcoticDefinition exact = recipeService.matchExact(current);
-            if (exact != null) {
-                finishBrewing(block, key, exact, nextVersion);
+            if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null) {
+                finishBrewing(block, key, exact, nextVersion, current.size(), false);
                 return true;
             }
-            int minimumRecipeSize = Math.max(1, recipeService.minimumRecipeSize());
             int maximumRecipeSize = recipeService.maximumRecipeSize();
             boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
-            if (current.size() < minimumRecipeSize && canStillBecomeRecipe) {
+            if (current.size() < MINIMUM_RECIPE_CHECK_SIZE) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis);
+            }
+            if (recipeService.containsUnrecognizedIngredient(current)) {
+                return finishWrongMix(block, key, nextVersion, current.size());
             }
             if (canStillBecomeRecipe && current.size() < maximumRecipeSize) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis);
             }
-            NarcoticDefinition zhuzevo = configService.items().get("zhuzevo");
-            if (zhuzevo != null) {
-                finishBrewing(block, key, zhuzevo, nextVersion);
-            } else {
-                clearState(block, key, nextVersion);
-            }
-            return true;
+            return finishWrongMix(block, key, nextVersion, current.size());
         }
     }
 
@@ -209,11 +203,37 @@ public final class CauldronBrewingService {
         locks.clear();
     }
 
-    private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version) {
+    private boolean finishWrongMix(Block block, BlockKey key, long version, int ingredientCount) {
+        NarcoticDefinition zhuzevo = configService.items().get("zhuzevo");
+        if (zhuzevo != null) {
+            finishBrewing(block, key, zhuzevo, version, ingredientCount, true);
+        } else {
+            clearState(block, key, version);
+        }
+        return true;
+    }
+
+    private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix) {
+        if (wrongMix) {
+            simulateWrongMixExplosion(block);
+        }
         block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), itemFactory.createOfficialItem(definition, 1));
         particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH, "zhuzevo".equals(definition.id()) ? 24 : 12);
-        spawnQueuedParticles(block, Math.max(1, cache.getOrDefault(key, new CauldronState(List.of(), version, System.currentTimeMillis())).ingredients().size()), true);
+        spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
         clearState(block, key, version);
+    }
+
+    private void simulateWrongMixExplosion(Block block) {
+        World world = block.getWorld();
+        Location center = block.getLocation().add(0.5D, 1.0D, 0.5D);
+        world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1.0F, 0.85F);
+        world.spawnParticle(Particle.EXPLOSION, center, 1, 0.1D, 0.1D, 0.1D, 0.0D);
+        world.spawnParticle(Particle.SMOKE, center, 42, 0.55D, 0.35D, 0.55D, 0.03D);
+        for (org.bukkit.entity.Player nearby : world.getPlayers()) {
+            if (nearby.getLocation().distanceSquared(center) <= 25.0D) {
+                nearby.damage(6.0D);
+            }
+        }
     }
 
     private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis) {

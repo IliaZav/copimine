@@ -115,10 +115,13 @@ import java.util.stream.Collectors;
 public final class CopiMineElectionCore extends JavaPlugin implements Listener, CommandExecutor {
     private static final String SIDEBAR_OBJECTIVE = "cm_election_live";
     private static final Pattern SAFE_SCHEMA = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
-    private static final long PRESIDENT_BROADCAST_COOLDOWN_MS = 60L * 60L * 1000L;
+    private static final long PRESIDENT_BROADCAST_COOLDOWN_MS = 2L * 60L * 60L * 1000L;
     private static final long PRESIDENT_LAW_REPLACE_COOLDOWN_MS = 3L * 24L * 60L * 60L * 1000L;
     private static final int LAW_TEXT_LIMIT = 80;
     private static final int BROADCAST_TEXT_LIMIT = 80;
+    private static final Pattern PRESIDENT_TEXT_FORBIDDEN = Pattern.compile(
+            "(?i)(--|/\\*|\\*/|;|§|\\\\u00a7|\\b(select|insert|update|delete|drop|alter|truncate|grant|revoke|union|exec|execute|xp_cmdshell|tellraw|minecraft:say|minecraft:tellraw|run_command)\\b)"
+    );
     private static final List<Integer> CANDIDATE_LIMITS = List.of(2, 3, 4, 5, 6, 7, 8, 10, 15, 20, -1);
     private static final List<Integer> TERM_DAYS = List.of(7, 10, 14, 21, 28);
     private static final int MODEL_ATM_TERMINAL = 12002;
@@ -592,7 +595,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.sendMessage(color("&cФормат должен быть chat, title или actionbar."));
             return true;
         }
-        String text = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)).trim();
+        String text;
+        try {
+            text = sanitizePresidentBroadcastText(String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)));
+        } catch (IllegalArgumentException error) {
+            player.sendMessage(color("&cТекст обращения отклонён: &f" + error.getMessage()));
+            return true;
+        }
         if (text.isBlank()) {
             player.sendMessage(color("&cНужно указать текст обращения."));
             return true;
@@ -608,6 +617,25 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.sendMessage(color("&cНе удалось отправить обращение: &f" + safeError(error)));
         }
         return true;
+    }
+
+    private String sanitizePresidentBroadcastText(String raw) {
+        String text = ChatColor.stripColor(first(raw, ""))
+                .replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ")
+                .replace('\n', ' ')
+                .replace('\t', ' ')
+                .replaceAll("\\s{2,}", " ")
+                .trim();
+        if (text.isBlank()) {
+            throw new IllegalArgumentException("пустой текст");
+        }
+        if (text.length() > BROADCAST_TEXT_LIMIT) {
+            throw new IllegalArgumentException("лимит " + BROADCAST_TEXT_LIMIT + " символов");
+        }
+        if (PRESIDENT_TEXT_FORBIDDEN.matcher(text).find()) {
+            throw new IllegalArgumentException("служебные команды и SQL-последовательности запрещены");
+        }
+        return text;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -1317,17 +1345,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("mandate:broadcast:chat")) {
-            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "CHAT", "", false), "&eНапиши обращение президентом. Лимит: &f" + BROADCAST_TEXT_LIMIT + "&e символов.");
+            player.sendMessage(color("&eКоманда для обращения: &f/presidentsay chat <текст>"));
+            player.sendMessage(color("&7Отправка доступна президенту и администрации раз в 2 часа."));
             player.closeInventory();
             return;
         }
         if (action.equals("mandate:broadcast:title")) {
-            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "TITLE", "", false), "&eНапиши обращение президентом. Лимит: &f" + BROADCAST_TEXT_LIMIT + "&e символов.");
+            player.sendMessage(color("&eКоманда для обращения: &f/presidentsay title <текст>"));
+            player.sendMessage(color("&7Отправка доступна президенту и администрации раз в 2 часа."));
             player.closeInventory();
             return;
         }
         if (action.equals("mandate:broadcast:actionbar")) {
-            startPrompt(player, new PromptContext(PromptKind.BROADCAST, "ACTIONBAR", "", false), "&eНапиши обращение президентом. Лимит: &f" + BROADCAST_TEXT_LIMIT + "&e символов.");
+            player.sendMessage(color("&eКоманда для обращения: &f/presidentsay actionbar <текст>"));
+            player.sendMessage(color("&7Отправка доступна президенту и администрации раз в 2 часа."));
             player.closeInventory();
             return;
         }
@@ -3707,20 +3738,21 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         long t = now();
         if (t - longValue(term.get("last_broadcast_at")) < PRESIDENT_BROADCAST_COOLDOWN_MS) {
-            throw new IllegalStateException("Обращение можно отправлять раз в 1 час.");
+            throw new IllegalStateException("Обращение можно отправлять раз в 2 часа.");
         }
+        String safeText = sanitizePresidentBroadcastText(text);
         tx(connection -> {
             update(connection, "INSERT INTO president_broadcasts(id,term_id,president_uuid,format,text,created_at) VALUES(?,?,?,?,?,?)",
-                    "broadcast_" + UUID.randomUUID().toString().replace("-", ""), string(term.get("id")), player.getUniqueId().toString(), format, text, t);
+                    "broadcast_" + UUID.randomUUID().toString().replace("-", ""), string(term.get("id")), player.getUniqueId().toString(), format, safeText, t);
             update(connection, "UPDATE president_terms SET last_broadcast_at=? WHERE id=?", t, string(term.get("id")));
-            logPluginEvent(connection, "election_core", "broadcast_sent", player.getName(), format, text);
+            logPluginEvent(connection, "election_core", "broadcast_sent", player.getName(), format, safeText);
             return null;
         });
         for (Player online : Bukkit.getOnlinePlayers()) {
             switch (format.toUpperCase(Locale.ROOT)) {
-                case "TITLE" -> online.sendTitle(color("&6Президент"), color("&f" + text), 10, 50, 10);
-                case "ACTIONBAR" -> online.sendActionBar(color("&6Президент: &f" + text));
-                default -> online.sendMessage(color("&6Президент &f" + player.getName() + "&7: &f" + text));
+                case "TITLE" -> online.sendTitle(color("&6Президент"), color("&f" + safeText), 10, 50, 10);
+                case "ACTIONBAR" -> online.sendActionBar(color("&6Президент: &f" + safeText));
+                default -> online.sendMessage(color("&6Президент &f" + player.getName() + "&7: &f" + safeText));
             }
         }
     }

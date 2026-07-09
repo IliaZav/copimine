@@ -15,8 +15,17 @@ if ($admin -notmatch 'meta\.setLore\(List\.of\(\)\);') {
     throw "Missing AR stack normalization lore reset."
 }
 
-if ($admin -notmatch '(?:d|normalizedData)\.set\(arKey\("batch_id"\),org\.bukkit\.persistence\.PersistentDataType\.STRING,"official-ar-stack"\);') {
-    throw "Missing AR stack normalization batch marker."
+foreach ($marker in @(
+    'd.set(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING,"certified");',
+    'd.remove(arKey("source"));',
+    'd.remove(arKey("owner_uuid"));',
+    'd.remove(arKey("owner_name"));',
+    'd.remove(arKey("batch_id"));',
+    'd.remove(arKey("asset_id"));'
+)) {
+    if ($admin -notmatch [regex]::Escape($marker)) {
+        throw "Missing AR stack-safe PDC normalization marker: $marker"
+    }
 }
 
 Write-Host "ValidateCopiMineArStackNormalization passed."

@@ -77,18 +77,18 @@ public final class NarcoticsConfigService {
         requireFullWater = root.getBoolean("cauldron.require_full_water", true);
         clearCauldronOnCompletion = root.getBoolean("cauldron.clear_cauldron_on_completion", true);
         dropIngredientsOnBreakOrWaterLoss = root.getBoolean("cauldron.drop_ingredients_on_break_or_water_loss", true);
-        consumeCooldownSeconds = Math.max(1, root.getInt("usage.consume_cooldown_seconds", 15));
+        consumeCooldownSeconds = Math.max(0, root.getInt("usage.consume_cooldown_seconds", 0));
         usageWindowSeconds = Math.max(60, root.getInt("usage.usage_window_seconds", 900));
         overdoseThreshold = Math.max(1, root.getInt("usage.overdose_threshold", 100));
         durationOverrideSeconds = Math.max(0, root.getInt("usage.duration_override_seconds", 0));
         clearNormalEffectsBeforeNewUse = root.getBoolean("usage.clear_normal_effects_before_new_use", true);
         milkBlocksDuringOverdose = root.getBoolean("usage.milk_blocks_during_overdose", true);
-        zhuzevoForcesOverdose = root.getBoolean("usage.zhuzevo_forces_overdose", true);
+        zhuzevoForcesOverdose = root.getBoolean("usage.zhuzevo_forces_overdose", false);
         visualsEnabled = root.getBoolean("visuals.enabled", false);
         allowClientModVisuals = root.getBoolean("visuals.allow_client_mod_visuals", true);
-        allowServerResourcePackOverlay = root.getBoolean("visuals.allow_server_resource_pack_overlay", true);
+        allowServerResourcePackOverlay = root.getBoolean("visuals.allow_server_resource_pack_overlay", false);
         allowServerParticleFallback = root.getBoolean("visuals.allow_server_particle_fallback", true);
-        serverOverlayUseTitles = root.getBoolean("visuals.server_overlay.use_titles", true);
+        serverOverlayUseTitles = root.getBoolean("visuals.server_overlay.use_titles", false);
         serverOverlayMaxDurationSeconds = clamp(root.getInt("visuals.server_overlay.max_duration_seconds", 60), 5, 600);
         serverOverlayClearOnStop = root.getBoolean("visuals.server_overlay.clear_on_stop", true);
         textureMode = parseTextureMode(root.getString("textures.mode", "VANILLA"));
@@ -99,7 +99,7 @@ public final class NarcoticsConfigService {
         kickIfMissingClient = root.getBoolean("client_bridge.kick_if_missing_client", false);
         handshakeTimeoutSeconds = clamp(root.getInt("client_bridge.handshake_timeout_seconds", 10), 3, 120);
         preferClientVisuals = root.getBoolean("client_bridge.prefer_client_visuals", true);
-        fallbackToServerOverlay = root.getBoolean("client_bridge.fallback_to_server_overlay", true);
+        fallbackToServerOverlay = root.getBoolean("client_bridge.fallback_to_server_overlay", false);
         fallbackToParticles = root.getBoolean("client_bridge.fallback_to_particles", true);
 
         messages.clear();
@@ -386,8 +386,8 @@ public final class NarcoticsConfigService {
         String normalized = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
         if ("FALLBACK".equals(normalized)) {
             normalized = "SERVER_FALLBACK";
-        } else if ("OVERLAY".equals(normalized)) {
-            normalized = "SERVER_OVERLAY";
+        } else if ("OVERLAY".equals(normalized) || "SERVER_OVERLAY".equals(normalized)) {
+            normalized = "AUTO";
         } else if ("SHADER".equals(normalized)) {
             normalized = "AUTO";
         }
@@ -396,8 +396,8 @@ public final class NarcoticsConfigService {
             if (mode == VisualMode.CLIENT_MOD && !allowClientModVisuals) {
                 return VisualMode.SERVER_FALLBACK;
             }
-            if (mode == VisualMode.SERVER_OVERLAY && !allowServerResourcePackOverlay) {
-                return VisualMode.SERVER_FALLBACK;
+            if (mode == VisualMode.SERVER_OVERLAY) {
+                return VisualMode.AUTO;
             }
             if (mode == VisualMode.SERVER_FALLBACK && !allowServerParticleFallback) {
                 return VisualMode.AUTO;

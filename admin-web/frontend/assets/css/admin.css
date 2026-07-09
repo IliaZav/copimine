@@ -355,6 +355,28 @@ body.junior-admin-mode select option {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.admin-player-action-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.9fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.admin-player-action-form .field-stack {
+  min-width: 0;
+}
+
+.admin-player-action-form .btn {
+  min-height: 44px;
+}
+
+@media (max-width: 980px) {
+  .admin-player-action-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 .top-actions .btn,
 .top-actions .theme-toggle,
 .top-actions .status-pill {

@@ -4,6 +4,7 @@ import { createAdminCmsPages } from "../admin/cms-pages.js";
 import { createAdminCommercePages } from "../admin/commerce-pages.js";
 import { createPluginRegistryPages } from "../admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "../player/account-pages.js";
+import { createPlayerArtifactPages } from "../player/artifact-pages.js";
 import { createPlayerDonationPages } from "../player/donation-pages.js";
 import { createPlayerTreasuryPages } from "../player/treasury-pages.js";
 import { appRouteHref, authLandingHref, defaultAppRouteForRole, normalizeAppRoute, routeFromHref } from "../shared/app-routes.js";
@@ -2445,9 +2446,30 @@ async function playerDetailsHtml(player) {
     safeApi(`/api/players/${encodeURIComponent(player)}/actions?limit=30`, { rows: [] })
   ]);
   const live = liveInventory.latest || inventory.live;
+  const actionOptions = playerActions.map(([action, label]) => `<option value="${esc(action)}">${esc(label)}</option>`).join("");
   const actionButtons = playerActions.map(([action, label]) => `<button class="btn btn-secondary btn-small" data-click="playerAction('${esc(player)}','${action}')">${esc(label)}</button>`).join("");
   const quickActions = hasFullAdminAccess()
-    ? `<div class="action-strip">${actionButtons}</div>`
+    ? `
+      <div class="field-grid compact admin-player-action-form">
+        <label class="field-stack" for="playerActionSelect">
+          <span>Действие</span>
+          <select id="playerActionSelect">${actionOptions}</select>
+        </label>
+        <label class="field-stack" for="playerActionReason">
+          <span>Причина</span>
+          <input id="playerActionReason" value="CopiMine" autocomplete="off" />
+        </label>
+        <label class="field-stack" for="playerActionTarget">
+          <span>Цель для телепорта</span>
+          <input id="playerActionTarget" list="playersDatalist" placeholder="Ник игрока" autocomplete="off" />
+        </label>
+        <div class="field-stack">
+          <span>&nbsp;</span>
+          <button class="btn btn-primary" data-click="playerActionFromPanel('${esc(player)}')">Выполнить</button>
+        </div>
+      </div>
+      <div class="action-strip">${actionButtons}</div>
+    `
     : `<div class="notice">Младший админ может просматривать профиль, инвентарь и историю, но не выполнять опасные действия.</div>`;
   const site = profile.siteAccount || {};
   const bank = profile.bank || {};
@@ -2455,7 +2477,16 @@ async function playerDetailsHtml(player) {
   const pinState = bankPinState(pin);
   const canManagePins = hasFullAdminAccess();
   const pinButtons = site.id && canManagePins
-    ? `<div class="action-strip"><button class="btn btn-secondary btn-small" data-click="playerResetBankPin('${esc(player)}')">Сбросить PIN</button><button class="btn btn-secondary btn-small" data-click="playerRandomizeBankPin('${esc(player)}')">Случайный PIN</button><button class="btn btn-secondary btn-small" data-click="playerSetBankPinAdmin('${esc(player)}')">Задать PIN</button></div>`
+    ? `
+      <div class="action-strip">
+        <button class="btn btn-secondary btn-small" data-click="playerResetBankPin('${esc(player)}')">Сбросить PIN</button>
+        <button class="btn btn-secondary btn-small" data-click="playerRandomizeBankPin('${esc(player)}')">Случайный PIN</button>
+      </div>
+      <div class="toolbar compact">
+        <input id="playerAdminPinInput" inputmode="numeric" autocomplete="off" placeholder="Новый PIN, 4-8 цифр" />
+        <button class="btn btn-secondary btn-small" data-click="playerSetBankPinAdmin('${esc(player)}')">Задать PIN</button>
+      </div>
+    `
     : (site.id && !canManagePins ? `<div class="notice">Младший админ видит статус PIN, но не может раскрывать, сбрасывать или задавать его.</div>` : "");
   return `
     <div class="panel-header">
@@ -2514,9 +2545,12 @@ async function playerDetailsHtml(player) {
 }
 
 window.playerAction = async (player, action) => {
-  const reason = prompt("Причина действия", "CopiMine") || "CopiMine";
+  const reason = $("playerActionReason")?.value?.trim() || "CopiMine";
   let body = { reason };
-  if (action === "tp_to" || action === "tp_here") body.target = prompt("К кому/кого телепортировать?", "") || "";
+  if (action === "tp_to" || action === "tp_here") {
+    body.target = $("playerActionTarget")?.value?.trim() || "";
+    if (!body.target) return toast("Укажи цель телепорта.", true);
+  }
   const dangerLabels = {
     ban: "PLAYER_BAN",
     op: "PLAYER_OP",
@@ -2534,6 +2568,12 @@ window.playerAction = async (player, action) => {
   } catch (err) {
     toast(err.message, true);
   }
+};
+
+window.playerActionFromPanel = async (player = state.selectedPlayer) => {
+  const action = $("playerActionSelect")?.value || "";
+  if (!action) return toast("Выбери действие.", true);
+  return window.playerAction(player, action);
 };
 
 window.snapshotInventory = async (player = state.selectedPlayer) => {
@@ -2834,8 +2874,9 @@ window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
 
 window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
-  const pin = prompt(`Новый PIN для ${player} (4-8 цифр)`, "") || "";
+  const pin = $("playerAdminPinInput")?.value?.trim() || "";
   if (!pin.trim()) return;
+  if (!/^\d{4,8}$/.test(pin)) return toast("PIN должен состоять из 4-8 цифр.", true);
   const headers = await dangerConfirm(`Задать новый PIN для ${player}? Старый PIN перестанет работать сразу.`, "PLAYER_BANK_PIN_SET");
   if (!headers) return;
   try {
@@ -2845,6 +2886,7 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
       body: JSON.stringify({ new_pin: pin.trim() })
     });
     toast(`PIN для ${player} обновлён: ${result.pin}`);
+    if ($("playerAdminPinInput")) $("playerAdminPinInput").value = "";
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
@@ -3870,6 +3912,7 @@ let adminCommercePages;
 let adminCmsPages;
 let pluginRegistryPages;
 let playerAccountPages;
+let playerArtifactPages;
 let playerTreasuryPages;
 
 function getAdminCommercePages() {
@@ -4001,6 +4044,36 @@ function getPlayerTreasuryPages() {
   return playerTreasuryPages;
 }
 
+function getPlayerArtifactPages() {
+  if (!playerArtifactPages) {
+    playerArtifactPages = createPlayerArtifactPages({
+      $,
+      state,
+      setLoading,
+      api,
+      safeApi,
+      setView,
+      panel,
+      metric,
+      table,
+      pill,
+      esc,
+      cleanText,
+      short,
+      dt,
+      asArray,
+      empty,
+      formatAr,
+      number,
+      statusLabel,
+      artifactStatusTone,
+      randomActionKey,
+      toast,
+    });
+  }
+  return playerArtifactPages;
+}
+
 function getPlayerDonationPages() {
   if (!playerDonationPages) {
     playerDonationPages = createPlayerDonationPages({
@@ -4062,7 +4135,7 @@ window.playerSetPin = async () => getPlayerTreasuryPages().playerSetPin();
 window.playerTransfer = async () => getPlayerTreasuryPages().playerTransfer();
 window.selectPlayerBankScope = async (scope = "PERSONAL") => getPlayerTreasuryPages().selectPlayerBankScope(scope);
 
-async function loadPlayerArtifacts() {
+async function legacyLoadPlayerArtifacts() {
   setLoading("Загрузка предметов");
   const [data, catalogPayload, bank] = await Promise.all([
     safeApi("/api/player/artifacts", { linked: false, purchases: [], pending: [], repairs: [] }),
@@ -4125,26 +4198,13 @@ async function loadPlayerArtifacts() {
   `);
 }
 
-window.playerBuyArItem = async (itemId, displayName = "предмет", price = 0) => {
-  try {
-    const cleanName = cleanText(displayName || itemId || "предмет");
-    if (!window.confirm(`Купить «${cleanName}» за ${formatAr(price)}?`)) return;
-    const pin = window.prompt("PIN банка AR", "") || "";
-    if (!pin.trim()) return toast("Покупка отменена: PIN не введён.", true);
-    const result = await api("/api/player/shop/ar-purchase-intent", {
-      method: "POST",
-      body: JSON.stringify({
-        item_id: String(itemId || ""),
-        pin,
-        idempotency_key: randomActionKey("ar-buy"),
-      }),
-    });
-    toast(`Покупка создана: ${result.itemId}. Забери предмет в игре через /cmartifacts claim.`);
-    await loadPlayerArtifacts();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
+async function loadPlayerArtifacts() {
+  return getPlayerArtifactPages().loadPlayerArtifacts();
+}
+
+window.playerBuyArItem = async (...args) => getPlayerArtifactPages().playerBuyArItem(...args);
+window.playerSelectArItem = (itemId) => getPlayerArtifactPages().playerSelectArItem(itemId);
+window.playerArtifactSearch = (value) => getPlayerArtifactPages().playerArtifactSearch(value);
 
 async function loadPlayerHistory() {
   setLoading("Загрузка истории игрока");
@@ -4350,6 +4410,7 @@ Object.assign(dataClickHandlers, {
   openElectionApplicationBook: fromWindow("openElectionApplicationBook"),
   pageTable: fromWindow("pageTable"),
   playerAction: fromWindow("playerAction"),
+  playerActionFromPanel: fromWindow("playerActionFromPanel"),
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
   playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
@@ -4362,6 +4423,7 @@ Object.assign(dataClickHandlers, {
   playerRefreshDonationSession: fromWindow("playerRefreshDonationSession"),
   playerRequestLinkCode: fromWindow("playerRequestLinkCode"),
   playerRequestWhitelist: fromWindow("playerRequestWhitelist"),
+  playerSelectArItem: fromWindow("playerSelectArItem"),
   playerResetBankPin: fromWindow("playerResetBankPin"),
   playerSetBankPinAdmin: fromWindow("playerSetBankPinAdmin"),
   playerSetPin: fromWindow("playerSetPin"),
@@ -4387,9 +4449,12 @@ Object.assign(dataClickHandlers, {
 });
 
 Object.assign(dataInputHandlers, {
+  adminCmsPickAsset: (value) => getAdminCmsPages().adminCmsPickAsset(value),
   adminCmsSelect: () => getAdminCmsPages().adminCmsSelect(),
   filterPlayers: fromWindow("filterPlayers"),
   filterTable: fromWindow("filterTable"),
+  playerArtifactSearch: fromWindow("playerArtifactSearch"),
+  playerSelectArItem: fromWindow("playerSelectArItem"),
 });
 
 boot();

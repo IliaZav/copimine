@@ -28,6 +28,19 @@ export function createAdminCmsPages(deps) {
     banners: "Баннеры",
   };
 
+  const assetPresets = [
+    ["/assets/brand/copimine-logo.png", "Логотип CopiMine"],
+    ["/assets/brand/copimine-title.png", "Текстовый логотип"],
+    ["/assets/showcase/home-dark-v2.png", "Главная, тёмная тема"],
+    ["/assets/showcase/home-light-v2.png", "Главная, светлая тема"],
+    ["/assets/showcase/mods-dark-v2.png", "Модпак, тёмная тема"],
+    ["/assets/showcase/mods-light-v2.png", "Модпак, светлая тема"],
+    ["/assets/showcase/server-dark-v2.png", "Сервер, тёмная тема"],
+    ["/assets/showcase/server-light-v2.png", "Сервер, светлая тема"],
+    ["/assets/showcase/shops-dark-v2.png", "Лавки, тёмная тема"],
+    ["/assets/showcase/shops-light-v2.png", "Лавки, светлая тема"],
+  ];
+
   function sectionLabel(section) {
     return sectionLabels[String(section || "")] || cleanText(section || "Раздел");
   }
@@ -54,6 +67,14 @@ export function createAdminCmsPages(deps) {
     }).join("");
   }
 
+  function assetOptions(selectedPath) {
+    const current = String(selectedPath || "").trim();
+    return [
+      `<option value="">Без изображения</option>`,
+      ...assetPresets.map(([path, label]) => `<option value="${esc(path)}"${path === current ? " selected" : ""}>${esc(label)}</option>`),
+    ].join("");
+  }
+
   async function loadCms() {
     setLoading("Загружаю CMS");
     const payload = await safeApi("/api/admin/cms", { items: [], sections: ["home", "news", "faq", "rules", "shops", "banners"] });
@@ -69,10 +90,10 @@ export function createAdminCmsPages(deps) {
 
     setView(`
       <section class="layout-grid grid-4 cms-summary-row">
-        ${metric("Записи", items.length, "Новости, правила, FAQ и баннеры", items.length ? "good" : "warn")}
-        ${metric("Активные", enabledItems.length, "Показываются на сайте", enabledItems.length ? "good" : "neutral")}
-        ${metric("Скрытые", disabledItems.length, "Отключены без удаления истории", disabledItems.length ? "warn" : "good")}
-        ${metric("Источник", payload.source || "postgresql", "CMS без правки исходников", "neutral")}
+        ${metric("Записи", items.length, "Контент сайта", items.length ? "good" : "warn")}
+        ${metric("Активные", enabledItems.length, "Видны посетителям", enabledItems.length ? "good" : "neutral")}
+        ${metric("Скрытые", disabledItems.length, "Не показываются", disabledItems.length ? "warn" : "good")}
+        ${metric("Ассеты", assetPresets.length, "Файлы из проекта", "neutral")}
       </section>
 
       <section class="layout-grid grid-2 cms-workbench">
@@ -101,6 +122,10 @@ export function createAdminCmsPages(deps) {
             <div class="field-stack">
               <label for="cmsImagePath">Локальная картинка</label>
               <input id="cmsImagePath" value="${esc(formEntry.imagePath || formEntry.image_path || "")}" placeholder="/assets/showcase/home-light-v2.png" />
+            </div>
+            <div class="field-stack">
+              <label for="cmsAssetPreset">Ассет</label>
+              <select id="cmsAssetPreset" data-input="adminCmsPickAsset">${assetOptions(formEntry.imagePath || formEntry.image_path || "")}</select>
             </div>
             <div class="field-stack">
               <label for="cmsLinkUrl">Ссылка</label>
@@ -194,6 +219,11 @@ export function createAdminCmsPages(deps) {
     void loadCms();
   }
 
+  function adminCmsPickAsset(value) {
+    const input = $("cmsImagePath");
+    if (input) input.value = String(value || "").trim();
+  }
+
   function adminCmsNew() {
     state.cmsSelectedKey = "";
     setView(panel("Новая CMS-запись", "Заполни поля и сохрани.", `
@@ -217,6 +247,7 @@ export function createAdminCmsPages(deps) {
               <textarea id="cmsBody" rows="7" placeholder="Текст без HTML"></textarea>
             </div>
             <input id="cmsImagePath" placeholder="/assets/showcase/home-light-v2.png" />
+            <select id="cmsAssetPreset" data-input="adminCmsPickAsset">${assetOptions("")}</select>
             <input id="cmsLinkUrl" placeholder="/index.html" />
             <input id="cmsSortOrder" type="number" min="0" step="1" value="100" />
             <label class="toggle-row" for="cmsEnabled"><input id="cmsEnabled" type="checkbox" checked /><span>Показывать</span></label>
@@ -240,6 +271,7 @@ export function createAdminCmsPages(deps) {
     adminCmsSave,
     adminCmsDisable,
     adminCmsEdit,
+    adminCmsPickAsset,
     adminCmsNew,
     adminCmsSelect,
   };

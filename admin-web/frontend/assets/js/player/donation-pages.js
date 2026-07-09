@@ -274,14 +274,12 @@ export function createPlayerDonationPages(deps) {
 
   async function playerBuyDonationItem(itemId, displayName = "предмет", price = 0) {
     try {
-      if (!window.confirm(`Списать ${number(price || 0)} Donation за «${cleanText(displayName || itemId || "предмет")}»?`)) {
-        return;
-      }
+      const cleanName = cleanText(displayName || itemId || "предмет");
       const result = await api("/api/player/shop/purchase-intent", {
         method: "POST",
         body: JSON.stringify({ item_id: String(itemId || ""), idempotency_key: randomActionKey("don-buy") }),
       });
-      toast(`Покупка создана. Предмет ${result.itemId} можно забрать в игре.`);
+      toast(`Покупка создана: ${cleanText(result.itemId || cleanName)}. Забери предмет в игре.`);
       await loadPlayerDonationShop();
     } catch (err) {
       toast(err.message, true);

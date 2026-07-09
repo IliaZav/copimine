@@ -1,0 +1,174 @@
+/* Player AR shop and artifact account page. */
+
+.artifact-dashboard {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.artifact-workbench {
+  align-items: stretch;
+}
+
+.artifact-purchase-card,
+.artifact-item-card {
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(160deg, var(--surface), var(--surface-soft)),
+    radial-gradient(circle at 92% 8%, rgba(75, 125, 210, 0.14), transparent 40%);
+  box-shadow: var(--shadow-soft);
+}
+
+.artifact-purchase-card {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 24px;
+}
+
+.artifact-purchase-head {
+  display: grid;
+  gap: 8px;
+}
+
+.artifact-purchase-head span,
+.artifact-item-card span,
+.artifact-buy-note span {
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.artifact-purchase-head strong {
+  color: var(--ink);
+  font-size: clamp(1.25rem, 1.7vw, 1.75rem);
+  letter-spacing: -0.04em;
+}
+
+.artifact-purchase-head p,
+.artifact-item-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.artifact-purchase-price {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+}
+
+.artifact-purchase-price span {
+  color: var(--muted);
+}
+
+.artifact-purchase-price strong {
+  color: var(--accent);
+  font-size: 1.25rem;
+}
+
+.artifact-buy-form {
+  align-items: end;
+}
+
+.artifact-buy-action {
+  justify-content: end;
+}
+
+.artifact-buy-action .btn {
+  min-height: 45px;
+  width: 100%;
+}
+
+.artifact-buy-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.artifact-buy-note code {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.artifact-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.artifact-item-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 20px;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.artifact-item-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: 0 20px 42px rgba(7, 15, 30, 0.16);
+}
+
+.artifact-item-card.is-disabled {
+  opacity: 0.62;
+}
+
+.artifact-item-card strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink);
+  font-size: 1.03rem;
+}
+
+.artifact-item-meta {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.artifact-item-meta b {
+  color: var(--accent);
+}
+
+.artifact-item-meta small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+:root[data-theme="dark"] .artifact-purchase-card,
+:root[data-theme="dark"] .artifact-item-card {
+  background:
+    linear-gradient(160deg, rgba(10, 24, 16, 0.96), rgba(7, 16, 11, 0.98)),
+    radial-gradient(circle at 92% 8%, rgba(65, 230, 126, 0.09), transparent 40%);
+}
+
+@media (max-width: 840px) {
+  .artifact-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-buy-action {
+    justify-content: stretch;
+  }
+}

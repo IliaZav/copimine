@@ -93,7 +93,7 @@ export function createPlayerDonationPages(deps) {
       <section class="layout-grid grid-4">
         ${metric("Donation", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
         ${metric("Курс", `${packs.rubPerUnit || 1} ₽ = 1 DC`, "Фиксированный курс", "neutral")}
-        ${metric("Режим оплаты", paymentModeLabel(packs.provider), "Тестовый провайдер", "warn")}
+        ${metric("Режим оплаты", paymentModeLabel(packs.provider), "ожидает подключения СБП", "warn")}
         ${metric("Сессия", session ? statusLabel(session.status || "created") : "нет", session ? `Код ${session.session_code || short(donationSessionKey(session), 8)}` : "Создай новую сессию", session ? "neutral" : "good")}
       </section>
       ${panel("Donation-баланс", "Отдельный баланс для donation-лавки.", kv([

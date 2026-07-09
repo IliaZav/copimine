@@ -272,9 +272,10 @@ const adminSearchAliases = {
   dashboard: "главная обзор статус tps mspt онлайн сервер состояние",
   players: "игрок игроки ник бан кик варн эффекты наркотики очистить баланс",
   economy: "банк ar ар ары баланс казна перевод банкомат atm pin пин",
-  artifacts: "лавка артефакты магазин предметы покупка выдача ремонт",
-  elections: "выборы цик председатель президент бюллетень участок законы мандат",
-  "narcotics-recipes": "рецепты наркотики котел котёл ингредиенты варка фета кола гирион сбп жужево",
+  artifacts: "лавка лавки артефакты магазин предметы покупка выдача ремонт удалить блок витрина",
+  elections: "выборы цик председатель председ предмедатель президент бюллетень участок законы мандат кандидат кандидаты книга заявка",
+  requests: "заявки обращения жалобы книга рассмотреть одобрить отклонить discord дискорд",
+  "narcotics-recipes": "рецепты наркотики нарко котел котёл ингредиенты варка фета кола гирион сбп жужево смесь",
   cms: "cms контент новости баннеры правила faq картинки страницы",
   admins: "админы команда доступ регистрация роли младший owner",
   security: "безопасность csrf сессии whitelist вайтлист доступ ip",
@@ -1449,17 +1450,65 @@ function transactionFeed(rows, limit = 12) {
   `;
 }
 
-window.openElectionApplicationBook = (applicationId) => {
+function electionApplicationBookScene(row, pageIndex = 0) {
+  const pages = parseApplicationAnswers(row.answers);
+  const current = Math.max(0, Math.min(Number(pageIndex) || 0, Math.max(0, pages.length - 1)));
+  const page = pages[current] || { question: "Заявка", answer: "Текст заявки не найден." };
+  const status = cleanText(row.admin_status || row.status || "PENDING").toUpperCase();
+  const canReview = !["APPROVED", "REJECTED"].includes(status);
+  const id = esc(row.id);
+  return `
+    <div class="mc-book-stage">
+      <div class="mc-book">
+        <div class="mc-book-page-count">Страница ${current + 1} из ${Math.max(1, pages.length)}</div>
+        <div class="mc-book-title">${esc(row.player_name || "Кандидат")}</div>
+        <div class="mc-book-question">${esc(page.question)}</div>
+        <div class="mc-book-text">${bookAnswerHtml(page.answer)}</div>
+        <button class="mc-book-arrow mc-book-arrow-left" ${current <= 0 ? "disabled" : ""} data-click="openElectionApplicationBook('${id}',${current - 1})" aria-label="Предыдущая страница"></button>
+        <button class="mc-book-arrow mc-book-arrow-right" ${current >= pages.length - 1 ? "disabled" : ""} data-click="openElectionApplicationBook('${id}',${current + 1})" aria-label="Следующая страница"></button>
+      </div>
+      <div class="mc-book-status">
+        ${pill(recommendationText(row.chair_recommendation), recommendationTone(row.chair_recommendation))}
+        ${pill(applicationStatusText(row.admin_status || row.status), adminDecisionTone(row.admin_status || row.status))}
+      </div>
+      <div class="mc-book-actions">
+        <button class="mc-book-button" ${canReview ? "" : "disabled"} data-click="reviewElectionApplication('${id}','approved')">Одобрить</button>
+        <button class="mc-book-button mc-book-close" data-click="closeModal()">Закрыть</button>
+        <button class="mc-book-button" ${canReview ? "" : "disabled"} data-click="reviewElectionApplication('${id}','rejected')">Отклонить</button>
+      </div>
+    </div>
+  `;
+}
+
+window.openElectionApplicationBook = (applicationId, pageIndex = 0) => {
   const row = state.electionApplications?.[applicationId];
   if (!row) return toast("Книга заявки не найдена", true);
   const overlay = buildModalOverlay();
-  const subtitle = `${cleanText(row.player_name || "Кандидат")} · ${row.submitted_at ? dt(row.submitted_at) : "книга ещё не сдана"}`;
-  const modal = buildModalShell("Заявка кандидата", subtitle, { wide: true, closeLabel: "Закрыть" });
+  overlay.classList.add("mc-book-overlay");
+  const modal = buildModalShell("", "", { wide: true });
+  modal.classList.add("mc-book-modal");
   const preview = document.createElement("div");
-  preview.append(fragmentFromHtml(applicationBookPreview(row)));
+  preview.append(fragmentFromHtml(electionApplicationBookScene(row, pageIndex)));
   modal.append(preview);
   overlay.append(modal);
   replaceChildrenSafe($("modalRoot"), [overlay]);
+};
+
+window.reviewElectionApplication = async (applicationId, decision) => {
+  const label = decision === "approved" ? "одобрить" : "отклонить";
+  try {
+    const headers = await dangerConfirm(`Нужно ${label} заявку кандидата?`, `ELECTION_APPLICATION_${decision.toUpperCase()}`);
+    await api(`/api/elections/applications/${encodeURIComponent(applicationId)}/review`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision }),
+    });
+    toast(decision === "approved" ? "Заявка одобрена" : "Заявка отклонена");
+    await loadElections();
+    window.closeModal();
+  } catch (err) {
+    toast(err.message, true);
+  }
 };
 
 function siteBulletList(items) {
@@ -3007,14 +3056,14 @@ async function loadArtifacts() {
   ]);
   const counts = health.counts || {};
   setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Связка модулей", health.bridgeMode || "ArtifactsBridge", health.jarsOk ? "оба модуля активны" : `модули: ${asArray(health.activeJars).join(", ") || "нет"}`, health.jarsOk ? "good" : "bad")}
-      ${metric("База сайта", health.postgres ? "PostgreSQL доступна" : "PostgreSQL недоступна", "Основная база сайта", health.postgres ? "good" : "bad")}
-      ${metric("", counts.artifact_items_catalog ?? asArray(catalog.items).length, " ")}
-      ${metric("Pending", counts.artifact_pending_deliveries ?? asArray(pending.deliveries).length, "  ", Number(counts.artifact_pending_deliveries || 0) ? "warn" : "good")}
+    <section class="layout-grid grid-4" data-artifact-health="Bridge PostgreSQL">
+      ${metric("Лавка", health.jarsOk ? "работает" : "проверить", health.jarsOk ? "каталог и выдача подключены" : `активно: ${asArray(health.activeJars).join(", ") || "нет данных"}`, health.jarsOk ? "good" : "bad")}
+      ${metric("Данные", health.postgres ? "подключены" : "недоступны", "покупки, выдачи и ремонты", health.postgres ? "good" : "bad")}
+      ${metric("Каталог", counts.artifact_items_catalog ?? asArray(catalog.items).length, "предметов")}
+      ${metric("Выдача", counts.artifact_pending_deliveries ?? asArray(pending.deliveries).length, "ожидают игрока", Number(counts.artifact_pending_deliveries || 0) ? "warn" : "good")}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Каталог лавки", "WEAPON / ARMOR / TOOL активны, RP остаётся заготовкой", table("artifact-catalog", asArray(catalog.items), [
+      ${panel("Каталог лавки", "Предметы, которые игроки покупают за AR.", table("artifact-catalog", asArray(catalog.items), [
         { key: "item_id", label: "ID" },
         { key: "category", label: "Категория" },
         { key: "name", label: "Название" },
@@ -3054,7 +3103,7 @@ async function loadArtifacts() {
         { key: "repair_cost_ar", label: "AR" },
         { key: "status", label: "Статус", render: v => pill(v || "—", artifactStatusTone(v)) }
       ], { pageSize: 12 }))}
-      ${panel("Подозрительные предметы", "Fake lore/displayName не считается официальным предметом", table("artifact-suspicious", asArray(suspicious.events), [
+      ${panel("Подозрительные предметы", "Предметы без официальной записи в базе.", table("artifact-suspicious", asArray(suspicious.events), [
         { key: "created_at", label: "Время", render: v => dt(v) },
         { key: "player_name", label: "Игрок" },
         { key: "event_type", label: "Событие" },
@@ -3078,13 +3127,13 @@ async function loadRequests() {
   const requestPlayers = asArray(playersData.players);
   setView(`
     <section class="layout-grid grid-4">
-      ${metric("Готовность", `${ready}/${total}`, "токен, guild, каналы, роль, api key", ready === total ? "good" : "warn")}
-      ${metric("Заявки", asArray(applications.applications).length, "из кабинета и очереди")}
+      ${metric("Связь", `${ready}/${total}`, "бот, каналы и роль", ready === total ? "good" : "warn")}
+      ${metric("Заявки", asArray(applications.applications).length, "ожидают обработки")}
       ${metric("Жалобы", asArray(reports.reports).length, "активные обращения")}
-      ${metric("Outbox", asArray(status.outbox).length, "очередь публикации")}
+      ${metric("Публикации", asArray(status.outbox).length, "сообщения для Discord")}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Новая заявка", "Создаётся в кабинете и попадает в очередь обработки", `
+      ${panel("Новая заявка", "Создайте обращение вручную, если игрок написал вне сайта.", `
         <div class="form-grid">
           <input id="appPlayer" placeholder="Ник игрока" list="requestPlayersDatalist" />
           <input id="appContact" placeholder="Контакт или игровой ник" list="requestPlayersDatalist" />
@@ -3093,7 +3142,7 @@ async function loadRequests() {
         </div>
         ${playerDatalistHtml("requestPlayersDatalist", requestPlayers)}
       `)}
-      ${panel("Новая жалоба", "Быстрое создание обращения с целью и координатами", `
+      ${panel("Новая жалоба", "Запишите жалобу с игроком, целью и местом события.", `
         <div class="form-grid">
           <input id="repReporter" placeholder="Кто жалуется" list="requestPlayersDatalist" />
           <input id="repTarget" placeholder="На кого / цель" list="requestPlayersDatalist" />
@@ -3105,7 +3154,7 @@ async function loadRequests() {
       `)}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Заявки", "Статусы синхронизируются с ботом", table("requests-apps", asArray(applications.applications), [
+      ${panel("Заявки", "Очередь обращений от игроков.", table("requests-apps", asArray(applications.applications), [
         { key: "id", label: "ID" },
         { key: "player", label: "Игрок" },
         { key: "status", label: "Статус", render: v => pill(v || "pending", v === "approved" ? "good" : v === "rejected" ? "bad" : "warn") },
@@ -3307,8 +3356,8 @@ async function loadAnticheat() {
   setView(`
     <section class="server-stat-grid anticheat-grid">
       ${metric("GrimAC", data.installed ? "Установлен" : "Не найден", plugin.version || "релизная сборка", data.installed ? "good" : "bad")}
-      ${metric("Профиль", data.silentProfile ? "Тихий" : "Проверить", "лог без чата и титров", data.silentProfile ? "good" : "warn")}
-      ${metric("Стабильность", data.stableProfile ? "Релиз" : "Проверить", "эксперименты выключены, автообновления выключены", data.stableProfile ? "good" : "warn")}
+      ${metric("Чат", data.silentProfile ? "тихо" : "проверить", "без лишних сообщений игрокам", data.silentProfile ? "good" : "warn")}
+      ${metric("Настройки", data.stableProfile ? "спокойные" : "проверить", "без автонаказаний и резких действий", data.stableProfile ? "good" : "warn")}
       ${metric("Сигналы", Number(summary.logLines || 0) + Number(summary.panelEvents || 0), "журнал сервера и события панели")}
     </section>
     <section class="layout-grid grid-2">
@@ -4508,6 +4557,7 @@ Object.assign(dataClickHandlers, {
   adminRecipeRemove: (...args) => getAdminNarcoticsRecipePages().adminRecipeRemove(...args),
   adminRecipeSave: () => getAdminNarcoticsRecipePages().adminRecipeSave(),
   adminRecipeTab: (...args) => getAdminNarcoticsRecipePages().adminRecipeTab(...args),
+  adminRecipeTogglePicker: () => getAdminNarcoticsRecipePages().adminRecipeTogglePicker(),
   adminSetTreasuryPin: fromWindow("adminSetTreasuryPin"),
   approveWhitelistRequest: fromWindow("approveWhitelistRequest"),
   closeModal: fromWindow("closeModal"),
@@ -4547,6 +4597,7 @@ Object.assign(dataClickHandlers, {
   pluginRegistryValidate: fromWindow("pluginRegistryValidate"),
   requestApplicationStatus: fromWindow("requestApplicationStatus"),
   requestReportStatus: fromWindow("requestReportStatus"),
+  reviewElectionApplication: fromWindow("reviewElectionApplication"),
   runAccessAction: fromWindow("runAccessAction"),
   runSafeRcon: fromWindow("runSafeRcon"),
   scanAresWorld: fromWindow("scanAresWorld"),

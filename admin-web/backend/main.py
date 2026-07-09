@@ -427,6 +427,12 @@ class ElectionEmergencyIn(BaseModel):
     reason: Optional[str] = Field(default="web-emergency", max_length=180)
 
 
+class ElectionApplicationReviewIn(BaseModel):
+    decision: str = Field(max_length=24)
+    note: str = Field(default="", max_length=240)
+    create_candidate: bool = True
+
+
 class ElectionDecreeIn(BaseModel):
     title: str = Field(min_length=3, max_length=180)
     body: str = Field(min_length=3, max_length=6000)
@@ -6045,6 +6051,84 @@ def create_election_petition_sync(data: ElectionPetitionIn, actor: str) -> dict[
     return item
 
 
+def review_candidate_application_sync(application_id: str, data: ElectionApplicationReviewIn, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for candidate applications")
+    decision = str(data.decision or "").strip().lower()
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
+    admin_status = "APPROVED" if decision == "approved" else "REJECTED"
+    now = now_ts()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row_raw = conn.execute("SELECT * FROM candidate_applications WHERE id=%s", (application_id,)).fetchone()
+        if not row_raw:
+            raise HTTPException(status_code=404, detail="Заявка кандидата не найдена")
+        row = dict(row_raw)
+        conn.execute(
+            """
+            UPDATE candidate_applications
+               SET admin_status=%s, admin_note=%s, reviewed_at=%s, reviewed_by=%s
+             WHERE id=%s
+            """,
+            (admin_status, data.note.strip(), now, actor, application_id),
+        )
+        candidate: dict[str, Any] | None = None
+        if admin_status == "APPROVED" and data.create_candidate:
+            existing = conn.execute(
+                """
+                SELECT * FROM candidates
+                 WHERE election_id=%s AND (application_id=%s OR player_uuid=%s)
+                 ORDER BY created_at DESC
+                 LIMIT 1
+                """,
+                (row.get("election_id"), application_id, row.get("player_uuid")),
+            ).fetchone()
+            if existing:
+                candidate = dict(existing)
+                if int(candidate.get("active") or 0) != 1:
+                    conn.execute("UPDATE candidates SET active=1 WHERE id=%s", (candidate.get("id"),))
+                    candidate["active"] = 1
+            else:
+                candidate = {
+                    "id": f"candidate_{secrets.token_hex(8)}",
+                    "election_id": row.get("election_id") or "",
+                    "player_uuid": row.get("player_uuid") or "",
+                    "player_name": row.get("player_name") or "",
+                    "application_id": application_id,
+                    "created_at": now,
+                    "active": 1,
+                    "last_result": 0,
+                }
+                conn.execute(
+                    """
+                    INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    (
+                        candidate["id"],
+                        candidate["election_id"],
+                        candidate["player_uuid"],
+                        candidate["player_name"],
+                        candidate["application_id"],
+                        candidate["created_at"],
+                        candidate["active"],
+                        candidate["last_result"],
+                    ),
+                )
+        conn.commit()
+    audit_event(actor, "election.application.review", target=application_id, details={"decision": admin_status, "candidate": bool(candidate)})
+    append_panel_event(
+        "admin-panel",
+        "election_application_reviewed",
+        actor=actor,
+        target=application_id,
+        metadata={"decision": admin_status, "candidateId": candidate.get("id") if candidate else ""},
+        tags=["elections", "application"],
+    )
+    return {"applicationId": application_id, "decision": admin_status, "candidate": candidate}
+
+
 def sqlite_table_rows(path: str, table: str, limit: int = 200, offset: int = 0, q: str = "") -> dict[str, Any]:
     with open_sqlite_readonly(path) as conn:
         available = tables(conn)
@@ -8763,6 +8847,21 @@ async def elections_overview(_: str = Depends(require_panel_admin)) -> dict[str,
 @app.get("/api/elections/detail")
 async def elections_detail(limit: int = 500, _: str = Depends(require_admin)) -> dict[str, Any]:
     return await bg(election_detail_sync, limit)
+
+
+@app.post("/api/elections/applications/{application_id}/review")
+async def elections_application_review(
+    application_id: str,
+    data: ElectionApplicationReviewIn,
+    request: Request,
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    decision = str(data.decision or "").strip().lower()
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
+    require_sensitive_confirm(request, f"ELECTION_APPLICATION_{decision.upper()}")
+    result = await bg(review_candidate_application_sync, application_id, data, username)
+    return {"ok": True, **result}
 
 
 @app.get("/api/elections/decrees")

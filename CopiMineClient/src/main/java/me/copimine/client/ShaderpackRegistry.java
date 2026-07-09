@@ -70,9 +70,8 @@ public final class ShaderpackRegistry {
         register("acid_shaders", "Acid Shaders", "acid_shaders.zip", RuntimeKind.IRIS_SHADERPACK, "COLOR_CONVOLVE", false, 60, List.of("iris"), "acid", "Acid Shaders.zip", "psychedelic hue shift and saturation");
         register("crucify", "Crucify", "crucify.zip", RuntimeKind.IRIS_SHADERPACK, "INVERT", true, 70, List.of("iris"), "dark", "Crucify.zip", "high-contrast dark distortion");
         register("cursed_metamorphopsia", "Cursed Metamorphopsia", "cursed_metamorphopsia.zip", RuntimeKind.IRIS_SHADERPACK, "WOBBLE", true, 80, List.of("iris"), "cursed", "Cursed Shader (Metamorphopsia).zip", "warped cursed world look");
-        register("jelly_world", "Jelly World", "jelly_world.zip", RuntimeKind.FALLBACK_ONLY, "BLOBS", false, 10, List.of(), "jelly", "JELLY WORLD.zip", "fallback-only vanilla shader override; no root shaders/ directory for Iris runtime");
         register("nms_1_6", "NMS 1.6", "nms_1_6.zip", RuntimeKind.IRIS_SHADERPACK, "GREEN_NOISE", true, 55, List.of("iris"), "nms", "NMS 1.6.zip", "glow-heavy green ambient pack");
-        register("white_sharp_1_2", "White Sharp 1.2", "white_sharp_1_2.zip", RuntimeKind.IRIS_SHADERPACK, "DESATURATE", false, 35, List.of("iris"), "sharp", "white sharp shader_1.2.zip", "sharp bright clarity pack");
+        register("white_sharp_1_2", "White Sharp 1.2", "white_sharp_1_2.zip", RuntimeKind.IRIS_SHADERPACK, "DESATURATE", false, 35, List.of("iris"), "sharp", "white sharp shader_1.2.zip", "spare Iris shaderpack kept for manual tests and random visual selection");
         register("ctr_vcr", "CTR-VCR", "ctr_vcr.zip", RuntimeKind.IRIS_SHADERPACK, "SCAN_PINCUSHION", true, 85, List.of("iris"), "crt", "CTR-VCR_v1.4.4.zip", "CRT and VHS-like scan distortion");
         register("lsd_shader", "LSD Shader", "lsd_shader.zip", RuntimeKind.IRIS_SHADERPACK, "COLOR_CONVOLVE", false, 90, List.of("iris"), "lsd", "LSD_Sshader_v1_3.zip", "rainbow warp and lsd-style color shift");
         register("trippy_shaderpack", "Trippy Shaderpack", "trippy_shaderpack.zip", RuntimeKind.IRIS_SHADERPACK, "DESATURATE", false, 95, List.of("iris"), "trippy", "Trippy-Shaderpack master.zip", "strong psychedelic distortion with adjustable curvature and waviness");
@@ -81,8 +80,7 @@ public final class ShaderpackRegistry {
         alias("crucify", "crucify");
         alias("cursed", "cursed_metamorphopsia");
         alias("metamorphopsia", "cursed_metamorphopsia");
-        alias("jelly", "jelly_world");
-        alias("jelly_world", "jelly_world");
+        alias("jelly", "white_sharp_1_2");
         alias("nms", "nms_1_6");
         alias("white", "white_sharp_1_2");
         alias("sharp", "white_sharp_1_2");

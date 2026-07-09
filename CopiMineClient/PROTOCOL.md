@@ -12,7 +12,7 @@ Transport model:
 - if the client mod is missing or stops responding, the server falls back to server overlay or particle visuals;
 - primary route is built-in ZIP shaderpack switching through Iris when Iris runtime is available;
 - fallback route is CopiMineClient post-processing plus overlay composition;
-- `jelly_world.zip` is exported with the mod but is not treated as an Iris-compatible shaderpack.
+- `white_sharp_1_2.zip` is kept as a spare built-in Iris shaderpack for manual tests and random visual selection.
 
 Message envelope:
 1. `type:string`
@@ -62,5 +62,5 @@ Runtime rules:
 - if Iris runtime switching works, CopiMineClient stores the previous shaderpack state, enables the requested CopiMine pack, then restores the old state after the effect;
 - if the player already had an Iris shaderpack active, the previous state is restored after the CopiMine effect unless local config blocks override;
 - if Iris is absent, unsupported, or a ZIP is not Iris-compatible, CopiMineClient uses fallback post-processing;
-- `jelly_world.zip` is treated honestly as fallback-only because it is a vanilla shader override pack rather than an Iris shaderpack;
+- non-Iris shaderpack ZIPs are not embedded in the active runtime set; unsupported visuals use fallback post-processing instead of pretending a ZIP was enabled;
 - the server still applies gameplay effects even when no client mod is present.

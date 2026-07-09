@@ -2580,6 +2580,185 @@ td {
   gap: 8px;
 }
 
+.mc-book-overlay {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(0, 0, 0, .22), transparent 32%),
+    rgba(5, 8, 10, .66);
+}
+
+.mc-book-modal {
+  width: min(720px, calc(100vw - 24px));
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mc-book-modal .modal-head {
+  display: none;
+}
+
+.mc-book-stage {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  font-family: "Minecraft Rus", "JetBrains Mono", monospace;
+}
+
+.mc-book {
+  position: relative;
+  width: min(360px, calc(100vw - 54px));
+  min-height: 470px;
+  padding: 36px 42px 44px 58px;
+  color: #1f1810;
+  image-rendering: pixelated;
+  background:
+    linear-gradient(90deg, transparent 0 23px, #b9301e 23px 27px, transparent 27px 100%),
+    radial-gradient(circle at 78% 18%, rgba(255, 255, 255, .52), transparent 24%),
+    linear-gradient(180deg, #fff8da 0%, #f6e9bc 54%, #f3dfaa 100%);
+  border: 10px solid #6f351f;
+  border-top-color: #8a4b2c;
+  border-left-color: #7d3d24;
+  border-right-color: #4a2015;
+  border-bottom-color: #3b180f;
+  border-radius: 18px;
+  box-shadow:
+    inset 6px 0 0 rgba(136, 41, 24, .34),
+    inset -7px -8px 0 rgba(116, 80, 42, .12),
+    0 18px 0 rgba(0, 0, 0, .22),
+    0 30px 70px rgba(0, 0, 0, .44);
+}
+
+.mc-book::before,
+.mc-book::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.mc-book::before {
+  left: 30px;
+  top: 38px;
+  width: 13px;
+  height: calc(100% - 72px);
+  background:
+    repeating-linear-gradient(180deg, #b42016 0 9px, transparent 9px 24px);
+  border-radius: 999px;
+}
+
+.mc-book::after {
+  right: 16px;
+  bottom: 16px;
+  width: 62px;
+  height: 48px;
+  background:
+    linear-gradient(135deg, transparent 0 45%, rgba(104, 83, 52, .24) 46% 52%, transparent 53%),
+    linear-gradient(45deg, transparent 0 44%, rgba(104, 83, 52, .18) 45% 51%, transparent 52%);
+}
+
+.mc-book-page-count {
+  text-align: right;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.mc-book-title {
+  margin-top: 18px;
+  font-size: 19px;
+  line-height: 1.18;
+}
+
+.mc-book-question {
+  margin-top: 18px;
+  font-size: 15px;
+  line-height: 1.28;
+}
+
+.mc-book-text {
+  margin-top: 20px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  line-height: 1.33;
+}
+
+.mc-book-arrow {
+  position: absolute;
+  bottom: 19px;
+  width: 34px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mc-book-arrow::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  margin: 4px auto;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+}
+
+.mc-book-arrow-left {
+  left: 54px;
+}
+
+.mc-book-arrow-left::before {
+  border-right: 14px solid #7b6a4d;
+}
+
+.mc-book-arrow-right {
+  right: 38px;
+}
+
+.mc-book-arrow-right::before {
+  border-left: 14px solid #7b6a4d;
+}
+
+.mc-book-arrow:disabled {
+  opacity: .22;
+  cursor: default;
+}
+
+.mc-book-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.mc-book-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 10px;
+  width: min(520px, calc(100vw - 32px));
+}
+
+.mc-book-button {
+  min-height: 42px;
+  border: 3px solid #1d1d1d;
+  border-top-color: #f3f3f3;
+  border-left-color: #f3f3f3;
+  border-radius: 0;
+  background: #a5a5a5;
+  color: #fff;
+  text-shadow: 2px 2px 0 #383838;
+  box-shadow: inset -2px -2px 0 #5c5c5c, inset 2px 2px 0 #d8d8d8;
+  font: 900 16px/1 "Minecraft Rus", "JetBrains Mono", monospace;
+}
+
+.mc-book-button:hover:not(:disabled) {
+  background: #b9b9b9;
+}
+
+.mc-book-button:disabled {
+  opacity: .52;
+  cursor: default;
+}
+
 .candidate-card {
   display: grid;
   gap: 14px;

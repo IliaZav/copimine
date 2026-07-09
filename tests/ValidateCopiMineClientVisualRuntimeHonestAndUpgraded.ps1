@@ -32,7 +32,9 @@ foreach ($marker in @('Route.IRIS_SHADERPACK','Route.FALLBACK_POST_PROCESS','fal
 foreach ($marker in @('switchToShaderpack','restoreState','copimineclient-shader-runtime.properties')) {
   Require-Contains $irisRuntime $marker "IrisShaderpackRuntime must persist and restore shaderpack state via $marker."
 }
-Require-Contains $registry 'jelly_world.zip' 'ShaderpackRegistry must track jelly_world.zip explicitly.'
-Require-Contains $registry 'FALLBACK_ONLY' 'ShaderpackRegistry must mark non-Iris packs honestly.'
+Require-Contains $registry 'white_sharp_1_2.zip' 'ShaderpackRegistry must keep white_sharp_1_2.zip as a spare embedded Iris shaderpack.'
+if ($registry -match [regex]::Escape('jelly_world.zip')) {
+  $errors.Add('ShaderpackRegistry must not embed jelly_world.zip after the Jelly World removal.')
+}
 
 Throw-IfErrors 'ValidateCopiMineClientVisualRuntimeHonestAndUpgraded'

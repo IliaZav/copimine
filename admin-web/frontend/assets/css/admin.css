@@ -536,6 +536,7 @@ body.junior-admin-mode .page-heading h1::after {
   border-left-color: #ededed;
   background: #8f8f8f;
   box-shadow: inset 0 0 0 2px #5c5c5c;
+  transition: filter .16s ease, opacity .16s ease;
 }
 
 .recipe-slot,
@@ -569,6 +570,20 @@ body.junior-admin-mode .page-heading h1::after {
   image-rendering: pixelated;
 }
 
+.recipe-add-slot strong {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  color: #233226;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.recipe-add-slot {
+  background: #d9d9d9;
+}
+
 .recipe-slot span,
 .creative-item span {
   position: absolute;
@@ -597,6 +612,7 @@ body.junior-admin-mode .page-heading h1::after {
 }
 
 .recipe-trash {
+  display: none;
   margin-top: 10px;
   padding: 11px 12px;
   border: 2px dashed color-mix(in srgb, var(--red) 60%, transparent);
@@ -607,9 +623,31 @@ body.junior-admin-mode .page-heading h1::after {
 }
 
 .recipe-trash.is-live {
+  display: block;
   color: var(--red);
   border-color: var(--red);
   background: color-mix(in srgb, var(--red-2) 80%, transparent);
+}
+
+.recipe-dragging .recipe-tape,
+.recipe-dragging .recipe-inventory-head,
+.recipe-dragging .creative-inventory-grid {
+  filter: blur(1.5px) saturate(.82);
+  opacity: .72;
+}
+
+.recipe-inventory-closed {
+  display: grid;
+  place-items: center;
+  min-height: 132px;
+  padding: 18px;
+  border: 4px solid #3d3d3d;
+  border-top-color: #efefef;
+  border-left-color: #efefef;
+  background: #c6c6c6;
+  color: #2c2c2c;
+  font-weight: 900;
+  text-align: center;
 }
 
 .recipe-inventory-head {

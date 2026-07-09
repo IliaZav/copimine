@@ -52,7 +52,7 @@ export function createAdminNarcoticsRecipePages(deps) {
 
   function recipeState() {
     if (!state.narcoticsRecipeEditor) {
-      state.narcoticsRecipeEditor = { selected: "", tab: "basic", query: "", recipes: [] };
+      state.narcoticsRecipeEditor = { selected: "", tab: "basic", query: "", pickerOpen: false, recipes: [] };
     }
     return state.narcoticsRecipeEditor;
   }
@@ -97,10 +97,7 @@ export function createAdminNarcoticsRecipePages(deps) {
 
   function renderTape(recipe) {
     const items = Array.isArray(recipe?.recipe) ? recipe.recipe : [];
-    if (!items.length) {
-      return `<div class="recipe-empty">Перетащите ингредиенты из инвентаря ниже. Минимум три.</div>`;
-    }
-    return items.map((token, index) => {
+    const slots = items.map((token, index) => {
       const { kind, value } = tokenParts(token);
       const potion = kind === "POTION";
       return `
@@ -111,10 +108,14 @@ export function createAdminNarcoticsRecipePages(deps) {
           <span>${esc(displayName(token))}</span>
         </button>`;
     }).join("");
+    return `${slots}<button class="recipe-slot recipe-add-slot" type="button" title="Добавить ингредиент" data-click="adminRecipeTogglePicker()"><strong>+</strong><span>Добавить ингредиент</span></button>`;
   }
 
   function renderInventory() {
     const rs = recipeState();
+    if (!rs.pickerOpen) {
+      return `<div class="recipe-inventory-closed">Нажмите плюс в ленте рецепта, чтобы открыть список предметов.</div>`;
+    }
     const active = RECIPE_ITEM_TABS.find((tab) => tab.id === rs.tab) || RECIPE_ITEM_TABS[0];
     const query = String(rs.query || "").trim().toLowerCase();
     const items = active.items
@@ -149,9 +150,9 @@ export function createAdminNarcoticsRecipePages(deps) {
       <section class="layout-grid grid-3 recipe-summary-row">
         ${metric("Наркотик", recipe.name || recipe.id, recipe.id, "good")}
         ${metric("Ингредиентов", count, count >= 3 ? "готов к сохранению" : "минимум 3", count >= 3 ? "good" : "warn")}
-        ${metric("Сохранение", "только админка", "игрокам рецепты не показываются", "neutral")}
+        ${metric("Доступ", "админка", "изменения сразу уходят в конфиг", "neutral")}
       </section>
-      ${panel("Редактор рецепта", "Лента работает как компактный Minecraft-инвентарь: добавить, перетащить, удалить.", `
+      ${panel("Редактор рецепта", "Соберите ленту ингредиентов. Порядок в игре не важен.", `
         <div class="recipe-toolbar">
           <label>
             <span>Рецепт</span>
@@ -161,9 +162,9 @@ export function createAdminNarcoticsRecipePages(deps) {
           <button class="btn btn-primary" data-click="adminRecipeSave()">Сохранить рецепты</button>
         </div>
         <div class="recipe-tape" id="recipeTape">${renderTape(recipe)}</div>
-        <div class="recipe-trash" id="recipeTrash">Корзина появляется при перетаскивании. Клик по ингредиенту тоже удаляет его.</div>
+        <div class="recipe-trash" id="recipeTrash">Отпустите ингредиент здесь, чтобы удалить.</div>
       `)}
-      ${panel("Инвентарь", "Алмазная руда скрыта и заблокирована на сервере.", renderInventory())}
+      ${panel("Инвентарь предметов", "Поиск и вкладки работают как в креативе. Алмазная руда недоступна.", renderInventory())}
     `);
     wireRecipeDrag();
   }
@@ -174,9 +175,13 @@ export function createAdminNarcoticsRecipePages(deps) {
     tape.querySelectorAll("[draggable='true']").forEach((node) => {
       node.addEventListener("dragstart", (event) => {
         event.dataTransfer?.setData("text/plain", node.dataset.index || "");
+        document.body.classList.add("recipe-dragging");
         $("recipeTrash")?.classList.add("is-live");
       });
-      node.addEventListener("dragend", () => $("recipeTrash")?.classList.remove("is-live"));
+      node.addEventListener("dragend", () => {
+        document.body.classList.remove("recipe-dragging");
+        $("recipeTrash")?.classList.remove("is-live");
+      });
       node.addEventListener("dragover", (event) => event.preventDefault());
       node.addEventListener("drop", (event) => {
         event.preventDefault();
@@ -189,6 +194,8 @@ export function createAdminNarcoticsRecipePages(deps) {
     $("recipeTrash")?.addEventListener("drop", (event) => {
       event.preventDefault();
       const from = Number(event.dataTransfer?.getData("text/plain"));
+      document.body.classList.remove("recipe-dragging");
+      $("recipeTrash")?.classList.remove("is-live");
       removeRecipeItem(from);
     });
   }
@@ -239,6 +246,12 @@ export function createAdminNarcoticsRecipePages(deps) {
     renderEditor();
   }
 
+  function adminRecipeTogglePicker() {
+    const rs = recipeState();
+    rs.pickerOpen = !rs.pickerOpen;
+    renderEditor();
+  }
+
   function adminRecipeAdd(token) {
     const { kind, value } = tokenParts(token);
     if (kind === "MATERIAL" && BLOCKED_RECIPE_MATERIALS.has(value)) {
@@ -248,6 +261,7 @@ export function createAdminNarcoticsRecipePages(deps) {
     const recipe = currentRecipeMutable();
     if (!recipe) return;
     recipe.recipe.push(`${kind.toLowerCase()}:${value}`);
+    recipeState().pickerOpen = false;
     renderEditor();
   }
 
@@ -288,6 +302,7 @@ export function createAdminNarcoticsRecipePages(deps) {
     adminRecipeSelect,
     adminRecipeSearch,
     adminRecipeTab,
+    adminRecipeTogglePicker,
     adminRecipeAdd,
     adminRecipeRemove,
     adminRecipeClear,

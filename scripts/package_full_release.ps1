@@ -10,6 +10,8 @@ if (-not $ProjectRoot) {
     $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 }
 $ProjectRoot = (Resolve-Path $ProjectRoot).Path
+$sourceCommitBeforeBuild = (git -C $ProjectRoot rev-parse --short HEAD).Trim()
+$sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $ProjectRoot status --short))
 
 if (-not $ReleaseDir) {
     $workspaceRoot = Split-Path (Split-Path $ProjectRoot -Parent) -Parent
@@ -128,8 +130,8 @@ $modpackSha1 = (Get-Content -Raw -Encoding UTF8 $modpackShaFile).Trim()
 $modpackSha256 = (Get-Content -Raw -Encoding UTF8 $modpackSha256File).Trim()
 $clientSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $thirdpartyClientJar).Hash.ToLowerInvariant()
 $clientSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $thirdpartyClientJar).Hash.ToLowerInvariant()
-$commit = (git -C $ProjectRoot rev-parse --short HEAD).Trim()
-$gitDirty = -not [string]::IsNullOrWhiteSpace((git -C $ProjectRoot status --short))
+$commit = $sourceCommitBeforeBuild
+$gitDirty = $sourceTreeDirtyBeforeBuild
 
 Write-Host "[5/8] Update release manifests"
 $thirdpartyManifest = Get-Content -Raw -Encoding UTF8 $thirdpartyManifestPath | ConvertFrom-Json

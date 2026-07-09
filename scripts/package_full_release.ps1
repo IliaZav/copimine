@@ -321,7 +321,7 @@ Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -E
     } |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server\plugins\TAB") -Force -ErrorAction SilentlyContinue |
+Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server\plugins") -Force -Recurse -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -like "*.bak*" -or
         $_.Name -like "*.log"

@@ -312,7 +312,7 @@ foreach ($relative in @(
     Remove-PayloadPath -RelativePath $relative
 }
 
-Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -ErrorAction SilentlyContinue |
+Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -Recurse -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -like "*.bak*" -or
         $_.Name -like "*.old" -or

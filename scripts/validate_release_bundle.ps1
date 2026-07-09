@@ -159,6 +159,18 @@ try {
         $errors.Add("Runtime plugin backup/log file must not be bundled in release archive: $relative")
     }
 
+    $forbiddenServerBackupFiles = Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -like "*.bak*" -or
+            $_.Name -like "*.old" -or
+            $_.Name -like "*.backup*" -or
+            $_.Name -like "*.before-*"
+        }
+    foreach ($runtimeFile in $forbiddenServerBackupFiles) {
+        $relative = [System.IO.Path]::GetRelativePath($payloadRoot, $runtimeFile.FullName).Replace('\', '/')
+        $errors.Add("Runtime server backup file must not be bundled in release archive: $relative")
+    }
+
     $forbiddenWorldDirs = Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^(world|world_|CopiMine|CopiMine_|paper-world)' }
     foreach ($worldDir in $forbiddenWorldDirs) {

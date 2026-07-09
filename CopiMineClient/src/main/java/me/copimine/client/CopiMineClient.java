@@ -48,7 +48,7 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ClientBridgeProtocol.onJoin());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ClientBridgeProtocol.onDisconnect();
-            visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "disconnect");
+            visualManager.clearAll("disconnect");
         });
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change"));
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));

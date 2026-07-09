@@ -1,11 +1,12 @@
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $admin = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
+$economy = Join-Path $root 'copimine-economy-core\src\me\copimine\economycore\CopiMineEconomyCore.java'
 $artifacts = Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'
 $narcotics = Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\CopiMineNarcotics.java'
 $errors = New-Object System.Collections.Generic.List[string]
 
-foreach ($path in @($admin, $artifacts, $narcotics)) {
+foreach ($path in @($admin, $economy, $artifacts, $narcotics)) {
   if (-not (Test-Path -LiteralPath $path)) { $errors.Add("Missing source: $path") }
 }
 if (Test-Path $admin) {
@@ -26,10 +27,19 @@ if (Test-Path $artifacts) {
     if ($java.Contains($bad)) { $errors.Add("Artifacts contains risky GUI/DB pattern: $bad") }
   }
 }
+if (Test-Path $economy) {
+  $java = Get-Content -Raw -Encoding UTF8 $economy
+  foreach ($marker in @('atmPinSessions','InventoryClickEvent','dbExecutor','dbExecutor.execute')) {
+    if (-not $java.Contains($marker)) { $errors.Add("EconomyCore missing bank GUI/session marker: $marker") }
+  }
+}
 if (Test-Path $narcotics) {
   $java = Get-Content -Raw -Encoding UTF8 $narcotics
-  foreach ($marker in @('pendingPurchases','pinBuffers','InventoryClickEvent','runTaskAsynchronously')) {
+  foreach ($marker in @('InventoryClickEvent','visualRuntime.clear','overdoseService.clearActiveEffects','NarcoticsDatabase')) {
     if (-not $java.Contains($marker)) { $errors.Add("Narcotics missing GUI/session/performance marker: $marker") }
+  }
+  foreach ($legacy in @('pendingPurchases','pinBuffers')) {
+    if ($java.Contains($legacy)) { $errors.Add("Narcotics must not own legacy bank GUI state: $legacy") }
   }
   foreach ($bad in @('static Inventory','runTaskTimer','DriverManager','while (true)')) {
     if ($java.Contains($bad)) { $errors.Add("Narcotics contains risky GUI/DB pattern: $bad") }

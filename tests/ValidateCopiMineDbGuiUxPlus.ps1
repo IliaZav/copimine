@@ -1,27 +1,10 @@
-$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
+$errors = New-ErrorList
 
-$root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$pluginSource = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
-$backendSource = Join-Path $root 'admin-web\backend\main.py'
-$frontendSource = Join-Path $root 'admin-web\frontend\assets\app.js'
-$styleSource = Join-Path $root 'admin-web\frontend\assets\style.css'
-
-$plugin = Get-Content -Raw -Encoding UTF8 $pluginSource
-$backend = Get-Content -Raw -Encoding UTF8 $backendSource
-$frontend = Get-Content -Raw -Encoding UTF8 $frontendSource
-$style = Get-Content -Raw -Encoding UTF8 $styleSource
-
-$errors = New-Object System.Collections.Generic.List[string]
-
-function Require-Contains([string]$text, [string]$needle, [string]$message) {
-  if (-not $text.Contains($needle)) { $errors.Add($message) }
-}
-
-function Require-Regex([string]$text, [string]$pattern, [string]$message) {
-  if (-not [regex]::IsMatch($text, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
-    $errors.Add($message)
-  }
-}
+$plugin = Read-Utf8 $Paths.Admin
+$backend = Read-Utf8 $Paths.MainPy
+$frontend = Read-FrontendBundle
+$style = Read-FrontendStyles
 
 Require-Contains $backend 'DB_WRITE_PROTECTED_TABLE_PATTERNS' 'Backend must define protected table patterns for raw DB writes.'
 Require-Contains $backend 'def db_write_policy(' 'Backend must expose a structured DB write policy helper.'
@@ -48,10 +31,4 @@ Require-Contains $plugin 'DB_HEALTH_CHECK' 'Plugin DB health actions must be aud
 Require-Contains $plugin 'db:optimize' 'Plugin must expose a safe DB optimize action.'
 Require-Contains $plugin 'db:checkpoint' 'Plugin must expose a safe WAL checkpoint action.'
 
-if ($errors.Count -gt 0) {
-  Write-Host 'DB/GUI/UX plus validation FAILED:' -ForegroundColor Red
-  foreach ($e in $errors) { Write-Host " - $e" -ForegroundColor Red }
-  exit 1
-}
-
-Write-Host 'DB/GUI/UX plus validation passed: DB write policy, web safety UI, admin map, and DB health GUI are wired.' -ForegroundColor Green
+Throw-IfErrors 'ValidateCopiMineDbGuiUxPlus'

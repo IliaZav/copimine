@@ -39,9 +39,8 @@ if (Test-Path $artifacts) {
 
 if (Test-Path $narcotics) {
   $java = Get-Content -Raw -Encoding UTF8 $narcotics
-  if ($java -match 'PIN:\s*"\s*\+\s*maskedPin') { $errors.Add('Narcotics PIN GUI title must not contain the entered PIN or its mask.') }
-  if (-not $java.Contains('maskedPin(player)')) { $errors.Add('Narcotics PIN GUI must show masked input inside the interface.') }
-  if (-not $java.Contains('Bukkit.createInventory(holder, 27')) { $errors.Add('Narcotics PIN GUI inventory marker is missing.') }
+  if ($java -match 'PIN:\s*"\s*\+\s*maskedPin') { $errors.Add('Narcotics must not expose PIN values in GUI titles.') }
+  if ($java -match 'Bukkit\.createInventory\(holder,\s*27') { $errors.Add('Narcotics must not own the bank PIN GUI; EconomyCore owns banking flows.') }
 }
 
 if (Test-Path $migration) {

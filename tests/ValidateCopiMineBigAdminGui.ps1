@@ -23,8 +23,8 @@ if (-not $plugin.Contains("9.1.0-postgres-v4")) {
   $errors.Add('plugin.yml must advertise 9.1.0-postgres-v4.')
 }
 
-Require-Regex 'private void openHub\(Player p\)(?:(?!private void openAdminMap)[\s\S])*create\(m,27,"&2&lCopiMine' 'Main admin hub must be a compact 27-slot three-button entry screen.'
-Require-Regex 'private void openHub\(Player p\)(?:(?!private void openAdminMap)[\s\S])*"open:elections"(?:(?!private void openAdminMap)[\s\S])*"open:economy"(?:(?!private void openAdminMap)[\s\S])*"open:players"' 'Hub must expose exactly the three required top-level sections.'
+Require-Regex 'private void openMainHub\(Player p\)(?:(?!private boolean openElectionCoreHub)[\s\S])*create\(m,27,"&2&lCopiMine' 'Main admin hub must be a compact 27-slot entry screen.'
+Require-Regex 'private void openMainHub\(Player p\)(?:(?!private boolean openElectionCoreHub)[\s\S])*"open:elections"(?:(?!private boolean openElectionCoreHub)[\s\S])*"open:economy"(?:(?!private boolean openElectionCoreHub)[\s\S])*"open:worlds"(?:(?!private boolean openElectionCoreHub)[\s\S])*"open:players"' 'Hub must expose elections/economy/worlds/players.'
 Require-Regex 'openBallotCandidateHub\(Player p, ItemStack ballot, String stationId\)(?:(?!private void openCandidateApplicationPreview)[\s\S])*create\(m,27' 'Ballot candidate GUI must stay compact and readable.'
 Require-Regex 'openPollingStationHub\(Player p,Block block\)(?:(?!private void sendPollingStationCitizenInfo)[\s\S])*create\(m,27' 'Polling station GUI must stay compact and readable.'
 

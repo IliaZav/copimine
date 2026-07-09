@@ -2,9 +2,11 @@
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $javaPath = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
+$electionPath = Join-Path $root 'copimine-election-core\src\me\copimine\electioncore\CopiMineElectionCore.java'
 $botPath = Join-Path $root 'admin-web\backend\discord_bot.py'
 
 $java = Get-Content -Raw -Encoding UTF8 $javaPath
+$election = Get-Content -Raw -Encoding UTF8 $electionPath
 $bot = Get-Content -Raw -Encoding UTF8 $botPath
 $errors = New-Object System.Collections.Generic.List[string]
 
@@ -56,18 +58,20 @@ if (-not [string]::IsNullOrWhiteSpace($publicEmbed)) {
 }
 
 Require-Text 'Private station chat helper' $java 'private void sendPollingStationCitizenInfo'
-$onInteract = Slice-Between $java 'public void onInteract(PlayerInteractEvent e)' '@EventHandler(priority=EventPriority.HIGHEST) public void onPlace'
+$onInteractMatch = [regex]::Match($java, '(?s)public void onInteract\(PlayerInteractEvent e\)\{.*?\n    \}')
+$onInteract = if ($onInteractMatch.Success) { $onInteractMatch.Value } else { "" }
 if ([string]::IsNullOrWhiteSpace($onInteract)) {
     $errors.Add('Could not isolate onInteract station click handler.')
 } else {
   Reject-Regex 'Legacy station click flow must stay disabled in AdminPlus onInteract' $onInteract 'depositSealedBallotAtStation|sendPollingStationCitizenInfo|openPollingStationHub|giveRoleOfficialItemsAtStation'
+  Require-Regex 'AdminPlus legacy station path returns to ElectionCore' $onInteract 'legacyElectionRuntimeDisabled\(\)\) return'
 }
 
-$stationInfo = Slice-Between $java 'private void sendPollingStationCitizenInfo' 'private void openCandidateDecision'
+$stationInfo = Slice-Between $election 'private void sendStationInfoToPlayer' 'private void openIssueTargetPicker'
 if (-not [string]::IsNullOrWhiteSpace($stationInfo)) {
-  Require-Regex 'Station info is player-only chat' $stationInfo 'p\.sendMessage'
+  Require-Regex 'Station info is player-only chat' $stationInfo 'player\.sendMessage'
   Reject-Regex 'Station info must not open GUI' $stationInfo 'openInventory|create\(m'
-  Reject-Regex 'Station info must not expose identifiers' $stationInfo 'shortId\(eid\)|station_id|cmv731_votes|ID:|Голосов'
+  Reject-Regex 'Station info must not expose identifiers' $stationInfo 'station_id|cmv731_votes|ID:|Голосов'
 }
 
 $issueBallot = Slice-Between $java 'private void issueBallot(Player t,String actor)' 'private String annulApplicationEmergency'

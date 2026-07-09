@@ -572,7 +572,7 @@ export function createHomepageRenderer() {
         );
         card.append(
           head,
-          makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || "Публичная операция казны")),
+          makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || row.actor || "Публичная операция казны")),
           makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)),
         );
         return card;

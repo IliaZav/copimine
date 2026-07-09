@@ -421,19 +421,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(isTemporaryApplicationBook(e.getItem())) return;
         Block clicked=e.getClickedBlock();
         if(clicked!=null&&isPollingStationBlock(e.getClickedBlock())){
-            e.setCancelled(true);
-            try{
-                String stationId=pollingStationId(clicked);
-                if(isBallotItem(e.getItem())&&isSealedBallot(e.getItem())){
-                    depositSealedBallotAtStation(p,e.getItem(),stationId);
-                    return;
-                }
-                sendPollingStationCitizenInfoV2(p,clicked);
-                openPollingStationHubV2(p,clicked);
-            }catch(Exception ex){
-                warn(p,"Не удалось открыть участок ЦИК. Подробности записаны в лог.");
-                getLogger().warning("polling station interact: "+ex);
-            }
+            if(legacyElectionRuntimeDisabled()) return;
+            handleLegacyPollingStationInteract(p,e,clicked);
             return;
         }
         if(isBallotItem(e.getItem())){
@@ -981,9 +970,35 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
     }
 
+    private void handleLegacyPollingStationInteract(Player p, PlayerInteractEvent e, Block clicked){
+        e.setCancelled(true);
+        try{
+            String stationId=pollingStationId(clicked);
+            if(isBallotItem(e.getItem())&&isSealedBallot(e.getItem())){
+                depositSealedBallotAtStation(p,e.getItem(),stationId);
+                return;
+            }
+            sendPollingStationCitizenInfoV2(p,clicked);
+            openPollingStationHubV2(p,clicked);
+        }catch(Exception ex){
+            warn(p,"Не удалось открыть участок ЦИК. Подробности записаны в лог.");
+            getLogger().warning("polling station interact: "+ex);
+        }
+    }
+
     private void openAdminMap(Player p)throws Exception{
         if(!hasAnyAdmin(p)){warn(p,"Доступ к этой панели закрыт."); return;}
-        openMainHub(p);
+        Menu m=new Menu("admin-map"); create(m,54,"&2&lКарта админки");
+        btn(m,10,Material.GOLDEN_HELMET,"&6Выборы",List.of("&8GUI_SECTION_ELECTIONS","&7ЦИК, участки, президент, законы","&7и безопасный election workflow."),"open:elections");
+        btn(m,12,Material.DIAMOND_ORE,"&bЭкономика",List.of("&8GUI_SECTION_ECONOMY","&7AR, банк, банкоматы, ledger,","&7сканы и guard-инциденты."),"open:economy");
+        btn(m,14,Material.PLAYER_HEAD,"&eИгроки",List.of("&8GUI_SECTION_PLAYERS","&7Профили, инвентари, проверки,","&7модерация и безопасные действия."),"open:players");
+        btn(m,16,Material.GRASS_BLOCK,"&aМиры",List.of("&8GUI_SECTION_WORLDS","&7Открытие Nether/End, границы","&7и безопасный возврат игроков."),"open:worlds");
+        btn(m,28,Material.ENDER_CHEST,"&aБД и оптимизация",List.of("&7Схема, индексы, WAL и","&7безопасные операции обслуживания."),"open:db-health");
+        btn(m,30,Material.TARGET,"&aГотовность запуска",List.of("&7Проверки после замены релиза","&7и диагностика основных модулей."),"open:startup-readiness");
+        btn(m,32,Material.BOOK,"&dCMS сайта",List.of("&7Новости, страницы, баннеры","&7и публичные тексты через сайт."),"none");
+        btn(m,34,Material.COMPASS,"&fГлавный хаб",List.of("&7Вернуться к компактному входу."),"open:hub");
+        nav(m,"open:hub","open:admin-map");
+        p.openInventory(m.inv);
     }
 
     private void legacyOpenDatabaseHealthDisabled(Player p)throws Exception{
@@ -1239,6 +1254,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,23,Material.COMPASS,"&aПрофилактика",List.of("&7Перед открытием голосования","&7проверяет бюллетени и участки."),"open:preflight");
         btn(m,24,Material.REDSTONE_TORCH,"&cАварийный контроль",List.of("&7Аннулировать ошибочный бюллетень","&7или выдать новый конкретному игроку."),"open:election-emergency");
         btn(m,31,Material.EMERALD,"&aОткрыть голосование",List.of("&7Безопасный переход через release gates.","&7Если есть блокер, действие остановится."),"election:prepare-voting");
+        btn(m,32,Material.CLOCK,"&eНачать подсчёт",List.of("&7Закрывает приём голосов и сверяет журнал.","&7Если проверка не пройдена, этап не изменится."),"election:prepare-counting");
         btn(m,33,Material.SPYGLASS,"&6Журнал выборов",List.of("&7Проверить выдачи, аннулирования","&7и действия председателя ЦИК."),"open:election-audit");
         nav(m,"open:elections","open:ballots-issue"); p.openInventory(m.inv);
     }
@@ -2431,6 +2447,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openChairPanel(Player p) throws Exception{
+        openChairPanelAsync(p);
+    }
+
+    private void legacyOpenChairPanelRuntimeDisabled(Player p) throws Exception{
         boolean adminAccess=hasAdmin(p);
         UUID playerUuid=p.getUniqueId();
         msg(p,"&7Загружаю панель ЦИК...");
@@ -2645,13 +2665,15 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(a.startsWith("station:delete-confirm:")){openPollingStationDeleteConfirm(p,a.substring("station:delete-confirm:".length()));return;}
         if(a.startsWith("station:delete:")){msg(p,archivePollingStation(p,a.substring("station:delete:".length()))); openPollingStations(p);return;}
         if(a.startsWith("station:teleport:")){teleportPollingStation(p,a.substring("station:teleport:".length()));return;}
+        if(a.equals("election:prepare-voting")){try{prepareVoting(p.getName()); msg(p,"&aГолосование открыто.");}catch(Exception ex){warn(p,"Не удалось открыть голосование: "+ex.getMessage());} openElections(p);return;}
+        if(a.equals("election:prepare-counting")){try{prepareCounting(p.getName()); msg(p,"&aПодсчёт запущен.");}catch(Exception ex){warn(p,"Не удалось начать подсчёт: "+ex.getMessage());} openElections(p);return;}
         if(a.equals("open:applications-issue")||a.equals("open:ballots-issue")||a.equals("open:give-app-player")||a.equals("open:give-ballot-player")){
             warn(p,"Выдача заявок и бюллетеней перенесена в CopiMineElectionCore.");
             openElections(p);
             return;
         }
         if(a.equals("open:candidates")){openCandidates(p);return;} if(a.equals("open:add-candidate")){openAddCandidate(p);return;} if(a.equals("open:curators")){openCurators(p);return;} if(a.equals("open:add-curator")){openAddCurator(p);return;} if(a.equals("open:election-danger")){openDanger(p);return;}
-        if(a.equals("open:applications-review")){openApplicationsReview(p);return;} if(a.equals("open:ballots-ledger")){openBallotsLedger(p);return;} if(a.equals("open:election-audit")){openElectionAudit(p);return;} if(a.equals("open:election-emergency")){openElectionEmergency(p);return;} if(a.equals("open:application-issues")){openApplicationIssuesLedger(p);return;} if(a.equals("open:submitted-applications-emergency")){openSubmittedApplicationsEmergency(p);return;}
+        if(a.equals("open:applications-review")){openApplicationsReview(p);return;} if(a.startsWith("app-review:")){String rowid=a.substring("app-review:".length()); if(click==ClickType.RIGHT||click==ClickType.SHIFT_RIGHT){reviewApplication(rowid,"REJECTED",p.getName()); msg(p,"&cЗаявка отклонена.");}else{reviewApplication(rowid,"APPROVED",p.getName()); if(click==ClickType.SHIFT_LEFT){promoteApplicationCandidate(rowid,p.getName()); msg(p,"&aЗаявка одобрена, игрок добавлен в кандидаты.");}else msg(p,"&aЗаявка одобрена.");} openApplicationsReview(p);return;} if(a.equals("open:ballots-ledger")){openBallotsLedger(p);return;} if(a.equals("open:election-audit")){openElectionAudit(p);return;} if(a.equals("open:election-emergency")){openElectionEmergency(p);return;} if(a.equals("open:application-issues")){openApplicationIssuesLedger(p);return;} if(a.equals("open:submitted-applications-emergency")){openSubmittedApplicationsEmergency(p);return;}
         if(a.equals("open:economy")||a.equals("open:economy-basic")||a.equals("open:economy-advanced")||a.equals("open:ar-top")||a.equals("open:ar-custody")||a.equals("open:ar-health")||a.equals("open:scan")||a.equals("open:ar-scans")){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(p,"CopiMineEconomyCore недоступен.");return;} economy.openAdminEconomyHub(p);return;}
         if(a.equals("open:bank-atms")||a.equals("bank-atm:create-target")||a.startsWith("bank-atm:delete:")||a.startsWith("open:bank-atm:")){
             CopiMineEconomyCore economy=economyCore();
@@ -3652,16 +3674,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         });
     }
 
-    private void openAtmPinPad(Player p,String atmId,String action,int amount,String pin){
-        legacyOpenAtmPinPadDisabled(p,atmId,action,amount,pin,"","");
-    }
-
-    private void openAtmPinPad(Player p,String atmId,String action,int amount,String pin,String targetUuid,String targetName){
-        legacyOpenAtmPinPadDisabled(p,atmId,action,amount,pin,targetUuid,targetName);
-    }
-
     private void legacyOpenAtmPinPadDisabled(Player p,String atmId,String action,int amount,String pin){
-        openAtmPinPad(p,atmId,action,amount,pin,"","");
+        legacyOpenAtmPinPadDisabled(p,atmId,action,amount,pin,"","");
     }
 
     private void legacyOpenAtmPinPadDisabled(Player p,String atmId,String action,int amount,String pin,String targetUuid,String targetName){

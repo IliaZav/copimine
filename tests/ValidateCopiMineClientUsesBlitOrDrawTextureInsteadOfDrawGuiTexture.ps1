@@ -4,7 +4,7 @@ $code = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'CopiMineClient\src\mai
 if ($code -match 'drawGuiTexture\s*\(') {
   throw 'ClientVisualManager should not use drawGuiTexture for fullscreen narcotics overlays.'
 }
-if ($code -notmatch 'drawTexture\s*\(') {
-  throw 'ClientVisualManager must use drawTexture/blit style rendering for fullscreen overlays.'
+if ($code -notmatch 'context\.fill\s*\(' -or $code -notmatch 'drawNoiseGrid\s*\(') {
+  throw 'ClientVisualManager must use procedural fill/noise rendering for fullscreen fallback effects.'
 }
-Write-Host 'CopiMineClient overlay render path validation passed.'
+Write-Host 'CopiMineClient procedural overlay render path validation passed.'

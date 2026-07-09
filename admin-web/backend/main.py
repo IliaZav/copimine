@@ -98,6 +98,7 @@ MODPACK_SHA1_FILE = THIRDPARTY_DIR / "CopiMineMods.sha1"
 MODPACK_MANIFEST = THIRDPARTY_DIR / "modpack_manifest.json"
 THIRDPARTY_MANIFEST = THIRDPARTY_DIR / "thirdparty_manifest.json"
 ARTIFACTS_ITEMS_FILE = PROJECT_ROOT / "copimine-artifacts" / "items.yml"
+NARCOTICS_SOURCE_CONFIG_FILE = PROJECT_ROOT / "copimine-narcotics" / "config.yml"
 DONATION_FIXED_PACKS = (50, 100, 250, 500, 1000)
 DONATION_PROVIDER = "MOCK_SBP"
 DONATION_SESSION_TTL_SECONDS = int(os.getenv("DONATION_SESSION_TTL_SECONDS", str(15 * 60)))
@@ -555,6 +556,10 @@ class SiteCmsEntryIn(BaseModel):
 
 class PluginRegistryConfigIn(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
+
+
+class NarcoticsRecipesIn(BaseModel):
+    recipes: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class PropertiesPatchIn(BaseModel):
@@ -11461,6 +11466,107 @@ async def admin_whitelist_approve(data: AdminWhitelistApproveIn, request: Reques
 @app.get("/api/admin/cms")
 async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
     return await bg(read_site_cms_sync, True)
+
+
+NARCOTICS_RECIPE_BLOCKED_TOKENS = {"MATERIAL:DIAMOND_ORE", "MATERIAL:DEEPSLATE_DIAMOND_ORE"}
+NARCOTICS_RECIPE_TOKEN_RE = re.compile(r"^(material|potion):[A-Z0-9_]+$", re.IGNORECASE)
+
+
+def narcotics_runtime_config_path() -> Path:
+    runtime = MC_SERVER_DIR / "plugins" / "CopiMineNarcotics" / "config.yml"
+    return runtime if runtime.exists() else NARCOTICS_SOURCE_CONFIG_FILE
+
+
+def _load_narcotics_config() -> tuple[Path, dict[str, Any]]:
+    if yaml is None:
+        raise HTTPException(status_code=503, detail="Редактор рецептов недоступен: PyYAML не установлен")
+    path = narcotics_runtime_config_path()
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Конфиг CopiMineNarcotics не найден")
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Не удалось прочитать конфиг рецептов") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail="Конфиг рецептов имеет неверный формат")
+    return path, data
+
+
+def _public_recipe_item(item_id: str, item: Mapping[str, Any]) -> dict[str, Any]:
+    recipe = item.get("recipe") if isinstance(item, Mapping) else []
+    clean_recipe = [str(x).strip() for x in recipe if str(x).strip()] if isinstance(recipe, list) else []
+    return {
+        "id": item_id,
+        "name": re.sub(r"(?i)(?:§|&)[0-9a-fk-or]", "", str(item.get("display_name") or item_id)) if isinstance(item, Mapping) else item_id,
+        "material": str(item.get("material") or "").upper() if isinstance(item, Mapping) else "",
+        "recipe": clean_recipe,
+    }
+
+
+def _validate_narcotics_recipe_token(token: str) -> str:
+    normalized = str(token or "").strip().replace(" ", "_").upper()
+    if ":" not in normalized:
+        normalized = "MATERIAL:" + normalized
+    if not NARCOTICS_RECIPE_TOKEN_RE.match(normalized):
+        raise HTTPException(status_code=400, detail=f"Неверный предмет рецепта: {token}")
+    if normalized in NARCOTICS_RECIPE_BLOCKED_TOKENS:
+        raise HTTPException(status_code=400, detail="Алмазная руда недоступна для рецептов")
+    return normalized.lower()
+
+
+def read_narcotics_recipes_sync() -> dict[str, Any]:
+    path, data = _load_narcotics_config()
+    items = data.get("items") if isinstance(data.get("items"), dict) else {}
+    recipes = []
+    for item_id, item in sorted(items.items()):
+        if str(item_id).lower() == "zhuzevo":
+            continue
+        if isinstance(item, Mapping):
+            recipes.append(_public_recipe_item(str(item_id), item))
+    return {
+        "ok": True,
+        "configPath": safe_location(path),
+        "blocked": sorted(NARCOTICS_RECIPE_BLOCKED_TOKENS),
+        "recipes": recipes,
+    }
+
+
+def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str) -> dict[str, Any]:
+    path, data = _load_narcotics_config()
+    items = data.get("items")
+    if not isinstance(items, dict):
+        raise HTTPException(status_code=500, detail="В конфиге нет раздела items")
+    updated: list[str] = []
+    for item_id, raw_recipe in payload.items():
+        normalized_id = str(item_id or "").strip().lower()
+        if not normalized_id or normalized_id == "zhuzevo" or normalized_id not in items:
+            raise HTTPException(status_code=400, detail=f"Неизвестный рецепт: {item_id}")
+        if not isinstance(raw_recipe, list):
+            raise HTTPException(status_code=400, detail=f"Рецепт {item_id} должен быть списком")
+        recipe = [_validate_narcotics_recipe_token(token) for token in raw_recipe]
+        if len(recipe) < 3:
+            raise HTTPException(status_code=400, detail=f"В рецепте {item_id} должно быть минимум 3 ингредиента")
+        items[normalized_id]["recipe"] = recipe
+        updated.append(normalized_id)
+    backup = path.with_suffix(path.suffix + f".bak-{now_ts()}")
+    shutil.copy2(path, backup)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    os.replace(tmp, path)
+    append_panel_event("narcotics", "recipes_saved", actor=actor, target="CopiMineNarcotics", metadata={"updated": updated, "backup": str(backup)}, tags=["narcotics", "config"])
+    return {"ok": True, "updated": updated, "backup": safe_location(backup), "configPath": safe_location(path)}
+
+
+@app.get("/api/admin/narcotics/recipes")
+async def admin_narcotics_recipes(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(read_narcotics_recipes_sync)
+
+
+@app.post("/api/admin/narcotics/recipes")
+async def admin_narcotics_recipes_save(data: NarcoticsRecipesIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "NARCOTICS_RECIPES_SAVE")
+    check_rate_limit(request, "admin-narcotics-recipes", limit=10, window_seconds=60)
+    return await bg(save_narcotics_recipes_sync, data.recipes, username)
 
 
 @app.post("/api/admin/cms/entries")

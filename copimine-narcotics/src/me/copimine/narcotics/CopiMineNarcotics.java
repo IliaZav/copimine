@@ -111,16 +111,13 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
         }
         Bukkit.getPluginManager().registerEvents(this, this);
-        Bukkit.getScheduler().runTaskTimer(this, () -> {
-            if (cauldronService != null) {
-                cauldronService.runIntegritySweep();
-            }
-        }, 100L, 100L);
+        scheduleIntegritySweep();
         getLogger().info("CopiMineNarcotics with optional CopiMineClient bridge enabled.");
     }
 
     @Override
     public void onDisable() {
+        Bukkit.getScheduler().cancelTasks(this);
         for (Player player : Bukkit.getOnlinePlayers()) {
             overdoseService.clearActiveEffects(player, true);
             visualRuntime.clear(player);
@@ -131,6 +128,18 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         cauldronService.shutdown();
         database.shutdown();
+    }
+
+    private void scheduleIntegritySweep() {
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (!isEnabled()) {
+                return;
+            }
+            if (cauldronService != null) {
+                cauldronService.runIntegritySweep();
+            }
+            scheduleIntegritySweep();
+        }, 100L);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

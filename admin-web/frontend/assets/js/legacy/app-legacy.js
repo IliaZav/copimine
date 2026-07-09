@@ -2,6 +2,7 @@ import { getStoredUiState, removeStoredUiState, setStoredUiState } from "../shar
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "../shared/dom.js";
 import { createAdminCmsPages } from "../admin/cms-pages.js";
 import { createAdminCommercePages } from "../admin/commerce-pages.js";
+import { createAdminNarcoticsRecipePages } from "../admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "../admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "../player/account-pages.js";
 import { createPlayerArtifactPages } from "../player/artifact-pages.js";
@@ -233,6 +234,7 @@ const navGroups = [
       ["admins", "Админы", "Аккаунты команды и вход в панель", "А"],
       ["security", "Доступ", "Команда и права доступа", "Д"],
       ["sources", "Источники", "Плагины и файлы", ""],
+      ["narcotics-recipes", "Рецепты", "Котёл и ингредиенты", "Р"],
       ["cms", "CMS", "Тексты, баннеры и страницы", "C"],
       ["settings", "Настройки", "Конфигурация", "Н"]
     ]
@@ -265,6 +267,49 @@ const playerNavGroups = [
 const playerPageMeta = Object.fromEntries(
   playerNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );
+
+const adminSearchAliases = {
+  dashboard: "главная обзор статус tps mspt онлайн сервер состояние",
+  players: "игрок игроки ник бан кик варн эффекты наркотики очистить баланс",
+  economy: "банк ar ар ары баланс казна перевод банкомат atm pin пин",
+  artifacts: "лавка артефакты магазин предметы покупка выдача ремонт",
+  elections: "выборы цик председатель президент бюллетень участок законы мандат",
+  "narcotics-recipes": "рецепты наркотики котел котёл ингредиенты варка фета кола гирион сбп жужево",
+  cms: "cms контент новости баннеры правила faq картинки страницы",
+  admins: "админы команда доступ регистрация роли младший owner",
+  security: "безопасность csrf сессии whitelist вайтлист доступ ip",
+  server: "сервер ресурспак модпак nginx сервисы rcon",
+  sources: "плагины конфиги yaml настройки registry реестр",
+  logs: "логи журнал ошибки события",
+  anticheat: "античит grimac читы нарушения",
+  settings: "настройки пароль тема аккаунт"
+};
+
+function fuzzyContains(text, query) {
+  const normalized = cleanText(text).toLowerCase().replace(/ё/g, "е");
+  const needle = cleanText(query).toLowerCase().replace(/ё/g, "е");
+  if (!needle) return true;
+  if (normalized.includes(needle)) return true;
+  const compact = normalized.replace(/[^a-zа-я0-9]/g, "");
+  const compactNeedle = needle.replace(/[^a-zа-я0-9]/g, "");
+  if (compact.includes(compactNeedle)) return true;
+  if (compactNeedle.length < 4) return false;
+  let hits = 0;
+  for (const part of compactNeedle.match(/.{1,3}/g) || []) {
+    if (compact.includes(part)) hits++;
+  }
+  return hits >= Math.max(1, Math.ceil(compactNeedle.length / 6));
+}
+
+function adminSearchItems() {
+  return navGroups.flatMap(group => group.items.map(([id, title, subtitle]) => ({
+    id,
+    title,
+    subtitle,
+    group: group.title,
+    haystack: `${title} ${subtitle} ${group.title} ${adminSearchAliases[id] || ""}`
+  })));
+}
 
 const juniorNavGroups = [
   {
@@ -959,7 +1004,7 @@ function releaseReadinessHtml(status, perf, electionOverview, economy, requestsR
     <section class="release-readiness-card">
       <div class="readiness-main">
         ${readinessRing(percentReady, "релиз")}
-        <p>Оценка собирается по состоянию мира, скорости тиков, выборам, экономике, обращениям и живой связи с сервером. Для боевого режима цель: 95-100% без предупреждений.</p>
+        <p>Сводка показывает мир, тики, выборы, экономику, обращения и связь с сервером. Если есть предупреждение, оно требует проверки перед релизом.</p>
       </div>
       <div class="readiness-checks">
         ${checks.map(([name, value, tone]) => `
@@ -1599,6 +1644,7 @@ function syncWorkspaceMode() {
     app.dataset.copimineRole = role;
     app.dataset.copimineTab = tab;
   }
+  renderAdminSearchDock();
 }
 
 function setMiniHealthSummary(title, lines = []) {
@@ -1644,6 +1690,44 @@ function renderNav() {
   replaceChildrenSafe(navRoot, groups);
 }
 
+function renderAdminSearchDock() {
+  let dock = $("adminSearchDock");
+  if (!isPanelAdminRole() || isJuniorAdminRole()) {
+    dock?.remove();
+    return;
+  }
+  if (!dock) {
+    dock = makeElement("aside", "admin-search-dock");
+    dock.id = "adminSearchDock";
+    document.body.append(dock);
+  }
+  const query = state.adminSearchQuery || "";
+  const results = adminSearchItems().filter(item => fuzzyContains(item.haystack, query)).slice(0, 7);
+  const label = makeElement("label", "admin-search-box");
+  label.append(makeElement("span", "", "Поиск по админке"));
+  const input = makeElement("input");
+  setAttributes(input, {
+    id: "adminGlobalSearch",
+    "data-input": "adminGlobalSearch",
+    value: query,
+    placeholder: "банк, рецепты, цик...",
+    autocomplete: "off"
+  });
+  label.append(input);
+  const list = makeElement("div", "admin-search-results");
+  if (results.length) {
+    results.forEach((item) => {
+      const button = makeButton("", state.tab === item.id ? "active" : "", `setTab('${item.id}')`);
+      button.append(makeElement("strong", "", item.title));
+      button.append(makeElement("span", "", `${item.group} · ${item.subtitle}`));
+      list.append(button);
+    });
+  } else {
+    list.append(makeElement("p", "", "Ничего не найдено."));
+  }
+  replaceChildrenSafe(dock, [label, list]);
+}
+
 function tabNavigationParams(tab) {
   const params = {};
   if (["donation-balance", "donation-shop", "donation-items"].includes(tab) && state.donationSessionId) {
@@ -1657,19 +1741,20 @@ function tabNavigationParams(tab) {
 
 function setTab(tab) {
   const metaMap = currentPageMeta();
-  const nextTab = metaMap[tab] ? tab : defaultTab();
+  const routeTab = metaMap[tab] ? tab : defaultTab();
   const currentRoute = normalizeAppRoute(document.body?.dataset.appRoute || routeFromHref(location.pathname), state.tab || defaultTab());
-  if (nextTab !== currentRoute) {
-    window.location.href = appRouteHref(nextTab, tabNavigationParams(nextTab));
+  if (routeTab !== currentRoute) {
+    window.location.href = appRouteHref(routeTab, tabNavigationParams(routeTab));
     return;
   }
-  state.tab = nextTab;
+  state.tab = routeTab;
   if (state.tab !== "donation-shop") state.donationFocusItemId = "";
   const meta = metaMap[state.tab];
   $("pageTitle").textContent = meta.title;
   $("pageSubtitle").textContent = meta.subtitle;
   syncWorkspaceMode();
   renderNav();
+  renderAdminSearchDock();
   loadCurrent();
 }
 
@@ -3492,7 +3577,7 @@ async function loadAdmins() {
             </div>
           `)
         : panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
-            <div class="form-grid danger-zone">
+            <div class="form-grid danger-zone admin-create-panel">
               <input id="newAdminUsername" placeholder="Minecraft-ник" />
               <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
               <select id="newAdminRole">
@@ -3910,6 +3995,7 @@ window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {
 let playerDonationPages;
 let adminCommercePages;
 let adminCmsPages;
+let adminNarcoticsRecipePages;
 let pluginRegistryPages;
 let playerAccountPages;
 let playerArtifactPages;
@@ -3972,6 +4058,26 @@ function getAdminCmsPages() {
     });
   }
   return adminCmsPages;
+}
+
+function getAdminNarcoticsRecipePages() {
+  if (!adminNarcoticsRecipePages) {
+    adminNarcoticsRecipePages = createAdminNarcoticsRecipePages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      esc,
+      cleanText,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminNarcoticsRecipePages;
 }
 
 function getPluginRegistryPages() {
@@ -4304,6 +4410,7 @@ async function loadCurrent(silent = false) {
     logs: loadLogs,
     investigations: loadInvestigations,
     sources: loadSources,
+    "narcotics-recipes": () => getAdminNarcoticsRecipePages().loadRecipes(),
     cms: () => getAdminCmsPages().loadCms(),
     settings: loadSettings,
     admins: loadAdmins,
@@ -4396,6 +4503,11 @@ Object.assign(dataClickHandlers, {
   adminCmsEdit: (...args) => getAdminCmsPages().adminCmsEdit(...args),
   adminCmsNew: () => getAdminCmsPages().adminCmsNew(),
   adminCmsSave: () => getAdminCmsPages().adminCmsSave(),
+  adminRecipeAdd: (...args) => getAdminNarcoticsRecipePages().adminRecipeAdd(...args),
+  adminRecipeClear: () => getAdminNarcoticsRecipePages().adminRecipeClear(),
+  adminRecipeRemove: (...args) => getAdminNarcoticsRecipePages().adminRecipeRemove(...args),
+  adminRecipeSave: () => getAdminNarcoticsRecipePages().adminRecipeSave(),
+  adminRecipeTab: (...args) => getAdminNarcoticsRecipePages().adminRecipeTab(...args),
   adminSetTreasuryPin: fromWindow("adminSetTreasuryPin"),
   approveWhitelistRequest: fromWindow("approveWhitelistRequest"),
   closeModal: fromWindow("closeModal"),
@@ -4451,6 +4563,12 @@ Object.assign(dataClickHandlers, {
 Object.assign(dataInputHandlers, {
   adminCmsPickAsset: (value) => getAdminCmsPages().adminCmsPickAsset(value),
   adminCmsSelect: () => getAdminCmsPages().adminCmsSelect(),
+  adminGlobalSearch: (value) => {
+    state.adminSearchQuery = String(value || "");
+    renderAdminSearchDock();
+  },
+  adminRecipeSearch: (value) => getAdminNarcoticsRecipePages().adminRecipeSearch(value),
+  adminRecipeSelect: (value) => getAdminNarcoticsRecipePages().adminRecipeSelect(value),
   filterPlayers: fromWindow("filterPlayers"),
   filterTable: fromWindow("filterTable"),
   playerArtifactSearch: fromWindow("playerArtifactSearch"),

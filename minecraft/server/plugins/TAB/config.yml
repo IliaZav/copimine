@@ -61,10 +61,10 @@ layout:
 ping-spoof:
   enabled: false
 
-permission-refresh-interval: 1000
+permission-refresh-interval: 3000
 
 placeholders:
-  default-refresh-interval: 1000
+  default-refresh-interval: 2000
   date-format: "dd.MM.yyyy"
   time-format: "HH:mm:ss"
   time-offset: 0

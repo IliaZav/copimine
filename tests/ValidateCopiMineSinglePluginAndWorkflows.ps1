@@ -21,9 +21,16 @@ function Require-Regex([string]$haystack, [string]$pattern, [string]$message) {
 }
 
 $activeCopiMineJars = @(Get-ChildItem -LiteralPath $plugins -File -Filter 'CopiMine*.jar' | Select-Object -ExpandProperty Name | Sort-Object)
-$expectedCopiMineJars = @('CopiMineArtifacts.jar', 'CopiMineNarcotics.jar', 'CopiMineUltimateAdminPlus.jar')
+$expectedCopiMineJars = @(
+  'CopiMineArtifacts.jar',
+  'CopiMineEconomyCore.jar',
+  'CopiMineElectionCore.jar',
+  'CopiMineNarcotics.jar',
+  'CopiMineUltimateAdminPlus.jar',
+  'CopiMineWorldCore.jar'
+)
 if (($activeCopiMineJars -join '|') -ne ($expectedCopiMineJars -join '|')) {
-  throw "CopiMineArtifacts.jar, CopiMineNarcotics.jar and CopiMineUltimateAdminPlus.jar must stay active. Active CopiMine jars: $($activeCopiMineJars -join ', ')"
+  throw "All modular CopiMine jars must stay active. Active CopiMine jars: $($activeCopiMineJars -join ', ')"
 }
 
 $legacyCommands = @('cmeflow', 'cmpres', 'cmreports', 'cmstations', 'cmseal', 'cmballotadmin')

@@ -1,0 +1,296 @@
+const RECIPE_ITEM_TABS = [
+  {
+    id: "basic",
+    label: "Ингредиенты",
+    items: [
+      ["SUGAR", "Сахар"], ["WHITE_DYE", "Белый краситель"], ["GLOWSTONE_DUST", "Светопыль"],
+      ["RABBIT_FOOT", "Кроличья лапка"], ["DIAMOND", "Алмаз"], ["JUNGLE_LEAVES", "Листья джунглей"],
+      ["SLIME_BLOCK", "Блок слизи"], ["TURTLE_SCUTE", "Черепаший панцирь"], ["EMERALD", "Изумруд"],
+      ["GOLD_INGOT", "Золотой слиток"], ["GOLDEN_CARROT", "Золотая морковь"], ["STRING", "Нить"],
+      ["BONE", "Кость"], ["IRON_BLOCK", "Железный блок"], ["GHAST_TEAR", "Слеза гаста"],
+      ["AMETHYST_BLOCK", "Аметистовый блок"], ["END_ROD", "Энд-стержень"], ["IRON_INGOT", "Железный слиток"],
+      ["BLUE_STAINED_GLASS", "Синее стекло"], ["COCOA_BEANS", "Какао-бобы"], ["IRON_NUGGET", "Железный самородок"],
+      ["LARGE_FERN", "Большой папоротник"], ["DRIED_KELP_BLOCK", "Блок сушёной ламинарии"], ["SUGAR_CANE", "Сахарный тростник"]
+    ]
+  },
+  {
+    id: "blocks",
+    label: "Блоки",
+    items: [
+      ["NETHERRACK", "Незерак"], ["SOUL_SAND", "Песок душ"], ["REDSTONE_BLOCK", "Редстоуновый блок"],
+      ["LAPIS_BLOCK", "Лазуритовый блок"], ["COPPER_BLOCK", "Медный блок"], ["OBSIDIAN", "Обсидиан"],
+      ["CRYING_OBSIDIAN", "Плачущий обсидиан"], ["HONEY_BLOCK", "Блок мёда"], ["MAGMA_BLOCK", "Магмовый блок"],
+      ["SEA_LANTERN", "Морской фонарь"], ["SCULK", "Скалк"], ["TINTED_GLASS", "Тонированное стекло"]
+    ]
+  },
+  {
+    id: "potions",
+    label: "Зелья",
+    potion: true,
+    items: [
+      ["SPEED", "Зелье скорости"], ["WEAKNESS", "Зелье слабости"], ["POISON", "Зелье отравления"],
+      ["SLOWNESS", "Зелье замедления"], ["REGENERATION", "Зелье регенерации"], ["STRENGTH", "Зелье силы"],
+      ["WATER_BREATHING", "Зелье подводного дыхания"], ["INVISIBILITY", "Зелье невидимости"],
+      ["FIRE_RESISTANCE", "Зелье огнестойкости"], ["HARM", "Зелье вреда"]
+    ]
+  },
+  {
+    id: "tools",
+    label: "Редкие",
+    items: [
+      ["PHANTOM_MEMBRANE", "Мембрана фантома"], ["BLAZE_POWDER", "Огненный порошок"], ["FERMENTED_SPIDER_EYE", "Маринованный паучий глаз"],
+      ["PRISMARINE_CRYSTALS", "Призмариновые кристаллы"], ["ECHO_SHARD", "Осколок эха"], ["AMETHYST_SHARD", "Осколок аметиста"],
+      ["ENDER_PEARL", "Эндер-жемчуг"], ["BREEZE_ROD", "Стержень бриза"], ["NETHER_STAR", "Звезда Незера"]
+    ]
+  }
+];
+
+const BLOCKED_RECIPE_MATERIALS = new Set(["DIAMOND_ORE", "DEEPSLATE_DIAMOND_ORE"]);
+
+export function createAdminNarcoticsRecipePages(deps) {
+  const { $, state, api, safeApi, setLoading, setView, panel, metric, esc, cleanText, dangerConfirm, toast } = deps;
+
+  function recipeState() {
+    if (!state.narcoticsRecipeEditor) {
+      state.narcoticsRecipeEditor = { selected: "", tab: "basic", query: "", recipes: [] };
+    }
+    return state.narcoticsRecipeEditor;
+  }
+
+  function normalizeToken(token) {
+    return String(token || "").trim().toUpperCase();
+  }
+
+  function tokenParts(token) {
+    const raw = normalizeToken(token);
+    const [kind, value] = raw.includes(":") ? raw.split(":", 2) : ["MATERIAL", raw];
+    return { kind, value };
+  }
+
+  function iconFor(value, potion = false) {
+    if (potion) return "/assets/mc-icons/item/potion.png";
+    return `/assets/mc-icons/item/${String(value || "").toLowerCase()}.png`;
+  }
+
+  function displayName(token) {
+    const { kind, value } = tokenParts(token);
+    const tab = RECIPE_ITEM_TABS.find((entry) => entry.potion === (kind === "POTION"));
+    const found = RECIPE_ITEM_TABS.flatMap((entry) => entry.items).find(([id]) => id === value);
+    return found?.[1] || value.replace(/_/g, " ").toLowerCase();
+  }
+
+  function recipeById(id) {
+    return recipeState().recipes.find((row) => row.id === id) || recipeState().recipes[0] || null;
+  }
+
+  function selectedRecipe() {
+    const rs = recipeState();
+    const selected = recipeById(rs.selected);
+    if (selected && !rs.selected) rs.selected = selected.id;
+    return selected;
+  }
+
+  function recipeOptions() {
+    const selected = selectedRecipe()?.id || "";
+    return recipeState().recipes.map((row) => `<option value="${esc(row.id)}"${row.id === selected ? " selected" : ""}>${esc(row.name || row.id)}</option>`).join("");
+  }
+
+  function renderTape(recipe) {
+    const items = Array.isArray(recipe?.recipe) ? recipe.recipe : [];
+    if (!items.length) {
+      return `<div class="recipe-empty">Перетащите ингредиенты из инвентаря ниже. Минимум три.</div>`;
+    }
+    return items.map((token, index) => {
+      const { kind, value } = tokenParts(token);
+      const potion = kind === "POTION";
+      return `
+        <button class="recipe-slot" draggable="true" title="${esc(displayName(token))}"
+          data-drag-token="${esc(token)}" data-index="${index}"
+          data-click="adminRecipeRemove(${index})">
+          <img src="${iconFor(value, potion)}" alt="" onerror="this.style.visibility='hidden'" />
+          <span>${esc(displayName(token))}</span>
+        </button>`;
+    }).join("");
+  }
+
+  function renderInventory() {
+    const rs = recipeState();
+    const active = RECIPE_ITEM_TABS.find((tab) => tab.id === rs.tab) || RECIPE_ITEM_TABS[0];
+    const query = String(rs.query || "").trim().toLowerCase();
+    const items = active.items
+      .filter(([id]) => !BLOCKED_RECIPE_MATERIALS.has(id))
+      .filter(([id, name]) => !query || `${id} ${name}`.toLowerCase().includes(query));
+    return `
+      <div class="recipe-inventory-head">
+        <div class="segmented recipe-tabs">
+          ${RECIPE_ITEM_TABS.map((tab) => `<button class="${tab.id === rs.tab ? "active" : ""}" data-click="adminRecipeTab('${tab.id}')">${esc(tab.label)}</button>`).join("")}
+        </div>
+        <input id="recipeItemSearch" data-input="adminRecipeSearch" value="${esc(rs.query)}" placeholder="Поиск предмета" autocomplete="off" />
+      </div>
+      <div class="creative-inventory-grid">
+        ${items.map(([id, name]) => {
+          const token = `${active.potion ? "potion" : "material"}:${id}`;
+          return `<button class="creative-item" title="${esc(name)}" data-click="adminRecipeAdd('${token}')">
+            <img src="${iconFor(id, active.potion)}" alt="" onerror="this.style.visibility='hidden'" />
+            <span>${esc(name)}</span>
+          </button>`;
+        }).join("") || `<div class="recipe-empty">Ничего не найдено.</div>`}
+      </div>`;
+  }
+
+  function renderEditor() {
+    const recipe = selectedRecipe();
+    if (!recipe) {
+      setView(panel("Рецепты наркотиков", "Нет доступных рецептов.", `<div class="empty">Конфиг CopiMineNarcotics пуст.</div>`));
+      return;
+    }
+    const count = Array.isArray(recipe.recipe) ? recipe.recipe.length : 0;
+    setView(`
+      <section class="layout-grid grid-3 recipe-summary-row">
+        ${metric("Наркотик", recipe.name || recipe.id, recipe.id, "good")}
+        ${metric("Ингредиентов", count, count >= 3 ? "готов к сохранению" : "минимум 3", count >= 3 ? "good" : "warn")}
+        ${metric("Сохранение", "только админка", "игрокам рецепты не показываются", "neutral")}
+      </section>
+      ${panel("Редактор рецепта", "Лента работает как компактный Minecraft-инвентарь: добавить, перетащить, удалить.", `
+        <div class="recipe-toolbar">
+          <label>
+            <span>Рецепт</span>
+            <select id="recipeDrugSelect" data-input="adminRecipeSelect">${recipeOptions()}</select>
+          </label>
+          <button class="btn btn-secondary" data-click="adminRecipeClear()">Очистить ленту</button>
+          <button class="btn btn-primary" data-click="adminRecipeSave()">Сохранить рецепты</button>
+        </div>
+        <div class="recipe-tape" id="recipeTape">${renderTape(recipe)}</div>
+        <div class="recipe-trash" id="recipeTrash">Корзина появляется при перетаскивании. Клик по ингредиенту тоже удаляет его.</div>
+      `)}
+      ${panel("Инвентарь", "Алмазная руда скрыта и заблокирована на сервере.", renderInventory())}
+    `);
+    wireRecipeDrag();
+  }
+
+  function wireRecipeDrag() {
+    const tape = $("recipeTape");
+    if (!tape) return;
+    tape.querySelectorAll("[draggable='true']").forEach((node) => {
+      node.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("text/plain", node.dataset.index || "");
+        $("recipeTrash")?.classList.add("is-live");
+      });
+      node.addEventListener("dragend", () => $("recipeTrash")?.classList.remove("is-live"));
+      node.addEventListener("dragover", (event) => event.preventDefault());
+      node.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const from = Number(event.dataTransfer?.getData("text/plain"));
+        const to = Number(node.dataset.index || 0);
+        moveRecipeItem(from, to);
+      });
+    });
+    $("recipeTrash")?.addEventListener("dragover", (event) => event.preventDefault());
+    $("recipeTrash")?.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const from = Number(event.dataTransfer?.getData("text/plain"));
+      removeRecipeItem(from);
+    });
+  }
+
+  function currentRecipeMutable() {
+    const recipe = selectedRecipe();
+    if (!recipe) return null;
+    if (!Array.isArray(recipe.recipe)) recipe.recipe = [];
+    return recipe;
+  }
+
+  function removeRecipeItem(index) {
+    const recipe = currentRecipeMutable();
+    if (!recipe) return;
+    recipe.recipe.splice(index, 1);
+    renderEditor();
+  }
+
+  function moveRecipeItem(from, to) {
+    const recipe = currentRecipeMutable();
+    if (!recipe || Number.isNaN(from) || Number.isNaN(to) || from === to) return;
+    const [item] = recipe.recipe.splice(from, 1);
+    recipe.recipe.splice(to, 0, item);
+    renderEditor();
+  }
+
+  async function loadRecipes() {
+    setLoading("Открываем рецепты");
+    const data = await safeApi("/api/admin/narcotics/recipes", { recipes: [] });
+    const rs = recipeState();
+    rs.recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    if (!rs.selected && rs.recipes[0]) rs.selected = rs.recipes[0].id;
+    renderEditor();
+  }
+
+  function adminRecipeSelect(value) {
+    recipeState().selected = String(value || "");
+    renderEditor();
+  }
+
+  function adminRecipeSearch(value) {
+    recipeState().query = String(value || "");
+    renderEditor();
+  }
+
+  function adminRecipeTab(id) {
+    recipeState().tab = String(id || "basic");
+    renderEditor();
+  }
+
+  function adminRecipeAdd(token) {
+    const { kind, value } = tokenParts(token);
+    if (kind === "MATERIAL" && BLOCKED_RECIPE_MATERIALS.has(value)) {
+      toast("Алмазная руда не используется в рецептах.", true);
+      return;
+    }
+    const recipe = currentRecipeMutable();
+    if (!recipe) return;
+    recipe.recipe.push(`${kind.toLowerCase()}:${value}`);
+    renderEditor();
+  }
+
+  function adminRecipeRemove(index) {
+    removeRecipeItem(Number(index));
+  }
+
+  function adminRecipeClear() {
+    const recipe = currentRecipeMutable();
+    if (!recipe) return;
+    recipe.recipe = [];
+    renderEditor();
+  }
+
+  async function adminRecipeSave() {
+    const rs = recipeState();
+    const recipes = {};
+    for (const row of rs.recipes) {
+      const list = Array.isArray(row.recipe) ? row.recipe : [];
+      if (list.length < 3) {
+        toast(`В рецепте ${row.name || row.id} меньше трёх ингредиентов.`, true);
+        return;
+      }
+      recipes[row.id] = list;
+    }
+    const headers = await dangerConfirm("Сохранить рецепты CopiMineNarcotics?", "NARCOTICS_RECIPES_SAVE");
+    const result = await api("/api/admin/narcotics/recipes", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ recipes }),
+    });
+    toast(`Рецепты сохранены: ${result.updated?.length || 0}`);
+    await loadRecipes();
+  }
+
+  return {
+    loadRecipes,
+    adminRecipeSelect,
+    adminRecipeSearch,
+    adminRecipeTab,
+    adminRecipeAdd,
+    adminRecipeRemove,
+    adminRecipeClear,
+    adminRecipeSave,
+  };
+}

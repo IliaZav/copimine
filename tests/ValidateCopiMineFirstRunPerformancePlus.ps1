@@ -1,11 +1,10 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $pluginSource = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
 $pluginYml = Join-Path $root 'copimine-admin-plugin\plugin.yml'
 $backend = Join-Path $root 'admin-web\backend\main.py'
-$frontend = Join-Path $root 'admin-web\frontend\assets\app.js'
-$style = Join-Path $root 'admin-web\frontend\assets\style.css'
 $plugins = Join-Path $root 'minecraft\server\plugins'
 $serverProperties = Join-Path $root 'minecraft\server\server.properties'
 
@@ -22,8 +21,8 @@ function RequirePath([string]$path, [string]$message) {
 $java = Text $pluginSource
 $yml = Text $pluginYml
 $py = Text $backend
-$js = Text $frontend
-$css = Text $style
+$js = Read-FrontendBundle
+$css = Read-FrontendStyles
 $props = Text $serverProperties
 
 Require "plugin version" $yml "9\.1\.0-postgres-v4"

@@ -1,77 +1,46 @@
-$ErrorActionPreference = "Stop"
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
+$errors = New-ErrorList
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$plugin = Join-Path $root "copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java"
-$frontend = Join-Path $root "admin-web\frontend\assets\app.js"
-$backend = Join-Path $root "admin-web\backend\main.py"
+$java = Read-Utf8 $Paths.Admin
+$frontend = Read-FrontendBundle
+$backend = Read-Utf8 $Paths.MainPy
 
-$errors = New-Object System.Collections.Generic.List[string]
-
-function Read-Text([string]$path) {
-  if (-not (Test-Path -LiteralPath $path)) {
-    $script:errors.Add("Missing file: $path")
-    return ""
-  }
-  return (Get-Content -Raw -Encoding UTF8 -LiteralPath $path) -replace "`r", ""
-}
-
-function Require-Contains([string]$name, [string]$text, [string]$needle) {
-  if (-not $text.Contains($needle)) {
-    $script:errors.Add("$name is missing text: $needle")
-  }
-}
-
-function Require-Regex([string]$name, [string]$text, [string]$pattern) {
-  if (-not [regex]::IsMatch($text, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
-    $script:errors.Add("$name is missing pattern: $pattern")
-  }
-}
-
-$java = Read-Text $plugin
-$js = Read-Text $frontend
-$py = Read-Text $backend
-
-Require-Regex "plugin client brand listener" $java "implements Listener, CommandExecutor, TabCompleter, PluginMessageListener"
-Require-Contains "plugin client brand channel" $java 'registerIncomingPluginChannel(this, "minecraft:brand", this)'
-Require-Contains "plugin client brand unregister" $java 'unregisterIncomingPluginChannel(this, "minecraft:brand", this)'
-Require-Contains "plugin client brand denylist" $java "BLOCKED_CLIENT_BRAND_TOKENS"
+Require-Regex $java 'implements Listener, CommandExecutor, TabCompleter, PluginMessageListener' 'AdminPlus must keep the client brand listener.'
+Require-Contains $java 'registerIncomingPluginChannel(this, "minecraft:brand", this)' 'Client brand channel must be registered.'
+Require-Contains $java 'unregisterIncomingPluginChannel(this, "minecraft:brand", this)' 'Client brand channel must be unregistered.'
+Require-Contains $java 'BLOCKED_CLIENT_BRAND_TOKENS' 'Client brand denylist must exist.'
 foreach ($token in @("meteor","wurst","liquidbounce","aristois","impact","vape","baritone","seedcracker","xray","freecam","rusherhack","future")) {
-  Require-Contains "plugin client brand denylist" $java $token
+  Require-Contains $java $token "Client brand denylist token missing: $token"
 }
-Require-Regex "plugin brand decoder" $java "onPluginMessageReceived[\s\S]*decodeClientBrand[\s\S]*kickPlayer"
-Require-Contains "plugin player GUI" $java "openClientGuard"
-Require-Contains "plugin player GUI route" $java 'open:client-guard'
+Require-Regex $java 'onPluginMessageReceived[\s\S]*decodeClientBrand[\s\S]*kickPlayer' 'Client brand decoder must be able to kick blocked clients.'
+Require-Contains $java 'openClientGuard' 'Player GUI must expose client guard diagnostics.'
+Require-Contains $java 'open:client-guard' 'Player GUI route must expose client guard diagnostics.'
 
-Require-Contains "plugin AR transfer drop claims" $java "ArDropClaim"
-Require-Contains "plugin AR transfer drop claims" $java "arTransferClaims"
-Require-Contains "plugin AR transfer drop claims" $java "AR_TRANSFER_DROP_CLAIM"
-Require-Contains "plugin AR transfer pickup" $java "AR_TRANSFER_CLAIMED"
-Require-Regex "plugin AR pickup uses claim" $java 'retagArOwner\(e\.getItem\(\),p,\s*"pickup",\s*claimArTransfer'
+Require-Contains $java 'ArDropClaim' 'AR drop claim tracking must exist.'
+Require-Contains $java 'arTransferClaims' 'AR transfer claim map must exist.'
+Require-Contains $java 'AR_TRANSFER_DROP_CLAIM' 'AR transfer drop claim audit must exist.'
+Require-Contains $java 'AR_TRANSFER_CLAIMED' 'AR transfer claimed audit must exist.'
+Require-Regex $java 'retagArOwner\(e\.getItem\(\),p,\s*"pickup",\s*claimArTransfer' 'AR pickup must use transfer claims.'
 
-Require-Contains "economy simple section" $java "openEconomyBasic"
-Require-Contains "economy advanced section" $java "openEconomyAdvanced"
-Require-Regex "economy root split" $java "private void openEconomy\(Player p\)[\s\S]*open:economy-basic[\s\S]*open:economy-advanced"
-Require-Regex "economy advanced contains DB and scans" $java "private void openEconomyAdvanced\(Player p\)[\s\S]*open:db-health[\s\S]*ar:scan-deep"
-Require-Regex "economy basic keeps safe daily actions" $java "private void openEconomyBasic\(Player p\)[\s\S]*open:ar-top[\s\S]*ar:sync[\s\S]*open:ar-events:TRANSFER"
+Require-Contains $java 'private CopiMineEconomyCore economyCore()' 'AdminPlus must resolve EconomyCore through a bridge method.'
+Require-Contains $java 'economy.openAdminEconomyHub(p)' 'AdminPlus economy routes must delegate to EconomyCore.'
+Require-Contains $java 'legacyOpenEconomyBasic' 'Legacy economy GUI must be isolated behind a legacy name.'
+Require-Contains $java 'legacyOpenEconomyAdvanced' 'Legacy advanced economy GUI must be isolated behind a legacy name.'
 
-Require-Contains "election grouped operations" $java "openElectionOperations"
-Require-Contains "election grouped ledgers" $java "openElectionLedgers"
-Require-Contains "election advanced recovery" $java "openElectionRecoveryAdvanced"
-Require-Regex "elections root split" $java "private void openElections\(Player p\)[\s\S]*open:election-operations[\s\S]*open:election-ledgers[\s\S]*open:election-recovery-advanced"
+Require-Contains $java 'openElectionOperations' 'Election operations section must exist.'
+Require-Contains $java 'openElectionLedgers' 'Election ledgers section must exist.'
+Require-Contains $java 'openElectionRecoveryAdvanced' 'Election recovery section must exist.'
+Require-Regex $java 'private void openElections\(Player p\)[\s\S]*open:election-operations[\s\S]*open:election-ledgers[\s\S]*open:election-recovery-advanced' 'Election root must stay grouped.'
 
-Require-Contains "players daily section" $java "openPlayersDaily"
-Require-Contains "players advanced section" $java "openPlayersAdvanced"
-Require-Regex "players root split" $java "private void openPlayers\(Player p\)[\s\S]*open:players-daily[\s\S]*open:players-advanced[\s\S]*open:client-guard"
+Require-Contains $java 'openPlayersDaily' 'Players daily section must exist.'
+Require-Contains $java 'openPlayersAdvanced' 'Players advanced section must exist.'
+Require-Regex $java 'private void openPlayers\(Player p\)[\s\S]*open:players-daily[\s\S]*open:players-advanced[\s\S]*open:client-guard' 'Players root must stay grouped.'
 
-Require-Contains "frontend live stream" $js "startLivePanelStream"
-Require-Contains "frontend live stream" $js "stopLivePanelStream"
-Require-Regex "frontend live stream endpoint" $js 'new EventSource\("/api/events/stream\?_fresh="\s*\+\s*Date\.now\(\),\s*\{\s*withCredentials:\s*true\s*\}\)'
-Require-Regex "frontend live stream boot" $js "bootAuthed[\s\S]*startLivePanelStream\(\)"
-Require-Regex "frontend live stream logout" $js "logout[\s\S]*stopLivePanelStream\(\)"
-Require-Contains "backend events stream" $py '@app.get("/api/events/stream")'
+Require-Contains $frontend 'startLivePanelStream' 'Frontend live stream starter must exist.'
+Require-Contains $frontend 'stopLivePanelStream' 'Frontend live stream stopper must exist.'
+Require-Regex $frontend 'new EventSource\("/api/events/stream\?_fresh="\s*\+\s*Date\.now\(\),\s*\{\s*withCredentials:\s*true\s*\}\)' 'Frontend live stream endpoint must use authenticated SSE.'
+Require-Regex $frontend 'bootAuthed[\s\S]*startLivePanelStream\(\)' 'Authed boot must start live stream.'
+Require-Regex $frontend 'logout[\s\S]*stopLivePanelStream\(\)' 'Logout must stop live stream.'
+Require-Contains $backend '@app.get("/api/events/stream")' 'Backend events stream endpoint must exist.'
 
-if ($errors.Count -gt 0) {
-  throw ("Clean-slate/live/GUI/client-guard validation failed:`n - " + ($errors -join "`n - "))
-}
-
-Write-Host "Clean-slate/live/GUI/client-guard validation passed."
+Throw-IfErrors 'ValidateCopiMineCleanSlateLiveGuiGuard'

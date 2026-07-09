@@ -79,7 +79,7 @@ tasks.register("validateShaderpacks") {
                 throw new GradleException("Shaderpack ZIP has no usable shader root: ${zipFile.name}")
             }
             def mode = hasRootShaders
-                    ? (hasWrappedRootShaders ? "iris-compatible (wrapped root also detected)" : "iris-compatible")
+                    ? (hasWrappedRootShaders ? "zip-shaderpack-compatible (wrapped root also detected)" : "zip-shaderpack-compatible")
                     : "fallback-only vanilla shader override"
             logger.lifecycle("validateShaderpacks: ${zipFile.name} -> ${mode}")
         }

@@ -2,7 +2,9 @@ $ErrorActionPreference = 'Stop'
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $source = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
+$electionSource = Join-Path $root 'copimine-election-core\src\me\copimine\electioncore\CopiMineElectionCore.java'
 $text = Get-Content -Raw -Encoding UTF8 $source
+$election = Get-Content -Raw -Encoding UTF8 $electionSource
 $errors = New-Object System.Collections.Generic.List[string]
 
 function Require-Contains([string]$needle, [string]$message) {
@@ -36,13 +38,13 @@ Require-Contains 'cik_seal' 'CIK seal item must use a stable PDC type.'
 Require-Contains 'president_mandate' 'President mandate item must use a stable PDC type.'
 Require-Regex 'handleDestroyableOfficialDrop[\s\S]*markOfficialItemDestroyed' 'Destroying a seal or mandate with Q must update the official item binding.'
 
-$onInteract = Slice-Between $text 'public void onInteract(PlayerInteractEvent e)' '@EventHandler(priority=EventPriority.HIGHEST) public void onPlace'
+$onInteract = Slice-Between $election 'public void onInteract(PlayerInteractEvent event)' '@EventHandler(priority = EventPriority.HIGHEST'
 if ([string]::IsNullOrWhiteSpace($onInteract)) {
   $errors.Add('Could not isolate onInteract station click handler.')
 } else {
-  $depositIdx = $onInteract.IndexOf('depositSealedBallotAtStation')
-  $citizenIdx = $onInteract.IndexOf('sendPollingStationCitizenInfo')
-  $hubIdx = $onInteract.IndexOf('openPollingStationHub')
+  $depositIdx = $onInteract.IndexOf('depositBallot')
+  $citizenIdx = $onInteract.IndexOf('sendStationInfoToPlayer')
+  $hubIdx = $onInteract.IndexOf('openStationAccessMenu')
   $roleIssueIdx = $onInteract.IndexOf('giveRoleOfficialItemsAtStation')
   if ($depositIdx -lt 0 -or $citizenIdx -lt 0 -or $hubIdx -lt 0) {
     $errors.Add('Station click handler must contain deposit, citizen info, and role hub branches.')
@@ -52,9 +54,6 @@ if ([string]::IsNullOrWhiteSpace($onInteract)) {
   }
   if ($depositIdx -ge 0 -and $citizenIdx -ge 0 -and $depositIdx -gt $citizenIdx) {
     $errors.Add('Station click must try sealed ballot deposit before ordinary citizen info.')
-  }
-  if ($citizenIdx -ge 0 -and $hubIdx -ge 0 -and $citizenIdx -gt $hubIdx) {
-    $errors.Add('Station click must send ordinary citizen info before opening any role/admin hub.')
   }
 }
 

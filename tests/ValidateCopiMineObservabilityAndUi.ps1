@@ -1,15 +1,16 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $pluginSource = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
+$economySource = Join-Path $root 'copimine-economy-core\src\me\copimine\economycore\CopiMineEconomyCore.java'
 $backendSource = Join-Path $root 'admin-web\backend\main.py'
-$frontendSource = Join-Path $root 'admin-web\frontend\assets\app.js'
-$styleSource = Join-Path $root 'admin-web\frontend\assets\style.css'
 
 $plugin = Get-Content -Raw -Encoding UTF8 $pluginSource
+$economy = Get-Content -Raw -Encoding UTF8 $economySource
 $backend = Get-Content -Raw -Encoding UTF8 $backendSource
-$frontend = Get-Content -Raw -Encoding UTF8 $frontendSource
-$style = Get-Content -Raw -Encoding UTF8 $styleSource
+$frontend = Read-FrontendBundle
+$style = Read-FrontendStyles
 
 function Require-Regex([string]$text, [string]$pattern, [string]$message) {
   if (-not [regex]::IsMatch($text, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
@@ -34,14 +35,15 @@ Require-Regex $plugin 'onQuit[\s\S]*recordPlayerActivity[\s\S]*snapshotOnlineInv
 Require-Regex $plugin 'onCmd[\s\S]*recordPlayerActivity' 'Player commands must be visible in the player timeline.'
 Require-Regex $plugin 'onChat[\s\S]*recordPlayerActivity' 'Player chat must be visible in the player timeline.'
 Require-Regex $plugin 'playerAction[\s\S]*recordPlayerActivity[\s\S]*snapshotOnlineInventory' 'Admin player actions must write timeline rows and live snapshots.'
-Require-Regex $plugin 'syncAr[\s\S]*recordEconomySnapshot' 'AR sync must write economy snapshot rows for detailed economy view.'
+Require-Contains $plugin 'recordEconomySnapshot' 'AdminPlus must keep the historical economy snapshot writer for legacy audit rows.'
+Require-Contains $economy 'INSERT INTO cmv4_bank_ledger' 'EconomyCore must write bank ledger rows for detailed economy view.'
 
 Require-Contains $backend '@app.get("/api/players/{player}/timeline")' 'Backend must expose a combined player timeline endpoint.'
 Require-Contains $backend '@app.get("/api/players/{player}/inventory/live")' 'Backend must expose live plugin inventory snapshots.'
 Require-Contains $backend '@app.get("/api/elections/detail")' 'Backend must expose detailed election state.'
 Require-Contains $backend '@app.get("/api/economy/ares/ledger")' 'Backend must expose AR ledger rows.'
-Require-Contains $backend 'plugin_player_activity_sync' 'Backend must read plugin player activity from SQLite.'
-Require-Contains $backend 'plugin_inventory_live_sync' 'Backend must read live inventory snapshots from SQLite.'
+Require-Contains $backend 'plugin_player_activity_sync' 'Backend must read plugin player activity from the plugin database.'
+Require-Contains $backend 'plugin_inventory_live_sync' 'Backend must read live inventory snapshots from the plugin database.'
 Require-Contains $backend 'economy_ledger_sync' 'Backend must read detailed AR economy ledger rows.'
 Require-Contains $backend 'election_detail_sync' 'Backend must read detailed election candidates, votes, ballots, curators, president and audit.'
 

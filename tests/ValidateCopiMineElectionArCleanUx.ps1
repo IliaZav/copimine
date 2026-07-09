@@ -45,11 +45,11 @@ Require-Contains "president mandate cooldown" $java "3600000L"
 Require-Contains "president mandate item" $java "createPresidentMandateItem"
 
 Require-Contains "AR strict counting" $java "private int countArItem(ItemStack it)"
-Require-Contains "AR strict counting" $java "return isOfficialAr(it)?it.getAmount():0;"
+Require-Regex "AR strict counting" $java "return\s+isOfficialArItem?\(it\)\s*\?\s*it\.getAmount\(\)\s*:\s*0;"
 Require-Contains "AR official gate" $java 'return "certified".equals(meta.getPersistentDataContainer().get(arKey("type"),org.bukkit.persistence.PersistentDataType.STRING));'
-Require-Contains "AR batch metadata" $java "AR_STACK_BATCH_LABEL"
-Require-Contains "AR batch metadata" $java "AR_STACK_VISIBLE_ID"
-Require-Contains "AR batch metadata" $java "AR_STACK_UNIQUE_COUNT"
+Require-Contains "AR batch metadata" $java "AR_UNIQUE_STACK_REGISTRY_V3"
+Require-Contains "AR batch metadata" $java "batch_id"
+Require-Contains "AR batch metadata" $java "asset_id"
 Require-Contains "AR batch metadata" $java "ensureArStackBatch"
 
 Require-Contains "TAB admin group" $tab "admin:"

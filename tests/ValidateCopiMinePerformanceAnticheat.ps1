@@ -1,10 +1,9 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $server = Join-Path $root 'minecraft\server'
 $backendSource = Join-Path $root 'admin-web\backend\main.py'
-$frontendSource = Join-Path $root 'admin-web\frontend\assets\app.js'
-$styleSource = Join-Path $root 'admin-web\frontend\assets\style.css'
 $errors = New-Object System.Collections.Generic.List[string]
 
 function Read-Text([string]$path) {
@@ -41,8 +40,8 @@ $purpur = Read-Text (Join-Path $server 'purpur.yml')
 $entityClearer = Read-Text (Join-Path $server 'plugins\EntityClearer\config.yml')
 $tab = Read-Text (Join-Path $server 'plugins\TAB\config.yml')
 $backend = Read-Text $backendSource
-$frontend = Read-Text $frontendSource
-$style = Read-Text $styleSource
+$frontend = Read-FrontendBundle
+$style = Read-FrontendStyles
 
 Require-File $grimJar 'GrimAC.jar must be installed as the single anticheat plugin jar.'
 if (Test-Path $grimJar) {

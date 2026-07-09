@@ -95,7 +95,7 @@ Get-ChildItem -LiteralPath $plugins -File |
 
 Require-Text $index '<html lang="ru">' 'Frontend index must stay Russian-localized.'
 Require-Text $index 'login-copy' 'Login screen helper block is missing.'
-Require-Text $index 'PostgreSQL auth' 'Login screen must explain PostgreSQL auth storage.'
+Require-Text $index 'Аккаунт и файлы сервера' 'Login screen must use concise human-readable account copy.'
 Require-Text $style 'release-readiness-card' 'Release readiness visual card styles are missing.'
 Require-Text $style 'safety-rail' 'Sensitive-action safety rail styles are missing.'
 Require-Text $guide '\b\d{2,3}%' 'Transfer guide must explain project readiness percentage.'

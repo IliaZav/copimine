@@ -34,3 +34,5 @@
 - `/copimineclient shader test jelly_world 20`
 - `/copimineclient shader restore`
 - `/copimineclient visual test DESATURATE 20`
+
+Совместимость: CopiMineClient не назначает собственные горячие клавиши и не конфликтует с Emotecraft; канал связи используется только `copimine:client_bridge`.

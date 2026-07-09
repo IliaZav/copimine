@@ -491,3 +491,267 @@ body.junior-admin-mode .page-heading h1::after {
     justify-content: flex-start;
   }
 }
+
+/* Narcotics recipe editor: Minecraft creative inventory without the hotbar. */
+.recipe-summary-row .metric {
+  min-height: 96px;
+}
+
+.recipe-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.recipe-toolbar label {
+  display: grid;
+  gap: 6px;
+  min-width: min(100%, 280px);
+  color: var(--muted);
+  font-size: .84rem;
+  font-weight: 800;
+}
+
+.recipe-toolbar select,
+.recipe-inventory-head input {
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, #111 12%);
+  border-radius: 0;
+  background: #b8b8b8;
+  color: #202020;
+  box-shadow: inset 2px 2px 0 #7f7f7f, inset -2px -2px 0 #efefef;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+.recipe-tape {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  min-height: 72px;
+  padding: 10px;
+  border: 3px solid #3b3b3b;
+  border-top-color: #ededed;
+  border-left-color: #ededed;
+  background: #8f8f8f;
+  box-shadow: inset 0 0 0 2px #5c5c5c;
+}
+
+.recipe-slot,
+.creative-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid #373737;
+  border-top-color: #f2f2f2;
+  border-left-color: #f2f2f2;
+  border-radius: 0;
+  background: #c6c6c6;
+  box-shadow: inset -2px -2px 0 #777, inset 2px 2px 0 #fff;
+  cursor: pointer;
+  image-rendering: pixelated;
+}
+
+.recipe-slot:hover,
+.creative-item:hover {
+  background: #dcdcdc;
+  transform: translateY(-1px);
+}
+
+.recipe-slot img,
+.creative-item img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.recipe-slot span,
+.creative-item span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 12;
+  display: none;
+  min-width: 120px;
+  max-width: 220px;
+  transform: translateX(-50%);
+  padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 7px;
+  background: rgba(17, 10, 28, .94);
+  color: #fff;
+  font-size: .78rem;
+  line-height: 1.2;
+  text-align: center;
+  box-shadow: 0 14px 28px rgba(0,0,0,.25);
+  pointer-events: none;
+}
+
+.recipe-slot:hover span,
+.creative-item:hover span {
+  display: block;
+}
+
+.recipe-trash {
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 2px dashed color-mix(in srgb, var(--red) 60%, transparent);
+  border-radius: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--red-2) 55%, transparent);
+  font-size: .9rem;
+}
+
+.recipe-trash.is-live {
+  color: var(--red);
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red-2) 80%, transparent);
+}
+
+.recipe-inventory-head {
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 320px);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 10px 0;
+  border: 4px solid #3d3d3d;
+  border-top-color: #efefef;
+  border-left-color: #efefef;
+  border-bottom: 0;
+  background: #c6c6c6;
+}
+
+.recipe-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recipe-tabs button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 2px solid #3d3d3d;
+  border-top-color: #f4f4f4;
+  border-left-color: #f4f4f4;
+  border-radius: 0;
+  background: #9d9d9d;
+  color: #1b1b1b;
+  font-weight: 900;
+}
+
+.recipe-tabs button.active {
+  background: #e2e2e2;
+}
+
+.creative-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 42px));
+  gap: 5px;
+  align-content: start;
+  min-height: 238px;
+  max-height: 430px;
+  overflow: auto;
+  padding: 11px;
+  border: 4px solid #3d3d3d;
+  border-top: 0;
+  border-left-color: #efefef;
+  background: #c6c6c6;
+  box-shadow: inset 0 0 0 2px #8a8a8a;
+}
+
+.recipe-empty {
+  grid-column: 1 / -1;
+  padding: 18px;
+  color: #2c2c2c;
+  font-weight: 800;
+}
+
+.public-online-board {
+  margin-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .recipe-inventory-head {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-search-dock {
+  position: fixed;
+  right: 18px;
+  top: 88px;
+  z-index: 35;
+  width: min(320px, calc(100vw - 36px));
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--shadow-soft);
+}
+
+.admin-search-box {
+  display: grid;
+  gap: 7px;
+}
+
+.admin-search-box span {
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.admin-search-box input {
+  min-height: 40px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.admin-search-results {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.admin-search-results button {
+  display: grid;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+  color: var(--ink);
+  text-align: left;
+}
+
+.admin-search-results button:hover,
+.admin-search-results button.active {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--line));
+  background: color-mix(in srgb, var(--accent-2) 70%, var(--surface));
+}
+
+.admin-search-results strong {
+  font-size: .92rem;
+}
+
+.admin-search-results span,
+.admin-search-results p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+@media (max-width: 1280px) {
+  .admin-search-dock {
+    position: static;
+    width: auto;
+    margin: 10px 12px 0;
+  }
+}

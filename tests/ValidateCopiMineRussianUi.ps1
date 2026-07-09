@@ -9,7 +9,7 @@ foreach ($path in @($admin, $messages)) {
 }
 if (Test-Path $admin) {
   $java = Get-Content -Raw -Encoding UTF8 $admin
-  foreach ($marker in @('bank-atm','bank-atms','atm-pin','open:economy','openBankAtm','openAtmPinPad')) {
+  foreach ($marker in @('bank-atm','bank-atms','atm-pin','open:economy','openBankAtm','CopiMineEconomyCore')) {
     if (-not $java.Contains($marker)) { $errors.Add("Missing GUI marker: $marker") }
   }
   foreach ($english in @('Deposit hand','Deposit all','Withdraw 64 AR','Transfer recipient','Invalid bank PIN','No economy permission','ATM PIN','Applications review','Ballot ledger','Election audit','Player tools','&b&lTimeline','"&bTimeline"')) {

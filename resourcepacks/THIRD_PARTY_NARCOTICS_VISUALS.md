@@ -40,6 +40,7 @@ Permissive asset candidates reviewed:
 
 ## Decision
 
+No third-party narcotics overlay, font, or shader asset was embedded in the CopiMine resource pack.
 No third-party narcotics overlay, font, or server resource-pack shader asset was embedded in the CopiMine resource pack.
 
 Reasons:
@@ -57,6 +58,7 @@ This patch uses only self-made assets for narcotics:
 - item textures in `src/assets/copimine/textures/item/narcotics/`;
 - server fallback overlay PNG files in `src/assets/copimine/textures/gui/narcotics/`;
 - font provider manifest in `src/assets/copimine/font/narcotics_overlay.json`;
+- font glyph overlays generated inside the CopiMine project;
 - shader/profile descriptor JSON files in `src/assets/copimine/shaders/narcotics/`;
 - optional client mod copies/adaptations in `CopiMineClient/src/main/resources/assets/copimineclient/textures/visuals/`.
 

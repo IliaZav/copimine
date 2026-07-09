@@ -37,7 +37,7 @@ function Read-Utf8([string]$path) {
   if (-not (Test-Path -LiteralPath $path)) {
     throw "Missing file: $path"
   }
-  Get-Content -Raw -Encoding UTF8 $path
+  (Get-Content -Raw -Encoding UTF8 $path) -replace "`r", ''
 }
 
 function New-ErrorList {

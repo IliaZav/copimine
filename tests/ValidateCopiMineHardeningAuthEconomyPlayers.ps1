@@ -1,10 +1,9 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $plugin = Join-Path $root "copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java"
 $backend = Join-Path $root "admin-web\backend\main.py"
-$frontend = Join-Path $root "admin-web\frontend\assets\app.js"
-$style = Join-Path $root "admin-web\frontend\assets\style.css"
 
 $errors = New-Object System.Collections.Generic.List[string]
 
@@ -14,8 +13,8 @@ function Require-Text([string]$name, [string]$text, [string]$pattern) {
 
 $java = Get-Content -LiteralPath $plugin -Raw -Encoding UTF8
 $py = Get-Content -LiteralPath $backend -Raw -Encoding UTF8
-$js = Get-Content -LiteralPath $frontend -Raw -Encoding UTF8
-$css = Get-Content -LiteralPath $style -Raw -Encoding UTF8
+$js = Read-FrontendBundle
+$css = Read-FrontendStyles
 
 Require-Text "backend postgres host" $py "POSTGRES_HOST"
 Require-Text "backend postgres schema" $py "POSTGRES_SCHEMA"

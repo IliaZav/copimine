@@ -173,7 +173,7 @@ public final class ClientVisualManager {
     public String statusLine() {
         if (active.isEmpty()) {
             return "CopiMineClient: active=none, runtime=" + runtimeStatus()
-                    + ", renderWhenHudHidden=" + config.renderWhenHudHidden();
+                    + ", render_when_hud_hidden=" + config.renderWhenHudHidden();
         }
         ActiveVisual first = active.values().iterator().next();
         long secondsLeft = Math.max(0L, (first.untilMillis() - System.currentTimeMillis()) / 1_000L);

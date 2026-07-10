@@ -3151,6 +3151,15 @@ def require_player(request: Request, authorization: str = Header(default="")) ->
         return account
 
 
+def is_loopback_request(request: Request) -> bool:
+    host = str(request.client.host if request.client else "").strip().lower()
+    if not host:
+        return False
+    if host.startswith("::ffff:"):
+        host = host.split("::ffff:", 1)[1]
+    return host in {"127.0.0.1", "::1", "localhost"}
+
+
 def public_player_account(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row.get("id"),
@@ -12065,7 +12074,9 @@ async def health() -> dict[str, Any]:
 
 
 @app.get("/api/runtime")
-async def runtime(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
+async def runtime(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
+    if not is_loopback_request(request):
+        require_panel_admin(request, authorization)
     report = _STARTUP_REPORT or run_startup_checks()
     snapshot = managed_runtime_snapshot(PROJECT_ROOT, APP_ROOT)
     return {

@@ -70,13 +70,13 @@ Write-Host "SHA256:  $actual"
 Write-Host "Server:  $Server"
 Write-Host "Remote:  $RemoteDir"
 
-Invoke-NativeChecked ssh -p $Port $Server "mkdir -p '$RemoteDir'"
-Invoke-NativeChecked scp -P $Port $archivePath "${Server}:$RemoteDir/"
-Invoke-NativeChecked scp -P $Port $shaPath "${Server}:$RemoteDir/"
-Invoke-NativeChecked scp -P $Port $bootstrapPath "${Server}:$RemoteDir/"
+Invoke-NativeChecked -FilePath ssh -Arguments @("-p", "$Port", $Server, "mkdir -p '$RemoteDir'")
+Invoke-NativeChecked -FilePath scp -Arguments @("-P", "$Port", $archivePath, "${Server}:$RemoteDir/")
+Invoke-NativeChecked -FilePath scp -Arguments @("-P", "$Port", $shaPath, "${Server}:$RemoteDir/")
+Invoke-NativeChecked -FilePath scp -Arguments @("-P", "$Port", $bootstrapPath, "${Server}:$RemoteDir/")
 
 $remoteCheck = "cd '$RemoteDir' && sha256sum '$archiveName' && cat '$archiveName.sha256' && test -f '$bootstrapName'"
-Invoke-NativeChecked ssh -p $Port $Server $remoteCheck
+Invoke-NativeChecked -FilePath ssh -Arguments @("-p", "$Port", $Server, $remoteCheck)
 
 Write-Host ""
 Write-Host "Upload complete. On Ubuntu run:"

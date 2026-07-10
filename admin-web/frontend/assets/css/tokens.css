@@ -24,10 +24,10 @@
   --amber-2: rgba(141, 99, 29, 0.13);
   --red: #a84a35;
   --red-2: rgba(168, 74, 53, 0.12);
-  --shadow: 0 22px 46px rgba(18, 25, 37, 0.12);
-  --shadow-soft: 0 14px 32px rgba(18, 25, 37, 0.08);
-  --r: 18px;
-  --r-lg: 26px;
+  --shadow: 0 16px 32px rgba(18, 25, 37, 0.1);
+  --shadow-soft: 0 10px 22px rgba(18, 25, 37, 0.06);
+  --r: 8px;
+  --r-lg: 14px;
   --sidebar-w: 286px;
   --body-gradient:
     radial-gradient(circle at top left, rgba(42, 196, 111, 0.12), transparent 28%),

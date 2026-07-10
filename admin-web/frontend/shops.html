@@ -26,7 +26,7 @@
         <a href="/mods.html">Модпак</a>
         <a id="publicSigninLink" href="/signin.html">Войти</a>
         <a id="publicRegisterLink" href="/register.html">Регистрация</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button>
         <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
         <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
       </nav>
@@ -39,8 +39,8 @@
             <span class="hero-kicker">Лавки</span>
             <span class="route-chip">Каталог</span>
           </div>
-          <h1>Игровые магазины CopiMine.</h1>
-          <p>Каталоги доступны на сайте, а выдача, возврат и физическое получение предметов происходят уже на сервере.</p>
+          <h1>Каталог игровых предметов.</h1>
+          <p>Покупка оформляется на сайте, а выдача, возврат и получение предметов происходят уже в игре.</p>
         </div>
 
         <aside class="public-hero-side">
@@ -48,7 +48,7 @@
             <div class="scene-card-copy">
               <span class="hero-kicker">Каталоги</span>
               <strong>AR и donation разделены</strong>
-              <p>Для AR и донатной валюты используются разные балансы, разные операции и разные сценарии выдачи.</p>
+              <p>У каждого раздела свой баланс, своя история и свой порядок выдачи.</p>
             </div>
           </article>
 
@@ -58,11 +58,11 @@
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/totem_of_undying.png" alt="" /></span>
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/barrel_top.png" alt="" /></span>
             </div>
-            <span class="hero-kicker">Принцип работы</span>
+            <span class="hero-kicker">Как это работает</span>
             <ul class="hero-check-list">
-              <li>AR-предметы оплачиваются из банка AR.</li>
-              <li>Донат-предметы оплачиваются с donation-баланса.</li>
-              <li>После оплаты создаётся выдача, которую игрок забирает в игре.</li>
+              <li>AR-предметы оплачиваются из AR-банка.</li>
+              <li>Donation-предметы оплачиваются с donation-баланса.</li>
+              <li>После оплаты создаётся выдача, которую игрок забирает уже в игре.</li>
             </ul>
           </article>
         </aside>
@@ -72,7 +72,7 @@
         <div class="section-head">
           <span>Витрины</span>
           <h2>Каталог AR и donation.</h2>
-          <p>Ниже показываются текущие товары, цены и базовые параметры выдачи.</p>
+          <p>Ниже показываются текущие товары, цены и параметры выдачи.</p>
         </div>
 
         <div class="public-shop-board">
@@ -86,21 +86,21 @@
               <button id="openArShopBtn" class="btn btn-secondary" type="button">Открыть AR-магазин</button>
             </div>
             <div id="publicArShopPreview" class="shop-rail">
-              <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
+              <article class="shop-item-chip"><strong>Получаем каталог</strong></article>
             </div>
           </article>
 
           <article class="public-shop-card public-shop-card-donation">
             <div class="public-shop-card-head">
               <div>
-                <span class="hero-kicker">Донат-магазин</span>
+                <span class="hero-kicker">Donation-магазин</span>
                 <h3>Именные предметы за donation</h3>
                 <p>Отдельный баланс, отдельная история покупок и управление выдачами.</p>
               </div>
-              <button id="openDonationShopBtn" class="btn btn-secondary" type="button">Открыть донат-магазин</button>
+              <button id="openDonationShopBtn" class="btn btn-secondary" type="button">Открыть donation-магазин</button>
             </div>
             <div id="publicDonationShopPreview" class="shop-rail">
-              <article class="shop-item-chip"><strong>Загружаем каталог</strong></article>
+              <article class="shop-item-chip"><strong>Получаем каталог</strong></article>
             </div>
           </article>
         </div>

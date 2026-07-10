@@ -12,83 +12,106 @@
 <body data-page-kind="register" data-auth-flow="register" class="auth-screen">
   <div id="toast" class="toast-root" aria-live="polite"></div>
 
-  <main class="auth-shell">
-    <section class="auth-card auth-card-wide">
-      <div class="auth-card-head">
-        <img class="auth-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
-        <div class="auth-card-copy">
-          <span class="auth-kicker">CopiMine</span>
-          <h1>Регистрация аккаунта</h1>
-          <p>Укажите логин, пароль и игровой ник. Если ник заполнен, сайт сразу добавит его в whitelist сервера.</p>
-        </div>
-      </div>
+  <main class="public-site public-site-compact auth-public-site">
+    <header class="public-nav public-nav-auth">
+      <a class="public-brand" href="/index.html" aria-label="CopiMine">
+        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
+        <span class="public-brand-copy">
+          <strong>CopiMine</strong>
+          <small>Регистрация</small>
+        </span>
+      </a>
+      <nav aria-label="Разделы сайта">
+        <a href="/index.html">Главная</a>
+        <a href="/server.html">Сервер</a>
+        <a href="/shops.html">Лавки</a>
+        <a href="/mods.html">Модпак</a>
+        <a href="/signin.html">Войти</a>
+        <a href="/register.html" aria-current="page">Регистрация</a>
+        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
+      </nav>
+    </header>
 
-      <div class="auth-card-grid">
-        <section class="auth-card-section auth-card-section-note">
-          <span class="auth-section-kicker">Правила</span>
-          <h2>Что учитывает система</h2>
-          <ul class="auth-check-list">
-            <li>Один IP может создать до пяти аккаунтов.</li>
-            <li>Minecraft-ник должен совпадать с тем, под которым вы зайдёте на сервер.</li>
-            <li>Банк и игровые действия откроются после привязки и настройки PIN.</li>
-          </ul>
-        </section>
-
-        <section class="auth-card-section">
-          <form id="loginForm" class="auth-form" autocomplete="on">
-            <label for="username">Логин</label>
-            <input id="username" autocomplete="username" spellcheck="false" placeholder="Придумайте логин" />
-
-            <label for="password">Пароль</label>
-            <input id="password" type="password" autocomplete="new-password" placeholder="Минимум 8 символов" />
-
-            <div id="minecraftNameGroup">
-              <label for="playerMinecraftName">Minecraft-ник</label>
-              <input id="playerMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Например, Cells" />
+    <div class="public-page-shell">
+      <div class="auth-shell">
+        <section class="auth-card auth-card-wide">
+          <div class="auth-card-head">
+            <img class="auth-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
+            <div class="auth-card-copy">
+              <span class="auth-kicker">CopiMine</span>
+              <h1>Регистрация аккаунта</h1>
+              <p>Укажите логин, пароль и игровой ник. После регистрации ник попадёт в whitelist сервера.</p>
             </div>
-
-            <label class="auth-checkbox" for="rememberMe">
-              <input id="rememberMe" type="checkbox" />
-              <span>Сразу запомнить вход на этом устройстве</span>
-            </label>
-
-            <button type="submit" class="btn btn-primary btn-wide">Создать аккаунт</button>
-            <div id="loginError" class="form-error"></div>
-          </form>
-
-          <div class="auth-links">
-            <a href="/signin.html">Уже есть аккаунт? Войти</a>
           </div>
 
-          <section class="auth-recovery-card">
-            <h3>Восстановить доступ</h3>
-            <p>Если ник уже был добавлен в whitelist, получите код в игре и задайте новый пароль.</p>
-            <label for="recoveryMinecraftName">Minecraft-ник</label>
-            <input id="recoveryMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Тот же ник, что и на сервере" />
+          <div class="auth-card-grid">
+            <section class="auth-card-section auth-card-section-note">
+              <span class="auth-section-kicker">Правила</span>
+              <h2>Что учитывает система</h2>
+              <ul class="auth-check-list">
+                <li>Один IP может создать до пяти аккаунтов.</li>
+                <li>Minecraft-ник должен совпадать с тем, под которым вы заходите на сервер.</li>
+                <li>Банк и игровые действия откроются после привязки и настройки PIN.</li>
+              </ul>
+            </section>
 
-            <div class="auth-inline-actions">
-              <button id="recoveryStartBtn" type="button" class="btn btn-secondary">Отправить код в игру</button>
-            </div>
+            <section class="auth-card-section">
+              <form id="loginForm" class="auth-form" autocomplete="on">
+                <label for="username">Логин</label>
+                <input id="username" autocomplete="username" spellcheck="false" placeholder="Придумайте логин" />
 
-            <label for="recoveryCode">Код восстановления</label>
-            <input id="recoveryCode" autocomplete="one-time-code" spellcheck="false" placeholder="Введите код из игры" />
+                <label for="password">Пароль</label>
+                <input id="password" type="password" autocomplete="new-password" placeholder="Минимум 8 символов" />
 
-            <label for="recoveryPassword">Новый пароль</label>
-            <input id="recoveryPassword" type="password" autocomplete="new-password" placeholder="Новый пароль для сайта" />
+                <div id="minecraftNameGroup">
+                  <label for="playerMinecraftName">Minecraft-ник</label>
+                  <input id="playerMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Например, Cells" />
+                </div>
 
-            <label class="auth-checkbox" for="recoveryRememberMe">
-              <input id="recoveryRememberMe" type="checkbox" />
-              <span>Сразу запомнить восстановленный вход</span>
-            </label>
+                <label class="auth-checkbox" for="rememberMe">
+                  <input id="rememberMe" type="checkbox" />
+                  <span>Сразу запомнить вход на этом устройстве</span>
+                </label>
 
-            <div class="auth-inline-actions">
-              <button id="recoveryConfirmBtn" type="button" class="btn btn-primary">Восстановить доступ</button>
-            </div>
-            <div id="recoveryStatus" class="form-error"></div>
-          </section>
+                <button type="submit" class="btn btn-primary btn-wide">Создать аккаунт</button>
+                <div id="loginError" class="form-error"></div>
+              </form>
+
+              <div class="auth-links">
+                <a href="/signin.html">Уже есть аккаунт? Войти</a>
+              </div>
+
+              <section class="auth-recovery-card">
+                <h3>Восстановить доступ</h3>
+                <p>Если ник уже есть в whitelist, получите код в игре и задайте новый пароль.</p>
+                <label for="recoveryMinecraftName">Minecraft-ник</label>
+                <input id="recoveryMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Тот же ник, что и на сервере" />
+
+                <div class="auth-inline-actions">
+                  <button id="recoveryStartBtn" type="button" class="btn btn-secondary">Отправить код в игру</button>
+                </div>
+
+                <label for="recoveryCode">Код восстановления</label>
+                <input id="recoveryCode" autocomplete="one-time-code" spellcheck="false" placeholder="Введите код из игры" />
+
+                <label for="recoveryPassword">Новый пароль</label>
+                <input id="recoveryPassword" type="password" autocomplete="new-password" placeholder="Новый пароль для сайта" />
+
+                <label class="auth-checkbox" for="recoveryRememberMe">
+                  <input id="recoveryRememberMe" type="checkbox" />
+                  <span>Сразу запомнить восстановленный вход</span>
+                </label>
+
+                <div class="auth-inline-actions">
+                  <button id="recoveryConfirmBtn" type="button" class="btn btn-primary">Восстановить доступ</button>
+                </div>
+                <div id="recoveryStatus" class="form-error"></div>
+              </section>
+            </section>
+          </div>
         </section>
       </div>
-    </section>
+    </div>
   </main>
 
   <div id="modalRoot"></div>

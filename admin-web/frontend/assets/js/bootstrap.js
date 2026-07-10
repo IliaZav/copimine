@@ -19,7 +19,7 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["register", "register.html"],
 ]);
 
-let legacyRuntimePromise = null;
+let cabinetRuntimePromise = null;
 
 function currentHashRoute(hashValue = window.location.hash) {
   return String(hashValue || "").replace(/^#/, "").split("?", 1)[0].trim().toLowerCase();
@@ -47,23 +47,27 @@ function normalizeAuthHashRoute() {
   return true;
 }
 
-function loadLegacyRuntime() {
-  if (legacyRuntimePromise) return legacyRuntimePromise;
-  legacyRuntimePromise = import("./legacy/app-legacy.js")
+function loadCabinetRuntime() {
+  if (cabinetRuntimePromise) return cabinetRuntimePromise;
+  cabinetRuntimePromise = import("./cabinet-runtime.js")
     .then((module) => {
-      document.documentElement.dataset.legacyRuntime = "ready";
+      document.documentElement.dataset.runtime = "ready";
       return module;
     })
     .catch((error) => {
-      legacyRuntimePromise = null;
-      console.error("CopiMine legacy runtime failed to load", error);
+      cabinetRuntimePromise = null;
+      console.error("CopiMine cabinet runtime failed to load", error);
       throw error;
     });
-  return legacyRuntimePromise;
+  return cabinetRuntimePromise;
+}
+
+function requestCabinetRuntime() {
+  void loadCabinetRuntime();
 }
 
 function requestLegacyRuntime() {
-  void loadLegacyRuntime();
+  requestCabinetRuntime();
 }
 
 window.addEventListener("hashchange", () => {
@@ -79,7 +83,7 @@ window.addEventListener("hashchange", () => {
   if (normalizeLegacyPublicHash()) return;
 });
 
-window.addEventListener("copimine:legacy-runtime-request", requestLegacyRuntime);
+window.addEventListener("copimine:cabinet-runtime-request", requestLegacyRuntime);
 
 if (pageKind() === "cabinet") {
   if (!normalizeAuthHashRoute()) {

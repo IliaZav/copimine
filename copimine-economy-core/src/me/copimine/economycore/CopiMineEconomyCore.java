@@ -109,6 +109,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private final PinService pinService = new PinServiceImpl();
     private final AtmService atmService = new AtmServiceImpl();
     private final LedgerService ledgerService = new LedgerServiceImpl();
+    private final OfficialArService officialArService = new OfficialArServiceImpl();
     private final DonationBalanceServiceImpl donationBalanceService = new DonationBalanceServiceImpl();
     private final DonationPaymentServiceImpl donationPaymentService = new DonationPaymentServiceImpl();
     private final DonationPurchaseServiceImpl donationPurchaseService = new DonationPurchaseServiceImpl();
@@ -134,6 +135,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         TxnResult refund(UUID playerUuid, String playerName, long amount, String idempotencyKey, String action, String details);
         TxnResult transferWithPin(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String pin, String idempotencyKey, String action, String details);
         CompletableFuture<TxnResult> transferWithPinAsync(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String pin, String idempotencyKey, String action, String details);
+        TxnResult transferToAccount(UUID playerUuid, String playerName, String pin, String toAccountId, String toOwnerUuid, String toOwnerName, long amount, String idempotencyKey, String action, String details);
         TxnResult credit(UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details);
         CompletableFuture<TxnResult> creditAsync(UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details);
     }
@@ -155,6 +157,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     public interface LedgerService {
         void pluginEvent(String source, String eventType, String actor, String target, String details);
+    }
+
+    public interface OfficialArService {
+        boolean isOfficialAr(ItemStack stack);
+        int countOfficialAr(Inventory inventory);
+        ItemStack createStack(Material material, int amount);
+        ItemStack normalizeStack(ItemStack stack);
+        boolean removeAmount(Inventory inventory, int amount);
+        void normalizePlayer(Player player);
     }
 
     public interface DonationBalanceService {
@@ -277,6 +288,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         getServer().getServicesManager().register(PinService.class, pinService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(AtmService.class, atmService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(LedgerService.class, ledgerService, this, ServicePriority.Normal);
+        getServer().getServicesManager().register(OfficialArService.class, officialArService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(DonationBalanceService.class, donationBalanceService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(DonationPaymentService.class, donationPaymentService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(DonationPurchaseService.class, donationPurchaseService, this, ServicePriority.Normal);
@@ -312,6 +324,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     public AtmService atmService() {
         return atmService;
+    }
+
+    public OfficialArService officialArService() {
+        return officialArService;
     }
 
     public ArtifactsBridge artifactsBridge() {
@@ -512,8 +528,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         try {
             handleMenuAction(player, menu, action);
         } catch (Exception error) {
-            player.sendMessage(color("&cНе удалось выполнить действие."));
-            getLogger().warning("economy action " + action + ": " + safeError(error));
+            notifyEconomyBug(player, "menu", action, error, event.getCurrentItem(), player.getLocation());
+            getLogger().warning("economy menu action=" + action + " player=" + player.getName() + " error=" + safeError(error));
         }
     }
 
@@ -1468,14 +1484,17 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private void removeOfficialAr(Inventory inventory, int amount) {
         int left = amount;
-        for (ItemStack stack : inventory.getContents()) {
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
             if (stack == null || !isOfficialAr(stack)) {
                 continue;
             }
             int take = Math.min(left, stack.getAmount());
             stack.setAmount(stack.getAmount() - take);
             if (stack.getAmount() <= 0) {
-                inventory.remove(stack);
+                inventory.setItem(slot, null);
+            } else {
+                inventory.setItem(slot, stack);
             }
             left -= take;
             if (left <= 0) {
@@ -1669,7 +1688,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     return entity;
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            getLogger().warning("find entity by uuid=" + uuidText + " failed: " + safeError(error));
         }
         return null;
     }
@@ -2013,7 +2033,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         return replay;
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception replayError) {
+                getLogger().warning("artifacts transfer replay account=" + playerKey + " to=" + first(toAccountId, "").trim() + " key=" + first(idempotencyKey, "") + " failed: " + safeError(replayError));
             }
             return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
         }
@@ -2070,7 +2091,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         return replay;
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception replayError) {
+                getLogger().warning("managed transfer replay from=" + first(fromAccountId, "").trim() + " to=" + (toUuid == null ? "" : toUuid) + " key=" + first(idempotencyKey, "") + " failed: " + safeError(replayError));
             }
             return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
         }
@@ -2381,7 +2403,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (root != null) {
                 return root;
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            getLogger().warning("releaseRoot fallback: " + safeError(error));
         }
         return Paths.get("/opt/copimine");
     }
@@ -2558,6 +2581,32 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private String safeError(Throwable error) {
         String message = error == null ? "unknown" : String.valueOf(error.getMessage());
         return message.replaceAll("(?i)(password=)[^\\s&]+", "$1***").replaceAll("(?i)(POSTGRES_PASSWORD=)[^\\s&]+", "$1***");
+    }
+
+    private void notifyEconomyBug(Player player, String source, String action, Throwable error, ItemStack item, Location location) {
+        if (player == null) {
+            return;
+        }
+        String token = UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
+        String world = location != null && location.getWorld() != null ? location.getWorld().getName() : "";
+        int x = location == null ? 0 : location.getBlockX();
+        int y = location == null ? 0 : location.getBlockY();
+        int z = location == null ? 0 : location.getBlockZ();
+        String itemType = item == null || item.getType() == Material.AIR ? "AIR" : item.getType().name();
+        String summary = first(safeError(error), error == null ? "unknown" : error.getClass().getSimpleName());
+        getLogger().warning("economy-player-bug token=" + token
+                + " player=" + player.getName()
+                + " source=" + first(source, "unknown")
+                + " action=" + first(action, "unknown")
+                + " world=" + world
+                + " x=" + x
+                + " y=" + y
+                + " z=" + z
+                + " item=" + itemType
+                + " error=" + summary);
+        player.sendTitle(color("&6Поздравляем, вы нашли баг"), color("&fОбратитесь к админу за вознаграждением"), 10, 80, 15);
+        player.sendMessage(color("&cОшибка обработана. Код: &f" + token + "&c."));
+        player.sendMessage(color("&7Если проблема повторится, отправьте: &f/report BUG " + token + " economy " + first(action, "unknown")));
     }
 
     private String first(String... values) {
@@ -3663,7 +3712,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                             return replay;
                         }
                     }
-                } catch (Exception ignored) {
+                } catch (Exception replayError) {
+                    getLogger().warning("bank transfer replay from=" + fromUuid + " to=" + toUuid + " key=" + first(idempotencyKey, "") + " failed: " + safeError(replayError));
                 }
                 return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
             }
@@ -3672,6 +3722,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         @Override
         public CompletableFuture<TxnResult> transferWithPinAsync(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String pin, String idempotencyKey, String action, String details) {
             return dbFuture("bank transfer", () -> transferWithPin(fromUuid, fromName, toUuid, toName, amount, pin, idempotencyKey, action, details));
+        }
+
+        @Override
+        public TxnResult transferToAccount(UUID playerUuid, String playerName, String pin, String toAccountId, String toOwnerUuid, String toOwnerName, long amount, String idempotencyKey, String action, String details) {
+            return CopiMineEconomyCore.this.transferPlayerToAccount(playerUuid, playerName, pin, toAccountId, toOwnerUuid, toOwnerName, amount, idempotencyKey, action, details);
         }
 
         @Override
@@ -3707,7 +3762,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                             return replay;
                         }
                     }
-                } catch (Exception ignored) {
+                } catch (Exception replayError) {
+                    getLogger().warning("bank credit replay player=" + toUuid + " key=" + first(idempotencyKey, "") + " failed: " + safeError(replayError));
                 }
                 return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
             }
@@ -3809,6 +3865,48 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return new TxnResult(false, "IDEMPOTENCY_CONFLICT", "Ключ пополнения уже привязан к другому счёту.", 0L, "");
             }
             return new TxnResult(true, "OK", "Идемпотентный повтор.", longValue(existing.get("balance_after")), string(existing.get("tx_id")));
+        }
+    }
+
+    private final class OfficialArServiceImpl implements OfficialArService {
+        @Override
+        public boolean isOfficialAr(ItemStack stack) {
+            return CopiMineEconomyCore.this.isOfficialAr(stack);
+        }
+
+        @Override
+        public int countOfficialAr(Inventory inventory) {
+            return CopiMineEconomyCore.this.countOfficialAr(inventory);
+        }
+
+        @Override
+        public ItemStack createStack(Material material, int amount) {
+            return createOfficialArStack(material, amount, "", "", "service");
+        }
+
+        @Override
+        public ItemStack normalizeStack(ItemStack stack) {
+            if (stack == null || !isOfficialAr(stack)) {
+                return stack;
+            }
+            return createOfficialArStack(stack.getType(), Math.max(1, stack.getAmount()), "", "", "normalize");
+        }
+
+        @Override
+        public boolean removeAmount(Inventory inventory, int amount) {
+            if (inventory == null || amount <= 0) {
+                return false;
+            }
+            if (countOfficialAr(inventory) < amount) {
+                return false;
+            }
+            removeOfficialAr(inventory, amount);
+            return true;
+        }
+
+        @Override
+        public void normalizePlayer(Player player) {
+            normalizeOfficialArItems(player);
         }
     }
 }

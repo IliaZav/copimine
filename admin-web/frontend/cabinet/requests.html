@@ -7,7 +7,7 @@
   <title>CopiMine - Заявки</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/cabinet.css?v=20260705a" />
+  <link rel="stylesheet" href="/assets/cabinet.css?v=20260709d" />
 </head>
 <body data-page-kind="cabinet" data-app-route="requests">
   <div id="toast" class="toast-root" aria-live="polite"></div>
@@ -23,7 +23,7 @@
       </div>
       <nav id="nav" class="side-nav" aria-label="Разделы кабинета"></nav>
       <div class="side-footer">
-        <div id="miniHealth" class="mini-health">Проверяем состояние сервисов...</div>
+        <div id="miniHealth" class="mini-health">Проверяем сервисы...</div>
         <button id="logout" class="btn btn-ghost btn-wide" type="button">Выйти</button>
       </div>
     </aside>
@@ -33,13 +33,13 @@
         <button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">☰</button>
         <div class="page-heading">
           <h1 id="pageTitle">Заявки</h1>
-          <p id="pageSubtitle">Загружаем данные раздела и проверяем доступ.</p>
+          <p id="pageSubtitle">Данные загружаются автоматически. При необходимости обновите их вручную.</p>
         </div>
         <div class="top-actions">
           <button class="btn btn-ghost theme-toggle app-theme-toggle" data-theme-toggle="true" type="button">Тема</button>
           <button id="guestPagesBtn" class="btn btn-secondary" type="button">Сайт</button>
           <div id="liveBadge" class="status-chip status-neutral">...</div>
-          <div id="lastUpdate" class="last-update">нет данных</div>
+          <div id="lastUpdate" class="last-update">Данные не загружены</div>
           <button id="refreshBtn" class="btn btn-secondary" type="button">Обновить</button>
         </div>
       </header>

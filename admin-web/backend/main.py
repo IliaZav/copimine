@@ -70,6 +70,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from .commerce_catalog import ar_catalog_snapshot, donation_catalog_snapshot
 from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
@@ -518,6 +519,15 @@ class PlayerArPurchaseIntentIn(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class PlayerSupportReportIn(BaseModel):
+    target: Optional[str] = Field(default="", max_length=64)
+    message: str = Field(min_length=8, max_length=5000)
+    world: Optional[str] = Field(default="", max_length=80)
+    severity: str = Field(default="normal", max_length=40)
+    attached_events: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class AdminWhitelistApproveIn(BaseModel):
     request_id: str = Field(min_length=8, max_length=120)
     note: str = Field(default="", max_length=240)
@@ -818,6 +828,32 @@ _copimine_fastapi_routing.serialize_response = _copimine_serialize_response_safe
 
 
 
+class FrontendStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: Mapping[str, Any]) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                fallback = FRONTEND_DIR / "404.html"
+                if fallback.exists():
+                    return FileResponse(fallback, status_code=404)
+            raise
+
+
+def wants_frontend_html(request: Request) -> bool:
+    if request.method not in {"GET", "HEAD"}:
+        return False
+    accept = str(request.headers.get("accept") or "").lower()
+    return "text/html" in accept or "*/*" in accept or not accept
+
+
+def frontend_file_response(filename: str, status_code: int) -> Optional[FileResponse]:
+    path = FRONTEND_DIR / filename
+    if not path.exists():
+        return None
+    return FileResponse(path, status_code=status_code)
+
+
 app = FastAPI(title="CopiMine Ultimate Admin", version=APP_VERSION)
 if ALLOWED_ORIGINS:
     app.add_middleware(
@@ -827,6 +863,29 @@ if ALLOWED_ORIGINS:
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-API-Key", SENSITIVE_CONFIRM_HEADER, CSRF_HEADER_NAME],
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def copimine_http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
+    if not request.url.path.startswith("/api") and wants_frontend_html(request):
+        if exc.status_code == 404:
+            fallback = frontend_file_response("404.html", 404)
+            if fallback is not None:
+                return fallback
+        fallback = frontend_file_response("error.html", exc.status_code)
+        if fallback is not None:
+            return fallback
+    detail = exc.detail if isinstance(exc.detail, (dict, list, str)) else "HTTP error"
+    return JSONResponse({"detail": detail}, status_code=exc.status_code)
+
+
+@app.exception_handler(Exception)
+async def copimine_unhandled_exception_handler(request: Request, _: Exception) -> Response:
+    if not request.url.path.startswith("/api") and wants_frontend_html(request):
+        fallback = frontend_file_response("error.html", 500)
+        if fallback is not None:
+            return fallback
+    return JSONResponse({"detail": "Internal server error"}, status_code=500)
 
 
 @app.on_event("startup")
@@ -1858,6 +1917,7 @@ def ensure_v4_schema(conn: Any) -> None:
             id TEXT PRIMARY KEY,
             term_id TEXT NOT NULL,
             amount INTEGER NOT NULL DEFAULT 0,
+            period_hours INTEGER NOT NULL DEFAULT 24,
             status TEXT NOT NULL DEFAULT 'ACTIVE',
             created_at BIGINT NOT NULL DEFAULT 0,
             created_by TEXT NOT NULL DEFAULT ''
@@ -2318,6 +2378,7 @@ def ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_round_candidate ON votes(election_id,round_no,candidate_uuid)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_president_laws_status ON president_laws(status,published_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tax_payments_tax_player ON president_tax_payments(tax_id,player_uuid,created_at DESC)")
+    conn.execute("ALTER TABLE president_taxes ADD COLUMN IF NOT EXISTS period_hours INTEGER NOT NULL DEFAULT 24")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_protected_blocks_coords ON protected_blocks(world,x,y,z,active)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions(created_at DESC,action)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_plugin_events_created ON plugin_events(created_at DESC,event_type)")
@@ -4712,26 +4773,195 @@ def active_president_term(conn: Any) -> dict[str, Any]:
     return dict(row) if row else {}
 
 
+def normalize_president_tax_period_hours(hours: int) -> int:
+    hours = int(hours or 24)
+    if hours in (24, 48, 76):
+        return hours
+    return 24
+
+
+def active_president_tax(conn: Any, term_id: str = "") -> dict[str, Any]:
+    current_term_id = str(term_id or "").strip()
+    if not current_term_id:
+        term = active_president_term(conn)
+        current_term_id = str(term.get("id") or "").strip()
+    if not current_term_id:
+        return {}
+    row = conn.execute(
+        """
+        SELECT id,term_id,amount,COALESCE(period_hours,24) AS period_hours,status,created_at,created_by
+        FROM president_taxes
+        WHERE term_id=%s AND status='ACTIVE'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (current_term_id,),
+    ).fetchone()
+    return dict(row) if row else {}
+
+
+def president_tax_window_start(created_at: int, period_hours: int, now_ms: int) -> int:
+    base = max(0, int(created_at or 0))
+    interval = max(1, normalize_president_tax_period_hours(period_hours)) * 60 * 60 * 1000
+    if now_ms <= base:
+        return base
+    offset = (now_ms - base) // interval
+    return base + (offset * interval)
+
+
+def president_tax_paid_amount(conn: Any, tax_id: str, player_uuid: str, window_start: int, window_end: int) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(amount),0) AS total
+        FROM president_tax_payments
+        WHERE tax_id=%s AND player_uuid=%s AND created_at>=%s AND created_at<%s
+        """,
+        (tax_id, player_uuid, int(window_start or 0), int(window_end or 0)),
+    ).fetchone()
+    return int((row or {}).get("total") or 0)
+
+
 def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
+    linked = bool(account.get("minecraft_uuid"))
+    minecraft_uuid = str(account.get("minecraft_uuid") or "").strip()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        term = active_president_term(conn)
+        tax = active_president_tax(conn, str(term.get("id") or ""))
+        laws_rows = []
+        if term:
+            laws_rows = conn.execute(
+                """
+                SELECT id,text,status,published_at,slot_no
+                FROM president_laws
+                WHERE term_id=%s AND status='PUBLISHED'
+                ORDER BY slot_no ASC, published_at DESC
+                LIMIT 6
+                """,
+                (str(term.get("id") or ""),),
+            ).fetchall()
+        payments_rows = []
+        paid = 0
+        due = 0
+        tax_payload = None
+        if linked and tax:
+            now_ms = donation_now_ms()
+            period_hours = normalize_president_tax_period_hours(int(tax.get("period_hours") or 24))
+            window_start = president_tax_window_start(int(tax.get("created_at") or 0), period_hours, now_ms)
+            window_end = window_start + (period_hours * 60 * 60 * 1000)
+            paid = president_tax_paid_amount(conn, str(tax.get("id") or ""), minecraft_uuid, window_start, window_end)
+            due = max(0, int(tax.get("amount") or 0) - paid)
+            tax_payload = {
+                "id": str(tax.get("id") or ""),
+                "amount": int(tax.get("amount") or 0),
+                "periodHours": period_hours,
+                "windowStart": window_start,
+                "windowEnd": window_end,
+                "voluntary": True,
+            }
+            payments_rows = conn.execute(
+                """
+                SELECT id,amount,source,created_at,details
+                FROM president_tax_payments
+                WHERE tax_id=%s AND player_uuid=%s
+                ORDER BY created_at DESC
+                LIMIT 12
+                """,
+                (str(tax.get("id") or ""), minecraft_uuid),
+            ).fetchall()
     return {
-        "linked": bool(account.get("minecraft_uuid")),
-        "disabled": True,
-        "president": {},
-        "laws": [],
-        "tax": None,
-        "paid": 0,
-        "due": 0,
-        "payments": [],
+        "linked": linked,
+        "disabled": False,
+        "president": {
+            "uuid": str(term.get("president_uuid") or ""),
+            "name": str(term.get("president_name") or ""),
+            "termId": str(term.get("id") or ""),
+        } if term else {},
+        "laws": [dict(row) for row in laws_rows],
+        "tax": tax_payload,
+        "paid": paid,
+        "due": due,
+        "payments": [dict(row) for row in payments_rows],
     }
 
 
 def pay_player_election_tax_sync(account: dict[str, Any], data: PlayerElectionTaxPayIn) -> dict[str, Any]:
-    raise HTTPException(status_code=410, detail="Президентский налог отключён")
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    player_uuid = str(account.get("minecraft_uuid") or "").strip()
+    player_name = str(account.get("minecraft_name") or account.get("username") or "").strip()
+    if not player_uuid:
+        raise HTTPException(status_code=409, detail="Сначала привяжи Minecraft-ник")
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        term = active_president_term(conn)
+        if not term:
+            raise HTTPException(status_code=409, detail="Сейчас нет активного президента")
+        tax = active_president_tax(conn, str(term.get("id") or ""))
+        if not tax:
+            raise HTTPException(status_code=409, detail="Активный налог не назначен")
+        verify_bank_pin(conn, account, data.pin)
+        bank = ensure_player_bank_account(conn, player_uuid, player_name)
+        president_bank = ensure_treasury_bank_account(conn)
+        bank_locked, president_locked = lock_bank_accounts_ordered(conn, str(bank["account_id"]), str(president_bank["account_id"]))
+        now_ms = donation_now_ms()
+        period_hours = normalize_president_tax_period_hours(int(tax.get("period_hours") or 24))
+        window_start = president_tax_window_start(int(tax.get("created_at") or 0), period_hours, now_ms)
+        window_end = window_start + (period_hours * 60 * 60 * 1000)
+        paid = president_tax_paid_amount(conn, str(tax.get("id") or ""), player_uuid, window_start, window_end)
+        due = max(0, int(tax.get("amount") or 0) - paid)
+        if due <= 0:
+            return {"ok": True, "amount": 0, "due": 0, "paid": paid, "balance": int(bank_locked.get("balance") or 0), "voluntary": True}
+        amount = min(max(1, int(data.amount or 0)), due)
+        before = int(bank_locked.get("balance") or 0)
+        if before < amount:
+            raise HTTPException(status_code=409, detail="Недостаточно AR на банковском счёте")
+        after = before - amount
+        president_after = int(president_locked.get("balance") or 0) + amount
+        tx_id = f"web-president-tax-{secrets.token_hex(12)}"
+        payment_id = f"president-tax-payment-{secrets.token_hex(10)}"
+        idem_seed = f"{tax.get('id')}:{player_uuid}:{window_start}:{amount}"
+        idem = f"web-president-tax-{sha256_hex(idem_seed)[:32]}"
+        details = json.dumps({
+            "source": "site",
+            "taxId": str(tax.get("id") or ""),
+            "periodHours": period_hours,
+            "windowStart": window_start,
+            "voluntary": True,
+        }, ensure_ascii=False)
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (after, now_ms, bank_locked["account_id"]))
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (president_after, now_ms, president_locked["account_id"]))
+        conn.execute(
+            "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR','COMMITTED',%s,%s,%s,%s)",
+            (tx_id, bank_locked["account_id"], president_locked["account_id"], amount, idem, now_ms, player_name or player_uuid, details),
+        )
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'PRESIDENT_TAX',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id + ":out", bank_locked["account_id"], president_locked["account_id"], player_uuid, amount, after, idem + ":out", now_ms, player_name or player_uuid, details),
+        )
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'PRESIDENT_TAX',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id + ":in", president_locked["account_id"], bank_locked["account_id"], player_uuid, amount, president_after, idem + ":in", now_ms, player_name or player_uuid, details),
+        )
+        conn.execute(
+            "INSERT INTO president_tax_payments(id,tax_id,player_uuid,player_name,amount,source,created_at,details) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (payment_id, str(tax.get("id") or ""), player_uuid, player_name, amount, "SITE_BANK", now_ms, details),
+        )
+        conn.commit()
+    return {
+        "ok": True,
+        "amount": amount,
+        "paid": paid + amount,
+        "due": max(0, due - amount),
+        "balance": after,
+        "periodHours": period_hours,
+        "voluntary": True,
+    }
 
 
 def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[str, Any]:
     if not valid_minecraft_name(minecraft_name):
-        raise HTTPException(status_code=400, detail="Invalid Minecraft name")
+        raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
     code = "".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(8))
     uuid = find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name)
     now = donation_now_ms()
@@ -4750,7 +4980,7 @@ def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[
     delivered = False
     if RCON_PASSWORD:
         try:
-            rcon_quick(f'tellraw {minecraft_name} {{"text":"CopiMine site link code: {code}","color":"gold"}}')
+            rcon_quick(f'tellraw {minecraft_name} {{"text":"Код привязки CopiMine: {code}","color":"gold"}}')
             delivered = True
         except Exception:
             delivered = False
@@ -4768,7 +4998,7 @@ def confirm_link_code_sync(account: dict[str, Any], code: str) -> dict[str, Any]
         ).fetchall()
         row = next((candidate for candidate in rows if hmac.compare_digest(str(candidate["code_hash"] or ""), code_hash)), None)
         if not row:
-            raise HTTPException(status_code=403, detail="Invalid or expired link code")
+            raise HTTPException(status_code=403, detail="Код неверный или истёк")
         minecraft_name = str(row["minecraft_name"] or "")
         minecraft_uuid = str(row["minecraft_uuid"] or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
         conn.execute("UPDATE one_time_link_codes SET status='USED',used_at=%s WHERE id=%s", (now, row["id"]))
@@ -4823,7 +5053,7 @@ def create_player_recovery_code_sync(minecraft_name: str) -> dict[str, Any]:
         conn.commit()
         if RCON_PASSWORD:
             try:
-                rcon_quick(f'tellraw {minecraft_name} {{"text":"CopiMine recovery code: {code}","color":"gold"}}')
+                rcon_quick(f'tellraw {minecraft_name} {{"text":"Код восстановления CopiMine: {code}","color":"gold"}}')
                 delivered = True
             except Exception:
                 delivered = False
@@ -6614,7 +6844,7 @@ async def deliver_temporary_pin_in_game(minecraft_name: str, temp_pin: str) -> b
             return False
         payload = json.dumps(
             {
-                "text": f"CopiMine temporary bank PIN: {temp_pin}. Open the website and change it now.",
+                "text": f"Временный PIN банка CopiMine: {temp_pin}. Открой сайт и сразу задай новый PIN.",
                 "color": "gold",
             },
             ensure_ascii=False,
@@ -8363,12 +8593,64 @@ async def player_bank_treasury(account: dict[str, Any] = Depends(require_player)
 
 @app.get("/api/player/elections/tax")
 async def player_elections_tax(account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
-    raise HTTPException(status_code=410, detail="Президентский налог отключён")
+    return await bg(player_election_tax_profile_sync, account)
 
 
 @app.post("/api/player/elections/tax/pay")
 async def player_elections_tax_pay(data: PlayerElectionTaxPayIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
-    raise HTTPException(status_code=410, detail="Президентский налог отключён")
+    return await bg(pay_player_election_tax_sync, account, data)
+
+
+@app.get("/api/player/reports")
+async def player_reports(status: str = "", account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    rows = await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 5000)
+    minecraft_uuid = str(account.get("minecraft_uuid") or "").strip()
+    username = str(account.get("username") or "").strip().lower()
+    account_id = str(account.get("id") or "").strip()
+    filtered: list[dict[str, Any]] = []
+    for item in rows:
+        item_reporter_uuid = str(item.get("reporter_uuid") or "").strip()
+        item_reporter = str(item.get("reporter") or "").strip().lower()
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        item_account_id = str(metadata.get("siteAccountId") or "").strip()
+        if minecraft_uuid and item_reporter_uuid == minecraft_uuid:
+            pass
+        elif account_id and item_account_id == account_id:
+            pass
+        elif username and item_reporter == username:
+            pass
+        else:
+            continue
+        if status and str(item.get("status") or "").strip().lower() != status.strip().lower():
+            continue
+        filtered.append(item)
+    filtered.sort(key=lambda row: int(row.get("updatedAt") or row.get("createdAt") or 0), reverse=True)
+    return {"reports": filtered, "count": len(filtered)}
+
+
+@app.post("/api/player/reports")
+async def player_create_report(data: PlayerSupportReportIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    reporter_name = str(account.get("minecraft_name") or account.get("username") or "").strip()
+    reporter_uuid = str(account.get("minecraft_uuid") or "").strip() or f"site:{str(account.get('id') or '').strip()}"
+    payload = DiscordReportIn(
+        reporter=reporter_name or "player",
+        reporter_uuid=reporter_uuid[:80],
+        target=str(data.target or "").strip()[:64] or None,
+        message=str(data.message or "").strip(),
+        world=str(data.world or "").strip()[:80] or None,
+        severity=str(data.severity or "normal").strip().lower()[:40] or "normal",
+        attached_events=list(data.attached_events or [])[:20],
+        metadata={
+            "sourcePage": "player-cabinet",
+            "siteAccountId": str(account.get("id") or "").strip(),
+            "siteUsername": str(account.get("username") or "").strip(),
+            **(data.metadata if isinstance(data.metadata, dict) else {}),
+        },
+    )
+    item = await bg(create_report_sync, payload, "player-site", str(account.get("username") or reporter_name or "player"))
+    audit_event(str(account.get("username") or reporter_name or "player"), "player.report.create", target=item["id"], details={"severity": item.get("severity"), "target": item.get("target")})
+    append_panel_event("player", "report_created", actor=str(account.get("username") or reporter_name or "player"), target=item["id"], metadata={"severity": item.get("severity"), "target": item.get("target")}, tags=["player", "report"])
+    return {"ok": True, "report": item}
 
 
 @app.get("/api/status")
@@ -11805,6 +12087,6 @@ async def favicon() -> Response:
 
 
 if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+    app.mount("/", FrontendStaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 

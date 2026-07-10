@@ -16,10 +16,10 @@
 @import url("./css/artifacts.css");
 @import url("./css/president.css");
 @import url("./css/animations.css");
-@import url("./css/legacy.css");
 @import url("./css/site-redesign.css");
 @import url("./css/responsive.css");
 @import url("./css/ui-polish.css");
+@import url("./css/errors.css");
 
 .anticheat-signal {
   display: inline-flex;
@@ -29,10 +29,10 @@
 .release-readiness-card {
   margin-top: 14px;
   padding: 16px 18px;
-  border-radius: 20px;
+  border-radius: 12px;
   border: 1px solid rgba(108, 138, 188, 0.22);
-  background: linear-gradient(180deg, rgba(11, 19, 34, 0.92), rgba(15, 24, 42, 0.86));
-  box-shadow: 0 22px 48px rgba(5, 10, 22, 0.18);
+  background: linear-gradient(180deg, rgba(11, 19, 34, 0.88), rgba(15, 24, 42, 0.82));
+  box-shadow: 0 14px 28px rgba(5, 10, 22, 0.14);
 }
 
 .release-readiness-card strong {

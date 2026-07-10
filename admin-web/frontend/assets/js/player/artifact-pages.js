@@ -167,14 +167,14 @@ export function createPlayerArtifactPages(deps) {
       </section>
       <section class="layout-grid grid-2 artifact-workbench">
         ${purchaseCard(catalog, bank)}
-        ${panel("Последние операции", "Покупки и выдача без лишних карточек.", table("player-artifact-purchases", purchases, [
+        ${panel("Последние операции", "Последние покупки, выдачи и изменения статусов.", table("player-artifact-purchases", purchases, [
           { key: "created_at", label: "Время", render: (value) => dt(value) },
           { key: "item_id", label: "Предмет" },
           { key: "price_ar", label: "AR", render: (value) => formatAr(value || 0) },
           { key: "status", label: "Статус", render: (value) => pill(statusLabel(value), artifactStatusTone(value)) },
         ], { pageSize: 8 }))}
       </section>
-      ${panel("Каталог AR", "Поиск, выбор и покупка без всплывающих окон.", catalogCards(catalog))}
+      ${panel("Каталог AR", "Выбор предметов, цены и покупка со счёта AR.", catalogCards(catalog))}
       <section class="layout-grid grid-2">
         ${panel("Ожидают выдачи", "Забери предметы на сервере.", table("player-artifact-pending", pending, [
           { key: "created_at", label: "Создано", render: (value) => dt(value) },

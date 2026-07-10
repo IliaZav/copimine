@@ -98,6 +98,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -117,7 +118,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private static final Pattern SAFE_SCHEMA = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final long PRESIDENT_BROADCAST_COOLDOWN_MS = 2L * 60L * 60L * 1000L;
     private static final long PRESIDENT_LAW_REPLACE_COOLDOWN_MS = 3L * 24L * 60L * 60L * 1000L;
-    private static final boolean PRESIDENT_TAX_FEATURE_ENABLED = false;
+    private static final boolean PRESIDENT_TAX_FEATURE_ENABLED = true;
     private static final long PRESIDENT_TAX_PERIOD_MS = 24L * 60L * 60L * 1000L;
     private static final int LAW_TEXT_LIMIT = 80;
     private static final int BROADCAST_TEXT_LIMIT = 80;
@@ -894,16 +895,41 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("apply:tax:set:")) {
-            player.sendMessage(color("&eПрезидентский налог отключён. Доход президента теперь идёт из лавки AR."));
+            setPresidentTax(
+                    player.getName(),
+                    parseTaxAmountFromAction(action, "apply:tax:set:"),
+                    parseTaxPeriodFromAction(action, "apply:tax:set:")
+            );
+            refreshSnapshotAndPush();
             openPresidentAdminMenu(player);
             return;
         }
         if (action.equals("apply:tax:create-office")) {
-            player.sendMessage(color("&eПрезидентский налог отключён. Отдельный налоговый офис больше не используется."));
+            createTaxOfficeFromTarget(player);
             openPresidentAdminMenu(player);
             return;
         }
         if (action.startsWith("apply:mandate:tax:")) {
+            setPresidentTax(
+                    player.getName(),
+                    parseTaxAmountFromAction(action, "apply:mandate:tax:"),
+                    parseTaxPeriodFromAction(action, "apply:mandate:tax:")
+            );
+            refreshSnapshotAndPush();
+            openPresidentMandateMenu(player);
+            return;
+        }
+        if (action.startsWith("legacy-disabled:apply:tax:set:")) {
+            player.sendMessage(color("&eПрезидентский налог отключён. Доход президента теперь идёт из лавки AR."));
+            openPresidentAdminMenu(player);
+            return;
+        }
+        if (action.equals("legacy-disabled:apply:tax:create-office")) {
+            player.sendMessage(color("&eПрезидентский налог отключён. Отдельный налоговый офис больше не используется."));
+            openPresidentAdminMenu(player);
+            return;
+        }
+        if (action.startsWith("legacy-disabled:apply:mandate:tax:")) {
             player.sendMessage(color("&eПрезидентский налог отключён. Доход президента теперь идёт из лавки AR."));
             openPresidentMandateMenu(player);
             return;
@@ -1207,6 +1233,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             openPresidentMandateMenu(player);
             return;
         }
+        if (action.startsWith("president:taxperiod:")) {
+            openPresidentAdminMenu(player, normalizeTaxPeriodHours(parseInt(action.substring("president:taxperiod:".length()), selectedTaxPeriodHours())));
+            return;
+        }
+        if (action.startsWith("mandate:taxperiod:")) {
+            openPresidentMandateMenu(player, normalizeTaxPeriodHours(parseInt(action.substring("mandate:taxperiod:".length()), selectedTaxPeriodHours())));
+            return;
+        }
         if (action.equals("president:remove")) {
             openConfirmationMenu(player, "&cСнять президента с должности", List.of(
                     "&7Действующий президент сразу потеряет мандат.",
@@ -1231,11 +1265,28 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("tax:set:")) {
+            int amount = parseTaxAmountFromAction(action, "tax:set:");
+            int periodHours = parseTaxPeriodFromAction(action, "tax:set:");
+            openConfirmationMenu(player, "&6Установить налог", List.of(
+                    "&7Новая ставка: &f" + Math.max(taxMinAmount(), Math.min(taxMaxAmount(), amount)) + " AR",
+                    "&7Списание идёт только за текущие 24 часа.",
+                    "&7Пропущенные дни не копят долг."
+            ), "apply:tax:set:" + amount + ":" + periodHours, "open:president");
+            return;
+        }
+        if (action.equals("tax:create-office")) {
+            openConfirmationMenu(player, "&6Создать налоговую", List.of(
+                    "&7Подтверждение использует блок, на который ты сейчас смотришь.",
+                    "&7После создания игроки смогут платить налог через терминал."
+            ), "apply:tax:create-office", "open:president");
+            return;
+        }
+        if (action.startsWith("legacy-disabled:tax:set:")) {
             player.sendMessage(color("&e\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d. \u0414\u043e\u0445\u043e\u0434 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u0438\u0434\u0451\u0442 \u0438\u0437 \u043b\u0430\u0432\u043a\u0438 AR."));
             openPresidentAdminMenu(player);
             return;
         }
-        if (action.equals("tax:create-office")) {
+        if (action.equals("legacy-disabled:tax:create-office")) {
             player.sendMessage(color("&e\u041d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u043d\u043e\u0432\u044b\u0445 \u043d\u0430\u043b\u043e\u0433\u043e\u0432\u044b\u0445 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e."));
             openPresidentAdminMenu(player);
             return;
@@ -1365,6 +1416,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("mandate:tax:")) {
+            int amount = parseTaxAmountFromAction(action, "mandate:tax:");
+            int periodHours = parseTaxPeriodFromAction(action, "mandate:tax:");
+            openConfirmationMenu(player, "&6Установить налог", List.of(
+                    "&7Новая ставка: &f" + Math.max(taxMinAmount(), Math.min(taxMaxAmount(), amount)) + " AR",
+                    "&7Списание идёт только за текущие 24 часа.",
+                    "&7Старый долг не накапливается."
+            ), "apply:mandate:tax:" + amount + ":" + periodHours, "president:open-mandate");
+            return;
+        }
+        if (action.startsWith("legacy-disabled:mandate:tax:")) {
             int amount = parseInt(action.substring("mandate:tax:".length()), 0);
             openConfirmationMenu(player, "&6Установить налог", List.of(
                     "&7Новый размер налога: &f" + Math.max(0, Math.min(50, amount)) + " AR",
@@ -1382,6 +1443,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("taxpay:cash:")) {
             openTaxOfficeMenu(player, action.substring("taxpay:cash:".length()), "", null);
+            return;
+        }
+        if (action.startsWith("taxpin:")) {
+            handleTaxPinAction(player, action, holder);
             return;
         }
         if (action.startsWith("taxpin:")) {
@@ -1896,55 +1961,152 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openPresidentAdminMenu(Player player) {
+        openPresidentAdminMenu(player, selectedTaxPeriodHours());
+    }
+
+    private void openPresidentAdminMenu(Player player, int selectedPeriodHours) {
         LiveSnapshot snap = snapshot.get();
-        MenuHolder holder = new MenuHolder("president-admin", "");
-        Inventory inv = holder.create(54, color("&d\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442"));
-        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&f\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442", List.of(
-                "&7\u0422\u0435\u043a\u0443\u0449\u0438\u0439: &f" + first(snap.presidentName(), "\u043d\u0435\u0442"),
-                "&7\u0421\u0440\u043e\u043a: &f" + snap.termDays() + " \u0434\u043d.",
-                "&7\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u0437\u0430\u043a\u043e\u043d\u043e\u0432: &f" + snap.laws().size(),
-                "&7\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u0434\u043e\u0445\u043e\u0434\u0430: &fAR-\u043b\u0430\u0432\u043a\u0430 CopiMine"
+        Map<String, Object> activeTax = null;
+        try {
+            activeTax = activeTax();
+        } catch (Exception ignored) {
+        }
+        int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
+        int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
+        MenuHolder holder = new MenuHolder("president-admin", Integer.toString(resolvedPeriod));
+        Inventory inv = holder.create(54, color("&dПрезидент"));
+        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
+                "&7Текущий: &f" + first(snap.presidentName(), "нет"),
+                "&7Срок: &f" + snap.termDays() + " дн.",
+                "&7Активных законов: &f" + snap.laws().size(),
+                "&7Оплата налога добровольная."
         )));
-        setButton(holder, 10, Material.BOOK, "&e\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0430\u043d\u0434\u0430\u0442 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430", List.of("&7\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430."), "president:open-mandate");
-        setButton(holder, 12, Material.BARRIER, "&c\u0421\u043d\u044f\u0442\u044c \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430", List.of("&7\u041f\u0440\u0435\u0440\u0432\u0430\u0442\u044c \u0442\u0435\u043a\u0443\u0449\u0438\u0439 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u0441\u0440\u043e\u043a."), "president:remove");
-        setStatic(inv, 14, infoItem(Material.GOLD_INGOT, "&6\u041d\u0430\u043b\u043e\u0433\u0438 \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u044b", List.of("&7\u0414\u043e\u0445\u043e\u0434 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u0438\u0434\u0451\u0442", "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0447\u0435\u0440\u0435\u0437 AR-\u043b\u0430\u0432\u043a\u0443.")));
-        int lawSlot = 19;
+        setButton(holder, 10, Material.BOOK, "&eОткрыть мандат президента", List.of("&7Открыть интерфейс президента."), "president:open-mandate");
+        setButton(holder, 12, Material.BARRIER, "&cСнять президента", List.of("&7Прервать текущий президентский срок."), "president:remove");
+        setStatic(inv, 14, infoItem(Material.GOLD_INGOT, "&6Текущий налог", List.of(
+                "&7Ставка: &f" + currentAmount + " AR",
+                "&7Период: &f" + taxPeriodLabel(activeTax == null ? resolvedPeriod : taxPeriodHours(activeTax)),
+                "&7Автосписания: &cвыключены",
+                "&7Неуплата не обрабатывается кодом."
+        )));
+
+        int[] periodSlots = {28, 29, 30, 31};
+        int[] periods = {24, 48, 76};
+        for (int i = 0; i < periods.length; i++) {
+            int hours = periods[i];
+            boolean selected = resolvedPeriod == hours;
+            setButton(holder, periodSlots[i], selected ? Material.CLOCK : Material.COMPASS,
+                    selected ? "&aПериод " + taxPeriodLabel(hours) : "&eПериод " + taxPeriodLabel(hours),
+                    List.of(
+                            "&7Выбрать период оплаты налога.",
+                            "&7Сейчас: &f" + taxPeriodLabel(hours)
+                    ),
+                    "president:taxperiod:" + hours);
+        }
+
+        int[] amountSlots = {19, 20, 21, 22, 23, 24, 25, 32, 33};
+        List<Integer> presets = taxAmountPresets(currentAmount);
+        for (int i = 0; i < amountSlots.length && i < presets.size(); i++) {
+            int amount = presets.get(i);
+            boolean current = currentAmount == amount;
+            setButton(holder, amountSlots[i], current ? Material.EMERALD : Material.GOLD_NUGGET,
+                    (current ? "&a" : "&e") + amount + " AR",
+                    List.of(
+                            "&7Период: &f" + taxPeriodLabel(resolvedPeriod),
+                            "&7Подтвердить добровольный налог.",
+                            "&7Долг за прошлые периоды не копится."
+                    ),
+                    "tax:set:" + amount + ":" + resolvedPeriod);
+        }
+
+        setButton(holder, 34, Material.LECTERN, "&6Создать налоговую точку", List.of(
+                "&7Создать отдельную кнопку оплаты",
+                "&7для добровольного платежа игроков."
+        ), "tax:create-office");
+        setButton(holder, 40, Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Открыть последние начисления и налоги."), "mandate:payments");
+
+        int lawSlot = 45;
         for (Map<String, Object> law : pendingLaws()) {
+            if (lawSlot > 48) {
+                break;
+            }
             String lawId = string(law.get("id"));
             int slot = lawSlot++;
-            setButton(holder, slot, Material.PAPER, "&f" + shortText(string(law.get("text")), 40), List.of(
-                    "&7\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442: &f" + first(string(law.get("president_uuid")), "\u2014"),
-                    "&7\u0421\u0442\u0430\u0442\u0443\u0441: &f" + string(law.get("status")),
-                    "&7\u041b\u041a\u041c: \u043e\u0434\u043e\u0431\u0440\u0438\u0442\u044c",
-                    "&7\u041f\u041a\u041c: \u043e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c"
+            setButton(holder, slot, Material.PAPER, "&f" + shortText(string(law.get("text")), 28), List.of(
+                    "&7Президент: &f" + first(string(law.get("president_uuid")), "—"),
+                    "&7Статус: &f" + string(law.get("status")),
+                    "&7ЛКМ: одобрить",
+                    "&7ПКМ: отклонить"
             ), "law:approve:" + lawId);
             holder.rightActions().put(slot, "law:reject:" + lawId);
         }
-        setButton(holder, 40, Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0437\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443", "&7\u043e\u0442 AR-\u043b\u0430\u0432\u043a\u0438 CopiMine."), "mandate:payments");
-        setButton(holder, 49, Material.ARROW, "&a\u041d\u0430\u0437\u0430\u0434", List.of("&7\u041a \u0440\u0430\u0437\u0434\u0435\u043b\u0443 \u0432\u044b\u0431\u043e\u0440\u043e\u0432."), "open:root");
+        setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:root");
+        setButton(holder, 53, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
         player.openInventory(inv);
     }
 
     private void openPresidentMandateMenu(Player player) {
+        openPresidentMandateMenu(player, selectedTaxPeriodHours());
+    }
+
+    private void openPresidentMandateMenu(Player player, int selectedPeriodHours) {
         LiveSnapshot snap = snapshot.get();
-        MenuHolder holder = new MenuHolder("president-mandate", "");
-        Inventory inv = holder.create(45, color("&d\u041c\u0430\u043d\u0434\u0430\u0442 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430"));
-        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&f\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442", List.of(
-                "&7\u0414\u0435\u0439\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442: &f" + first(snap.presidentName(), "\u043d\u0435\u0442"),
-                "&7\u0417\u0430\u043a\u043e\u043d\u043e\u0432: &f" + snap.laws().size(),
-                "&7\u0414\u043e\u0445\u043e\u0434: &fAR-\u043b\u0430\u0432\u043a\u0430 CopiMine"
+        Map<String, Object> activeTax = null;
+        try {
+            activeTax = activeTax();
+        } catch (Exception ignored) {
+        }
+        int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
+        int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
+        MenuHolder holder = new MenuHolder("president-mandate", Integer.toString(resolvedPeriod));
+        Inventory inv = holder.create(54, color("&dМандат президента"));
+        setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
+                "&7Действующий президент: &f" + first(snap.presidentName(), "нет"),
+                "&7Законов: &f" + snap.laws().size(),
+                "&7Налог оплачивается только вручную."
         )));
-        setButton(holder, 10, Material.BOOK, "&e\u041f\u0440\u0435\u0434\u043b\u043e\u0436\u0438\u0442\u044c \u0437\u0430\u043a\u043e\u043d", List.of("&7\u0422\u0435\u043a\u0441\u0442 \u0431\u0443\u0434\u0435\u0442 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043d\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0443 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438."), "mandate:law");
+        setButton(holder, 10, Material.BOOK, "&eПредложить закон", List.of("&7Текст уйдёт на проверку администрации."), "mandate:law");
         int replaceSlot = 11;
         for (Map<String, Object> law : publishedLaws()) {
-            setButton(holder, replaceSlot++, Material.PAPER, "&f\u0417\u0430\u043c\u0435\u043d\u0438\u0442\u044c: " + shortText(string(law.get("text")), 22), List.of("&7\u0417\u0430\u043c\u0435\u043d\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u043d\u0435 \u0447\u0430\u0449\u0435 \u0440\u0430\u0437\u0430 \u0432 3 \u0434\u043d\u044f."), "mandate:replace-law:" + string(law.get("id")));
+            if (replaceSlot > 16) {
+                break;
+            }
+            setButton(holder, replaceSlot++, Material.PAPER, "&fЗаменить: " + shortText(string(law.get("text")), 18), List.of("&7Замена доступна не чаще раза в 3 дня."), "mandate:replace-law:" + string(law.get("id")));
         }
-        setButton(holder, 19, Material.PAPER, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 \u0447\u0430\u0442", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0434\u043b\u044f \u0440\u0443\u0447\u043d\u043e\u0433\u043e \u043e\u0431\u0449\u0435\u0433\u043e \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f."), "mandate:show-command:chat");
-        setButton(holder, 20, Material.BELL, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u043d\u0430 \u044d\u043a\u0440\u0430\u043d", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0434\u043b\u044f title-\u043e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u044f."), "mandate:show-command:title");
-        setButton(holder, 21, Material.CLOCK, "&e\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435 \u0432 ActionBar", List.of("&7\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u0434\u043b\u044f actionbar-\u043e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u044f."), "mandate:show-command:actionbar");
-        setStatic(inv, 31, infoItem(Material.GOLD_INGOT, "&6\u041d\u0430\u043b\u043e\u0433\u0438 \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u044b", List.of("&7\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442 \u043f\u043e\u043b\u0443\u0447\u0430\u0435\u0442 \u0432\u044b\u0440\u0443\u0447\u043a\u0443", "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0438\u0437 AR-\u043b\u0430\u0432\u043a\u0438.")));
-        setButton(holder, 40, Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0437\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443."), "mandate:payments");
-        setButton(holder, 44, Material.BARRIER, "&c\u0417\u0430\u043a\u0440\u044b\u0442\u044c", List.of("&7\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e."), "close");
+        setButton(holder, 19, Material.PAPER, "&eОбращение в чат", List.of("&7Показать команду для общего сообщения."), "mandate:show-command:chat");
+        setButton(holder, 20, Material.BELL, "&eОбращение на экран", List.of("&7Показать команду для title-сообщения."), "mandate:show-command:title");
+        setButton(holder, 21, Material.CLOCK, "&eОбращение в ActionBar", List.of("&7Показать команду для actionbar-сообщения."), "mandate:show-command:actionbar");
+        setStatic(inv, 22, infoItem(Material.GOLD_INGOT, "&6Текущий налог", List.of(
+                "&7Ставка: &f" + currentAmount + " AR",
+                "&7Период: &f" + taxPeriodLabel(activeTax == null ? resolvedPeriod : taxPeriodHours(activeTax)),
+                "&7Игрок сам решает, платить или нет."
+        )));
+
+        int[] periodSlots = {28, 29, 30, 31};
+        int[] periods = {24, 48, 76};
+        for (int i = 0; i < periods.length; i++) {
+            int hours = periods[i];
+            boolean selected = resolvedPeriod == hours;
+            setButton(holder, periodSlots[i], selected ? Material.CLOCK : Material.COMPASS,
+                    selected ? "&aПериод " + taxPeriodLabel(hours) : "&eПериод " + taxPeriodLabel(hours),
+                    List.of("&7Выбрать срок действия налога."), "mandate:taxperiod:" + hours);
+        }
+
+        int[] amountSlots = {37, 38, 39, 40, 41, 42, 43};
+        List<Integer> presets = taxAmountPresets(currentAmount);
+        for (int i = 0; i < amountSlots.length && i < presets.size(); i++) {
+            int amount = presets.get(i);
+            setButton(holder, amountSlots[i], currentAmount == amount ? Material.EMERALD : Material.GOLD_NUGGET,
+                    (currentAmount == amount ? "&a" : "&e") + amount + " AR",
+                    List.of(
+                            "&7Период: &f" + taxPeriodLabel(resolvedPeriod),
+                            "&7Подтвердить настройку налога."
+                    ),
+                    "mandate:tax:" + amount + ":" + resolvedPeriod);
+        }
+
+        setButton(holder, 49, Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Открыть последние начисления."), "mandate:payments");
+        setButton(holder, 53, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
         player.openInventory(inv);
     }
 
@@ -2178,6 +2340,80 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openTaxOfficeMenu(Player player, String taxId, String mode, String pinBuffer) {
+        if (player != null) {
+            Map<String, Object> tax;
+            try {
+                tax = requireActiveTaxRecord(taxId);
+            } catch (Exception error) {
+                player.sendMessage(color("&cНе удалось открыть налоговую: &f" + publicErrorMessage(error)));
+                return;
+            }
+            if (tax == null) {
+                MenuHolder holder = new MenuHolder("tax-office", "");
+                Inventory inv = holder.create(27, color("&6Налоговая"));
+                setStatic(inv, 13, infoItem(Material.GOLD_INGOT, "&eАктивный налог не назначен", List.of(
+                        "&7Президент пока не открыл добровольный налог.",
+                        "&7Оплата сейчас недоступна."
+                )));
+                setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
+                player.openInventory(inv);
+                return;
+            }
+
+            String actualTaxId = string(tax.get("id"));
+            MenuHolder holder = new MenuHolder("tax-office", actualTaxId);
+            Inventory inv = holder.create(54, color("&6Налоговая"));
+            long due;
+            long paid;
+            try {
+                due = dueTaxAmount(player.getUniqueId().toString(), actualTaxId, tax);
+                paid = paidTaxAmount(player.getUniqueId().toString(), actualTaxId);
+            } catch (Exception error) {
+                player.sendMessage(color("&cНе удалось рассчитать налог: &f" + publicErrorMessage(error)));
+                getLogger().warning("tax menu amount player=" + player.getName() + " taxId=" + actualTaxId + " error=" + safeError(error));
+                return;
+            }
+            String pin = first(pinBuffer, "");
+
+            setStatic(inv, 4, infoItem(Material.GOLD_INGOT, "&6Добровольный налог", List.of(
+                    "&7Ставка: &f" + longValue(tax.get("amount")) + " AR",
+                    "&7Период: &f" + taxPeriodLabel(taxPeriodHours(tax)),
+                    "&7Уже оплачено: &f" + paid + " AR",
+                    "&7К оплате сейчас: &f" + due + " AR"
+            )));
+            setStatic(inv, 13, infoItem(Material.BOOK, "&fКак это работает", List.of(
+                    "&7Оплата только вручную по кнопке.",
+                    "&7Автосписаний нет.",
+                    "&7Неуплата не обрабатывается кодом."
+            )));
+
+            if ("BANK_PIN".equalsIgnoreCase(mode)) {
+                holder.data().put("pin", pin);
+                renderPinPad(holder, inv, pin);
+                setStatic(inv, 5, infoItem(Material.TRIPWIRE_HOOK, "&fПодтверждение банка", List.of(
+                        "&7Введи PIN от счёта AR.",
+                        "&7Будет списано: &f" + due + " AR"
+                )));
+            } else if (due > 0L) {
+                setButton(holder, 29, Material.EMERALD, "&aОплатить через банк", List.of(
+                        "&7Списать со счёта AR: &f" + due + " AR",
+                        "&7Платёж добровольный."
+                ), "taxpay:bank:" + actualTaxId);
+            } else {
+                setStatic(inv, 29, infoItem(Material.LIME_WOOL, "&aТекущий период уже закрыт", List.of(
+                        "&7На этот период больше ничего платить не нужно."
+                )));
+            }
+
+            setStatic(inv, 31, infoItem(Material.CHEST, "&fНаличная оплата", List.of(
+                    "&7Наличными налог не принимается.",
+                    "&7Используй кнопку оплаты через банк."
+            )));
+            setButton(holder, 40, Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Открыть последние начисления."), "mandate:payments");
+            setButton(holder, 49, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
+            player.openInventory(inv);
+            return;
+        }
         if (!PRESIDENT_TAX_FEATURE_ENABLED) {
             MenuHolder holder = new MenuHolder("tax-office-disabled", first(taxId, ""));
             Inventory inv = holder.create(27, color("&6Налоги скрыты"));
@@ -2327,6 +2563,34 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void createTaxOfficeFromTarget(Player player) throws Exception {
+        if (player != null) {
+            Map<String, Object> tax = requireActiveTaxRecord("");
+            if (tax == null) {
+                player.sendMessage(color("&eСначала назначь активный добровольный налог."));
+                return;
+            }
+            Block target = player.getTargetBlockExact(8);
+            if (target == null) {
+                player.sendMessage(color("&cСначала посмотри на блок налоговой точки."));
+                return;
+            }
+            if (protectedBlockInfo(target) != null) {
+                player.sendMessage(color("&eЭтот блок уже защищён."));
+                return;
+            }
+            String taxRowId = string(tax.get("id"));
+            long t = now();
+            tx(connection -> {
+                upsertProtectedBlock(connection, "TAX_OFFICE", target.getLocation(), taxRowId, t);
+                logPluginEvent(connection, "election_core", "tax_office_created", player.getName(), taxRowId, "world=" + target.getWorld().getName());
+                return null;
+            });
+            spawnOrReplaceTextDisplay(target.getLocation(), "Налоговая", "TAX_LABEL", taxRowId);
+            spawnOrReplaceProtectedBlockVisual(target.getLocation(), "TAX_OFFICE", taxRowId, Material.PAPER, MODEL_TAX_OFFICE_MARKER, "tax_office_marker");
+            reloadProtectedBlocks();
+            player.sendMessage(color("&aНалоговая точка создана."));
+            return;
+        }
         player.sendMessage(color("&e\u041d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u041d\u043e\u0432\u044b\u0435 \u043d\u0430\u043b\u043e\u0433\u043e\u0432\u044b\u0435 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0441\u043e\u0437\u0434\u0430\u044e\u0442\u0441\u044f."));
     }
 
@@ -3773,17 +4037,122 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void setPresidentTax(String actor, int amount) throws Exception {
-        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
+        setPresidentTax(actor, amount, 24);
+    }
+
+    private void setPresidentTax(String actor, int amount, int periodHours) throws Exception {
+        Map<String, Object> term = activeTerm();
+        if (term == null) {
+            throw new IllegalStateException("Нет активного президентского срока.");
+        }
+        int boundedAmount = Math.max(taxMinAmount(), Math.min(taxMaxAmount(), amount));
+        int boundedPeriod = normalizeTaxPeriodHours(periodHours);
+        long t = now();
+        tx(connection -> {
+            Map<String, Object> current = queryOne(
+                    connection,
+                    "SELECT * FROM president_taxes WHERE term_id=? AND status='ACTIVE' ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+                    string(term.get("id"))
+            );
+            if (current != null
+                    && intValue(current.get("amount")) == boundedAmount
+                    && intValue(current.get("period_hours")) == boundedPeriod) {
+                return null;
+            }
+            if (current != null) {
+                update(connection, "UPDATE president_taxes SET status='ARCHIVED' WHERE id=?", string(current.get("id")));
+            }
+            if (boundedAmount > 0) {
+                update(connection,
+                        "INSERT INTO president_taxes(id,term_id,amount,period_hours,status,created_at,created_by) VALUES(?,?,?,?, 'ACTIVE',?,?)",
+                        "tax_" + UUID.randomUUID().toString().replace("-", ""),
+                        string(term.get("id")),
+                        boundedAmount,
+                        boundedPeriod,
+                        t,
+                        actor
+                );
+            }
+            logPluginEvent(connection, "election_core", "tax_updated", actor, string(term.get("id")), "amount=" + boundedAmount + ";period_hours=" + boundedPeriod);
+            return null;
+        });
     }
 
 
     private void payTaxWithInventory(Player player, String taxId, long desired) throws Exception {
-        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
+        throw new IllegalStateException("Оплата налога наличными не используется. Используй счёт AR.");
     }
 
 
     private void payTaxFromBank(Player player, String taxId, String pin) throws Exception {
-        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
+        if (pin == null || !pin.matches("\\d{4,8}")) {
+            throw new IllegalStateException("Введи банковский PIN из 4-8 цифр.");
+        }
+        UUID playerUuid = player.getUniqueId();
+        String playerName = player.getName();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            try {
+                Map<String, Object> tax = requireActiveTaxRecord(taxId);
+                if (tax == null) {
+                    Bukkit.getScheduler().runTask(this, () -> player.sendMessage(color("&eНалог сейчас не активен.")));
+                    return;
+                }
+                String actualTaxId = string(tax.get("id"));
+                long windowStart = taxWindowStart(longValue(tax.get("created_at")), taxPeriodMs(tax), now());
+                long due = dueTaxAmount(playerUuid.toString(), actualTaxId, tax);
+                if (due <= 0L) {
+                    Bukkit.getScheduler().runTask(this, () -> {
+                        player.sendMessage(color("&aНа текущий период налог уже оплачен."));
+                        openTaxOfficeMenu(player, actualTaxId, "", null);
+                    });
+                    return;
+                }
+
+                String token = sha256Hex(actualTaxId + ":" + playerUuid + ":" + windowStart);
+                String operationId = "taxop_" + token.substring(0, 24);
+                String idempotencyKey = "president-tax-" + token.substring(0, 32);
+                createTaxPaymentOperation(
+                        operationId,
+                        actualTaxId,
+                        playerUuid.toString(),
+                        playerName,
+                        due,
+                        "BANK",
+                        idempotencyKey,
+                        "period_start=" + windowStart + ";period_hours=" + taxPeriodHours(tax)
+                );
+
+                TaxRecipient recipient = tx(connection -> taxRecipient(connection, actualTaxId));
+                CopiMineEconomyCore.TxnResult result = requireEconomyBankService().transferToAccount(
+                        playerUuid,
+                        playerName,
+                        pin,
+                        "PRESIDENT_BUDGET",
+                        recipient.presidentUuid(),
+                        recipient.presidentName(),
+                        due,
+                        idempotencyKey,
+                        "PRESIDENT_TAX",
+                        "taxId=" + actualTaxId + ";periodStart=" + windowStart + ";periodHours=" + taxPeriodHours(tax)
+                );
+                if (!result.ok) {
+                    markTaxPaymentOperation(operationId, "FAILED", result.txId, first(result.code, "") + ":" + first(result.message, ""));
+                    Bukkit.getScheduler().runTask(this, () -> player.sendMessage(color("&c" + humanTaxPaymentError(result))));
+                    return;
+                }
+
+                markTaxPaymentOperation(operationId, "ECONOMY_CONFIRMED", result.txId, "");
+                completeTaxPaymentOperation(operationId, result.txId);
+                refreshSnapshotAndPush();
+                Bukkit.getScheduler().runTask(this, () -> {
+                    player.sendMessage(color("&aНалог оплачен: &f" + due + " AR"));
+                    openTaxOfficeMenu(player, actualTaxId, "", null);
+                });
+            } catch (Exception error) {
+                Bukkit.getScheduler().runTask(this, () -> player.sendMessage(color("&cНе удалось оплатить налог: &f" + publicErrorMessage(error))));
+                getLogger().warning("tax payment: " + safeError(error));
+            }
+        });
     }
 
 
@@ -3794,8 +4163,30 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return economy.bankService();
     }
 
+    private CopiMineEconomyCore.ArtifactsBridge requireEconomyArtifactsBridge() {
+        if (!(Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore") instanceof CopiMineEconomyCore economy) || !economy.isEnabled()) {
+            throw new IllegalStateException("CopiMineEconomyCore недоступен.");
+        }
+        return economy.artifactsBridge();
+    }
+
+    private CopiMineEconomyCore.OfficialArService officialArService() {
+        if (!(Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore") instanceof CopiMineEconomyCore economy) || !economy.isEnabled()) {
+            return null;
+        }
+        return economy.officialArService();
+    }
+
     private Map<String, Object> requireActiveTaxRecord(String taxId) throws Exception {
-        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
+        Map<String, Object> active = activeTax();
+        if (active == null) {
+            return null;
+        }
+        if (taxId == null || taxId.isBlank() || taxId.equals(string(active.get("id")))) {
+            return active;
+        }
+        Map<String, Object> row = queryOne("SELECT * FROM president_taxes WHERE id=? AND status='ACTIVE' LIMIT 1", taxId);
+        return row == null ? active : row;
     }
 
 
@@ -3958,6 +4349,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         List<String> laws = publishedLaws().stream().map(row -> string(row.get("text"))).limit(5).toList();
         long deposited = scalarLong("SELECT COUNT(*) FROM votes WHERE election_id=? AND round_no=?", electionId, currentRound);
         long stations = scalarLong("SELECT COUNT(*) FROM polling_stations WHERE active=1");
+        Map<String, Object> tax = activeTax();
         return new LiveSnapshot(
                 electionId,
                 ElectionStage.safeValue(string(election.get("current_stage"))),
@@ -3967,7 +4359,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 laws,
                 intValue(election.get("candidate_limit")),
                 intValue(election.get("president_term_days")),
-                0,
+                tax == null ? 0 : Math.max(0, intValue(tax.get("amount"))),
                 deposited,
                 stations,
                 intValue(election.get("second_round_needed")) > 0
@@ -4566,12 +4958,32 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private Map<String, Object> activeTax() throws Exception {
-        return null;
+        Map<String, Object> term = activeTerm();
+        if (term == null) {
+            return null;
+        }
+        return queryOne(
+                "SELECT * FROM president_taxes WHERE term_id=? AND status='ACTIVE' ORDER BY created_at DESC LIMIT 1",
+                string(term.get("id"))
+        );
     }
 
 
     private TaxRecipient taxRecipient(Connection connection, String taxId) throws Exception {
-        throw new IllegalStateException("\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u043e\u0442\u043a\u043b\u044e\u0447\u0451\u043d.");
+        Map<String, Object> row = queryOne(
+                connection,
+                "SELECT pt.president_uuid,pt.president_name FROM president_taxes t " +
+                        "JOIN president_terms pt ON pt.id=t.term_id WHERE t.id=? LIMIT 1",
+                taxId
+        );
+        if (row == null) {
+            Map<String, Object> term = activeTerm();
+            return new TaxRecipient(
+                    term == null ? "" : string(term.get("president_uuid")),
+                    first(term == null ? "" : string(term.get("president_name")), "Казна CopiMine")
+            );
+        }
+        return new TaxRecipient(string(row.get("president_uuid")), first(string(row.get("president_name")), "Казна CopiMine"));
     }
 
 
@@ -4602,7 +5014,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private List<Map<String, Object>> currentTaxPayments() {
         try {
             return queryList(
-                    "SELECT buyer_name AS player_name, amount_ar AS amount, 'ARTIFACT_SHOP' AS source, created_at FROM artifact_revenue_payouts WHERE recipient_account_id='PRESIDENT_BUDGET' AND status='CREDITED' ORDER BY created_at DESC"
+                    "SELECT player_name, amount, source, created_at FROM president_tax_payments " +
+                            "UNION ALL " +
+                            "SELECT buyer_name AS player_name, amount_ar AS amount, 'ARTIFACT_SHOP' AS source, created_at " +
+                            "FROM artifact_revenue_payouts WHERE recipient_account_id='PRESIDENT_BUDGET' AND status='CREDITED' " +
+                            "ORDER BY created_at DESC LIMIT 200"
             );
         } catch (Exception error) {
             return List.of();
@@ -4610,17 +5026,160 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private long paidTaxAmount(String playerUuid, String taxId) throws Exception {
-        return 0L;
+        Map<String, Object> tax = requireActiveTaxRecord(taxId);
+        if (tax == null || playerUuid == null || playerUuid.isBlank()) {
+            return 0L;
+        }
+        long windowStart = taxWindowStart(longValue(tax.get("created_at")), taxPeriodMs(tax), now());
+        long windowEnd = windowStart + taxPeriodMs(tax);
+        return scalarLong(
+                "SELECT COALESCE(SUM(amount),0) FROM president_tax_payments WHERE tax_id=? AND player_uuid=? AND created_at>=? AND created_at<?",
+                string(tax.get("id")),
+                playerUuid,
+                windowStart,
+                windowEnd
+        );
     }
 
 
     private long dueTaxAmount(String playerUuid) throws Exception {
-        return 0L;
+        Map<String, Object> tax = activeTax();
+        return dueTaxAmount(playerUuid, tax == null ? "" : string(tax.get("id")), tax);
     }
 
 
     private long dueTaxAmount(String playerUuid, String taxId, Map<String, Object> tax) throws Exception {
-        return 0L;
+        if (tax == null || playerUuid == null || playerUuid.isBlank()) {
+            return 0L;
+        }
+        long amount = Math.max(0L, longValue(tax.get("amount")));
+        if (amount <= 0L) {
+            return 0L;
+        }
+        return Math.max(0L, amount - paidTaxAmount(playerUuid, first(taxId, string(tax.get("id")))));
+    }
+
+
+    private int taxMinAmount() {
+        return Math.max(0, getConfig().getInt("president-tax.min-amount-ar", 0));
+    }
+
+
+    private int taxMaxAmount() {
+        return Math.max(taxMinAmount(), getConfig().getInt("president-tax.max-amount-ar", 50));
+    }
+
+
+    private int parseTaxAmountFromAction(String action, String prefix) {
+        String payload = action.substring(prefix.length());
+        int marker = payload.indexOf(':');
+        String amountText = marker >= 0 ? payload.substring(0, marker) : payload;
+        return parseInt(amountText, taxMinAmount());
+    }
+
+
+    private int parseTaxPeriodFromAction(String action, String prefix) {
+        String payload = action.substring(prefix.length());
+        int marker = payload.indexOf(':');
+        if (marker < 0 || marker + 1 >= payload.length()) {
+            return selectedTaxPeriodHours();
+        }
+        return normalizeTaxPeriodHours(parseInt(payload.substring(marker + 1), selectedTaxPeriodHours()));
+    }
+
+
+    private int selectedTaxPeriodHours() {
+        try {
+            Map<String, Object> tax = activeTax();
+            if (tax != null) {
+                return taxPeriodHours(tax);
+            }
+        } catch (Exception ignored) {
+        }
+        return normalizeTaxPeriodHours(getConfig().getInt("president-tax.payment-interval-hours", 24));
+    }
+
+
+    private int normalizeTaxPeriodHours(int hours) {
+        return switch (hours) {
+            case 24 -> 24;
+            case 48 -> 48;
+            case 76 -> 76;
+            default -> 24;
+        };
+    }
+
+
+    private String taxPeriodLabel(int hours) {
+        return normalizeTaxPeriodHours(hours) + " ч.";
+    }
+
+
+    private List<Integer> taxAmountPresets(int currentAmount) {
+        LinkedHashSet<Integer> presets = new LinkedHashSet<>();
+        presets.add(taxMinAmount());
+        presets.add(5);
+        presets.add(10);
+        presets.add(15);
+        presets.add(20);
+        presets.add(25);
+        presets.add(30);
+        presets.add(40);
+        presets.add(50);
+        presets.add(currentAmount);
+        List<Integer> result = new ArrayList<>();
+        for (Integer value : presets) {
+            if (value == null) {
+                continue;
+            }
+            int amount = value;
+            if (amount < taxMinAmount() || amount > taxMaxAmount()) {
+                continue;
+            }
+            result.add(amount);
+        }
+        if (result.isEmpty()) {
+            result.add(taxMinAmount());
+        }
+        return result;
+    }
+
+
+    private int taxPeriodHours(Map<String, Object> tax) {
+        if (tax == null) {
+            return 24;
+        }
+        return normalizeTaxPeriodHours(intValue(tax.get("period_hours")));
+    }
+
+
+    private long taxPeriodMs(Map<String, Object> tax) {
+        return normalizeTaxPeriodHours(taxPeriodHours(tax)) * 60L * 60L * 1000L;
+    }
+
+
+    private long taxWindowStart(long taxCreatedAt, long intervalMs, long nowTs) {
+        long base = Math.max(0L, taxCreatedAt);
+        if (intervalMs <= 0L || nowTs <= base) {
+            return base;
+        }
+        long offset = (nowTs - base) / intervalMs;
+        return base + (offset * intervalMs);
+    }
+
+
+    private String humanTaxPaymentError(CopiMineEconomyCore.TxnResult result) {
+        if (result == null) {
+            return "Платёж не выполнен.";
+        }
+        return switch (first(result.code, "").toUpperCase(Locale.ROOT)) {
+            case "PIN_LOCKED" -> "PIN временно заблокирован.";
+            case "PIN_REQUIRED" -> "Сначала задай банковский PIN.";
+            case "PIN_CHANGE_REQUIRED" -> "Сначала замени временный PIN на постоянный.";
+            case "PIN_INVALID" -> "Неверный банковский PIN.";
+            case "INSUFFICIENT_AR" -> "На счёте не хватает AR.";
+            default -> first(result.message, "Платёж не выполнен.");
+        };
     }
 
 
@@ -5218,6 +5777,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private int countOfficialAr(Inventory inventory) {
+        CopiMineEconomyCore.OfficialArService service = officialArService();
+        if (service != null) {
+            return service.countOfficialAr(inventory);
+        }
         int total = 0;
         for (ItemStack stack : inventory.getContents()) {
             if (isOfficialAr(stack)) {
@@ -5228,15 +5791,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void removeOfficialAr(Inventory inventory, int amount) {
+        CopiMineEconomyCore.OfficialArService service = officialArService();
+        if (service != null) {
+            service.removeAmount(inventory, amount);
+            return;
+        }
         int left = amount;
-        for (ItemStack stack : inventory.getContents()) {
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
             if (stack == null || !isOfficialAr(stack)) {
                 continue;
             }
             int take = Math.min(left, stack.getAmount());
             stack.setAmount(stack.getAmount() - take);
             if (stack.getAmount() <= 0) {
-                inventory.remove(stack);
+                inventory.setItem(slot, null);
+            } else {
+                inventory.setItem(slot, stack);
             }
             left -= take;
             if (left <= 0) {
@@ -5246,6 +5817,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private ItemStack createOfficialAr(int amount) {
+        CopiMineEconomyCore.OfficialArService service = officialArService();
+        if (service != null) {
+            return service.createStack(Material.DIAMOND_ORE, Math.max(1, amount));
+        }
         ItemStack stack = new ItemStack(Material.DIAMOND_ORE, Math.max(1, amount));
         ItemMeta meta = stack.getItemMeta();
         if (meta == null) {
@@ -5264,6 +5839,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private boolean isOfficialAr(ItemStack stack) {
+        CopiMineEconomyCore.OfficialArService service = officialArService();
+        if (service != null) {
+            return service.isOfficialAr(stack);
+        }
         if (stack == null) {
             return false;
         }
@@ -5309,7 +5888,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE TABLE IF NOT EXISTS president_laws(id TEXT PRIMARY KEY,term_id TEXT NOT NULL,president_uuid TEXT NOT NULL,text TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',created_at BIGINT NOT NULL DEFAULT 0,published_at BIGINT NOT NULL DEFAULT 0,replaced_law_id TEXT NOT NULL DEFAULT '',slot_no INTEGER NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS president_law_reviews(id BIGSERIAL PRIMARY KEY,law_id TEXT NOT NULL,reviewer TEXT NOT NULL DEFAULT '',decision TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS president_broadcasts(id TEXT PRIMARY KEY,term_id TEXT NOT NULL,president_uuid TEXT NOT NULL,format TEXT NOT NULL DEFAULT 'CHAT',text TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0)");
-            update(connection, "CREATE TABLE IF NOT EXISTS president_taxes(id TEXT PRIMARY KEY,term_id TEXT NOT NULL,amount INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'ACTIVE',created_at BIGINT NOT NULL DEFAULT 0,created_by TEXT NOT NULL DEFAULT '')");
+            update(connection, "CREATE TABLE IF NOT EXISTS president_taxes(id TEXT PRIMARY KEY,term_id TEXT NOT NULL,amount INTEGER NOT NULL DEFAULT 0,period_hours INTEGER NOT NULL DEFAULT 24,status TEXT NOT NULL DEFAULT 'ACTIVE',created_at BIGINT NOT NULL DEFAULT 0,created_by TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS president_tax_payments(id TEXT PRIMARY KEY,tax_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS president_tax_payment_ops(id TEXT PRIMARY KEY,tax_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',bank_tx_id TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '',last_error TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_blocks(id TEXT PRIMARY KEY,kind TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,linked_id TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
@@ -5366,6 +5945,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS annulled_at BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS annulled_by TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS annul_reason TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE president_taxes ADD COLUMN IF NOT EXISTS period_hours INTEGER NOT NULL DEFAULT 24");
             update(connection, "ALTER TABLE president_tax_payments ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE president_tax_payments ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE president_tax_payments ADD COLUMN IF NOT EXISTS amount BIGINT NOT NULL DEFAULT 0");
@@ -5736,6 +6316,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private String safeError(Throwable error) {
         String message = error == null ? "unknown" : String.valueOf(error.getMessage());
         return message.replaceAll("(?i)(password=)[^\\s&]+", "$1***").replaceAll("(?i)(POSTGRES_PASSWORD=)[^\\s&]+", "$1***");
+    }
+
+    private String publicErrorMessage(Throwable error) {
+        String message = safeError(error);
+        if (message == null || message.isBlank()) {
+            return "неизвестная ошибка";
+        }
+        return message.length() > 160 ? message.substring(0, 160) : message;
     }
 
     private String first(String... values) {

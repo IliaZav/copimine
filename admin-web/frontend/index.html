@@ -16,7 +16,7 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>Сервер Minecraft</small>
+          <small>Сайт сервера</small>
         </span>
       </a>
       <button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">☰</button>
@@ -27,7 +27,7 @@
         <a href="/mods.html">Модпак</a>
         <a id="publicSigninLink" href="/signin.html">Войти</a>
         <a id="publicRegisterLink" href="/register.html">Регистрация</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button>
         <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
         <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
       </nav>
@@ -39,16 +39,16 @@
           <span class="hero-kicker">CopiMine</span>
           <span class="route-chip">Старт</span>
         </div>
-        <h1>Сервер, модпак, банк и кабинеты в одном контуре.</h1>
-        <p>На главной собраны IP, текущий статус сервера, выборы, казна и актуальная клиентская сборка.</p>
+        <h1>Сайт сервера CopiMine.</h1>
+        <p>Здесь собраны адрес сервера, модпак, открытые данные по выборам и доступ к личному кабинету.</p>
         <div class="hero-inline-status">
           <div class="hero-inline-card">
             <span>Адрес</span>
             <strong id="serverIpText">copimine.ru</strong>
           </div>
           <div class="hero-inline-card">
-            <span>Статус</span>
-            <strong id="serverPulseText">Загружаем статус сервера</strong>
+            <span>Состояние</span>
+            <strong id="serverPulseText">Получаем данные сервера</strong>
           </div>
         </div>
       </div>
@@ -59,9 +59,9 @@
             <img src="/assets/brand/copimine-title.png" alt="CopiMine" />
           </div>
           <div class="hero-media-copy">
-            <span class="hero-kicker">Сборка клиента</span>
-            <strong>Актуальный CopiMineMods.zip</strong>
-            <p>На странице модпака доступны версия Minecraft, состав сборки, размер архива и отдельные внешние загрузки.</p>
+            <span class="hero-kicker">Клиентская сборка</span>
+            <strong>Текущий CopiMineMods.zip</strong>
+            <p>На странице модпака доступны версия клиента, состав архива, размер и контрольные суммы.</p>
             <div class="hero-sprite-strip" aria-hidden="true">
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/diamond_ore.png" alt="" /></span>
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/written_book.png" alt="" /></span>
@@ -76,9 +76,9 @@
             <a id="downloadModsBtn" class="btn btn-secondary" href="/downloads/CopiMineMods.zip">Скачать модпак</a>
           </div>
           <div class="login-copy release-readiness-card safety-rail">
-            <span class="hero-kicker">Вход и доступ</span>
-            <strong>Аккаунт и файлы сервера</strong>
-            <p>После входа открываются личный кабинет, банк и загрузки. Ссылки на модпак и ресурспак обновляются вместе с релизом.</p>
+            <span class="hero-kicker">Вход</span>
+            <strong>Кабинет, банк и загрузки</strong>
+            <p>После входа открываются личный кабинет, AR-банк, история операций и служебные разделы панели.</p>
           </div>
           <div class="hero-side-note">
             <span class="hero-kicker">Архив модов</span>
@@ -91,9 +91,9 @@
 
     <section class="public-section public-home-summary">
       <div class="section-head">
-        <span>Сейчас</span>
-        <h2>Основные данные по серверу.</h2>
-        <p>Публичный онлайн, выборы, президент и баланс казны.</p>
+        <span>Сводка</span>
+        <h2>Ключевые данные по серверу.</h2>
+        <p>Онлайн, казна, выборы и последние публичные операции.</p>
       </div>
 
       <div class="public-dashboard-grid">
@@ -112,7 +112,7 @@
           <div class="public-panel-head">
             <div>
               <span class="hero-kicker">Казна</span>
-              <h3 id="presidentBudgetOwner">Загружаем текущий статус казны</h3>
+              <h3 id="presidentBudgetOwner">Получаем состояние казны</h3>
             </div>
           </div>
           <div class="budget-counter-shell">
@@ -120,14 +120,14 @@
               <img src="/assets/mc-icons/item/diamond_ore.png" alt="" />
               <strong id="presidentBudgetCounter">0 AR</strong>
             </div>
-            <p id="presidentBudgetDetail">Ждём данные сервера.</p>
+            <p id="presidentBudgetDetail">Ждём ответ сервера.</p>
           </div>
         </article>
 
         <article class="public-panel president-panel" id="presidentCardMount">
           <div class="president-card-copy">
-            <span class="hero-kicker">Президент</span>
-            <h3 id="presidentCardName">Президент пока не выбран</h3>
+              <span class="hero-kicker">Президент</span>
+              <h3 id="presidentCardName">Президент пока не выбран</h3>
             <p id="presidentCardMeta">Должность свободна.</p>
           </div>
         </article>
@@ -141,8 +141,8 @@
           </div>
           <div id="publicTreasuryHistory" class="treasury-history-grid">
             <article class="showcase-card">
-              <strong>Загружаем историю</strong>
-              <p>Открытые операции казны появятся здесь.</p>
+                <strong>Получаем историю</strong>
+              <p>Открытые операции казны появятся здесь после ответа сервера.</p>
             </article>
           </div>
         </article>
@@ -152,8 +152,8 @@
     <section class="public-section public-route-section">
       <div class="section-head">
         <span>Разделы</span>
-        <h2>Что можно сделать через сайт.</h2>
-        <p>Публичный доступ к серверу и быстрый вход в игровые сервисы CopiMine.</p>
+        <h2>Что доступно через сайт.</h2>
+        <p>Публичные страницы для просмотра и разделы кабинета для игроков и администрации.</p>
       </div>
 
       <div class="public-route-board">
@@ -163,7 +163,7 @@
           </div>
           <span class="hero-kicker">Сервер</span>
           <strong>IP, отклик, онлайн и выборы</strong>
-          <p>Открытый статус сервера, информация по президенту и публичная казна.</p>
+          <p>Открытый статус сервера, текущий президент и состояние казны.</p>
         </article>
 
         <article class="public-route-card public-route-card-shop">
@@ -171,8 +171,8 @@
             <img src="/assets/mc-icons/item/diamond_sword.png" alt="" />
           </div>
           <span class="hero-kicker">Лавки</span>
-          <strong>AR-магазин и донат-магазин</strong>
-          <p>Каталог товаров доступен на сайте, выдача и возврат происходят уже в игре.</p>
+          <strong>AR-магазин и donation-магазин</strong>
+          <p>Каталоги и цены на сайте, выдача и возврат предметов уже в игре.</p>
         </article>
 
         <article class="public-route-card public-route-card-client">
@@ -181,7 +181,7 @@
           </div>
           <span class="hero-kicker">Модпак</span>
           <strong>Клиент, сборка и контроль версий</strong>
-          <p>Актуальный архив, список файлов, размер и обязательные внешние компоненты.</p>
+          <p>Текущий архив, список модов, размер и контрольные суммы.</p>
         </article>
 
         <article class="public-route-card public-route-card-auth">
@@ -189,8 +189,8 @@
             <img src="/assets/mc-icons/item/filled_map.png" alt="" />
           </div>
           <span class="hero-kicker">Кабинет</span>
-          <strong>Банк, история и админ-доступ</strong>
-          <p>После входа доступны личный кабинет игрока, банк AR и админ-панель проекта.</p>
+          <strong>Банк, история и кабинет</strong>
+          <p>После входа открываются личный кабинет, AR-банк и панель управления проектом.</p>
         </article>
       </div>
     </section>

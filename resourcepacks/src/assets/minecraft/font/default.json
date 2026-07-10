@@ -24,19 +24,10 @@
     {
       "type": "bitmap",
       "file": "copimine:gui/tab/copimine_logo.png",
-      "ascent": 42,
-      "height": 52,
-      "chars": [
-        "\uE300"
-      ]
-    },
-    {
-      "type": "bitmap",
-      "file": "minecraft:gui/copimine_tab.png",
       "ascent": 14,
       "height": 30,
       "chars": [
-        "\uE000"
+        "\uE300"
       ]
     }
   ]

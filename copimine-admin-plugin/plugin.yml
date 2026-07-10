@@ -19,7 +19,7 @@ commands:
   cmultra:
     description: "Stable CopiMine admin: hub, players and bridges"
     usage: /cmultra
-    aliases: [cmplus, uadmin, ultraadmin, adminka]
+    aliases: [cm, cmplus, uadmin, ultraadmin, adminka]
   cadm:
     description: "CopiMine unified admin hub"
     usage: /cadm

@@ -61,9 +61,10 @@ export function createPlayerTreasuryPages(deps) {
       return;
     }
 
-    const [bank, recipients] = await Promise.all([
+    const [bank, recipients, taxProfile] = await Promise.all([
       api("/api/player/bank"),
       loadRecipients(""),
+      api("/api/player/elections/tax").catch(() => ({ tax: null, due: 0, paid: 0, president: {} })),
     ]);
     const accounts = asArray(bank.accounts);
     if (!accounts.some((row) => String(row.scope || "").toUpperCase() === state.playerBankScope)) {
@@ -77,6 +78,10 @@ export function createPlayerTreasuryPages(deps) {
     const transferLocked = Boolean(pin.mustChange || pin.status === "temporary-expired");
     const ledger = asArray(selectedAccount.ledger || bank.ledger);
     const usingTreasury = String(selectedAccount.scope || "").toUpperCase() === "TREASURY";
+    const tax = taxProfile?.tax || null;
+    const taxDue = number(taxProfile?.due || 0);
+    const taxPaid = number(taxProfile?.paid || 0);
+    const taxPresident = String(taxProfile?.president?.name || "").trim();
     const selectedPinState = usingTreasury ? (treasuryPin.visiblePin ? "Настроен" : "Не задан") : bankPinState(pin);
     const accountTabs = bank.canAccessTreasury ? `
       <div class="segmented">
@@ -97,6 +102,14 @@ export function createPlayerTreasuryPages(deps) {
         ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinStateTone(pin))}
         ${metric("Minecraft", state.user.minecraftName || "—", "Привязан", "good")}
       </section>
+      ${!usingTreasury ? panel("Добровольный налог", tax ? `Президент: ${esc(taxPresident || "не назначен")}. Оплата только вручную.` : "Активный налог сейчас не назначен.", `
+        <div class="form-grid">
+          <div class="notice full">К оплате за текущий период: <strong>${formatAr(taxDue)}</strong>. Уже оплачено: <strong>${formatAr(taxPaid)}</strong>.</div>
+          <input id="electionTaxAmount" type="number" min="1" max="${Math.max(0, taxDue)}" value="${taxDue > 0 ? taxDue : ""}" placeholder="Сумма налога" ${tax ? "" : "disabled"} />
+          <input id="electionTaxPin" type="password" inputmode="numeric" placeholder="PIN" ${tax ? "" : "disabled"} />
+          <button class="btn btn-primary full" data-click="playerPayElectionTax()" ${!tax || taxDue <= 0 ? "disabled" : ""}>Оплатить налог</button>
+        </div>
+      `) : ""}
 
       ${accountTabs}
 
@@ -184,6 +197,23 @@ export function createPlayerTreasuryPages(deps) {
     }
   }
 
+  async function playerPayElectionTax() {
+    try {
+      const result = await api("/api/player/elections/tax/pay", {
+        method: "POST",
+        body: JSON.stringify({
+          amount: number($("electionTaxAmount")?.value || 0),
+          pin: $("electionTaxPin")?.value || "",
+        }),
+      });
+      toast(`Налог оплачен: ${result.amount} AR.`);
+      if ($("electionTaxPin")) $("electionTaxPin").value = "";
+      await loadPlayerBank();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
   async function selectPlayerBankScope(scope = "PERSONAL") {
     state.playerBankScope = String(scope || "PERSONAL").toUpperCase();
     setStoredUiState("copiminePlayerBankScope", state.playerBankScope);
@@ -194,6 +224,7 @@ export function createPlayerTreasuryPages(deps) {
 
   return {
     loadPlayerBank,
+    playerPayElectionTax,
     playerSetPin,
     playerTransfer,
     selectPlayerBankScope,

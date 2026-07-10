@@ -16,7 +16,7 @@
         <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
         <span class="public-brand-copy">
           <strong>CopiMine</strong>
-          <small>Клиент и модпак</small>
+          <small>Клиентская сборка</small>
         </span>
       </a>
       <nav aria-label="Разделы сайта">
@@ -26,7 +26,7 @@
         <a href="/mods.html" aria-current="page">Модпак</a>
         <a id="publicSigninLink" href="/signin.html">Войти</a>
         <a id="publicRegisterLink" href="/register.html">Регистрация</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Личный кабинет</button>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button>
         <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
         <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
       </nav>
@@ -39,8 +39,8 @@
             <span class="hero-kicker">Модпак</span>
             <span class="route-chip">Клиент</span>
           </div>
-          <h1>Актуальный архив клиента CopiMine.</h1>
-          <p>На этой странице доступны версия Minecraft, loader, список модов, размер архива и обязательные внешние компоненты.</p>
+          <h1>Текущая клиентская сборка.</h1>
+          <p>Здесь доступны версия Minecraft, loader, состав архива, размер и контрольные суммы.</p>
           <div class="public-actions">
             <a id="downloadModsBtn" class="btn btn-primary" href="/downloads/CopiMineMods.zip">Скачать модпак</a>
           </div>
@@ -51,7 +51,7 @@
             <div class="scene-card-copy">
               <span class="hero-kicker">Сборка</span>
               <strong>CopiMineClient и моды</strong>
-              <p>Архив сайта должен совпадать с фактической клиентской сборкой сервера.</p>
+              <p>Архив на сайте должен совпадать с той сборкой, которая действительно используется на сервере.</p>
             </div>
           </article>
 
@@ -61,7 +61,7 @@
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/knowledge_book.png" alt="" /></span>
               <span class="hero-sprite-chip"><img src="/assets/mc-icons/item/compass_00.png" alt="" /></span>
             </div>
-            <span class="hero-kicker">Контроль</span>
+            <span class="hero-kicker">Проверка</span>
             <ul class="hero-check-list">
               <li>Версия Minecraft и Fabric.</li>
               <li>Состав архива и внешние зависимости.</li>
@@ -75,7 +75,7 @@
         <div class="section-head">
           <span>Архив</span>
           <h2>Состав клиентской сборки.</h2>
-          <p>Всё, что нужно для входа на сервер, должно отражаться здесь без расхождения с runtime.</p>
+          <p>Здесь публикуется та же сборка, с которой игрок заходит на сервер.</p>
         </div>
 
         <div class="modpack-shell">
@@ -84,7 +84,7 @@
               <span class="hero-kicker">CopiMineMods.zip</span>
               <h3 id="heroMiniTitle">Клиентская сборка</h3>
               <p id="heroMiniText">Проверяем версию и состав клиентского архива.</p>
-              <p id="modpackSummaryLead">Размер архива, контрольные суммы и сведения по составу.</p>
+              <p id="modpackSummaryLead">Размер архива, контрольные суммы и состав сборки.</p>
             </div>
             <div id="modpackMetaGrid" class="modpack-meta-grid">
               <article class="modpack-stat">
@@ -107,14 +107,14 @@
               <article class="modpack-file-card">
                 <span class="modpack-file-badge">external</span>
                 <strong>Внешние компоненты</strong>
-                <p>Если часть файлов не вшивается в архив, они будут перечислены здесь.</p>
+                <p>Если часть файлов не входит в архив, она будет перечислена здесь.</p>
               </article>
             </div>
 
             <div id="modpackNotes" class="modpack-note-grid">
               <article class="modpack-note-card">
                 <strong>Примечание</strong>
-                <p>Перед запуском сверяйте версию клиента, loader и список зависимостей.</p>
+                <p>Перед запуском проверь версию клиента, loader и список зависимостей.</p>
               </article>
             </div>
           </div>

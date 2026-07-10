@@ -1959,7 +1959,7 @@ function renderPublicStatus(status = {}, config = {}) {
       publicStatusMetric("Игроки", String(server.playersOnline || 0), server.playerCap ? `из ${server.playerCap}` : (server.playerListAvailable ? "список открыт" : "список скрыт"), server.playersOnline ? "good" : "neutral"),
       publicStatusMetric("Выборы", elections.active ? "идут" : "пауза", elections.active ? `${elections.candidates || 0} кандидатов · ${elections.votes || 0} голосов` : "Сейчас нет активного этапа голосования", elections.active ? "good" : "warn"),
       publicStatusMetric("Президент", elections.president || "не выбран", elections.president ? "Данные пришли из ElectionCore" : "Активный срок пока не подтверждён", elections.president ? "good" : "neutral"),
-      publicStatusMetric("Казна", formatAr(treasury.balance || 0), treasury.ownerName ? `Ведёт ${treasury.ownerName}` : "Публичный бюджет сервера", Number(treasury.balance || 0) > 0 ? "good" : "neutral")
+      publicStatusMetric("Казна", formatAr(treasury.balance || 0), treasury.ownerName ? `Ведёт ${treasury.ownerName}` : "Открытая казна сервера", Number(treasury.balance || 0) > 0 ? "good" : "neutral")
     ]);
   }
   if (onlineBoard) {
@@ -2073,7 +2073,7 @@ function syncTopbarActions() {
     if (!guestButton) return;
     const playerMode = isPlayerRole();
     guestButton.hidden = playerMode;
-    guestButton.textContent = playerMode ? "" : "Публичный сайт";
+    guestButton.textContent = playerMode ? "" : "Сайт";
   }
 
 async function showCabinetFromPublic() {
@@ -2444,7 +2444,7 @@ function stationCardsHtml(stations = [], deposits = []) {
 }
 
 async function loadDashboard(silent = false) {
-  if (!silent) setLoading("Собираю сводку сервера");
+  if (!silent) setLoading("Обновляем сводку сервера");
   const [status, requestsStatus, elections, economy, audit, events, perfReady] = await Promise.all([
     safeApi("/api/status", {}),
     safeApi("/api/" + String.fromCharCode(100,105,115,99,111,114,100) + "/status", {}),
@@ -2476,7 +2476,7 @@ async function loadDashboard(silent = false) {
     ${firstRunReadinessHtml(perfReady)}
 
     <section class="layout-grid grid-wide">
-      ${panel("Операционная сводка", "Ключевые состояния без перехода по разделам", `
+      ${panel("Сводка по серверу", "Главные показатели и состояние служб на одной странице", `
         <div class="layout-grid grid-3">
           ${metric("", electionOverview.active ? "" : "", `${short(electionOverview.title || "CopiMine Elections", 42)}  ${electionOverview.candidates ?? 0}   ${electionOverview.votes ?? 0} `, electionOverview.active ? "good" : "")}
           ${metric("  ", economy.totalKnownInPlayerData ?? 0, "     ", "good")}
@@ -3722,7 +3722,7 @@ async function loadSettings() {
   state.config = config;
   setView(`
     <section class="layout-grid grid-2">
-      ${panel("Конфигурация панели", "Публичные параметры без секретов", kv([
+      ${panel("Конфигурация панели", "Параметры панели без секретов", kv([
         ["Папка сервера", config.mcServerDir],
         ["Папка мира", config.worldDir],
         ["Основной лог", config.logFile],
@@ -4031,6 +4031,8 @@ window.legacyPlayerTransferDeprecated = async () => {
 window.playerPayElectionTax = async () => {
   toast("Эта механика отключена.", true);
 };
+
+window.playerPayElectionTax = async () => getPlayerTreasuryPages().playerPayElectionTax();
 
 window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {
   return getPlayerTreasuryPages().selectPlayerBankScope(scope);

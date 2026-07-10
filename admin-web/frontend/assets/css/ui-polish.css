@@ -193,3 +193,189 @@ body.junior-admin-mode table {
     max-width: none;
   }
 }
+
+.public-nav {
+  border-radius: 18px !important;
+  padding: 12px 16px !important;
+  box-shadow: 0 18px 40px rgba(9, 14, 24, 0.16) !important;
+}
+
+.public-nav a:not(.public-brand),
+.public-nav .btn {
+  border-radius: 12px !important;
+}
+
+.public-hero,
+.public-section {
+  border-radius: 24px !important;
+  padding: 24px !important;
+}
+
+.public-route-card,
+.public-shop-card,
+.public-brief-card,
+.public-panel,
+.commerce-panel,
+.hero-side-card,
+.modpack-summary-card,
+.modpack-file-card,
+.modpack-note-card,
+.showcase-card,
+.treasury-history-card,
+.shop-item-chip,
+.hero-media-art,
+.scene-card,
+.brand-banner-card {
+  border-radius: 16px !important;
+}
+
+.hero-inline-card,
+.hero-sprite-chip,
+.route-card-icon,
+.showcase-card-icon,
+.shop-item-icon,
+.modpack-file-icon,
+.route-chip,
+.error-card-code {
+  border-radius: 10px !important;
+}
+
+.public-actions .btn,
+.public-route-card .btn,
+.public-shop-card .btn,
+.public-brief-card .btn,
+.commerce-panel-head .btn {
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.auth-card {
+  border-radius: 18px !important;
+}
+
+.auth-card-section,
+.auth-recovery-card,
+.auth-checkbox {
+  border-radius: 12px !important;
+}
+
+.auth-form input,
+.auth-inline-actions .btn {
+  border-radius: 10px !important;
+}
+
+body.player-mode .side-brand,
+body.panel-admin-mode .side-brand,
+body.junior-admin-mode .side-brand,
+body.player-mode .panel,
+body.panel-admin-mode .panel,
+body.junior-admin-mode .panel,
+body.player-mode .metric,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .metric,
+body.player-mode .table-wrap,
+body.panel-admin-mode .table-wrap,
+body.junior-admin-mode .table-wrap,
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  border-radius: 16px !important;
+}
+
+body.player-mode .nav-item,
+body.panel-admin-mode .nav-item,
+body.junior-admin-mode .nav-item,
+body.player-mode .btn,
+body.panel-admin-mode .btn,
+body.junior-admin-mode .btn,
+body.player-mode input,
+body.panel-admin-mode input,
+body.junior-admin-mode input,
+body.player-mode select,
+body.panel-admin-mode select,
+body.junior-admin-mode select,
+body.player-mode textarea,
+body.panel-admin-mode textarea,
+body.junior-admin-mode textarea {
+  border-radius: 10px !important;
+}
+
+body.player-mode .workspace,
+body.panel-admin-mode .workspace,
+body.junior-admin-mode .workspace {
+  gap: 18px;
+}
+
+body.player-mode .page-heading h1,
+body.panel-admin-mode .page-heading h1,
+body.junior-admin-mode .page-heading h1 {
+  letter-spacing: -0.045em;
+}
+
+body.player-mode .page-heading p,
+body.panel-admin-mode .page-heading p,
+body.junior-admin-mode .page-heading p {
+  max-width: 40rem;
+}
+
+@media (max-width: 720px) {
+  .public-nav {
+    border-radius: 14px !important;
+  }
+
+  .public-hero,
+  .public-section {
+    border-radius: 18px !important;
+    padding: 18px !important;
+  }
+}
+
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  border-radius: 12px !important;
+  padding: 16px 18px !important;
+}
+
+body.player-mode .side-brand,
+body.panel-admin-mode .side-brand,
+body.junior-admin-mode .side-brand,
+body.player-mode .panel,
+body.panel-admin-mode .panel,
+body.junior-admin-mode .panel,
+body.player-mode .metric,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .metric,
+body.player-mode .table-wrap,
+body.panel-admin-mode .table-wrap,
+body.junior-admin-mode .table-wrap {
+  border-radius: 12px !important;
+  box-shadow: 0 12px 24px rgba(9, 14, 24, 0.1) !important;
+}
+
+body.player-mode .nav-item,
+body.panel-admin-mode .nav-item,
+body.junior-admin-mode .nav-item,
+body.player-mode .btn,
+body.panel-admin-mode .btn,
+body.junior-admin-mode .btn,
+body.player-mode input,
+body.panel-admin-mode input,
+body.junior-admin-mode input,
+body.player-mode select,
+body.panel-admin-mode select,
+body.junior-admin-mode select,
+body.player-mode textarea,
+body.panel-admin-mode textarea,
+body.junior-admin-mode textarea {
+  border-radius: 8px !important;
+}
+
+.search-hit {
+  outline: 2px solid color-mix(in srgb, var(--accent) 72%, #ffffff 28%);
+  outline-offset: 4px;
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent),
+    0 18px 34px rgba(9, 14, 24, 0.18) !important;
+  transition: outline-color 180ms ease, box-shadow 180ms ease;
+}

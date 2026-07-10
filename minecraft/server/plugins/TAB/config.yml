@@ -4,17 +4,19 @@ header-footer:
     default:
       header:
         - ""
+        - ""
         - "&f\uE300"
-        - "&8────────────────────────"
-        - "&fПрезидент: %copimine_president%"
-        - "&fОнлайн: &a%online% &fигроков &8| &fАдминов: &b%staffonline%"
-        - "&8────────────────────────"
+        - ""
+        - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        - "&#c2c9cfПрезидент: &6%copimine_president%"
+        - "&#c2c9cfОнлайн: &f%online% &#c2c9cfигроков &8┃ &#c2c9cfАдминов: &f%staffonline%"
+        - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         - ""
       footer:
         - ""
-        - "&8────────────────────────"
-        - "&fTPS: &a%tps% &8| &fMSPT: &e%mspt% &8| &fPing: &a%ping% ms"
-        - "&8────────────────────────"
+        - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        - "&#c2c9cfTPS: &f%tps% &8┃ &#c2c9cfMSPT: &f%mspt% &8┃ &#c2c9cfPing: &f%ping% ms"
+        - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         - ""
 
 tablist-name-formatting:
@@ -24,17 +26,17 @@ scoreboard-teams:
   enabled: true
   enable-collision: true
   invisible-nametags: false
-  can-see-friendly-invisibles: false
   case-sensitive-sorting: true
+  can-see-friendly-invisibles: false
   sorting-types:
-    - GROUPS:owner,admin,president,cik_chair,curator,default
+    - GROUPS:admin,president,curator,default
     - PLACEHOLDER_A_TO_Z:%player%
 
 playerlist-objective:
   enabled: true
   value: "%ping%"
-  fancy-value: "&a%ping%"
-  title: "&fПинг"
+  fancy-value: "&7Ping: %ping%"
+  title: TAB
   render-type: INTEGER
 
 belowname-objective:
@@ -61,14 +63,12 @@ layout:
 ping-spoof:
   enabled: false
 
-permission-refresh-interval: 3000
-
 placeholders:
-  default-refresh-interval: 2000
-  date-format: "dd.MM.yyyy"
-  time-format: "HH:mm:ss"
+  date-format: dd.MM.yyyy
+  time-format: "[HH:mm:ss / h:mm a]"
   time-offset: 0
   register-tab-expansion: false
+  locale: en-US
 
 placeholder-output-replacements:
   "%essentials_vanished%":
@@ -87,6 +87,17 @@ primary-group-finding-list:
   - owner
   - admin
   - president
-  - cik_chair
   - curator
   - default
+
+permission-refresh-interval: 1000
+debug: false
+
+placeholder-refresh-intervals:
+  default-refresh-interval: 500
+  "%server_tps_1_colored%": 1000
+  "%player_ping%": 1000
+  "%vault_prefix%": 1000
+
+use-bukkit-permissions-manager: false
+use-online-uuid-in-tablist: true

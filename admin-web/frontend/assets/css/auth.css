@@ -7,15 +7,34 @@ body.auth-screen {
   margin: 0;
 }
 
-body.auth-screen .public-nav,
-body.auth-screen .public-page-shell,
-body.auth-screen .public-site,
-body.auth-screen .public-site-compact {
-  display: contents;
+body.auth-screen .public-site.auth-public-site {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding-bottom: 2rem;
+}
+
+body.auth-screen .public-nav.public-nav-auth,
+body.auth-screen .public-page-shell {
+  width: min(1180px, calc(100vw - 28px));
+  margin-inline: auto;
+}
+
+body.auth-screen .public-nav.public-nav-auth {
+  margin-top: 14px;
+}
+
+body.auth-screen .public-page-shell {
+  min-height: calc(100vh - 112px);
+}
+
+body.auth-screen .public-nav.public-nav-auth nav {
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .auth-shell {
-  min-height: 100vh;
+  min-height: 100%;
   display: grid;
   place-items: center;
   padding: clamp(1.25rem, 4vw, 2.5rem);
@@ -330,11 +349,16 @@ body.auth-screen .public-site-compact {
 }
 
 @media (max-width: 640px) {
+  body.auth-screen .public-nav.public-nav-auth,
+  body.auth-screen .public-page-shell {
+    width: min(100vw - 16px, 100%);
+  }
+
   .auth-shell {
     padding: 1rem;
-    min-height: 100svh;
+    min-height: calc(100svh - 84px);
     place-items: start center;
-    padding-top: clamp(2rem, 8vh, 4rem);
+    padding-top: 1.25rem;
   }
 
   .auth-card {
@@ -350,9 +374,63 @@ body.auth-screen .public-site-compact {
     grid-template-columns: 1fr;
   }
 
+  body.auth-screen .public-nav.public-nav-auth nav {
+    justify-content: stretch;
+  }
+
   .auth-brand-logo {
     width: 3.75rem;
     height: 3.75rem;
     border-radius: 1.1rem;
   }
+}
+
+body.auth-screen .public-nav.public-nav-auth {
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.auth-shell {
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--accent, #1f9b55) 12%, transparent), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-0, #f4faf5) 95%, #dfece2 5%), #e9efe7 100%);
+}
+
+.auth-card {
+  gap: 1rem;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 246, 0.96));
+  box-shadow: 0 16px 34px rgba(10, 34, 20, 0.12);
+}
+
+.auth-brand-logo {
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(18, 40, 23, 0.12);
+}
+
+.auth-card-section,
+.auth-checkbox,
+.auth-recovery-card {
+  border-radius: 10px;
+}
+
+.auth-form input {
+  min-height: 3rem;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.auth-form input:focus {
+  transform: none;
+}
+
+:root[data-theme="dark"] .auth-shell {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(41, 142, 84, 0.16), transparent 34%),
+    linear-gradient(180deg, #08110d, #0b1510 46%, #08100c);
+}
+
+:root[data-theme="dark"] .auth-card {
+  background: linear-gradient(180deg, rgba(12, 22, 17, 0.96), rgba(9, 18, 14, 0.97));
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
 }

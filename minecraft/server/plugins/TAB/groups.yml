@@ -1,36 +1,20 @@
-owner:
-  tabprefix: ""
-  tagprefix: "&2[Владелец] &f"
-  customtabname: "%player% &7Ping: &a%ping%"
+#Owner:
+#  tabprefix: "&0&l[&a&lOwner&0&l] &a"
+#  tagprefix: "&2&lOwner &a"
+Player:
+  tabprefix: "&0&l[&7&lPlayer&0&l] &3"
+  tagprefix: "&2&lPlayer &3"
 
-admin:
-  tabprefix: ""
-  tagprefix: "&b[Админ] &f"
-  customtabname: "%player% &7Ping: &a%ping%"
-
-president:
-  tabprefix: ""
-  tagprefix: "&a[Президент] &f"
-  customtabname: "%player% &7Ping: &a%ping%"
-
-cik_chair:
-  tabprefix: ""
-  tagprefix: "&3[Пред. ЦИК] &f"
-  customtabname: "%player% &7Ping: &a%ping%"
-
-curator:
-  tabprefix: ""
-  tagprefix: "&6[Куратор] &f"
-  customtabname: "%player% &7Ping: &a%ping%"
-
-default:
-  tabprefix: ""
-  tagprefix: "&7[Игрок] &f"
-  customtabname: "%player% &7Ping: &a%ping%"
-
+ # default settings for all groups, all groups will take properties from this section unless player's primary group overrides a specific setting
 _DEFAULT_:
-  tabprefix: ""
+  tabprefix: "%luckperms-prefix%"
   tagprefix: "%luckperms-prefix%"
-  customtabname: "%player% &7Ping: &a%ping%"
-  tabsuffix: ""
+  customtabname: "%player%"
+  tabsuffix: "%luckperms-suffix%"
   tagsuffix: "%luckperms-suffix%"
+
+per-world:
+  world1:
+    Owner:
+      tabprefix: "&0&l[&a&lOwner&0&l] &a"
+      tagprefix: "&2&lOwner &a"

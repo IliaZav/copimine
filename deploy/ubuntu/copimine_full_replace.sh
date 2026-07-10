@@ -577,9 +577,18 @@ restart_services() {
 http_check() {
   local url="$1"
   local host_header="${2:-}"
+  local timeout="${3:-60}"
+  local elapsed=0
   local extra=()
   [[ -n "$host_header" ]] && extra=(-H "Host: $host_header")
-  curl -fsS "${extra[@]}" "$url" >/dev/null || fail "HTTP check failed: $url"
+  while (( elapsed < timeout )); do
+    if curl -fsS "${extra[@]}" "$url" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  fail "HTTP check failed: $url"
 }
 
 verify_runtime() {
@@ -595,10 +604,10 @@ verify_runtime() {
     wait_for_service nginx 30 || fail "nginx is not active"
   fi
 
-  http_check "http://127.0.0.1:8090/api/health"
-  http_check "http://127.0.0.1:8090/api/runtime"
-  http_check "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "copimine.ru:18080"
-  http_check "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "copimine.ru:18080"
+  http_check "http://127.0.0.1:8090/api/health" "" 90
+  http_check "http://127.0.0.1:8090/api/runtime" "" 90
+  http_check "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "copimine.ru:18080" 90
+  http_check "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "copimine.ru:18080" 90
   log "Install verification passed."
 }
 

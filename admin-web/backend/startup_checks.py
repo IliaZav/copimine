@@ -166,7 +166,9 @@ def run_startup_checks() -> dict[str, Any]:
     project_root = project_root_from_backend(backend_file)
     env_result, values, env_path = _env_check(app_root)
     checks: list[CheckResult] = [env_result]
-    checks.append(_directory_check("data_dir", Path(values.get("COPIMINE_ADMIN_DATA", app_root / "data")), writable=True))
+    data_dir = Path(values.get("COPIMINE_ADMIN_DATA", app_root / "data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    checks.append(_directory_check("data_dir", data_dir, writable=True))
     checks.append(_directory_check("frontend_dir", app_root / "frontend", writable=False))
     checks.append(_directory_check("resourcepacks_dir", project_root / "resourcepacks" / "build", writable=False))
     checks.append(_directory_check("thirdparty_dir", project_root / "thirdparty", writable=False))

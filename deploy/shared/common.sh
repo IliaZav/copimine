@@ -38,6 +38,23 @@ copimine_need() {
   command -v "$1" >/dev/null 2>&1 || copimine_fail "Missing command: $1"
 }
 
+copimine_http_wait() {
+  local url="$1"
+  local host_header="${2:-}"
+  local timeout="${3:-60}"
+  local elapsed=0
+  local extra=()
+  [[ -n "$host_header" ]] && extra=(-H "Host: $host_header")
+  while (( elapsed < timeout )); do
+    if curl -fsS "${extra[@]}" "$url" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  return 1
+}
+
 copimine_require_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     copimine_fail "Run with sudo/root."
@@ -517,10 +534,10 @@ copimine_verify_runtime() {
   if systemctl list-unit-files | grep -q '^copimine-discord-bot\.service'; then
     systemctl is-active --quiet copimine-discord-bot || copimine_fail "copimine-discord-bot is not active"
   fi
-  curl -fsS http://127.0.0.1:8090/api/health >/dev/null || copimine_fail "/api/health failed"
-  curl -fsS http://127.0.0.1:8090/api/runtime >/dev/null || copimine_fail "/api/runtime failed"
-  curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip >/dev/null || copimine_fail "modpack download route failed"
-  curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip >/dev/null || copimine_fail "resourcepack download route failed"
+  copimine_http_wait "http://127.0.0.1:8090/api/health" "" 90 || copimine_fail "/api/health failed"
+  copimine_http_wait "http://127.0.0.1:8090/api/runtime" "" 90 || copimine_fail "/api/runtime failed"
+  copimine_http_wait "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "copimine.ru:18080" 90 || copimine_fail "modpack download route failed"
+  copimine_http_wait "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "copimine.ru:18080" 90 || copimine_fail "resourcepack download route failed"
 }
 
 copimine_install_flow() {

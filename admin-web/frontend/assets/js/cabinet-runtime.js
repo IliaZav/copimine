@@ -213,10 +213,10 @@ const navGroups = [
     title: "Сервер",
     items: [
       ["dashboard", "Обзор", "Сводка сервера", "О"],
-      ["players", "Игроки", "Профили и действия", ""],
+      ["players", "Игроки", "Профили и действия", "И"],
       ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
       ["economy", "Банк и AR", "Счета, переводы и покупки", "Б"],
-      ["artifacts", "Лавки артефактов", "Каталог, покупки, выдача", "А"],
+      ["artifacts", "Лавки артефактов", "Каталог, покупки и выдача", "А"],
       ["elections", "Выборы", "ЦИК, президент и результаты", "В"]
     ]
   },
@@ -225,22 +225,22 @@ const navGroups = [
     items: [
       ["requests", "Заявки", "Обращения и жалобы", "З"],
       ["inventories", "Инвентари", "Снимки и сравнение", "С"],
-      ["investigations", "Расследования", "CoreProtect", "Р"],
+      ["investigations", "Расследования", "CoreProtect и проверка действий", "Р"],
       ["anticheat", "Античит", "GrimAC и нарушения", "А"],
       ["logs", "Логи", "Сервер и события", "Л"],
-      ["audit", "Аудит", "Действия команды", "А"]
+      ["audit", "Аудит", "Действия команды", "Д"]
     ]
   },
   {
     title: "Система",
     items: [
-      ["server", "Сервер", "Связь с миром и службами", "S"],
-      ["admins", "Админы", "Аккаунты команды и вход в панель", "А"],
-      ["security", "Доступ", "Команда и права доступа", "Д"],
-      ["sources", "Источники", "Плагины и файлы", ""],
+      ["server", "Службы", "Связь с миром и сервисами", "S"],
+      ["admins", "Админы", "Аккаунты команды и доступ", "А"],
+      ["security", "Безопасность", "Права, сессии и доступ", "Б"],
+      ["sources", "Источники", "Плагины, файлы и реестр", "И"],
       ["narcotics-recipes", "Рецепты", "Котёл и ингредиенты", "Р"],
       ["cms", "CMS", "Тексты, баннеры и страницы", "C"],
-      ["settings", "Настройки", "Конфигурация", "Н"]
+      ["settings", "Настройки", "Конфигурация панели", "Н"]
     ]
   }
 ];
@@ -253,17 +253,17 @@ const playerNavGroups = [
   {
     title: "Игрок",
     items: [
-      ["cabinet", "Личный кабинет", "Аккаунт и статус", "Л"],
+      ["cabinet", "Кабинет", "Сводка аккаунта", "К"],
       ["bank", "Банк AR", "Баланс, PIN и переводы", "Б"],
-      ["donation-balance", "Донат-баланс", "Пакеты, QR и история пополнений", "D"],
-      ["donation-shop", "Донат-лавка", "Каталог и покупка предметов", "Д"],
-      ["donation-items", "Мои донат-предметы", "Выдачи, активные экземпляры и возврат", "И"],
-      ["history", "История", "Банк, лавка и события", ""],
+      ["donation-balance", "Донат-баланс", "Пополнения и история", "D"],
+      ["donation-shop", "Донат-лавка", "Покупка предметов", "Л"],
+      ["donation-items", "Мои предметы", "Выдача и активные покупки", "П"],
+      ["history", "История", "Банк, лавка и операции", "И"],
       ["settings", "Аккаунт", "Профиль и интерфейс", "А"],
       ["security", "Безопасность", "Пароль, PIN и сессии", "Б"],
-      ["support", "Поддержка", "Помощь и обращения", "П"],
+      ["support", "Репорты", "Обращения и жалобы", "Р"],
       ["artifacts", "Артефакты", "Покупки и выдача", "А"],
-      ["link", "Minecraft", "Код привязки", "M"]
+      ["link", "Minecraft", "Привязка аккаунта", "M"]
     ]
   }
 ];
@@ -817,6 +817,19 @@ function setLoading(title = "Загрузка данных") {
   replaceChildrenSafe(view, [makeElement("div", "loading", `${title}...`)]);
 }
 
+function setBootState(mode = "loading") {
+  const body = document.body;
+  if (body) body.dataset.bootState = mode;
+  const boot = $("bootStage");
+  const app = $("app");
+  const ready = mode === "ready";
+  if (boot) boot.classList.toggle("hidden", ready);
+  if (app) {
+    app.hidden = !ready;
+    app.classList.toggle("hidden", !ready);
+  }
+}
+
 function applyDynamicViewStyles(root = $("view")) {
   if (!root) return;
   root.querySelectorAll(".readiness-ring[data-ring-offset][data-ring-value]").forEach((el) => {
@@ -1049,7 +1062,7 @@ function firstRunReadinessHtml(data = {}) {
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Первый запуск</h2>
-          <p class="panel-subtitle">Проверка после замены папки на сервере: плагины, конфиги, БД и resource pack.</p>
+          <p class="panel-subtitle">Проверка после обновления сервера: плагины, конфиги, база и ресурспак.</p>
         </div>
         ${pill(`${ready}%`, ready >= 90 ? "good" : ready >= 70 ? "warn" : "bad")}
       </div>
@@ -1809,7 +1822,11 @@ function renderAdminSearchDock() {
   if (!dock) {
     dock = makeElement("aside", "admin-search-dock");
     dock.id = "adminSearchDock";
-    document.body.append(dock);
+  }
+  const workspace = document.querySelector(".workspace");
+  const view = $("view");
+  if (workspace && dock.parentElement !== workspace) {
+    workspace.insertBefore(dock, view || null);
   }
   const query = state.adminSearchQuery || "";
   const results = adminSearchItems().filter(item => fuzzyContains(item.haystack, query)).slice(0, 7);
@@ -1820,7 +1837,7 @@ function renderAdminSearchDock() {
     id: "adminGlobalSearch",
     "data-input": "adminGlobalSearch",
     value: query,
-    placeholder: "банк, рецепты, цик...",
+    placeholder: "банк, рецепты, игроки...",
     autocomplete: "off"
   });
   label.append(input);
@@ -1851,7 +1868,7 @@ function tabNavigationParams(tab) {
   return params;
 }
 
-function setTab(tab) {
+async function setTab(tab) {
   const metaMap = currentPageMeta();
   const routeTab = metaMap[tab] ? tab : defaultTab();
   const currentRoute = normalizeAppRoute(document.body?.dataset.appRoute || routeFromHref(location.pathname), state.tab || defaultTab());
@@ -1867,7 +1884,7 @@ function setTab(tab) {
   syncWorkspaceMode();
   renderNav();
   renderAdminSearchDock();
-  loadCurrent().finally(applyPendingAdminSearchFocus);
+  await loadCurrent().finally(applyPendingAdminSearchFocus);
 }
 
 function updateGlobalStatus(status = {}) {
@@ -1875,7 +1892,7 @@ function updateGlobalStatus(status = {}) {
   const badge = $("liveBadge");
   badge.className = `status-chip ${ok ? "status-good" : status.minecraftOnline ? "status-warn" : "status-bad"}`;
   badge.textContent = ok ? "сервер онлайн" : status.minecraftOnline ? "частично" : "offline";
-  setMiniHealthSummary(ok ? "Сервер работает" : "Проверь сервер", [
+  setMiniHealthSummary(ok ? "Сервер стабилен" : "Требует проверки", [
     `TPS: ${short(status.tps || "—", 26)}`,
     `MSPT: ${short(status.mspt || "—", 26)}`,
   ]);
@@ -2132,12 +2149,12 @@ function showGuestPages() {
   }
 
 function syncTopbarActions() {
-    const guestButton = $("guestPagesBtn");
-    if (!guestButton) return;
-    const playerMode = isPlayerRole();
-    guestButton.hidden = playerMode;
-    guestButton.textContent = playerMode ? "" : "Сайт";
-  }
+  const guestButton = $("guestPagesBtn");
+  if (!guestButton) return;
+  const playerMode = isPlayerRole();
+  guestButton.hidden = playerMode;
+  guestButton.textContent = playerMode ? "" : "Сайт";
+}
 
 async function showCabinetFromPublic() {
     if (!state.role && !state.cookieAuth) {
@@ -2187,7 +2204,7 @@ function syncAuthUiLegacyUnused() {
     if (lead) lead.textContent = isRegister ? "Создать аккаунт" : "Вход";
     if (support) support.textContent = isRegister
       ? "Зарегистрируй отдельный логин сайта. Minecraft-ник подтверждается позже одноразовым кодом на сервере."
-      : "Войди логином сайта. После входа откроются банк, история операций и привязка Minecraft.";
+      : "Войдите логином сайта. После входа будут доступны онлайн-банк, удалённые покупки и история операций.";
     if (usernameLabel) usernameLabel.textContent = "Логин сайта";
     if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
     $("username").placeholder = "Придумай логин";
@@ -2195,7 +2212,7 @@ function syncAuthUiLegacyUnused() {
     if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Открыть кабинет";
     if (note) note.textContent = isRegister
       ? "Пароль от Minecraft здесь никогда не нужен. Укажи свой игровой ник и подтверди его кодом в игре."
-      : "После входа можно запросить код привязки, настроить PIN и пользоваться переводами.";
+      : "После входа можно привязать игровой аккаунт, настроить PIN и пользоваться переводами.";
   } else {
     if (brandText) brandText.textContent = "Рабочий кабинет сервера";
     if (lead) lead.textContent = "Вход";
@@ -2327,7 +2344,7 @@ async function resolveAuthSession() {
 
 async function bootAuthed(options = {}) {
   $("login")?.classList.add("hidden");
-  $("app")?.classList.remove("hidden");
+  setBootState("loading");
   try {
     const session = await resolveAuthSession();
     state.role = session.role;
@@ -2360,7 +2377,8 @@ async function bootAuthed(options = {}) {
   syncTopbarActions();
   renderPublicAuthState();
   renderNav();
-  setTab(state.tab);
+  await setTab(state.tab);
+  setBootState("ready");
   clearInterval(state.refreshTimer);
   if (isPanelAdminRole()) {
     startLivePanelStream();
@@ -2371,9 +2389,9 @@ async function bootAuthed(options = {}) {
     stopLivePanelStream();
     $("liveBadge").className = "status-chip status-neutral";
     $("liveBadge").textContent = "игрок";
-    setMiniHealthSummary("Кабинет игрока", [
+    setMiniHealthSummary("Личный кабинет", [
       `Привязка: ${state.user?.linked ? "есть" : "нет"}`,
-      "Банк: готов к работе",
+      "Доступ: банк и кабинет",
     ]);
   }
 }
@@ -2556,7 +2574,7 @@ async function loadDashboard(silent = false) {
         ["server.properties", perfReady.sources?.serverProperties || "—"],
         ["plugins", perfReady.sources?.plugins || "—"],
         ["База панели", perfReady.sources?.adminDb || "—"],
-        ["resource pack prompt", perfReady.resourcePackPromptReadable ? "читабельный" : "проверить"]
+        ["подсказка ресурспака", perfReady.resourcePackPromptReadable ? "нормальная" : "проверить"]
       ]))}
     </section>
   `);
@@ -3578,8 +3596,8 @@ async function loadSecurity() {
       ${metric("Подтверждения", CONFIRM_HEADER, "Нужны для опасных действий", "neutral")}
     </section>
     ${safetyRail([
-      ["Вход в панель", access.cookieAuth ? "сессия защищена и работает" : "проверь вход в панель", access.cookieAuth ? "good" : "warn"],
-      ["Пароли", "хранятся в защищённом виде", "good"],
+      ["Вход в панель", access.cookieAuth ? "сессия активна" : "проверь вход в панель", access.cookieAuth ? "good" : "warn"],
+      ["Пароли", "хранятся как хэши", "good"],
       ["Опасные действия", `требуют точный код ${CONFIRM_HEADER}`, "warn"],
       ["Minecraft-доступ", "права и допуск меняются только через журналируемые действия", "good"]
     ])}
@@ -3637,7 +3655,7 @@ async function loadSecurity() {
       ${panel("Защита входа", "Сессия, хранилище и код подтверждения.", kv([
         ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
         ["Хранилище входа", access.authDb || "основное"],
-        ["Готовность хранилища", access.authDbExists ? "готово" : "проверить"],
+        ["Состояние хранилища", access.authDbExists ? "готово" : "проверить"],
         ["Код подтверждения", CONFIRM_HEADER]
       ]))}
       ${panel("Права ролей", "Кто что может делать в админке.", safetyRail([
@@ -3707,7 +3725,7 @@ async function loadAdmins() {
       ${panel("Защита входа", "Сессия, хранилище и код подтверждения.", kv([
         ["Сессия входа", access.cookieAuth ? "активна" : "проверить"],
         ["Хранилище входа", access.authDb || "основное"],
-        ["Готовность хранилища", access.authDbExists ? "готово" : "проверить"],
+        ["Состояние хранилища", access.authDbExists ? "готово" : "проверить"],
         ["Код подтверждения", CONFIRM_HEADER]
       ]))}
       ${panel("Что дальше", "Как работать с новыми аккаунтами после регистрации.", safetyRail([
@@ -4603,6 +4621,7 @@ function wire() {
 
 async function boot() {
   wire();
+  setBootState("loading");
   await refreshCsrfCookie();
   await bootAuthed({ quiet: true });
 }
@@ -4692,4 +4711,3 @@ Object.assign(dataInputHandlers, {
 });
 
 boot();
-

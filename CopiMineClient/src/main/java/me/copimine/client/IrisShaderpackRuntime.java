@@ -353,14 +353,16 @@ public final class IrisShaderpackRuntime {
     private void invokeIfPresent(Object target, String method) throws Exception {
         try {
             target.getClass().getMethod(method).invoke(target);
-        } catch (NoSuchMethodException ignored) {
+        } catch (NoSuchMethodException missingMethod) {
+            // Older Iris builds do not expose every helper hook.
         }
     }
 
     private void invokeIfPresentStatic(Class<?> type, String method) throws Exception {
         try {
             type.getMethod(method).invoke(null);
-        } catch (NoSuchMethodException ignored) {
+        } catch (NoSuchMethodException missingMethod) {
+            // Older Iris builds do not expose every helper hook.
         }
     }
 

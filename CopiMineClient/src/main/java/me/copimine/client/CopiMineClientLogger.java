@@ -24,18 +24,25 @@ public final class CopiMineClientLogger {
         write("WARN", message, null);
     }
 
+    public static void warn(String message, Throwable error) {
+        write("WARN", message, error);
+    }
+
     public static void error(String message, Throwable error) {
         write("ERROR", message, error);
     }
 
     private static void write(String level, String message, Throwable error) {
         String line = "[" + TS.format(LocalDateTime.now()) + "] [" + level + "] " + String.valueOf(message == null ? "" : message);
+        String trace = stackTrace(error);
         synchronized (LOCK) {
             try {
                 Files.createDirectories(LOG_PATH.getParent());
                 Files.writeString(
                         LOG_PATH,
-                        line + System.lineSeparator() + stackTrace(error),
+                        trace.isEmpty()
+                                ? line + System.lineSeparator()
+                                : line + System.lineSeparator() + trace,
                         java.nio.file.StandardOpenOption.CREATE,
                         java.nio.file.StandardOpenOption.APPEND
                 );

@@ -1,0 +1,244 @@
+:root {
+  --release-public-bg:
+    radial-gradient(circle at top left, rgba(36, 109, 72, 0.11), transparent 28%),
+    radial-gradient(circle at top right, rgba(19, 74, 98, 0.1), transparent 24%),
+    linear-gradient(180deg, #081411 0%, #0a1714 100%);
+  --release-public-panel: rgba(10, 20, 18, 0.92);
+  --release-public-panel-strong: rgba(13, 24, 22, 0.97);
+  --release-public-line: rgba(110, 158, 126, 0.18);
+  --release-public-line-strong: rgba(125, 191, 145, 0.38);
+  --release-public-shadow: 0 20px 46px rgba(0, 0, 0, 0.22);
+}
+
+body[data-page-kind^="public-"],
+body.auth-screen,
+body.error-screen {
+  background: var(--release-public-bg);
+}
+
+body[data-page-kind="public-home"] .release-readiness-card {
+  display: none !important;
+}
+
+.public-nav,
+.public-nav.public-nav-auth {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 18px 24px;
+  border-radius: 0 0 16px 16px;
+  border-bottom: 1px solid var(--release-public-line);
+  background: rgba(8, 16, 15, 0.96);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+}
+
+.public-nav nav {
+  gap: 10px;
+}
+
+.public-nav nav a,
+.public-nav nav button {
+  min-height: 40px;
+  border-radius: 10px;
+}
+
+.public-brand {
+  gap: 12px;
+}
+
+.public-brand-logo,
+.auth-brand-logo {
+  border-radius: 10px;
+}
+
+.public-site.public-site-compact,
+.error-page {
+  width: min(1460px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+body[data-page-kind="cabinet"] .public-nav.public-nav-auth {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin-bottom: 18px;
+}
+
+.public-hero,
+.error-card,
+.auth-card {
+  border-radius: 14px;
+  border: 1px solid var(--release-public-line);
+  background: var(--release-public-panel);
+  box-shadow: var(--release-public-shadow);
+}
+
+.public-hero,
+.public-panel,
+.public-route-card,
+.hero-side-card,
+.hero-media-card,
+.showcase-card,
+.auth-card-section,
+.auth-recovery-card,
+.error-brand-card,
+.error-hint-card {
+  border-radius: 14px;
+  border-color: var(--release-public-line);
+  box-shadow: none;
+}
+
+.public-section,
+.public-panel,
+.public-route-card,
+.hero-side-card,
+.hero-media-card,
+.auth-card-section,
+.auth-recovery-card,
+.error-brand-card,
+.error-hint-card {
+  background: var(--release-public-panel);
+}
+
+.public-panel-head h3,
+.public-route-card strong,
+.hero-media-copy strong,
+.auth-card-copy h1,
+.error-card-copy h1 {
+  letter-spacing: -0.03em;
+}
+
+.public-route-board {
+  gap: 18px;
+}
+
+.public-route-card,
+.public-panel,
+.hero-side-card,
+.hero-media-card,
+.showcase-card {
+  padding: 20px 22px;
+}
+
+.public-route-card p,
+.public-panel p,
+.hero-media-copy p,
+.hero-side-note p,
+.auth-card-copy p,
+.error-card-copy p {
+  color: rgba(219, 230, 223, 0.76);
+}
+
+.auth-card {
+  padding: 24px;
+}
+
+.auth-card-grid {
+  gap: 18px;
+}
+
+.auth-card-section,
+.auth-recovery-card {
+  padding: 18px;
+}
+
+.auth-form input,
+.auth-inline-actions .btn,
+.auth-card .btn {
+  border-radius: 10px;
+}
+
+.error-stage {
+  padding-top: 34px;
+}
+
+.error-card {
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+}
+
+.error-card-code,
+.hero-kicker,
+.auth-kicker,
+.auth-section-kicker,
+.page-kicker-row .route-chip,
+.section-head > span {
+  letter-spacing: 0.14em;
+}
+
+.btn,
+.status-chip,
+.last-update,
+.metric,
+.panel,
+.table-wrap {
+  border-radius: 10px;
+}
+
+:root[data-theme="light"] body[data-page-kind^="public-"],
+:root[data-theme="light"] body.auth-screen,
+:root[data-theme="light"] body.error-screen {
+  background:
+    radial-gradient(circle at top left, rgba(64, 123, 91, 0.12), transparent 24%),
+    linear-gradient(180deg, #eef4ef 0%, #e6efea 100%);
+}
+
+:root[data-theme="light"] .public-nav,
+:root[data-theme="light"] .public-nav.public-nav-auth {
+  background: rgba(244, 248, 245, 0.92);
+  border-bottom-color: rgba(70, 108, 84, 0.14);
+}
+
+:root[data-theme="light"] .public-hero,
+:root[data-theme="light"] .public-panel,
+:root[data-theme="light"] .public-route-card,
+:root[data-theme="light"] .hero-side-card,
+:root[data-theme="light"] .hero-media-card,
+:root[data-theme="light"] .showcase-card,
+:root[data-theme="light"] .auth-card,
+:root[data-theme="light"] .auth-card-section,
+:root[data-theme="light"] .auth-recovery-card,
+:root[data-theme="light"] .error-card,
+:root[data-theme="light"] .error-brand-card,
+:root[data-theme="light"] .error-hint-card {
+  background: rgba(251, 253, 252, 0.94);
+  border-color: rgba(85, 118, 98, 0.16);
+}
+
+:root[data-theme="light"] .public-route-card p,
+:root[data-theme="light"] .public-panel p,
+:root[data-theme="light"] .hero-media-copy p,
+:root[data-theme="light"] .hero-side-note p,
+:root[data-theme="light"] .auth-card-copy p,
+:root[data-theme="light"] .error-card-copy p {
+  color: rgba(37, 54, 43, 0.74);
+}
+
+@media (max-width: 1080px) {
+  .error-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .public-nav,
+  .public-nav.public-nav-auth {
+    padding: 16px;
+    border-radius: 0 0 14px 14px;
+  }
+
+  .public-site.public-site-compact,
+  .error-page {
+    width: min(100%, calc(100% - 24px));
+  }
+
+  .public-route-card,
+  .public-panel,
+  .hero-side-card,
+  .hero-media-card,
+  .showcase-card,
+  .auth-card,
+  .error-card {
+    border-radius: 12px;
+  }
+}

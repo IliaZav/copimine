@@ -7,15 +7,42 @@
   <title>CopiMine - Донат-магазин</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/cabinet.css?v=20260709d" />
+  <link rel="stylesheet" href="/assets/cabinet.css?v=20260710r2" />
 </head>
-<body data-page-kind="cabinet" data-app-route="donation-shop">
+<body data-page-kind="cabinet" data-app-route="donation-shop" data-boot-state="loading">
   <div id="toast" class="toast-root" aria-live="polite"></div>
+
+  <header class="public-nav public-nav-auth">
+    <a class="public-brand" href="/index.html" aria-label="CopiMine">
+      <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
+      <span class="public-brand-copy">
+        <strong>CopiMine</strong>
+        <small>Личный кабинет и панель управления</small>
+      </span>
+    </a>
+    <nav aria-label="Разделы сайта">
+      <a href="/index.html">Главная</a>
+      <a href="/server.html">Сервер</a>
+      <a href="/shops.html">Лавки</a>
+      <a href="/mods.html">Модпак</a>
+      <a id="publicSigninLink" href="/signin.html" class="hidden">Войти</a>
+      <a id="publicRegisterLink" href="/register.html" class="hidden">Регистрация</a>
+      <button id="publicCabinetBtn" class="btn btn-secondary" type="button">Кабинет</button>
+      <button id="publicLogoutBtn" class="btn btn-ghost" type="button">Выход</button>
+      <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
+    </nav>
+  </header>
+
+  <section id="bootStage" class="loading-shell" aria-live="polite" aria-busy="true">
+    <div class="loading">Подготавливаем кабинет...</div>
+  </section>
 
   <div id="app" class="app">
     <aside class="sidebar">
       <div class="side-brand">
-        <img class="side-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
+        <a href="/index.html" aria-label="Вернуться на сайт">
+          <img class="side-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
+        </a>
         <div class="side-brand-copy">
           <strong>CopiMine</strong>
           <span id="userBadge">Загрузка</span>
@@ -30,10 +57,10 @@
 
     <main class="workspace">
       <header class="topbar">
-        <button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">☰</button>
+        <button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">&#9776;</button>
         <div class="page-heading">
           <h1 id="pageTitle">Донат-магазин</h1>
-          <p id="pageSubtitle">Данные загружаются автоматически. При необходимости обновите их вручную.</p>
+          <p id="pageSubtitle">Рабочие разделы, счета, история и игровые сервисы.</p>
         </div>
         <div class="top-actions">
           <button class="btn btn-ghost theme-toggle app-theme-toggle" data-theme-toggle="true" type="button">Тема</button>
@@ -50,5 +77,6 @@
 
   <div id="modalRoot"></div>
   <script type="module" src="/assets/app.js"></script>
+  <script src="/assets/js/cabinet-polish.js"></script>
 </body>
 </html>

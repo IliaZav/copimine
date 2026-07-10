@@ -52,6 +52,7 @@ public final class ClientBridgeProtocol {
     private static String clientVersion = CopiMineClient.CLIENT_VERSION;
     private static boolean irisShaderPackActive;
     private static boolean lastReportedIrisShaderPackActive;
+    private static boolean irisDetectionFailureLogged;
     private static ClientVisualManager registeredVisualManager;
 
     private ClientBridgeProtocol() {
@@ -202,6 +203,7 @@ public final class ClientBridgeProtocol {
         lastError = "";
         irisShaderPackActive = false;
         lastReportedIrisShaderPackActive = false;
+        irisDetectionFailureLogged = false;
         CopiMineClientLogger.info("Bridge session opened: " + sessionId);
     }
 
@@ -218,6 +220,7 @@ public final class ClientBridgeProtocol {
         sessionId = "";
         irisShaderPackActive = false;
         lastReportedIrisShaderPackActive = false;
+        irisDetectionFailureLogged = false;
         CopiMineClientLogger.info("Bridge session closed");
     }
 
@@ -311,7 +314,12 @@ public final class ClientBridgeProtocol {
             Object irisApi = irisApiClass.getMethod("getInstance").invoke(null);
             Object value = irisApiClass.getMethod("isShaderPackInUse").invoke(irisApi);
             return value instanceof Boolean enabled && enabled;
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            if (!irisDetectionFailureLogged) {
+                irisDetectionFailureLogged = true;
+                lastError = "iris-detect-failed:" + error.getClass().getSimpleName();
+                CopiMineClientLogger.warn("Iris shader-pack detection failed; runtime diagnostics may be degraded", error);
+            }
             return false;
         }
     }

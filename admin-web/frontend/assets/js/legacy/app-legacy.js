@@ -2124,7 +2124,7 @@ function syncAuthUiLegacyUnused() {
     if (lead) lead.textContent = isRegister ? "Создать аккаунт" : "Вход";
     if (support) support.textContent = isRegister
       ? "Зарегистрируй отдельный логин сайта. Minecraft-ник подтверждается позже одноразовым кодом на сервере."
-      : "Войди логином сайта. После входа откроются банк, история операций и привязка Minecraft.";
+      : "Войдите логином сайта. После входа будут доступны онлайн-банк, удалённые покупки и история операций.";
     if (usernameLabel) usernameLabel.textContent = "Логин сайта";
     if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
     $("username").placeholder = "Придумай логин";
@@ -2132,7 +2132,7 @@ function syncAuthUiLegacyUnused() {
     if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Открыть кабинет";
     if (note) note.textContent = isRegister
       ? "Пароль от Minecraft здесь никогда не нужен. Укажи свой игровой ник и подтверди его кодом в игре."
-      : "После входа можно запросить код привязки, настроить PIN и пользоваться переводами.";
+      : "После входа можно привязать игровой аккаунт, настроить PIN и пользоваться переводами.";
   } else {
     if (brandText) brandText.textContent = "Рабочий кабинет сервера";
     if (lead) lead.textContent = "Вход";
@@ -2264,7 +2264,9 @@ async function resolveAuthSession() {
 
 async function bootAuthed(options = {}) {
   $("login")?.classList.add("hidden");
-  $("app")?.classList.remove("hidden");
+  const appRoot = $("app");
+  appRoot?.classList.remove("hidden");
+  if (appRoot) appRoot.hidden = false;
   try {
     const session = await resolveAuthSession();
     state.role = session.role;

@@ -473,11 +473,11 @@ export function createHomepageRenderer() {
         replaceChildrenSafe(modpackExternalGrid, requiredExternal.map((row) => buildExternalModCard(row)));
       }
     }
-    if (modpackNotes) {
+    if (false && modpackNotes) {
       const noteCards = (notes.length ? notes : ["Проверьте версию Minecraft, Fabric и состав архива перед запуском."]).map((note) => {
         const card = makeElement("article", "modpack-note-card");
         card.append(
-          makeElement("strong", "", "Примечание"),
+          makeElement("strong", "", ""),
           makeElement("p", "", String(note)),
         );
         return card;

@@ -19,6 +19,7 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["register", "register.html"],
 ]);
 
+let legacyRuntimePromise = null;
 let cabinetRuntimePromise = null;
 
 function currentHashRoute(hashValue = window.location.hash) {
@@ -47,11 +48,27 @@ function normalizeAuthHashRoute() {
   return true;
 }
 
+function loadLegacyRuntime() {
+  if (legacyRuntimePromise) return legacyRuntimePromise;
+  legacyRuntimePromise = import("./legacy/app-legacy.js")
+    .then((module) => {
+      document.documentElement.dataset.runtime = "ready";
+      return module;
+    })
+    .catch((error) => {
+      legacyRuntimePromise = null;
+      console.error("CopiMine legacy cabinet runtime failed to load", error);
+      throw error;
+    });
+  return legacyRuntimePromise;
+}
+
 function loadCabinetRuntime() {
   if (cabinetRuntimePromise) return cabinetRuntimePromise;
   cabinetRuntimePromise = import("./cabinet-runtime.js")
     .then((module) => {
       document.documentElement.dataset.runtime = "ready";
+      document.documentElement.dataset.cabinetRuntime = "modern";
       return module;
     })
     .catch((error) => {
@@ -62,18 +79,20 @@ function loadCabinetRuntime() {
   return cabinetRuntimePromise;
 }
 
-function requestCabinetRuntime() {
-  void loadCabinetRuntime();
+function requestLegacyRuntime() {
+  void loadLegacyRuntime();
 }
 
-function requestLegacyRuntime() {
-  requestCabinetRuntime();
+function requestCabinetRuntime() {
+  void loadCabinetRuntime().catch(() => {
+    requestLegacyRuntime();
+  });
 }
 
 window.addEventListener("hashchange", () => {
   if (pageKind() === "cabinet") {
     if (normalizeAuthHashRoute()) return;
-    requestLegacyRuntime();
+    requestCabinetRuntime();
     return;
   }
   if (pageKind() === "signin" || pageKind() === "register") {
@@ -83,11 +102,12 @@ window.addEventListener("hashchange", () => {
   if (normalizeLegacyPublicHash()) return;
 });
 
-window.addEventListener("copimine:cabinet-runtime-request", requestLegacyRuntime);
+window.addEventListener("copimine:legacy-runtime-request", requestLegacyRuntime);
+window.addEventListener("copimine:cabinet-runtime-request", requestCabinetRuntime);
 
 if (pageKind() === "cabinet") {
   if (!normalizeAuthHashRoute()) {
-    requestLegacyRuntime();
+    requestCabinetRuntime();
   }
 } else if (pageKind() === "signin" || pageKind() === "register") {
   if (!normalizeAuthHashRoute()) {

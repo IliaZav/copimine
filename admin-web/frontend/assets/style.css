@@ -20,6 +20,7 @@
 @import url("./css/responsive.css");
 @import url("./css/ui-polish.css");
 @import url("./css/errors.css");
+@import url("./css/public-release.css");
 
 .anticheat-signal {
   display: inline-flex;

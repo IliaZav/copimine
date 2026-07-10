@@ -242,12 +242,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPortal(PlayerPortalEvent event) {
-        if (event.getCause() == PlayerTeleportEvent.TeleportCause.END_PORTAL && !endAccess.enabled()) {
+        if (event.getCause() == PlayerTeleportEvent.TeleportCause.END_PORTAL && !endAccess.enabled() && !endAccess.allowPortals()) {
             event.setCancelled(true);
             event.getPlayer().sendMessage(color("&eЭнд сейчас закрыт."));
             return;
         }
-        if (event.getCause() == PlayerTeleportEvent.TeleportCause.NETHER_PORTAL && !netherAccess.enabled()) {
+        if (event.getCause() == PlayerTeleportEvent.TeleportCause.NETHER_PORTAL && !netherAccess.enabled() && !netherAccess.allowPortals()) {
             event.setCancelled(true);
             event.getPlayer().sendMessage(color("&eНижний мир сейчас закрыт."));
             return;
@@ -272,6 +272,14 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             case NETHER_PORTAL, END_PORTAL, END_GATEWAY -> true;
             default -> false;
         };
+        boolean commandTeleport = switch (event.getCause()) {
+            case COMMAND, PLUGIN -> true;
+            default -> false;
+        };
+        WorldAccess targetAccess = accessFor(targetWorld);
+        if (commandTeleport && targetAccess != null && !targetAccess.enabled() && targetAccess.allowCommandsTeleport()) {
+            return;
+        }
         if (isBlockedWorld(targetWorld, portalTeleport)) {
             event.setCancelled(true);
             event.getPlayer().sendMessage(blockedMessage(targetWorld));
@@ -560,9 +568,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
     }
 
-    private boolean isBlockedWorld(World world, boolean portal) {
+    private boolean isBlockedWorld(World world, boolean portalTeleport) {
         WorldAccess access = accessFor(world);
         if (access == null || access.enabled()) {
+            return false;
+        }
+        if (portalTeleport && access.allowPortals()) {
             return false;
         }
         return true;

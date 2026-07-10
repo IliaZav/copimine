@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CopiMine Preview — Личный кабинет</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <link rel="stylesheet" href="/assets/css/preview.css" />
+</head>
+<body class="preview-shell" data-page-kind="preview-player">
+  <main class="preview-layout">
+    <aside class="preview-sidebar">
+      <div class="preview-brand">
+        <img src="/assets/brand/copimine-logo.png" alt="" />
+        <div>
+          <strong>CopiMine</strong>
+          <span>SudoKillDash9 · игрок</span>
+        </div>
+      </div>
+
+      <div class="preview-nav">
+        <section class="preview-nav-group">
+          <h3>Игрок</h3>
+          <div class="preview-nav-item"><div class="preview-nav-icon">К</div><div class="preview-nav-copy"><strong>Кабинет</strong><span>Сводка аккаунта и история</span></div></div>
+          <div class="preview-nav-item is-active"><div class="preview-nav-icon">Б</div><div class="preview-nav-copy"><strong>Банк AR</strong><span>Баланс, PIN и переводы</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">Л</div><div class="preview-nav-copy"><strong>Донат-лавка</strong><span>Покупки и выдача предметов</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">Р</div><div class="preview-nav-copy"><strong>Репорты</strong><span>Обращения и жалобы</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">А</div><div class="preview-nav-copy"><strong>Аккаунт</strong><span>Профиль и безопасность</span></div></div>
+        </section>
+      </div>
+    </aside>
+
+    <section class="preview-main">
+      <header class="preview-topbar">
+        <div>
+          <h1>Личный кабинет</h1>
+          <p>Игровой счёт, переводы, PIN, история операций и добровольный налог без лишних карточек и рекламного мусора.</p>
+        </div>
+        <div class="preview-actions">
+          <div class="preview-chip">Привязка: активна</div>
+          <div class="preview-chip">Minecraft: SudoKillDash9</div>
+          <div class="preview-chip">Статус: игрок</div>
+          <div class="preview-chip">PIN: настроен</div>
+        </div>
+      </header>
+
+      <section class="preview-section preview-bank-hero">
+        <div>
+          <span class="bank-kicker">Банк AR</span>
+          <h2>Личный счёт игрока</h2>
+          <p>Здесь находятся баланс, переводы, добровольный налог и история операций. Вся основная работа вынесена в один экран без дублирующих блоков.</p>
+        </div>
+        <div class="preview-bank-balance">
+          <span>Доступно</span>
+          <strong>9 999 999 AR</strong>
+          <small>личный счёт</small>
+        </div>
+      </section>
+
+      <section class="preview-grid-4">
+        <article class="preview-card">
+          <div class="preview-metric-label">Баланс</div>
+          <div class="preview-metric-value">9 999 999</div>
+          <div class="preview-metric-note">AR на личном счёте</div>
+        </article>
+        <article class="preview-card">
+          <div class="preview-metric-label">Операции</div>
+          <div class="preview-metric-value">18</div>
+          <div class="preview-metric-note">последние записи журнала</div>
+        </article>
+        <article class="preview-card">
+          <div class="preview-metric-label">PIN</div>
+          <div class="preview-metric-value">Настроен</div>
+          <div class="preview-metric-note">нужен для переводов</div>
+        </article>
+        <article class="preview-card">
+          <div class="preview-metric-label">Налог</div>
+          <div class="preview-metric-value">0 AR</div>
+          <div class="preview-metric-note">активный сбор не назначен</div>
+        </article>
+      </section>
+
+      <section class="preview-grid-2">
+        <article class="preview-section">
+          <div class="preview-metric-label">PIN счёта</div>
+          <div class="preview-form">
+            <div class="preview-form-grid">
+              <label class="preview-field">
+                <span>Текущий PIN</span>
+                <input class="preview-input" placeholder="Текущий PIN" />
+              </label>
+              <label class="preview-field">
+                <span>Новый PIN</span>
+                <input class="preview-input" placeholder="4-8 цифр" />
+              </label>
+            </div>
+            <button class="preview-button is-primary">Сохранить PIN</button>
+          </div>
+        </article>
+
+        <article class="preview-section">
+          <div class="preview-metric-label">Перевод AR</div>
+          <div class="preview-form">
+            <div class="preview-form-grid">
+              <label class="preview-field">
+                <span>Получатель</span>
+                <input class="preview-input" placeholder="Ник игрока" />
+              </label>
+              <label class="preview-field">
+                <span>Сумма</span>
+                <input class="preview-input" placeholder="Сумма" />
+              </label>
+              <label class="preview-field">
+                <span>PIN</span>
+                <input class="preview-input" placeholder="PIN" />
+              </label>
+              <label class="preview-field">
+                <span>Комментарий</span>
+                <input class="preview-input" placeholder="Необязательно" />
+              </label>
+            </div>
+            <button class="preview-button is-primary">Отправить AR</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="preview-section">
+        <div class="preview-metric-label">Журнал операций</div>
+        <table class="preview-table">
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Тип</th>
+              <th>Детали</th>
+              <th>Сумма</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>16:40</td><td>Перевод</td><td>Игроку cells_123</td><td>-120 AR</td></tr>
+            <tr><td>15:54</td><td>Покупка</td><td>Артефакт из лавки</td><td>-900 AR</td></tr>
+            <tr><td>15:10</td><td>Пополнение</td><td>Внесение AR через банкомат</td><td>+64 AR</td></tr>
+            <tr><td>14:21</td><td>Налог</td><td>Добровольная оплата</td><td>-200 AR</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

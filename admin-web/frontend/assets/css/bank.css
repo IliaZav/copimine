@@ -15,3 +15,139 @@ body.player-mode[data-app-route="history"] .topbar {
 body.player-mode[data-app-route="bank"] .side-brand {
   border-color: var(--copimine-player-strong-line);
 }
+
+.bank-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.bank-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+  gap: 18px;
+  align-items: stretch;
+  padding: 22px 24px;
+  border: 1px solid rgba(69, 133, 92, 0.24);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(72, 162, 98, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(12, 28, 20, 0.96), rgba(9, 20, 16, 0.98));
+}
+
+.bank-hero-copy h2 {
+  margin: 8px 0 0;
+  font-size: clamp(28px, 3vw, 36px);
+  letter-spacing: -0.04em;
+}
+
+.bank-hero-copy p {
+  margin: 10px 0 0;
+  max-width: 56ch;
+  color: rgba(214, 230, 220, 0.72);
+}
+
+.bank-kicker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(115, 188, 141, 0.26);
+  color: #8fd3a7;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.bank-hero-balance {
+  display: grid;
+  align-content: center;
+  justify-items: end;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(115, 188, 141, 0.2);
+  background: rgba(8, 16, 14, 0.72);
+  text-align: right;
+}
+
+.bank-hero-balance span,
+.bank-hero-balance small {
+  color: rgba(214, 230, 220, 0.7);
+}
+
+.bank-hero-balance strong {
+  font-size: clamp(28px, 4vw, 42px);
+  letter-spacing: -0.05em;
+}
+
+.bank-scope-toggle {
+  justify-self: start;
+}
+
+.bank-workspace {
+  align-items: start;
+}
+
+.bank-form-card,
+.bank-tax-box,
+.bank-empty-state {
+  display: grid;
+  gap: 14px;
+}
+
+.bank-form-grid,
+.bank-tax-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.field-stack > span {
+  color: rgba(214, 230, 220, 0.74);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.field-span-2 {
+  grid-column: 1 / -1;
+}
+
+.bank-form-grid input,
+.bank-tax-form input {
+  min-height: 46px;
+}
+
+.bank-empty-state p {
+  margin: 0;
+  color: rgba(214, 230, 220, 0.72);
+}
+
+@media (max-width: 980px) {
+  .bank-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .bank-hero-balance {
+    justify-items: start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 720px) {
+  .bank-form-grid,
+  .bank-tax-form {
+    grid-template-columns: 1fr;
+  }
+
+  .field-span-2 {
+    grid-column: auto;
+  }
+}

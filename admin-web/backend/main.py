@@ -3914,7 +3914,8 @@ def list_player_bank_recipients_sync(account: dict[str, Any], q: str = "", limit
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     capped_limit = max(1, min(int(limit or 40), 100))
-    with connect_db() as conn:
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
         candidates = conn.execute(
             """
             SELECT minecraft_uuid,minecraft_name,username,last_login_at,updated_at,created_at
@@ -3945,6 +3946,7 @@ def list_player_bank_recipients_sync(account: dict[str, Any], q: str = "", limit
             })
             if len(rows) >= capped_limit:
                 break
+        conn.commit()
     return {"recipients": rows, "count": len(rows)}
 
 
@@ -8507,12 +8509,14 @@ async def player_login(data: PlayerLoginIn, request: Request, response: Response
 
 
 @app.post("/api/player/recovery/start")
-async def player_recovery_start(data: PlayerRecoveryStartIn) -> dict[str, Any]:
+async def player_recovery_start(data: PlayerRecoveryStartIn, request: Request) -> dict[str, Any]:
+    check_rate_limit(request, "player-recovery-start", limit=6, window_seconds=300)
     return await bg(create_player_recovery_code_sync, data.minecraft_name.strip())
 
 
 @app.post("/api/player/recovery/confirm")
 async def player_recovery_confirm(data: PlayerRecoveryConfirmIn, request: Request, response: Response) -> dict[str, Any]:
+    check_rate_limit(request, "player-recovery-confirm", limit=8, window_seconds=300)
     result = await bg(confirm_player_recovery_code_sync, data.minecraft_name.strip(), data.code.strip().upper(), data.new_password)
     account = dict(result.get("account") or {})
     access_token, refresh_token = issue_player_auth_pair(
@@ -8564,12 +8568,14 @@ async def player_whitelist_request(request: Request, account: dict[str, Any] = D
 
 
 @app.post("/api/player/link/request")
-async def player_link_request(data: PlayerLinkRequestIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+async def player_link_request(request: Request, data: PlayerLinkRequestIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    check_rate_limit(request, "player-link-request", limit=6, window_seconds=300)
     return await bg(create_link_code_sync, account, data.minecraft_name.strip())
 
 
 @app.post("/api/player/link/confirm")
-async def player_link_confirm(data: PlayerLinkConfirmIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+async def player_link_confirm(request: Request, data: PlayerLinkConfirmIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    check_rate_limit(request, "player-link-confirm", limit=8, window_seconds=300)
     return await bg(confirm_link_code_sync, account, data.code)
 
 
@@ -8611,7 +8617,8 @@ async def player_elections_tax_pay(data: PlayerElectionTaxPayIn, account: dict[s
 
 
 @app.get("/api/player/reports")
-async def player_reports(status: str = "", account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+async def player_reports(request: Request, status: str = "", account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    check_rate_limit(request, "player-reports-list", limit=30, window_seconds=60)
     rows = await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 5000)
     minecraft_uuid = str(account.get("minecraft_uuid") or "").strip()
     username = str(account.get("username") or "").strip().lower()
@@ -8638,7 +8645,8 @@ async def player_reports(status: str = "", account: dict[str, Any] = Depends(req
 
 
 @app.post("/api/player/reports")
-async def player_create_report(data: PlayerSupportReportIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+async def player_create_report(request: Request, data: PlayerSupportReportIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    check_rate_limit(request, "player-reports-create", limit=6, window_seconds=300)
     reporter_name = str(account.get("minecraft_name") or account.get("username") or "").strip()
     reporter_uuid = str(account.get("minecraft_uuid") or "").strip() or f"site:{str(account.get('id') or '').strip()}"
     payload = DiscordReportIn(

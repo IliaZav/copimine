@@ -42,7 +42,8 @@ public final class ClientConfig {
         if (Files.isRegularFile(path)) {
             try (InputStream in = Files.newInputStream(path)) {
                 properties.load(in);
-            } catch (IOException ignored) {
+            } catch (IOException error) {
+                CopiMineClientLogger.warn("Failed to read client config " + path + "; using defaults and rewriting file", error);
             }
         }
         renderWhenHudHidden = parseBoolean(properties.getProperty(KEY_RENDER_WHEN_HUD_HIDDEN), true);
@@ -96,7 +97,8 @@ public final class ClientConfig {
             try (OutputStream out = Files.newOutputStream(path)) {
                 properties.store(out, "CopiMineClient settings");
             }
-        } catch (IOException ignored) {
+        } catch (IOException error) {
+            CopiMineClientLogger.warn("Failed to persist client config " + path, error);
         }
     }
 
@@ -114,7 +116,10 @@ public final class ClientConfig {
     private static int parseInt(String raw, int fallback) {
         try {
             return Integer.parseInt(raw);
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            if (raw != null && !raw.isBlank()) {
+                CopiMineClientLogger.warn("Invalid integer value in client config: '" + raw + "', using fallback=" + fallback, error);
+            }
             return fallback;
         }
     }

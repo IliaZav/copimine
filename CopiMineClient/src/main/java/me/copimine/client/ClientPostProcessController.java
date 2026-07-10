@@ -90,7 +90,8 @@ public final class ClientPostProcessController {
         if (renderer instanceof GameRendererAccessor accessor) {
             try {
                 accessor.copimine$disablePostProcessor();
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException error) {
+                CopiMineClientLogger.warn("Failed to disable active post-processor before switching visuals", error);
             }
         }
     }

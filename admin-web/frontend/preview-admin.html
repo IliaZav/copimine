@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CopiMine Preview — Админка</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <link rel="stylesheet" href="/assets/css/preview.css" />
+</head>
+<body class="preview-shell" data-page-kind="preview-admin">
+  <main class="preview-layout">
+    <aside class="preview-sidebar">
+      <div class="preview-brand">
+        <img src="/assets/brand/copimine-logo.png" alt="" />
+        <div>
+          <strong>CopiMine</strong>
+          <span>SudoKillDash9 · владелец</span>
+        </div>
+      </div>
+
+      <div class="preview-nav">
+        <section class="preview-nav-group">
+          <h3>Сервер</h3>
+          <div class="preview-nav-item is-active"><div class="preview-nav-icon">О</div><div class="preview-nav-copy"><strong>Обзор</strong><span>Сводка, сервисы и ключевые события</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">И</div><div class="preview-nav-copy"><strong>Игроки</strong><span>Профили, инвентарь и действия</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">Б</div><div class="preview-nav-copy"><strong>Банк и AR</strong><span>Счета, переводы и покупки</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">В</div><div class="preview-nav-copy"><strong>Выборы</strong><span>ЦИК, президент и результаты</span></div></div>
+        </section>
+        <section class="preview-nav-group">
+          <h3>Контроль</h3>
+          <div class="preview-nav-item"><div class="preview-nav-icon">З</div><div class="preview-nav-copy"><strong>Заявки</strong><span>Обращения, жалобы и репорты</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">Р</div><div class="preview-nav-copy"><strong>Расследования</strong><span>CoreProtect и журнал действий</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">Л</div><div class="preview-nav-copy"><strong>Логи</strong><span>События сервера и инциденты</span></div></div>
+        </section>
+        <section class="preview-nav-group">
+          <h3>Система</h3>
+          <div class="preview-nav-item"><div class="preview-nav-icon">С</div><div class="preview-nav-copy"><strong>Службы</strong><span>Нагрузка, systemd и runtime</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">C</div><div class="preview-nav-copy"><strong>CMS</strong><span>Тексты, баннеры и страницы</span></div></div>
+          <div class="preview-nav-item"><div class="preview-nav-icon">Н</div><div class="preview-nav-copy"><strong>Настройки</strong><span>Панель и системные параметры</span></div></div>
+        </section>
+      </div>
+    </aside>
+
+    <section class="preview-main">
+      <header class="preview-topbar">
+        <div>
+          <h1>Панель управления</h1>
+          <p>Компактная рабочая сводка без декоративного мусора: состояние сервисов, быстрые действия и контрольные разделы.</p>
+        </div>
+        <div class="preview-actions">
+          <div class="preview-chip">Тема: тёмная</div>
+          <div class="preview-chip">Сайт: online</div>
+          <div class="preview-chip">Обновлено: 16:45</div>
+          <div class="preview-chip">Поиск: банк / игроки / выборы</div>
+        </div>
+      </header>
+
+      <section class="preview-grid-4">
+        <article class="preview-card">
+          <div class="preview-metric-label">Игроки</div>
+          <div class="preview-metric-value">48</div>
+          <div class="preview-metric-note">7 онлайн прямо сейчас</div>
+        </article>
+        <article class="preview-card">
+          <div class="preview-metric-label">Жалобы</div>
+          <div class="preview-metric-value">3</div>
+          <div class="preview-metric-note">1 требует ручной проверки</div>
+        </article>
+        <article class="preview-card">
+          <div class="preview-metric-label">Казна</div>
+          <div class="preview-metric-value">24 510 AR</div>
+          <div class="preview-metric-note">президент: не выбран</div>
+        </article>
+        <article class="preview-card">
+          <div class="preview-metric-label">Runtime</div>
+          <div class="preview-metric-value">Стабилен</div>
+          <div class="preview-metric-note">admin / web / resourcepack</div>
+        </article>
+      </section>
+
+      <section class="preview-grid-3">
+        <article class="preview-section">
+          <div class="preview-metric-label">Быстрые действия</div>
+          <div class="preview-toolbar">
+            <span class="preview-pill">Снимок AR</span>
+            <span class="preview-pill">Скан мира</span>
+            <span class="preview-pill">Открыть игроков</span>
+            <span class="preview-pill">Открыть банк</span>
+          </div>
+        </article>
+        <article class="preview-section">
+          <div class="preview-metric-label">Службы</div>
+          <div class="preview-toolbar">
+            <span class="preview-pill">minecraft: active</span>
+            <span class="preview-pill">admin: active</span>
+            <span class="preview-pill">discord: standby</span>
+          </div>
+        </article>
+        <article class="preview-section">
+          <div class="preview-metric-label">Поиск по панели</div>
+          <div class="preview-toolbar">
+            <span class="preview-pill">банк</span>
+            <span class="preview-pill">лавки</span>
+            <span class="preview-pill">рецепты</span>
+            <span class="preview-pill">репорты</span>
+          </div>
+        </article>
+      </section>
+
+      <section class="preview-section">
+        <div class="preview-metric-label">Последние события</div>
+        <table class="preview-table">
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Раздел</th>
+              <th>Событие</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>16:44</td><td>Банк</td><td>Сброс PIN игрока SudoKillDash9</td><td>Подтверждено</td></tr>
+            <tr><td>16:39</td><td>Лавки</td><td>Покупка артефакта перенесена в очередь выдачи</td><td>Ожидает</td></tr>
+            <tr><td>16:27</td><td>Выборы</td><td>Поступила новая заявка кандидата</td><td>Новая</td></tr>
+            <tr><td>16:12</td><td>Службы</td><td>Resource pack hash обновлён</td><td>Готово</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

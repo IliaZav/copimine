@@ -66,6 +66,8 @@ release/
 
 # Project-local generated/runtime dirs
 admin-web/.venv/
+admin-web/.venv-*/
+admin-web/.venv*/
 admin-web/backups/
 admin-web/data/
 admin-web/backend/__pycache__/

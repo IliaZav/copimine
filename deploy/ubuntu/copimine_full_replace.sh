@@ -463,6 +463,25 @@ refresh_managed_release_artifacts() {
   copimine_validate_release_contract
 }
 
+prepare_python_runtime() {
+  log "[12b/15] Rebuild admin-web Python runtime"
+  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
+  # shellcheck source=/dev/null
+  source "$common_script"
+  COPIMINE_ROOT="$PROJECT_ROOT"
+  COPIMINE_APP_USER="$APP_USER"
+  COPIMINE_APP_GROUP="$APP_GROUP"
+  COPIMINE_ADMIN_DIR="$PROJECT_ROOT/admin-web"
+  COPIMINE_ENV_FILE="$PROJECT_ROOT/admin-web/.env"
+  COPIMINE_SERVER_DIR="$PROJECT_ROOT/minecraft/server"
+  COPIMINE_SERVER_PROPERTIES="$PROJECT_ROOT/minecraft/server/server.properties"
+  COPIMINE_RELEASE_MANIFEST="$PROJECT_ROOT/deploy/release_manifest.json"
+  COPIMINE_INSTALLER_MANIFEST="$PROJECT_ROOT/deploy/installer_manifest.json"
+  COPIMINE_RUNTIME_METADATA="$PROJECT_ROOT/deploy/runtime_metadata.json"
+  copimine_python_env
+}
+
 install_system_files() {
   log "[13/15] Refresh systemd and nginx config"
   for item in "${SYSTEM_FILES[@]}"; do
@@ -609,6 +628,7 @@ main() {
   clean_world_state_if_requested
   fix_permissions
   refresh_managed_release_artifacts
+  prepare_python_runtime
   install_system_files
   validate_release_tree
   verify_runtime

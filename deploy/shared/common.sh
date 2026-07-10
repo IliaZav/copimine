@@ -226,9 +226,13 @@ copimine_apply_clean_world_state() {
 copimine_python_env() {
   copimine_require_path "$COPIMINE_ADMIN_DIR/requirements.txt"
   cd "$COPIMINE_ADMIN_DIR"
+  rm -rf .venv
   python3 -m venv .venv
+  [[ -x ".venv/bin/python" ]] || copimine_fail "Python venv bootstrap failed: missing $COPIMINE_ADMIN_DIR/.venv/bin/python"
   .venv/bin/python -m pip install --upgrade pip
+  [[ -x ".venv/bin/pip" ]] || copimine_fail "Python venv bootstrap failed: missing $COPIMINE_ADMIN_DIR/.venv/bin/pip"
   .venv/bin/pip install -r requirements.txt
+  .venv/bin/python -m backend.startup_checks --strict >/dev/null
   chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_ADMIN_DIR/.venv"
 }
 

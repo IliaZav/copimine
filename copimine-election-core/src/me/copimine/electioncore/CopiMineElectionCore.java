@@ -1969,7 +1969,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Map<String, Object> activeTax = null;
         try {
             activeTax = activeTax();
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            warnSuppressed("president admin menu active tax player=" + player.getName(), error);
         }
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
         int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
@@ -2054,7 +2055,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Map<String, Object> activeTax = null;
         try {
             activeTax = activeTax();
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            warnSuppressed("president mandate menu active tax player=" + player.getName(), error);
         }
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
         int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
@@ -2759,7 +2761,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     try {
                         Entity entity = Bukkit.getEntity(UUID.fromString(entityUuid));
                         removeOwnedProtectedVisualEntity(entity, kind, linkedId);
-                    } catch (Exception ignored) {
+                    } catch (IllegalArgumentException error) {
+                        warnSuppressed("cleanup protected visual kind=" + kind + " linkedId=" + linkedId
+                                + " entityUuid=" + entityUuid, error);
                     }
                 }
                 Location base = new Location(world, intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z")));
@@ -2857,7 +2861,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (!expectedEntityUuid.isBlank()) {
             try {
                 entity = Bukkit.getEntity(UUID.fromString(expectedEntityUuid));
-            } catch (Exception ignored) {
+            } catch (IllegalArgumentException error) {
+                warnSuppressed("repair protected visual kind=" + kind + " linkedId=" + linkedId
+                        + " entityUuid=" + expectedEntityUuid, error);
             }
         }
         boolean validEntity = isOwnedProtectedVisualEntity(entity, kind, linkedId, modelId, customModelData);
@@ -2979,7 +2985,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (online != null) {
                 removeOfficialItemsFromPlayer(online, "CIK_SEAL");
             }
-        } catch (IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException error) {
+            warnSuppressed("remove chair invalid uuid stationId=" + stationId + " chairUuid=" + chairUuid, error);
         }
     }
 
@@ -4952,7 +4959,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 payload.put("term_id", string(term.get("id")));
                 payload.put("president_uuid", string(term.get("president_uuid")));
             }
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            warnSuppressed("active president revenue profile", error);
         }
         return payload;
     }
@@ -5094,7 +5102,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (tax != null) {
                 return taxPeriodHours(tax);
             }
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            warnSuppressed("selected tax period", error);
         }
         return normalizeTaxPeriodHours(getConfig().getInt("president-tax.payment-interval-hours", 24));
     }
@@ -6080,7 +6089,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 }
                 byUuid.putIfAbsent(uuid, new PlayerChoice(uuid, first(string(row.get("minecraft_name")), uuid), false));
             }
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            warnSuppressed("known players lookup", error);
         }
         List<PlayerChoice> list = new ArrayList<>(byUuid.values());
         list.sort(Comparator.comparing(PlayerChoice::online).reversed().thenComparing(PlayerChoice::name, String.CASE_INSENSITIVE_ORDER));
@@ -6143,7 +6153,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (root != null) {
                 return root;
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            warnSuppressed("release root autodetect", error);
         }
         return Paths.get("/opt/copimine");
     }
@@ -6272,7 +6283,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         for (String value : getConfig().getStringList("liveHidden")) {
             try {
                 liveHidden.add(UUID.fromString(value));
-            } catch (Exception ignored) {
+            } catch (IllegalArgumentException error) {
+                warnSuppressed("invalid hidden player uuid value=" + value, error);
             }
         }
     }
@@ -6316,6 +6328,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private String safeError(Throwable error) {
         String message = error == null ? "unknown" : String.valueOf(error.getMessage());
         return message.replaceAll("(?i)(password=)[^\\s&]+", "$1***").replaceAll("(?i)(POSTGRES_PASSWORD=)[^\\s&]+", "$1***");
+    }
+
+    private void warnSuppressed(String context, Throwable error) {
+        getLogger().warning(context + ": " + safeError(error));
     }
 
     private String publicErrorMessage(Throwable error) {

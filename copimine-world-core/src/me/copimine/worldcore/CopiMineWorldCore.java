@@ -776,7 +776,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private int parseInt(String raw, int fallback) {
         try {
             return Integer.parseInt(raw);
-        } catch (Exception ignored) {
+        } catch (NumberFormatException parseError) {
             return fallback;
         }
     }

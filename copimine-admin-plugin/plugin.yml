@@ -40,6 +40,10 @@ commands:
     description: "CopiMine staff report"
     usage: /report <problem>
     aliases: [problem, helpme, ticket]
+  reporta:
+    description: "CopiMine bug report with optional attached diagnostics"
+    usage: /reporta [bug-code] <problem>
+    aliases: [bugreporta, bugreport]
   rpguard:
     description: "Merged RP command restrictions diagnostics"
     usage: /rpguard

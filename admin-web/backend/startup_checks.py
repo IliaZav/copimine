@@ -59,28 +59,67 @@ def _directory_check(key: str, path: Path, *, must_exist: bool = True, writable:
     return _ok(key, "directory ready", required=required, path=str(path), writable=os.access(path, os.W_OK))
 
 
+def _merge_effective_env(file_values: dict[str, str]) -> dict[str, str]:
+    values = dict(file_values)
+    for key, raw in os.environ.items():
+        value = str(raw or "").strip()
+        if value:
+            values[key] = value
+    return values
+
+
+def _auth_storage_backend(values: dict[str, str]) -> str:
+    raw = str(values.get("COPIMINE_AUTH_STORAGE", "")).strip().lower()
+    return "sqlite" if raw == "sqlite" else "postgresql"
+
+
 def _env_check(app_root: Path) -> tuple[CheckResult, dict[str, str], Path]:
     env_path = resolve_env_file(app_root / ".env")
-    if not env_path.exists():
-        return _fail("env_file", ".env file missing", path=str(env_path)), {}, env_path
-    values = parse_env_file(env_path)
-    required_keys = [
-        "POSTGRES_HOST",
-        "POSTGRES_PORT",
-        "POSTGRES_DB",
-        "POSTGRES_USER",
-        "POSTGRES_PASSWORD",
-        "DATABASE_URL",
-        "SECRET_KEY",
-        "ADMIN_PUBLIC_BASE_URL",
-    ]
+    file_values = parse_env_file(env_path) if env_path.exists() else {}
+    values = _merge_effective_env(file_values)
+    auth_backend = _auth_storage_backend(values)
+    required_keys = ["SECRET_KEY", "ADMIN_PUBLIC_BASE_URL"]
+    if auth_backend == "postgresql":
+        required_keys = [
+            "POSTGRES_HOST",
+            "POSTGRES_PORT",
+            "POSTGRES_DB",
+            "POSTGRES_USER",
+            "POSTGRES_PASSWORD",
+            "DATABASE_URL",
+            *required_keys,
+        ]
     missing = [key for key in required_keys if not str(values.get(key, "")).strip() or values.get(key) == "CHANGE_ME"]
     if missing:
-        return _fail("env_file", "required env values are missing", path=str(env_path), missing=missing), values, env_path
-    return _ok("env_file", ".env loaded", path=str(env_path), keys=len(values)), values, env_path
+        summary = "required env values are missing"
+        if not env_path.exists():
+            summary = ".env file missing and required runtime env values are absent"
+        return _fail("env_file", summary, path=str(env_path), missing=missing, envFileExists=env_path.exists(), authBackend=auth_backend), values, env_path
+    if not env_path.exists():
+        return _warn(
+            "env_file",
+            "runtime env loaded without .env file",
+            required=False,
+            path=str(env_path),
+            keys=len(values),
+            envFileExists=False,
+            authBackend=auth_backend,
+        ), values, env_path
+    if file_values != values:
+        return _ok(
+            "env_file",
+            ".env loaded with process env overrides",
+            path=str(env_path),
+            keys=len(values),
+            envFileExists=True,
+            authBackend=auth_backend,
+        ), values, env_path
+    return _ok("env_file", ".env loaded", path=str(env_path), keys=len(values), envFileExists=True, authBackend=auth_backend), values, env_path
 
 
 def _postgres_check(values: dict[str, str]) -> CheckResult:
+    if _auth_storage_backend(values) == "sqlite":
+        return _warn("postgres", "postgres auth storage disabled by sqlite mode", required=False, backend="sqlite")
     if psycopg is None:
         return _fail("postgres", "psycopg is not installed", library="psycopg")
     try:

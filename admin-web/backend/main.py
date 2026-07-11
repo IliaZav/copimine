@@ -91,6 +91,7 @@ from .plugin_registry import (
 APP_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = APP_ROOT.parent
 FRONTEND_DIR = APP_ROOT / "frontend"
+load_env_file_to_os(resolve_env_file(APP_ROOT / ".env"))
 DATA_DIR = Path(os.getenv("COPIMINE_ADMIN_DATA", APP_ROOT / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 THIRDPARTY_DIR = PROJECT_ROOT / "thirdparty"
@@ -125,8 +126,25 @@ OWNER_ONLY_SERVER_PROPERTY_KEYS = {
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PLUGIN_REGISTRY_MANIFEST = APP_ROOT / "backend" / "plugin_registry_manifest.json"
 APP_VERSION = "2.2.0"
+STARTUP_STRICT = os.getenv("COPIMINE_STARTUP_STRICT", "1").lower() in {"1", "true", "yes", "on"}
 
-load_env_file_to_os(resolve_env_file(APP_ROOT / ".env"))
+
+def default_world_dir(server_dir: Path) -> Path:
+    configured_level = str(os.getenv("MC_LEVEL_NAME", "")).strip()
+    if configured_level:
+        return server_dir / configured_level
+    props_path = server_dir / "server.properties"
+    if props_path.exists():
+        try:
+            for raw in props_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = raw.strip()
+                if line.startswith("level-name="):
+                    level_name = line.split("=", 1)[1].strip()
+                    if level_name:
+                        return server_dir / level_name
+        except Exception:
+            pass
+    return server_dir / "world"
 
 # No built-in real admins: production access is loaded from .env or data/admin_users.json.
 # Runtime roles are owner / admin / junior_admin / player.
@@ -199,10 +217,10 @@ RCON_PORT = int(os.getenv("RCON_PORT", "25575"))
 RCON_PASSWORD = os.getenv("RCON_PASSWORD", "")
 MINECRAFT_SERVICE = os.getenv("MINECRAFT_SERVICE", "copimine-minecraft")
 COREPROTECT_DB = os.getenv("COREPROTECT_DB", str(MC_SERVER_DIR / "plugins" / "CoreProtect" / "database.db"))
-ADMIN_PLUGIN_DB = os.getenv("ADMIN_PLUGIN_DB", str(MC_SERVER_DIR / "plugins" / "CopiMineUltimateAdmin" / "data.db"))
+ADMIN_PLUGIN_DB = os.getenv("ADMIN_PLUGIN_DB", str(MC_SERVER_DIR / "plugins" / "CopiMineUltimateAdmin" / "copimine_ultimate.db"))
 AR_ITEM_IDS = [x.strip() for x in os.getenv("AR_ITEM_IDS", "minecraft:amethyst_shard,AMETHYST_SHARD").split(",") if x.strip()]
 LOG_FILE = Path(os.getenv("MC_LOG_FILE", MC_SERVER_DIR / "logs" / "latest.log"))
-WORLD_DIR = Path(os.getenv("MC_WORLD_DIR", MC_SERVER_DIR / "world"))
+WORLD_DIR = Path(os.getenv("MC_WORLD_DIR", default_world_dir(MC_SERVER_DIR)))
 MAX_WORLD_REGION_FILES = int(os.getenv("MAX_WORLD_REGION_FILES", "24"))
 MAX_WORLD_CHUNKS = int(os.getenv("MAX_WORLD_CHUNKS", "1200"))
 BACKUPS_DIR = Path(os.getenv("COPIMINE_BACKUPS_DIR", APP_ROOT / "backups"))
@@ -214,6 +232,8 @@ LOCKED_UNTIL: dict[str, int] = {}
 SESSIONS_FILE = DATA_DIR / "sessions.json"
 ADMIN_USERS_FILE = DATA_DIR / "admin_users.json"
 AUTH_DB_FILE = Path(os.getenv("COPIMINE_AUTH_DB", DATA_DIR / "admin_auth.db"))
+AUTH_STORAGE_MODE_RAW = os.getenv("COPIMINE_AUTH_STORAGE", "").strip().lower()
+AUTH_STORAGE_MODE = AUTH_STORAGE_MODE_RAW if AUTH_STORAGE_MODE_RAW in {"postgresql", "sqlite"} else "postgresql"
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", os.getenv("PGHOST", "127.0.0.1"))
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", os.getenv("PGPORT", "5432")))
 POSTGRES_DB = os.getenv("POSTGRES_DB", os.getenv("PGDATABASE", "copimine"))
@@ -269,6 +289,10 @@ SYSTEMD_SERVICES = [
     if x.strip()
 ]
 ALLOWED_ADMIN_ROLES = {"admin"}
+_SQLITE_ADD_COLUMN_IF_NOT_EXISTS_RE = re.compile(
+    r"^\s*ALTER\s+TABLE\s+(?P<table>[A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?P<column>[A-Za-z_][A-Za-z0-9_]*)\s+(?P<definition>.+?)\s*;?\s*$",
+    re.I | re.S,
+)
 
 
 class _PooledPgConnection:
@@ -387,10 +411,14 @@ class TicketIn(BaseModel):
     message: str = Field(max_length=4000)
     kind: str = Field(default="report", max_length=32)
     uuid: Optional[str] = None
+    target: Optional[str] = Field(default=None, max_length=64)
     world: Optional[str] = None
     x: Optional[float] = None
     y: Optional[float] = None
     z: Optional[float] = None
+    severity: str = Field(default="normal", max_length=40)
+    attached_events: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class CommandIn(BaseModel):
@@ -528,6 +556,16 @@ class PlayerSupportReportIn(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class PlayerUsernameChangeIn(BaseModel):
+    new_username: str = Field(min_length=3, max_length=32)
+    current_password: str = Field(min_length=1, max_length=128)
+
+
+class PlayerPasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class AdminWhitelistApproveIn(BaseModel):
     request_id: str = Field(min_length=8, max_length=120)
     note: str = Field(default="", max_length=240)
@@ -545,6 +583,22 @@ class AdminDonationBalanceIn(BaseModel):
     minecraft_uuid: str = Field(min_length=32, max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
     amount: int = Field(gt=0, le=1000000000)
+    reason: str = Field(min_length=2, max_length=160)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class AdminArBalanceSetIn(BaseModel):
+    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    balance: int = Field(ge=0, le=1000000000)
+    reason: str = Field(min_length=2, max_length=160)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class AdminDonationBalanceSetIn(BaseModel):
+    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    balance: int = Field(ge=0, le=1000000000)
     reason: str = Field(min_length=2, max_length=160)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
@@ -711,6 +765,199 @@ class DiscordReplyIn(BaseModel):
     discord_user_id: Optional[str] = Field(default=None, max_length=80)
     visibility: str = Field(default="internal", max_length=40)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def safe_mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def clip_text(value: Any, limit: int = 800) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)] + "..."
+
+
+def normalize_bug_report_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    raw = safe_mapping(metadata)
+    bug = safe_mapping(raw.get("bugReport"))
+    if not bug and any(raw.get(key) for key in ("errorCode", "errorSummary", "technical", "diagnostics", "stackTrace")):
+        bug = dict(raw)
+    if not bug:
+        return raw
+    technical = safe_mapping(bug.get("technical"))
+    diagnostics = safe_mapping(bug.get("diagnostics"))
+    context = safe_mapping(bug.get("context"))
+    if not technical:
+        technical = {
+            "exceptionClass": clip_text(bug.get("exceptionClass") or raw.get("exceptionClass"), 160),
+            "stackTrace": clip_text(bug.get("stackTrace") or raw.get("stackTrace"), 6000),
+            "details": clip_text(bug.get("details") or raw.get("details"), 6000),
+            "logLines": bug.get("logLines") or raw.get("logLines") or [],
+        }
+        technical = {key: value for key, value in technical.items() if value not in ("", [], {}, None)}
+    if not diagnostics:
+        diagnostics = {
+            "pluginVersion": clip_text(bug.get("pluginVersion") or raw.get("pluginVersion"), 160),
+            "serverVersion": clip_text(bug.get("serverVersion") or raw.get("serverVersion"), 160),
+            "requestId": clip_text(bug.get("requestId") or raw.get("requestId"), 160),
+            "actionId": clip_text(bug.get("actionId") or raw.get("actionId"), 160),
+        }
+        diagnostics = {key: value for key, value in diagnostics.items() if value not in ("", None)}
+    if not context:
+        context = {
+            "source": clip_text(bug.get("source") or raw.get("source"), 160),
+            "action": clip_text(bug.get("action") or raw.get("action"), 200),
+            "world": clip_text(bug.get("world") or raw.get("world"), 120),
+            "x": bug.get("x") if bug.get("x") is not None else raw.get("x"),
+            "y": bug.get("y") if bug.get("y") is not None else raw.get("y"),
+            "z": bug.get("z") if bug.get("z") is not None else raw.get("z"),
+            "itemType": clip_text(bug.get("itemType") or raw.get("itemType"), 120),
+        }
+        context = {key: value for key, value in context.items() if value not in ("", None)}
+    normalized = {
+        **raw,
+        "reportKind": "bug",
+        "errorCode": clip_text(bug.get("errorCode") or bug.get("token") or raw.get("errorCode") or raw.get("token"), 80),
+        "errorSummary": clip_text(
+            bug.get("errorSummary")
+            or raw.get("errorSummary")
+            or bug.get("message")
+            or raw.get("message")
+            or bug.get("exceptionClass")
+            or "Unexpected server error",
+            240,
+        ),
+        "bugReport": {
+            "reportKind": "bug",
+            "errorCode": clip_text(bug.get("errorCode") or bug.get("token") or raw.get("errorCode") or raw.get("token"), 80),
+            "errorSummary": clip_text(
+                bug.get("errorSummary")
+                or raw.get("errorSummary")
+                or bug.get("message")
+                or raw.get("message")
+                or bug.get("exceptionClass")
+                or "Unexpected server error",
+                240,
+            ),
+            "capturedAt": int(bug.get("capturedAt") or raw.get("capturedAt") or now_ts()),
+            "technical": technical,
+            "diagnostics": diagnostics,
+            "context": context,
+        },
+    }
+    return normalized
+
+
+def normalize_report_metadata(metadata: Any) -> dict[str, Any]:
+    raw = safe_mapping(metadata)
+    report_kind = str(raw.get("reportKind") or raw.get("kind") or "").strip().lower()
+    if report_kind == "bug" or raw.get("bugReport") or raw.get("errorCode") or raw.get("errorSummary"):
+        return normalize_bug_report_metadata(raw)
+    return raw
+
+
+def public_player_report(item: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    row = dict(item or {})
+    metadata = normalize_report_metadata(row.get("metadata"))
+    public_metadata: dict[str, Any] = {}
+    for key in ("sourcePage", "siteAccountId", "siteUsername", "reportKind", "errorCode", "errorSummary"):
+        if metadata.get(key) not in ("", None, {}, []):
+            public_metadata[key] = metadata.get(key)
+    bug = safe_mapping(metadata.get("bugReport"))
+    if bug:
+        public_bug = {}
+        for key in ("reportKind", "errorCode", "errorSummary", "capturedAt"):
+            if bug.get(key) not in ("", None):
+                public_bug[key] = bug.get(key)
+        if public_bug:
+            public_metadata["bugReport"] = public_bug
+    row["metadata"] = public_metadata
+    row["attached_events"] = []
+    row["timeline"] = []
+    replies = []
+    for reply in row.get("replies", []) if isinstance(row.get("replies"), list) else []:
+        reply_item = safe_mapping(reply)
+        visibility = str(reply_item.get("visibility") or "internal").lower()
+        if visibility not in {"public", "player"}:
+            continue
+        replies.append(
+            {
+                "id": reply_item.get("id"),
+                "message": clip_text(reply_item.get("message"), 1200),
+                "author": clip_text(reply_item.get("author"), 120),
+                "createdAt": reply_item.get("createdAt"),
+                "visibility": visibility,
+            }
+        )
+    row["replies"] = replies
+    return redact_value(row)
+
+
+def normalized_report_row(item: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    row = dict(item or {})
+    row["metadata"] = normalize_report_metadata(row.get("metadata"))
+    row["reportType"] = str(row.get("reportType") or row["metadata"].get("reportKind") or "report")
+    row["errorCode"] = clip_text(row.get("errorCode") or row["metadata"].get("errorCode"), 80)
+    row["errorSummary"] = clip_text(row.get("errorSummary") or row["metadata"].get("errorSummary"), 240)
+    return row
+
+
+def player_identity_variants(player_name: str, player_uuid: str) -> set[str]:
+    variants = {
+        str(player_name or "").strip().lower(),
+        str(player_uuid or "").strip().lower(),
+    }
+    if player_uuid:
+        variants.add(str(uuid_to_name().get(player_uuid, "")).strip().lower())
+    return {value for value in variants if value}
+
+
+def value_mentions_player(value: Any, variants: set[str]) -> bool:
+    if not variants:
+        return False
+    if isinstance(value, (dict, list, tuple)):
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    else:
+        text = str(value or "")
+    lowered = text.strip().lower()
+    return any(variant and variant in lowered for variant in variants)
+
+
+def report_involves_player(item: Mapping[str, Any] | dict[str, Any], player_name: str, player_uuid: str) -> bool:
+    row = dict(item or {})
+    variants = player_identity_variants(player_name, player_uuid)
+    metadata = safe_mapping(row.get("metadata"))
+    return any(
+        value_mentions_player(candidate, variants)
+        for candidate in (
+            row.get("reporter_uuid"),
+            row.get("reporter"),
+            row.get("target_uuid"),
+            row.get("target"),
+            metadata.get("playerUuid"),
+            metadata.get("targetUuid"),
+            metadata.get("playerName"),
+            metadata.get("targetName"),
+        )
+    )
+
+
+def application_involves_player(item: Mapping[str, Any] | dict[str, Any], player_name: str, player_uuid: str) -> bool:
+    row = dict(item or {})
+    variants = player_identity_variants(player_name, player_uuid)
+    metadata = safe_mapping(row.get("metadata"))
+    return any(
+        value_mentions_player(candidate, variants)
+        for candidate in (
+            row.get("uuid"),
+            row.get("player"),
+            row.get("contact"),
+            metadata.get("playerUuid"),
+            metadata.get("minecraftUuid"),
+            metadata.get("minecraftName"),
+        )
+    )
 
 
 def public_error_message(message: object) -> str:
@@ -892,21 +1139,20 @@ async def copimine_unhandled_exception_handler(request: Request, _: Exception) -
 async def on_startup() -> None:
     global _STARTUP_REPORT
     _STARTUP_REPORT = run_startup_checks()
-    if not _STARTUP_REPORT.get("ok", False):
+    if STARTUP_STRICT and not _STARTUP_REPORT.get("ok", False):
         failed = [
             f"{item.get('key')}: {item.get('summary')}"
             for item in _STARTUP_REPORT.get("checks", [])
             if item.get("status") == "fail" and item.get("required", True)
         ]
         raise RuntimeError("CopiMine startup self-check failed: " + "; ".join(failed[:12]))
-    if pg_ready():
+    if auth_storage_ready():
         try:
-            pool = pg_pool()
-            if pool is not None:
-                with auth_conn() as conn:
-                    ensure_v4_schema(conn)
-                    conn.commit()
-            pg_record_auth_state("runtime_startup", {"startedAt": now_ts(), "poolMin": POSTGRES_POOL_MIN_SIZE, "poolMax": POSTGRES_POOL_MAX_SIZE})
+            with auth_conn() as conn:
+                ensure_v4_schema(conn)
+                conn.commit()
+            if pg_ready():
+                pg_record_auth_state("runtime_startup", {"startedAt": now_ts(), "poolMin": POSTGRES_POOL_MIN_SIZE, "poolMax": POSTGRES_POOL_MAX_SIZE})
         except Exception:
             pass
 
@@ -951,7 +1197,7 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'",
+        "default-src 'self'; img-src 'self' data: https://mc-heads.net; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'",
     )
     return response
 
@@ -1139,7 +1385,13 @@ def origin_allowed(request: Request, origin: str) -> bool:
 
 def is_plugin_key_request(request: Request) -> bool:
     api_key = (request.headers.get("x-api-key") or "").strip()
-    return bool(PLUGIN_API_KEY and api_key and hmac.compare_digest(api_key, PLUGIN_API_KEY))
+    return bool(
+        api_key
+        and (
+            (PLUGIN_API_KEY and hmac.compare_digest(api_key, PLUGIN_API_KEY))
+            or (DISCORD_BOT_API_KEY and hmac.compare_digest(api_key, DISCORD_BOT_API_KEY))
+        )
+    )
 
 
 def valid_minecraft_name(username: str) -> bool:
@@ -1271,6 +1523,90 @@ def _new_pg_connection() -> Any:
     return _configure_pg_connection(conn)
 
 
+class _SqliteNoopCursor:
+    rowcount = 0
+
+    def fetchone(self) -> None:
+        return None
+
+    def fetchall(self) -> list[Any]:
+        return []
+
+
+class _SqliteAuthConnection:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def _apply_compat_transforms(self, sql: str) -> tuple[str, bool]:
+        text = str(sql or "").strip()
+        if not text:
+            return "", True
+        normalized = re.sub(r"\s+", " ", text).strip().upper()
+        if (
+            normalized.startswith("CREATE SCHEMA IF NOT EXISTS ")
+            or normalized.startswith("SET SEARCH_PATH TO ")
+            or normalized.startswith("SET STATEMENT_TIMEOUT TO ")
+            or normalized.startswith("SET LOCK_TIMEOUT TO ")
+            or normalized.startswith("SET TRANSACTION READ ONLY")
+        ):
+            return "", True
+        match = _SQLITE_ADD_COLUMN_IF_NOT_EXISTS_RE.match(text)
+        if match:
+            table = str(match.group("table") or "")
+            column = str(match.group("column") or "")
+            definition = str(match.group("definition") or "").strip()
+            existing = {
+                str(row["name"]).lower()
+                for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if column.lower() in existing:
+                return "", True
+            text = f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        text = re.sub(r"\bFOR\s+UPDATE\b", "", text, flags=re.I)
+        text = text.replace("%s", "?")
+        return text, False
+
+    def execute(self, sql: str, args: Optional[list[Any] | tuple[Any, ...]] = None) -> Any:
+        text, noop = self._apply_compat_transforms(sql)
+        if noop:
+            return _SqliteNoopCursor()
+        return self._conn.execute(text, tuple(args or ()))
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+
+def auth_storage_backend() -> str:
+    return "sqlite" if AUTH_STORAGE_MODE == "sqlite" else "postgresql"
+
+
+def auth_storage_ready() -> bool:
+    return auth_storage_backend() == "sqlite" or pg_ready()
+
+
+def auth_storage_location() -> str:
+    if auth_storage_backend() == "sqlite":
+        return safe_location(AUTH_DB_FILE)
+    return f"postgresql://{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}?schema={POSTGRES_SCHEMA}"
+
+
+def _new_sqlite_auth_connection() -> Any:
+    AUTH_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(AUTH_DB_FILE), timeout=8)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    return _SqliteAuthConnection(conn)
+
+
 def pg_pool() -> Optional[SimplePgPool]:
     global _PG_POOL
     if not pg_ready():
@@ -1281,6 +1617,8 @@ def pg_pool() -> Optional[SimplePgPool]:
 
 
 def auth_conn() -> Any:
+    if auth_storage_backend() == "sqlite":
+        return _PooledPgConnection(None, _new_sqlite_auth_connection())
     pool = pg_pool()
     if pool is not None:
         return pool.acquire()
@@ -2414,6 +2752,12 @@ def is_pg_conn(conn: Any) -> bool:
 
 
 def pg_table_exists(conn: Any, table: str) -> bool:
+    if auth_storage_backend() == "sqlite":
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM sqlite_master WHERE type IN ('table','view') AND name=%s",
+            (table,),
+        ).fetchone()
+        return bool(row and int(row["c"] or 0) > 0)
     row = conn.execute(
         "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema=current_schema() AND table_name=%s",
         (table,),
@@ -2438,6 +2782,7 @@ def admin_plugin_db_requested(path: str | Path) -> bool:
     text = str(p).replace("\\", "/").lower()
     return (
         p == Path(ADMIN_PLUGIN_DB)
+        or p == admin_plugin_db_path()
         or "/copimineultimateadmin/" in text
         or "/copimineultimateadminplus/" in text
         or p.name.lower() in {"copimine_ultimate.db", "data.db"}
@@ -2609,6 +2954,31 @@ def load_admin_users() -> dict[str, dict[str, Any]]:
         migrate_legacy_admins_to_auth_db()
         users = auth_db_user_rows()
     return users
+
+
+def current_admin_users_nonblocking() -> dict[str, dict[str, Any]]:
+    if auth_storage_backend() != "sqlite":
+        return load_admin_users()
+    try:
+        out: dict[str, dict[str, Any]] = {}
+        with auth_conn() as conn:
+            if not pg_table_exists(conn, "cm_admin_users"):
+                return load_legacy_admin_users()
+            for row in conn.execute("SELECT * FROM cm_admin_users ORDER BY lower(username)").fetchall():
+                out[str(row["username"])] = {
+                    "username": str(row["username"]),
+                    "password_hash": str(row["password_hash"]),
+                    "role": str(row["role"] or "admin"),
+                    "enabled": bool(int(row["enabled"] or 0)),
+                    "createdAt": int(row["created_at"] or 0),
+                    "createdBy": str(row["created_by"] or "db"),
+                    "updatedAt": int(row["updated_at"] or 0),
+                    "updatedBy": str(row["updated_by"] or ""),
+                    "source": str(row["source"] or "db"),
+                }
+        return out or load_legacy_admin_users()
+    except sqlite3.OperationalError:
+        return load_legacy_admin_users()
 
 
 def current_admin_users() -> dict[str, dict[str, Any]]:
@@ -3101,6 +3471,20 @@ def normalize_pin(pin: str) -> str:
     return value
 
 
+def row_get(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except Exception:
+        try:
+            return dict(row).get(key, default)
+        except Exception:
+            return default
+
+
 def player_account_by_id(conn: Any, account_id: str) -> dict[str, Any]:
     row = conn.execute("SELECT * FROM site_accounts WHERE id=%s AND enabled=1", (account_id,)).fetchone()
     if not row:
@@ -3570,7 +3954,9 @@ def player_is_site_admin(account: dict[str, Any]) -> bool:
     username = str(account.get("username") or "").strip()
     if not username:
         return False
-    real_username, meta = resolve_admin_user(username)
+    users = current_admin_users_nonblocking()
+    real_username = next((name for name in users if name.lower() == username.lower()), username)
+    meta = users.get(real_username)
     if not meta or not bool(meta.get("enabled", True)):
         return False
     role = normalize_admin_role(meta.get("role"))
@@ -3865,7 +4251,7 @@ def verify_account_pin(conn: Any, account_id: str, pin: str) -> None:
             "SELECT COUNT(*) AS attempts FROM failed_pin_attempts WHERE site_account_id=%s AND attempted_at>=%s",
             (account_id, current - PIN_ATTEMPT_WINDOW_SECONDS),
         ).fetchone()
-        if int((recent or {}).get("attempts") or 0) >= PIN_MAX_ATTEMPTS:
+        if int(row_get(recent, "attempts", 0) or 0) >= PIN_MAX_ATTEMPTS:
             conn.execute(
                 """
                 INSERT INTO account_lockouts(account_id,locked_until,reason,updated_at)
@@ -3886,12 +4272,12 @@ def verify_account_pin(conn: Any, account_id: str, pin: str) -> None:
 
 def visible_personal_pin(conn: Any, minecraft_uuid: str) -> str:
     row = conn.execute("SELECT pin_sealed FROM bank_pin_hashes WHERE minecraft_uuid=%s", (minecraft_uuid,)).fetchone()
-    return reveal_persistent_pin(f"personal:{minecraft_uuid}", str((row or {}).get("pin_sealed") or ""))
+    return reveal_persistent_pin(f"personal:{minecraft_uuid}", str(row_get(row, "pin_sealed", "") or ""))
 
 
 def visible_account_pin(conn: Any, account_id: str) -> str:
     row = conn.execute("SELECT pin_sealed FROM bank_account_pins WHERE account_id=%s", (account_id,)).fetchone()
-    return reveal_persistent_pin(f"account:{account_id}", str((row or {}).get("pin_sealed") or ""))
+    return reveal_persistent_pin(f"account:{account_id}", str(row_get(row, "pin_sealed", "") or ""))
 
 
 def resolve_bank_recipient(conn: Any, recipient: str) -> tuple[str, str]:
@@ -4829,7 +5215,7 @@ def president_tax_paid_amount(conn: Any, tax_id: str, player_uuid: str, window_s
         """,
         (tax_id, player_uuid, int(window_start or 0), int(window_end or 0)),
     ).fetchone()
-    return int((row or {}).get("total") or 0)
+    return int(row_get(row, "total", 0) or 0)
 
 
 def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
@@ -5256,7 +5642,10 @@ def read_json(path: Path, default: Any) -> Any:
     try:
         if not path.exists():
             return default
-        return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        if raw.startswith("\ufeff"):
+            raw = raw.lstrip("\ufeff")
+        return json.loads(raw)
     except Exception:
         return default
 
@@ -5430,9 +5819,13 @@ def log_auth_login_check(minecraft_uuid: str, minecraft_name: str, ok: bool, det
         conn.commit()
 
 
-def read_site_audit_rows(limit: int = 200, action: str = "", actor: str = "") -> list[dict[str, Any]]:
+def read_site_audit_rows(limit: int = 200, action: str = "", actor: str = "", target: str = "") -> list[dict[str, Any]]:
     if not pg_ready():
-        return read_jsonl_tail(AUDIT_LOG_FILE, limit)
+        rows = read_jsonl_tail(AUDIT_LOG_FILE, limit)
+        if target:
+            wanted = target.lower()
+            rows = [row for row in rows if wanted in str(row.get("target") or "").lower() or wanted in json.dumps(row.get("details") or {}, ensure_ascii=False).lower()]
+        return rows
     sql = "SELECT actor,action,created_at,details FROM site_audit"
     where: list[str] = []
     args: list[Any] = []
@@ -5442,6 +5835,9 @@ def read_site_audit_rows(limit: int = 200, action: str = "", actor: str = "") ->
     if actor:
         where.append("actor ILIKE %s")
         args.append(f"%{actor}%")
+    if target:
+        where.append("details::text ILIKE %s")
+        args.append(f"%{target}%")
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY created_at DESC LIMIT %s"
@@ -6892,7 +7288,7 @@ def server_stats_sync() -> dict[str, Any]:
     plugin_jars = sorted(plugin_dir.glob("*.jar")) if plugin_dir.exists() else []
     copimine_jars = [p for p in plugin_jars if "copimine" in p.name.lower()]
     db_paths = [
-        Path(ADMIN_PLUGIN_DB),
+        admin_plugin_db_path(),
         Path(COREPROTECT_DB),
         DATA_DIR / "audit_log.jsonl",
         DATA_DIR / "plugin_events.jsonl",
@@ -7274,7 +7670,7 @@ def elections_plugin_web_sync() -> dict[str, Any]:
         else:
             status = "configured"
     suspicious: list[dict[str, Any]] = []
-    public_vote_count = int(turnout.get("deposited_ballots") or sum(int((row or {}).get("votes") or 0) for row in results))
+    public_vote_count = int(turnout.get("deposited_ballots") or sum(int(row_get(row, "votes", 0) or 0) for row in results))
     return {
         "status": status,
         "sources": payloads,
@@ -7353,7 +7749,7 @@ def source_registry_sync() -> dict[str, Any]:
         ("bans", MC_SERVER_DIR / "banned-players.json", ["punishments"]),
         ("latest.log", LOG_FILE, ["logs"]),
         ("CoreProtect database", Path(COREPROTECT_DB), ["block_logs", "chat", "commands", "containers"]),
-        ("Admin plugin database", Path(ADMIN_PLUGIN_DB), ["elections", "tickets", "settings"]),
+        ("Admin plugin database", admin_plugin_db_path(), ["elections", "tickets", "settings"]),
     ]
     for name, path, capabilities in files:
         exists = path.exists()
@@ -7722,6 +8118,7 @@ def application_description(item: dict[str, Any]) -> str:
 
 
 def report_description(item: dict[str, Any]) -> str:
+    metadata = normalize_report_metadata(item.get("metadata"))
     coords = ""
     if item.get("world") or item.get("x") is not None or item.get("y") is not None or item.get("z") is not None:
         coords = f"{item.get('world') or 'world'} {item.get('x', '')} {item.get('y', '')} {item.get('z', '')}".strip()
@@ -7732,6 +8129,11 @@ def report_description(item: dict[str, Any]) -> str:
         f"Status: {item.get('status', 'open')}",
         f"Message: {item.get('message', '')}",
     ]
+    if str(item.get("reportType") or metadata.get("reportKind") or "").lower() == "bug":
+        if item.get("errorCode") or metadata.get("errorCode"):
+            parts.append(f"Error code: {item.get('errorCode') or metadata.get('errorCode')}")
+        if item.get("errorSummary") or metadata.get("errorSummary"):
+            parts.append(f"Summary: {item.get('errorSummary') or metadata.get('errorSummary')}")
     if coords:
         parts.append(f"Location: {coords}")
     if item.get("investigation_id"):
@@ -8426,6 +8828,7 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
     minecraft_name = (data.minecraft_name or "").strip()
     if minecraft_name and not valid_minecraft_name(minecraft_name):
         raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
+    minecraft_uuid = offline_uuid_for_name(minecraft_name) if minecraft_name else ""
     registration_ip = get_client_ip(request)
     account_id = secrets.token_hex(16)
     now = now_ts()
@@ -8436,23 +8839,23 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
         if minecraft_name and player_account_by_minecraft_name(conn, minecraft_name):
             raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже привязан. Используйте восстановление доступа.")
         same_ip = conn.execute("SELECT COUNT(*) AS c FROM site_accounts WHERE registration_ip=%s", (registration_ip,)).fetchone()
-        if int((same_ip or {}).get("c") or 0) >= 5:
+        same_ip_count = int((dict(same_ip).get("c") if same_ip else 0) or 0)
+        if same_ip_count >= 5:
             conn.commit()
             await bg(create_ip_alert_sync, registration_ip, username, minecraft_name, "site-account-limit", {"limit": 5, "stage": "register"})
             raise HTTPException(status_code=400, detail="Ошибка регистрации. Проверьте данные и попробуйте позже.")
         conn.execute(
             """
             INSERT INTO site_accounts(id,username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip)
-            VALUES(%s,%s,%s,%s,'player',1,'',%s,%s,%s,%s,%s)
+            VALUES(%s,%s,%s,%s,'player',1,%s,%s,%s,%s,%s,%s)
             """,
-            (account_id, username, username.lower(), make_password_hash(data.password), minecraft_name, now, now, now, registration_ip),
+            (account_id, username, username.lower(), make_password_hash(data.password), minecraft_uuid, minecraft_name, now, now, now, registration_ip),
         )
         conn.execute(
             "INSERT INTO auth_effects_disable_audit(actor,target_uuid,created_at,details) VALUES(%s,%s,%s,%s)",
             (username, "", now, "site registration entered staged auth flow"),
         )
         if minecraft_name:
-            minecraft_uuid = offline_uuid_for_name(minecraft_name)
             add_player_to_whitelist_sync(minecraft_uuid, minecraft_name)
             conn.execute(
                 """
@@ -8468,9 +8871,18 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
             )
         conn.commit()
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
-    minecraft_uuid = offline_uuid_for_name(minecraft_name) if minecraft_name else ""
+    account_payload = {
+        "id": account_id,
+        "username": username,
+        "minecraft_uuid": minecraft_uuid,
+        "minecraft_name": minecraft_name,
+        "enabled": 1,
+        "created_at": now,
+        "updated_at": now,
+        "last_login_at": now,
+    }
     access_token, refresh_token = issue_player_auth_pair(
-        {"id": account_id, "username": username, "minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name},
+        account_payload,
         request,
         remember_me=data.remember_me,
     )
@@ -8479,7 +8891,7 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
         "role": "player",
         "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
         "cookieAuth": True,
-        "account": {"id": account_id, "username": username, "minecraftName": minecraft_name, "linked": bool(minecraft_uuid)},
+        "account": public_player_account(account_payload),
     }
 
 
@@ -8561,6 +8973,65 @@ async def player_me(account: dict[str, Any] = Depends(require_player)) -> dict[s
     return {"account": base}
 
 
+@app.post("/api/player/account/username")
+async def player_change_username(
+    data: PlayerUsernameChangeIn,
+    request: Request,
+    account: dict[str, Any] = Depends(require_player),
+) -> dict[str, Any]:
+    check_rate_limit(request, "player-account-username", limit=6, window_seconds=300)
+    new_username = data.new_username.strip()
+    if not valid_site_username(new_username):
+        raise HTTPException(status_code=400, detail="Укажи корректный логин")
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        current = player_account_by_id(conn, str(account.get("id") or ""))
+        if not verify_password_hash(str(current.get("password_hash") or ""), data.current_password):
+            raise HTTPException(status_code=401, detail="Текущий пароль указан неверно")
+        existing = player_account_by_username(conn, new_username)
+        if existing and str(existing.get("id") or "") != str(current.get("id") or ""):
+            raise HTTPException(status_code=409, detail="Такой логин уже занят")
+        now = now_ts()
+        conn.execute(
+            "UPDATE site_accounts SET username=%s,username_norm=%s,updated_at=%s WHERE id=%s",
+            (new_username, new_username.lower(), now, current["id"]),
+        )
+        conn.commit()
+        current["username"] = new_username
+        current["updated_at"] = now
+    actor = str(account.get("username") or "player")
+    audit_event(actor, "player.account.username_change", target=new_username, details={"accountId": str(account.get("id") or "")})
+    append_panel_event("player", "account_username_changed", actor=actor, target=new_username, metadata={"accountId": str(account.get("id") or "")}, tags=["player", "account"])
+    return {"ok": True, "account": public_player_account(current)}
+
+
+@app.post("/api/player/account/password")
+async def player_change_password(
+    data: PlayerPasswordChangeIn,
+    request: Request,
+    account: dict[str, Any] = Depends(require_player),
+) -> dict[str, Any]:
+    check_rate_limit(request, "player-account-password", limit=8, window_seconds=300)
+    ok, reason = password_policy_ok(data.new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        current = player_account_by_id(conn, str(account.get("id") or ""))
+        if not verify_password_hash(str(current.get("password_hash") or ""), data.current_password):
+            raise HTTPException(status_code=401, detail="Текущий пароль указан неверно")
+        now = now_ts()
+        conn.execute(
+            "UPDATE site_accounts SET password_hash=%s,updated_at=%s WHERE id=%s",
+            (make_password_hash(data.new_password), now, current["id"]),
+        )
+        conn.commit()
+    actor = str(account.get("username") or "player")
+    audit_event(actor, "player.account.password_change", target=str(account.get("id") or ""), details={"changedAt": now_ts()})
+    append_panel_event("player", "account_password_changed", actor=actor, target=str(account.get("id") or ""), metadata={"username": actor}, tags=["player", "security"])
+    return {"ok": True}
+
+
 @app.post("/api/player/whitelist/request")
 async def player_whitelist_request(request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     row = await bg(create_whitelist_request_sync, account, get_client_ip(request))
@@ -8639,7 +9110,7 @@ async def player_reports(request: Request, status: str = "", account: dict[str, 
             continue
         if status and str(item.get("status") or "").strip().lower() != status.strip().lower():
             continue
-        filtered.append(item)
+        filtered.append(public_player_report(normalized_report_row(item)))
     filtered.sort(key=lambda row: int(row.get("updatedAt") or row.get("createdAt") or 0), reverse=True)
     return {"reports": filtered, "count": len(filtered)}
 
@@ -8870,6 +9341,295 @@ async def players(q: str = "", _: str = Depends(require_panel_admin)) -> dict[st
     return await bg(list_players_sync, q)
 
 
+def order_clause_for_table(conn: Any, table: str, *columns: str) -> str:
+    available = set(table_columns(conn, table))
+    order: list[str] = []
+    for column in columns:
+        if column in available:
+            order.append(f"{quote_ident(column)} desc")
+    if "id" in available:
+        order.append(f"{quote_ident('id')} desc")
+    return ",".join(dict.fromkeys(order))
+
+
+def player_full_detail_sync(player: str, full_access: bool = False, limit: int = 120) -> dict[str, Any]:
+    safe_limit = max(10, min(int(limit or 120), 240))
+    uuid = find_player_uuid(player)
+    if not uuid:
+        raise HTTPException(status_code=404, detail="Игрок не найден")
+    name = uuid_to_name().get(uuid, player)
+    nbt = load_player_nbt(uuid) or {}
+    stats = stats_for_uuid(uuid)
+    adv = advancement_summary(uuid)
+    profile_meta = player_site_bank_profile_sync(uuid, name)
+    if not full_access:
+        profile_pin = dict(profile_meta.get("pin") or {})
+        profile_pin["visiblePin"] = ""
+        profile_pin["temporaryPin"] = {}
+        profile_meta["pin"] = profile_pin
+    invsum = inventory_summary(nbt) if nbt else {"arInInventory": 0, "arInEnderChest": 0}
+    live_inventory = plugin_inventory_live_sync(name, 10)
+    inventory_history = inventory_history_sync(name, 16)
+    plugin_timeline = plugin_player_activity_sync(name, safe_limit)
+    coreprotect_error = ""
+    try:
+        core_rows = coreprotect_search(name, None, None, None, 0, "", "all", min(safe_limit, 180))
+    except Exception as exc:
+        core_rows = []
+        coreprotect_error = public_error_message(exc)
+    timeline_rows = list(plugin_timeline.get("rows", []))
+    for row in core_rows:
+        timeline_rows.append(
+            {
+                "time": row.get("time"),
+                "source": "CoreProtect",
+                "type": row.get("source_table") or "coreprotect",
+                "player": row.get("player") or name,
+                "world": row.get("world"),
+                "x": row.get("x"),
+                "y": row.get("y"),
+                "z": row.get("z"),
+                "details": row,
+                "adminOnly": True,
+            }
+        )
+    timeline_rows.sort(key=lambda row: int(row.get("time") or 0), reverse=True)
+
+    report_rows = [
+        normalized_report_row(row)
+        for row in load_collection_sync(DISCORD_REPORTS_FILE, "report", 5000)
+        if report_involves_player(row, name, uuid)
+    ]
+    report_rows.sort(key=lambda row: int(row.get("updatedAt") or row.get("createdAt") or 0), reverse=True)
+    application_rows = [
+        row
+        for row in load_collection_sync(DISCORD_APPLICATIONS_FILE, "application", 5000)
+        if application_involves_player(row, name, uuid)
+    ]
+    application_rows.sort(key=lambda row: int(row.get("updatedAt") or row.get("createdAt") or 0), reverse=True)
+
+    variants = player_identity_variants(name, uuid)
+    plugin_event_rows = [
+        row
+        for row in read_plugin_event_rows(max(300, safe_limit * 4))
+        if value_mentions_player(row.get("actor"), variants)
+        or value_mentions_player(row.get("target"), variants)
+        or value_mentions_player(row.get("metadata"), variants)
+    ][:safe_limit]
+
+    admin_actions_rows: list[dict[str, Any]] = []
+    audit_rows: list[dict[str, Any]] = []
+    bank_ledger: list[dict[str, Any]] = []
+    donation_ledger: list[dict[str, Any]] = []
+    donation_sessions: list[dict[str, Any]] = []
+    donation_claims: list[dict[str, Any]] = []
+    donation_purchases: list[dict[str, Any]] = []
+    vote_rows: list[dict[str, Any]] = []
+    ballot_rows: list[dict[str, Any]] = []
+    candidate_rows: list[dict[str, Any]] = []
+    prank_rows: list[dict[str, Any]] = []
+    narcotics_rows: list[dict[str, Any]] = []
+
+    if pg_ready():
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            if pg_table_exists(conn, "admin_actions"):
+                rows = conn.execute(
+                    """
+                    SELECT actor,action,target,created_at,details
+                    FROM admin_actions
+                    WHERE lower(target)=lower(%s) OR (%s<>'' AND lower(target)=lower(%s))
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (name, uuid, uuid, safe_limit),
+                ).fetchall()
+                admin_actions_rows = [normalize_donation_row_timestamps(dict(row), "created_at") for row in rows]
+            if pg_table_exists(conn, "site_audit"):
+                rows = conn.execute(
+                    """
+                    SELECT actor,action,created_at,details
+                    FROM site_audit
+                    WHERE details::text ILIKE %s OR (%s<>'' AND details::text ILIKE %s)
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (f"%{name}%", uuid, f"%{uuid}%", safe_limit),
+                ).fetchall()
+                for row in rows:
+                    details_obj = pg_json_loads(row["details"], {})
+                    audit_rows.append(
+                        {
+                            "timestamp": int(row["created_at"] or 0),
+                            "actor": row["actor"],
+                            "action": row["action"],
+                            "target": str(details_obj.get("target") or ""),
+                            "status": str(details_obj.get("status") or "ok"),
+                            "details": details_obj.get("details") if isinstance(details_obj, dict) else {},
+                        }
+                    )
+            if pg_table_exists(conn, "cmv4_bank_ledger"):
+                rows = conn.execute(
+                    """
+                    SELECT tx_id,account_id,counterparty_account_id,tx_type,amount,balance_after,status,actor,details,created_at
+                    FROM cmv4_bank_ledger
+                    WHERE player_uuid=%s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (uuid, safe_limit),
+                ).fetchall()
+                bank_ledger = [normalize_donation_row_timestamps(dict(row), "created_at") for row in rows]
+            if pg_table_exists(conn, "donation_balance_ledger"):
+                rows = conn.execute(
+                    "SELECT id,delta,balance_after,reason,actor,source,created_at FROM donation_balance_ledger WHERE player_uuid=%s ORDER BY created_at DESC LIMIT %s",
+                    (uuid, safe_limit),
+                ).fetchall()
+                donation_ledger = [normalize_donation_row_timestamps(dict(row), "created_at") for row in rows]
+            if pg_table_exists(conn, "donation_payment_sessions"):
+                rows = conn.execute(
+                    """
+                    SELECT id,player_uuid,player_name,provider,amount,amount_rub,donation_units,status,created_at,expires_at,paid_at,cancelled_at,updated_at
+                    FROM donation_payment_sessions
+                    WHERE player_uuid=%s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (uuid, safe_limit),
+                ).fetchall()
+                donation_sessions = [normalize_donation_session_row(conn, row, donation_now_ms()) for row in rows]
+            if pg_table_exists(conn, "donation_item_claims"):
+                rows = conn.execute(
+                    """
+                    SELECT c.id,c.item_id,c.amount,c.status,c.purchase_id,c.actor,c.claimed_at,c.created_at,c.updated_at,
+                           p.status AS purchase_status,p.price_donation
+                    FROM donation_item_claims c
+                    LEFT JOIN donation_purchases p ON p.id=c.purchase_id
+                    WHERE c.player_uuid=%s
+                    ORDER BY c.created_at DESC
+                    LIMIT %s
+                    """,
+                    (uuid, safe_limit),
+                ).fetchall()
+                donation_claims = [normalize_donation_row_timestamps(dict(row), "claimed_at", "created_at", "updated_at") for row in rows]
+            if pg_table_exists(conn, "donation_purchases"):
+                rows = conn.execute(
+                    """
+                    SELECT id,item_id,price,price_donation,status,source,idempotency_key,created_at,updated_at
+                    FROM donation_purchases
+                    WHERE player_uuid=%s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (uuid, safe_limit),
+                ).fetchall()
+                donation_purchases = [normalize_donation_row_timestamps(dict(row), "created_at", "updated_at") for row in rows]
+            if pg_table_exists(conn, "prank_audit"):
+                rows = conn.execute(
+                    """
+                    SELECT actor,target,prank,details,created_at
+                    FROM prank_audit
+                    WHERE lower(target)=lower(%s) OR (%s<>'' AND lower(target)=lower(%s))
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (name, uuid, uuid, safe_limit),
+                ).fetchall()
+                prank_rows = [normalize_donation_row_timestamps(dict(row), "created_at") for row in rows]
+            if pg_table_exists(conn, "narcotics_admin_audit"):
+                rows = conn.execute(
+                    """
+                    SELECT id,actor,action,details,created_at
+                    FROM narcotics_admin_audit
+                    WHERE details ILIKE %s OR (%s<>'' AND details ILIKE %s)
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (f"%{name}%", uuid, f"%{uuid}%", safe_limit),
+                ).fetchall()
+                narcotics_rows = [normalize_donation_row_timestamps(dict(row), "created_at") for row in rows]
+
+            def scoped_rows(table: str, *order_columns: str) -> list[dict[str, Any]]:
+                if not sqlite_has_table(conn, table):
+                    return []
+                where, params = plugin_player_selector(conn, table, name)
+                return safe_sqlite_rows(conn, table, where, params, order_clause_for_table(conn, table, *order_columns), safe_limit)
+
+            candidate_rows = scoped_rows("candidate_applications", "submitted_at", "reviewed_at", "created_at")
+            vote_rows = scoped_rows("votes", "created_at", "time")
+            ballot_rows = scoped_rows("ballots", "submitted_at", "issued_at", "created_at")
+
+    if not audit_rows:
+        audit_rows = [
+            row
+            for row in read_jsonl_tail(AUDIT_LOG_FILE, max(400, safe_limit * 4))
+            if value_mentions_player(row, variants)
+        ][:safe_limit]
+
+    profile = {
+        "uuid": uuid,
+        "name": name,
+        "position": nbt.get("Pos"),
+        "dimension": nbt.get("Dimension"),
+        "health": nbt.get("Health"),
+        "food": nbt.get("foodLevel"),
+        "xpLevel": nbt.get("XpLevel"),
+        "selectedItem": nbt.get("SelectedItem"),
+        "abilities": nbt.get("abilities"),
+        "statsSummary": {
+            "playTimeTicks": stat_value(stats, "minecraft:play_time"),
+            "deaths": stat_value(stats, "minecraft:deaths"),
+            "mobKills": stat_value(stats, "minecraft:mob_kills"),
+            "playerKills": stat_value(stats, "minecraft:player_kills"),
+            "jumps": stat_value(stats, "minecraft:jump"),
+            "walkOneCm": stat_value(stats, "minecraft:walk_one_cm"),
+        },
+        "advancements": adv,
+        "ar": {"inventory": invsum.get("arInInventory", 0), "enderChest": invsum.get("arInEnderChest", 0)},
+        "siteAccount": profile_meta.get("siteAccount", {}),
+        "bank": profile_meta.get("bank", {}),
+        "pin": profile_meta.get("pin", {}),
+    }
+    return {
+        "player": name,
+        "uuid": uuid,
+        "profile": profile,
+        "inventory": {
+            "summary": invsum,
+            "live": live_inventory.get("latest"),
+            "history": inventory_history.get("snapshots", []),
+            "liveSnapshots": live_inventory.get("onlineSnapshots", []),
+        },
+        "timeline": {
+            "rows": timeline_rows[:safe_limit],
+            "sources": {"plugin": plugin_timeline.get("source"), "coreprotect": safe_location(Path(COREPROTECT_DB))},
+            "errors": {"coreprotect": coreprotect_error} if coreprotect_error else {},
+        },
+        "actions": core_rows[: min(40, safe_limit)],
+        "reports": report_rows[:safe_limit],
+        "applications": application_rows[:safe_limit],
+        "audit": audit_rows[:safe_limit],
+        "adminActions": admin_actions_rows[:safe_limit],
+        "pluginEvents": plugin_event_rows[:safe_limit],
+        "economy": {
+            "bankLedger": bank_ledger[:safe_limit],
+            "donationLedger": donation_ledger[:safe_limit],
+            "donationSessions": donation_sessions[:safe_limit],
+            "donationClaims": donation_claims[:safe_limit],
+            "donationPurchases": donation_purchases[:safe_limit],
+        },
+        "elections": {
+            "candidateApplications": candidate_rows[:safe_limit],
+            "votes": vote_rows[:safe_limit],
+            "ballots": ballot_rows[:safe_limit],
+        },
+        "fun": {
+            "pranks": prank_rows[:safe_limit],
+            "narcoticsAudit": narcotics_rows[:safe_limit],
+        },
+    }
+
+
 @app.get("/api/players/{player}/profile")
 async def player_profile(player: str, context: dict[str, Any] = Depends(require_panel_admin_context)) -> dict[str, Any]:
     uuid = await bg(find_player_uuid, player)
@@ -8910,6 +9670,15 @@ async def player_profile(player: str, context: dict[str, Any] = Depends(require_
         "bank": profile_meta.get("bank", {}),
         "pin": profile_meta.get("pin", {}),
     }
+
+
+@app.get("/api/players/{player}/full")
+async def player_full_profile(
+    player: str,
+    limit: int = 120,
+    context: dict[str, Any] = Depends(require_panel_admin_context),
+) -> dict[str, Any]:
+    return await bg(player_full_detail_sync, player, bool(context.get("fullAccess")), limit)
 
 
 @app.post("/api/players/{player}/bank-pin/reset")
@@ -9082,7 +9851,9 @@ async def player_action(player: str, action: str, data: PlayerActionIn, request:
     allowed = {
         "kick": f"kick {player} {reason}",
         "ban": f"ban {player} {reason}",
+        "ban_ip": f"ban-ip {target or player} {reason}",
         "pardon": f"pardon {player}",
+        "pardon_ip": f"pardon-ip {target or player}",
         "op": f"op {player}",
         "deop": f"deop {player}",
         "gamemode_survival": f"gamemode survival {player}",
@@ -9094,6 +9865,10 @@ async def player_action(player: str, action: str, data: PlayerActionIn, request:
         "clear": f"clear {player}",
         "kill": f"kill {player}",
         "spawn": f"spawnpoint {player}",
+        "drug_effect": f"effect give {player} minecraft:nausea 25 1 true",
+        "prank_confuse": f"effect give {player} minecraft:blindness 10 0 true",
+        "prank_launch": f"effect give {player} minecraft:levitation 4 3 true",
+        "prank_lightning": f"execute at {player} run summon lightning_bolt ~ ~ ~",
     }
     if action == "tp_to" and target:
         allowed[action] = f"tp {player} {target}"
@@ -9103,12 +9878,12 @@ async def player_action(player: str, action: str, data: PlayerActionIn, request:
         allowed[action] = f"tp {player} {data.x} {data.y} {data.z}"
     if action not in allowed:
         raise HTTPException(status_code=400, detail="Действие не поддерживается или не хватает параметров")
-    if action in {"ban", "op", "deop", "clear", "kill", "tp_here", "tp_coords"}:
+    if action in {"ban", "ban_ip", "op", "deop", "clear", "kill", "tp_here", "tp_coords", "prank_lightning"}:
         require_sensitive_confirm(request, f"PLAYER_{action.upper()}")
     command = allowed[action]
     response = await rcon(command)
-    audit_event(username, "player.action", target=player, details={"action": action})
-    append_panel_event("admin-panel", "player_action", actor=username, target=player, metadata={"action": action}, tags=["player", "rcon"])
+    audit_event(username, "player.action", target=player, details={"action": action, "reason": reason, "targetArg": target, "command": command, "response": response[:400]})
+    append_panel_event("admin-panel", "player_action", actor=username, target=player, metadata={"action": action, "reason": reason, "targetArg": target, "command": command}, tags=["player", "rcon"])
     return {"command": command, "response": response}
 
 
@@ -9154,7 +9929,7 @@ async def elections_overview(_: str = Depends(require_panel_admin)) -> dict[str,
         try:
             detail = await bg(election_detail_sync, 100)
             db_data = {
-                "db": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallback": safe_location(Path(ADMIN_PLUGIN_DB))},
+                "db": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallback": safe_location(admin_plugin_db_path())},
                 "tables": [],
                 "groups": {"postgresql": ["elections", "election_candidates", "election_votes", "election_ballots", "election_decrees", "election_petitions"]},
                 "antiFraud": detail.get("antiFraud", []),
@@ -9166,7 +9941,7 @@ async def elections_overview(_: str = Depends(require_panel_admin)) -> dict[str,
         try:
             db_data = await bg(detect_election_tables_sync)
         except HTTPException as exc:
-            db_data = {"db": safe_location(Path(ADMIN_PLUGIN_DB)), "tables": [], "groups": {}, "antiFraud": [], "error": exc.detail}
+            db_data = {"db": safe_location(admin_plugin_db_path()), "tables": [], "groups": {}, "antiFraud": [], "error": exc.detail}
     db_data["pluginWeb"] = plugin_web
     db_data["readOnly"] = not pg_ready()
     return db_data
@@ -9262,7 +10037,7 @@ async def admin_db_tables(_: str = Depends(require_admin)) -> dict[str, Any]:
         with open_sqlite_readonly(str(db_path)) as conn:
             return {"db": admin_plugin_db_location(db_path), "tables": [{"name": t, "columns": table_columns(conn, t)} for t in tables(conn)]}
     except HTTPException as exc:
-        return {"db": admin_plugin_db_location(Path(ADMIN_PLUGIN_DB)), "tables": [], "error": exc.detail}
+        return {"db": admin_plugin_db_location(admin_plugin_db_path()), "tables": [], "error": exc.detail}
 
 
 @app.get("/api/db/admin/{table}/rows")
@@ -9382,6 +10157,10 @@ def create_application_sync(data: DiscordApplicationIn, source: str, actor: str)
 
 def create_report_sync(data: DiscordReportIn, source: str, actor: str) -> dict[str, Any]:
     item = data.model_dump()
+    item["metadata"] = normalize_report_metadata(item.get("metadata"))
+    item["reportType"] = str(item["metadata"].get("reportKind") or "report")
+    item["errorCode"] = clip_text(item["metadata"].get("errorCode"), 80)
+    item["errorSummary"] = clip_text(item["metadata"].get("errorSummary"), 240)
     item["status"] = normalize_status(str(item.get("status", "open")), REPORT_STATUSES, "open")
     item.update({
         "id": f"rep_{secrets.token_hex(6)}",
@@ -9509,14 +10288,17 @@ async def create_report(data: DiscordReportIn, username: str = Depends(require_a
 
 
 @app.get("/api/reports")
-async def list_reports(status: str = "", reporter: str = "", target: str = "", _: str = Depends(require_admin)) -> dict[str, Any]:
-    rows = await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 5000)
+async def list_reports(status: str = "", reporter: str = "", target: str = "", kind: str = "", _: str = Depends(require_admin)) -> dict[str, Any]:
+    rows = [normalized_report_row(row) for row in await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 5000)]
     if status:
         rows = [x for x in rows if x.get("status") == status]
     if reporter:
         rows = [x for x in rows if reporter.lower() in str(x.get("reporter", "")).lower()]
     if target:
         rows = [x for x in rows if target.lower() in str(x.get("target", "")).lower()]
+    if kind:
+        wanted = kind.strip().lower()
+        rows = [x for x in rows if str(x.get("reportType") or safe_mapping(x.get("metadata")).get("reportKind") or "report").lower() == wanted]
     return {"reports": rows, "count": len(rows)}
 
 
@@ -9542,7 +10324,19 @@ async def plugin_create_ticket(ticket: TicketIn) -> dict[str, Any]:
         item = await bg(create_application_sync, app_data, "plugin", ticket.player)
         return {"ok": True, "application": item}
     if ticket.kind == "report":
-        report_data = DiscordReportIn(reporter=ticket.player, reporter_uuid=ticket.uuid, message=ticket.message, world=ticket.world, x=ticket.x, y=ticket.y, z=ticket.z, metadata={"legacyTicket": True})
+        report_data = DiscordReportIn(
+            reporter=ticket.player,
+            reporter_uuid=ticket.uuid,
+            target=ticket.target,
+            message=ticket.message,
+            world=ticket.world,
+            x=ticket.x,
+            y=ticket.y,
+            z=ticket.z,
+            severity=str(ticket.severity or "normal"),
+            attached_events=list(ticket.attached_events or [])[:20],
+            metadata={"legacyTicket": True, **(ticket.metadata if isinstance(ticket.metadata, dict) else {})},
+        )
         item = await bg(create_report_sync, report_data, "plugin", ticket.player)
         return {"ok": True, "report": item}
     item = await bg(create_ticket_item_sync, ticket.model_dump(), "plugin")
@@ -10083,8 +10877,9 @@ async def security_access(username: str = Depends(require_admin)) -> dict[str, A
         "whitelist": sorted(lists["whitelistNames"]),
         "sessions": len(read_sessions()),
         "cookieAuth": True,
-        "authDb": admin_plugin_db_location(Path(ADMIN_PLUGIN_DB)),
-        "authDbExists": pg_ready(),
+        "authBackend": auth_storage_backend(),
+        "authDb": auth_storage_location(),
+        "authDbExists": auth_storage_ready(),
         "dbWriteEnabled": DB_WRITE_ENABLED,
         "dbWriteAllowlist": sorted(ADMIN_DB_WRITE_ALLOWLIST),
         "dbWritePolicy": {
@@ -10289,6 +11084,7 @@ async def backups_download(name: str, _: str = Depends(require_admin)) -> FileRe
 
 
 @app.get("/downloads/CopiMineMods.zip")
+@app.head("/downloads/CopiMineMods.zip")
 async def modpack_download() -> FileResponse:
     try:
         return artifact_file_response("downloads", "CopiMineMods.zip")
@@ -10297,6 +11093,7 @@ async def modpack_download() -> FileResponse:
 
 
 @app.get("/downloads/{filename}")
+@app.head("/downloads/{filename}")
 async def managed_download(filename: str) -> FileResponse:
     try:
         return artifact_file_response("downloads", Path(filename).name)
@@ -10307,6 +11104,7 @@ async def managed_download(filename: str) -> FileResponse:
 
 
 @app.get("/resourcepacks/CopiMineResourcePack.zip")
+@app.head("/resourcepacks/CopiMineResourcePack.zip")
 async def managed_resourcepack_download() -> FileResponse:
     try:
         return artifact_file_response("resourcepacks", "CopiMineResourcePack.zip")
@@ -10315,6 +11113,7 @@ async def managed_resourcepack_download() -> FileResponse:
 
 
 @app.get("/resourcepacks/{filename}")
+@app.head("/resourcepacks/{filename}")
 async def managed_resourcepack_named(filename: str) -> FileResponse:
     try:
         return artifact_file_response("resourcepacks", Path(filename).name)
@@ -10355,8 +11154,8 @@ async def data_sources(_: str = Depends(require_admin)) -> dict[str, Any]:
 
 
 @app.get("/api/audit")
-async def audit_log(limit: int = 200, action: str = "", actor: str = "", _: str = Depends(require_panel_admin)) -> dict[str, Any]:
-    rows = await bg(read_site_audit_rows, limit, action, actor)
+async def audit_log(limit: int = 200, action: str = "", actor: str = "", target: str = "", _: str = Depends(require_panel_admin)) -> dict[str, Any]:
+    rows = await bg(read_site_audit_rows, limit, action, actor, target)
     return {"rows": rows, "count": len(rows)}
 
 
@@ -10775,8 +11574,8 @@ def read_donation_claims_sync(player_uuid: str, limit: int = 40) -> list[dict[st
 
 
 def donation_session_is_expired(row: Mapping[str, Any] | dict[str, Any], current_ts: int | None = None) -> bool:
-    status = str((row or {}).get("status") or "").upper()
-    expires_at = donation_epoch_ms((row or {}).get("expires_at"))
+    status = str(row_get(row, "status", "") or "").upper()
+    expires_at = donation_epoch_ms(row_get(row, "expires_at"))
     safe_now = int(current_ts or donation_now_ms())
     return status in {"CREATED", "PENDING"} and expires_at > 0 and expires_at <= safe_now
 
@@ -10959,6 +11758,54 @@ def admin_add_donation_balance_sync(player_uuid: str, player_name: str, amount: 
             (ledger_id, player_uuid, int(amount), after, reason, actor, "admin-web", safe_key, now),
         )
         return {"ok": True, "ledgerId": ledger_id, "balanceBefore": before, "balanceAfter": after}
+
+
+def admin_set_donation_balance_sync(player_uuid: str, player_name: str, balance: int, reason: str, actor: str, idempotency_key: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    target_balance = int(balance or 0)
+    if target_balance < 0:
+        raise HTTPException(status_code=400, detail="Баланс не может быть отрицательным")
+    player_uuid, player_name = normalize_donation_player_target(player_uuid, player_name)
+    safe_key = str(idempotency_key or "").strip()
+    if len(safe_key) < 8 or len(safe_key) > 120:
+        raise HTTPException(status_code=400, detail="idempotency_key обязателен")
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        lock_donation_idempotency_sync(conn, "donation-admin-set", safe_key)
+        existing = conn.execute(
+            """
+            SELECT id,player_uuid,delta,balance_after,reason,actor,source,created_at
+            FROM donation_balance_ledger
+            WHERE idempotency_key=%s
+            LIMIT 1
+            """,
+            (f"donation-set-{safe_key}",),
+        ).fetchone()
+        if existing:
+            row = dict(existing)
+            if str(row.get("player_uuid") or "") != player_uuid:
+                raise HTTPException(status_code=409, detail="idempotency_key уже используется другой операцией")
+            return {
+                "ok": True,
+                "ledgerId": str(row.get("id") or ""),
+                "balanceAfter": int(row.get("balance_after") or 0),
+                "idempotent": True,
+            }
+        ensure_donation_account_row(conn, player_uuid, player_name)
+        row = conn.execute("SELECT COALESCE(balance,0) AS balance FROM donation_accounts WHERE player_uuid=%s FOR UPDATE", (player_uuid,)).fetchone()
+        before = int((row or {"balance": 0})["balance"] or 0)
+        after = target_balance
+        delta = after - before
+        ledger_id = f"web-don-set-{secrets.token_hex(8)}"
+        conn.execute("UPDATE donation_accounts SET balance=%s,updated_at=%s,player_name=%s WHERE player_uuid=%s", (after, now, player_name, player_uuid))
+        conn.execute(
+            "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (ledger_id, player_uuid, delta, after, reason, actor, "admin-web", f"donation-set-{safe_key}", now),
+        )
+        conn.commit()
+    audit_event(actor, "donation.balance.set", target=player_name, details={"uuid": player_uuid, "before": before, "after": after, "delta": delta, "reason": reason})
+    return {"ok": True, "ledgerId": ledger_id, "balanceBefore": before, "balanceAfter": after, "delta": delta}
 
 
 def ensure_donation_account_row(conn: Any, player_uuid: str, player_name: str) -> None:
@@ -11154,12 +12001,12 @@ def purchase_donation_item_sync(player_uuid: str, player_name: str, item_id: str
                 raise HTTPException(status_code=409, detail="idempotency_key уже используется другой покупкой")
             if str(row.get("item_id") or "") != item["item_id"]:
                 raise HTTPException(status_code=409, detail="idempotency_key уже привязан к другой покупке")
-            claim = conn.execute("SELECT status FROM donation_item_claims WHERE purchase_id=%s LIMIT 1", (row["id"],)).fetchone() or {}
+            claim = conn.execute("SELECT status FROM donation_item_claims WHERE purchase_id=%s LIMIT 1", (row["id"],)).fetchone()
             return {
                 "ok": True,
                 "itemId": row.get("item_id"),
                 "status": row.get("status"),
-                "claimStatus": claim.get("status") or "UNCLAIMED",
+                "claimStatus": row_get(claim, "status", "UNCLAIMED") or "UNCLAIMED",
                 "priceDonation": int(row.get("price_donation") or 0),
                 "pickupHint": "Заберите предмет в игре через лавку доната.",
             }
@@ -11229,7 +12076,7 @@ def artifact_purchase_count_sync(conn: Any, item_id: str, player_uuid: str = "")
             """,
             (item_id,),
         ).fetchone()
-    return int((row or {}).get("c") or 0)
+    return int(row_get(row, "c", 0) or 0)
 
 
 def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentIn) -> dict[str, Any]:
@@ -11370,7 +12217,7 @@ def admin_add_ar_balance_sync(player_uuid: str, player_name: str, amount: int, r
             return {"ok": True, "txId": existing["tx_id"], "balanceAfter": int(existing["balance_after"] or 0), "idempotent": True}
         bank = ensure_player_bank_account(conn, player_uuid, player_name)
         locked = conn.execute("SELECT * FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE", (bank["account_id"],)).fetchone()
-        before = int((locked or {}).get("balance") or 0)
+        before = int(row_get(locked, "balance", 0) or 0)
         after = before + safe_amount
         tx_id = f"admin-ar-{secrets.token_hex(12)}"
         note = json.dumps({"reason": sanitize_public_plain_text(reason, 160), "source": "admin-web"}, ensure_ascii=False)
@@ -11382,6 +12229,50 @@ def admin_add_ar_balance_sync(player_uuid: str, player_name: str, amount: int, r
         conn.commit()
     audit_event(actor, "ar.balance.add", target=player_name, details={"uuid": player_uuid, "amount": safe_amount, "reason": reason})
     return {"ok": True, "txId": tx_id, "balanceBefore": before, "balanceAfter": after}
+
+
+def admin_set_ar_balance_sync(player_uuid: str, player_name: str, balance: int, reason: str, actor: str, idempotency_key: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    player_uuid, player_name = normalize_donation_player_target(player_uuid, player_name)
+    target_balance = int(balance or 0)
+    if target_balance < 0:
+        raise HTTPException(status_code=400, detail="Баланс AR не может быть отрицательным")
+    safe_key = str(idempotency_key or "").strip()
+    if len(safe_key) < 8 or len(safe_key) > 120:
+        raise HTTPException(status_code=400, detail="idempotency_key обязателен")
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"admin-ar-set:{safe_key}",))
+        existing = conn.execute("SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=%s LIMIT 1", (f"admin-ar-set-{safe_key}",)).fetchone()
+        if existing:
+            return {"ok": True, "txId": existing["tx_id"], "balanceAfter": int(existing["balance_after"] or 0), "idempotent": True}
+        bank = ensure_player_bank_account(conn, player_uuid, player_name)
+        locked = conn.execute("SELECT * FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE", (bank["account_id"],)).fetchone()
+        before = int(row_get(locked, "balance", 0) or 0)
+        after = target_balance
+        delta = after - before
+        tx_id = f"admin-ar-set-{secrets.token_hex(12)}"
+        note = json.dumps(
+            {
+                "reason": sanitize_public_plain_text(reason, 160),
+                "source": "admin-web",
+                "mode": "set",
+                "before": before,
+                "after": after,
+                "delta": delta,
+            },
+            ensure_ascii=False,
+        )
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s,owner_name=%s WHERE account_id=%s", (after, now, player_name, bank["account_id"]))
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,'',%s,'ADMIN_AR_SET',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id, bank["account_id"], player_uuid, delta, after, f"admin-ar-set-{safe_key}", now, actor, note),
+        )
+        conn.commit()
+    audit_event(actor, "ar.balance.set", target=player_name, details={"uuid": player_uuid, "before": before, "after": after, "delta": delta, "reason": reason})
+    return {"ok": True, "txId": tx_id, "balanceBefore": before, "balanceAfter": after, "delta": delta}
 
 
 def admin_create_donation_test_purchase_sync(player_uuid: str, player_name: str, item_id: str, actor: str) -> dict[str, Any]:
@@ -11723,6 +12614,15 @@ async def admin_ar_add_balance(data: AdminArBalanceIn, request: Request, usernam
     return result
 
 
+@app.post("/api/admin/economy/ar/set-balance")
+async def admin_ar_set_balance(data: AdminArBalanceSetIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "AR_SET_BALANCE")
+    check_rate_limit(request, "admin-ar-set-balance", limit=10, window_seconds=60)
+    result = await bg(admin_set_ar_balance_sync, data.minecraft_uuid, data.minecraft_name, data.balance, data.reason, username, data.idempotency_key)
+    append_panel_event("economy", "ar_balance_set", actor=username, target=data.minecraft_name, metadata={"after": data.balance, "delta": result.get("delta", 0), "reason": data.reason}, tags=["economy", "admin"])
+    return result
+
+
 @app.get("/api/admin/donation/sessions")
 async def admin_donation_sessions(limit: int = 100, _: str = Depends(require_admin)) -> dict[str, Any]:
     rows = await bg(read_donation_sessions_sync, limit)
@@ -11741,6 +12641,15 @@ async def admin_donation_add_balance(data: AdminDonationBalanceIn, request: Requ
     result = await bg(admin_add_donation_balance_sync, data.minecraft_uuid, data.minecraft_name, data.amount, data.reason, username, data.idempotency_key)
     audit_event(username, "donation.balance.add", target=data.minecraft_name, details={"uuid": data.minecraft_uuid, "amount": data.amount, "reason": data.reason})
     append_panel_event("donation", "balance_add", actor=username, target=data.minecraft_name, metadata={"amount": data.amount, "reason": data.reason}, tags=["donation", "admin"])
+    return result
+
+
+@app.post("/api/admin/donation/set-balance")
+async def admin_donation_set_balance(data: AdminDonationBalanceSetIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "DONATION_SET_BALANCE")
+    check_rate_limit(request, "admin-donation-set-balance", limit=10, window_seconds=60)
+    result = await bg(admin_set_donation_balance_sync, data.minecraft_uuid, data.minecraft_name, data.balance, data.reason, username, data.idempotency_key)
+    append_panel_event("donation", "balance_set", actor=username, target=data.minecraft_name, metadata={"after": data.balance, "delta": result.get("delta", 0), "reason": data.reason}, tags=["donation", "admin"])
     return result
 
 
@@ -12018,13 +12927,14 @@ async def admin_security_ip_alerts(limit: int = 100, _: str = Depends(require_ad
 
 @app.get("/api/config")
 async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
+    resolved_admin_db = admin_plugin_db_path()
     return {
         "mcServerDir": safe_location(MC_SERVER_DIR),
         "worldDir": safe_location(WORLD_DIR),
         "logFile": safe_location(LOG_FILE),
         "coreprotectDb": safe_location(Path(COREPROTECT_DB)),
-        "adminPluginDb": safe_location(Path(ADMIN_PLUGIN_DB)),
-        "authDb": admin_plugin_db_location(Path(ADMIN_PLUGIN_DB)),
+        "adminPluginDb": safe_location(resolved_admin_db),
+        "authDb": admin_plugin_db_location(resolved_admin_db),
         "arItemIds": AR_ITEM_IDS,
         "rconConfigured": bool(RCON_PASSWORD),
         "minecraftService": MINECRAFT_SERVICE,
@@ -12050,9 +12960,10 @@ async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
             "nbt": bool(nbtlib),
             "psutil": bool(psutil),
             "coreprotectDbExists": Path(COREPROTECT_DB).exists(),
-            "adminPluginDbExists": Path(ADMIN_PLUGIN_DB).exists(),
-            "authDbExists": pg_ready(),
+            "adminPluginDbExists": resolved_admin_db.exists(),
+            "authDbExists": auth_storage_ready(),
             "postgresPool": pg_ready(),
+            "authBackend": auth_storage_backend(),
             "cookieAuth": True,
             "eventIngestion": bool(PLUGIN_API_KEY),
             "discordBot": DISCORD_BOT_TOKEN_CONFIGURED and bool(DISCORD_BOT_API_KEY or PLUGIN_API_KEY),

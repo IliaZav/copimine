@@ -17,17 +17,20 @@ export const APP_ROUTE_FILES = Object.freeze({
   sources: "/cabinet/sources.html",
   settings: "/cabinet/settings.html",
   cabinet: "/cabinet/cabinet.html",
+  balance: "/cabinet/balance.html",
   bank: "/cabinet/bank.html",
+  transfer: "/cabinet/transfer.html",
   "donation-balance": "/cabinet/donation-balance.html",
   "donation-shop": "/cabinet/donation-shop.html",
   "donation-items": "/cabinet/donation-items.html",
+  purchases: "/cabinet/purchases.html",
   history: "/cabinet/history.html",
   support: "/cabinet/support.html",
   link: "/cabinet/link.html",
 });
 
 export const ROLE_HOME_ROUTES = Object.freeze({
-  player: "cabinet",
+  player: "balance",
   junior_admin: "dashboard",
   admin: "dashboard",
   owner: "dashboard",

@@ -168,7 +168,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private record StartupCheckRow(String key,boolean ok,Material material,String title,String detail,String action){}
     private record ArDropClaim(String claimId,String ownerUuid,String ownerName,int amount,long createdAt,Location location){}
     private record AtmPinSession(String atmId,String action,int amount,String pin,String targetUuid,String targetName){}
-    private record PendingBugReport(String token,String source,String action,String playerUuid,String playerName,String world,int x,int y,int z,String itemType,String details,long createdAt){}
+    private record PendingBugReport(String token,String source,String action,String playerUuid,String playerName,String world,int x,int y,int z,String itemType,String errorSummary,String exceptionClass,String details,String actionId,long createdAt){}
     private record BackendIntegrationSettings(String baseUrl,String pluginApiKey){}
     private record SidebarCandidate(String name,long total){}
     private record SidebarSnapshot(String eid,boolean liveResults,String status,String stage,long curators,long ballots,List<SidebarCandidate> candidates,long createdAt){
@@ -4929,6 +4929,24 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         msg(p,"&aОбращение отправлено администрации. ID: &e"+shortId(id));
         staffNotify("&eНовое обращение от &f"+p.getName()+"&e: &f"+text);
     }
+    private boolean handleReportaCommand(CommandSender sender,String[] args)throws Exception{
+        if(!(sender instanceof Player p)){warn(sender,"Only an in-game player can create a report.");return true;}
+        if(args.length==0){
+            warn(p,"Напиши текст обращения: /reporta <что произошло>");
+            return true;
+        }
+        PendingBugReport pending=pendingBugReports.get(p.getUniqueId());
+        if(pending!=null){
+            int noteStart=args[0].equalsIgnoreCase(pending.token())?1:0;
+            if(args.length<=noteStart){
+                warn(p,"Коротко опишите, что произошло: /reporta <описание>");
+                return true;
+            }
+            return submitBugReport(p,pending,String.join(" ",Arrays.copyOfRange(args,noteStart,args.length)).trim());
+        }
+        handleReport(sender,args);
+        return true;
+    }
     private boolean handleBugReportCommand(CommandSender sender,String[] args)throws Exception{
         if(!(sender instanceof Player p)){warn(sender,"Эта команда доступна только из игры."); return true;}
         if(args.length<2){warn(p,"Нет кода отчёта. Нажмите кнопку из чата после ошибки."); return true;}
@@ -4937,15 +4955,20 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             warn(p,"Отчёт уже отправлен или срок действия истёк.");
             return true;
         }
+        String playerNote=args.length>2?String.join(" ",Arrays.copyOfRange(args,2,args.length)).trim():"Игрок отправил лог без отдельного описания.";
+        return submitBugReport(p,pending,playerNote);
+    }
+    private boolean submitBugReport(Player p,PendingBugReport pending,String playerNote)throws Exception{
         pendingBugReports.remove(p.getUniqueId());
         String requestId=UUID.randomUUID().toString();
         long createdAt=now();
-        String snapshot="world="+pending.world()+" x="+pending.x()+" y="+pending.y()+" z="+pending.z()+" item="+first(pending.itemType(),"AIR")+" source="+pending.source()+" action="+pending.action();
-        String message="[BUG "+pending.token()+"] "+pending.details();
+        String snapshot="world="+pending.world()+" x="+pending.x()+" y="+pending.y()+" z="+pending.z()+" item="+first(pending.itemType(),"AIR")+" source="+pending.source()+" action="+pending.action()+" error="+pending.exceptionClass()+" summary="+pending.errorSummary();
+        String visibleNote=first(playerNote,"Игрок отправил лог без отдельного описания.");
+        String message="[BUG "+pending.token()+"] "+visibleNote;
         exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?)",
                 requestId,pending.playerUuid(),pending.playerName(),message,createdAt,createdAt,snapshot);
         audit(pending.playerName(),"BUG_REPORT_CREATE",requestId+" "+pending.source()+" "+pending.action(),true);
-        pluginEvent("adminplus","BUG_REPORT_CREATE",pending.playerName(),requestId,"token="+pending.token()+" source="+pending.source()+" action="+pending.action());
+        pluginEvent("adminplus","BUG_REPORT_CREATE",pending.playerName(),requestId,"token="+pending.token()+" source="+pending.source()+" action="+pending.action()+" note="+clipped(visibleNote,160));
         pushBackendBugArtifactsAsync(pending, requestId, message);
         msg(p,"&aОтчёт отправлен администрации. Код: &e"+pending.token()+" &8| &7ID: &f"+shortId(requestId));
         staffNotify("&cНовый баг-репорт от &f"+pending.playerName()+"&c: &f"+pending.source()+" &8| &7"+pending.action());
@@ -5486,6 +5509,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             getLogger().warning("backend post "+path+": "+safeErr(error));
         }
     }
+    private String playerFacingBugSummary(Throwable error){
+        if(error==null)return "Unexpected server error";
+        String type=first(error.getClass().getSimpleName(),"Exception").toLowerCase(Locale.ROOT);
+        if(type.contains("nullpointer"))return "Unexpected null state";
+        if(type.contains("illegalargument"))return "Invalid input reached the server";
+        if(type.contains("timeout"))return "Background task timed out";
+        if(type.contains("sql")||type.contains("database"))return "Database request failed";
+        if(type.contains("io"))return "I/O operation failed";
+        return "Unexpected server error";
+    }
     private void pushBackendBugArtifactsAsync(PendingBugReport report,String requestId,String message){
         Bukkit.getScheduler().runTaskAsynchronously(this,()->{
             String ticketPayload="{"
@@ -5496,7 +5529,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                     +"\"world\":\""+escapeJson(report.world())+"\","
                     +"\"x\":"+report.x()+","
                     +"\"y\":"+report.y()+","
-                    +"\"z\":"+report.z()
+                    +"\"z\":"+report.z()+","
+                    +"\"metadata\":{\"reportKind\":\"bug\",\"errorCode\":\""+escapeJson(report.token())+"\",\"errorSummary\":\""+escapeJson(report.errorSummary())+"\",\"bugReport\":{\"errorCode\":\""+escapeJson(report.token())+"\",\"errorSummary\":\""+escapeJson(report.errorSummary())+"\",\"capturedAt\":"+report.createdAt()+",\"context\":{\"source\":\""+escapeJson(report.source())+"\",\"action\":\""+escapeJson(report.action())+"\",\"world\":\""+escapeJson(report.world())+"\",\"x\":"+report.x()+",\"y\":"+report.y()+",\"z\":"+report.z()+",\"itemType\":\""+escapeJson(report.itemType())+"\"},\"diagnostics\":{\"requestId\":\""+escapeJson(requestId)+"\",\"actionId\":\""+escapeJson(report.actionId())+"\"},\"technical\":{\"exceptionClass\":\""+escapeJson(report.exceptionClass())+"\",\"details\":\""+escapeJson(report.details())+"\"}}}"
                     +"}";
             postBackendJson("/api/plugin/tickets",ticketPayload);
             String metadata="{"
@@ -5504,6 +5538,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                     +"\"requestId\":\""+escapeJson(requestId)+"\","
                     +"\"source\":\""+escapeJson(report.source())+"\","
                     +"\"action\":\""+escapeJson(report.action())+"\","
+                    +"\"errorSummary\":\""+escapeJson(report.errorSummary())+"\","
+                    +"\"exceptionClass\":\""+escapeJson(report.exceptionClass())+"\","
+                    +"\"actionId\":\""+escapeJson(report.actionId())+"\","
                     +"\"details\":\""+escapeJson(report.details())+"\""
                     +"}";
             String eventPayload="{"
@@ -5534,18 +5571,20 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         int z=loc==null?0:loc.getBlockZ();
         String itemType=item==null||item.getType()==Material.AIR?"AIR":item.getType().name();
         String details=first(safeErr(error),"unknown");
-        PendingBugReport pending=new PendingBugReport(token,first(source,"unknown"),first(action,"unknown"),player.getUniqueId().toString(),player.getName(),world,x,y,z,itemType,details,now());
-        pendingBugReports.put(player.getUniqueId(),pending);
         String actionId=shortId(UUID.randomUUID().toString());
+        String errorSummary=playerFacingBugSummary(error);
+        String exceptionClass=first(error==null?"":error.getClass().getSimpleName(),"unknown");
+        PendingBugReport pending=new PendingBugReport(token,first(source,"unknown"),first(action,"unknown"),player.getUniqueId().toString(),player.getName(),world,x,y,z,itemType,errorSummary,exceptionClass,details,actionId,now());
+        pendingBugReports.put(player.getUniqueId(),pending);
         getLogger().warning("player-bug actionId="+actionId+" token="+token+" player="+player.getName()+" source="+source+" action="+action+" world="+world+" x="+x+" y="+y+" z="+z+" item="+itemType+" error="+details);
         pluginEvent("adminplus","PLAYER_BUG_DETECTED",player.getName(),token,"actionId="+actionId+" source="+source+" action="+action+" item="+itemType+" error="+details);
         player.sendTitle(c("&6Поздравляем, вы нашли баг"),c("&fОбратитесь к админу за вознаграждением"),10,80,15);
-        warn(player,"Пойман баг. Код: &f"+token+"&c. Кратко: &f"+details);
-        msg(player,"&7Нажмите кнопку ниже, чтобы отправить лог в админку, сайт и бот.");
+        warn(player,"Error code: &f"+token+"&c. "+errorSummary+" &8| &7Type: &f"+exceptionClass);
+        msg(player,"&7Нажмите кнопку ниже: команда &f/reporta &7откроется в чате, а лог приложится только после отправки.");
         var button = new ComponentBuilder("")
                 .append(TextComponent.fromLegacyText(c("&c[Отправить отчёт о баге]")))
-                .event(new ClickEvent(ClickEvent.Action.RUN_COMMAND,"/cmultra bugreport "+token))
-                .event(new HoverEvent(HoverEvent.Action.SHOW_TEXT,new ComponentBuilder(c("&7Отправить подробности ошибки администрации")).create()))
+                .event(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND,"/reporta "))
+                .event(new HoverEvent(HoverEvent.Action.SHOW_TEXT,new ComponentBuilder(c("&7Вставить команду репорта. Опишите, что произошло, и нажмите Enter.")).create()))
                 .create();
         player.spigot().sendMessage(button);
     }
@@ -5738,6 +5777,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(root.equals("oldvoteoff"))return handleOldVoteOff(sender,args);
             if(root.equals("cmsealdrop"))return handleSealDropCommand(sender,args);
             if(root.equals("report")||root.equals("appeal")){handleReport(sender,args);return true;}
+            if(root.equals("reporta"))return handleReportaCommand(sender,args);
             if(root.equals("cadm")){if(sender instanceof Player p&&hasAnyAdmin(p))openMainHub(p);else warn(sender,"Нет прав."); return true;}
             if(root.equals("ar")||root.equals("cmbank")){if(sender instanceof Player p&&hasEconomyAdmin(p)){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} economy.openAdminEconomyHub(p);}else msg(sender,"Банк и AR управляются через /cmultra."); return true;}
             if(root.equals("cmultra")&&args.length>0&&args[0].equalsIgnoreCase("bugreport"))return handleBugReportCommand(sender,args);

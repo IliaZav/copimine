@@ -346,7 +346,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 if (parts.length == 2) {
                     try {
                         seconds = Integer.parseInt(parts[1]);
-                    } catch (Exception ignored) {
+                    } catch (NumberFormatException parseError) {
+                        getLogger().warning("cmclient fallback test received invalid duration from "
+                                + sender.getName() + " payload=" + payload + ": " + parseError.getMessage());
                         seconds = 30;
                     }
                 }
@@ -1268,7 +1270,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         int parsed;
         try {
             parsed = Integer.parseInt(raw);
-        } catch (Exception ignored) {
+        } catch (NumberFormatException parseError) {
             sender.sendMessage(ChatColor.RED + "Некорректное число для " + label + ".");
             return null;
         }

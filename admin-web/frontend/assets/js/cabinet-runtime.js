@@ -120,7 +120,7 @@ const state = {
   tab: initialRouteState.tab || "dashboard",
   user: null,
   config: null,
-  selectedPlayer: "",
+  selectedPlayer: String(initialRouteState.params.get("player") || "").trim(),
   players: [],
   tables: {},
   refreshTimer: null,
@@ -272,6 +272,32 @@ const playerPageMeta = Object.fromEntries(
   playerNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );
 
+const playerPrimaryNavGroups = [
+  {
+    title: "Игрок",
+    items: [
+      ["balance", "Баланс", "AR и донат-валюта", "Б"],
+      ["transfer", "Перевод", "Перевод AR другим игрокам", "П"],
+      ["purchases", "Покупки", "AR, донат и отложенная выдача", "К"],
+      ["settings", "Настройки", "Логин, пароль, PIN и репорты", "Н"],
+    ],
+  },
+];
+
+const playerPrimaryPageMeta = Object.fromEntries(
+  playerPrimaryNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
+);
+playerPrimaryPageMeta.cabinet = playerPrimaryPageMeta.balance;
+playerPrimaryPageMeta.bank = playerPrimaryPageMeta.transfer;
+playerPrimaryPageMeta["donation-balance"] = playerPrimaryPageMeta.balance;
+playerPrimaryPageMeta["donation-shop"] = playerPrimaryPageMeta.purchases;
+playerPrimaryPageMeta["donation-items"] = playerPrimaryPageMeta.purchases;
+playerPrimaryPageMeta.artifacts = playerPrimaryPageMeta.purchases;
+playerPrimaryPageMeta.history = playerPrimaryPageMeta.purchases;
+playerPrimaryPageMeta.security = playerPrimaryPageMeta.settings;
+playerPrimaryPageMeta.support = playerPrimaryPageMeta.settings;
+playerPrimaryPageMeta.link = playerPrimaryPageMeta.settings;
+
 const adminSearchAliases = {
   dashboard: "главная обзор статус tps mspt онлайн сервер состояние",
   players: "игрок игроки ник бан кик варн эффекты наркотики очистить баланс",
@@ -376,7 +402,9 @@ function hasFullAdminAccess(role = state.role) {
 const playerActions = [
   ["kick", "Кик"],
   ["ban", "Бан"],
+  ["ban_ip", "Бан по IP"],
   ["pardon", "Разбан"],
+  ["pardon_ip", "Разбан IP"],
   ["op", "Выдать OP"],
   ["deop", "Снять OP"],
   ["gamemode_survival", "Survival"],
@@ -386,8 +414,18 @@ const playerActions = [
   ["heal", "Heal"],
   ["feed", "Feed"],
   ["clear", "Clear"],
-  ["kill", "Kill"]
+  ["kill", "Kill"],
+  ["spawn", "Точка спавна"],
+  ["drug_effect", "Эффект наркотика"],
+  ["prank_confuse", "Прикол: слепота"],
+  ["prank_launch", "Прикол: левитация"],
+  ["prank_lightning", "Прикол: молния"]
 ];
+
+const playerActionGroups = {
+  main: ["ban", "ban_ip", "pardon", "pardon_ip", "kick", "gamemode_creative", "heal", "feed", "spawn", "drug_effect"],
+  fun: ["prank_confuse", "prank_launch", "prank_lightning"],
+};
 
 const APPLICATION_QUESTIONS = [
   "Почему ты хочешь стать президентом?",
@@ -1689,19 +1727,19 @@ window.exportTable = (id, type) => {
 };
 
 function currentNavGroups() {
-  if (isPlayerRole()) return playerNavGroups;
+  if (isPlayerRole()) return playerPrimaryNavGroups;
   if (isJuniorAdminRole()) return juniorNavGroups;
   return navGroups;
 }
 
 function currentPageMeta() {
-  if (isPlayerRole()) return playerPageMeta;
+  if (isPlayerRole()) return playerPrimaryPageMeta;
   if (isJuniorAdminRole()) return juniorPageMeta;
   return pageMeta;
 }
 
 function defaultTab() {
-  return isPlayerRole() ? "cabinet" : "dashboard";
+  return isPlayerRole() ? "balance" : "dashboard";
 }
 
 function setMobileNav(open) {
@@ -1865,7 +1903,15 @@ function tabNavigationParams(tab) {
   if (tab === "donation-shop" && state.donationFocusItemId) {
     params.item = state.donationFocusItemId;
   }
+  if (tab === "players" && state.selectedPlayer) {
+    params.player = state.selectedPlayer;
+  }
   return params;
+}
+
+function syncPlayerPageLocation() {
+  if (state.tab !== "players") return;
+  window.history.replaceState({}, "", appRouteHref("players", tabNavigationParams("players")));
 }
 
 async function setTab(tab) {
@@ -2592,7 +2638,10 @@ async function loadPlayers() {
     name: cleanText(row.name || row.username || row.player || row.uuid),
     online: online.has(cleanText(row.name || row.username || row.player || row.uuid))
   })).filter(row => row.name);
-  if (!state.selectedPlayer && state.players[0]) state.selectedPlayer = state.players[0].name;
+  if (state.selectedPlayer && !state.players.some((row) => row.name === state.selectedPlayer)) {
+    state.selectedPlayer = "";
+  }
+  syncPlayerPageLocation();
   const list = state.players.length ? `
     <div class="toolbar">
       <input class="grow" id="playerSearch" placeholder="Найти игрока" data-input="filterPlayers" />
@@ -2635,6 +2684,7 @@ window.filterPlayers = (query) => {
 
 window.selectPlayer = async (name) => {
   state.selectedPlayer = cleanText(name);
+  syncPlayerPageLocation();
   document.querySelectorAll(".player-row").forEach((button) => {
     button.classList.toggle("active", button.dataset.player === state.selectedPlayer);
   });
@@ -2650,17 +2700,74 @@ window.selectPlayer = async (name) => {
   replaceChildrenSafe(fallbackRoot, [fragmentFromHtml(await playerDetailsHtml(state.selectedPlayer))]);
 };
 
+window.clearSelectedPlayer = async () => {
+  state.selectedPlayer = "";
+  syncPlayerPageLocation();
+  await loadPlayers();
+};
+
 async function playerDetailsHtml(player) {
   if (!player) return empty("Игрок не выбран", "Выбери игрока в списке слева.");
-  const [profile, inventory, liveInventory, history, timelineData, actions] = await Promise.all([
-    safeApi(`/api/players/${encodeURIComponent(player)}/profile`, {}),
-    safeApi(`/api/players/${encodeURIComponent(player)}/inventory`, {}),
-    safeApi(`/api/players/${encodeURIComponent(player)}/inventory/live?limit=12`, { onlineSnapshots: [] }),
-    safeApi(`/api/players/${encodeURIComponent(player)}/inventory/history?limit=20`, { snapshots: [] }),
-    safeApi(`/api/players/${encodeURIComponent(player)}/timeline?limit=220`, { rows: [] }),
-    safeApi(`/api/players/${encodeURIComponent(player)}/actions?limit=30`, { rows: [] })
-  ]);
+  const detail = await safeApi(`/api/players/${encodeURIComponent(player)}/full?limit=120`, {
+    profile: {},
+    inventory: {},
+    timeline: { rows: [] },
+    actions: [],
+    reports: [],
+    applications: [],
+    audit: [],
+    adminActions: [],
+    pluginEvents: [],
+    economy: {},
+    elections: {},
+    fun: {},
+  });
+  const profile = detail.profile || {};
+  const inventory = detail.inventory?.summary || {};
+  const liveInventory = { latest: detail.inventory?.live || null, onlineSnapshots: detail.inventory?.liveSnapshots || [] };
+  const history = { snapshots: detail.inventory?.history || [] };
+  const timelineData = detail.timeline || { rows: [] };
+  const actions = { rows: detail.actions || [] };
   const live = liveInventory.latest || inventory.live;
+  const extraReports = asArray(detail.reports);
+  const extraApplications = asArray(detail.applications);
+  const extraAdminActions = asArray(detail.adminActions);
+  const extraAudit = asArray(detail.audit);
+  const extraPluginEvents = asArray(detail.pluginEvents);
+  const extraBankLedger = asArray(detail.economy?.bankLedger);
+  const extraDonationLedger = asArray(detail.economy?.donationLedger);
+  const extraDonationSessions = asArray(detail.economy?.donationSessions);
+  const extraDonationClaims = asArray(detail.economy?.donationClaims);
+  const extraDonationPurchases = asArray(detail.economy?.donationPurchases);
+  const extraVotes = asArray(detail.elections?.votes);
+  const extraBallots = asArray(detail.elections?.ballots);
+  const extraCandidateApplications = asArray(detail.elections?.candidateApplications);
+  const extraPranks = asArray(detail.fun?.pranks);
+  const extraNarcoticsAudit = asArray(detail.fun?.narcoticsAudit);
+  return renderPlayerFullDetails(player, detail, {
+    profile,
+    inventory,
+    liveInventory,
+    history,
+    timelineData,
+    actions,
+    live,
+    reports: extraReports,
+    applications: extraApplications,
+    adminActions: extraAdminActions,
+    audit: extraAudit,
+    pluginEvents: extraPluginEvents,
+    bankLedger: extraBankLedger,
+    donationLedger: extraDonationLedger,
+    donationSessions: extraDonationSessions,
+    donationClaims: extraDonationClaims,
+    donationPurchases: extraDonationPurchases,
+    votes: extraVotes,
+    ballots: extraBallots,
+    candidateApplications: extraCandidateApplications,
+    pranks: extraPranks,
+    narcoticsAudit: extraNarcoticsAudit,
+  });
   const actionOptions = playerActions.map(([action, label]) => `<option value="${esc(action)}">${esc(label)}</option>`).join("");
   const actionButtons = playerActions.map(([action, label]) => `<button class="btn btn-secondary btn-small" data-click="playerAction('${esc(player)}','${action}')">${esc(label)}</button>`).join("");
   const quickActions = hasFullAdminAccess()
@@ -2759,6 +2866,416 @@ async function playerDetailsHtml(player) {
   `;
 }
 
+function renderPlayerFullDetails(player, detail, ctx) {
+  const {
+    profile = {},
+    inventory = {},
+    liveInventory = {},
+    history = {},
+    timelineData = {},
+    actions = {},
+    live = null,
+    reports = [],
+    applications = [],
+    adminActions = [],
+    audit = [],
+    pluginEvents = [],
+    bankLedger = [],
+    donationLedger = [],
+    donationSessions = [],
+    donationClaims = [],
+    donationPurchases = [],
+    votes = [],
+    ballots = [],
+    candidateApplications = [],
+    pranks = [],
+    narcoticsAudit = [],
+  } = ctx || {};
+  const site = profile.siteAccount || {};
+  const bank = profile.bank || {};
+  const pin = profile.pin || {};
+  const pinState = bankPinState(pin);
+  const canManagePins = hasFullAdminAccess();
+  const donationCurrent = number(
+    donationLedger[0]?.balance_after
+      ?? donationLedger[0]?.balanceAfter
+      ?? donationSessions[0]?.balance_after
+      ?? 0
+  );
+  const arCurrent = number(bank.balance || 0);
+  const bankRows = asArray(bankLedger).map((row) => ({
+    created_at: row.created_at || row.createdAt || row.time || 0,
+    tx_type: cleanText(row.tx_type || row.type || row.action || "Операция"),
+    amount: number(row.amount || 0),
+    balance_after: number(row.balance_after || 0),
+    actor: cleanText(row.actor || "system"),
+    details: short(cleanText(row.details || ""), 120),
+  }));
+  const donationRows = asArray(donationLedger).map((row) => ({
+    created_at: row.created_at || row.createdAt || row.time || 0,
+    delta: number(row.delta || row.amount || 0),
+    balance_after: number(row.balance_after || 0),
+    source: cleanText(row.source || row.actor || "system"),
+    reason: short(cleanText(row.reason || ""), 120),
+  }));
+  const reportRows = asArray(reports).map((row) => ({
+    createdAt: row.createdAt || row.updatedAt || 0,
+    reportType: cleanText(row.reportType || row.kind || "report"),
+    errorCode: cleanText(row.errorCode || ""),
+    errorSummary: short(cleanText(row.errorSummary || ""), 96),
+    reporter: cleanText(row.reporter || "—"),
+    status: cleanText(row.status || "open"),
+    severity: cleanText(row.severity || "normal"),
+    message: short(cleanText(row.message || ""), 120),
+  }));
+  const reportToneFor = (value = "") => {
+    const status = String(value || "").trim().toLowerCase();
+    if (["closed", "resolved", "approved"].includes(status)) return "good";
+    if (["rejected", "declined"].includes(status)) return "bad";
+    if (["in_progress", "review"].includes(status)) return "warn";
+    return "neutral";
+  };
+  const auditRows = asArray(audit).map((row) => ({
+    timestamp: row.timestamp || row.createdAt || row.time || 0,
+    action: cleanText(row.action || row.type || "event"),
+    actor: cleanText(row.actor || row.source || "system"),
+    target: cleanText(row.target || player),
+    status: cleanText(row.status || "ok"),
+    details: short(cleanText(typeof row.details === "string" ? row.details : JSON.stringify(row.details || {})), 120),
+  }));
+  const pluginRows = asArray(pluginEvents).map((row) => ({
+    created_at: row.created_at || row.createdAt || row.time || 0,
+    event_type: cleanText(row.event_type || row.type || row.action || "plugin"),
+    source: cleanText(row.source || "plugin"),
+    actor: cleanText(row.actor || "system"),
+    target: cleanText(row.target || player),
+    details: short(cleanText(typeof row.metadata === "string" ? row.metadata : JSON.stringify(row.metadata || row.details || {})), 120),
+  }));
+  const applicationRows = asArray(applications).map((row) => ({
+    createdAt: row.createdAt || row.updatedAt || 0,
+    status: cleanText(row.status || "pending"),
+    player: cleanText(row.player || row.minecraft_name || player),
+    why: short(cleanText(row.why || row.message || ""), 120),
+  }));
+  const voteRows = asArray(votes).map((row) => ({
+    created_at: row.created_at || row.time || 0,
+    election_id: cleanText(row.election_id || row.electionId || "election"),
+    candidate_name: cleanText(row.candidate_name || row.target || "—"),
+    station_id: cleanText(row.station_id || "—"),
+  }));
+  const ballotRows = asArray(ballots).map((row) => ({
+    issued_at: row.issued_at || row.submitted_at || row.created_at || 0,
+    election_id: cleanText(row.election_id || row.electionId || "election"),
+    status: cleanText(row.status || "issued"),
+    station_id: cleanText(row.station_id || row.submitted_station_id || "—"),
+  }));
+  const candidateRows = asArray(candidateApplications).map((row) => ({
+    submitted_at: row.submitted_at || row.created_at || 0,
+    status: cleanText(row.status || row.admin_status || "pending"),
+    recommendation: cleanText(row.chair_recommendation || "—"),
+    answers: short(cleanText(row.answers || row.why || ""), 120),
+  }));
+  const prankRows = asArray(pranks).map((row) => ({
+    created_at: row.created_at || row.createdAt || 0,
+    actor: cleanText(row.actor || "system"),
+    prank: cleanText(row.prank || row.action || "prank"),
+    details: short(cleanText(row.details || ""), 120),
+  }));
+  const narcoticsRows = asArray(narcoticsAudit).map((row) => ({
+    created_at: row.created_at || row.createdAt || 0,
+    actor: cleanText(row.actor || "system"),
+    action: cleanText(row.action || "action"),
+    details: short(cleanText(row.details || ""), 120),
+  }));
+  const donationPurchaseRows = asArray(donationPurchases).map((row) => ({
+    created_at: row.created_at || row.createdAt || 0,
+    item_id: cleanText(row.item_id || "item"),
+    price_donation: number(row.price_donation || row.price || 0),
+    status: cleanText(row.status || "pending"),
+    source: cleanText(row.source || "site"),
+  }));
+  const donationClaimRows = asArray(donationClaims).map((row) => ({
+    created_at: row.created_at || row.claimed_at || 0,
+    item_id: cleanText(row.item_id || "item"),
+    amount: number(row.amount || 0),
+    status: cleanText(row.status || "pending"),
+    purchase_status: cleanText(row.purchase_status || "pending"),
+  }));
+  const donationSessionRows = asArray(donationSessions).map((row) => ({
+    created_at: row.created_at || 0,
+    provider: cleanText(row.provider || "payment"),
+    amount: number(row.amount || row.donation_units || 0),
+    status: cleanText(row.status || "pending"),
+    expires_at: row.expires_at || 0,
+  }));
+  const coreRows = asArray(actions.rows);
+  const liveSnapshots = asArray(liveInventory.onlineSnapshots);
+  const historySnapshots = asArray(history.snapshots);
+  const actionLookup = Object.fromEntries(playerActions);
+  const groupButtons = (keys = []) => keys
+    .map((action) => actionLookup[action] ? `<button class="btn btn-secondary btn-small" data-click="playerAction('${esc(player)}','${action}')">${esc(actionLookup[action])}</button>` : "")
+    .filter(Boolean)
+    .join("");
+  const pinControls = site.id && canManagePins
+    ? `
+      <div class="action-strip">
+        <button class="btn btn-secondary btn-small" data-click="playerResetBankPin('${esc(player)}')">Сбросить PIN</button>
+        <button class="btn btn-secondary btn-small" data-click="playerRandomizeBankPin('${esc(player)}')">Случайный PIN</button>
+      </div>
+      <div class="toolbar compact">
+        <input id="playerAdminPinInput" inputmode="numeric" autocomplete="off" placeholder="Новый PIN, 4-8 цифр" />
+        <button class="btn btn-secondary btn-small" data-click="playerSetBankPinAdmin('${esc(player)}')">Задать PIN</button>
+      </div>
+    `
+    : "";
+  const snapshotRows = liveSnapshots.map((row) => ({
+    createdAt: row.createdAt || 0,
+    source: cleanText(row.source || "live"),
+    inventory: asArray(row.inventory).length,
+    ender: asArray(row.enderChest).length,
+    ar: number(row.arInInventory || 0) + number(row.arInEnderChest || 0),
+    world: cleanText(row.world || "world"),
+  }));
+  const historyRows = historySnapshots.map((row) => ({
+    createdAt: row.createdAt || 0,
+    inventory: asArray(row.inventory).length,
+    enderChest: asArray(row.enderChest).length,
+    ar: number(row.arInInventory || 0) + number(row.arInEnderChest || 0),
+  }));
+
+  return `
+    <div class="panel-header">
+      <div>
+        <h2 class="panel-title">${esc(player)}</h2>
+        <p class="panel-subtitle">Полный админский профиль: экономика, жалобы, действия, логи и игровые данные.</p>
+      </div>
+      <div class="action-strip">
+        <button class="btn btn-secondary btn-small" data-click="clearSelectedPlayer()">К списку</button>
+        <button class="btn btn-primary btn-small" data-click="snapshotInventory('${esc(player)}')">Снимок инвентаря</button>
+      </div>
+    </div>
+    <div class="layout-grid grid-4">
+      ${metric("Здоровье", profile.health ?? "—", `Еда: ${profile.food ?? "—"}`)}
+      ${metric("XP", profile.xpLevel ?? "—", cleanText(profile.dimension || "мир"))}
+      ${metric("Банк AR", formatAr(arCurrent), site.id ? "Сайт привязан" : "Без сайта", arCurrent > 0 ? "good" : "neutral")}
+      ${metric("Donation", formatDonate(donationCurrent), donationRows.length ? "Есть движения" : "Движений нет", donationCurrent > 0 ? "good" : "neutral")}
+    </div>
+    <div class="spacer-12"></div>
+    <section class="layout-grid grid-2">
+      ${panel("Профиль и банк", "Основные данные аккаунта, связь с сайтом и состояние PIN.", kv([
+        ["UUID", profile.uuid || detail.uuid || "—"],
+        ["Minecraft", profile.name || player],
+        ["Сайт-логин", site.username || "не привязан"],
+        ["Последний вход", dt(site.lastLoginAt)],
+        ["Счёт AR", bank.accountId ? "открыт" : "не открыт"],
+        ["Баланс AR", formatAr(arCurrent)],
+        ["Состояние PIN", pinState],
+        ["PIN", canManagePins ? (pin.visiblePin || "скрыт / не задан") : "скрыт"],
+        ["Блокировка PIN", pin.locked ? dt(pin.lockedUntil) : "нет"],
+      ]), pinControls)}
+      ${panel("Действия и приколы", "Все действия пишутся в аудит. Опасные операции требуют подтверждения.", `
+        <div class="field-grid compact admin-player-action-form">
+          <label class="field-stack" for="playerActionSelect">
+            <span>Действие</span>
+            <select id="playerActionSelect">${playerActions.map(([action, label]) => `<option value="${esc(action)}">${esc(label)}</option>`).join("")}</select>
+          </label>
+          <label class="field-stack" for="playerActionReason">
+            <span>Причина</span>
+            <input id="playerActionReason" value="CopiMine" autocomplete="off" />
+          </label>
+          <label class="field-stack" for="playerActionTarget">
+            <span>Цель / ник</span>
+            <input id="playerActionTarget" list="playersDatalist" placeholder="Ник игрока" autocomplete="off" />
+          </label>
+          <div class="field-stack">
+            <span>&nbsp;</span>
+            <button class="btn btn-primary" data-click="playerActionFromPanel('${esc(player)}')">Выполнить</button>
+          </div>
+        </div>
+        <div class="spacer-12"></div>
+        <div class="stack-list">
+          <article class="stack-card">
+            <header class="stack-card-head"><strong>Основные действия</strong><span>Бан, разбан, режимы, помощь</span></header>
+            <div class="action-strip wrap">${groupButtons(playerActionGroups.main)}</div>
+          </article>
+          <article class="stack-card">
+            <header class="stack-card-head"><strong>Приколы</strong><span>Эффекты из админхаба</span></header>
+            <div class="action-strip wrap">${groupButtons(playerActionGroups.fun)}</div>
+          </article>
+        </div>
+      `)}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Экономика игрока", "Точное изменение баланса прямо на странице игрока.", `
+        <div class="detail-chip-row">
+          <span class="detail-chip"><strong>${formatAr(arCurrent)}</strong><small>AR сейчас</small></span>
+          <span class="detail-chip"><strong>${formatDonate(donationCurrent)}</strong><small>Donation сейчас</small></span>
+          <span class="detail-chip wide"><strong>${esc(player)}</strong><small>Текущая цель редактирования</small></span>
+        </div>
+        <div class="spacer-12"></div>
+        <div class="form-grid compact-grid">
+          <input id="playerAdminArBalanceValue" type="number" min="0" step="1" value="${esc(arCurrent)}" placeholder="Итоговый баланс AR" />
+          <input id="playerAdminArReason" placeholder="Причина изменения AR" value="admin-player-page" />
+        </div>
+        <button class="btn btn-primary full" data-click="playerAdminArSetBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Сохранить AR-баланс</button>
+        <div class="spacer-16"></div>
+        <div class="form-grid compact-grid">
+          <input id="playerAdminDonationBalanceValue" type="number" min="0" step="1" value="${esc(donationCurrent)}" placeholder="Итоговый баланс donation" />
+          <input id="playerAdminDonationReason" placeholder="Причина изменения donation" value="admin-player-page" />
+        </div>
+        <button class="btn btn-primary full" data-click="playerAdminDonationSetBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Сохранить donation-баланс</button>
+      `)}
+      ${panel("Жалобы и заявки", "Жалобы, баг-репорты и обращения этого игрока.", `
+        ${table(`player-reports-${esc(player)}`, reportRows, [
+          { key: "createdAt", label: "Время", render: (value) => dt(value) },
+          { key: "reportType", label: "Тип" },
+          { key: "errorCode", label: "Код" },
+          { key: "status", label: "Статус", render: (value) => pill(value || "open", reportToneFor(value)) },
+          { key: "severity", label: "Важность" },
+          { key: "message", label: "Описание" },
+        ], { pageSize: 6 })}
+        <div class="spacer-12"></div>
+        ${table(`player-applications-${esc(player)}`, applicationRows, [
+          { key: "createdAt", label: "Время", render: (value) => dt(value) },
+          { key: "status", label: "Статус", render: (value) => pill(value || "pending", value === "approved" ? "good" : value === "rejected" ? "bad" : "warn") },
+          { key: "player", label: "Игрок" },
+          { key: "why", label: "Содержание" },
+        ], { pageSize: 5 })}
+      `)}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Текущий инвентарь", "Свежий live-снимок, если игрок был онлайн, иначе последнее известное состояние.", `
+        ${inventorySummary(live)}
+        <div class="spacer-12"></div>
+        ${inventoryGrid(firstArray(live?.inventory, inventory.inventory, []), 18)}
+      `)}
+      ${panel("Эндер-сундук и снимки", "Live-снимки и история сохранённых инвентарей.", `
+        ${inventoryGrid(firstArray(live?.enderChest, inventory.enderChest, []), 18)}
+        <div class="spacer-12"></div>
+        ${table(`player-live-${esc(player)}`, snapshotRows, [
+          { key: "createdAt", label: "Время", render: (value) => dt(value) },
+          { key: "source", label: "Источник" },
+          { key: "inventory", label: "Инв." },
+          { key: "ender", label: "Эндер" },
+          { key: "ar", label: "AR" },
+          { key: "world", label: "Мир" },
+        ], { pageSize: 5 })}
+        <div class="spacer-12"></div>
+        ${table(`player-history-${esc(player)}`, historyRows, [
+          { key: "createdAt", label: "Время", render: (value) => dt(value) },
+          { key: "inventory", label: "Инв." },
+          { key: "enderChest", label: "Эндер" },
+          { key: "ar", label: "AR" },
+        ], { pageSize: 5 })}
+      `)}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Хронология и CoreProtect", "Сводная лента действий, событий и проверок.", `
+        <div class="player-actions-log">${activityTimeline(timelineData.rows)}</div>
+        <div class="spacer-12"></div>
+        ${table(`player-core-${esc(player)}`, coreRows, null, { pageSize: 8 })}
+      `)}
+      ${panel("Админ-аудит и plugin events", "Действия команды, записи сайта и события плагинов по этому игроку.", `
+        ${table(`player-audit-${esc(player)}`, auditRows, [
+          { key: "timestamp", label: "Время", render: (value) => dt(value) },
+          { key: "actor", label: "Кто" },
+          { key: "action", label: "Действие" },
+          { key: "status", label: "Статус", render: (value) => pill(value || "ok", value === "ok" ? "good" : "warn") },
+          { key: "details", label: "Детали" },
+        ], { pageSize: 6 })}
+        <div class="spacer-12"></div>
+        ${table(`player-plugin-${esc(player)}`, pluginRows, [
+          { key: "created_at", label: "Время", render: (value) => dt(value) },
+          { key: "source", label: "Источник" },
+          { key: "event_type", label: "Событие" },
+          { key: "actor", label: "Актор" },
+          { key: "details", label: "Детали" },
+        ], { pageSize: 6 })}
+      `)}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Банк и donation", "Полный журнал денег, покупок и выдач.", `
+        ${table(`player-bank-ledger-${esc(player)}`, bankRows, [
+          { key: "created_at", label: "Время", render: (value) => dt(value) },
+          { key: "tx_type", label: "Тип" },
+          { key: "amount", label: "Сумма", render: (value) => formatAr(value || 0) },
+          { key: "balance_after", label: "После", render: (value) => formatAr(value || 0) },
+          { key: "actor", label: "Кто" },
+          { key: "details", label: "Детали" },
+        ], { pageSize: 6 })}
+        <div class="spacer-12"></div>
+        ${table(`player-donation-ledger-${esc(player)}`, donationRows, [
+          { key: "created_at", label: "Время", render: (value) => dt(value) },
+          { key: "delta", label: "Delta", render: (value) => formatDonate(value || 0) },
+          { key: "balance_after", label: "После", render: (value) => formatDonate(value || 0) },
+          { key: "source", label: "Источник" },
+          { key: "reason", label: "Причина" },
+        ], { pageSize: 6 })}
+      `)}
+      ${panel("Покупки, выдачи, выборы и приколы", "Полезная связанная история игрока по другим системам.", `
+        ${table(`player-donation-purchases-${esc(player)}`, donationPurchaseRows, [
+          { key: "created_at", label: "Покупка", render: (value) => dt(value) },
+          { key: "item_id", label: "Предмет" },
+          { key: "price_donation", label: "Цена", render: (value) => formatDonate(value || 0) },
+          { key: "status", label: "Статус", render: (value) => pill(value || "pending", artifactStatusTone(value)) },
+          { key: "source", label: "Источник" },
+        ], { pageSize: 4 })}
+        <div class="spacer-12"></div>
+        ${table(`player-donation-claims-${esc(player)}`, donationClaimRows, [
+          { key: "created_at", label: "Выдача", render: (value) => dt(value) },
+          { key: "item_id", label: "Предмет" },
+          { key: "amount", label: "Кол-во" },
+          { key: "status", label: "Статус", render: (value) => pill(value || "pending", artifactStatusTone(value)) },
+          { key: "purchase_status", label: "Покупка", render: (value) => pill(value || "pending", artifactStatusTone(value)) },
+        ], { pageSize: 4 })}
+        <div class="spacer-12"></div>
+        ${table(`player-donation-sessions-${esc(player)}`, donationSessionRows, [
+          { key: "created_at", label: "Сессия", render: (value) => dt(value) },
+          { key: "provider", label: "Провайдер" },
+          { key: "amount", label: "Сумма", render: (value) => formatDonate(value || 0) },
+          { key: "status", label: "Статус", render: (value) => pill(value || "pending", artifactStatusTone(value)) },
+          { key: "expires_at", label: "Истекает", render: (value) => dt(value) },
+        ], { pageSize: 4 })}
+        <div class="spacer-12"></div>
+        ${table(`player-votes-${esc(player)}`, voteRows, [
+          { key: "created_at", label: "Голос", render: (value) => dt(value) },
+          { key: "election_id", label: "Выборы" },
+          { key: "candidate_name", label: "Кандидат" },
+          { key: "station_id", label: "Участок" },
+        ], { pageSize: 4 })}
+        <div class="spacer-12"></div>
+        ${table(`player-ballots-${esc(player)}`, ballotRows, [
+          { key: "issued_at", label: "Бюллетень", render: (value) => dt(value) },
+          { key: "election_id", label: "Выборы" },
+          { key: "status", label: "Статус", render: (value) => pill(value || "issued", "neutral") },
+          { key: "station_id", label: "Участок" },
+        ], { pageSize: 4 })}
+        <div class="spacer-12"></div>
+        ${table(`player-candidates-${esc(player)}`, candidateRows, [
+          { key: "submitted_at", label: "Заявка", render: (value) => dt(value) },
+          { key: "status", label: "Статус", render: (value) => pill(value || "pending", value === "approved" ? "good" : value === "rejected" ? "bad" : "warn") },
+          { key: "recommendation", label: "Рекомендация" },
+          { key: "answers", label: "Содержание" },
+        ], { pageSize: 4 })}
+        <div class="spacer-12"></div>
+        ${table(`player-pranks-${esc(player)}`, prankRows, [
+          { key: "created_at", label: "Прикол", render: (value) => dt(value) },
+          { key: "actor", label: "Кто" },
+          { key: "prank", label: "Тип" },
+          { key: "details", label: "Детали" },
+        ], { pageSize: 4 })}
+        <div class="spacer-12"></div>
+        ${table(`player-narcotics-${esc(player)}`, narcoticsRows, [
+          { key: "created_at", label: "Время", render: (value) => dt(value) },
+          { key: "actor", label: "Кто" },
+          { key: "action", label: "Действие" },
+          { key: "details", label: "Детали" },
+        ], { pageSize: 4 })}
+      `)}
+    </section>
+  `;
+}
+
 window.playerAction = async (player, action) => {
   const reason = $("playerActionReason")?.value?.trim() || "CopiMine";
   let body = { reason };
@@ -2768,12 +3285,14 @@ window.playerAction = async (player, action) => {
   }
   const dangerLabels = {
     ban: "PLAYER_BAN",
+    ban_ip: "PLAYER_BAN_IP",
     op: "PLAYER_OP",
     deop: "PLAYER_DEOP",
     clear: "PLAYER_CLEAR",
     kill: "PLAYER_KILL",
     tp_here: "PLAYER_TP_HERE",
-    tp_coords: "PLAYER_TP_COORDS"
+    tp_coords: "PLAYER_TP_COORDS",
+    prank_lightning: "PLAYER_PRANK_LIGHTNING"
   };
   const headers = dangerLabels[action] ? await dangerConfirm(`Опасное действие с игроком: ${action} -> ${player}`, dangerLabels[action]) : {};
   if (!headers) return;
@@ -3070,6 +3589,56 @@ window.adminArAddBalance = async () => getAdminCommercePages().adminArAddBalance
 
 window.adminDonationAddBalance = async () => getAdminCommercePages().adminDonationAddBalance();
 
+window.adminArSetBalance = async () => getAdminCommercePages().adminArSetBalance();
+
+window.adminDonationSetBalance = async () => getAdminCommercePages().adminDonationSetBalance();
+
+window.playerAdminArSetBalance = async (player = state.selectedPlayer, uuid = "") => {
+  if (!player) return toast("Игрок не выбран", true);
+  try {
+    const headers = await dangerConfirm(`Изменить AR-баланс игрока ${player}`, "AR_SET_BALANCE");
+    if (!headers) return;
+    await api("/api/admin/economy/ar/set-balance", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        minecraft_uuid: uuid || "",
+        minecraft_name: player,
+        balance: Math.max(0, number($("playerAdminArBalanceValue")?.value || 0)),
+        reason: $("playerAdminArReason")?.value?.trim() || "admin-player-page",
+        idempotency_key: randomActionKey("player-ar-set"),
+      }),
+    });
+    toast("AR-баланс сохранён");
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerAdminDonationSetBalance = async (player = state.selectedPlayer, uuid = "") => {
+  if (!player) return toast("Игрок не выбран", true);
+  try {
+    const headers = await dangerConfirm(`Изменить donation-баланс игрока ${player}`, "DONATION_SET_BALANCE");
+    if (!headers) return;
+    await api("/api/admin/donation/set-balance", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        minecraft_uuid: uuid || "",
+        minecraft_name: player,
+        balance: Math.max(0, number($("playerAdminDonationBalanceValue")?.value || 0)),
+        reason: $("playerAdminDonationReason")?.value?.trim() || "admin-player-page",
+        idempotency_key: randomActionKey("player-donation-set"),
+      }),
+    });
+    toast("Donation-баланс сохранён");
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
   const headers = await dangerConfirm(`Назначить новый случайный постоянный PIN для ${player}?`, "PLAYER_BANK_PIN_RANDOMIZE");
@@ -3206,6 +3775,12 @@ async function loadRequests() {
   const ready = Object.values(configured).filter(Boolean).length;
   const total = Object.keys(configured).length || 1;
   const requestPlayers = asArray(playersData.players);
+  const reportQueueRows = asArray(reports.reports).map((row) => ({
+    ...row,
+    reportType: cleanText(row.reportType || row.kind || "report"),
+    errorCode: cleanText(row.errorCode || ""),
+    errorSummary: short(cleanText(row.errorSummary || ""), 96),
+  }));
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Связь", `${ready}/${total}`, "бот, каналы и роль", ready === total ? "good" : "warn")}
@@ -3242,12 +3817,15 @@ async function loadRequests() {
         { key: "createdAt", label: "Создано", render: v => dt(v) },
         { key: "id", label: "Действия", render: v => `<div class="action-strip"><button class="btn btn-secondary btn-small" data-click="requestApplicationStatus('${esc(v)}','approved')">Одобрить</button><button class="btn btn-secondary btn-small" data-click="requestApplicationStatus('${esc(v)}','rejected')">Отклонить</button></div>` }
       ], { pageSize: 10 }))}
-      ${panel("Жалобы", "Рабочая очередь администрации", table("requests-reports", asArray(reports.reports), [
+      ${panel("Жалобы", "Рабочая очередь администрации, включая баг-репорты с кодами ошибок.", table("requests-reports", reportQueueRows, [
         { key: "id", label: "ID" },
+        { key: "reportType", label: "Тип", render: v => pill(v || "report", v === "bug" ? "warn" : "neutral") },
+        { key: "errorCode", label: "Код" },
         { key: "reporter", label: "Автор" },
         { key: "target", label: "Цель" },
         { key: "status", label: "Статус", render: v => pill(v || "open", v === "closed" ? "good" : v === "rejected" ? "bad" : "warn") },
         { key: "severity", label: "Важность" },
+        { key: "errorSummary", label: "Сводка" },
         { key: "id", label: "Действия", render: v => `<div class="action-strip"><button class="btn btn-secondary btn-small" data-click="requestReportStatus('${esc(v)}','in_progress')">Взять</button><button class="btn btn-secondary btn-small" data-click="requestReportStatus('${esc(v)}','closed')">Закрыть</button></div>` }
       ], { pageSize: 10 }))}
     </section>
@@ -3909,6 +4487,96 @@ async function loadPlayerCabinet() {
   `);
 }
 
+async function loadPlayerPurchasesHub() {
+  setLoading("Загрузка покупок");
+  const me = await api("/api/player/me");
+  state.user = me.account || {};
+  if (!state.user.linked) {
+    setView(panel("Покупки", "Сначала привяжи Minecraft-аккаунт.", `
+      <div class="notice">Без привязки нельзя покупать предметы и получать выдачу в игре.</div>
+    `, `<button class="btn btn-primary" data-click="setTab('settings')">Открыть настройки</button>`));
+    return;
+  }
+  const [bank, donation, arCatalog, donationCatalog, owned, artifacts] = await Promise.all([
+    safeApi("/api/player/bank", { account: { balance: 0 }, pin: { set: false }, linked: true }),
+    safeApi("/api/player/donation/balance", { linked: true, balance: 0 }),
+    safeApi("/api/player/shop/ar-items", { items: [] }),
+    safeApi("/api/player/shop/donation-items", { items: [], catalogVersion: 0 }),
+    safeApi("/api/player/shop/owned", { claims: [], instances: [], summary: {} }),
+    safeApi("/api/player/artifacts", { purchases: [], pending: [], repairs: [], linked: true }),
+  ]);
+  const arItems = asArray(arCatalog.items).slice(0, 8).map((row) => ({
+    item_id: cleanText(row.item_id || "item"),
+    display_name: cleanText(row.display_name || row.item_id || "Предмет"),
+    price_ar: number(row.price_ar || 0),
+    effect_description: short(cleanText(row.effect_description || ""), 96),
+  }));
+  const donationItems = asArray(donationCatalog.items).slice(0, 8).map((row) => ({
+    item_id: cleanText(row.item_id || "item"),
+    display_name: cleanText(row.display_name || row.item_id || "Предмет"),
+    price_donation: number(row.price_donation || 0),
+    effect_description: short(cleanText(row.effect_description || ""), 96),
+  }));
+  const pendingRows = [
+    ...asArray(owned.claims).map((row) => ({
+      source: "donation",
+      created_at: row.purchase_created_at || row.created_at || 0,
+      item_id: cleanText(row.display_name || row.item_id || "Предмет"),
+      price: formatDonate(row.price_donation || 0),
+      status: cleanText(row.status || row.purchase_status || "pending"),
+    })),
+    ...asArray(artifacts.pending).map((row) => ({
+      source: "AR",
+      created_at: row.created_at || 0,
+      item_id: cleanText(row.display_name || row.item_id || "Предмет"),
+      price: formatAr(row.price_ar || 0),
+      status: cleanText(row.status || "pending"),
+    })),
+  ].sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+  setMiniHealthSummary(state.user.username || "игрок", [
+    `AR: ${formatAr(bank.account?.balance || 0)}`,
+    `Donation: ${formatDonate(donation.balance || 0)}`,
+  ]);
+  setView(`
+    <section class="layout-grid grid-4">
+      ${metric("Баланс AR", formatAr(bank.account?.balance || 0), bank.pin?.set ? "PIN настроен" : "Нужно задать PIN", bank.pin?.set ? "good" : "warn")}
+      ${metric("Donation", formatDonate(donation.balance || 0), "Отдельный счёт магазина", donation.balance ? "good" : "neutral")}
+      ${metric("AR-каталог", arItems.length, "Покупка за AR", arItems.length ? "good" : "neutral")}
+      ${metric("Ждут выдачи", pendingRows.length, "AR и donation вместе", pendingRows.length ? "warn" : "good")}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Покупки за AR", "Официальные предметы за AR с выдачей и историей.", `
+        ${table("player-purchases-ar", arItems, [
+          { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(value)}</strong><br><span class="muted">${esc(row.item_id)}</span>` },
+          { key: "price_ar", label: "Цена", render: (value) => formatAr(value || 0) },
+          { key: "effect_description", label: "Эффект" },
+        ], { pageSize: 6 })}
+      `, `<button class="btn btn-primary" data-click="setTab('artifacts')">Открыть AR-покупки</button>`)}
+      ${panel("Покупки за donation", "Покупка на сайте, получение в игре.", `
+        ${table("player-purchases-donation", donationItems, [
+          { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(value)}</strong><br><span class="muted">${esc(row.item_id)}</span>` },
+          { key: "price_donation", label: "Цена", render: (value) => formatDonate(value || 0) },
+          { key: "effect_description", label: "Эффект" },
+        ], { pageSize: 6 })}
+      `, `<button class="btn btn-primary" data-click="setTab('donation-shop')">Открыть donation-лавку</button>`)}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Отложенное получение", "Все покупки, которые ещё не дошли до финальной выдачи в игре.", table("player-purchases-pending", pendingRows, [
+        { key: "created_at", label: "Время", render: (value) => dt(value) },
+        { key: "source", label: "Источник" },
+        { key: "item_id", label: "Предмет" },
+        { key: "price", label: "Цена" },
+        { key: "status", label: "Статус", render: (value) => pill(value || "pending", artifactStatusTone(value)) },
+      ], { pageSize: 8 }), `<div class="action-strip"><button class="btn btn-secondary" data-click="setTab('donation-items')">Мои donation-предметы</button><button class="btn btn-secondary" data-click="setTab('artifacts')">История AR-предметов</button></div>`)}
+      ${panel("Порядок работы", "Короткий сценарий без скрытых состояний.", safetyRail([
+        ["AR", "Покупка списывает AR со счёта и создаёт игровую выдачу.", "good"],
+        ["Donation", "Покупка на сайте уходит в отдельную очередь выдачи.", "good"],
+        ["Получение", "Если предмет ещё не в руках, ищи его в очереди выдачи.", "warn"],
+      ]))}
+    </section>
+  `);
+}
+
 window.playerRequestWhitelist = async () => {
   try {
     const result = await api("/api/player/whitelist/request", {
@@ -4240,14 +4908,21 @@ function getPluginRegistryPages() {
 function getPlayerAccountPages() {
   if (!playerAccountPages) {
     playerAccountPages = createPlayerAccountPages({
+      $,
       state,
       setLoading,
       setView,
       panel,
+      metric,
       kv,
       safetyRail,
+      table,
+      pill,
+      esc,
+      empty,
       safeApi,
       api,
+      toast,
       dt,
       bankPinState,
     });
@@ -4550,6 +5225,9 @@ async function loadCurrent(silent = false) {
     audit: loadAudit
   };
   const playerLoaders = {
+    balance: loadPlayerCabinet,
+    transfer: () => getPlayerTreasuryPages().loadPlayerBank(),
+    purchases: loadPlayerPurchasesHub,
     cabinet: loadPlayerCabinet,
     link: loadPlayerLink,
     bank: () => getPlayerTreasuryPages().loadPlayerBank(),
@@ -4628,7 +5306,9 @@ async function boot() {
 
 Object.assign(dataClickHandlers, {
   adminArAddBalance: fromWindow("adminArAddBalance"),
+  adminArSetBalance: fromWindow("adminArSetBalance"),
   adminDonationAddBalance: fromWindow("adminDonationAddBalance"),
+  adminDonationSetBalance: fromWindow("adminDonationSetBalance"),
   adminDonationCancelSession: fromWindow("adminDonationCancelSession"),
   adminDonationMarkPaid: fromWindow("adminDonationMarkPaid"),
   adminDonationTestPurchase: fromWindow("adminDonationTestPurchase"),
@@ -4644,7 +5324,10 @@ Object.assign(dataClickHandlers, {
   adminRecipeTogglePicker: () => getAdminNarcoticsRecipePages().adminRecipeTogglePicker(),
   adminSetTreasuryPin: fromWindow("adminSetTreasuryPin"),
   approveWhitelistRequest: fromWindow("approveWhitelistRequest"),
+  clearSelectedPlayer: fromWindow("clearSelectedPlayer"),
   closeModal: fromWindow("closeModal"),
+  changePlayerPassword: fromWindow("changePlayerPassword"),
+  changePlayerUsername: fromWindow("changePlayerUsername"),
   createAdminUser: fromWindow("createAdminUser"),
   createBackup: fromWindow("createBackup"),
   createEconomySnapshot: fromWindow("createEconomySnapshot"),
@@ -4657,6 +5340,8 @@ Object.assign(dataClickHandlers, {
   pageTable: fromWindow("pageTable"),
   playerAction: fromWindow("playerAction"),
   playerActionFromPanel: fromWindow("playerActionFromPanel"),
+  playerAdminArSetBalance: fromWindow("playerAdminArSetBalance"),
+  playerAdminDonationSetBalance: fromWindow("playerAdminDonationSetBalance"),
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
   playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
@@ -4673,6 +5358,7 @@ Object.assign(dataClickHandlers, {
   playerResetBankPin: fromWindow("playerResetBankPin"),
   playerSetBankPinAdmin: fromWindow("playerSetBankPinAdmin"),
   playerSetPin: fromWindow("playerSetPin"),
+  playerSettingsPinUpdate: fromWindow("playerSettingsPinUpdate"),
   playerTransfer: fromWindow("playerTransfer"),
   pluginRegistryApply: fromWindow("pluginRegistryApply"),
   pluginRegistryBackup: fromWindow("pluginRegistryBackup"),
@@ -4693,6 +5379,7 @@ Object.assign(dataClickHandlers, {
   snapshotInventory: fromWindow("snapshotInventory"),
   snapshotInventoryFromInput: fromWindow("snapshotInventoryFromInput"),
   sortTable: fromWindow("sortTable"),
+  submitPlayerSupportReport: fromWindow("submitPlayerSupportReport"),
 });
 
 Object.assign(dataInputHandlers, {

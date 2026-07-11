@@ -93,7 +93,7 @@ public record IngredientEntry(
         if (rawBaseType != null && !rawBaseType.isBlank()) {
             try {
                 return PotionType.valueOf(rawBaseType.toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException parseError) {
             }
         }
         if (rawEffectId == null || rawEffectId.isBlank()) {
@@ -128,7 +128,7 @@ public record IngredientEntry(
     private static int parseInt(String raw, int fallback) {
         try {
             return Integer.parseInt(raw);
-        } catch (Exception ignored) {
+        } catch (NumberFormatException parseError) {
             return fallback;
         }
     }

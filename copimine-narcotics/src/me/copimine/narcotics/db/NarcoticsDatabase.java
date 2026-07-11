@@ -422,7 +422,8 @@ public final class NarcoticsDatabase {
             if (root != null) {
                 return root;
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable error) {
+            plugin.getLogger().warning("Narcotics database release root autodetect failed: " + safeError(error));
         }
         return Paths.get("/opt/copimine");
     }
@@ -513,6 +514,10 @@ public final class NarcoticsDatabase {
         return message.replaceAll("(?i)(password=)[^\\s&]+", "$1***").replaceAll("(?i)(POSTGRES_PASSWORD=)[^\\s&]+", "$1***");
     }
 
+    private void warnSuppressed(String context, Throwable error) {
+        plugin.getLogger().warning(context + ": " + safeError(error));
+    }
+
     private String first(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -525,7 +530,8 @@ public final class NarcoticsDatabase {
     private int parseInt(String raw, int fallback) {
         try {
             return Integer.parseInt(raw);
-        } catch (Exception ignored) {
+        } catch (NumberFormatException parseError) {
+            warnSuppressed("narcotics database parseInt raw=" + raw, parseError);
             return fallback;
         }
     }

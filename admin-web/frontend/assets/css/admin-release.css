@@ -68,7 +68,7 @@ body.player-mode .side-brand-copy strong {
 body.panel-admin-mode .side-brand-copy span,
 body.junior-admin-mode .side-brand-copy span,
 body.player-mode .side-brand-copy span {
-  color: rgba(214, 226, 219, 0.72);
+  color: rgba(231, 239, 234, 0.82);
   font-size: 11px;
   letter-spacing: 0.12em;
 }
@@ -160,7 +160,7 @@ body.junior-admin-mode .nav-hint,
 body.player-mode .nav-hint {
   display: block;
   margin-top: 4px;
-  color: rgba(199, 214, 204, 0.66);
+  color: rgba(225, 235, 229, 0.78);
   font-size: 12px;
   line-height: 1.3;
 }
@@ -225,7 +225,7 @@ body.junior-admin-mode .page-heading p,
 body.player-mode .page-heading p {
   margin: 10px 0 0;
   max-width: 62ch;
-  color: rgba(225, 236, 228, 0.84);
+  color: rgba(239, 245, 241, 0.9);
   font-size: 14px;
 }
 
@@ -392,5 +392,133 @@ body.junior-admin-mode .admin-search-results button {
   body.junior-admin-mode .page-heading h1,
   body.player-mode .page-heading h1 {
     font-size: 28px;
+  }
+}
+
+.stack-list {
+  display: grid;
+  gap: 14px;
+}
+
+.stack-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 84%, transparent), color-mix(in srgb, var(--surface-soft) 92%, transparent)),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 56%);
+  box-shadow: var(--shadow-soft);
+}
+
+.stack-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.stack-card-head strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.stack-card-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.report-card {
+  position: relative;
+}
+
+.report-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 18px 0 0 18px;
+  background: var(--line-strong);
+}
+
+.report-card.tone-good::before {
+  background: var(--accent);
+}
+
+.report-card.tone-warn::before {
+  background: var(--amber);
+}
+
+.report-card.tone-bad::before {
+  background: var(--red);
+}
+
+.report-response {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+}
+
+.report-response.muted {
+  color: var(--muted);
+}
+
+.detail-chip-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-chip {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
+}
+
+.detail-chip strong {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.detail-chip small {
+  color: var(--muted);
+}
+
+.detail-chip.wide {
+  grid-column: span 1;
+}
+
+.admin-player-action-form {
+  align-items: end;
+}
+
+.admin-player-action-form .field-stack span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.account-actions {
+  flex-wrap: wrap;
+}
+
+body.panel-admin-mode .player-actions-log,
+body.player-mode .player-actions-log {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 980px) {
+  .detail-chip-row {
+    grid-template-columns: 1fr;
+  }
+
+  .stack-card-head {
+    grid-template-columns: 1fr;
+    display: grid;
   }
 }

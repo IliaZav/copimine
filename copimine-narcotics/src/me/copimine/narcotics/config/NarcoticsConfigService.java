@@ -377,7 +377,9 @@ public final class NarcoticsConfigService {
     private TextureMode parseTextureMode(String raw) {
         try {
             return TextureMode.valueOf(raw.toUpperCase(Locale.ROOT));
-        } catch (Exception ignored) {
+        } catch (IllegalArgumentException parseError) {
+            plugin.getLogger().warning("Invalid narcotics texture mode '" + raw + "', fallback to VANILLA: "
+                    + parseError.getMessage());
             return TextureMode.VANILLA;
         }
     }
@@ -403,7 +405,9 @@ public final class NarcoticsConfigService {
                 return VisualMode.AUTO;
             }
             return mode;
-        } catch (Exception ignored) {
+        } catch (IllegalArgumentException parseError) {
+            plugin.getLogger().warning("Invalid narcotics visual mode '" + raw + "', fallback to AUTO: "
+                    + parseError.getMessage());
             return VisualMode.AUTO;
         }
     }
@@ -459,7 +463,7 @@ public final class NarcoticsConfigService {
     private int parseInt(String raw, int fallback) {
         try {
             return Integer.parseInt(raw);
-        } catch (Exception ignored) {
+        } catch (NumberFormatException parseError) {
             return fallback;
         }
     }

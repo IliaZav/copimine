@@ -1,3 +1,16 @@
+const SITE_LABEL = "\u041d\u0430 \u0441\u0430\u0439\u0442";
+const PANEL_LABEL = "\u041f\u0430\u043d\u0435\u043b\u044c";
+const CABINET_LABEL = "\u041a\u0430\u0431\u0438\u043d\u0435\u0442";
+
+function syncGuestSiteButton() {
+  const guestSite = document.getElementById("guestPagesBtn");
+  if (!guestSite) return;
+  if (guestSite.hidden) guestSite.hidden = false;
+  if (guestSite.textContent !== SITE_LABEL) {
+    guestSite.textContent = SITE_LABEL;
+  }
+}
+
 function syncCabinetHeader(auth = {}) {
   const authed = Boolean(auth.role || auth.cookieAuth);
   const role = String(auth.role || "");
@@ -7,21 +20,17 @@ function syncCabinetHeader(auth = {}) {
   const register = document.getElementById("publicRegisterLink");
   const cabinet = document.getElementById("publicCabinetBtn");
   const logout = document.getElementById("publicLogoutBtn");
-  const guestSite = document.getElementById("guestPagesBtn");
 
   if (signin) signin.classList.toggle("hidden", authed);
   if (register) register.classList.toggle("hidden", authed);
   if (cabinet) {
     cabinet.classList.toggle("hidden", !authed);
     cabinet.textContent = authed
-      ? (role && role !== "player" ? `Панель${username ? ` (${username})` : ""}` : `Кабинет${username ? ` (${username})` : ""}`)
-      : "Кабинет";
+      ? (role && role !== "player" ? `${PANEL_LABEL}${username ? ` (${username})` : ""}` : `${CABINET_LABEL}${username ? ` (${username})` : ""}`)
+      : CABINET_LABEL;
   }
   if (logout) logout.classList.toggle("hidden", !authed);
-  if (guestSite) {
-    guestSite.hidden = false;
-    guestSite.textContent = "На сайт";
-  }
+  syncGuestSiteButton();
 }
 
 function hideBootStageIfReady() {
@@ -78,11 +87,7 @@ window.addEventListener("load", () => {
   const observer = new MutationObserver(() => {
     bindCabinetHeaderActions();
     hideBootStageIfReady();
-    const guestSite = document.getElementById("guestPagesBtn");
-    if (guestSite) {
-      guestSite.hidden = false;
-      guestSite.textContent = "На сайт";
-    }
+    syncGuestSiteButton();
   });
 
   const app = document.getElementById("app");

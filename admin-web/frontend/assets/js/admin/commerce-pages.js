@@ -27,6 +27,7 @@ export function createAdminCommercePages(deps) {
   } = deps;
 
   let cachedPlayers = [];
+  let cachedEconomySnapshot = null;
 
   function paymentModeLabel(value) {
     return String(value || "").toUpperCase() === "MOCK_SBP" ? "Тестовый режим" : String(value || "—");
@@ -86,15 +87,53 @@ export function createAdminCommercePages(deps) {
     };
   }
 
+  function normalizePlayerKey(value) {
+    return cleanText(value || "").trim().toLowerCase();
+  }
+
+  function resolveBalanceRow(rows, player) {
+    const normalizedName = normalizePlayerKey(player?.name);
+    const normalizedUuid = cleanText(player?.uuid || "").trim().toLowerCase();
+    return asArray(rows).find((row) => {
+      const rowName = normalizePlayerKey(row?.name || row?.player_name || row?.player || row?.minecraft_name || "");
+      const rowUuid = cleanText(row?.uuid || row?.player_uuid || "").trim().toLowerCase();
+      return (normalizedUuid && rowUuid === normalizedUuid) || (normalizedName && rowName === normalizedName);
+    }) || null;
+  }
+
+  function bindBalanceEditors(snapshot) {
+    const select = $("adminBalancePlayer");
+    if (!select) return;
+    const sync = () => {
+      const player = selectedPlayerBySelect("adminBalancePlayer");
+      const arRow = resolveBalanceRow(snapshot?.arPlayers, player) || {};
+      const donationRow = resolveBalanceRow(snapshot?.donationBalances, player) || {};
+      const arBalance = Number(arRow.balance || arRow.amount || 0);
+      const donationBalance = Number(donationRow.balance || 0);
+      if ($("adminArBalanceValue")) $("adminArBalanceValue").value = String(arBalance);
+      if ($("adminDonationBalanceValue")) $("adminDonationBalanceValue").value = String(donationBalance);
+      if ($("adminBalanceArCurrent")) $("adminBalanceArCurrent").textContent = formatAr(arBalance);
+      if ($("adminBalanceDonationCurrent")) $("adminBalanceDonationCurrent").textContent = formatDonate(donationBalance);
+      if ($("adminBalancePlayerMeta")) {
+        $("adminBalancePlayerMeta").textContent = player.name
+          ? `${player.name}${player.uuid ? ` · ${short(player.uuid, 18)}` : ""}`
+          : "Игрок не выбран";
+      }
+    };
+    select.addEventListener("change", sync);
+    sync();
+  }
+
   async function loadEconomy() {
     setLoading("Загружаю экономику");
     const players = await ensurePlayers();
-    const [overview, ledger, donation, donationCatalog, treasury] = await Promise.all([
+    const [overview, ledger, donation, donationCatalog, treasury, audit] = await Promise.all([
       safeApi("/api/economy/ares/overview", {}),
       safeApi("/api/economy/ares/ledger?limit=200", { events: [], balances: [], transactions: [], assets: [], summary: {} }),
       safeApi("/api/admin/donation/overview?limit=80", { summary: {}, balances: [], ledger: [], claims: [], sessions: [] }),
       safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0, updatedAt: 0 }),
       safeApi("/api/admin/economy/treasury", { account: {}, pin: {}, ledger: [], ownerName: "" }),
+      safeApi("/api/audit?limit=120&action=balance", { rows: [] }),
     ]);
 
     const arPlayers = asArray(ledger.balances).map((row) => ({
@@ -113,6 +152,40 @@ export function createAdminCommercePages(deps) {
     const donationSummary = donation.summary || {};
     const firstPlayer = players[0]?.name || "";
     const firstItem = donationItems[0]?.item_id || "";
+    const balanceAuditRows = asArray(audit.rows)
+      .filter((row) => {
+        const action = String(row?.action || "");
+        return action.includes("ar.balance.") || action.includes("donation.balance.");
+      })
+      .map((row) => {
+        const action = String(row?.action || "");
+        const details = row?.details && typeof row.details === "object" ? row.details : {};
+        const isAr = action.startsWith("ar.balance.");
+        const mode = action.endsWith(".set") ? "Изменить" : "Пополнить";
+        const after = details.after ?? details.balanceAfter;
+        const before = details.before;
+        const delta = details.delta ?? details.amount ?? 0;
+        let changeText = isAr ? formatAr(delta || 0) : formatDonate(delta || 0);
+        if (action.endsWith(".set") && after != null) {
+          const beforeText = isAr ? formatAr(before || 0) : formatDonate(before || 0);
+          const afterText = isAr ? formatAr(after || 0) : formatDonate(after || 0);
+          changeText = `${beforeText} -> ${afterText}`;
+        }
+        return {
+          time: row.timestamp || 0,
+          actor: cleanText(row.actor || "—"),
+          target: cleanText(row.target || details.uuid || "—"),
+          currency: isAr ? "AR" : "Donation",
+          mode,
+          change: changeText,
+          reason: cleanText(details.reason || "—"),
+        };
+      });
+    cachedEconomySnapshot = {
+      players,
+      arPlayers,
+      donationBalances,
+    };
 
     setView(`
       <section class="layout-grid grid-4">
@@ -138,26 +211,27 @@ export function createAdminCommercePages(deps) {
             ["Последнее обновление каталога", dt(donationCatalog.updatedAt || 0)],
           ])}
         `)}
-        ${panel("Ручное пополнение", "Выбор игрока через список, без ручного набора ников.", `
+        ${panel("Баланс игрока", "Выберите игрока, посмотрите его текущие AR и donation, затем задайте точное значение и сохраните.", `
           <div class="field-stack">
-            <label for="arAdminPlayer">Игрок для AR-баланса</label>
-            <select id="arAdminPlayer">${playerOptions(players, firstPlayer)}</select>
+            <label for="adminBalancePlayer">Игрок</label>
+            <select id="adminBalancePlayer">${playerOptions(players, firstPlayer)}</select>
+          </div>
+          <div class="detail-chip-row">
+            <span class="detail-chip"><strong id="adminBalanceArCurrent">${formatAr(0)}</strong><small>AR сейчас</small></span>
+            <span class="detail-chip"><strong id="adminBalanceDonationCurrent">${formatDonate(0)}</strong><small>Donation сейчас</small></span>
+            <span class="detail-chip wide"><strong id="adminBalancePlayerMeta">${esc(firstPlayer || "Игрок не выбран")}</strong><small>Текущая цель изменения</small></span>
           </div>
           <div class="form-grid compact-grid">
-            <input id="arAdminAmount" type="number" min="1" step="1" placeholder="Сумма AR" />
-            <input id="arAdminReason" placeholder="Причина, например qa-topup" />
+            <input id="adminArBalanceValue" type="number" min="0" step="1" placeholder="Итоговый баланс AR" />
+            <input id="adminArReason" placeholder="Причина изменения AR" />
           </div>
-          <button class="btn btn-primary full" data-click="adminArAddBalance()">Пополнить AR-баланс</button>
+          <button class="btn btn-primary full" data-click="adminArSetBalance()">Сохранить AR-баланс</button>
           <div class="spacer-16"></div>
-          <div class="field-stack">
-            <label for="donationAdminPlayer">Игрок для donation-баланса</label>
-            <select id="donationAdminPlayer">${playerOptions(players, firstPlayer)}</select>
-          </div>
           <div class="form-grid compact-grid">
-            <input id="donationAdminAmount" type="number" min="1" step="1" placeholder="Сумма donation" />
-            <input id="donationAdminReason" placeholder="Причина, например qa-topup" />
+            <input id="adminDonationBalanceValue" type="number" min="0" step="1" placeholder="Итоговый баланс donation" />
+            <input id="adminDonationReason" placeholder="Причина изменения donation" />
           </div>
-          <button class="btn btn-primary full" data-click="adminDonationAddBalance()">Пополнить donation-баланс</button>
+          <button class="btn btn-primary full" data-click="adminDonationSetBalance()">Сохранить donation-баланс</button>
           <div class="spacer-16"></div>
           <div class="field-stack">
             <label for="donationTestPlayer">Игрок для тестовой покупки</label>
@@ -172,6 +246,15 @@ export function createAdminCommercePages(deps) {
       </section>
 
       <section class="layout-grid grid-2">
+        ${panel("Журнал правок баланса", "Кто, кому и какую валюту менял на этой панели.", table("balance-admin-audit", balanceAuditRows, [
+          { key: "time", label: "Время", render: (value) => dt(value) },
+          { key: "actor", label: "Админ" },
+          { key: "target", label: "Игрок" },
+          { key: "currency", label: "Валюта" },
+          { key: "mode", label: "Операция" },
+          { key: "change", label: "Изменение" },
+          { key: "reason", label: "Причина", render: (value) => short(value || "—", 72) },
+        ], { pageSize: 10 }))}
         ${panel("Игроки с AR", "Только баланс и хранилища, без вторичного технического мусора.", table("economy-players", arPlayers, [
           { key: "player", label: "Игрок" },
           { key: "amount", label: "Баланс", render: (value) => formatAr(value || 0) },
@@ -179,6 +262,9 @@ export function createAdminCommercePages(deps) {
           { key: "enderChest", label: "Эндер", render: (value) => formatAr(value || 0) },
           { key: "updatedAt", label: "Обновлён", render: (value) => dt(value) },
         ], { pageSize: 12 }))}
+      </section>
+
+      <section class="layout-grid grid-2">
         ${panel("Последние транзакции AR", "Переводы, переплавки и ключевые движения.", table("economy-transactions-table", transactions, [
           { key: "time", label: "Время", render: (value) => dt(value) },
           { key: "type", label: "Тип" },
@@ -226,6 +312,7 @@ export function createAdminCommercePages(deps) {
         ${panel("Журнал экономики", "Короткая лента важных событий по AR и донату.", `<div class="economy-ledger">${ledgerRows(asArray(ledger.events), "economy-ledger")}</div>`)}
       </section>
     `);
+    bindBalanceEditors(cachedEconomySnapshot);
   }
 
   async function createEconomySnapshot() {
@@ -289,6 +376,52 @@ export function createAdminCommercePages(deps) {
         }),
       });
       toast("AR-баланс пополнен");
+      await loadEconomy();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function adminDonationSetBalance() {
+    try {
+      const player = selectedPlayerBySelect("adminBalancePlayer");
+      const headers = await dangerConfirm(`Изменить donation-баланс игрока ${player.name || "без имени"}`, "DONATION_SET_BALANCE");
+      if (!headers) return;
+      await api("/api/admin/donation/set-balance", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          minecraft_uuid: player.uuid || "",
+          minecraft_name: player.name || "",
+          balance: Math.max(0, number($("adminDonationBalanceValue")?.value || 0)),
+          reason: $("adminDonationReason")?.value?.trim() || "admin-balance-edit",
+          idempotency_key: randomActionKey("don-admin-set"),
+        }),
+      });
+      toast("Donation-баланс сохранён");
+      await loadEconomy();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function adminArSetBalance() {
+    try {
+      const player = selectedPlayerBySelect("adminBalancePlayer");
+      const headers = await dangerConfirm(`Изменить AR-баланс игрока ${player.name || "без имени"}`, "AR_SET_BALANCE");
+      if (!headers) return;
+      await api("/api/admin/economy/ar/set-balance", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          minecraft_uuid: player.uuid || "",
+          minecraft_name: player.name || "",
+          balance: Math.max(0, number($("adminArBalanceValue")?.value || 0)),
+          reason: $("adminArReason")?.value?.trim() || "admin-balance-edit",
+          idempotency_key: randomActionKey("ar-admin-set"),
+        }),
+      });
+      toast("AR-баланс сохранён");
       await loadEconomy();
     } catch (err) {
       toast(err.message, true);
@@ -376,6 +509,8 @@ export function createAdminCommercePages(deps) {
     scanAresWorld,
     adminArAddBalance,
     adminDonationAddBalance,
+    adminArSetBalance,
+    adminDonationSetBalance,
     adminDonationTestPurchase,
     adminDonationMarkPaid,
     adminDonationCancelSession,

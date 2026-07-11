@@ -147,8 +147,13 @@ def main() -> None:
             "MC_WORLD_DIR": str(world),
             "MC_LOG_FILE": str(base / "logs" / "latest.log"),
             "SECRET_KEY": "x" * 64,
+            "ADMIN_PUBLIC_BASE_URL": "http://127.0.0.1:18080",
+            "COPIMINE_AUTH_STORAGE": "sqlite",
+            "COPIMINE_AUTH_DB": str(data_dir / "auth.sqlite3"),
+            "DATABASE_URL": f"sqlite:///{(data_dir / 'auth.sqlite3').as_posix()}",
             "PLUGIN_API_KEY": "test-plugin-key",
             "DISCORD_BOT_API_KEY": "test-discord-key",
+            "COPIMINE_STARTUP_STRICT": "0",
             "RCON_PASSWORD": "",
             "REQUIRE_OP_FOR_LOGIN": "1",
             "REQUIRE_WHITELIST_FOR_LOGIN": "1",
@@ -161,7 +166,11 @@ def main() -> None:
         from fastapi.testclient import TestClient
         with TestClient(appmod.app) as c:
             assert c.get("/api/health").status_code == 200
-            if not os.getenv("POSTGRES_PASSWORD", "").strip() and os.getenv("COPIMINE_STRICT_SMOKE", "0") != "1":
+            if (
+                os.getenv("COPIMINE_AUTH_STORAGE", "").strip().lower() != "sqlite"
+                and not os.getenv("POSTGRES_PASSWORD", "").strip()
+                and os.getenv("COPIMINE_STRICT_SMOKE", "0") != "1"
+            ):
                 print(
                     "Backend smoketest partially skipped: cookie-auth and role-protected flows require a real PostgreSQL auth storage "
                     "password in the environment. Public import/health checks passed; run this smoketest on Ubuntu with admin-web PostgreSQL env "

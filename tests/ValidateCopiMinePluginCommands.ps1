@@ -75,6 +75,7 @@ $allowedCommands = @(
   'cmbank',
   'appeal',
   'report',
+  'reporta',
   'oldvoteoff',
   'rpguard',
   'cmsealdrop',

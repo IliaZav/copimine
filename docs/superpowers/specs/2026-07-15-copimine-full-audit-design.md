@@ -58,6 +58,14 @@ Trace each state-changing path from command/API/event entrypoint to PostgreSQL t
 - election tables are not writable through generic admin database/editor paths;
 - all economy/election player-facing errors are safe, localized, and actionable.
 
+### Tax-clock exemption
+
+The donation artifact `vremya_platit_nalogi_clock` grants the activating player a real-time tax exemption for three calendar months. The expiration is stored as an absolute UTC timestamp and is checked server-side for every tax calculation and tax-office view. Repeated clicks while the same exemption is active return the existing expiration and do not extend it indefinitely through the artifact cooldown.
+
+The president's tax-receipts GUI includes active tax-clock exemptions for their entire validity period, even when the player has not made a normal tax payment. Exemption rows are explicitly marked `TAX_CLOCK_EXEMPTION`, show zero received AR, and display the expiration time; they are never presented as ordinary paid tax. Expired exemptions are excluded from active views and retained only as auditable history if the schema supports it.
+
+The exemption record is durable across plugin reloads and restarts, scoped to the active tax/term where applicable, and protected by an idempotency key based on the player and persistent artifact instance. Tax-clock activation fails closed with a clear player message if ElectionCore is unavailable or persistence fails.
+
 ### Complaints and bug reports
 
 Audit the player complaint command and its `a` variant, including command parsing, permissions, rate limits, persistence, duplicate handling, target/player isolation, admin notifications, and audit logging. Trace the complete "bug found" message path:
@@ -135,6 +143,7 @@ Because the user explicitly cancelled the Codex Security workspace scan, the sec
 - the supplied archive's AR and donation textures render on the correct custom items and no item id is mapped to another item's texture;
 - the custom block visual strip/ghost behavior is gone after reload, chunk transitions, deletion, and plugin restart;
 - all first-party plugin focused tests pass, including elections, economy, complaints, and bug-report messaging;
+- activating the tax clock persists a three-calendar-month UTC expiration, makes the player's due tax zero during that period, and keeps the player visible in the president's GUI as an explicit exemption row;
 - backend routes and security self-tests pass without stack traces, tokens, SQL errors, or internal paths exposed to players;
 - public site and admin hub have the new style, a working dedicated shop entry, responsive layout, and preserved TAB behavior;
 - release artifacts under `opt/copimine` are internally consistent and can be copied to Ubuntu with the generated full-replacement script;

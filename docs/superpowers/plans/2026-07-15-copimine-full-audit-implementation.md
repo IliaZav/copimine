@@ -310,6 +310,15 @@ Before `PRORAB_HELMET`, `TANK_VEST`, and `NOT_TODAY_SHIELD` apply, call the same
 
 Protect temporary cobweb placement from protected blocks, non-air blocks, unloaded worlds, and concurrent cleanup. Make tree-chain and farm harvest operations respect the existing limits and never operate on another player's protected area. Make the hammer's lore and actual Haste duration agree.
 
+#### Tax-clock contract
+
+- Implement `vremya_platit_nalogi_clock` as a persistent three-calendar-month exemption using an absolute UTC `expires_at` value in ElectionCore-backed PostgreSQL state.
+- Make activation idempotent for the same player and persistent artifact instance while the exemption is active; artifact cooldown clicks must not extend the expiration indefinitely.
+- Make tax calculation, tax-office display, and payment eligibility checks honor the active exemption server-side.
+- Add an explicit `TAX_CLOCK_EXEMPTION` source/row to the president's tax-receipts query and GUI. It shows zero AR, the player name, and expiration while active, and is never mislabeled as a normal tax payment.
+- Return the existing expiration on repeated activation and fail closed with a clear message when ElectionCore or PostgreSQL persistence is unavailable.
+- Cover expiration arithmetic, idempotent reactivation, tax-due suppression, GUI row projection, and restart/reload persistence with tests before implementation.
+
 - [ ] **Step 6: Run and commit**
 
 ```powershell
@@ -439,6 +448,8 @@ Test both a normal complaint and an exception-triggered bug report. The player m
 git add copimine-election-core/src copimine-admin-plugin/src admin-web/backend/main.py admin-web/frontend/assets/js/player/account-pages.js tests/ValidateCopiMineElection*.ps1 tests/ValidateCopiMineComplaintCommands.ps1 tests/ValidateCopiMineBugReportPlayerMessage.ps1
 git commit -m "fix: harden elections and player reports"
 ```
+
+Include active tax-clock exemption rows in the president's receipts projection without mixing them into actual tax-payment totals.
 
 ### Task 8: Complete the manual security audit and repair web backend defects
 

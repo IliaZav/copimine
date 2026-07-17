@@ -293,7 +293,11 @@ export function createAdminNarcoticsRecipePages(deps) {
       headers,
       body: JSON.stringify({ recipes }),
     });
-    toast(`Рецепты сохранены: ${result.updated?.length || 0}`);
+    const reload = result.reload || {};
+    const reloadMessage = reload.reloaded
+      ? " CopiMineNarcotics перечитал конфиг без перезапуска."
+      : ` ${reload.message || "Нужен ручной reload плагина."}`;
+    toast(`Рецепты сохранены: ${result.updated?.length || 0}.${reloadMessage}`, !reload.reloaded);
     await loadRecipes();
   }
 

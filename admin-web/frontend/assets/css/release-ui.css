@@ -32,31 +32,31 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #0e1711;
-  --surface: #142219;
-  --surface-soft: #192a1e;
-  --surface-strong: #213b29;
-  --ink: #ebf6ed;
-  --muted: #a6bbaa;
-  --faint: #7f9885;
-  --line: #2f4936;
-  --line-strong: #41634a;
-  --accent: #64d787;
-  --accent-strong: #8ce5a5;
-  --accent-2: #1e3c28;
+  --bg: #0a130d;
+  --surface: #172a1d;
+  --surface-soft: #1d3524;
+  --surface-strong: #26452d;
+  --ink: #f2fff4;
+  --muted: #c2d8c7;
+  --faint: #a2b9a8;
+  --line: #3f6247;
+  --line-strong: #5b8964;
+  --accent: #70ed96;
+  --accent-strong: #a0f5b8;
+  --accent-2: #245232;
   --blue: #7ccdc0;
   --blue-2: #1e3834;
   --amber: #e1ba5b;
   --amber-2: #3b311b;
   --red: #f08378;
-  --red-2: #432522;
+  --red-2: #512a27;
   --shadow: 0 6px 18px rgba(0, 0, 0, .22);
   --shadow-soft: 0 2px 10px rgba(0, 0, 0, .18);
-  --body-gradient: #0e1711;
-  --section-surface: #0e1711;
-  --nav-surface: #142219;
-  --panel-translucent: #142219;
-  --card-glass: #142219;
+  --body-gradient: #0a130d;
+  --section-surface: #0a130d;
+  --nav-surface: #172a1d;
+  --panel-translucent: #172a1d;
+  --card-glass: #172a1d;
   color-scheme: dark;
 }
 
@@ -209,7 +209,7 @@ body .public-nav { background-color: var(--nav-surface) !important; }
 .public-nav nav { display: flex; align-items: center; justify-content: flex-end; }
 .public-page-shell { padding: 26px 0 42px; }
 .public-hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); align-items: stretch; gap: 18px; }
-.public-hero-copy { min-width: 0; align-self: center; }
+.public-hero-copy { min-width: 0; align-self: start; padding-top: 8px; }
 .public-hero-copy h1 { font-size: clamp(2.2rem, 5vw, 4.4rem); }
 .public-hero-side { display: grid; gap: 12px; min-width: 0; }
 .scene-card, .hero-side-card { padding: 18px; border: 1px solid var(--line); background: var(--surface); }
@@ -252,11 +252,111 @@ body .public-nav { background-color: var(--nav-surface) !important; }
 .auth-links { margin-top: 14px; }
 .public-page-shell > section { margin-bottom: 18px; }
 
+/* Narcotics editor: keep the item-grid affordance without unreadable hard-coded gray. */
+.recipe-toolbar select,
+.recipe-inventory-head input {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 2px !important;
+  background: var(--surface-soft) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+}
+.recipe-tape,
+.recipe-inventory-head,
+.creative-inventory-grid,
+.recipe-inventory-closed {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 2px !important;
+  background: var(--surface-strong) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+}
+.recipe-slot,
+.creative-item,
+.recipe-tabs button {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 2px !important;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+  transition: transform .18s ease, border-color .18s ease, background-color .18s ease;
+}
+.recipe-slot:hover,
+.creative-item:hover,
+.recipe-tabs button:hover,
+.recipe-tabs button.active {
+  border-color: var(--accent) !important;
+  background: var(--accent-2) !important;
+  color: var(--accent-strong) !important;
+  transform: translateY(-2px);
+}
+.recipe-slot span,
+.creative-item span {
+  border-radius: 2px !important;
+  background: var(--surface-strong) !important;
+  border-color: var(--line-strong) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-soft) !important;
+}
+.recipe-trash { border-radius: 2px !important; }
+
+/* Interaction layer: desktop navigation stays open, the toggle is mobile-only. */
+.hidden { display: none !important; }
+.public-mobile-toggle { display: none !important; }
+.public-nav a,
+.public-nav button,
+.public-panel,
+.hero-media-card,
+.hero-side-card,
+.showcase-card,
+.public-shop-card,
+.auth-card,
+.scene-card {
+  transition: border-color .2s ease, background-color .2s ease, color .2s ease, transform .2s ease, box-shadow .2s ease;
+}
+.public-panel:hover,
+.hero-media-card:hover,
+.hero-side-card:hover,
+.showcase-card:hover,
+.public-shop-card:hover,
+.scene-card:hover { border-color: var(--line-strong) !important; transform: translateY(-2px); }
+.public-nav a:focus-visible,
+.public-nav button:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}
+@keyframes ui-rise {
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
+}
+.public-hero-copy, .public-hero-side, .public-home-summary > *, .public-page-shell > section { animation: ui-rise .45s ease both; }
+.public-hero-side { animation-delay: .08s; }
+.public-home-summary > *:nth-child(2) { animation-delay: .06s; }
+.public-home-summary > *:nth-child(3) { animation-delay: .12s; }
+.public-home-summary > *:nth-child(4) { animation-delay: .18s; }
+
 @media (max-width: 900px) {
   .public-nav { align-items: flex-start; flex-wrap: wrap; }
   .public-nav nav { width: 100%; justify-content: flex-start; }
   .public-hero, .public-dashboard-grid, .public-shop-board, .auth-card-grid { grid-template-columns: 1fr; }
   .auth-card-section-note { padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 18px; }
+}
+
+@media (max-width: 720px) {
+  .public-mobile-toggle:not(.hidden) { display: inline-flex !important; align-items: center; justify-content: center; }
+  .public-nav { flex-wrap: wrap; }
+  .public-nav nav { display: none; width: 100%; flex-direction: column; align-items: stretch; gap: 4px; padding-top: 8px; }
+  .public-nav.public-nav-open nav { display: flex; animation: ui-rise .2s ease both; }
+  .public-nav nav a, .public-nav nav button { width: 100%; text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
 @media (max-width: 560px) {

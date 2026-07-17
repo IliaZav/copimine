@@ -13018,8 +13018,32 @@ def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str) -> di
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
     os.replace(tmp, path)
+    reload_result: dict[str, Any] = {
+        "reloaded": False,
+        "manual": True,
+        "reloadCommand": "cmnarcotics reload",
+        "message": "Конфиг сохранён. RCON не настроен, поэтому выполни cmnarcotics reload вручную.",
+    }
+    if RCON_PASSWORD:
+        try:
+            response = str(rcon_quick("cmnarcotics reload") or "").strip()
+            reload_result = {
+                "reloaded": True,
+                "manual": False,
+                "reloadCommand": "cmnarcotics reload",
+                "response": response[:400],
+                "message": "Конфиг сохранён, CopiMineNarcotics перечитал его без перезапуска сервера.",
+            }
+        except Exception as exc:
+            reload_result = {
+                "reloaded": False,
+                "manual": True,
+                "reloadCommand": "cmnarcotics reload",
+                "message": f"Конфиг сохранён, но reload не выполнен: {str(exc)[:180]}",
+            }
     append_panel_event("narcotics", "recipes_saved", actor=actor, target="CopiMineNarcotics", metadata={"updated": updated, "backup": str(backup)}, tags=["narcotics", "config"])
-    return {"ok": True, "updated": updated, "backup": safe_location(backup), "configPath": safe_location(path)}
+    append_panel_event("narcotics", "recipes_reloaded" if reload_result["reloaded"] else "recipes_reload_pending", actor=actor, target="CopiMineNarcotics", metadata={"command": "cmnarcotics reload", "reloaded": reload_result["reloaded"]}, tags=["narcotics", "config", "rcon"])
+    return {"ok": True, "updated": updated, "backup": safe_location(backup), "configPath": safe_location(path), "reload": reload_result}
 
 
 @app.get("/api/admin/narcotics/recipes")

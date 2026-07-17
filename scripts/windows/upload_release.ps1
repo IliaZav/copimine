@@ -4,8 +4,11 @@ param(
     [string]$User = "",
     [string]$RemoteDir = "",
     [string]$InstallerPath = "",
+    [string]$UnpackScriptPath = "",
+    [string]$CommonScriptPath = "",
     [string]$VerifyScriptPath = "",
-    [string]$ReleaseManifestPath = ""
+    [string]$ReleaseManifestPath = "",
+    [string]$BootstrapManifestPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,16 +19,16 @@ function Fail([string]$Message) {
 
 function Need-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        Fail "Не найдена команда: $Name"
+        Fail "Command not found: $Name"
     }
 }
 
 function Resolve-RequiredPath([string]$PathValue, [string]$Label) {
     if (-not $PathValue) {
-        Fail "Не указан путь: $Label"
+        Fail "Missing path: $Label"
     }
     if (-not (Test-Path -LiteralPath $PathValue)) {
-        Fail "$Label не найден: $PathValue"
+        Fail "$Label not found: $PathValue"
     }
     return (Resolve-Path -LiteralPath $PathValue).Path
 }
@@ -48,14 +51,14 @@ function Read-Size([string]$PathValue) {
 function Invoke-Ssh([string]$Target, [string]$CommandText) {
     & ssh $Target $CommandText
     if ($LASTEXITCODE -ne 0) {
-        Fail "SSH-команда завершилась ошибкой: $CommandText"
+        Fail "SSH command failed: $CommandText"
     }
 }
 
 function Invoke-Scp([string[]]$Arguments) {
     & scp @Arguments
     if ($LASTEXITCODE -ne 0) {
-        Fail "SCP завершился ошибкой."
+        Fail "SCP failed."
     }
 }
 
@@ -63,29 +66,59 @@ Need-Command "ssh"
 Need-Command "scp"
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$ReleaseScriptDir = $PSScriptRoot
+
+function Resolve-DefaultHelperPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$ReleaseRelative,
+        [Parameter(Mandatory = $true)][string]$ProjectRelative
+    )
+    $releaseCandidate = Join-Path $ReleaseScriptDir $ReleaseRelative
+    if (Test-Path -LiteralPath $releaseCandidate) {
+        return $releaseCandidate
+    }
+    return (Join-Path $ProjectRoot $ProjectRelative)
+}
 
 if (-not $InstallerPath) {
-    $InstallerPath = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
+    $InstallerPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_full_replace.sh" -ProjectRelative "deploy\ubuntu\copimine_full_replace.sh"
+}
+if (-not $UnpackScriptPath) {
+    $UnpackScriptPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_unpack_and_verify.sh" -ProjectRelative "deploy\ubuntu\copimine_unpack_and_verify.sh"
+}
+if (-not $CommonScriptPath) {
+    $CommonScriptPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_common.sh" -ProjectRelative "deploy\shared\common.sh"
 }
 if (-not $VerifyScriptPath) {
-    $VerifyScriptPath = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
+    $VerifyScriptPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_verify.sh" -ProjectRelative "deploy\ubuntu\verify.sh"
 }
 if (-not $ReleaseManifestPath) {
-    $ReleaseManifestPath = Join-Path $ProjectRoot "deploy\release_manifest.json"
+    $ReleaseManifestPath = Resolve-DefaultHelperPath -ReleaseRelative "release_manifest.json" -ProjectRelative "deploy\release_manifest.json"
 }
 
-$ArchivePath = Prompt-Value "Путь к архиву релиза" $ArchivePath
-$Server = Prompt-Value "Сервер или IP" $Server
-$User = Prompt-Value "Пользователь SSH" $User
+$ArchivePath = Prompt-Value "Path to release archive" $ArchivePath
+$Server = Prompt-Value "Server or IP" $Server
+$User = Prompt-Value "SSH user" $User
 
 if (-not $RemoteDir) {
     $RemoteDir = "/home/$User/copimine-upload"
 }
 
-$ArchivePath = Resolve-RequiredPath $ArchivePath "Архив релиза"
-$InstallerPath = Resolve-RequiredPath $InstallerPath "Ubuntu installer"
-$VerifyScriptPath = Resolve-RequiredPath $VerifyScriptPath "Verify script"
+$ArchivePath = Resolve-RequiredPath $ArchivePath "Release archive"
+if (-not $BootstrapManifestPath) {
+    $bootstrapCandidate = [System.IO.Path]::ChangeExtension($ArchivePath, ".bootstrap.json")
+    if (Test-Path -LiteralPath $bootstrapCandidate) {
+        $BootstrapManifestPath = $bootstrapCandidate
+    }
+}
+$InstallerPath = Resolve-RequiredPath $InstallerPath "Ubuntu full replace script"
+$UnpackScriptPath = Resolve-RequiredPath $UnpackScriptPath "Ubuntu unpack script"
+$CommonScriptPath = Resolve-RequiredPath $CommonScriptPath "Shared deploy helper"
+$VerifyScriptPath = Resolve-RequiredPath $VerifyScriptPath "Ubuntu verify script"
 $ReleaseManifestPath = Resolve-RequiredPath $ReleaseManifestPath "Release manifest"
+if ($BootstrapManifestPath) {
+    $BootstrapManifestPath = Resolve-RequiredPath $BootstrapManifestPath "Bootstrap manifest"
+}
 
 $ArchiveName = [System.IO.Path]::GetFileName($ArchivePath)
 $ArchiveSha256 = Read-Sha256 $ArchivePath
@@ -98,8 +131,11 @@ $ReadmeLocal = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-upload-rea
 ) | Set-Content -LiteralPath $ShaFileLocal -Encoding ascii
 
 $InstallerRemoteName = "copimine_full_replace.sh"
+$UnpackRemoteName = "copimine_unpack_and_verify.sh"
+$CommonRemoteName = "copimine_common.sh"
 $VerifyRemoteName = "copimine_verify.sh"
 $ManifestRemoteName = "release_manifest.json"
+$BootstrapRemoteName = "release.bootstrap.json"
 $ReadmeRemoteName = "UPLOAD_README.txt"
 
 $ReadmeContent = @"
@@ -109,80 +145,106 @@ Archive: $ArchiveName
 SHA256: $ArchiveSha256
 Size: $ArchiveSize bytes
 
-Запуск на сервере:
+Recommended deploy:
   cd $RemoteDir
-  chmod +x $InstallerRemoteName $VerifyRemoteName
+  chmod +x $InstallerRemoteName $UnpackRemoteName $VerifyRemoteName
+  sudo bash ./$UnpackRemoteName "$RemoteDir/$ArchiveName" "$ArchiveSha256"
+
+Full replace:
   sudo bash ./$InstallerRemoteName "$RemoteDir/$ArchiveName"
 
-Если есть отдельный dump БД:
-  sudo bash ./$InstallerRemoteName "$RemoteDir/$ArchiveName" "/path/to/copimine.dump"
+With external DB dump:
+  sudo bash ./$UnpackRemoteName "$RemoteDir/$ArchiveName" "$ArchiveSha256" "/path/to/copimine.dump"
 
-Проверка после установки:
+Post-deploy verify:
   sudo bash ./$VerifyRemoteName
 "@
 Set-Content -LiteralPath $ReadmeLocal -Value $ReadmeContent -Encoding UTF8
 
 $SshTarget = "${User}@${Server}"
-
-Write-Host "[1/6] Создаю каталог на сервере: $RemoteDir"
-Invoke-Ssh $SshTarget "mkdir -p '$RemoteDir'"
-
-Write-Host "[2/6] Передаю архив и служебные файлы"
-Invoke-Scp @(
+$UploadItems = @(
     $ArchivePath,
     $ShaFileLocal,
     $InstallerPath,
+    $UnpackScriptPath,
+    $CommonScriptPath,
     $VerifyScriptPath,
-    $ReleaseManifestPath,
+    $ReleaseManifestPath
+)
+if ($BootstrapManifestPath) {
+    $UploadItems += $BootstrapManifestPath
+}
+$UploadItems += @(
     $ReadmeLocal,
     "${SshTarget}:$RemoteDir/"
 )
 
-Write-Host "[3/6] Нормализую имена файлов на сервере"
+Write-Host "[1/6] Creating remote directory: $RemoteDir"
+Invoke-Ssh $SshTarget "mkdir -p '$RemoteDir'"
+
+Write-Host "[2/6] Uploading archive and helper files"
+Invoke-Scp $UploadItems
+
+Write-Host "[3/6] Normalizing remote filenames"
 $RemoteArchive = "$RemoteDir/$ArchiveName"
-$RemoteSha = "$RemoteArchive.sha256"
 $RemoteInstaller = "$RemoteDir/$InstallerRemoteName"
+$RemoteUnpack = "$RemoteDir/$UnpackRemoteName"
+$RemoteCommon = "$RemoteDir/$CommonRemoteName"
 $RemoteVerify = "$RemoteDir/$VerifyRemoteName"
 $RemoteManifest = "$RemoteDir/$ManifestRemoteName"
-$RemoteReadme = "$RemoteDir/$ReadmeRemoteName"
+$RemoteBootstrap = "$RemoteDir/$BootstrapRemoteName"
+$BootstrapLeaf = if ($BootstrapManifestPath) { Split-Path -Leaf $BootstrapManifestPath } else { "" }
 
-Invoke-Ssh $SshTarget @"
+$RenameScript = @"
 set -e
 cd '$RemoteDir'
 mv -f '$(Split-Path -Leaf $InstallerPath)' '$InstallerRemoteName'
+mv -f '$(Split-Path -Leaf $UnpackScriptPath)' '$UnpackRemoteName'
+mv -f '$(Split-Path -Leaf $CommonScriptPath)' '$CommonRemoteName'
 mv -f '$(Split-Path -Leaf $VerifyScriptPath)' '$VerifyRemoteName'
 mv -f '$(Split-Path -Leaf $ReleaseManifestPath)' '$ManifestRemoteName'
+if [ -n '$BootstrapLeaf' ] && [ -f '$BootstrapLeaf' ]; then mv -f '$BootstrapLeaf' '$BootstrapRemoteName'; fi
 mv -f '$(Split-Path -Leaf $ReadmeLocal)' '$ReadmeRemoteName'
 chmod 644 '$ArchiveName' '$ArchiveName.sha256' '$ManifestRemoteName' '$ReadmeRemoteName'
-chmod 755 '$InstallerRemoteName' '$VerifyRemoteName'
+if [ -f '$BootstrapRemoteName' ]; then chmod 644 '$BootstrapRemoteName'; fi
+chmod 755 '$InstallerRemoteName' '$UnpackRemoteName' '$CommonRemoteName' '$VerifyRemoteName'
 "@
+Invoke-Ssh $SshTarget $RenameScript
 
-Write-Host "[4/6] Проверяю размер и SHA256 на сервере"
+Write-Host "[4/6] Checking remote size and SHA256"
 $RemoteSize = (& ssh $SshTarget "stat -c %s '$RemoteArchive'").Trim()
 if (-not $RemoteSize) {
-    Fail "Не удалось получить размер удалённого файла."
+    Fail "Could not read remote archive size."
 }
 if ([int64]$RemoteSize -ne [int64]$ArchiveSize) {
-    Fail "Размер архива после передачи не совпадает. Локально: $ArchiveSize, удалённо: $RemoteSize"
+    Fail "Remote archive size mismatch. Local: $ArchiveSize Remote: $RemoteSize"
 }
 $RemoteShaValue = (& ssh $SshTarget "sha256sum '$RemoteArchive' | awk '{print \$1}'").Trim().ToLowerInvariant()
 if ($RemoteShaValue -ne $ArchiveSha256) {
-    Fail "SHA256 после передачи не совпадает. Локально: $ArchiveSha256, удалённо: $RemoteShaValue"
+    Fail "Remote archive SHA256 mismatch. Local: $ArchiveSha256 Remote: $RemoteShaValue"
 }
 
-Write-Host "[5/6] Проверяю, что installer и verify доступны"
-Invoke-Ssh $SshTarget "test -f '$RemoteInstaller' && test -x '$RemoteInstaller' && test -f '$RemoteVerify' && test -x '$RemoteVerify'"
+Write-Host "[5/6] Checking remote deploy scripts"
+Invoke-Ssh $SshTarget "test -f '$RemoteInstaller' && test -x '$RemoteInstaller' && test -f '$RemoteUnpack' && test -x '$RemoteUnpack' && test -f '$RemoteCommon' && test -x '$RemoteCommon' && test -f '$RemoteVerify' && test -x '$RemoteVerify'"
 
-Write-Host "[6/6] Готово"
+Write-Host "[6/6] Done"
 Write-Host ""
-Write-Host "Архив успешно передан."
-Write-Host "Удалённый каталог: $RemoteDir"
+Write-Host "Archive upload completed."
+Write-Host "Remote dir: $RemoteDir"
 Write-Host "SHA256: $ArchiveSha256"
 Write-Host ""
-Write-Host "Команда установки:"
-Write-Host "  ssh $SshTarget `"cd $RemoteDir && sudo bash ./$InstallerRemoteName '$RemoteArchive'`""
+
+$UnpackCommand = 'ssh ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $UnpackRemoteName + " '$RemoteArchive' '$ArchiveSha256'" + '"'
+$ReplaceCommand = 'ssh ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $InstallerRemoteName + " '$RemoteArchive'" + '"'
+$VerifyCommand = 'ssh ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $VerifyRemoteName + '"'
+
+Write-Host "Recommended deploy command:"
+Write-Host ("  " + $UnpackCommand)
 Write-Host ""
-Write-Host "Команда проверки после установки:"
-Write-Host "  ssh $SshTarget `"cd $RemoteDir && sudo bash ./$VerifyRemoteName`""
+Write-Host "Full replace command:"
+Write-Host ("  " + $ReplaceCommand)
+Write-Host ""
+Write-Host "Post-deploy verify command:"
+Write-Host ("  " + $VerifyCommand)
 
 Remove-Item -LiteralPath $ReadmeLocal -Force -ErrorAction SilentlyContinue

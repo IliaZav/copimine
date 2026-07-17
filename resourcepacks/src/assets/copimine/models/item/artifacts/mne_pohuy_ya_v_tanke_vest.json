@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "copimine:item/artifacts/mne_pohuy_ya_v_tanke_vest"
+  }
+}

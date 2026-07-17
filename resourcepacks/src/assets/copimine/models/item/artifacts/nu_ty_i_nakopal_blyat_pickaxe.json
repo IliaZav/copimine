@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "copimine:item/artifacts/nu_ty_i_nakopal_blyat_pickaxe"
+  }
+}

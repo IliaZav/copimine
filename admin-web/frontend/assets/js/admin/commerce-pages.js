@@ -104,24 +104,46 @@ export function createAdminCommercePages(deps) {
   function bindBalanceEditors(snapshot) {
     const select = $("adminBalancePlayer");
     if (!select) return;
-    const sync = () => {
-      const player = selectedPlayerBySelect("adminBalancePlayer");
-      const arRow = resolveBalanceRow(snapshot?.arPlayers, player) || {};
-      const donationRow = resolveBalanceRow(snapshot?.donationBalances, player) || {};
-      const arBalance = Number(arRow.balance || arRow.amount || 0);
-      const donationBalance = Number(donationRow.balance || 0);
-      if ($("adminArBalanceValue")) $("adminArBalanceValue").value = String(arBalance);
-      if ($("adminDonationBalanceValue")) $("adminDonationBalanceValue").value = String(donationBalance);
-      if ($("adminBalanceArCurrent")) $("adminBalanceArCurrent").textContent = formatAr(arBalance);
-      if ($("adminBalanceDonationCurrent")) $("adminBalanceDonationCurrent").textContent = formatDonate(donationBalance);
+    const applyValues = (player, arBalance, donationBalance) => {
+      if ($("adminArBalanceValue")) $("adminArBalanceValue").value = String(Number(arBalance || 0));
+      if ($("adminDonationBalanceValue")) $("adminDonationBalanceValue").value = String(Number(donationBalance || 0));
+      if ($("adminBalanceArCurrent")) $("adminBalanceArCurrent").textContent = formatAr(arBalance || 0);
+      if ($("adminBalanceDonationCurrent")) $("adminBalanceDonationCurrent").textContent = formatDonate(donationBalance || 0);
       if ($("adminBalancePlayerMeta")) {
         $("adminBalancePlayerMeta").textContent = player.name
           ? `${player.name}${player.uuid ? ` · ${short(player.uuid, 18)}` : ""}`
           : "Игрок не выбран";
       }
     };
-    select.addEventListener("change", sync);
-    sync();
+    const sync = async () => {
+      const player = selectedPlayerBySelect("adminBalancePlayer");
+      const arRow = resolveBalanceRow(snapshot?.arPlayers, player) || {};
+      const donationRow = resolveBalanceRow(snapshot?.donationBalances, player) || {};
+      const fallbackAr = Number(arRow.balance || arRow.amount || 0);
+      const fallbackDonation = Number(donationRow.balance || 0);
+      applyValues(player, fallbackAr, fallbackDonation);
+      if (!player.name) return;
+      const detail = await safeApi(`/api/players/${encodeURIComponent(player.name)}/full?limit=20`, null);
+      if (!detail?.profile) return;
+      const currentPlayer = selectedPlayerBySelect("adminBalancePlayer");
+      if (normalizePlayerKey(currentPlayer.name) !== normalizePlayerKey(player.name)) return;
+      const donationLedger = asArray(detail?.economy?.donationLedger);
+      const donationSessions = asArray(detail?.economy?.donationSessions);
+      const liveAr = Number(detail.profile?.bank?.balance || fallbackAr || 0);
+      const liveDonation = Number(
+        detail.profile?.donation?.balance
+        ?? donationLedger[0]?.balance_after
+        ?? donationLedger[0]?.balanceAfter
+        ?? donationSessions[0]?.balance_after
+        ?? fallbackDonation
+        ?? 0
+      );
+      applyValues(player, liveAr, liveDonation);
+    };
+    select.addEventListener("change", () => {
+      void sync();
+    });
+    void sync();
   }
 
   async function loadEconomy() {
@@ -138,6 +160,7 @@ export function createAdminCommercePages(deps) {
 
     const arPlayers = asArray(ledger.balances).map((row) => ({
       player: cleanText(row.name || row.player_name || row.uuid || "Игрок"),
+      uuid: cleanText(row.uuid || row.player_uuid || ""),
       amount: row.balance || 0,
       inventory: row.inventory_balance || 0,
       enderChest: row.ender_balance || 0,
@@ -517,3 +540,4 @@ export function createAdminCommercePages(deps) {
     adminSetTreasuryPin,
   };
 }
+

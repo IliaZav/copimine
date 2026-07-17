@@ -361,3 +361,63 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Preview routes are shipped pages and must use the same restrained release UI. */
+.preview-shell,
+.preview-layout,
+.preview-sidebar,
+.preview-brand,
+.preview-nav-item,
+.preview-topbar,
+.preview-card,
+.preview-panel,
+.preview-metric,
+.preview-table-wrap,
+.preview-chip,
+.preview-action,
+.preview-search,
+.preview-footer {
+  background: var(--surface) !important;
+  background-image: none !important;
+  border-color: var(--line) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+  color: var(--ink) !important;
+}
+.preview-button,
+.preview-input,
+.preview-table,
+.preview-metric-label,
+.preview-metric-value,
+.preview-metric-note { border-radius: 2px !important; }
+.preview-metric-label { color: var(--muted) !important; }
+.preview-metric-value { color: var(--ink) !important; }
+.preview-metric-note { color: var(--muted) !important; }
+.preview-table { background: var(--surface) !important; color: var(--ink) !important; }
+.preview-table th { color: var(--muted) !important; }
+.preview-table td { color: var(--ink) !important; border-color: var(--line) !important; }
+.preview-input { background: var(--surface-soft) !important; color: var(--ink) !important; border-color: var(--line) !important; }
+.preview-button { background: var(--surface-soft) !important; color: var(--accent) !important; border-color: var(--line) !important; }
+.preview-button.is-primary { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
+.preview-section,
+.preview-toolbar,
+.preview-pill { color: var(--ink) !important; }
+.preview-section { background: var(--surface) !important; border-color: var(--line) !important; }
+.preview-pill { background: var(--surface-soft) !important; border-color: var(--line) !important; }
+.preview-shell { min-height: 100vh; background: var(--bg) !important; }
+.preview-layout { width: min(1520px, calc(100% - 40px)); }
+.preview-brand strong,
+.preview-topbar h1,
+.preview-card h2,
+.preview-card h3,
+.preview-metric strong,
+.preview-nav-copy strong { color: var(--ink) !important; }
+.preview-brand span,
+.preview-topbar p,
+.preview-card p,
+.preview-card span,
+.preview-nav-copy span,
+.preview-metric span { color: var(--muted) !important; }
+.preview-nav-group h3 { color: var(--accent) !important; }
+.preview-nav-item.is-active { border-color: var(--accent) !important; box-shadow: inset 3px 0 0 var(--accent) !important; }
+.preview-nav-icon { background: var(--surface-soft) !important; color: var(--accent) !important; }

@@ -233,7 +233,6 @@ SESSIONS_FILE = DATA_DIR / "sessions.json"
 ADMIN_USERS_FILE = DATA_DIR / "admin_users.json"
 AUTH_DB_FILE = Path(os.getenv("COPIMINE_AUTH_DB", DATA_DIR / "admin_auth.db"))
 AUTH_STORAGE_MODE_RAW = os.getenv("COPIMINE_AUTH_STORAGE", "").strip().lower()
-AUTH_STORAGE_MODE = AUTH_STORAGE_MODE_RAW if AUTH_STORAGE_MODE_RAW in {"postgresql", "sqlite"} else "postgresql"
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", os.getenv("PGHOST", "127.0.0.1"))
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", os.getenv("PGPORT", "5432")))
 POSTGRES_DB = os.getenv("POSTGRES_DB", os.getenv("PGDATABASE", "copimine"))
@@ -243,6 +242,14 @@ POSTGRES_SCHEMA = os.getenv("POSTGRES_SCHEMA", os.getenv("PGSCHEMA", "copimine")
 POSTGRES_CONNECT_TIMEOUT = int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "5"))
 POSTGRES_POOL_MIN_SIZE = max(1, int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1")))
 POSTGRES_POOL_MAX_SIZE = max(POSTGRES_POOL_MIN_SIZE, int(os.getenv("POSTGRES_POOL_MAX_SIZE", "8")))
+# A local installation created before PostgreSQL support already has this SQLite
+# database. Do not make that installation unusable merely because its .env has
+# not yet been migrated. Production instances explicitly select PostgreSQL.
+AUTH_STORAGE_MODE = (
+    AUTH_STORAGE_MODE_RAW
+    if AUTH_STORAGE_MODE_RAW in {"postgresql", "sqlite"}
+    else ("postgresql" if POSTGRES_PASSWORD else "sqlite")
+)
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cm_session")
 AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "cm_refresh")
 ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080").rstrip("/")
@@ -538,6 +545,7 @@ class PlayerDonationSessionCreateIn(BaseModel):
 
 class PlayerDonationPurchaseIntentIn(BaseModel):
     item_id: str = Field(min_length=2, max_length=120)
+    pin: str = Field(min_length=4, max_length=8)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
@@ -2562,6 +2570,25 @@ def ensure_v4_schema(conn: Any) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS president_tax_exemptions(
+            id TEXT PRIMARY KEY,
+            tax_id TEXT NOT NULL DEFAULT '',
+            term_id TEXT NOT NULL DEFAULT '',
+            player_uuid TEXT NOT NULL,
+            player_name TEXT NOT NULL DEFAULT '',
+            artifact_instance_id TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'TAX_CLOCK_EXEMPTION',
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            created_at BIGINT NOT NULL DEFAULT 0,
+            expires_at BIGINT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0,
+            details TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS artifact_revenue_payouts(
             purchase_id TEXT PRIMARY KEY,
             president_uuid TEXT NOT NULL DEFAULT '',
@@ -2716,6 +2743,8 @@ def ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_round_candidate ON votes(election_id,round_no,candidate_uuid)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_president_laws_status ON president_laws(status,published_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tax_payments_tax_player ON president_tax_payments(tax_id,player_uuid,created_at DESC)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_exemptions_player ON president_tax_exemptions(player_uuid)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tax_exemptions_active ON president_tax_exemptions(status,expires_at DESC)")
     conn.execute("ALTER TABLE president_taxes ADD COLUMN IF NOT EXISTS period_hours INTEGER NOT NULL DEFAULT 24")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_protected_blocks_coords ON protected_blocks(world,x,y,z,active)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions(created_at DESC,action)")
@@ -3910,6 +3939,31 @@ def approve_whitelist_request_sync(request_id: str, actor: str, note: str = "", 
     }
 
 
+def live_plugin_ar_balance_sync(minecraft_uuid: str, minecraft_name: str = "") -> dict[str, Any]:
+    safe_uuid = str(minecraft_uuid or "").strip()
+    safe_name = str(minecraft_name or "").strip()
+    path = admin_plugin_db_path()
+    if not safe_uuid or not admin_plugin_db_available(path):
+        return {}
+    try:
+        with open_sqlite_readonly(str(path)) as sqlite_conn:
+            if not sqlite_has_table(sqlite_conn, "cmv7_ar_balances"):
+                return {}
+            row = sqlite_conn.execute(
+                """
+                SELECT uuid,name,balance,inventory_balance,ender_balance,updated_at
+                FROM cmv7_ar_balances
+                WHERE uuid=? OR (?<>'' AND lower(name)=lower(?))
+                ORDER BY CASE WHEN uuid=? THEN 0 ELSE 1 END, updated_at DESC
+                LIMIT 1
+                """,
+                (safe_uuid, safe_name, safe_name, safe_uuid),
+            ).fetchone()
+            return dict(row or {})
+    except Exception:
+        return {}
+
+
 def ensure_player_bank_account(conn: Any, minecraft_uuid: str, minecraft_name: str) -> dict[str, Any]:
     if not minecraft_uuid:
         raise HTTPException(status_code=409, detail="Minecraft account is not linked")
@@ -3926,7 +3980,21 @@ def ensure_player_bank_account(conn: Any, minecraft_uuid: str, minecraft_name: s
     row = conn.execute("SELECT * FROM cmv4_bank_accounts WHERE account_id=%s", (account_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Bank account was not created")
-    return dict(row)
+    bank = dict(row)
+    ledger_count_row = conn.execute("SELECT COUNT(*) AS c FROM cmv4_bank_ledger WHERE account_id=%s", (account_id,)).fetchone()
+    ledger_count = int(row_get(ledger_count_row, "c", 0) or 0)
+    if int(bank.get("balance") or 0) <= 0 and ledger_count == 0:
+        live_balance = live_plugin_ar_balance_sync(minecraft_uuid, minecraft_name)
+        if int(live_balance.get("balance") or 0) > 0:
+            synced_balance = int(live_balance.get("balance") or 0)
+            updated_at = int(live_balance.get("updated_at") or now)
+            conn.execute(
+                "UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s,owner_name=%s WHERE account_id=%s",
+                (synced_balance, updated_at, minecraft_name or bank.get("owner_name") or "", account_id),
+            )
+            row = conn.execute("SELECT * FROM cmv4_bank_accounts WHERE account_id=%s", (account_id,)).fetchone()
+            bank = dict(row or bank)
+    return bank
 
 
 def current_treasury_owner(conn: Any) -> tuple[str, str]:
@@ -4518,17 +4586,14 @@ def player_site_bank_profile_sync(minecraft_uuid: str, minecraft_name: str) -> d
             (minecraft_uuid,),
         ).fetchone()
         site = dict(site_row) if site_row else {}
-        bank_row = conn.execute(
-            """
-            SELECT account_id,owner_uuid,owner_name,currency,balance,status,updated_at
-            FROM cmv4_bank_accounts
-            WHERE owner_uuid=%s AND account_type='PLAYER' AND currency='AR'
-            ORDER BY updated_at DESC
-            LIMIT 1
-            """,
+        bank = ensure_player_bank_account(conn, minecraft_uuid, minecraft_name)
+        ensure_donation_account_row(conn, minecraft_uuid, minecraft_name)
+        donation_row = conn.execute(
+            "SELECT player_uuid,player_name,balance,created_at,updated_at FROM donation_accounts WHERE player_uuid=%s LIMIT 1",
             (minecraft_uuid,),
         ).fetchone()
-        bank = dict(bank_row) if bank_row else {}
+        donation = dict(donation_row) if donation_row else {}
+        live_balance = live_plugin_ar_balance_sync(minecraft_uuid, minecraft_name)
         pin = bank_pin_status(conn, str(site.get("id") or ""), minecraft_uuid)
         pin["visiblePin"] = visible_personal_pin(conn, minecraft_uuid)
         conn.commit()
@@ -4551,6 +4616,15 @@ def player_site_bank_profile_sync(minecraft_uuid: str, minecraft_name: str) -> d
             "balance": int(bank.get("balance") or 0),
             "status": str(bank.get("status") or ("ACTIVE" if bank else "")),
             "updatedAt": int(bank.get("updated_at") or 0),
+            "livePluginBalance": int(live_balance.get("balance") or 0),
+            "livePluginUpdatedAt": int(live_balance.get("updated_at") or 0),
+        },
+        "donation": {
+            "playerUuid": str(donation.get("player_uuid") or minecraft_uuid),
+            "playerName": str(donation.get("player_name") or minecraft_name or ""),
+            "balance": int(donation.get("balance") or 0),
+            "createdAt": int(donation.get("created_at") or 0),
+            "updatedAt": int(donation.get("updated_at") or 0),
         },
         "pin": pin,
     }
@@ -5172,7 +5246,7 @@ def active_president_term(conn: Any) -> dict[str, Any]:
 
 def normalize_president_tax_period_hours(hours: int) -> int:
     hours = int(hours or 24)
-    if hours in (24, 48, 76):
+    if hours in (24, 48, 72):
         return hours
     return 24
 
@@ -5218,6 +5292,20 @@ def president_tax_paid_amount(conn: Any, tax_id: str, player_uuid: str, window_s
     return int(row_get(row, "total", 0) or 0)
 
 
+def active_president_tax_exemption(conn: Any, player_uuid: str, now_ms: int) -> dict[str, Any]:
+    row = conn.execute(
+        """
+        SELECT id,tax_id,term_id,player_uuid,player_name,artifact_instance_id,source,status,created_at,expires_at,updated_at,details
+        FROM president_tax_exemptions
+        WHERE player_uuid=%s AND status='ACTIVE' AND expires_at>%s
+        ORDER BY expires_at DESC
+        LIMIT 1
+        """,
+        (str(player_uuid or "").strip(), int(now_ms or 0)),
+    ).fetchone()
+    return dict(row) if row else {}
+
+
 def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
     linked = bool(account.get("minecraft_uuid"))
     minecraft_uuid = str(account.get("minecraft_uuid") or "").strip()
@@ -5241,6 +5329,7 @@ def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         paid = 0
         due = 0
         tax_payload = None
+        tax_exemption = active_president_tax_exemption(conn, minecraft_uuid, donation_now_ms()) if linked else {}
         if linked and tax:
             now_ms = donation_now_ms()
             period_hours = normalize_president_tax_period_hours(int(tax.get("period_hours") or 24))
@@ -5266,6 +5355,28 @@ def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
                 """,
                 (str(tax.get("id") or ""), minecraft_uuid),
             ).fetchall()
+        if tax_exemption:
+            exemption_until = int(tax_exemption.get("expires_at") or 0)
+            paid = 0
+            due = 0
+            if tax_payload is None:
+                tax_payload = {
+                    "id": str(tax_exemption.get("tax_id") or ""),
+                    "amount": 0,
+                    "periodHours": 0,
+                    "windowStart": int(tax_exemption.get("created_at") or 0),
+                    "windowEnd": exemption_until,
+                    "voluntary": True,
+                }
+            tax_payload.update({"exempt": True, "exemptUntil": exemption_until})
+            payments_rows = [{
+                "id": str(tax_exemption.get("id") or ""),
+                "amount": 0,
+                "source": "TAX_CLOCK_EXEMPTION",
+                "created_at": int(tax_exemption.get("created_at") or 0),
+                "expires_at": exemption_until,
+                "details": str(tax_exemption.get("details") or ""),
+            }] + [dict(row) for row in payments_rows]
     return {
         "linked": linked,
         "disabled": False,
@@ -5276,6 +5387,11 @@ def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         } if term else {},
         "laws": [dict(row) for row in laws_rows],
         "tax": tax_payload,
+        "taxExemption": {
+            "active": True,
+            "expiresAt": int(tax_exemption.get("expires_at") or 0),
+            "source": str(tax_exemption.get("source") or "TAX_CLOCK_EXEMPTION"),
+        } if tax_exemption else {"active": False},
         "paid": paid,
         "due": due,
         "payments": [dict(row) for row in payments_rows],
@@ -5297,6 +5413,9 @@ def pay_player_election_tax_sync(account: dict[str, Any], data: PlayerElectionTa
         tax = active_president_tax(conn, str(term.get("id") or ""))
         if not tax:
             raise HTTPException(status_code=409, detail="Активный налог не назначен")
+        tax_exemption = active_president_tax_exemption(conn, player_uuid, donation_now_ms())
+        if tax_exemption:
+            raise HTTPException(status_code=409, detail="Налог отключён часами до " + str(int(tax_exemption.get("expires_at") or 0)))
         verify_bank_pin(conn, account, data.pin)
         bank = ensure_player_bank_account(conn, player_uuid, player_name)
         president_bank = ensure_treasury_bank_account(conn)
@@ -5309,7 +5428,10 @@ def pay_player_election_tax_sync(account: dict[str, Any], data: PlayerElectionTa
         due = max(0, int(tax.get("amount") or 0) - paid)
         if due <= 0:
             return {"ok": True, "amount": 0, "due": 0, "paid": paid, "balance": int(bank_locked.get("balance") or 0), "voluntary": True}
-        amount = min(max(1, int(data.amount or 0)), due)
+        requested_amount = int(data.amount or 0)
+        if requested_amount != due:
+            raise HTTPException(status_code=400, detail="Налог оплачивается только полной суммой за период")
+        amount = due
         before = int(bank_locked.get("balance") or 0)
         if before < amount:
             raise HTTPException(status_code=409, detail="Недостаточно AR на банковском счёте")
@@ -8839,8 +8961,7 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
         if minecraft_name and player_account_by_minecraft_name(conn, minecraft_name):
             raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже привязан. Используйте восстановление доступа.")
         same_ip = conn.execute("SELECT COUNT(*) AS c FROM site_accounts WHERE registration_ip=%s", (registration_ip,)).fetchone()
-        same_ip_count = int((dict(same_ip).get("c") if same_ip else 0) or 0)
-        if same_ip_count >= 5:
+        if int((same_ip or {}).get("c") or 0) >= 5:
             conn.commit()
             await bg(create_ip_alert_sync, registration_ip, username, minecraft_name, "site-account-limit", {"limit": 5, "stage": "register"})
             raise HTTPException(status_code=400, detail="Ошибка регистрации. Проверьте данные и попробуйте позже.")
@@ -11974,7 +12095,7 @@ def cancel_donation_session_sync(session_id: str, actor: str, note: str = "") ->
     return {"ok": True, "sessionId": session_id, "status": "CANCELLED"}
 
 
-def purchase_donation_item_sync(player_uuid: str, player_name: str, item_id: str, actor: str, source: str, idempotency_key: str) -> dict[str, Any]:
+def purchase_donation_item_sync(player_uuid: str, player_name: str, item_id: str, pin: str, actor: str, source: str, idempotency_key: str) -> dict[str, Any]:
     if not pg_ready():
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
     player_uuid = str(player_uuid or "").strip()
@@ -11990,6 +12111,14 @@ def purchase_donation_item_sync(player_uuid: str, player_name: str, item_id: str
     price = int(item.get("price_donation") or 0)
     now = donation_now_ms()
     with auth_conn() as conn:
+        verify_bank_pin(
+            conn,
+            {
+                "minecraft_uuid": player_uuid,
+                "minecraft_name": player_name,
+            },
+            pin,
+        )
         lock_donation_idempotency_sync(conn, "donation-purchase", key)
         existing = conn.execute(
             "SELECT id,player_uuid,item_id,status,price_donation,created_at FROM donation_purchases WHERE idempotency_key=%s LIMIT 1",
@@ -12575,7 +12704,7 @@ async def player_donation_purchase_intent(data: PlayerDonationPurchaseIntentIn, 
     if not uuid:
         raise HTTPException(status_code=400, detail="Сначала привяжи Minecraft-ник")
     check_rate_limit(request, "player-donation-purchase", limit=8, window_seconds=60)
-    result = await bg(purchase_donation_item_sync, uuid, name, data.item_id, name or uuid, "player-web", data.idempotency_key)
+    result = await bg(purchase_donation_item_sync, uuid, name, data.item_id, data.pin, name or uuid, "player-web", data.idempotency_key)
     return result
 
 

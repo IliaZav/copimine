@@ -1,20 +1,46 @@
-#Owner:
-#  tabprefix: "&0&l[&a&lOwner&0&l] &a"
-#  tagprefix: "&2&lOwner &a"
-Player:
-  tabprefix: "&0&l[&7&lPlayer&0&l] &3"
-  tagprefix: "&2&lPlayer &3"
-
- # default settings for all groups, all groups will take properties from this section unless player's primary group overrides a specific setting
 _DEFAULT_:
-  tabprefix: "%luckperms-prefix%"
-  tagprefix: "%luckperms-prefix%"
+  tabprefix: "&8[&7Игрок&8] &f"
+  tagprefix: "&8[&7Игрок&8] &f"
   customtabname: "%player%"
-  tabsuffix: "%luckperms-suffix%"
-  tagsuffix: "%luckperms-suffix%"
+  tabsuffix: ""
+  tagsuffix: ""
 
-per-world:
-  world1:
-    Owner:
-      tabprefix: "&0&l[&a&lOwner&0&l] &a"
-      tagprefix: "&2&lOwner &a"
+default:
+  tabprefix: "&8[&7Игрок&8] &f"
+  tagprefix: "&8[&7Игрок&8] &f"
+
+Helper:
+  tabprefix: "&8[&aХелпер&8] &f"
+  tagprefix: "&8[&aХелпер&8] &f"
+
+Mod:
+  tabprefix: "&8[&bМодер&8] &f"
+  tagprefix: "&8[&bМодер&8] &f"
+
+curator:
+  tabprefix: "&8[&bКуратор&8] &f"
+  tagprefix: "&8[&bКуратор&8] &f"
+
+cik_chair:
+  tabprefix: "&8[&dЦИК&8] &f"
+  tagprefix: "&8[&dЦИК&8] &f"
+
+president:
+  tabprefix: "&8[&6Президент&8] &f"
+  tagprefix: "&8[&6Президент&8] &f"
+
+admin:
+  tabprefix: "&8[&cАдмин&8] &f"
+  tagprefix: "&8[&cАдмин&8] &f"
+
+Admin:
+  tabprefix: "&8[&cАдмин&8] &f"
+  tagprefix: "&8[&cАдмин&8] &f"
+
+owner:
+  tabprefix: "&8[&aВладелец&8] &f"
+  tagprefix: "&8[&aВладелец&8] &f"
+
+Owner:
+  tabprefix: "&8[&aВладелец&8] &f"
+  tagprefix: "&8[&aВладелец&8] &f"

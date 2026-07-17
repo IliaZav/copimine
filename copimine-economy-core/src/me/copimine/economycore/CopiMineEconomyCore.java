@@ -188,6 +188,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     public interface DonationPurchaseService {
         CompletableFuture<Map<String, Object>> createTestPurchaseAsync(UUID playerUuid, String playerName, String itemId, long price, String actor);
+        CompletableFuture<Map<String, Object>> createAdminGiftAsync(UUID playerUuid, String playerName, String itemId, String actor, String idempotencyKey);
         CompletableFuture<Map<String, Object>> purchaseIntentAsync(UUID playerUuid, String playerName, String itemId, long priceDonation, String actor, String source, String idempotencyKey);
         CompletableFuture<Map<String, Object>> createClaimAsync(UUID playerUuid, String itemId, long amount, String actor, String purchaseId);
         CompletableFuture<List<Map<String, Object>>> getUnclaimedItemsAsync(UUID playerUuid, int limit);
@@ -573,6 +574,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             openBankAtmAccount(player, parts[2], parts.length > 3 ? parts[3] : "PERSONAL");
             return;
         }
+        if (action.startsWith("atm:balance:")) {
+            String[] parts = action.split(":");
+            openAtmBalancePreview(player, parts[2], parts.length > 3 ? parts[3] : "PERSONAL");
+            return;
+        }
         if (action.startsWith("atm:withdraw:")) {
             String[] parts = action.split(":");
             String scope = parts.length > 4 ? parts[3] : "PERSONAL";
@@ -829,6 +835,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             button(holder, inventory, 15, Material.GOLD_BLOCK, "&6Казна",
                     List.of("&7Отдельный счёт казны.", "&7Доступ только у президента и админов."), "atm:account:" + atmId + ":TREASURY");
             button(holder, inventory, 22, Material.ARROW, "&aК банкоматам", List.of(), "nav:atms");
+            holder.actions.put(4, "atm:balance:" + atmId + ":PERSONAL");
             player.openInventory(inventory);
             return;
         }
@@ -869,7 +876,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             holder.data.put("scope", "TREASURY");
             Inventory inventory = holder.create(54, color("&b&lБанк CopiMine"));
             button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Банкомат"),
-                    List.of("&7Счёт: &fКазна CopiMine", "&7Баланс: &f" + payload.get("balance") + " AR"), "");
+                    List.of("&7Счёт: &fКазна CopiMine", "&7Баланс: &f" + payload.get("balance") + " AR", "&7ЛКМ: показать баланс в чат"), "atm:balance:" + atmId + ":TREASURY");
             button(holder, inventory, 10, Material.DIAMOND_ORE, "&aВнести предмет из руки", List.of("&7Берёт официальный AR из основной руки.", "&7PIN не требуется."), "atm:deposit-hand:" + atmId + ":TREASURY");
             button(holder, inventory, 12, Material.CHEST, "&aВнести весь AR", List.of("&7Берёт весь официальный AR из инвентаря.", "&7PIN не требуется."), "atm:deposit-all:" + atmId + ":TREASURY");
             button(holder, inventory, 14, Material.PLAYER_HEAD, "&bПеревести игроку", List.of("&7Банковский перевод с проверкой PIN казны."), "atm:targets:" + atmId + ":TREASURY");
@@ -911,7 +918,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             MenuHolder holder = new MenuHolder("economy:atm", atmId);
             Inventory inventory = holder.create(54, color("&b&lБанк CopiMine"));
             button(holder, inventory, 4, Material.GOLD_BLOCK, "&b" + first(string(payload.get("name")), "Банкомат"),
-                    List.of("&7Баланс: &f" + payload.get("balance") + " AR"), "");
+                    List.of("&7Баланс: &f" + payload.get("balance") + " AR", "&7ЛКМ: показать баланс в чат"), "atm:balance:" + atmId + ":PERSONAL");
             button(holder, inventory, 10, Material.DIAMOND_ORE, "&aВнести предмет из руки", List.of("&7Берёт официальный AR из основной руки.", "&7PIN не требуется."), "atm:deposit-hand:" + atmId);
             button(holder, inventory, 12, Material.CHEST, "&aВнести весь AR", List.of("&7Берёт весь официальный AR из инвентаря.", "&7PIN не требуется."), "atm:deposit-all:" + atmId);
             button(holder, inventory, 14, Material.PLAYER_HEAD, "&bПеревести игроку", List.of("&7Банковский перевод с проверкой PIN."), "atm:targets:" + atmId);
@@ -920,6 +927,45 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             button(holder, inventory, 32, Material.DIAMOND_ORE, "&eСнять 64 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":64");
             button(holder, inventory, 49, Material.ARROW, "&aК банкоматам", List.of(), "nav:atms");
             player.openInventory(inventory);
+        }));
+    }
+
+    private void openAtmBalancePreview(Player player, String atmId, String accountScope) {
+        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        if ("TREASURY".equals(scope)) {
+            dbFuture("atm treasury balance preview", () -> {
+                Map<String, Object> treasury = tx(this::ensureTreasuryAccount);
+                return longValue(treasury.get("balance"));
+            }).whenComplete((balance, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                if (!player.isOnline()) {
+                    return;
+                }
+                if (error != null) {
+                    player.sendMessage(color("&cНе удалось получить баланс казны."));
+                    getLogger().warning("ATM treasury balance preview: " + safeError(error));
+                    return;
+                }
+                player.sendMessage(color("&6Казна CopiMine: &f" + balance + " AR"));
+                openBankAtmAccount(player, atmId, "TREASURY");
+            }));
+            return;
+        }
+        UUID playerUuid = player.getUniqueId();
+        String playerName = player.getName();
+        dbFuture("atm personal balance preview", () -> {
+            ensureBankAccount(playerUuid.toString(), playerName);
+            return bankService.balance(playerUuid, playerName);
+        }).whenComplete((balance, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            if (error != null) {
+                player.sendMessage(color("&cНе удалось получить баланс счёта."));
+                getLogger().warning("ATM personal balance preview: " + safeError(error));
+                return;
+            }
+            player.sendMessage(color("&6Ваш баланс: &f" + balance + " AR"));
+            openBankAtmAccount(player, atmId, "PERSONAL");
         }));
     }
 
@@ -1695,7 +1741,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private Map<String, Object> fetchProtectedBlockVisualRow(String kind, String linkedId) throws Exception {
-        return queryOne("SELECT entity_uuid,world,x,y,z FROM protected_block_visuals WHERE kind=? AND linked_id=? AND active=1 ORDER BY updated_at DESC LIMIT 1", kind, linkedId);
+        return queryOne("SELECT entity_uuid,world,x,y,z FROM protected_block_visuals WHERE kind=? AND linked_id=? ORDER BY active DESC,updated_at DESC LIMIT 1", kind, linkedId);
     }
 
     private void cleanupProtectedBlockVisualEntities(Map<String, Object> row, String kind, String linkedId) {
@@ -2199,9 +2245,31 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private Map<String, Object> ensureBankAccount(Connection connection, String uuid, String name) throws Exception {
         long t = now();
+        String accountId = bankAccountId(uuid);
         update(connection, "INSERT INTO cmv4_bank_accounts(account_id,owner_uuid,owner_name,account_type,currency,balance,status,version,created_at,updated_at) VALUES(?,?,?,'PLAYER','AR',0,'ACTIVE',0,?,?) ON CONFLICT(account_id) DO UPDATE SET owner_name=excluded.owner_name,updated_at=excluded.updated_at",
-                bankAccountId(uuid), uuid, first(name, ""), t, t);
-        return queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", bankAccountId(uuid));
+                accountId, uuid, first(name, ""), t, t);
+        Map<String, Object> row = queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", accountId);
+        long currentBalance = longValue(row.get("balance"));
+        if (currentBalance <= 0L) {
+            long ledgerCount = scalarLong(connection, "SELECT COUNT(*) FROM cmv4_bank_ledger WHERE account_id=?", accountId);
+            if (ledgerCount == 0L) {
+                try {
+                    Map<String, Object> legacy = queryOne(connection,
+                            "SELECT COALESCE(balance,0) AS balance, COALESCE(updated_at,0) AS updated_at, COALESCE(name,'') AS name FROM cmv7_ar_balances WHERE uuid=? LIMIT 1",
+                            uuid);
+                    long legacyBalance = longValue(legacy.get("balance"));
+                    if (legacyBalance > 0L) {
+                        long updatedAt = Math.max(now(), longValue(legacy.get("updated_at")));
+                        update(connection,
+                                "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=?,owner_name=? WHERE account_id=?",
+                                legacyBalance, updatedAt, first(name, string(legacy.get("name"))), accountId);
+                        row = queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? LIMIT 1", accountId);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return row;
     }
 
     private Map<String, Object> ensureDonationAccount(Connection connection, String uuid, String name) throws Exception {
@@ -3200,6 +3268,27 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private final class DonationPurchaseServiceImpl implements DonationPurchaseService {
+        @Override
+        public CompletableFuture<Map<String, Object>> createAdminGiftAsync(UUID playerUuid, String playerName, String itemId, String actor, String idempotencyKey) {
+            return dbFuture("create administrative donation gift", () -> tx(connection -> {
+                if (playerUuid == null) throw new IllegalArgumentException("Administrative gift requires player UUID.");
+                String normalized = normalizeDonationItemId(itemId);
+                String giftKey = first(idempotencyKey, "").trim();
+                if (giftKey.isBlank()) throw new IllegalArgumentException("Administrative gift requires an idempotency key.");
+                Map<String, Object> existing = queryOne(connection, "SELECT id,item_id,status FROM donation_purchases WHERE idempotency_key=? LIMIT 1", giftKey);
+                if (existing != null) return Map.of("purchase_id", string(existing.get("id")), "item_id", string(existing.get("item_id")), "status", string(existing.get("status")), "idempotent", true);
+                lockDonationEntitlement(connection, playerUuid.toString(), normalized);
+                if (hasOpenDonationEntitlement(connection, playerUuid.toString(), normalized)) throw new IllegalStateException("Player already has an active or unfinished donation entitlement for this item.");
+                long current = now();
+                String purchaseId = "admin-gift-" + UUID.randomUUID();
+                String claimId = "don-claim-" + UUID.randomUUID();
+                update(connection, "INSERT INTO donation_purchases(id,player_uuid,player_name,item_id,price,price_donation,status,source,idempotency_key,created_at,updated_at) VALUES(?,?,?,?,0,0,'CLAIM_PENDING','ADMIN_GIFT',?,?,?)", purchaseId, playerUuid.toString(), first(playerName, ""), normalized, giftKey, current, current);
+                update(connection, "INSERT INTO donation_item_claims(id,player_uuid,item_id,amount,status,claimed_at,created_at,updated_at,purchase_id,actor) VALUES(?,?,?,?, 'UNCLAIMED',0,?,?,?,?)", claimId, playerUuid.toString(), normalized, 1L, current, current, purchaseId, first(actor, ""));
+                pluginEvent("donation", "admin_gift", first(actor, ""), playerUuid.toString(), "purchase=" + purchaseId + " item=" + normalized);
+                return Map.of("purchase_id", purchaseId, "claim_id", claimId, "item_id", normalized, "status", "CLAIM_PENDING", "idempotent", false);
+            }));
+        }
+
         @Override
         public CompletableFuture<Map<String, Object>> createTestPurchaseAsync(UUID playerUuid, String playerName, String itemId, long price, String actor) {
             return dbFuture("create donation test purchase", () -> tx(connection -> {

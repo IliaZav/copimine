@@ -13,7 +13,7 @@ scan_roots = [
     Path(r"D:\Desktop\Copimine\opt\copimine\docs\superpowers\plans"),
 ]
 extensions = {".java", ".py", ".js", ".yml", ".yaml", ".md"}
-skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", "backups", ".idea", ".mvn", "out"}
+skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", ".codex-venv", "backups", ".idea", ".mvn", "out"}
 bad_tokens = [
     "\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7",
     "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a",

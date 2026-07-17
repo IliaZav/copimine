@@ -13,5 +13,16 @@ curl -fsS http://127.0.0.1:8090/api/health >/dev/null || copimine_fail "/api/hea
 curl -fsS http://127.0.0.1:8090/api/runtime >/dev/null || copimine_fail "/api/runtime failed"
 curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip >/dev/null || copimine_fail "modpack download route failed"
 curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip >/dev/null || copimine_fail "resourcepack download route failed"
+tmp_modpack="$(mktemp /tmp/copimine-modpack-XXXXXX.zip)"
+tmp_resourcepack="$(mktemp /tmp/copimine-resourcepack-XXXXXX.zip)"
+trap 'rm -f "$tmp_modpack" "$tmp_resourcepack"' EXIT
+curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip -o "$tmp_modpack" || copimine_fail "modpack payload download failed"
+curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || copimine_fail "resourcepack payload download failed"
+local_modpack_sha="$(sha256sum "$COPIMINE_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
+remote_modpack_sha="$(sha256sum "$tmp_modpack" | awk '{print $1}')"
+[[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || copimine_fail "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"
+local_resourcepack_sha="$(sha256sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
+remote_resourcepack_sha="$(sha256sum "$tmp_resourcepack" | awk '{print $1}')"
+[[ "$local_resourcepack_sha" == "$remote_resourcepack_sha" ]] || copimine_fail "Served resourcepack SHA256 mismatch. Runtime=$local_resourcepack_sha download=$remote_resourcepack_sha"
 copimine_verify_runtime
 copimine_log "Verify complete"

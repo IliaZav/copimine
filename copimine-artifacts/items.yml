@@ -28,7 +28,7 @@
     supply_limit: 0
     per_player_limit: 1
     cooldown_seconds: 420
-    effect: HASTE_BURST_LONG
+    effect: MINER_3X3
     effect_chance_percent: 100
     visual_effect_id: PIXEL_WAVE
     lore:
@@ -149,12 +149,11 @@
     supply_limit: 0
     per_player_limit: 1
     cooldown_seconds: 360
-    effect: HASTE_BURST_LONG
+    effect: MINER_3X3
     effect_chance_percent: 100
     visual_effect_id: PIXEL_WAVE
     lore:
-      - "&7ПКМ в воздух: контролируемый буст добычи."
-      - "&7Не даёт глобальных авто-копателей и world-scan."
+      - "&7Копает 3x3."
 
   - id: craftsman_hammer
     category: TOOL
@@ -173,6 +172,41 @@
     lore:
       - "&7Даёт короткий рабочий буст по команде владельца."
       - "&7Не чинится на наковальне и не уходит в автокрафт."
+
+  - id: kozyrny_tuz_pozdnyakova
+    category: ARMOR
+    material: NETHERITE_LEGGINGS
+    source: ADMIN_ONLY
+    custom_model_data: 10013
+    name: "&6Козырный туз Позднякова"
+    rarity: ADMIN
+    price_ar: 5000
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 30
+    effect: POZDNYAKOV_ACE
+    effect_chance_percent: 100
+    visual_effect_id: DARK_PULSE
+    lore:
+      - "&7за помощь в развитии проекта CopiMine"
+
+  - id: eternal_totem
+    category: TOOL
+    material: TOTEM_OF_UNDYING
+    source: AR_SHOP
+    custom_model_data: 10008
+    name: "&6Тотем бессмертия — бесконечный"
+    rarity: LEGENDARY
+    price_ar: 7500
+    supply_limit: 0
+    per_player_limit: 1
+    cooldown_seconds: 0
+    effect: INFINITE_TOTEM
+    effect_chance_percent: 100
+    visual_effect_id: CHROMATIC_SHIFT
+    lore:
+      - "&7Срабатывает без расхода предмета."
+      - "&7Доступен только как AR-предмет."
 
 donation-catalog:
   catalog-version: 1
@@ -195,7 +229,7 @@ donation-catalog:
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20001
       visual-effect-id: DARK_PULSE
       lore:
         - "&7Тяжёлый PvP-предмет контроля."
@@ -217,7 +251,7 @@ donation-catalog:
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20002
       visual-effect-id: TUNNEL_VISION
       lore:
         - "&7Контрольная кирка с откатом ловушки."
@@ -239,7 +273,7 @@ donation-catalog:
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20003
       visual-effect-id: STATIC_NOISE
       lore:
         - "&7Налоговый карательный инструмент."
@@ -261,7 +295,7 @@ donation-catalog:
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20004
       visual-effect-id: PIXEL_WAVE
       lore:
         - "&7Шлем выжившего строителя."
@@ -283,7 +317,7 @@ donation-catalog:
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20005
       visual-effect-id: AMBER_WARP
       lore:
         - "&7Оборонительный жилет для затяжных драк."
@@ -305,7 +339,7 @@ donation-catalog:
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20006
       visual-effect-id: CHROMATIC_SHIFT
       lore:
         - "&7Щит для жёсткого ответа в ближнем бою."
@@ -327,7 +361,7 @@ donation-catalog:
       max-stack: 1
       repairable: false
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20007
       visual-effect-id: MOON_GLOW
       lore:
         - "&7Срабатывает как контролируемый emergency relic."
@@ -349,7 +383,7 @@ donation-catalog:
       max-stack: 1
       repairable: false
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20008
       visual-effect-id: COLD_FOG
       lore:
         - "&7Чистит ровно один допустимый дебафф."
@@ -365,17 +399,16 @@ donation-catalog:
       reclaim-policy: LOSS_ONLY
       consume-policy: PERSISTENT
       effect-profile-id: TAX_CLOCK
-      effect-description: "Показывает налоговый статус и даёт лёгкий utility/combat proc."
+      effect-description: "Отключает налоги владельца на 3 календарных месяца реального времени."
       cooldown-seconds: 20
       proc-chance: 0.15
       max-stack: 1
       repairable: false
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20009
       visual-effect-id: STATIC_NOISE
       lore:
-        - "&7Читает налоговый статус через bridge при доступности."
-        - "&7Небольшой utility-эффект в бою."
+        - "&7Освобождение от налогов на 3 месяца."
 
     - item-id: gde_moy_lut_blyat_compass
       display-name: "&6Компас \"Где мой лут, блять?\""
@@ -393,7 +426,7 @@ donation-catalog:
       max-stack: 1
       repairable: false
       custom-texture-mode-allowed: true
-      custom-model-data: 0
+      custom-model-data: 20010
       visual-effect-id: TUNNEL_VISION
       lore:
         - "&7Ищет только твою последнюю смерть."

@@ -19,5 +19,27 @@ foreach ($entry in $files.GetEnumerator()) {
   }
 }
 
+$playerFacingManifests = @(
+  'copimine-admin-plugin\plugin.yml',
+  'copimine-artifacts\plugin.yml',
+  'copimine-economy-core\plugin.yml',
+  'copimine-election-core\plugin.yml',
+  'copimine-narcotics\plugin.yml',
+  'copimine-world-core\plugin.yml',
+  'minecraft\server\plugins\AuthEffects\src\main\resources\plugin.yml'
+)
+
+foreach ($relativePath in $playerFacingManifests) {
+  $path = Join-Path $root $relativePath
+  if (-not (Test-Path -LiteralPath $path)) { continue }
+  $text = Get-Content -Raw -Encoding UTF8 $path
+  if ($text -match '(?im)^author:\s*.*(?:OpenAI|Codex)') {
+    $errors.Add("$relativePath exposes AI-generated author metadata.")
+  }
+  if ($text -match '(?im)^\s*description:\s*.*(?:Stable CopiMine|Open CopiMine|Manage CopiMine|CopiMine artifacts autocashier|Update artifact|Create artifact|Remove artifact|List artifact|Reload artifact|Change artifact|Give approved|Use artifact|Hide or restore|President broadcast|Full CopiMine|CIK chair|Adds temporary)') {
+    $errors.Add("$relativePath contains an untranslated technical description.")
+  }
+}
+
 if ($errors.Count -gt 0) { throw ("plugin.yml validation failed:`n - " + ($errors -join "`n - ")) }
 Write-Host 'plugin.yml validation passed for admin hub, ElectionCore, artifacts, Phase 1 narcotics and AuthEffects.'

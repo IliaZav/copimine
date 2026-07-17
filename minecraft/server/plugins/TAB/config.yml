@@ -1,103 +1,232 @@
 header-footer:
   enabled: true
   designs:
-    default:
+    world-test:
+      display-condition: '%world%=test'
       header:
+      - Test header in world 'test'
+      footer:
+      - Test footer in world 'test'
+    default:
+        header:
         - ""
         - ""
-        - "&f\uE300"
+        - "&f"
+        - ""
         - ""
         - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         - "&#c2c9cfПрезидент: &6%copimine_president%"
         - "&#c2c9cfОнлайн: &f%online% &#c2c9cfигроков &8┃ &#c2c9cfАдминов: &f%staffonline%"
         - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         - ""
-      footer:
+        footer:
         - ""
         - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         - "&#c2c9cfTPS: &f%tps% &8┃ &#c2c9cfMSPT: &f%mspt% &8┃ &#c2c9cfPing: &f%ping% ms"
         - "&8&m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        - ""
-
 tablist-name-formatting:
   enabled: true
-
+  disable-condition: '%world%=disabledworld'
 scoreboard-teams:
   enabled: true
   enable-collision: true
   invisible-nametags: false
   case-sensitive-sorting: true
   can-see-friendly-invisibles: false
+  disable-condition: '%world%=disabledworld'
   sorting-types:
-    - GROUPS:admin,president,curator,default
-    - PLACEHOLDER_A_TO_Z:%player%
-
+  - GROUPS:admin,president,curator,default
+  - PLACEHOLDER_A_TO_Z:%player%
 playerlist-objective:
   enabled: true
-  value: "%ping%"
-  fancy-value: "&7Ping: %ping%"
+  value: '%ping%'
+  fancy-value: '&7Ping: %ping%'
   title: TAB
   render-type: INTEGER
-
+  disable-condition: '%world%=disabledworld'
 belowname-objective:
   enabled: false
-  value: "%health%"
-  fancy-value: "&c%health%"
+  value: '%health%'
+  fancy-value: '&c%health%'
   fancy-value-default: NPC
-  title: "&cHealth"
-
+  title: '&cHealth'
+  disable-condition: '%world%=disabledworld'
+prevent-spectator-effect:
+  enabled: false
 bossbar:
   enabled: false
   toggle-command: /bossbar
   remember-toggle-choice: false
   hidden-by-default: false
-
+  bars:
+    ServerInfo:
+      style: PROGRESS
+      color: '%animation:barcolors%'
+      progress: '100'
+      text: '&fWebsite: &bwww.domain.com'
+scoreboard:
+  enabled: false
+  toggle-command: /sb
+  remember-toggle-choice: false
+  hidden-by-default: false
+  delay-on-join-milliseconds: 0
+  scoreboards:
+    scoreboard-1.20.3+:
+      title: <#E0B11E>MyServer</#FF0000>
+      display-condition: '%player-version-id%>=765;%bedrock%=false'
+      lines:
+      - '&7%date%'
+      - '%animation:MyAnimation1%'
+      - '&6Online:'
+      - '* &eOnline&7:||%online%'
+      - '* &eCurrent World&7:||%worldonline%'
+      - '* &eStaff&7:||%staffonline%'
+      - ''
+      - '&6Personal Info:'
+      - '* &bRank&7:||%group%'
+      - '* &bPing&7:||%ping%&8ms'
+      - '* &bWorld&7:||%world%'
+      - '%animation:MyAnimation1%'
+    scoreboard:
+      title: <#E0B11E>MyServer</#FF0000>
+      lines:
+      - '&7%date%'
+      - '%animation:MyAnimation1%'
+      - '&6Online:'
+      - '* &eOnline&7: &f%online%'
+      - '* &eCurrent World&7: &f%worldonline%'
+      - '* &eStaff&7: &f%staffonline%'
+      - ''
+      - '&6Personal Info:'
+      - '* &bRank&7: &f%group%'
+      - '* &bPing&7: &f%ping%&8ms'
+      - '* &bWorld&7: &f%world%'
+      - '%animation:MyAnimation1%'
 layout:
   enabled: false
   direction: COLUMNS
   default-skin: mineskin:37e93c8e12cd426cb28fce31969e0674
   enable-remaining-players-text: true
-  remaining-players-text: "... and %s more"
+  remaining-players-text: '... and %s more'
   empty-slot-ping-value: 1000
-
+  layouts:
+    default:
+      slot-count: 80
+      fixed-slots:
+      - '1|&3Website&f:'
+      - 2|&bmyserver.net
+      - '3|&8&m                       '
+      - '4|&3Name&f:'
+      - 5|&b%player%
+      - '7|&3Rank&f:'
+      - '8|Rank: %group%'
+      - '10|&3World&f:'
+      - 11|&b%world%
+      - '13|&3Time&f:'
+      - 14|&b%time%
+      - '21|&3Teamspeak&f:'
+      - 22|&bts.myserver.net
+      - '23|&8&m                       '
+      - '41|&3Store&f:'
+      - 42|&bshop.myserver.net
+      - '43|&8&m                       '
+      groups:
+        staff:
+          display-condition: permission:tab.staff
+          slots:
+          - 24-40
+        players:
+          slots:
+          - 44-80
 ping-spoof:
   enabled: false
-
+  value: 0
+global-playerlist:
+  enabled: false
+  display-others-as-spectators: false
+  display-vanished-players-as-spectators: true
+  isolate-unlisted-servers: false
+  update-latency: false
+  spy-servers:
+  - spyserver1
+  - spyserver2
+  server-groups:
+    lobbies:
+    - lobby1
+    - lobby2
+    group2:
+    - server1
+    - server2
 placeholders:
   date-format: dd.MM.yyyy
-  time-format: "[HH:mm:ss / h:mm a]"
+  time-format: '[HH:mm:ss / h:mm a]'
   time-offset: 0
   register-tab-expansion: false
   locale: en-US
-
 placeholder-output-replacements:
-  "%essentials_vanished%":
-    "yes": "&7| Vanished"
-    "no": ""
-  "%copimine_president%":
-    "": "&6не выбран"
-    "не выбран": "&6не выбран"
-    "не избран": "&6не выбран"
-    "none": "&6не выбран"
-    "null": "&6не выбран"
-
-assign-groups-by-permissions: false
-
-primary-group-finding-list:
-  - owner
-  - admin
-  - president
-  - curator
-  - default
-
-permission-refresh-interval: 1000
-debug: false
-
+  '%essentials_vanished%':
+    'yes': '&7| Vanished'
+    'no': ''
+conditions:
+  nick:
+    conditions:
+    - '%player%=%essentials_nickname%'
+    true: '%player%'
+    false: ~%essentials_nickname%
 placeholder-refresh-intervals:
-  default-refresh-interval: 500
-  "%server_tps_1_colored%": 1000
-  "%player_ping%": 1000
-  "%vault_prefix%": 1000
-
+  default-refresh-interval: 2000
+  '%server_uptime%': 1000
+  '%server_tps_1_colored%': 1000
+  '%server_unique_joins%': 5000
+  '%player_health%': 200
+  '%player_ping%': 1000
+  '%vault_prefix%': 1000
+  '%rel_factionsuuid_relation_color%': 1000
+assign-groups-by-permissions: false
+primary-group-finding-list:
+- Owner
+- Admin
+- Mod
+- Helper
+- default
+permission-refresh-interval: 3000
+debug: false
+mysql:
+  enabled: false
+  host: 127.0.0.1
+  port: 3306
+  database: tab
+  username: user
+  password: password
+  useSSL: true
+proxy-support:
+  enabled: true
+  channel-name-suffix: TAB
+  type: PLUGIN
+  plugin:
+    name: RedisBungee
+  redis:
+    url: redis://:password@localhost:6379/0
+  rabbitmq:
+    exchange: plugin
+    url: amqp://guest:guest@localhost:5672/%2F
+components:
+  minimessage-support: true
+  disable-shadow-for-heads: true
+config-version: 6
+per-world-playerlist:
+  enabled: false
+  allow-bypass-permission: false
+  ignore-effect-in-worlds:
+  - ignoredworld
+  - build
+  shared-playerlist-world-groups:
+    lobby:
+    - lobby1
+    - lobby2
+    minigames:
+    - paintball
+    - bedwars
+compensate-for-packetevents-bug: false
 use-bukkit-permissions-manager: false
 use-online-uuid-in-tablist: true

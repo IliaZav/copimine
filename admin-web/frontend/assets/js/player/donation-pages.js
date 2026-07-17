@@ -2,6 +2,7 @@ import { appRouteHref } from "../shared/app-routes.js";
 
 export function createPlayerDonationPages(deps) {
   const {
+    $,
     state,
     setLoading,
     api,
@@ -30,8 +31,83 @@ export function createPlayerDonationPages(deps) {
     toast,
   } = deps;
 
+  let lastShopPayload = null;
+
   function paymentModeLabel(value) {
     return String(value || "").toUpperCase() === "MOCK_SBP" ? "Тестовая оплата" : String(value || "Тестовая оплата");
+  }
+
+  function donationItemId(row) {
+    return String(row?.item_id || "").trim();
+  }
+
+  function donationItemTitle(row) {
+    return cleanText(row?.display_name || row?.item_id || "предмет");
+  }
+
+  function donationItemPrice(row) {
+    return number(row?.price_donation || 0);
+  }
+
+  function donationItemOption(row, selectedId) {
+    const id = donationItemId(row);
+    if (!id) return "";
+    const selected = id === selectedId ? " selected" : "";
+    return `<option value="${esc(id)}"${selected}>${esc(donationItemTitle(row))} · ${esc(formatDonate(donationItemPrice(row)))}</option>`;
+  }
+
+  function resolveSelectedDonationItem(rows) {
+    const enabled = asArray(rows).filter((row) => row.enabled !== false);
+    const selectedId = String(state.playerDonationSelectedItemId || "").trim().toLowerCase();
+    return enabled.find((row) => donationItemId(row).toLowerCase() === selectedId) || enabled[0] || rows[0] || null;
+  }
+
+  function donationPurchaseCard(rows, balance) {
+    const selected = resolveSelectedDonationItem(rows);
+    const selectedId = donationItemId(selected);
+    state.playerDonationSelectedItemId = selectedId;
+    const enoughBalance = selected ? number(balance.balance || 0) >= donationItemPrice(selected) : false;
+    const pinReady = true;
+    const helper = !selected
+      ? "Каталог donation сейчас пуст."
+      : selected.owned_active
+        ? "Этот предмет уже активен у игрока."
+        : selected.claim_available
+          ? "Этот предмет уже куплен и ждёт выдачи в игре."
+          : enoughBalance
+            ? "Введи PIN и подтверди покупку."
+            : "На donation-балансе не хватает средств.";
+    return `
+      <article class="artifact-purchase-card">
+        <div class="artifact-purchase-head">
+          <span>Donation-лавка</span>
+          <strong>${selected ? esc(donationItemTitle(selected)) : "Нет предметов"}</strong>
+          <p>${esc(helper)}</p>
+        </div>
+        <div class="artifact-purchase-price">
+          <span>Цена</span>
+          <strong>${selected ? esc(formatDonate(donationItemPrice(selected))) : "—"}</strong>
+        </div>
+        <div class="form-grid artifact-buy-form">
+          <div class="field-stack full">
+            <label for="playerDonationItemSelect">Предмет</label>
+            <select id="playerDonationItemSelect" data-input="playerSelectDonationItem">${asArray(rows).filter((row) => row.enabled !== false).map((row) => donationItemOption(row, selectedId)).join("")}</select>
+          </div>
+          <div class="field-stack">
+            <label for="playerDonationPin">PIN банка</label>
+            <input id="playerDonationPin" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="PIN" />
+          </div>
+          <div class="field-stack artifact-buy-action">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary" data-click="playerBuyDonationItem()"${selected && !selected.owned_active && !selected.claim_available && pinReady && enoughBalance ? "" : " disabled"}>Подтвердить покупку</button>
+          </div>
+        </div>
+        <div class="artifact-buy-note">
+          <span>Выдача</span>
+          <code>только в игре через donation shop</code>
+        </div>
+      </article>
+    `;
   }
 
   async function loadPlayerDonationBalance() {
@@ -135,6 +211,7 @@ export function createPlayerDonationPages(deps) {
       safeApi("/api/player/donation/balance", { balance: 0 }),
     ]);
 
+    lastShopPayload = { catalog, balance };
     const rows = asArray(catalog.items).map((row) => {
       const status = row.owned_active
         ? "Уже у тебя"
@@ -144,7 +221,7 @@ export function createPlayerDonationPages(deps) {
         : row.claim_available
           ? `<button class="btn btn-secondary btn-small" data-click="setTab('donation-items')">Забрать в игре</button>`
           : row.enabled
-            ? `<button class="btn btn-primary btn-small" data-click='playerBuyDonationItem(${JSON.stringify(String(row.item_id || ""))}, ${JSON.stringify(cleanText(row.display_name || "предмет"))}, ${number(row.price_donation || 0)})'>Купить</button>`
+            ? `<button class="btn btn-secondary btn-small" data-click='playerSelectDonationItem(${JSON.stringify(String(row.item_id || ""))})'>Выбрать</button>`
             : `<span class="btn btn-secondary btn-small disabled">Отключён</span>`;
       return {
         ...row,
@@ -169,6 +246,14 @@ export function createPlayerDonationPages(deps) {
         ${metric("Готово к выдаче", rows.filter((row) => row.claim_available).length, "Можно забрать в игре", rows.some((row) => row.claim_available) ? "warn" : "good")}
         ${metric("Активные", rows.filter((row) => row.owned_active).length, "Сейчас у игрока", rows.some((row) => row.owned_active) ? "good" : "neutral")}
       </section>
+      <section class="layout-grid grid-2 artifact-workbench">
+        ${donationPurchaseCard(rows, balance)}
+        ${panel("Порядок", "Покупка и возврат.", safetyRail([
+          ["Покупка", "Donation списывается сразу после проверки PIN.", "good"],
+          ["Выдача", "Предмет выдаётся в игре через donation shop.", "warn"],
+          ["Пополнение", "Если donation не хватает, сначала пополни баланс.", "neutral"],
+        ]), `<button class="btn btn-secondary" data-click="setTab('donation-balance')">Открыть donation-баланс</button>`)}
+      </section>
       ${panel("Donation-лавка", "Покупка на сайте. Выдача в игре.", `
         ${focusItemId ? `<div class="notice">Открыт товар по прямой ссылке: <strong>${esc(focusItemId)}</strong>.</div>` : ""}
         ${table("player-donation-shop", rows, [
@@ -180,10 +265,10 @@ export function createPlayerDonationPages(deps) {
           { key: "action_html", label: "Действие", render: (value) => value },
         ], { pageSize: 10 })}
       `)}
-      ${panel("Порядок", "Покупка и возврат.", safetyRail([
-        ["Покупка", "После списания donation появится запись на выдачу.", "good"],
-        ["Выдача", "Предмет выдаётся через игровую donation-лавку.", "warn"],
-        ["Возврат", "Утерянный предмет возвращается через отдельный экран.", "neutral"],
+      ${panel("Возврат", "Как работает выдача и возврат.", safetyRail([
+        ["К выдаче", "После покупки появится запись на выдачу.", "good"],
+        ["Забрать", "Забирать и проверять статус нужно в игре.", "warn"],
+        ["Возврат", "Утерянные donation-предметы обслуживаются отдельно.", "neutral"],
       ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои donation-предметы</button>`)}
     `);
   }
@@ -272,14 +357,25 @@ export function createPlayerDonationPages(deps) {
     await copyText(`${location.origin}${appRouteHref("donation-balance", { session: state.donationSessionId })}`, "Ссылка оплаты скопирована");
   }
 
-  async function playerBuyDonationItem(itemId, displayName = "предмет", price = 0) {
+  function playerSelectDonationItem(itemId) {
+    state.playerDonationSelectedItemId = String(itemId || "").trim();
+    if (lastShopPayload) {
+      void loadPlayerDonationShop();
+    }
+  }
+
+  async function playerBuyDonationItem(itemId = "") {
     try {
-      const cleanName = cleanText(displayName || itemId || "предмет");
+      const selected = String(itemId || state.playerDonationSelectedItemId || $("playerDonationItemSelect")?.value || "").trim();
+      const pin = $("playerDonationPin")?.value?.trim() || "";
+      if (!selected) return toast("Выбери donation-предмет.", true);
+      if (!pin) return toast("Введи PIN банка.", true);
       const result = await api("/api/player/shop/purchase-intent", {
         method: "POST",
-        body: JSON.stringify({ item_id: String(itemId || ""), idempotency_key: randomActionKey("don-buy") }),
+        body: JSON.stringify({ item_id: selected, pin, idempotency_key: randomActionKey("don-buy") }),
       });
-      toast(`Покупка создана: ${cleanText(result.itemId || cleanName)}. Забери предмет в игре.`);
+      if ($("playerDonationPin")) $("playerDonationPin").value = "";
+      toast(`Покупка создана: ${cleanText(result.itemId || selected)}. Забери предмет в игре.`);
       await loadPlayerDonationShop();
     } catch (err) {
       toast(err.message, true);
@@ -295,6 +391,7 @@ export function createPlayerDonationPages(deps) {
     playerForgetDonationSession,
     playerCopyDonationSessionCode,
     playerCopyDonationPaymentUrl,
+    playerSelectDonationItem,
     playerBuyDonationItem,
   };
 }

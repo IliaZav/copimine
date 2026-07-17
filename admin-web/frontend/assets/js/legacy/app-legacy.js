@@ -4236,6 +4236,7 @@ function getPlayerArtifactPages() {
 function getPlayerDonationPages() {
   if (!playerDonationPages) {
     playerDonationPages = createPlayerDonationPages({
+      $,
       state,
       setLoading,
       api,
@@ -4290,6 +4291,8 @@ window.playerCopyDonationSessionCode = async () => getPlayerDonationPages().play
 window.playerCopyDonationPaymentUrl = async () => getPlayerDonationPages().playerCopyDonationPaymentUrl();
 window.playerBuyDonationItem = async (itemId, displayName = "предмет", price = 0) =>
   getPlayerDonationPages().playerBuyDonationItem(itemId, displayName, price);
+window.playerSelectDonationItem = async (itemId = "") =>
+  getPlayerDonationPages().playerSelectDonationItem(itemId);
 window.playerSetPin = async () => getPlayerTreasuryPages().playerSetPin();
 window.playerTransfer = async () => getPlayerTreasuryPages().playerTransfer();
 window.selectPlayerBankScope = async (scope = "PERSONAL") => getPlayerTreasuryPages().selectPlayerBankScope(scope);
@@ -4579,6 +4582,7 @@ Object.assign(dataClickHandlers, {
   playerActionFromPanel: fromWindow("playerActionFromPanel"),
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
+  playerSelectDonationItem: fromWindow("playerSelectDonationItem"),
   playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
   playerCopyDonationPaymentUrl: fromWindow("playerCopyDonationPaymentUrl"),
   playerCopyDonationSessionCode: fromWindow("playerCopyDonationSessionCode"),

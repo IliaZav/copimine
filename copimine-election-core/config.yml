@@ -34,5 +34,5 @@ president-tax:
   enabled: true
   payment-interval-hours: 24
   min-amount-ar: 0
-  max-amount-ar: 50
+  max-amount-ar: 5
   recipient: "active_president"

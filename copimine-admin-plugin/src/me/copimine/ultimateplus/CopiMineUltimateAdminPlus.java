@@ -85,6 +85,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private final AtomicBoolean arSyncQueued = new AtomicBoolean(false);
     private final Map<UUID, ArDropClaim> arTransferClaims = new ConcurrentHashMap<>();
     private final Map<UUID, PendingBugReport> pendingBugReports = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> reportCooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, String> clientBrands = new ConcurrentHashMap<>();
     private final Set<String> arEligibleBreaks = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean sidebarRefreshInFlight = new AtomicBoolean(false);
@@ -152,6 +153,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private static final String ELECTION_SIDEBAR_RENDER_FAILED = "ELECTION_SIDEBAR_RENDER_FAILED";
     private static final int MODEL_ATM_TERMINAL = 12002;
     private static final long ELECTION_ROLE_CACHE_TTL_MS = 30_000L;
+    private static final long REPORT_COOLDOWN_MS = 60_000L;
+    private static final long BUG_REPORT_CONTEXT_TTL_MS = 10L * 60L * 1000L;
 
     static final class Menu implements InventoryHolder {
         final String id;
@@ -766,7 +769,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             try { handle(p,e.getClick(),a,menu.id); }
             catch(Exception ex) {
                 notifyPlayerBug(p,"gui",menu.id+" -> "+a,ex,e.getCurrentItem(),p.getLocation());
-                getLogger().warning("gui menu="+menu.id+" action="+a+" player="+p.getName()+" error="+safeErr(ex));
+                getLogger().warning("gui: "+safeErr(ex));
             }
             return;
         }
@@ -789,12 +792,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemClick(InventoryClickEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
+        ItemStack cursor=e.getCursor(), current=e.getCurrentItem(), hotbar=null;
+        if(e.getClick()==ClickType.NUMBER_KEY&&e.getHotbarButton()>=0)hotbar=p.getInventory().getItem(e.getHotbarButton());
+        boolean officialArCreativeTouch=p.getGameMode()==GameMode.CREATIVE&&(isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar));
+        if(officialArCreativeTouch&&(e.getClick()==ClickType.CREATIVE||e.getClick()==ClickType.MIDDLE||e.getClick()==ClickType.DOUBLE_CLICK||e.getAction()==InventoryAction.CLONE_STACK||e.getAction()==InventoryAction.COLLECT_TO_CURSOR)){
+            e.setCancelled(true);
+            p.updateInventory();
+            warn(p,"Официальный AR нельзя дублировать, собирать или клонировать в creative.");
+            return;
+        }
         Inventory top=e.getView().getTopInventory();
         if(top==null||top.getHolder() instanceof Menu||!isRestrictedTop(top))return;
         int raw=e.getRawSlot(), topSize=top.getSize();
         boolean clickedTop=raw>=0&&raw<topSize, clickedBottom=raw>=topSize;
-        ItemStack cursor=e.getCursor(), current=e.getCurrentItem(), hotbar=null;
-        if(e.getClick()==ClickType.NUMBER_KEY&&e.getHotbarButton()>=0)hotbar=p.getInventory().getItem(e.getHotbarButton());
         boolean arRestricted=isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar);
         if(arRestricted)queueArSync("AR_RESTRICTED_INVENTORY_TOUCH");
         boolean cursorRestricted=isRestrictedInventoryItem(cursor), currentRestricted=isRestrictedInventoryItem(current), hotbarRestricted=isRestrictedInventoryItem(hotbar);
@@ -851,13 +861,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onOfficialArCreative(InventoryCreativeEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
-        if(!isOfficialArItem(e.getCursor())&&!isOfficialArItem(e.getCurrentItem()))return;
-        Inventory clicked=e.getClickedInventory();
-        boolean playerInventory=clicked!=null&&clicked.equals(e.getView().getBottomInventory());
-        if(playerInventory&&e.getAction()!=InventoryAction.CLONE_STACK&&e.getClick()!=ClickType.CREATIVE){
-            queueArSync("AR_CREATIVE_PLAYER_MOVE");
-            return;
-        }
+        ItemStack hotbar=null;
+        if(e.getHotbarButton()>=0)hotbar=p.getInventory().getItem(e.getHotbarButton());
+        if(!isOfficialArItem(e.getCursor())&&!isOfficialArItem(e.getCurrentItem())&&!isOfficialArItem(hotbar))return;
         e.setCancelled(true);
         p.updateInventory();
         warn(p,"Официальный AR нельзя создавать или клонировать через creative-инвентарь.");
@@ -983,8 +989,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private boolean openArtifactsShopHub(Player p){
-        if(isRestrictedJuniorAdmin(p)){
-            warn(p,"Младшему админу недоступно управление лавками.");
+        if(!hasAnyAdmin(p)){
+            warn(p,"Доступ к лавкам закрыт.");
             return false;
         }
         Plugin plugin=Bukkit.getPluginManager().getPlugin("CopiMineArtifacts");
@@ -4915,11 +4921,37 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return true;
     }
 
+    private boolean allowReportSubmission(Player player){
+        long current=now();
+        long until=reportCooldowns.getOrDefault(player.getUniqueId(),0L);
+        if(until>current){
+            warn(player,"Подожди немного перед следующим обращением.");
+            return false;
+        }
+        reportCooldowns.put(player.getUniqueId(),current+REPORT_COOLDOWN_MS);
+        return true;
+    }
+    private PendingBugReport activePendingBugReport(Player player){
+        PendingBugReport pending=pendingBugReports.get(player.getUniqueId());
+        if(pending!=null&&now()-pending.createdAt()>BUG_REPORT_CONTEXT_TTL_MS){
+            pendingBugReports.remove(player.getUniqueId(),pending);
+            warn(player,"Срок действия кода отчёта истёк. Дождись нового сообщения об ошибке.");
+            return null;
+        }
+        return pending;
+    }
     private void handleReport(CommandSender sender,String[] args)throws Exception{
         if(!(sender instanceof Player p)){warn(sender,"Only an in-game player can create a report.");return;}
         if(args.length==0){warn(p,"Напиши текст обращения: /report <проблема>");return;}
         String text=String.join(" ",args).trim();
+        text=clipped(text,1000);
         if(text.length()<3){warn(p,"Слишком короткое обращение.");return;}
+        if(!allowReportSubmission(p)){return;}
+        long duplicateCutoff=now()-REPORT_COOLDOWN_MS;
+        if(scalarLong("SELECT COUNT(*) FROM admin_requests WHERE player_uuid=? AND message=? AND status='OPEN' AND created_at>=?",p.getUniqueId().toString(),text,duplicateCutoff)>0){
+            msg(p,"&eПохожее обращение уже отправлено и находится в очереди.");
+            return;
+        }
         String id=UUID.randomUUID().toString();
         long n=now();
         Location l=p.getLocation();
@@ -4935,7 +4967,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             warn(p,"Напиши текст обращения: /reporta <что произошло>");
             return true;
         }
-        PendingBugReport pending=pendingBugReports.get(p.getUniqueId());
+        PendingBugReport pending=activePendingBugReport(p);
         if(pending!=null){
             int noteStart=args[0].equalsIgnoreCase(pending.token())?1:0;
             if(args.length<=noteStart){
@@ -4950,7 +4982,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean handleBugReportCommand(CommandSender sender,String[] args)throws Exception{
         if(!(sender instanceof Player p)){warn(sender,"Эта команда доступна только из игры."); return true;}
         if(args.length<2){warn(p,"Нет кода отчёта. Нажмите кнопку из чата после ошибки."); return true;}
-        PendingBugReport pending=pendingBugReports.get(p.getUniqueId());
+        PendingBugReport pending=activePendingBugReport(p);
         if(pending==null||!pending.token().equalsIgnoreCase(args[1].trim())){
             warn(p,"Отчёт уже отправлен или срок действия истёк.");
             return true;
@@ -4959,16 +4991,18 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return submitBugReport(p,pending,playerNote);
     }
     private boolean submitBugReport(Player p,PendingBugReport pending,String playerNote)throws Exception{
+        if(!allowReportSubmission(p)){return true;}
         pendingBugReports.remove(p.getUniqueId());
         String requestId=UUID.randomUUID().toString();
         long createdAt=now();
         String snapshot="world="+pending.world()+" x="+pending.x()+" y="+pending.y()+" z="+pending.z()+" item="+first(pending.itemType(),"AIR")+" source="+pending.source()+" action="+pending.action()+" error="+pending.exceptionClass()+" summary="+pending.errorSummary();
         String visibleNote=first(playerNote,"Игрок отправил лог без отдельного описания.");
+        visibleNote=clipped(visibleNote,1000);
         String message="[BUG "+pending.token()+"] "+visibleNote;
         exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?)",
                 requestId,pending.playerUuid(),pending.playerName(),message,createdAt,createdAt,snapshot);
         audit(pending.playerName(),"BUG_REPORT_CREATE",requestId+" "+pending.source()+" "+pending.action(),true);
-        pluginEvent("adminplus","BUG_REPORT_CREATE",pending.playerName(),requestId,"token="+pending.token()+" source="+pending.source()+" action="+pending.action()+" note="+clipped(visibleNote,160));
+        pluginEvent("adminplus","BUG_REPORT_CREATE",pending.playerName(),requestId,"code="+pending.token()+" source="+pending.source()+" action="+pending.action()+" note="+clipped(visibleNote,160));
         pushBackendBugArtifactsAsync(pending, requestId, message);
         msg(p,"&aОтчёт отправлен администрации. Код: &e"+pending.token()+" &8| &7ID: &f"+shortId(requestId));
         staffNotify("&cНовый баг-репорт от &f"+pending.playerName()+"&c: &f"+pending.source()+" &8| &7"+pending.action());
@@ -5576,10 +5610,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String exceptionClass=first(error==null?"":error.getClass().getSimpleName(),"unknown");
         PendingBugReport pending=new PendingBugReport(token,first(source,"unknown"),first(action,"unknown"),player.getUniqueId().toString(),player.getName(),world,x,y,z,itemType,errorSummary,exceptionClass,details,actionId,now());
         pendingBugReports.put(player.getUniqueId(),pending);
-        getLogger().warning("player-bug actionId="+actionId+" token="+token+" player="+player.getName()+" source="+source+" action="+action+" world="+world+" x="+x+" y="+y+" z="+z+" item="+itemType+" error="+details);
+        getLogger().warning("player-bug actionId="+actionId+" player="+player.getName()+" source="+source+" action="+action+" world="+world+" x="+x+" y="+y+" z="+z+" item="+itemType+" error="+details);
         pluginEvent("adminplus","PLAYER_BUG_DETECTED",player.getName(),token,"actionId="+actionId+" source="+source+" action="+action+" item="+itemType+" error="+details);
         player.sendTitle(c("&6Поздравляем, вы нашли баг"),c("&fОбратитесь к админу за вознаграждением"),10,80,15);
-        warn(player,"Error code: &f"+token+"&c. "+errorSummary+" &8| &7Type: &f"+exceptionClass);
+        warn(player,"Error code: &f"+token+"&c. "+errorSummary);
         msg(player,"&7Нажмите кнопку ниже: команда &f/reporta &7откроется в чате, а лог приложится только после отправки.");
         var button = new ComponentBuilder("")
                 .append(TextComponent.fromLegacyText(c("&c[Отправить отчёт о баге]")))
@@ -5798,7 +5832,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 notifyPlayerBug(p,"command","/"+command.getName()+" "+String.join(" ",args),e,p.getInventory().getItemInMainHand(),p.getLocation());
             }else{
                 warn(sender,"Не удалось выполнить команду. Подробности записаны в лог.");
-                getLogger().warning("cmd root="+command.getName()+" args="+Arrays.toString(args)+" error="+safeErr(e));
+                getLogger().warning("cmd: "+safeErr(e));
             }
         }
         return true;

@@ -136,6 +136,7 @@ const state = {
   donationBusy: false,
   playerBankScope: getStoredUiState("copiminePlayerBankScope", "PERSONAL") || "PERSONAL",
   adminSearchQuery: "",
+  adminSearchOpen: false,
   adminSearchTarget: "",
   adminSearchNeedle: "",
   adminSearchHighlightTimer: null
@@ -216,7 +217,7 @@ const navGroups = [
       ["players", "Игроки", "Профили и действия", "И"],
       ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
       ["economy", "Банк и AR", "Счета, переводы и покупки", "Б"],
-      ["artifacts", "Лавки артефактов", "Каталог, покупки и выдача", "А"],
+      ["artifacts", "Лавки", "Каталог, точки в мире, покупки и выдача", "Л"],
       ["elections", "Выборы", "ЦИК, президент и результаты", "В"]
     ]
   },
@@ -248,6 +249,17 @@ const navGroups = [
 const pageMeta = Object.fromEntries(
   navGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );
+
+navGroups[0].items.splice(4, 0, [
+  "shops",
+  "\u041b\u0430\u0432\u043a\u0438",
+  "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c",
+  "L"
+]);
+pageMeta.shops = {
+  title: "\u041b\u0430\u0432\u043a\u0438",
+  subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c"
+};
 
 const playerNavGroups = [
   {
@@ -317,6 +329,7 @@ const adminSearchAliases = {
 };
 
 const adminSearchSectionItems = [
+  { id: "economy", target: "", title: "Накрутка AR и Donation", subtitle: "Точный баланс игрока, пополнение и журнал изменений", group: "Банк и AR", haystack: "накрутка пополнение баланс валюта ар ar donation донат донатная валюта edit balance topup economy", focusNeedle: "Баланс игрока" },
   { id: "economy", target: "economy-treasury", title: "Казна и счета", subtitle: "Казна, банковые счета и переводы", group: "Банк и AR", haystack: "казна счета ar переводы treasury account bank", focusNeedle: "Казна" },
   { id: "economy", target: "economy-treasury-pin", title: "PIN казны", subtitle: "Настройка PIN казны", group: "Банк и AR", haystack: "pin казны treasury pin казна пароль банка", focusNeedle: "PIN казны" },
   { id: "artifacts", target: "artifacts-shop", title: "Лавка артефактов", subtitle: "Каталог, покупки и выдача", group: "Лавки", haystack: "лавка артефакты магазин покупки выдача витрина", focusNeedle: "Лавки артефактов" },
@@ -329,6 +342,17 @@ const adminSearchSectionItems = [
   { id: "cms", target: "cms-content", title: "CMS и баннеры", subtitle: "Тексты, баннеры и страницы", group: "CMS", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "CMS" },
   { id: "settings", target: "settings-site", title: "Настройки сайта", subtitle: "Публичные параметры и конфиги", group: "Система", haystack: "настройки сайт конфиг resourcepack modpack", focusNeedle: "Настройки" },
 ];
+
+adminSearchAliases.shops = "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d \u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442\u044b donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433 \u0446\u0435\u043d\u044b \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c";
+adminSearchSectionItems.unshift({
+  id: "shops",
+  target: "shops-overview",
+  title: "\u041b\u0430\u0432\u043a\u0438",
+  subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438 \u0432 \u043e\u0434\u043d\u043e\u043c \u0440\u0430\u0437\u0434\u0435\u043b\u0435",
+  group: "\u041b\u0430\u0432\u043a\u0438",
+  haystack: "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433",
+  focusNeedle: "\u041b\u0430\u0432\u043a\u0438"
+});
 
 function fuzzyContains(text, query) {
   const normalized = cleanText(text).toLowerCase().replace(/ё/g, "е");
@@ -1814,6 +1838,7 @@ function renderNav() {
 function openAdminSearchResult(tab, target = "", needle = "") {
   state.adminSearchTarget = String(target || "");
   state.adminSearchNeedle = String(needle || "");
+  state.adminSearchOpen = false;
   setTab(tab);
 }
 
@@ -1867,19 +1892,52 @@ function renderAdminSearchDock() {
     workspace.insertBefore(dock, view || null);
   }
   const query = state.adminSearchQuery || "";
+  let toggle = $("adminSearchToggle");
+  let panel = $("adminSearchPanel");
+  let input = $("adminGlobalSearch");
+  let list = $("adminSearchResults");
+  if (!toggle || !panel || !input || !list) {
+    toggle = makeElement("button", "admin-search-fab", "⌕");
+    toggle.id = "adminSearchToggle";
+    toggle.type = "button";
+    toggle.setAttribute("aria-label", "Открыть поиск по админке");
+    toggle.setAttribute("data-click", "toggleAdminSearchDock()");
+
+    panel = makeElement("div", "admin-search-panel");
+    panel.id = "adminSearchPanel";
+
+    const label = makeElement("label", "admin-search-box");
+    label.append(makeElement("span", "", "Поиск по админке"));
+
+    input = makeElement("input");
+    setAttributes(input, {
+      id: "adminGlobalSearch",
+      "data-input": "adminGlobalSearch",
+      placeholder: "банк, накрутка, рецепты, игроки...",
+      autocomplete: "off"
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        state.adminSearchOpen = false;
+        renderAdminSearchDock();
+      }
+    });
+    label.append(input);
+
+    list = makeElement("div", "admin-search-results");
+    list.id = "adminSearchResults";
+    panel.append(label, list);
+    replaceChildrenSafe(dock, [toggle, panel]);
+  }
   const results = adminSearchItems().filter(item => fuzzyContains(item.haystack, query)).slice(0, 7);
-  const label = makeElement("label", "admin-search-box");
-  label.append(makeElement("span", "", "Поиск по админке"));
-  const input = makeElement("input");
-  setAttributes(input, {
-    id: "adminGlobalSearch",
-    "data-input": "adminGlobalSearch",
-    value: query,
-    placeholder: "банк, рецепты, игроки...",
-    autocomplete: "off"
-  });
-  label.append(input);
-  const list = makeElement("div", "admin-search-results");
+  const keepOpen = Boolean(state.adminSearchOpen || query);
+  dock.classList.toggle("is-open", keepOpen);
+  toggle.setAttribute("aria-expanded", keepOpen ? "true" : "false");
+  toggle.textContent = keepOpen ? "×" : "⌕";
+  panel.setAttribute("aria-hidden", keepOpen ? "false" : "true");
+  input.tabIndex = keepOpen ? 0 : -1;
+  if (input.value !== query) input.value = query;
+  replaceChildrenSafe(list, []);
   if (results.length) {
     results.forEach((item) => {
       const button = makeElement("button", state.tab === item.id ? "active" : "");
@@ -1892,7 +1950,9 @@ function renderAdminSearchDock() {
   } else {
     list.append(makeElement("p", "", "Ничего не найдено."));
   }
-  replaceChildrenSafe(dock, [label, list]);
+  if (keepOpen && document.activeElement !== input) {
+    requestAnimationFrame(() => input.focus({ preventScroll: true }));
+  }
 }
 
 function tabNavigationParams(tab) {
@@ -2706,6 +2766,11 @@ window.clearSelectedPlayer = async () => {
   await loadPlayers();
 };
 
+window.toggleAdminSearchDock = (force) => {
+  state.adminSearchOpen = typeof force === "boolean" ? force : !state.adminSearchOpen;
+  renderAdminSearchDock();
+};
+
 async function playerDetailsHtml(player) {
   if (!player) return empty("Игрок не выбран", "Выбери игрока в списке слева.");
   const detail = await safeApi(`/api/players/${encodeURIComponent(player)}/full?limit=120`, {
@@ -2795,6 +2860,7 @@ async function playerDetailsHtml(player) {
     : `<div class="notice">Младший админ может просматривать профиль, инвентарь и историю, но не выполнять опасные действия.</div>`;
   const site = profile.siteAccount || {};
   const bank = profile.bank || {};
+  const donationAccount = profile.donation || {};
   const pin = profile.pin || {};
   const pinState = bankPinState(pin);
   const canManagePins = hasFullAdminAccess();
@@ -2897,12 +2963,13 @@ function renderPlayerFullDetails(player, detail, ctx) {
   const pinState = bankPinState(pin);
   const canManagePins = hasFullAdminAccess();
   const donationCurrent = number(
-    donationLedger[0]?.balance_after
+    donationAccount.balance
+      ?? donationLedger[0]?.balance_after
       ?? donationLedger[0]?.balanceAfter
       ?? donationSessions[0]?.balance_after
       ?? 0
   );
-  const arCurrent = number(bank.balance || 0);
+  const arCurrent = number(Math.max(number(bank.balance || 0), number(bank.livePluginBalance || 0)));
   const bankRows = asArray(bankLedger).map((row) => ({
     created_at: row.created_at || row.createdAt || row.time || 0,
     tx_type: cleanText(row.tx_type || row.type || row.action || "Операция"),
@@ -3691,6 +3758,38 @@ function artifactStatusTone(status) {
   if (["PENDING", "PENDING_DELIVERY", "UNCLAIMED", "RESERVED", "DELIVERING", "DELIVERY_REVIEW", "LOST_RECLAIMABLE", "CLAIM_PENDING", "CREATED"].includes(value)) return "warn";
   if (["FAILED", "REFUNDED", "SUSPICIOUS", "BLOCKED", "CANCELLED", "BROKEN", "CONSUMED", "DELETED_AS_INVALID", "REPLACED_AFTER_LOSS", "EXPIRED"].includes(value)) return "bad";
   return "neutral";
+}
+
+async function loadShops() {
+  setLoading("\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u044e \u043b\u0430\u0432\u043a\u0438");
+  const [ar, donation] = await Promise.all([
+    safeApi("/api/admin/shop/ar-items", { items: [] }),
+    safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0 })
+  ]);
+  const arRows = asArray(ar.items);
+  const donationRows = asArray(donation.items);
+  setView(`
+    <section id="shops-overview" class="layout-grid grid-4">
+      ${metric("AR-\u043a\u0430\u0442\u0430\u043b\u043e\u0433", arRows.length, "\u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432", arRows.length ? "good" : "warn")}
+      ${metric("Donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433", donationRows.length, "\u043f\u043e\u0437\u0438\u0446\u0438\u0439", donationRows.length ? "good" : "warn")}
+      ${metric("AR \u0446\u0435\u043d\u044b", arRows.filter(row => Number(row.price_ar || 0) > 0).length, "\u0441 \u0446\u0435\u043d\u043e\u0439", "neutral")}
+      ${metric("Donation \u0446\u0435\u043d\u044b", donationRows.filter(row => Number(row.price_donation || 0) > 0).length, "\u0441 \u0442\u0430\u0440\u0438\u0444\u043e\u043c", "neutral")}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("AR-\u043b\u0430\u0432\u043a\u0430", "\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0435 \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u044b \u0437\u0430 \u0431\u0430\u043b\u0430\u043d\u0441 AR.", table("shops-ar-catalog", arRows, [
+        { key: "item_id", label: "ID" },
+        { key: "name", label: "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435" },
+        { key: "price_ar", label: "AR" },
+        { key: "enabled", label: "\u0414\u043e\u0441\u0442\u0443\u043f", render: value => value ? pill("\u0434\u0430", "good") : pill("\u043d\u0435\u0442", "warn") }
+      ], { pageSize: 12 }))}
+      ${panel("Donation-\u043b\u0430\u0432\u043a\u0430", "\u041f\u043e\u043a\u0443\u043f\u043a\u0438 \u0437 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 \u0434\u043e\u043d\u0430\u0442-\u0431\u0430\u043b\u0430\u043d\u0441\u0430.", table("shops-donation-catalog", donationRows, [
+        { key: "item_id", label: "ID" },
+        { key: "display_name", label: "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435" },
+        { key: "price_donation", label: "Donation" },
+        { key: "enabled", label: "\u0414\u043e\u0441\u0442\u0443\u043f", render: value => value ? pill("\u0434\u0430", "good") : pill("\u043d\u0435\u0442", "warn") }
+      ], { pageSize: 12 }))}
+    </section>
+  `);
 }
 
 async function loadArtifacts() {
@@ -4990,6 +5089,7 @@ function getPlayerArtifactPages() {
 function getPlayerDonationPages() {
   if (!playerDonationPages) {
     playerDonationPages = createPlayerDonationPages({
+      $,
       state,
       setLoading,
       api,
@@ -5044,6 +5144,8 @@ window.playerCopyDonationSessionCode = async () => getPlayerDonationPages().play
 window.playerCopyDonationPaymentUrl = async () => getPlayerDonationPages().playerCopyDonationPaymentUrl();
 window.playerBuyDonationItem = async (itemId, displayName = "предмет", price = 0) =>
   getPlayerDonationPages().playerBuyDonationItem(itemId, displayName, price);
+window.playerSelectDonationItem = async (itemId = "") =>
+  getPlayerDonationPages().playerSelectDonationItem(itemId);
 window.playerSetPin = async () => getPlayerTreasuryPages().playerSetPin();
 window.playerTransfer = async () => getPlayerTreasuryPages().playerTransfer();
 window.selectPlayerBankScope = async (scope = "PERSONAL") => getPlayerTreasuryPages().selectPlayerBankScope(scope);
@@ -5210,6 +5312,7 @@ async function loadCurrent(silent = false) {
     elections: loadElections,
     stats: loadStats,
     economy: loadEconomy,
+    shops: loadShops,
     artifacts: loadArtifacts,
     anticheat: loadAnticheat,
     requests: loadRequests,
@@ -5344,6 +5447,7 @@ Object.assign(dataClickHandlers, {
   playerAdminDonationSetBalance: fromWindow("playerAdminDonationSetBalance"),
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
+  playerSelectDonationItem: fromWindow("playerSelectDonationItem"),
   playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
   playerCopyDonationPaymentUrl: fromWindow("playerCopyDonationPaymentUrl"),
   playerCopyDonationSessionCode: fromWindow("playerCopyDonationSessionCode"),
@@ -5387,6 +5491,7 @@ Object.assign(dataInputHandlers, {
   adminCmsSelect: () => getAdminCmsPages().adminCmsSelect(),
   adminGlobalSearch: (value) => {
     state.adminSearchQuery = String(value || "");
+    state.adminSearchOpen = true;
     renderAdminSearchDock();
   },
   adminRecipeSearch: (value) => getAdminNarcoticsRecipePages().adminRecipeSearch(value),
@@ -5398,3 +5503,4 @@ Object.assign(dataInputHandlers, {
 });
 
 boot();
+

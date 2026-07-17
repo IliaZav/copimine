@@ -37,7 +37,7 @@
           <h1>Страница не смогла открыться.</h1>
           <p>Сайт вернул ошибку до завершения загрузки. Обычно помогает повторный вход, обновление страницы или переход в раздел через основное меню.</p>
           <div class="error-actions">
-            <button class="btn btn-primary" type="button" onclick="window.location.reload()">Обновить страницу</button>
+            <button class="btn btn-primary" type="button" data-action="reload-page">Обновить страницу</button>
             <a class="btn btn-secondary" href="/index.html">Перейти на главную</a>
           </div>
           <div class="error-note">Если сбой повторяется после одного и того же действия, нужно проверять конкретный маршрут и его API-обработчик.</div>
@@ -66,6 +66,9 @@
         </aside>
       </article>
     </section>
-  </main>
+    </main>
+    <script>
+      document.querySelector('[data-action="reload-page"]')?.addEventListener('click', () => window.location.reload());
+    </script>
 </body>
 </html>

@@ -223,6 +223,8 @@ validate_archive() {
   if [[ -n "$sidecar" ]]; then
     local expected actual
     expected="$(awk '{print tolower($1)}' "$sidecar" | head -n 1)"
+    [[ "${#expected}" -eq 64 ]] || fail "SHA256 sidecar is malformed: $sidecar"
+    [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || fail "SHA256 sidecar contains non-hex characters: $sidecar"
     actual="$(sha256_file "$ARCHIVE_PATH")"
     [[ "$expected" == "$actual" ]] || fail "SHA256 mismatch for archive. Expected $expected, got $actual."
     log "Archive SHA256 verified: $actual"
@@ -608,6 +610,18 @@ verify_runtime() {
   http_check "http://127.0.0.1:8090/api/runtime" "" 90
   http_check "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "copimine.ru:18080" 90
   http_check "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "copimine.ru:18080" 90
+  local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
+  tmp_modpack="$(mktemp /tmp/copimine-fullreplace-modpack-XXXXXX.zip)"
+  tmp_resourcepack="$(mktemp /tmp/copimine-fullreplace-resourcepack-XXXXXX.zip)"
+  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip -o "$tmp_modpack" || fail "Modpack payload download failed"
+  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || fail "Resource pack payload download failed"
+  local_modpack_sha="$(sha256_file "$PROJECT_ROOT/thirdparty/CopiMineMods.zip")"
+  remote_modpack_sha="$(sha256_file "$tmp_modpack")"
+  [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || fail "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"
+  local_resourcepack_sha="$(sha256_file "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip")"
+  remote_resourcepack_sha="$(sha256_file "$tmp_resourcepack")"
+  [[ "$local_resourcepack_sha" == "$remote_resourcepack_sha" ]] || fail "Served resource pack SHA256 mismatch. Runtime=$local_resourcepack_sha download=$remote_resourcepack_sha"
+  rm -f "$tmp_modpack" "$tmp_resourcepack"
   log "Install verification passed."
 }
 

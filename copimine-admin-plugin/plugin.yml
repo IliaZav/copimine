@@ -17,67 +17,67 @@ softdepend:
   - CopiMineElectionCore
 commands:
   cmultra:
-    description: "Stable CopiMine admin: hub, players and bridges"
+    description: "Панель управления сервером"
     usage: /cmultra
     aliases: [cm, cmplus, uadmin, ultraadmin, adminka]
   cadm:
-    description: "CopiMine unified admin hub"
+    description: "Панель управления сервером"
     usage: /cadm
     aliases: [copimine, cadmin, cpanel, adminhub, cpa, cpadmin]
   ar:
-    description: "Open CopiMine economy hub"
+    description: "Открыть раздел экономики"
     usage: /ar
     aliases: [ars, arreconomy, aradmin]
   cmbank:
-    description: "Open CopiMine bank and ATM GUI"
+    description: "Открыть раздел банка"
     usage: /cmbank
     aliases: [bank, cbank, bankar]
   appeal:
-    description: "CopiMine staff appeal"
+    description: "Отправить обращение администрации"
     usage: /appeal <problem>
     aliases: [adminrequest, request, helpadm]
   report:
-    description: "CopiMine staff report"
+    description: "Отправить жалобу"
     usage: /report <problem>
     aliases: [problem, helpme, ticket]
   reporta:
-    description: "CopiMine bug report with optional attached diagnostics"
+    description: "Сообщить о проблеме"
     usage: /reporta [bug-code] <problem>
     aliases: [bugreporta, bugreport]
   rpguard:
-    description: "Merged RP command restrictions diagnostics"
+    description: "Проверить ограничения RP-команд"
     usage: /rpguard
     aliases: [cmrpguard, rpcommands]
   oldvoteoff:
-    description: "Legacy election runtime cleanup diagnostics"
+    description: "Проверить состояние выборов"
     usage: /oldvoteoff status|reset|cleanglow|unlock
     aliases: [oldvotesoff, electionoff, oldelectionoff]
   cmsealdrop:
-    description: "Safely destroy a CIK seal from inventory"
+    description: "Удалить печать ЦИК из инвентаря"
     usage: /cmsealdrop trash|status
     aliases: [ciksealdrop, sealdrop]
 permissions:
   copimine.admin:
-    description: Full CopiMine admin access
+    description: Полный доступ к управлению сервером
     default: op
   copimine.economy.admin:
-    description: Manage CopiMine economy hub
+    description: Управление экономикой
     default: op
   copimine.bank.admin:
-    description: Manage CopiMine bank and ATM bridge
+    description: Управление банком и банкоматами
     default: op
   copimine.diagnostics:
-    description: View CopiMine diagnostics and readiness reports
+    description: Просмотр служебного состояния
     default: op
   copimine.players.admin:
-    description: Manage players
+    description: Управление игроками
     default: op
   copimine.reports.admin:
-    description: Manage player reports
+    description: Управление обращениями игроков
     default: op
   copimine.sidebar:
-    description: Toggle election sidebar
+    description: Переключение панели выборов
     default: true
   copimine.rpguard.bypass:
-    description: Allows bypassing RP command restrictions
+    description: Обход ограничений RP-команд
     default: op

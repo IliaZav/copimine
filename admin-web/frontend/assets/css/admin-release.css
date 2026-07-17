@@ -299,29 +299,90 @@ body.player-mode .metric::before {
 
 body.panel-admin-mode .admin-search-dock,
 body.junior-admin-mode .admin-search-dock {
-  position: sticky;
-  top: 96px;
-  right: auto;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  top: auto;
+  z-index: 60;
+  display: grid;
+  justify-items: end;
+  width: min(360px, calc(100vw - 32px));
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-search-fab {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--release-line-strong);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(17, 38, 24, 0.98), rgba(11, 22, 20, 0.98)),
+    linear-gradient(135deg, rgba(53, 240, 127, 0.12), transparent 60%);
+  color: #eff8f0;
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.26);
+}
+
+.admin-search-fab:hover,
+.admin-search-fab:focus-visible {
+  transform: translateY(-1px);
+  border-color: #7cd492;
+}
+
+.admin-search-panel {
   width: 100%;
-  max-width: 420px;
-  margin: 0 0 18px auto;
-  padding: 12px;
-  border-radius: 12px;
+  max-height: min(68vh, 560px);
+  margin-top: 12px;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 16px;
   border: 1px solid var(--release-line);
-  background: rgba(11, 22, 20, 0.96);
+  background: rgba(11, 22, 20, 0.97);
   box-shadow: var(--release-shadow);
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transform-origin: bottom right;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.admin-search-dock.is-open .admin-search-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 
 body.panel-admin-mode .admin-search-box input,
 body.junior-admin-mode .admin-search-box input {
-  min-height: 44px;
-  border-radius: 10px;
+  min-height: 46px;
+  border-radius: 12px;
 }
 
 body.panel-admin-mode .admin-search-results button,
 body.junior-admin-mode .admin-search-results button {
-  border-radius: 10px;
-  padding: 11px 12px;
+  border-radius: 12px;
+  padding: 12px 13px;
+}
+
+:root[data-theme="light"] .admin-search-fab {
+  background:
+    linear-gradient(180deg, rgba(250, 253, 255, 0.98), rgba(236, 245, 252, 0.98)),
+    linear-gradient(135deg, rgba(125, 216, 255, 0.12), transparent 60%);
+  color: #162133;
+  border-color: rgba(39, 64, 98, 0.16);
+  box-shadow: 0 20px 38px rgba(18, 25, 37, 0.14);
+}
+
+:root[data-theme="light"] .admin-search-panel {
+  border-color: rgba(58, 79, 107, 0.16);
+  background: rgba(251, 254, 255, 0.98);
+  box-shadow: 0 24px 44px rgba(18, 25, 37, 0.14);
 }
 
 @media (max-width: 1240px) {
@@ -339,9 +400,9 @@ body.junior-admin-mode .admin-search-results button {
 
   body.panel-admin-mode .admin-search-dock,
   body.junior-admin-mode .admin-search-dock {
-    position: static;
-    max-width: none;
-    margin: 0 0 18px;
+    right: 16px;
+    bottom: 16px;
+    width: min(340px, calc(100vw - 24px));
   }
 }
 
@@ -378,6 +439,20 @@ body.junior-admin-mode .admin-search-results button {
   body.junior-admin-mode .top-actions,
   body.player-mode .top-actions {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  body.panel-admin-mode .admin-search-dock,
+  body.junior-admin-mode .admin-search-dock {
+    right: 12px;
+    bottom: 12px;
+    width: min(100vw - 18px, 340px);
+  }
+
+  .admin-search-fab {
+    width: 52px;
+    height: 52px;
   }
 }
 

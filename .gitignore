@@ -68,6 +68,7 @@ release/
 admin-web/.venv/
 admin-web/.venv-*/
 admin-web/.venv*/
+admin-web/.codex-venv/
 admin-web/backups/
 admin-web/data/
 admin-web/backend/__pycache__/

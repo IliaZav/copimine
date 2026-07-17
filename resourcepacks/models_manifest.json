@@ -4,8 +4,157 @@
       "id": "zmei_gorynych",
       "custom_model_data": 10001,
       "base_material": "netherite_sword",
-      "model": "copimine:item/zmei_gorynych",
-      "texture": "copimine:item/zmei_gorynych"
+      "model": "copimine:item/artifacts/zmei_gorynych",
+      "texture": "copimine:item/artifacts/zmei_gorynych"
+    },
+    {
+      "id": "smena_bez_perekura_pickaxe",
+      "custom_model_data": 10002,
+      "base_material": "netherite_pickaxe",
+      "model": "copimine:item/artifacts/smena_bez_perekura_pickaxe",
+      "texture": "copimine:item/artifacts/smena_bez_perekura_pickaxe"
+    },
+    {
+      "id": "lesnoy_bespredel_axe",
+      "custom_model_data": 10003,
+      "base_material": "netherite_axe",
+      "model": "copimine:item/artifacts/lesnoy_bespredel_axe",
+      "texture": "copimine:item/artifacts/lesnoy_bespredel_axe"
+    },
+    {
+      "id": "kopatel_transhey_shovel",
+      "custom_model_data": 10004,
+      "base_material": "netherite_shovel",
+      "model": "copimine:item/artifacts/kopatel_transhey_shovel",
+      "texture": "copimine:item/artifacts/kopatel_transhey_shovel"
+    },
+    {
+      "id": "fermer_bez_sna_hoe",
+      "custom_model_data": 10005,
+      "base_material": "netherite_hoe",
+      "model": "copimine:item/artifacts/fermer_bez_sna_hoe",
+      "texture": "copimine:item/artifacts/fermer_bez_sna_hoe"
+    },
+    {
+      "id": "dezhurniy_argument_sword",
+      "custom_model_data": 10006,
+      "base_material": "netherite_sword",
+      "model": "copimine:item/artifacts/dezhurniy_argument_sword",
+      "texture": "copimine:item/artifacts/dezhurniy_argument_sword"
+    },
+    {
+      "id": "vechniy_razgon_firework",
+      "custom_model_data": 10007,
+      "base_material": "firework_rocket",
+      "model": "copimine:item/artifacts/vechniy_razgon_firework",
+      "texture": "copimine:item/artifacts/vechniy_razgon_firework"
+    },
+    {
+      "id": "eternal_totem",
+      "custom_model_data": 10008,
+      "base_material": "totem_of_undying",
+      "model": "copimine:item/artifacts/eternal_totem",
+      "texture": "copimine:item/artifacts/eternal_totem"
+    },
+    {
+      "id": "treasurer_chestplate",
+      "custom_model_data": 10010,
+      "base_material": "netherite_chestplate",
+      "model": "copimine:item/artifacts/treasurer_chestplate",
+      "texture": "copimine:item/artifacts/treasurer_chestplate"
+    },
+    {
+      "id": "copimine_miner_pickaxe",
+      "custom_model_data": 10011,
+      "base_material": "netherite_pickaxe",
+      "model": "copimine:item/artifacts/copimine_miner_pickaxe",
+      "texture": "copimine:item/artifacts/copimine_miner_pickaxe"
+    },
+    {
+      "id": "craftsman_hammer",
+      "custom_model_data": 10012,
+      "base_material": "mace",
+      "model": "copimine:item/artifacts/craftsman_hammer",
+      "texture": "copimine:item/artifacts/craftsman_hammer"
+    },
+    {
+      "id": "kozyrny_tuz_pozdnyakova",
+      "custom_model_data": 10013,
+      "base_material": "netherite_leggings",
+      "model": "copimine:item/artifacts/kozyrny_tuz_pozdnyakova",
+      "texture": "copimine:item/artifacts/kozyrny_tuz_pozdnyakova"
+    },
+    {
+      "id": "batin_remen_sudnogo_dnya",
+      "custom_model_data": 20001,
+      "base_material": "netherite_axe",
+      "model": "copimine:item/artifacts/batin_remen_sudnogo_dnya",
+      "texture": "copimine:item/artifacts/batin_remen_sudnogo_dnya"
+    },
+    {
+      "id": "nu_ty_i_nakopal_blyat_pickaxe",
+      "custom_model_data": 20002,
+      "base_material": "netherite_pickaxe",
+      "model": "copimine:item/artifacts/nu_ty_i_nakopal_blyat_pickaxe",
+      "texture": "copimine:item/artifacts/nu_ty_i_nakopal_blyat_pickaxe"
+    },
+    {
+      "id": "kosa_nalogovoy_inspekcii",
+      "custom_model_data": 20003,
+      "base_material": "netherite_hoe",
+      "model": "copimine:item/artifacts/kosa_nalogovoy_inspekcii",
+      "texture": "copimine:item/artifacts/kosa_nalogovoy_inspekcii"
+    },
+    {
+      "id": "kaska_prorab_huev",
+      "custom_model_data": 20004,
+      "base_material": "netherite_helmet",
+      "model": "copimine:item/artifacts/kaska_prorab_huev",
+      "texture": "copimine:item/artifacts/kaska_prorab_huev"
+    },
+    {
+      "id": "mne_pohuy_ya_v_tanke_vest",
+      "custom_model_data": 20005,
+      "base_material": "netherite_chestplate",
+      "model": "copimine:item/artifacts/mne_pohuy_ya_v_tanke_vest",
+      "texture": "copimine:item/artifacts/mne_pohuy_ya_v_tanke_vest"
+    },
+    {
+      "id": "ne_segodnya_suka_shield",
+      "custom_model_data": 20006,
+      "base_material": "shield",
+      "model": "copimine:item/artifacts/ne_segodnya_suka_shield",
+      "texture": "copimine:item/artifacts/ne_segodnya_suka_shield"
+    },
+    {
+      "id": "ya_esche_ne_vse_isportil_totem",
+      "custom_model_data": 20007,
+      "base_material": "totem_of_undying",
+      "model": "copimine:item/artifacts/ya_esche_ne_vse_isportil_totem",
+      "texture": "copimine:item/artifacts/ya_esche_ne_vse_isportil_totem"
+    },
+    {
+      "id": "pohuy_na_debaffy_amulet",
+      "custom_model_data": 20008,
+      "base_material": "heart_of_the_sea",
+      "model": "copimine:item/artifacts/pohuy_na_debaffy_amulet",
+      "texture": "copimine:item/artifacts/pohuy_na_debaffy_amulet"
+    },
+    {
+      "id": "vremya_platit_nalogi_clock",
+      "custom_model_data": 20009,
+      "base_material": "clock",
+      "model": "copimine:item/artifacts/vremya_platit_nalogi_clock",
+      "texture": "copimine:item/artifacts/vremya_platit_nalogi_clock",
+      "animation": {"frame_count": 64, "frametime": 1, "interpolate": false}
+    },
+    {
+      "id": "gde_moy_lut_blyat_compass",
+      "custom_model_data": 20010,
+      "base_material": "compass",
+      "model": "copimine:item/artifacts/gde_moy_lut_blyat_compass",
+      "texture": "copimine:item/artifacts/gde_moy_lut_blyat_compass",
+      "animation": {"frame_count": 32, "frametime": 1, "interpolate": false}
     },
     {
       "id": "feta",

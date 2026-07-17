@@ -10,14 +10,33 @@ if (-not $ProjectRoot) {
     $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 }
 $ProjectRoot = (Resolve-Path $ProjectRoot).Path
-$sourceCommitBeforeBuild = (git -C $ProjectRoot rev-parse --short HEAD).Trim()
-$sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $ProjectRoot status --short))
+
+function Resolve-GitRoot {
+    param([Parameter(Mandatory = $true)][string]$StartPath)
+    $current = Resolve-Path $StartPath
+    while ($current) {
+        if (Test-Path -LiteralPath (Join-Path $current.Path ".git")) {
+            return $current.Path
+        }
+        $parent = Split-Path $current.Path -Parent
+        if (-not $parent -or $parent -eq $current.Path) {
+            break
+        }
+        $current = Resolve-Path $parent
+    }
+    throw "Git root not found above $StartPath"
+}
+
+$gitRoot = Resolve-GitRoot -StartPath $ProjectRoot
+$sourceCommitBeforeBuild = (git -C $gitRoot rev-parse --short HEAD).Trim()
+$sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $gitRoot status --short))
 
 if (-not $ReleaseDir) {
     $workspaceRoot = Split-Path (Split-Path $ProjectRoot -Parent) -Parent
     $ReleaseDir = Join-Path $workspaceRoot "release"
 }
 New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
+$ReleaseDir = (Resolve-Path -LiteralPath $ReleaseDir).Path
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $clientBuildScript = Join-Path $ProjectRoot "CopiMineClient\build-client.ps1"
@@ -38,6 +57,10 @@ $installerManifestPath = Join-Path $ProjectRoot "deploy\installer_manifest.json"
 $deployInstall = Join-Path $ProjectRoot "deploy\ubuntu\install.sh"
 $deployUpdate = Join-Path $ProjectRoot "deploy\ubuntu\update.sh"
 $deployVerify = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
+$deployUnpack = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
+$deployReplace = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
+$deployCommon = Join-Path $ProjectRoot "deploy\shared\common.sh"
+$uploadScript = Join-Path $ProjectRoot "scripts\windows\upload_release.ps1"
 $validateReleaseScript = Join-Path $ProjectRoot "scripts\validate_release_bundle.ps1"
 $embeddedUnpackScript = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
 $embeddedReplaceScript = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
@@ -390,9 +413,17 @@ Write-Host "[8/8] Finalize release metadata and validate bundle"
 $deployInstallCopy = Join-Path $ReleaseDir "copimine_install.sh"
 $deployUpdateCopy = Join-Path $ReleaseDir "copimine_update.sh"
 $deployVerifyCopy = Join-Path $ReleaseDir "copimine_verify.sh"
+$deployUnpackCopy = Join-Path $ReleaseDir "copimine_unpack_and_verify.sh"
+$deployReplaceCopy = Join-Path $ReleaseDir "copimine_full_replace.sh"
+$deployCommonCopy = Join-Path $ReleaseDir "copimine_common.sh"
+$uploadScriptCopy = Join-Path $ReleaseDir "upload_release.ps1"
 Copy-Item -LiteralPath $deployInstall -Destination $deployInstallCopy -Force
 Copy-Item -LiteralPath $deployUpdate -Destination $deployUpdateCopy -Force
 Copy-Item -LiteralPath $deployVerify -Destination $deployVerifyCopy -Force
+Copy-Item -LiteralPath $deployUnpack -Destination $deployUnpackCopy -Force
+Copy-Item -LiteralPath $deployReplace -Destination $deployReplaceCopy -Force
+Copy-Item -LiteralPath $deployCommon -Destination $deployCommonCopy -Force
+Copy-Item -LiteralPath $uploadScript -Destination $uploadScriptCopy -Force
 
 $archiveSha256 = Get-Sha256Lower -LiteralPath $archivePath
 $archiveShaPath = "$archivePath.sha256"
@@ -417,6 +448,10 @@ $bootstrapManifest = [ordered]@{
         install = [System.IO.Path]::GetFileName($deployInstallCopy)
         update = [System.IO.Path]::GetFileName($deployUpdateCopy)
         verify = [System.IO.Path]::GetFileName($deployVerifyCopy)
+        unpackAndVerify = [System.IO.Path]::GetFileName($deployUnpackCopy)
+        fullReplace = [System.IO.Path]::GetFileName($deployReplaceCopy)
+        sharedCommon = [System.IO.Path]::GetFileName($deployCommonCopy)
+        uploadWindows = [System.IO.Path]::GetFileName($uploadScriptCopy)
     }
 }
 Write-Utf8NoBomFile -LiteralPath $bootstrapManifestPath -Content ($bootstrapManifest | ConvertTo-Json -Depth 12)
@@ -443,6 +478,10 @@ Write-Host "Archive SHA256: $archiveSha256"
 Write-Host "Deploy install: $deployInstallCopy"
 Write-Host "Deploy update: $deployUpdateCopy"
 Write-Host "Deploy verify: $deployVerifyCopy"
+Write-Host "Deploy unpack: $deployUnpackCopy"
+Write-Host "Deploy replace: $deployReplaceCopy"
+Write-Host "Deploy common: $deployCommonCopy"
+Write-Host "Upload script: $uploadScriptCopy"
 Write-Host "Bootstrap manifest: $bootstrapManifestPath"
 Write-Host "Git commit: $commit"
 Write-Host "Source tree dirty: $gitDirty"

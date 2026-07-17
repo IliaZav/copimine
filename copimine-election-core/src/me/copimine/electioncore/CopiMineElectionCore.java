@@ -88,6 +88,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -120,6 +121,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private static final long PRESIDENT_LAW_REPLACE_COOLDOWN_MS = 3L * 24L * 60L * 60L * 1000L;
     private static final boolean PRESIDENT_TAX_FEATURE_ENABLED = true;
     private static final long PRESIDENT_TAX_PERIOD_MS = 24L * 60L * 60L * 1000L;
+    private static final int TAX_CLOCK_EXEMPTION_MONTHS = 3;
+    private static final String TAX_CLOCK_EXEMPTION_SOURCE = "TAX_CLOCK_EXEMPTION";
     private static final int LAW_TEXT_LIMIT = 80;
     private static final int BROADCAST_TEXT_LIMIT = 80;
     private static final Pattern PRESIDENT_TEXT_FORBIDDEN = Pattern.compile(
@@ -778,6 +781,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("president:payments:")) {
             openPresidentPaymentsMenu(player, parseInt(action.substring("president:payments:".length()), 0));
+            return;
+        }
+        if (action.startsWith("president:tax-roster:")) {
+            openPresidentTaxRosterMenu(player, "paid".equalsIgnoreCase(action.substring("president:tax-roster:".length())));
+            return;
+        }
+        if (action.startsWith("president:mark-paid:")) {
+            String uuid = action.substring("president:mark-paid:".length());
+            openConfirmationMenu(player, "Mark tax as paid", List.of("This records a voluntary cash payment for the current tax period.", "The player is not charged by the server."), "apply:president:mark-paid:" + uuid, "president:tax-roster:unpaid");
+            return;
+        }
+        if (action.startsWith("apply:president:mark-paid:")) {
+            markTaxPaidByPresident(player, action.substring("apply:president:mark-paid:".length()));
+            openPresidentTaxRosterMenu(player, false);
             return;
         }
         if (action.equals("apply:manage:stop")) {
@@ -1975,6 +1992,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
         int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
         MenuHolder holder = new MenuHolder("president-admin", Integer.toString(resolvedPeriod));
+        setButton(holder, 42, Material.LIME_DYE, "Paid players", List.of("Open players who paid the current period."), "president:tax-roster:paid");
+        setButton(holder, 43, Material.GRAY_DYE, "Unpaid players", List.of("Open players who have not paid yet."), "president:tax-roster:unpaid");
         Inventory inv = holder.create(54, color("&dПрезидент"));
         setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
                 "&7Текущий: &f" + first(snap.presidentName(), "нет"),
@@ -1992,7 +2011,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         )));
 
         int[] periodSlots = {28, 29, 30, 31};
-        int[] periods = {24, 48, 76};
+        int[] periods = {24, 48, 72};
         for (int i = 0; i < periods.length; i++) {
             int hours = periods[i];
             boolean selected = resolvedPeriod == hours;
@@ -2061,6 +2080,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
         int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
         MenuHolder holder = new MenuHolder("president-mandate", Integer.toString(resolvedPeriod));
+        setButton(holder, 42, Material.LIME_DYE, "Paid players", List.of("Open players who paid the current period."), "president:tax-roster:paid");
+        setButton(holder, 43, Material.GRAY_DYE, "Unpaid players", List.of("Open players who have not paid yet."), "president:tax-roster:unpaid");
         Inventory inv = holder.create(54, color("&dМандат президента"));
         setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
                 "&7Действующий президент: &f" + first(snap.presidentName(), "нет"),
@@ -2085,7 +2106,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         )));
 
         int[] periodSlots = {28, 29, 30, 31};
-        int[] periods = {24, 48, 76};
+        int[] periods = {24, 48, 72};
         for (int i = 0; i < periods.length; i++) {
             int hours = periods[i];
             boolean selected = resolvedPeriod == hours;
@@ -2112,6 +2133,74 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         player.openInventory(inv);
     }
 
+    private void openPresidentTaxRosterMenu(Player player, boolean paid) {
+        if (!isPresident(player) && !hasElectionAdmin(player)) {
+            player.sendMessage(color("&cAccess denied for this list."));
+            return;
+        }
+        try {
+            Map<String, Object> tax = activeTax();
+            List<Map<String, Object>> rows = new ArrayList<>();
+            if (tax != null) {
+                String taxId = string(tax.get("id"));
+                List<Map<String, Object>> players = queryList("SELECT owner_uuid,owner_name FROM cmv4_bank_accounts WHERE account_type='PLAYER' AND status='ACTIVE' ORDER BY lower(owner_name),owner_uuid LIMIT 500");
+                for (Map<String, Object> row : players) {
+                    String uuid = string(row.get("owner_uuid"));
+                    if (uuid.isBlank()) {
+                        continue;
+                    }
+                    boolean isPaid = isTaxClockExempt(uuid) || dueTaxAmount(uuid, taxId, tax) <= 0L;
+                    if (isPaid == paid) {
+                        rows.add(row);
+                    }
+                }
+            }
+            MenuHolder holder = new MenuHolder("president-tax-roster", paid ? "paid" : "unpaid");
+            Inventory inv = holder.create(54, color(paid ? "&aPaid players" : "&cUnpaid players"));
+            int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+            for (int i = 0; i < slots.length && i < rows.size(); i++) {
+                Map<String, Object> row = rows.get(i);
+                String uuid = string(row.get("owner_uuid"));
+                String name = first(string(row.get("owner_name")), shortId(uuid));
+                String action = paid ? "none" : "president:mark-paid:" + uuid;
+                setButton(holder, slots[i], paid ? Material.LIME_DYE : Material.GRAY_DYE, "&f" + name,
+                        List.of(paid ? "&7Налог за текущий период оплачен." : "&7Нажми, если деньги переданы президенту лично."), action);
+            }
+            if (rows.isEmpty()) {
+                setStatic(inv, 22, infoItem(paid ? Material.LIME_DYE : Material.GRAY_DYE, paid ? "&aСписок пуст" : "&cСписок пуст", List.of("&7Для текущего периода игроков нет.")));
+            }
+            setButton(holder, 49, Material.ARROW, "&aНазад", List.of(), "open:president");
+            setButton(holder, 53, Material.BARRIER, "&cЗакрыть", List.of(), "close");
+            player.openInventory(inv);
+        } catch (Exception error) {
+            player.sendMessage(color("&cНе удалось загрузить список налога."));
+            getLogger().warning("tax roster: " + safeError(error));
+        }
+    }
+
+    private void markTaxPaidByPresident(Player player, String playerUuid) throws Exception {
+        if (!isPresident(player) && !hasElectionAdmin(player)) {
+            throw new IllegalStateException("Нет прав президента.");
+        }
+        Map<String, Object> tax = activeTax();
+        if (tax == null || playerUuid == null || playerUuid.isBlank()) {
+            throw new IllegalStateException("Активный налог не назначен.");
+        }
+        String taxId = string(tax.get("id"));
+        long due = dueTaxAmount(playerUuid, taxId, tax);
+        if (due <= 0L) {
+            return;
+        }
+        Map<String, Object> account = queryOne("SELECT owner_name FROM cmv4_bank_accounts WHERE owner_uuid=? AND account_type='PLAYER' LIMIT 1", playerUuid);
+        String name = account == null ? first(Bukkit.getOfflinePlayer(UUID.fromString(playerUuid)).getName(), playerUuid) : first(string(account.get("owner_name")), playerUuid);
+        long t = now();
+        tx(connection -> {
+            update(connection, "INSERT INTO president_tax_payments(id,tax_id,player_uuid,player_name,amount,source,created_at,details) VALUES(?,?,?,?,?,?,?,?)", "cash_" + UUID.randomUUID(), taxId, playerUuid, name, due, "PRESIDENT_CASH", t, "marked_by=" + player.getUniqueId());
+            logPluginEvent(connection, "election_core", "tax_paid_cash", player.getName(), playerUuid, "amount=" + due);
+            return null;
+        });
+    }
+
     private void openPresidentPaymentsMenu(Player player, int page) {
         List<Map<String, Object>> rows = currentTaxPayments();
         MenuHolder holder = new MenuHolder("president-payments", "");
@@ -2120,11 +2209,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
         for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
             Map<String, Object> row = rows.get(start + i);
-            setStatic(inv, slots[i], infoItem(Material.GOLD_INGOT, "&f" + first(string(row.get("player_name")), "\u0418\u0433\u0440\u043e\u043a"), List.of(
+            String source = first(string(row.get("source")), "UNKNOWN");
+            List<String> lore = new ArrayList<>(List.of(
                     "&7\u0421\u0443\u043c\u043c\u0430: &f" + longValue(row.get("amount")) + " AR",
-                    "&7\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a: &f" + string(row.get("source")),
+                    "&7\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a: &f" + source,
                     "&7\u0412\u0440\u0435\u043c\u044f: &f" + formatTs(longValue(row.get("created_at")))
-            )));
+            ));
+            Material icon = Material.GOLD_INGOT;
+            if (TAX_CLOCK_EXEMPTION_SOURCE.equalsIgnoreCase(source)) {
+                icon = Material.CLOCK;
+                lore.add("&a\u041d\u0430\u043b\u043e\u0433\u0438 \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u044b \u0434\u043e: &f" + formatTs(longValue(row.get("expires_at"))));
+                lore.add("&7\u042d\u0442\u043e \u043d\u0435 \u043f\u043b\u0430\u0442\u0451\u0436, \u0430 \u0430кт\u0438вное \u043e\u0441вобождение.");
+            }
+            setStatic(inv, slots[i], infoItem(icon, "&f" + first(string(row.get("player_name")), "\u0418\u0433\u0440\u043e\u043a"), lore));
         }
         pageButtons(holder, inv, page, rows.size(), 21, "president:payments:" + (page - 1), "president:payments:" + (page + 1), "president:open-mandate");
         player.openInventory(inv);
@@ -2367,15 +2464,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             Inventory inv = holder.create(54, color("&6Налоговая"));
             long due;
             long paid;
+            Map<String, Object> taxClockExemption;
             try {
                 due = dueTaxAmount(player.getUniqueId().toString(), actualTaxId, tax);
                 paid = paidTaxAmount(player.getUniqueId().toString(), actualTaxId);
+                taxClockExemption = activeTaxClockExemption(player.getUniqueId().toString());
             } catch (Exception error) {
                 player.sendMessage(color("&cНе удалось рассчитать налог: &f" + publicErrorMessage(error)));
                 getLogger().warning("tax menu amount player=" + player.getName() + " taxId=" + actualTaxId + " error=" + safeError(error));
                 return;
             }
             String pin = first(pinBuffer, "");
+
+            if (taxClockExemption != null) {
+                setStatic(inv, 6, infoItem(Material.CLOCK, "&aОсвобождение от налогов", List.of(
+                        "&7Осталось: &f" + formatTaxExemptionRemaining(longValue(taxClockExemption.get("expires_at")))
+                )));
+            }
 
             setStatic(inv, 4, infoItem(Material.GOLD_INGOT, "&6Добровольный налог", List.of(
                     "&7Ставка: &f" + longValue(tax.get("amount")) + " AR",
@@ -4965,6 +5070,78 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return payload;
     }
 
+    public CompletableFuture<Map<String, Object>> grantTaxClockExemption(UUID playerUuid, String playerName, String artifactInstanceId) {
+        if (playerUuid == null || artifactInstanceId == null || artifactInstanceId.isBlank()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("tax_clock_identity_missing"));
+        }
+        CompletableFuture<Map<String, Object>> result = new CompletableFuture<>();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            try {
+                result.complete(grantTaxClockExemptionNow(playerUuid, playerName, artifactInstanceId));
+            } catch (Exception error) {
+                result.completeExceptionally(error);
+            }
+        });
+        return result;
+    }
+
+    private Map<String, Object> grantTaxClockExemptionNow(UUID playerUuid, String playerName, String artifactInstanceId) throws Exception {
+        long issuedAt = now();
+        String safePlayerName = first(playerName, playerUuid.toString());
+        String idempotencyKey = "tax-clock:" + playerUuid + ":" + artifactInstanceId;
+        return tx(connection -> {
+            Map<String, Object> existing = queryOne(
+                    connection,
+                    "SELECT * FROM president_tax_exemptions WHERE player_uuid=? FOR UPDATE",
+                    playerUuid.toString()
+            );
+            if (existing != null && "ACTIVE".equalsIgnoreCase(first(string(existing.get("status")), "ACTIVE"))
+                    && longValue(existing.get("expires_at")) > issuedAt) {
+                Map<String, Object> payload = new LinkedHashMap<>(existing);
+                payload.put("reused", true);
+                payload.put("source", TAX_CLOCK_EXEMPTION_SOURCE);
+                return payload;
+            }
+
+            Map<String, Object> term = queryOne(connection, "SELECT id FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1");
+            String termId = term == null ? "" : string(term.get("id"));
+            Map<String, Object> tax = termId.isBlank()
+                    ? null
+                    : queryOne(connection, "SELECT id FROM president_taxes WHERE term_id=? AND status='ACTIVE' ORDER BY created_at DESC LIMIT 1", termId);
+            String taxId = tax == null ? "" : string(tax.get("id"));
+            long expiresAt = Instant.ofEpochMilli(issuedAt)
+                    .atZone(ZoneOffset.UTC)
+                    .plusMonths(TAX_CLOCK_EXEMPTION_MONTHS)
+                    .toInstant()
+                    .toEpochMilli();
+            String exemptionId = existing == null
+                    ? "tax_clock_" + sha256Hex(playerUuid + ":" + artifactInstanceId).substring(0, 32)
+                    : string(existing.get("id"));
+            String details = "artifact_instance_id=" + artifactInstanceId + ";months=" + TAX_CLOCK_EXEMPTION_MONTHS;
+            if (existing == null) {
+                update(connection,
+                        "INSERT INTO president_tax_exemptions(id,tax_id,term_id,player_uuid,player_name,artifact_instance_id,idempotency_key,source,status,created_at,expires_at,updated_at,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        exemptionId, taxId, termId, playerUuid.toString(), safePlayerName, artifactInstanceId,
+                        idempotencyKey, TAX_CLOCK_EXEMPTION_SOURCE, "ACTIVE", issuedAt, expiresAt, issuedAt, details);
+            } else {
+                update(connection,
+                        "UPDATE president_tax_exemptions SET tax_id=?,term_id=?,player_name=?,artifact_instance_id=?,idempotency_key=?,source=?,status='ACTIVE',created_at=?,expires_at=?,updated_at=?,details=? WHERE id=?",
+                        taxId, termId, safePlayerName, artifactInstanceId, idempotencyKey, TAX_CLOCK_EXEMPTION_SOURCE,
+                        issuedAt, expiresAt, issuedAt, details, exemptionId);
+            }
+            logPluginEvent(connection, "election_core", "tax_clock_activated", safePlayerName, playerUuid.toString(), details + ";expires_at=" + expiresAt);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("id", exemptionId);
+            payload.put("player_uuid", playerUuid.toString());
+            payload.put("player_name", safePlayerName);
+            payload.put("source", TAX_CLOCK_EXEMPTION_SOURCE);
+            payload.put("created_at", issuedAt);
+            payload.put("expires_at", expiresAt);
+            payload.put("reused", false);
+            return payload;
+        });
+    }
+
     private Map<String, Object> activeTax() throws Exception {
         Map<String, Object> term = activeTerm();
         if (term == null) {
@@ -5022,20 +5199,42 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private List<Map<String, Object>> currentTaxPayments() {
         try {
             return queryList(
-                    "SELECT player_name, amount, source, created_at FROM president_tax_payments " +
+                    "SELECT player_name, amount, source, created_at, 0 AS expires_at, 1 AS row_priority FROM president_tax_payments " +
                             "UNION ALL " +
-                            "SELECT buyer_name AS player_name, amount_ar AS amount, 'ARTIFACT_SHOP' AS source, created_at " +
+                            "SELECT buyer_name AS player_name, amount_ar AS amount, 'ARTIFACT_SHOP' AS source, created_at, 0 AS expires_at, 2 AS row_priority " +
                             "FROM artifact_revenue_payouts WHERE recipient_account_id='PRESIDENT_BUDGET' AND status='CREDITED' " +
-                            "ORDER BY created_at DESC LIMIT 200"
+                            "UNION ALL " +
+                            "SELECT player_name, 0 AS amount, 'TAX_CLOCK_EXEMPTION' AS source, created_at, expires_at, 0 AS row_priority " +
+                            "FROM president_tax_exemptions WHERE status='ACTIVE' AND expires_at>? " +
+                            "ORDER BY row_priority ASC, created_at DESC LIMIT 500",
+                    now()
             );
         } catch (Exception error) {
             return List.of();
         }
     }
 
+    private Map<String, Object> activeTaxClockExemption(String playerUuid) throws Exception {
+        if (playerUuid == null || playerUuid.isBlank()) {
+            return null;
+        }
+        return queryOne(
+                "SELECT * FROM president_tax_exemptions WHERE player_uuid=? AND status='ACTIVE' AND expires_at>? ORDER BY expires_at DESC LIMIT 1",
+                playerUuid,
+                now()
+        );
+    }
+
+    private boolean isTaxClockExempt(String playerUuid) throws Exception {
+        return activeTaxClockExemption(playerUuid) != null;
+    }
+
     private long paidTaxAmount(String playerUuid, String taxId) throws Exception {
         Map<String, Object> tax = requireActiveTaxRecord(taxId);
         if (tax == null || playerUuid == null || playerUuid.isBlank()) {
+            return 0L;
+        }
+        if (isTaxClockExempt(playerUuid)) {
             return 0L;
         }
         long windowStart = taxWindowStart(longValue(tax.get("created_at")), taxPeriodMs(tax), now());
@@ -5058,6 +5257,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private long dueTaxAmount(String playerUuid, String taxId, Map<String, Object> tax) throws Exception {
         if (tax == null || playerUuid == null || playerUuid.isBlank()) {
+            return 0L;
+        }
+        if (isTaxClockExempt(playerUuid)) {
             return 0L;
         }
         long amount = Math.max(0L, longValue(tax.get("amount")));
@@ -5113,7 +5315,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return switch (hours) {
             case 24 -> 24;
             case 48 -> 48;
-            case 76 -> 76;
+            case 72 -> 72;
             default -> 24;
         };
     }
@@ -5900,6 +6102,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE TABLE IF NOT EXISTS president_taxes(id TEXT PRIMARY KEY,term_id TEXT NOT NULL,amount INTEGER NOT NULL DEFAULT 0,period_hours INTEGER NOT NULL DEFAULT 24,status TEXT NOT NULL DEFAULT 'ACTIVE',created_at BIGINT NOT NULL DEFAULT 0,created_by TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS president_tax_payments(id TEXT PRIMARY KEY,tax_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS president_tax_payment_ops(id TEXT PRIMARY KEY,tax_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',bank_tx_id TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '',last_error TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS president_tax_exemptions(id TEXT PRIMARY KEY,tax_id TEXT NOT NULL DEFAULT '',term_id TEXT NOT NULL DEFAULT '',player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',artifact_instance_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,source TEXT NOT NULL DEFAULT 'TAX_CLOCK_EXEMPTION',status TEXT NOT NULL DEFAULT 'ACTIVE',created_at BIGINT NOT NULL DEFAULT 0,expires_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_blocks(id TEXT PRIMARY KEY,kind TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,linked_id TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_block_visuals(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,entity_uuid TEXT NOT NULL DEFAULT '',base_material TEXT NOT NULL DEFAULT 'PAPER',custom_model_data INTEGER NOT NULL DEFAULT 0,model_id TEXT NOT NULL DEFAULT '',offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,yaw DOUBLE PRECISION NOT NULL DEFAULT 0,pitch DOUBLE PRECISION NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
             update(connection, "CREATE TABLE IF NOT EXISTS text_display_links(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL DEFAULT '',entity_uuid TEXT NOT NULL DEFAULT '',text TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
@@ -5972,6 +6175,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "ALTER TABLE president_tax_payment_ops ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE president_tax_payment_ops ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE president_tax_payment_ops ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS tax_id TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS term_id TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS artifact_instance_id TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'TAX_CLOCK_EXEMPTION'");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ACTIVE'");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS expires_at BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE president_tax_exemptions ADD COLUMN IF NOT EXISTS details TEXT NOT NULL DEFAULT ''");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_polling_stations_active ON polling_stations(active,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_candidate_applications_status ON candidate_applications(election_id,admin_status,submitted_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_ballots_player ON ballots(election_id,round_no,player_uuid,status)");
@@ -5979,6 +6194,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE INDEX IF NOT EXISTS idx_president_laws_status ON president_laws(status,published_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_payments_tax_player ON president_tax_payments(tax_id,player_uuid,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_payment_ops_status ON president_tax_payment_ops(status,updated_at DESC)");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_exemptions_player ON president_tax_exemptions(player_uuid)");
+            update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_exemptions_active ON president_tax_exemptions(status,expires_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_blocks_coords ON protected_blocks(world,x,y,z,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_location ON protected_block_visuals(world,x,y,z,active)");
@@ -6417,6 +6634,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private String formatTs(long ts) {
         return ts <= 0 ? "—" : Instant.ofEpochMilli(ts).toString();
+    }
+
+    private String formatTaxExemptionRemaining(long expiresAt) {
+        long minutes = Math.max(0L, (expiresAt - now()) / 60000L);
+        long days = minutes / (24L * 60L);
+        long hours = (minutes % (24L * 60L)) / 60L;
+        long remainingMinutes = minutes % 60L;
+        if (days > 0L) return days + " дн. " + hours + " ч. " + remainingMinutes + " мин.";
+        if (hours > 0L) return hours + " ч. " + remainingMinutes + " мин.";
+        return remainingMinutes + " мин.";
     }
 
     private record DbSettings(String host, int port, String database, String user, String password, String schema, Path envFile) {

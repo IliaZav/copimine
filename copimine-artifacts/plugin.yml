@@ -2,7 +2,7 @@ name: CopiMineArtifacts
 version: '1.0.0-autocashier'
 main: me.copimine.artifacts.CopiMineArtifacts
 api-version: '1.21'
-author: OpenAI Codex
+author: CopiMine
 load: POSTWORLD
 libraries:
   - org.postgresql:postgresql:42.7.5
@@ -13,15 +13,15 @@ softdepend:
   - CopiMineUltimateAdminPlus
 commands:
   cmartifacts:
-    description: CopiMine artifacts autocashier and admin tools
+    description: Открыть лавку артефактов
     usage: /cmartifacts
     aliases: [cartifacts, artifactshop]
   setprice:
-    description: Update artifact or donation item price in game
+    description: Изменить цену предмета
     usage: /setprice <item_id> <price> or /setprice <item_id> <ar|donation> <price>
 permissions:
   copimine.artifacts.admin:
-    description: Manage artifact shops and configuration
+    description: Управление лавками артефактов
     default: op
     children:
       copimine.artifacts.shop.create: true
@@ -29,21 +29,25 @@ permissions:
       copimine.artifacts.shop.list: true
       copimine.artifacts.reload: true
       copimine.artifacts.price.set: true
+      copimine.artifacts.admin.give: true
   copimine.artifacts.shop.create:
-    description: Create artifact shop blocks
+    description: Создание лавок артефактов
     default: op
   copimine.artifacts.shop.remove:
-    description: Remove artifact shop blocks
+    description: Удаление лавок артефактов
     default: op
   copimine.artifacts.shop.list:
-    description: List artifact shop blocks
+    description: Просмотр лавок артефактов
     default: op
   copimine.artifacts.reload:
-    description: Reload artifact catalog and config
+    description: Перезагрузка лавки артефактов
     default: op
   copimine.artifacts.price.set:
-    description: Change artifact and donation item prices
+    description: Изменение цен предметов
+    default: op
+  copimine.artifacts.admin.give:
+    description: Выдача особых артефактов игроку
     default: op
   copimine.artifacts.use:
-    description: Use artifact shops
+    description: Использование лавок артефактов
     default: true

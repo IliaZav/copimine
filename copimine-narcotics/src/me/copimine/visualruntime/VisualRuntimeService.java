@@ -50,7 +50,7 @@ public final class VisualRuntimeService {
             "INVERT", "crucify.zip",
             "WOBBLE", "nms_1_6.zip",
             "BLOBS", "acid_shaders.zip",
-            "PENCIL", "cursed_metamorphopsia.zip"
+            "PENCIL", "white_sharp_1_2.zip"
     );
     private static final List<String> RANDOM_SHADERPACKS = List.of(
             "acid_shaders.zip",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import struct
 import zlib
@@ -14,6 +15,7 @@ SRC = ROOT / "src"
 BUILD = ROOT / "build"
 STAGE = BUILD / "_stage"
 COMBINED_MANIFEST = ROOT / "models_manifest.json"
+TEXTURE_SOURCES = ROOT / "item_texture_sources.json"
 SERVER_PROPERTIES = ROOT.parent / "minecraft" / "server" / "server.properties"
 DEFAULT_RESOURCE_PACK_URL = r"http\://admin.copimine.ru\:18080/resourcepacks/CopiMineResourcePack.zip"
 DEFAULT_WORLD_SEED = "-1861153001556076901"
@@ -156,6 +158,68 @@ def validate_source_tree() -> None:
     if forbidden:
         raise ValueError("Global vanilla block texture overrides are not allowed in this resource pack.")
 
+    validate_catalog_mapping()
+
+
+def validate_catalog_mapping() -> None:
+    artifacts = ROOT.parent / "copimine-artifacts" / "items.yml"
+    if not artifacts.is_file() or not TEXTURE_SOURCES.is_file():
+        raise FileNotFoundError("Artifact catalog and item_texture_sources.json are required")
+    catalog_items = read_catalog_items(artifacts)
+    sources = json.loads(TEXTURE_SOURCES.read_text(encoding="utf-8-sig"))
+    manifest = json.loads(COMBINED_MANIFEST.read_text(encoding="utf-8-sig"))
+    source_rows = {str(row.get("id")): row for row in sources.get("items", [])}
+    manifest_rows = manifest.get("items", [])
+    manifest_keys = {(str(row["base_material"]).upper(), int(row["custom_model_data"])) for row in manifest_rows}
+    if len(manifest_keys) != len(manifest_rows):
+        raise ValueError("Duplicate (base_material, custom_model_data) in models_manifest.json")
+    missing = []
+    for item in catalog_items:
+        item_id = str(item.get("id") or item.get("item-id") or "")
+        material = str(item.get("material") or item.get("base-material") or item.get("base_material") or "").upper()
+        model_data = int(item.get("custom_model_data") or item.get("custom-model-data") or 0)
+        if not item_id or model_data <= 0:
+            missing.append(f"{item_id or '<unnamed>'}: custom model data must be positive")
+            continue
+        source = source_rows.get(item_id)
+        if source is None:
+            missing.append(f"{item_id}: missing item_texture_sources.json row")
+        elif str(source.get("base_material", "")).upper() != material or int(source.get("custom_model_data", 0)) != model_data:
+            missing.append(f"{item_id}: source mapping does not match catalog material/model data")
+        if (material, model_data) not in manifest_keys:
+            missing.append(f"{item_id} ({material}, {model_data}): missing manifest override")
+    if len(source_rows) != len(catalog_items):
+        missing.append("item_texture_sources.json must contain exactly one row per catalog item")
+    if missing:
+        raise ValueError("Artifact texture mappings are invalid:\n - " + "\n - ".join(missing))
+
+
+def read_catalog_items(path: Path) -> list[dict]:
+    """Read only catalog item scalars without making PyYAML a pack-build dependency."""
+    try:
+        import yaml
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return list(payload.get("items", [])) + list(payload.get("donation-catalog", {}).get("items", []))
+    except ModuleNotFoundError:
+        rows: list[dict] = []
+        current: dict | None = None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            start = re.match(r"^\s*-\s+(id|item-id):\s*(.*?)\s*$", line)
+            if start:
+                if current:
+                    rows.append(current)
+                current = {"id": start.group(2).strip().strip('"\'')}
+                continue
+            if current is None:
+                continue
+            value = re.match(r"^\s+(material|base-material|custom_model_data|custom-model-data):\s*(.*?)\s*$", line)
+            if value:
+                key = {"base-material": "base_material", "custom-model-data": "custom_model_data"}.get(value.group(1), value.group(1))
+                current[key] = value.group(2).strip().strip('"\'')
+        if current:
+            rows.append(current)
+        return rows
+
 
 def build_stage() -> None:
     validate_source_tree()
@@ -177,6 +241,14 @@ def build_stage() -> None:
             raise FileNotFoundError(f"Missing model referenced by models_manifest.json: {model_path}")
         if not texture_path.is_file():
             raise FileNotFoundError(f"Missing texture referenced by models_manifest.json: {texture_path}")
+        if item.get("animation"):
+            meta_path = texture_path.with_suffix(texture_path.suffix + ".mcmeta")
+            if not meta_path.is_file():
+                raise FileNotFoundError(f"Missing animation metadata referenced by models_manifest.json: {meta_path}")
+            metadata = json.loads(meta_path.read_text(encoding="utf-8-sig"))
+            animation = metadata.get("animation", {})
+            if animation.get("frametime") != item["animation"].get("frametime", 1) or animation.get("interpolate") is not False:
+                raise ValueError(f"Animation metadata mismatch for {item['id']}")
 
     for material, entries in grouped.items():
         overrides = [

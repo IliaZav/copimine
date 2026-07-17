@@ -1,0 +1,32 @@
+{
+  "source_archive": "D:/Downloads/Telegram Desktop/Items Textures.rar",
+  "source_archive_sha256": "681A727E5BBDE723A175C87741F41E4490822539208E81473DD2126685FBB4AF",
+  "mapping_version": 1,
+  "items": [
+    {"id":"zmei_gorynych","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/Zmei_Gorinich_sword.png","base_material":"NETHERITE_SWORD","custom_model_data":10001},
+    {"id":"smena_bez_perekura_pickaxe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/smena_bez_perekura_pickaxe.png","base_material":"NETHERITE_PICKAXE","custom_model_data":10002},
+    {"id":"lesnoy_bespredel_axe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/Lesnoy_bespredel_axe.png","base_material":"NETHERITE_AXE","custom_model_data":10003},
+    {"id":"kopatel_transhey_shovel","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/kopatel_transhey_shovel.png","base_material":"NETHERITE_SHOVEL","custom_model_data":10004},
+    {"id":"fermer_bez_sna_hoe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/fermer_bez_sna_hoe.png","base_material":"NETHERITE_HOE","custom_model_data":10005},
+    {"id":"dezhurniy_argument_sword","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/dezhurny_argument_sword.png","base_material":"NETHERITE_SWORD","custom_model_data":10006},
+    {"id":"vechniy_razgon_firework","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/vechny_razgon_firework_rocket.png","base_material":"FIREWORK_ROCKET","custom_model_data":10007},
+    {"id":"eternal_totem","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/totem_of_undying.png","base_material":"TOTEM_OF_UNDYING","custom_model_data":10008},
+    {"id":"treasurer_chestplate","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/kaznacheyskiy_chestplate.png","base_material":"NETHERITE_CHESTPLATE","custom_model_data":10010},
+    {"id":"copimine_miner_pickaxe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/copiminer_pickaxe.png","base_material":"NETHERITE_PICKAXE","custom_model_data":10011},
+    {"id":"craftsman_hammer","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/remeslenick_mace.png","base_material":"MACE","custom_model_data":10012},
+    {"id":"kozyrny_tuz_pozdnyakova","catalog":"ADMIN_ONLY","source_group":"User_Supplied","source_path":"D:/Downloads/photo_2026-07-17_12-02-26.jpg","base_material":"NETHERITE_LEGGINGS","custom_model_data":10013},
+    {"id":"batin_remen_sudnogo_dnya","catalog":"DONATION","source_group":"Donate","source_path":"Donate/batin_remen_supnogo_dny_sword.png","base_material":"NETHERITE_AXE","custom_model_data":20001},
+    {"id":"nu_ty_i_nakopal_blyat_pickaxe","catalog":"DONATION","source_group":"Donate","source_path":"Donate/nu_ti_i_nakopal_blyat_pickaxe.png","base_material":"NETHERITE_PICKAXE","custom_model_data":20002},
+    {"id":"kosa_nalogovoy_inspekcii","catalog":"DONATION","source_group":"Donate","source_path":"Donate/kosa_nalogovoi_inspekcii_hoe.png","base_material":"NETHERITE_HOE","custom_model_data":20003},
+    {"id":"kaska_prorab_huev","catalog":"DONATION","source_group":"Donate","source_path":"Donate/kaska_prorab_huev_helmet.png","base_material":"NETHERITE_HELMET","custom_model_data":20004},
+    {"id":"mne_pohuy_ya_v_tanke_vest","catalog":"DONATION","source_group":"Donate","source_path":"Donate/mne_pohuy_ya_v_tanke_chestplate.png","base_material":"NETHERITE_CHESTPLATE","custom_model_data":20005},
+    {"id":"ne_segodnya_suka_shield","catalog":"DONATION","source_group":"Donate","source_path":"Donate/entiti (ne_segodny_suki_shield)/ne_segodny_suki_shield_base_nopattern.png","base_material":"SHIELD","custom_model_data":20006,"variant":"base_nopattern"},
+    {"id":"ya_esche_ne_vse_isportil_totem","catalog":"DONATION","source_group":"Donate","source_path":"Donate/ya_eche_ne_vse_isportil_totem_of_undying.png","base_material":"TOTEM_OF_UNDYING","custom_model_data":20007},
+    {"id":"pohuy_na_debaffy_amulet","catalog":"DONATION","source_group":"Donate","source_path":"Donate/amulet_pohuy_na_debaffi_totem_of_undying.png","base_material":"HEART_OF_THE_SEA","custom_model_data":20008},
+    {"id":"vremya_platit_nalogi_clock","catalog":"DONATION","source_group":"Donate","source_path":"Donate/time_to_pay_suchki_clock/time_to_pay_suchki_clock_*.png","base_material":"CLOCK","custom_model_data":20009,"frame_count":64,"frametime":1,"interpolate":false},
+    {"id":"gde_moy_lut_blyat_compass","catalog":"DONATION","source_group":"Donate","source_path":"Donate/gde_moy_lut_blyt__compass/gde_moy_lut_blyt_compass_*.png","base_material":"COMPASS","custom_model_data":20010,"frame_count":32,"frametime":1,"interpolate":false}
+  ],
+  "unassigned_archive_assets": [
+    "Donate/entiti (ne_segodny_suki_shield)/ne_segodny_suki_shield_base.png"
+  ]
+}

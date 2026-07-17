@@ -23,6 +23,52 @@ export function createPlayerTreasuryPages(deps) {
 
   let recipientCache = [];
 
+  function formatTaxExemptionRemaining(expiresAt) {
+    const target = Number(expiresAt || 0);
+    if (!Number.isFinite(target) || target <= Date.now()) return "срок завершён";
+    const now = new Date();
+    const end = new Date(target);
+    let cursor = new Date(now);
+    let months = 0;
+    while (months < 120) {
+      const next = new Date(cursor);
+      next.setMonth(next.getMonth() + 1);
+      if (next > end) break;
+      cursor = next;
+      months += 1;
+    }
+    let minutesRemaining = Math.max(0, Math.floor((end.getTime() - cursor.getTime()) / 60000));
+    const days = Math.floor(minutesRemaining / 1440);
+    minutesRemaining %= 1440;
+    const hours = Math.floor(minutesRemaining / 60);
+    const minutes = minutesRemaining % 60;
+    const readableParts = [];
+    if (months) readableParts.push(`${months} мес.`);
+    if (days || months) readableParts.push(`${days} дн.`);
+    if (hours || days || months) readableParts.push(`${hours} ч.`);
+    readableParts.push(`${minutes} мин.`);
+    return readableParts.join(" ");
+  }
+
+  function stopTaxExemptionCountdown() {
+    if (state.taxExemptionCountdown) {
+      window.clearTimeout(state.taxExemptionCountdown);
+      state.taxExemptionCountdown = null;
+    }
+  }
+
+  function startTaxExemptionCountdown(expiresAt) {
+    stopTaxExemptionCountdown();
+    const render = () => {
+      const target = $("taxExemptionCountdown");
+      if (!target) return stopTaxExemptionCountdown();
+      target.textContent = formatTaxExemptionRemaining(expiresAt);
+      if (Number(expiresAt) <= Date.now()) return stopTaxExemptionCountdown();
+      state.taxExemptionCountdown = window.setTimeout(render, 60000 - (Date.now() % 60000));
+    };
+    render();
+  }
+
   function bankPinStateTone(pin) {
     if (pin.locked) return "bad";
     if (pin.mustChange || pin.status === "temporary-expired") return "warn";
@@ -52,6 +98,7 @@ export function createPlayerTreasuryPages(deps) {
   }
 
   async function loadPlayerBank() {
+    stopTaxExemptionCountdown();
     setLoading("Загрузка банка AR");
     const me = await api("/api/player/me");
     state.user = me.account || {};
@@ -98,6 +145,8 @@ export function createPlayerTreasuryPages(deps) {
     const taxDue = number(taxProfile?.due || 0);
     const taxPaid = number(taxProfile?.paid || 0);
     const taxPresident = String(taxProfile?.president?.name || "").trim();
+    const taxExemptionActive = Boolean(taxProfile?.taxExemption?.active);
+    const taxExemptionUntil = number(taxProfile?.taxExemption?.expiresAt || tax?.exemptUntil || 0);
     const selectedPinState = usingTreasury
       ? (treasuryPin.visiblePin ? "Настроен" : "Не задан")
       : bankPinState(pin);
@@ -118,6 +167,7 @@ export function createPlayerTreasuryPages(deps) {
     ]);
 
     setView(`
+      ${!usingTreasury && taxExemptionActive ? panel("Освобождение от налогов", "", `<div class="notice full">Осталось: <strong id="taxExemptionCountdown"></strong>.</div>`) : ""}
       <section class="bank-shell">
         <section class="bank-hero">
           <div class="bank-hero-copy">
@@ -246,6 +296,7 @@ export function createPlayerTreasuryPages(deps) {
         ${panel("Журнал операций", "Переводы, оплаты и покупки.", transactionFeed(ledger, 18))}
       </section>
     `);
+    if (!usingTreasury && taxExemptionActive) startTaxExemptionCountdown(taxExemptionUntil);
   }
 
   async function playerSetPin() {

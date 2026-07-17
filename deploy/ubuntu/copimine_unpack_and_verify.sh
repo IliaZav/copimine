@@ -178,6 +178,8 @@ validate_inputs() {
       ;;
   esac
   if [[ -n "$ARCHIVE_SHA256" ]]; then
+    [[ "${#ARCHIVE_SHA256}" -eq 64 ]] || die "Archive SHA256 must contain exactly 64 hex characters."
+    [[ "$ARCHIVE_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]] || die "Archive SHA256 contains non-hex characters."
     local actual
     actual="$(sha256sum "$ARCHIVE_PATH" | awk '{print tolower($1)}')"
     [[ "${ARCHIVE_SHA256,,}" == "$actual" ]] || die "Archive SHA256 mismatch. Expected ${ARCHIVE_SHA256,,}, got $actual"
@@ -432,6 +434,25 @@ refresh_managed_release_artifacts() {
   copimine_validate_release_contract
 }
 
+prepare_python_runtime() {
+  log "[12b/16] Rebuild admin-web Python runtime"
+  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ -f "$common_script" ]] || die "Missing shared deploy helpers: $common_script"
+  # shellcheck source=/dev/null
+  source "$common_script"
+  COPIMINE_ROOT="$PROJECT_ROOT"
+  COPIMINE_APP_USER="$APP_USER"
+  COPIMINE_APP_GROUP="$APP_GROUP"
+  COPIMINE_ADMIN_DIR="$PROJECT_ROOT/admin-web"
+  COPIMINE_ENV_FILE="$PROJECT_ROOT/admin-web/.env"
+  COPIMINE_SERVER_DIR="$PROJECT_ROOT/minecraft/server"
+  COPIMINE_SERVER_PROPERTIES="$PROJECT_ROOT/minecraft/server/server.properties"
+  COPIMINE_RELEASE_MANIFEST="$PROJECT_ROOT/deploy/release_manifest.json"
+  COPIMINE_INSTALLER_MANIFEST="$PROJECT_ROOT/deploy/installer_manifest.json"
+  COPIMINE_RUNTIME_METADATA="$PROJECT_ROOT/deploy/runtime_metadata.json"
+  copimine_python_env
+}
+
 install_system_files() {
   log "[13/16] Install system files"
   local deploy_dir="$PROJECT_ROOT/admin-web/deploy"
@@ -526,6 +547,17 @@ verify_http() {
   curl -fsS http://127.0.0.1:8090/api/runtime >/dev/null || die "/api/runtime failed"
   curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip >/dev/null || die "Modpack download route failed"
   curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack download route failed"
+  local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
+  tmp_modpack="$TMP_ROOT/CopiMineMods.zip"
+  tmp_resourcepack="$TMP_ROOT/CopiMineResourcePack.zip"
+  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip -o "$tmp_modpack" || die "Modpack payload download failed"
+  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || die "Resource pack payload download failed"
+  local_modpack_sha="$(sha256sum "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
+  remote_modpack_sha="$(sha256sum "$tmp_modpack" | awk '{print $1}')"
+  [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || die "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"
+  local_resourcepack_sha="$(sha256sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
+  remote_resourcepack_sha="$(sha256sum "$tmp_resourcepack" | awk '{print $1}')"
+  [[ "$local_resourcepack_sha" == "$remote_resourcepack_sha" ]] || die "Served resource pack SHA256 mismatch. Runtime=$local_resourcepack_sha download=$remote_resourcepack_sha"
 }
 
 final_summary() {
@@ -553,6 +585,7 @@ main() {
   clean_world_state_if_requested
   fix_permissions
   refresh_managed_release_artifacts
+  prepare_python_runtime
   install_system_files
   validate_runtime_tree
   verify_services

@@ -77,6 +77,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -116,6 +117,7 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -135,6 +137,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String TREASURY_LABEL = "Казна CopiMine";
    private static final UUID EMPTY_UUID = new UUID(0L, 0L);
    private static final int MODEL_ARTIFACT_SHOP_MARKER = 14004;
+   private static final int POZDNYAKOV_LAVA_RADIUS = 2;
+   private static final long POZDNYAKOV_LAVA_RESTORE_TICKS = 100L;
    private static final String ARTIFACT_LIMIT_SUPPLY = "ARTIFACT_LIMIT_SUPPLY";
    private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
    private static final String GUI_BACK_LABEL = "&aНазад";
@@ -145,9 +149,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, CopiMineArtifacts.CatalogItem> catalogById = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.DonationCatalogItem> donationCatalogById = new ConcurrentHashMap<>();
    private final Map<CopiMineArtifacts.Category, List<CopiMineArtifacts.CatalogItem>> catalogByCategory = new ConcurrentHashMap<>();
+   private final Set<String> adminOnlyCatalogItems = ConcurrentHashMap.newKeySet();
    private final Map<UUID, CopiMineArtifacts.SessionState> sessions = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.Shop> shopsByLocation = new ConcurrentHashMap<>();
    private final Map<UUID, Long> actionCooldowns = new ConcurrentHashMap<>();
+   private final Map<UUID, Long> pozdnyakovNauseaCooldowns = new ConcurrentHashMap<>();
+   private final Map<String, PozdnyakovMagmaRestore> pozdnyakovMagmaRestores = new ConcurrentHashMap<>();
    private final Map<UUID, Location> lastDeathLocations = new ConcurrentHashMap<>();
    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
@@ -187,6 +194,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey visualModelIdKey;
    private BukkitTask deliveryTask;
    private BukkitTask sessionCleanupTask;
+   private BukkitTask artifactEffectTask;
 
    public void onEnable() {
       this.saveDefaultConfig();
@@ -207,6 +215,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.visualKindKey = new NamespacedKey(this, "visual_kind");
       this.visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
       this.visualModelIdKey = new NamespacedKey(this, "visual_model_id");
+      if (!this.customBlockVisualsEnabled()) {
+         this.cleanupAllProtectedBlockVisualEntities();
+      }
       this.visualEffects = new CopiMineArtifacts.VisualEffectService(this);
       this.dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors())));
       this.donationLossJournalPath = this.getDataFolder().toPath().resolve("donation-loss-journal.tsv");
@@ -223,6 +234,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.pgSettings = this.loadPgSettings();
                this.pgPool = new CopiMineArtifacts.PgPool(this.pgSettings, 4);
                this.ensureSchema();
+               if (!this.customBlockVisualsEnabled()) {
+                  this.deactivateAllProtectedBlockVisualRowsAsync();
+               }
                this.loadCatalogFromConfig();
                this.syncCatalogToPostgres();
                this.loadShopsFromPostgres();
@@ -254,6 +268,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Bukkit.getPluginManager().registerEvents(this, this);
             this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
             this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
+            this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
             this.getLogger().info("CopiMineArtifacts enabled with " + this.catalogById.size() + " active catalog items.");
          }
       } else {
@@ -308,12 +323,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    public void onDisable() {
       Bukkit.getScheduler().cancelTasks(this);
+      this.cleanupAllProtectedBlockVisualEntities();
       if (this.deliveryTask != null) {
          this.deliveryTask.cancel();
       }
 
       if (this.sessionCleanupTask != null) {
          this.sessionCleanupTask.cancel();
+      }
+
+      if (this.artifactEffectTask != null) {
+         this.artifactEffectTask.cancel();
       }
 
       if (this.dbExecutor != null) {
@@ -397,22 +417,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.add(Path.of(var2));
       }
 
-      File var3 = this.getDataFolder();
-      File var4 = var3.getParentFile();
-      if (var4 != null) {
-         File var5 = var4.getParentFile();
-         if (var5 != null) {
-            File var6 = var5.getParentFile();
-            if (var6 != null) {
-               File var7 = var6.getParentFile();
-               if (var7 != null) {
-                  var1.add(var7.toPath().resolve("admin-web").resolve(".env"));
+      var1.add(Path.of("/opt/copimine/admin-web/.env"));
+
+      Path var3 = this.releaseRootPath();
+      if (var3 != null) {
+         var1.add(var3.resolve("admin-web").resolve(".env"));
+      }
+
+      Path var4 = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+      var1.add(var4.resolve("../../admin-web/.env").normalize());
+      var1.add(var4.resolve("../admin-web/.env").normalize());
+
+      File var5 = this.getDataFolder();
+      File var6 = var5.getParentFile();
+      if (var6 != null) {
+         File var7 = var6.getParentFile();
+         if (var7 != null) {
+            File var8 = var7.getParentFile();
+            if (var8 != null) {
+               File var9 = var8.getParentFile();
+               if (var9 != null) {
+                  var1.add(var9.toPath().resolve("admin-web").resolve(".env"));
                }
             }
          }
       }
 
       return var1;
+   }
+
+   private Path releaseRootPath() {
+      try {
+         Path var1 = this.getServer().getWorldContainer().toPath().toAbsolutePath().normalize();
+         Path var2 = var1.getParent();
+         Path var3 = var2 == null ? null : var2.getParent();
+         if (var3 != null && Files.isDirectory(var3.resolve("admin-web"))) {
+            return var3;
+         }
+      } catch (Exception var4) {
+      }
+
+      return null;
    }
 
    private void ensureSchema() throws SQLException {
@@ -477,6 +522,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private void loadCatalogFromConfig() {
       this.catalogById.clear();
+      this.adminOnlyCatalogItems.clear();
       this.donationCatalogById.clear();
       this.donationCatalogVersion = 1;
       this.donationCatalogUpdatedAt = 0L;
@@ -517,7 +563,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var9
             );
             this.catalogById.put(var6, var11);
-            ((List)var1.get(var7)).add(var11);
+            if ("ADMIN_ONLY".equalsIgnoreCase(this.str(var16.get("source")))) {
+               this.adminOnlyCatalogItems.add(var6.toLowerCase(Locale.ROOT));
+            } else {
+               ((List)var1.get(var7)).add(var11);
+            }
          }
       }
 
@@ -642,7 +692,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var2.setString(13, var6.visualEffectId());
                var2.setString(14, this.toJson(var6.lore()));
                CopiMineArtifacts.DonationCatalogItem var7 = this.donationCatalogById.get(var6.itemId());
-               var2.setBoolean(15, var7 != null ? var7.enabled() : var6.category() != CopiMineArtifacts.Category.RP);
+               var2.setBoolean(15, var7 != null ? var7.enabled() : var6.category() != CopiMineArtifacts.Category.RP && !this.adminOnlyCatalogItems.contains(var6.itemId().toLowerCase(Locale.ROOT)));
                var2.setLong(16, var3);
                var2.addBatch();
             }
@@ -836,6 +886,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         case "HASTE_BURST":
                            var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 100, 1, false, false, true));
                            var3.getWorld().spawnParticle(Particle.ENCHANT, var1.getBlock().getLocation().add(0.5, 0.8, 0.5), 10, 0.35, 0.35, 0.35, 0.01);
+                           break;
+                        case "MINER_3X3":
+                           this.breakMinerArea(var3, var1.getBlock(), var3.getInventory().getItemInMainHand());
                            break;
                         case "FORESTER_FOCUS":
                            var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
@@ -1083,6 +1136,89 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler
    public void onQuit(PlayerQuitEvent var1) {
       this.sessions.remove(var1.getPlayer().getUniqueId());
+      this.pozdnyakovNauseaCooldowns.remove(var1.getPlayer().getUniqueId());
+   }
+
+   private void tickPozdnyakovAce() {
+      long nowMillis = System.currentTimeMillis();
+      for (Entry<String, PozdnyakovMagmaRestore> entry : this.pozdnyakovMagmaRestores.entrySet()) {
+         PozdnyakovMagmaRestore restore = entry.getValue();
+         if (restore.expiresAtMillis() > nowMillis) {
+            continue;
+         }
+         Block block = restore.location().getBlock();
+         if (block.getType() == Material.MAGMA_BLOCK) {
+            block.setType(Material.LAVA, false);
+         }
+         this.pozdnyakovMagmaRestores.remove(entry.getKey(), restore);
+      }
+
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         CopiMineArtifacts.CatalogItem item = this.authenticCatalogItem(player.getInventory().getLeggings(), player, "pozdnyakov_ace_lava");
+         if (item == null || !"POZDNYAKOV_ACE".equalsIgnoreCase(item.effect())) {
+            continue;
+         }
+
+         Block center = player.getLocation().getBlock();
+         for (int dx = -POZDNYAKOV_LAVA_RADIUS; dx <= POZDNYAKOV_LAVA_RADIUS; dx++) {
+            for (int dz = -POZDNYAKOV_LAVA_RADIUS; dz <= POZDNYAKOV_LAVA_RADIUS; dz++) {
+               Block block = center.getRelative(dx, 0, dz);
+               Material originalType = block.getType();
+               if (originalType == Material.LAVA) {
+                  block.setType(Material.MAGMA_BLOCK, false);
+                  this.pozdnyakovMagmaRestores.put(
+                     this.blockKey(block.getLocation()),
+                     new PozdnyakovMagmaRestore(block.getLocation(), nowMillis + (POZDNYAKOV_LAVA_RESTORE_TICKS * 50L))
+                  );
+               }
+            }
+         }
+      }
+   }
+
+   private void restoreInfiniteTotem(Player player, ItemStack snapshot) {
+      if (player == null || !player.isOnline() || snapshot == null || !snapshot.hasItemMeta()) {
+         return;
+      }
+      String uniqueId = snapshot.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
+      if (uniqueId == null || uniqueId.isBlank()) {
+         return;
+      }
+      PlayerInventory inventory = player.getInventory();
+      ItemStack[] hands = {inventory.getItemInMainHand(), inventory.getItemInOffHand()};
+      for (int index = 0; index < hands.length; index++) {
+         ItemStack current = hands[index];
+         if (current == null || !current.hasItemMeta()) {
+            continue;
+         }
+         String currentId = current.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
+         if (!uniqueId.equals(currentId)) {
+            continue;
+         }
+         if (current.getAmount() < snapshot.getAmount()) {
+            current.setAmount(current.getAmount() + 1);
+            if (index == 0) {
+               inventory.setItemInMainHand(current);
+            } else {
+               inventory.setItemInOffHand(current);
+            }
+         }
+         return;
+      }
+      inventory.addItem(snapshot);
+   }
+
+   private LivingEntity resolveDamageAttacker(EntityDamageByEntityEvent event) {
+      if (event == null) {
+         return null;
+      }
+      if (event.getDamager() instanceof LivingEntity living) {
+         return living;
+      }
+      if (event.getDamager() instanceof Projectile projectile && projectile.getShooter() instanceof LivingEntity living) {
+         return living;
+      }
+      return null;
    }
 
    @EventHandler
@@ -1147,10 +1283,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onEntityResurrect(EntityResurrectEvent var1) {
-      if (var1.getEntity() instanceof Player var2) {
+         if (var1.getEntity() instanceof Player var2) {
          ItemStack[] var10 = new ItemStack[]{var2.getInventory().getItemInMainHand(), var2.getInventory().getItemInOffHand()};
 
          for (ItemStack var7 : var10) {
+            CopiMineArtifacts.CatalogItem infiniteTotem = this.authenticCatalogItem(var7, var2, "resurrect_infinite_totem");
+            if (infiniteTotem != null && var7.getType() == Material.TOTEM_OF_UNDYING && "INFINITE_TOTEM".equalsIgnoreCase(infiniteTotem.effect())) {
+               ItemStack snapshot = var7.clone();
+               Bukkit.getScheduler().runTask(this, () -> this.restoreInfiniteTotem(var2, snapshot));
+               break;
+            }
             CopiMineArtifacts.OfficialDonationRef var8 = this.officialDonationRef(var7);
             if (var8 != null && var7.getType() == Material.TOTEM_OF_UNDYING && var2.getUniqueId().equals(var8.ownerUuid())) {
                CopiMineArtifacts.CatalogItem var9 = this.authenticCatalogItem(var7, var2, "resurrect");
@@ -1296,7 +1438,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   case "FARMER_SWEEP" -> this.tryFarmerSweep(var2, var1.getClickedBlock(), var1.getItem());
                   case "DEBUFF_AMULET" -> this.cleanseAllowedDebuff(var2);
                   case "TAX_CLOCK" -> {
-                     this.showTaxClockStatus(var2);
+                     this.activateTaxClock(var2, var1.getItem());
                      yield true;
                   }
                   case "LOOT_COMPASS" -> this.pointCompassToLastDeath(var2, var1.getItem());
@@ -1325,16 +1467,31 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          CopiMineArtifacts.CatalogItem var13 = this.authenticCatalogItem(var2.getInventory().getHelmet(), var2, "defend_helmet");
          CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var2.getInventory().getChestplate(), var2, "defend_chest");
          CopiMineArtifacts.CatalogItem var5 = this.authenticCatalogItem(var2.getInventory().getItemInOffHand(), var2, "defend_offhand");
+         CopiMineArtifacts.CatalogItem pozdnyakovAce = this.authenticCatalogItem(var2.getInventory().getLeggings(), var2, "defend_pozdnyakov_ace");
+         if (pozdnyakovAce != null && "POZDNYAKOV_ACE".equalsIgnoreCase(pozdnyakovAce.effect()) && var1 instanceof EntityDamageByEntityEvent damageEvent) {
+            LivingEntity attacker = this.resolveDamageAttacker(damageEvent);
+            long current = this.now();
+            long cooldownUntil = this.pozdnyakovNauseaCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            if (attacker != null && attacker != var2 && cooldownUntil <= current) {
+               attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 100, 2, false, false, true));
+               this.pozdnyakovNauseaCooldowns.put(var2.getUniqueId(), current + 30_000L);
+            }
+         }
          if (var13 != null && "PRORAB_HELMET".equalsIgnoreCase(var13.effect()) && var1.getCause() == DamageCause.FALL) {
-            var1.setDamage(var1.getDamage() * 0.4);
-            var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 0, false, false, true));
-            var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
+            long var6 = this.now();
+            long var8 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            if (var8 <= var6 && this.rollEffectChance(var13)) {
+               var1.setDamage(var1.getDamage() * 0.4);
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 0, false, false, true));
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
+               this.actionCooldowns.put(var2.getUniqueId(), var6 + (long)Math.max(8, var13.cooldownSeconds()));
+            }
          }
 
          if (var4 != null && "TANK_VEST".equalsIgnoreCase(var4.effect())) {
             long var6 = this.now();
             long var8 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
-            if (var8 <= var6 && var1.getDamage() >= 4.0) {
+            if (var8 <= var6 && var1.getDamage() >= 4.0 && this.rollEffectChance(var4)) {
                var1.setDamage(var1.getDamage() * 0.8);
                var2.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 100, 0, false, false, true));
                var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 0, false, false, true));
@@ -1345,7 +1502,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (var5 != null && "NOT_TODAY_SHIELD".equalsIgnoreCase(var5.effect()) && var2.isBlocking() && var1 instanceof EntityDamageByEntityEvent var14) {
             long var7 = this.now();
             long var9 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
-            if (var9 <= var7) {
+            if (var9 <= var7 && this.rollEffectChance(var5)) {
                if (var14.getDamager() instanceof LivingEntity var11) {
                   var11.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
                   var11.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
@@ -1532,6 +1689,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.noPermission(var5);
                return true;
             } else {
+               if (var4.length >= 3 && "give".equalsIgnoreCase(var4[1])) {
+                  return this.handleAdminGiveCommand(var5, var4);
+               }
                // openArtifactsAdminMenu(player);
                this.openArtifactsAdminMenu(var5);
                return true;
@@ -1572,6 +1732,131 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else {
          var1.sendMessage("Players only.");
          return true;
+      }
+   }
+
+   private boolean handleAdminGiveCommand(Player actor, String[] args) {
+      if (!this.hasArtifactPermission(actor, "copimine.artifacts.admin.give")) {
+         this.noPermission(actor);
+         return true;
+      }
+      if (args.length < 4 || !"give".equalsIgnoreCase(args[1])) {
+         actor.sendMessage(this.color("&e/cmartifacts admin give <player> <admin_item_id>"));
+         return true;
+      }
+
+      Player target = Bukkit.getPlayerExact(args[2]);
+      if (target == null) {
+         actor.sendMessage(this.color("&cИгрок должен быть онлайн."));
+         return true;
+      }
+      String itemId = args[3].trim().toLowerCase(Locale.ROOT);
+      CopiMineArtifacts.CatalogItem item = this.runtimeCatalogItem(itemId);
+      if (item == null || !this.isAdminOnlyCatalogItem(itemId) || !"POZDNYAKOV_ACE".equalsIgnoreCase(item.effect())) {
+         actor.sendMessage(this.color("&cНеизвестный административный предмет."));
+         return true;
+      }
+      if (target.getInventory().firstEmpty() < 0) {
+         actor.sendMessage(this.color("&cУ игрока нет свободного слота."));
+         return true;
+      }
+
+      String uniqueItemId = "admin-" + UUID.randomUUID();
+      String purchaseId = "ADMIN_GRANT-" + UUID.randomUUID();
+      UUID ownerUuid = target.getUniqueId();
+      this.runAsync(() -> {
+         try {
+            this.persistAdminGrantedInstance(ownerUuid, purchaseId, itemId, uniqueItemId);
+            this.cacheOfficialBinding(uniqueItemId, itemId, ownerUuid);
+            this.audit(actor.getName(), "admin_grant", uniqueItemId, "item=" + itemId + " target=" + target.getName());
+            this.runSync(() -> {
+               if (!target.isOnline() || target.getInventory().firstEmpty() < 0) {
+                  this.runAsync(() -> this.revokeAdminGrantedInstance(uniqueItemId));
+                  if (actor.isOnline()) {
+                     actor.sendMessage(this.color("&cВыдача отменена: у игрока больше нет места в инвентаре."));
+                  }
+                  return;
+               }
+
+               ItemStack stack = this.createOfficialItem(item, uniqueItemId, ownerUuid, purchaseId);
+               ItemMeta meta = stack.getItemMeta();
+               if (meta != null) {
+                  meta.addEnchant(Enchantment.THORNS, 3, true);
+                  meta.removeItemFlags(ItemFlag.HIDE_ENCHANTS);
+                  stack.setItemMeta(meta);
+               }
+               Map<Integer, ItemStack> leftovers = target.getInventory().addItem(stack);
+               if (!leftovers.isEmpty()) {
+                  this.runAsync(() -> this.revokeAdminGrantedInstance(uniqueItemId));
+                  if (actor.isOnline()) {
+                     actor.sendMessage(this.color("&cВыдача отменена: предмет не поместился в инвентарь."));
+                  }
+                  return;
+               }
+               target.sendMessage(this.color("&6Получен административный предмет: &f" + item.name()));
+               if (actor.isOnline() && actor != target) {
+                  actor.sendMessage(this.color("&aПредмет выдан игроку &f" + target.getName() + "&a."));
+               }
+            });
+         } catch (Exception error) {
+            this.removeOfficialBinding(uniqueItemId);
+            this.getLogger().log(Level.WARNING, "Admin artifact grant failed for " + itemId, error);
+            this.runSync(() -> {
+               if (actor.isOnline()) {
+                  actor.sendMessage(this.color("&cНе удалось выдать предмет. Ошибка записана в лог: ARTIFACT_ADMIN_GRANT_FAILED"));
+               }
+            });
+         }
+      });
+      actor.sendMessage(this.color("&eВыдача предмета поставлена в очередь PostgreSQL."));
+      return true;
+   }
+
+   private void persistAdminGrantedInstance(UUID ownerUuid, String purchaseId, String itemId, String uniqueItemId) throws SQLException {
+      Connection connection = this.pgPool.acquire();
+      try {
+         connection.setAutoCommit(false);
+         try (PreparedStatement statement = connection.prepareStatement(
+            "INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at) VALUES(?,?,?,?, 'ACTIVE',0,?,?)"
+         )) {
+            long timestamp = this.now();
+            statement.setString(1, uniqueItemId);
+            statement.setString(2, itemId);
+            statement.setString(3, ownerUuid.toString());
+            statement.setString(4, purchaseId);
+            statement.setLong(5, timestamp);
+            statement.setLong(6, timestamp);
+            statement.executeUpdate();
+         }
+         connection.commit();
+      } catch (SQLException error) {
+         connection.rollback();
+         throw error;
+      } finally {
+         try {
+            connection.setAutoCommit(true);
+         } catch (SQLException ignored) {
+         }
+         this.pgPool.release(connection);
+      }
+   }
+
+   private void revokeAdminGrantedInstance(String uniqueItemId) {
+      try {
+         Connection connection = this.pgPool.acquire();
+         try (PreparedStatement statement = connection.prepareStatement(
+            "UPDATE artifact_item_instances SET status='REVOKED',updated_at=? WHERE unique_item_id=? AND status='ACTIVE'"
+         )) {
+            statement.setLong(1, this.now());
+            statement.setString(2, uniqueItemId);
+            statement.executeUpdate();
+         } finally {
+            this.pgPool.release(connection);
+         }
+      } catch (SQLException error) {
+         this.getLogger().log(Level.WARNING, "Admin artifact grant revoke failed for " + uniqueItemId, error);
+      } finally {
+         this.removeOfficialBinding(uniqueItemId);
       }
    }
 
@@ -1669,8 +1954,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   return true;
                } else {
                   String var5 = var2[1].toLowerCase(Locale.ROOT);
+                  if (this.shopsByLocation.values().stream().anyMatch(existing -> existing.shopId().equalsIgnoreCase(var5))) {
+                     var1.sendMessage(this.color("&cЛавка с таким идентификатором уже существует."));
+                     return true;
+                  }
+                  String title = String.join(" ", Arrays.copyOfRange(var2, 1, var2.length)).trim();
                   CopiMineArtifacts.Shop var6 = new CopiMineArtifacts.Shop(
-                     var5, "CopiMine Artifacts", var8.getWorld().getName(), var8.getX(), var8.getY(), var8.getZ(), true
+                     var5, title.isBlank() ? var5 : title, var8.getWorld().getName(), var8.getX(), var8.getY(), var8.getZ(), true
                   );
                   this.runAsync(
                      () -> {
@@ -1977,6 +2267,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             )
          )
       );
+      this.setAction(var3, var2, 10, this.button(Material.LIME_WOOL, "&aСоздать лавку", List.of("&7Привязать к блоку перед вами.")), "admin:shop:create");
+      this.setAction(var3, var2, 13, this.button(Material.CHEST, "&eВыдать предмет", List.of("&7Создать отложенный подарок игроку.")), "admin:gift:players");
+      this.setAction(var3, var2, 16, this.button(Material.BOOK, "&bВсе лавки", List.of("&7Список, статистика и переход.")), "admin:shop:list");
       int var4 = 10;
 
       for (CopiMineArtifacts.Shop var6 : this.shopsByLocation.values()) {
@@ -2044,6 +2337,81 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          "close"
       );
       var1.openInventory(var3);
+   }
+
+   public void openAdminShopHub(Player player) {
+      if (!this.isArtifactsAdmin(player)) { this.noPermission(player); return; }
+      this.openAdminShops(player);
+   }
+
+   private String nextGeneratedShopId() { return "shop-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12); }
+
+   private void createAdminShopFromTarget(Player player) {
+      if (!this.hasArtifactPermission(player, "copimine.artifacts.shop.create")) { this.noPermission(player); return; }
+      Block target = player.getTargetBlockExact(6);
+      if (target == null || target.getType().isAir()) { player.sendMessage(this.color("&cСмотрите на существующий блок в пределах 6 блоков.")); return; }
+      if (this.shopsByLocation.containsKey(this.blockKey(target.getLocation()))) { player.sendMessage(this.color("&cНа этом блоке уже есть лавка.")); return; }
+      String generatedId = this.nextGeneratedShopId();
+      CopiMineArtifacts.Shop shop = new CopiMineArtifacts.Shop(generatedId, "Лавка " + generatedId.substring(generatedId.length() - 4), target.getWorld().getName(), target.getX(), target.getY(), target.getZ(), true);
+      this.runAsync(() -> {
+         try { this.saveShop(shop); this.shopsByLocation.put(shop.locationKey(), shop); this.audit(player.getName(), "shop_create", shop.shopId(), shop.locationKey());
+            this.runSync(() -> { try { this.spawnOrReplaceProtectedBlockVisual(target.getLocation(), "ARTIFACT_SHOP", shop.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker"); } catch (Exception ignored) {} if (player.isOnline()) player.sendMessage(this.color("&aЛавка создана.")); });
+         } catch (SQLException error) { this.getLogger().log(Level.WARNING, "Admin shop create failed", error); this.runSync(() -> { if (player.isOnline()) player.sendMessage(this.color("&cНе удалось создать лавку.")); }); }
+      });
+   }
+
+   private void openAdminGiftPlayersAsync(Player player) {
+      if (!this.hasArtifactPermission(player, "copimine.artifacts.admin.gift")) { this.noPermission(player); return; }
+      this.runAsync(() -> {
+         List<CopiMineArtifacts.GiftTarget> targets = new ArrayList<>();
+         Connection connection = null;
+         try { connection = this.pgPool.acquire(); try (PreparedStatement ps = connection.prepareStatement("SELECT player_uuid,MAX(player_name) AS player_name FROM (SELECT player_uuid,player_name FROM artifact_purchases UNION SELECT player_uuid,player_name FROM donation_purchases UNION SELECT owner_uuid AS player_uuid,'' AS player_name FROM artifact_item_instances) known_players WHERE player_uuid<>'' GROUP BY player_uuid ORDER BY lower(MAX(player_name)),player_uuid LIMIT 36")) { try (ResultSet rs = ps.executeQuery()) { while (rs.next()) targets.add(new CopiMineArtifacts.GiftTarget(rs.getString(1), this.firstNonBlank(rs.getString(2), "Игрок"))); } } }
+         catch (SQLException error) { this.getLogger().log(Level.WARNING, "Admin gift player lookup failed", error); }
+         finally { if (connection != null) this.pgPool.release(connection); }
+         this.runSync(() -> this.openAdminGiftPlayers(player, targets));
+      });
+   }
+
+   private void openAdminGiftPlayers(Player player, List<CopiMineArtifacts.GiftTarget> targets) {
+      CopiMineArtifacts.SessionState state = this.session(player); Inventory menu = this.createMenu(player, state, CopiMineArtifacts.ViewType.ADMIN_GIFT_PLAYERS, 54, "&8Выдать предмет");
+      int slot = 0; for (CopiMineArtifacts.GiftTarget target : targets) { if (slot >= 45) break; this.setAction(menu, state, slot++, this.button(Material.PLAYER_HEAD, "&f" + target.name(), List.of("&7Выбрать игрока")), "admin_gift:player:" + target.uuid()); }
+      this.setAction(menu, state, 49, this.button(Material.ARROW, GUI_BACK_LABEL, List.of()), "admin:shops"); player.openInventory(menu);
+   }
+
+   private void openAdminGiftCatalog(Player player, String kind) {
+      CopiMineArtifacts.SessionState state = this.session(player); state.giftKind = kind; Inventory menu = this.createMenu(player, state, CopiMineArtifacts.ViewType.ADMIN_GIFT_CATALOG, 54, "&8Выбор предмета");
+      int slot = 0; boolean adminGift = true;
+       if ("AR".equals(kind)) for (CopiMineArtifacts.CatalogItem item : this.catalogById.values()) { if (slot >= 45) break; if (adminGift && !this.isAdminOnlyCatalogItem(item.itemId())) this.setAction(menu, state, slot++, this.button(item.material(), item.name(), List.of("&7Выдать один экземпляр")), "admin_gift:item:" + item.itemId()); }
+       else if ("HIDDEN".equals(kind)) for (CopiMineArtifacts.CatalogItem item : this.catalogById.values()) { if (slot >= 45) break; if (this.isAdminOnlyCatalogItem(item.itemId())) this.setAction(menu, state, slot++, this.button(item.material(), item.name(), List.of("&7Выдать один экземпляр")), "admin_gift:item:" + item.itemId()); }
+       else for (CopiMineArtifacts.DonationCatalogItem item : this.donationCatalogById.values()) { if (slot >= 45) break; if (item.enabled() || adminGift) this.setAction(menu, state, slot++, this.button(item.baseMaterial(), item.displayName(), List.of("&7Выдать один экземпляр")), "admin_gift:item:" + item.itemId()); }
+      this.setAction(menu, state, 49, this.button(Material.ARROW, GUI_BACK_LABEL, List.of()), "admin_gift:kind"); player.openInventory(menu);
+   }
+
+   private void openAdminGiftConfirm(Player player) {
+      CopiMineArtifacts.SessionState state = this.session(player); CopiMineArtifacts.CatalogItem item = this.runtimeCatalogItem(state.currentItemId); if (item == null) { player.sendMessage(this.color("&cПредмет больше недоступен.")); return; }
+      Inventory menu = this.createMenu(player, state, CopiMineArtifacts.ViewType.ADMIN_GIFT_CONFIRM, 27, "&8Подтверждение выдачи");
+      menu.setItem(13, this.button(item.material(), item.name(), List.of("&7Выдать игроку: &f" + state.giftTargetName)));
+      this.setAction(menu, state, 11, this.button(Material.LIME_WOOL, "&aДа", List.of()), "admin_gift:confirm"); this.setAction(menu, state, 15, this.button(Material.RED_WOOL, "&cНет", List.of()), "admin_gift:kind"); player.openInventory(menu);
+   }
+
+   private void openAdminShopListAsync(Player player) {
+      this.runAsync(() -> {
+         List<CopiMineArtifacts.ShopStats> stats = new ArrayList<>(); Connection connection = null;
+         try { connection = this.pgPool.acquire(); for (CopiMineArtifacts.Shop shop : this.shopsByLocation.values()) {
+            long buyers = 0L, ar = 0L;
+            try (PreparedStatement ps = connection.prepareStatement("SELECT COUNT(DISTINCT player_uuid),COALESCE(SUM(price_ar),0) FROM artifact_purchases WHERE shop_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY') AND bank_tx_id<>'ADMIN_GIFT'")) { ps.setString(1, shop.shopId()); try (ResultSet rs=ps.executeQuery()) { if(rs.next()){ buyers=rs.getLong(1); ar=rs.getLong(2); } } }
+            stats.add(new CopiMineArtifacts.ShopStats(shop, buyers, ar, 0L));
+         }} catch (SQLException error) { this.getLogger().log(Level.WARNING, "Admin shop statistics lookup failed", error); }
+         finally { if (connection != null) this.pgPool.release(connection); }
+         this.runSync(() -> { CopiMineArtifacts.SessionState state=this.session(player); Inventory menu=this.createMenu(player,state,CopiMineArtifacts.ViewType.ADMIN_SHOPS,54,"&8Все лавки"); int slot=0; for(CopiMineArtifacts.ShopStats stat:stats){ if(slot>=45)break; CopiMineArtifacts.Shop shop=stat.shop(); this.setAction(menu,state,slot++,this.button(Material.BARREL,"&fЛавка",List.of("&7Мир: &f"+shop.world(),"&7Координаты: &f"+shop.x()+" "+shop.y()+" "+shop.z(),"&7Покупатели: &f"+stat.buyers(),"&7Оборот АР: &f"+stat.arTurnover(),"&7Оборот донат: &f"+stat.donationTurnover())),"shop:detail:"+shop.shopId()); } this.setAction(menu,state,49,this.button(Material.ARROW,GUI_BACK_LABEL,List.of()),"admin:shops"); player.openInventory(menu); });
+      });
+   }
+
+   private boolean hasSeniorShopPermission(Player player) { return player.isOp() || player.hasPermission("copimine.artifacts.shop.remove"); }
+
+   private void removeShopWithConfirmation(Player player, CopiMineArtifacts.Shop shop) {
+      if (!this.hasSeniorShopPermission(player)) { this.noPermission(player); return; }
+      this.removeShopWithCleanup(player, shop);
    }
 
    private void openAdminCatalog(Player var1) {
@@ -2257,6 +2625,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var4.length == 1) {
          return this.prefix(List.of("admin", "claim", "repair", "reload", "shop"), var4[0]);
       } else {
+         if (var4.length == 2 && "admin".equalsIgnoreCase(var4[0])) {
+            return this.prefix(List.of("give"), var4[1]);
+         }
+         if (var4.length == 3 && "admin".equalsIgnoreCase(var4[0]) && "give".equalsIgnoreCase(var4[1])) {
+            return this.prefix(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList(), var4[2]);
+         }
+         if (var4.length == 4 && "admin".equalsIgnoreCase(var4[0]) && "give".equalsIgnoreCase(var4[1])) {
+            return this.prefix(new ArrayList<>(this.adminOnlyCatalogItems), var4[3]);
+         }
          return var4.length == 2 && "shop".equalsIgnoreCase(var4[0])
             ? this.prefix(List.of("create", "remove", "list", "open"), var4[1])
             : Collections.emptyList();
@@ -4647,6 +5024,38 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.openArtifactsAdminMenu(var1);
       } else if ("admin:shops".equals(var3)) {
          this.openAdminShops(var1);
+      } else if ("admin:shop:create".equals(var3)) {
+         this.createAdminShopFromTarget(var1);
+      } else if ("admin:shop:list".equals(var3)) {
+         this.openAdminShopListAsync(var1);
+      } else if (var3.startsWith("shop:teleport:")) {
+         String shopId = var3.substring("shop:teleport:".length()); CopiMineArtifacts.Shop shop = this.shopsByLocation.values().stream().filter(value -> value.shopId().equals(shopId)).findFirst().orElse(null);
+         if (shop == null || Bukkit.getWorld(shop.world()) == null) { var1.sendMessage(this.color("&cЛавка недоступна.")); return; }
+         var1.teleport(new org.bukkit.Location(Bukkit.getWorld(shop.world()), shop.x() + 0.5D, shop.y() + 1D, shop.z() + 0.5D));
+      } else if (var3.startsWith("shop:detail:")) {
+         String shopId = var3.substring("shop:detail:".length()); CopiMineArtifacts.Shop shop = this.shopsByLocation.values().stream().filter(value -> value.shopId().equals(shopId)).findFirst().orElse(null); if (shop == null) { var1.sendMessage(this.color("&cЛавка больше не существует.")); return; }
+         Inventory menu = this.createMenu(var1, var2, CopiMineArtifacts.ViewType.ADMIN_SHOPS, 27, "&8Лавка"); menu.setItem(13, this.button(Material.BARREL, "&fЛавка", List.of("&7Мир: &f" + shop.world(), "&7Координаты: &f" + shop.x() + " " + shop.y() + " " + shop.z()))); this.setAction(menu,var2,11,this.button(Material.ENDER_PEARL,"&aТелепорт",List.of()),"shop:teleport:"+shopId); if(this.hasSeniorShopPermission(var1)) this.setAction(menu,var2,15,this.button(Material.RED_WOOL,"&cУдалить",List.of()),"shop:delete:ask:"+shopId); this.setAction(menu,var2,22,this.button(Material.ARROW,GUI_BACK_LABEL,List.of()),"admin:shop:list"); var1.openInventory(menu);
+      } else if (var3.startsWith("shop:delete:ask:")) {
+         String shopId = var3.substring("shop:delete:ask:".length()); if (!this.hasSeniorShopPermission(var1)) { this.noPermission(var1); return; } Inventory menu=this.createMenu(var1,var2,CopiMineArtifacts.ViewType.ADMIN_SHOPS,27,"&8Подтвердить удаление"); this.setAction(menu,var2,11,this.button(Material.LIME_WOOL,"&aДа",List.of()),"shop:delete:confirm:"+shopId); this.setAction(menu,var2,15,this.button(Material.RED_WOOL,"&cНет",List.of()),"admin:shop:list"); var1.openInventory(menu);
+      } else if (var3.startsWith("shop:delete:confirm:")) {
+         String shopId = var3.substring("shop:delete:confirm:".length()); CopiMineArtifacts.Shop shop = this.shopsByLocation.values().stream().filter(value -> value.shopId().equals(shopId)).findFirst().orElse(null);
+         if (shop == null) { var1.sendMessage(this.color("&cЛавка больше не существует.")); return; }
+         this.removeShopWithConfirmation(var1, shop);
+      } else if ("admin:gift:players".equals(var3)) {
+         this.openAdminGiftPlayersAsync(var1);
+      } else if (var3.startsWith("admin_gift:player:")) {
+         String uuid = var3.substring("admin_gift:player:".length());
+         try { var2.giftTargetUuid = UUID.fromString(uuid); var2.giftTargetName = this.firstNonBlank(Bukkit.getOfflinePlayer(var2.giftTargetUuid).getName(), "Игрок"); } catch (IllegalArgumentException error) { var1.sendMessage(this.color("&cИгрок больше недоступен.")); return; }
+         CopiMineArtifacts.SessionState state = var2; Inventory menu = this.createMenu(var1, state, CopiMineArtifacts.ViewType.ADMIN_GIFT_KIND, 27, "&8Категория предмета");
+         this.setAction(menu, state, 11, this.button(Material.EMERALD, "&aАР", List.of()), "admin_gift:kind:AR"); this.setAction(menu, state, 13, this.button(Material.NETHER_STAR, "&dДонат", List.of()), "admin_gift:kind:DONATION"); this.setAction(menu, state, 15, this.button(Material.CHEST, "&6Скрытое", List.of()), "admin_gift:kind:HIDDEN"); var1.openInventory(menu);
+      } else if (var3.startsWith("admin_gift:kind:")) {
+         this.openAdminGiftCatalog(var1, var3.substring("admin_gift:kind:".length()));
+      } else if ("admin_gift:kind".equals(var3)) {
+         this.openAdminGiftPlayersAsync(var1);
+      } else if (var3.startsWith("admin_gift:item:")) {
+         var2.currentItemId = var3.substring("admin_gift:item:".length()); this.openAdminGiftConfirm(var1);
+      } else if ("admin_gift:confirm".equals(var3)) {
+         this.createAdminGiftAsync(var1, var2);
       } else if ("admin:catalog".equals(var3)) {
          this.openAdminCatalog(var1);
       } else if ("admin:diagnostics".equals(var3)) {
@@ -6985,6 +7394,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          && !this.donationCatalogById.containsKey(itemId.toLowerCase(Locale.ROOT));
    }
 
+   private boolean isAdminOnlyCatalogItem(String itemId) {
+      return itemId != null && this.adminOnlyCatalogItems.contains(itemId.toLowerCase(Locale.ROOT));
+   }
+
    private boolean isOfficialArtifactItem(ItemStack var1) {
       if (var1 != null && var1.getType() != Material.AIR && var1.hasItemMeta()) {
          ItemMeta var2 = var1.getItemMeta();
@@ -7157,7 +7570,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "DONATION_SHOP");
             var6.getPersistentDataContainer().set(this.keyBound, PersistentDataType.BYTE, (byte)1);
             var6.getPersistentDataContainer().set(this.keyReclaimable, PersistentDataType.BYTE, (byte)1);
-         } else if (this.isArCatalogItem(var1.itemId())) {
+         } else if (this.isArCatalogItem(var1.itemId()) && !this.isAdminOnlyCatalogItem(var1.itemId())) {
             var6.getPersistentDataContainer().set(this.keyItemType, PersistentDataType.STRING, "AR_SHOP_ITEM");
             var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "AR_SHOP");
          }
@@ -8500,7 +8913,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var4.add(var2);
          var5.add(this.blockKey(var2.getLocation()));
 
-         while (!var4.isEmpty() && var5.size() < 96) {
+         while (!var4.isEmpty() && var6.size() < 19) {
             Block var7 = (Block)var4.removeFirst();
 
             for (int var8 = -1; var8 <= 1; var8++) {
@@ -8509,7 +8922,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      if (var8 != 0 || var9 != 0 || var10 != 0) {
                         Block var11 = var7.getRelative(var8, var9, var10);
                         String var12 = this.blockKey(var11.getLocation());
-                        if (var5.add(var12) && Tag.LOGS.isTagged(var11.getType())) {
+                        if (var6.size() < 19 && var5.add(var12) && Tag.LOGS.isTagged(var11.getType())) {
                            var4.addLast(var11);
                            if (!var11.getLocation().equals(var2.getLocation())) {
                               var6.add(var11);
@@ -8522,8 +8935,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
 
          for (Block var14 : var6) {
-            this.chainedTreeBreaks.add(this.blockKey(var14.getLocation()));
-            var14.breakNaturally(var3);
+            String var15 = this.blockKey(var14.getLocation());
+            this.chainedTreeBreaks.add(var15);
+            if (!var14.breakNaturally(var3)) {
+               this.chainedTreeBreaks.remove(var15);
+            }
          }
 
          var1.getWorld()
@@ -8564,7 +8980,121 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return false;
    }
 
-   private void showTaxClockStatus(Player var1) {
+   private void activateTaxClock(Player var1, ItemStack var2) {
+      String var3 = "";
+      if (var2 != null && var2.hasItemMeta()) {
+         var3 = this.firstNonBlank(
+            var2.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING),
+            ""
+         );
+      }
+      if (var3.isBlank()) {
+         var1.sendMessage(this.color("&cTax clock identity is missing. This item was blocked."));
+         return;
+      }
+
+      Plugin var4 = Bukkit.getPluginManager().getPlugin("CopiMineElectionCore");
+      if (var4 == null || !var4.isEnabled()) {
+         var1.sendMessage(this.color("&cTax service is temporarily unavailable. Try again later."));
+         return;
+      }
+      try {
+         Object var5 = var4.getClass()
+            .getMethod("grantTaxClockExemption", UUID.class, String.class, String.class)
+            .invoke(var4, var1.getUniqueId(), var1.getName(), var3);
+         if (!(var5 instanceof CompletableFuture<?> var6)) {
+            throw new IllegalStateException("tax_clock_bridge_invalid");
+         }
+         var6.whenComplete((var7, var8) -> this.runSync(() -> {
+            if (var8 != null || !(var7 instanceof Map<?, ?> var9)) {
+               this.getLogger().warning("Tax clock activation failed player=" + var1.getUniqueId());
+               var1.sendMessage(this.color("&cTax clock could not be activated. Try again later."));
+               return;
+            }
+            long var10 = this.parseLong(String.valueOf(var9.get("expires_at")), 0L);
+            if (var10 <= 0L) {
+               this.getLogger().warning("Tax clock returned an invalid expiration player=" + var1.getUniqueId());
+               var1.sendMessage(this.color("&cTax clock could not be activated. Try again later."));
+               return;
+            }
+            var1.sendMessage(this.color("&aОсвобождение от налогов активно до: &f" + Instant.ofEpochMilli(var10)));
+         }));
+      } catch (Exception var12) {
+         this.getLogger().warning("Tax clock bridge call failed player=" + var1.getUniqueId());
+         var1.sendMessage(this.color("&cTax clock could not be activated. Try again later."));
+      }
+   }
+
+   private void breakMinerArea(Player player, Block center, ItemStack tool) {
+      if (center == null || tool == null || tool.getType() != Material.NETHERITE_PICKAXE) {
+         return;
+      }
+      double x = Math.abs(player.getLocation().getDirection().getX());
+      double y = Math.abs(player.getLocation().getDirection().getY());
+      double z = Math.abs(player.getLocation().getDirection().getZ());
+      for (int first = -1; first <= 1; first++) {
+         for (int second = -1; second <= 1; second++) {
+            if (first == 0 && second == 0) {
+               continue;
+            }
+            Block target;
+            if (y >= x && y >= z) {
+               target = center.getRelative(first, 0, second);
+            } else if (x >= z) {
+               target = center.getRelative(0, first, second);
+            } else {
+               target = center.getRelative(first, second, 0);
+            }
+            if (target.isEmpty() || target.isLiquid() || target.getType().getHardness() < 0.0F) {
+               continue;
+            }
+            String targetKey = this.blockKey(target.getLocation());
+            if (this.shopsByLocation.containsKey(targetKey)) {
+               continue;
+            }
+            this.chainedTreeBreaks.add(targetKey);
+            if (!player.breakBlock(target)) {
+               this.chainedTreeBreaks.remove(targetKey);
+            }
+         }
+      }
+      player.getWorld().spawnParticle(Particle.BLOCK, center.getLocation().add(0.5, 0.5, 0.5), 18, 0.65, 0.65, 0.65, center.getBlockData());
+   }
+
+   private void createAdminGiftAsync(Player actor, CopiMineArtifacts.SessionState state) {
+      if (!this.hasArtifactPermission(actor, "copimine.artifacts.admin.gift") || state.giftTargetUuid == null || state.currentItemId.isBlank()) { this.noPermission(actor); return; }
+      if (!state.purchaseInFlightId.isBlank()) { actor.sendMessage(this.color("&eВыдача уже обрабатывается.")); return; }
+      String key = "admin_gift:" + actor.getUniqueId() + ":" + state.sessionId + ":" + state.giftTargetUuid + ":" + state.currentItemId;
+      state.purchaseInFlightId = key;
+      CopiMineArtifacts.CatalogItem item = this.runtimeCatalogItem(state.currentItemId);
+      if (item == null) { state.purchaseInFlightId = ""; actor.sendMessage(this.color("&cПредмет больше недоступен.")); return; }
+      if ("DONATION".equals(state.giftKind)) {
+         DonationPurchaseService service = this.donationPurchaseService();
+         if (service == null) { state.purchaseInFlightId = ""; actor.sendMessage(this.color("&cВыдача временно недоступна.")); return; }
+         service.createAdminGiftAsync(state.giftTargetUuid, state.giftTargetName, item.itemId(), actor.getName(), key).whenComplete((result, error) -> this.runSync(() -> { state.purchaseInFlightId = ""; if (error != null) actor.sendMessage(this.color("&cНе удалось выдать предмет.")); else { this.giftNotice(state.giftTargetUuid); actor.sendMessage(this.color("&aПодарок поставлен в выдачу.")); this.openAdminShops(actor); } }));
+      } else this.runAsync(() -> { boolean created = this.persistAdminGiftDelivery(state.giftTargetUuid, state.giftTargetName, item, actor.getName(), key); this.runSync(() -> { state.purchaseInFlightId = ""; if (created) { this.giftNotice(state.giftTargetUuid); actor.sendMessage(this.color("&aПодарок поставлен в выдачу.")); this.openAdminShops(actor); } else actor.sendMessage(this.color("&cНе удалось выдать предмет.")); }); });
+   }
+
+   private void giftNotice(UUID playerUuid) { Player target = Bukkit.getPlayer(playerUuid); if (target != null && target.isOnline()) target.sendMessage(this.color("&6В лавке тебя ждёт подарок от администрации")); }
+
+   private boolean persistAdminGiftDelivery(UUID ownerUuid, String ownerName, CopiMineArtifacts.CatalogItem item, String actor, String idempotencyKey) {
+      Connection connection = null;
+      try { connection = this.pgPool.acquire(); connection.setAutoCommit(false);
+         try (PreparedStatement existing = connection.prepareStatement("SELECT 1 FROM artifact_purchases WHERE idempotency_key=? LIMIT 1")) {
+            existing.setString(1, idempotencyKey); try (ResultSet rs = existing.executeQuery()) { if (rs.next()) { connection.rollback(); return true; } }
+         }
+         String purchaseId = "admin-gift-" + UUID.randomUUID(), uniqueId = UUID.randomUUID().toString(), deliveryId = UUID.randomUUID().toString(); long time = this.now();
+         try (PreparedStatement purchase = connection.prepareStatement("INSERT INTO artifact_purchases(purchase_id,unique_item_id,player_uuid,player_name,item_id,shop_id,price_ar,bank_tx_id,idempotency_key,status,delivery_mode,created_at,updated_at) VALUES(?,?,?,?,?,'',0,'ADMIN_GIFT',?,'PENDING_DELIVERY','PENDING',?,?)"); PreparedStatement instance = connection.prepareStatement("INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at) VALUES(?,?,?,?, 'PENDING_DELIVERY',0,?,?)"); PreparedStatement delivery = connection.prepareStatement("INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at) VALUES(?,?,?,?,?,'PENDING',?,?)")) {
+            purchase.setString(1,purchaseId); purchase.setString(2,uniqueId); purchase.setString(3,ownerUuid.toString()); purchase.setString(4,ownerName); purchase.setString(5,item.itemId()); purchase.setString(6,idempotencyKey); purchase.setLong(7,time); purchase.setLong(8,time); purchase.executeUpdate();
+            instance.setString(1,uniqueId); instance.setString(2,item.itemId()); instance.setString(3,ownerUuid.toString()); instance.setString(4,purchaseId); instance.setLong(5,time); instance.setLong(6,time); instance.executeUpdate();
+            delivery.setString(1,deliveryId); delivery.setString(2,purchaseId); delivery.setString(3,uniqueId); delivery.setString(4,ownerUuid.toString()); delivery.setString(5,item.itemId()); delivery.setLong(6,time); delivery.setLong(7,time); delivery.executeUpdate();
+         }
+         connection.commit(); this.audit(actor, "ADMIN_GIFT", ownerUuid.toString(), "item=" + item.itemId()); return true;
+      } catch (Exception error) { this.getLogger().log(Level.WARNING, "Admin AR gift failed", error); if (connection != null) try { connection.rollback(); } catch (SQLException ignored) {} return false; }
+      finally { if (connection != null) { try { connection.setAutoCommit(true); } catch (SQLException ignored) {} this.pgPool.release(connection); } }
+   }
+
+   private void taxClockLegacyStatus(Player var1) {
       var1.sendMessage(
          this.color(
             "&6Налоговый статус CopiMine"
@@ -8664,7 +9194,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private Set<String> artifactToolEffects() {
-      return Set.of("HASTE_BURST", "MINER_PULSE", "FORESTER_FOCUS", "SURVEYOR_TOUCH", "CRAFTSMAN_CHECK", "FORESTER_CHAIN", "TRENCH_BONUS");
+      return Set.of("HASTE_BURST", "MINER_PULSE", "MINER_3X3", "FORESTER_FOCUS", "SURVEYOR_TOUCH", "CRAFTSMAN_CHECK", "FORESTER_CHAIN", "TRENCH_BONUS");
    }
 
    private Set<String> artifactInteractEffects() {
@@ -8672,7 +9202,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private Set<String> artifactDefenseEffects() {
-      return Set.of("PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD");
+      return Set.of("PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD", "POZDNYAKOV_ACE", "INFINITE_TOTEM");
    }
 
    private String categoryTitle(CopiMineArtifacts.Category var1) {
@@ -8846,6 +9376,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         var6xxx.getPersistentDataContainer().set(this.visualModelIdKey, PersistentDataType.STRING, var6);
                         var6xxx.setTransformation(new Transformation(new Vector3f(), new AxisAngle4f(), new Vector3f(var11, var11, var11), new AxisAngle4f()));
                      });
+                     if ("ARTIFACT_SHOP".equals(var2)) {
+                        CopiMineArtifacts.Shop shop = this.shopsByLocation.values().stream().filter(candidate -> candidate.shopId().equalsIgnoreCase(var3)).findFirst().orElse(null);
+                        this.spawnShopTitleDisplay(var1, var3, shop == null ? var3 : shop.title());
+                     }
                      this.saveProtectedBlockVisualAsync(var1, var2, var3, var4, var5, var6, var12.getUniqueId().toString());
                   } catch (Exception var13) {
                      this.getLogger().log(Level.WARNING, "Artifact shop visual spawn failed", (Throwable)var13);
@@ -8864,7 +9398,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             try {
                Map var3 = this.fetchProtectedBlockVisualRow(var1, var2);
                Location var4 = this.visualBaseLocation(var3);
-               this.runSync(() -> this.cleanupProtectedBlockVisualEntities(var4, var1, var2, var3));
+               this.runSync(() -> {
+                  this.cleanupProtectedBlockVisualEntities(var4, var1, var2, var3);
+                  if ("ARTIFACT_SHOP".equals(var1)) {
+                     this.cleanupShopTitleDisplay(var4, var2);
+                  }
+               });
                this.markProtectedBlockVisualInactive(var1, var2);
             } catch (Exception var5) {
                this.getLogger().log(Level.WARNING, "Artifact shop visual cleanup failed", (Throwable)var5);
@@ -9011,6 +9550,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (!var7) {
             this.spawnOrReplaceProtectedBlockVisual(var4, "ARTIFACT_SHOP", var1.shopId(), Material.PAPER, 14004, "artifact_shop_marker");
          }
+         this.spawnShopTitleDisplay(var4, var1.shopId(), var1.title());
       }
    }
 
@@ -9259,6 +9799,67 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private String maskedPin(String var1) {
       return var1 != null && !var1.isEmpty() ? "*".repeat(var1.length()) : "••••";
+   }
+
+   // Only clear displays tied to registered shops. Scanning every world during
+   // startup or shutdown makes a disabled overlay unnecessarily expensive.
+   private void cleanupAllProtectedBlockVisualEntities() {
+      for (CopiMineArtifacts.Shop shop : this.shopsByLocation.values()) {
+         try {
+            this.cleanupProtectedBlockVisuals("ARTIFACT_SHOP", shop.shopId());
+         } catch (Exception error) {
+            this.getLogger().warning("Artifact shop visual cleanup failed: " + this.safeErr(error));
+         }
+      }
+   }
+
+   private void spawnShopTitleDisplay(Location base, String shopId, String title) {
+      if (base == null || base.getWorld() == null || shopId == null || shopId.isBlank()) {
+         return;
+      }
+      this.cleanupShopTitleDisplay(base, shopId);
+      Location location = base.clone().add(0.5D, 1.9D, 0.5D);
+      base.getWorld().spawn(location, TextDisplay.class, display -> {
+         display.setText(this.color("&a" + this.first(title, shopId)));
+         display.setBillboard(Billboard.CENTER);
+         display.setAlignment(TextDisplay.TextAlignment.CENTER);
+         display.setShadowed(true);
+         display.setSeeThrough(false);
+         display.setPersistent(true);
+         display.getPersistentDataContainer().set(this.visualEntityTypeKey, PersistentDataType.STRING, "SHOP_TITLE_DISPLAY");
+         display.getPersistentDataContainer().set(this.visualLinkedIdKey, PersistentDataType.STRING, shopId);
+      });
+   }
+
+   private void cleanupShopTitleDisplay(Location base, String shopId) {
+      if (base == null || base.getWorld() == null || shopId == null || shopId.isBlank()) {
+         return;
+      }
+      for (Entity entity : base.getWorld().getNearbyEntities(base.clone().add(0.5D, 1.9D, 0.5D), 2.0D, 2.5D, 2.0D)) {
+         if (entity instanceof TextDisplay display
+               && "SHOP_TITLE_DISPLAY".equals(display.getPersistentDataContainer().get(this.visualEntityTypeKey, PersistentDataType.STRING))
+               && shopId.equalsIgnoreCase(display.getPersistentDataContainer().get(this.visualLinkedIdKey, PersistentDataType.STRING))) {
+            display.remove();
+         }
+      }
+   }
+
+   private void deactivateAllProtectedBlockVisualRowsAsync() {
+      this.runAsync(() -> {
+         try {
+            Connection var1 = this.pgPool.acquire();
+            try (PreparedStatement var2 = var1.prepareStatement(
+                  "UPDATE protected_block_visuals SET active=0,updated_at=? WHERE active=1"
+               )) {
+               var2.setLong(1, this.now());
+               var2.executeUpdate();
+            } finally {
+               this.pgPool.release(var1);
+            }
+         } catch (Exception var4) {
+            this.getLogger().log(Level.WARNING, "Artifact visual bulk cleanup failed", (Throwable)var4);
+         }
+      });
    }
 
    private String nice(String var1) {
@@ -9637,6 +10238,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    ) {
    }
 
+   private static record PozdnyakovMagmaRestore(Location location, long expiresAtMillis) {
+   }
+
    private static enum Category {
       WEAPON,
       ARMOR,
@@ -9744,45 +10348,54 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          long deadline = System.currentTimeMillis() + 1500L;
 
          while (true) {
-            while (this.idle.isEmpty()) {
-               if (this.total < this.max) {
-                  this.total++;
-                  Connection var7 = DriverManager.getConnection(this.settings.jdbcUrl(), this.settings.user, this.settings.password);
-                  var7.setAutoCommit(true);
-                  return var7;
+            while (!this.idle.isEmpty()) {
+               Connection var6 = this.idle.pop();
+               if (this.usable(var6)) {
+                  return var6;
                }
 
-               long remaining = deadline - System.currentTimeMillis();
-               if (remaining <= 0L) {
-                  throw new SQLException("Artifact PostgreSQL pool timed out while waiting for a free connection.");
-               }
+               this.safeClose(var6);
+               this.total--;
+            }
+
+            if (this.total < this.max) {
+               Connection var7 = DriverManager.getConnection(this.settings.jdbcUrl(), this.settings.user, this.settings.password);
 
                try {
-                  this.wait(Math.min(remaining, 250L));
-               } catch (InterruptedException var6) {
-                  Thread.currentThread().interrupt();
-                  throw new SQLException("Artifact PostgreSQL pool wait interrupted.", var6);
+                  var7.setAutoCommit(true);
+                  this.total++;
+                  return var7;
+               } catch (SQLException var8) {
+                  this.safeClose(var7);
+                  throw var8;
                }
             }
 
-            Connection var8 = this.idle.pop();
-            if (var8 != null && !var8.isClosed()) {
-               return var8;
+            long remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0L) {
+               throw new SQLException("Artifact PostgreSQL pool timed out while waiting for a free connection.");
             }
 
-            this.total--;
+            try {
+               this.wait(Math.min(remaining, 250L));
+            } catch (InterruptedException var5) {
+               Thread.currentThread().interrupt();
+               throw new SQLException("Artifact PostgreSQL pool wait interrupted.", var5);
+            }
          }
       }
 
       synchronized void release(Connection var1) {
          if (var1 != null) {
             try {
-               if (var1.isClosed()) {
-                  this.total--;
-               } else {
+               if (this.usable(var1)) {
                   this.idle.push(var1);
+               } else {
+                  this.safeClose(var1);
+                  this.total--;
                }
             } catch (SQLException var3) {
+               this.safeClose(var1);
                this.total--;
             }
 
@@ -9792,14 +10405,38 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       synchronized void close() {
          for (Connection var2 : this.idle) {
-            try {
-               var2.close();
-            } catch (SQLException var4) {
-            }
+            this.safeClose(var2);
          }
 
          this.idle.clear();
          this.total = 0;
+      }
+
+      private boolean usable(Connection var1) throws SQLException {
+         if (var1 == null || var1.isClosed()) {
+            return false;
+         }
+
+         try {
+            return var1.isValid(2);
+         } catch (AbstractMethodError | SQLException var4) {
+            try (PreparedStatement var2 = var1.prepareStatement("SELECT 1")) {
+               return var2.execute();
+            } catch (SQLException var3) {
+               return false;
+            }
+         }
+      }
+
+      private void safeClose(Connection var1) {
+         if (var1 == null) {
+            return;
+         }
+
+         try {
+            var1.close();
+         } catch (SQLException var3) {
+         }
       }
    }
 
@@ -9850,6 +10487,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       int page = 0;
       String pinBuffer = "";
       String purchaseInFlightId = "";
+      UUID giftTargetUuid;
+      String giftTargetName = "";
+      String giftKind = "";
       long lastClickAt = 0L;
       long lastActionAt = 0L;
       final Map<Integer, String> actions = new HashMap<>();
@@ -9860,6 +10500,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return this.world + ":" + this.x + ":" + this.y + ":" + this.z;
       }
    }
+
+   private static record GiftTarget(String uuid, String name) {}
+   private static record ShopStats(CopiMineArtifacts.Shop shop, long buyers, long arTurnover, long donationTurnover) {}
 
    private static enum ViewType {
       MAIN,
@@ -9880,6 +10523,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       DONATION_RECLAIM,
       ADMIN_MAIN,
       ADMIN_SHOPS,
+      ADMIN_GIFT_PLAYERS,
+      ADMIN_GIFT_KIND,
+      ADMIN_GIFT_CATALOG,
+      ADMIN_GIFT_CONFIRM,
       ADMIN_CATALOG,
       ADMIN_DIAGNOSTICS;
    }

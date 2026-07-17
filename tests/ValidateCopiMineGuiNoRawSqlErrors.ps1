@@ -14,7 +14,7 @@ foreach ($path in $sources) {
   }
 }
 $admin = Get-Content -Raw -Encoding UTF8 $sources[0]
-foreach ($marker in @('getLogger().warning("gui: "+ex)','getLogger().warning("cmd: "+e)','safeErr')) {
+foreach ($marker in @('getLogger().warning("gui: "+safeErr(ex))','getLogger().warning("cmd: "+safeErr(e))','safeErr')) {
   if (-not $admin.Contains($marker)) { $errors.Add("Missing safe error/log marker: $marker") }
 }
 if ($errors.Count -gt 0) { throw ("GUI raw SQL error validation failed:`n - " + ($errors -join "`n - ")) }

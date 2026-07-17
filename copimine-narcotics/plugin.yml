@@ -2,7 +2,7 @@ name: CopiMineNarcotics
 version: '2.1.0-client-bridge'
 main: me.copimine.narcotics.CopiMineNarcotics
 api-version: '1.21'
-author: OpenAI Codex
+author: CopiMine
 load: POSTWORLD
 libraries:
   - org.postgresql:postgresql:42.7.5
@@ -10,15 +10,15 @@ softdepend:
   - ProtocolLib
 commands:
   cmnarcotics:
-    description: Управление системой CopiMineNarcotics
+    description: Управление чёрным рынком
     usage: /cmnarcotics
     aliases: [narcotics]
   cmclient:
-    description: Проверка и тестирование необязательного клиента CopiMineClient
+    description: Проверка игрового клиента
     usage: /cmclient
 permissions:
   copimine.narcotics.admin:
-    description: Полный доступ к системе CopiMineNarcotics
+    description: Полный доступ к чёрному рынку
     default: op
     children:
       copimine.narcotics.give: true
@@ -32,19 +32,19 @@ permissions:
     description: Выдача официальных RP-предметов
     default: op
   copimine.narcotics.reload:
-    description: Перезагрузка конфигурации CopiMineNarcotics
+    description: Перезагрузка чёрного рынка
     default: op
   copimine.narcotics.reset:
-    description: Очистка только narcotics-состояния
+    description: Очистка состояния чёрного рынка
     default: op
   copimine.narcotics.texture:
     description: Управление режимом текстур и миграцией официальных предметов
     default: op
   copimine.narcotics.visuals:
-    description: Управление visual runtime, fallback и client bridge
+    description: Управление визуальными эффектами
     default: op
   copimine.narcotics.selfcheck:
-    description: Проверка состояния плагина и resource pack
+    description: Проверка визуальных эффектов
     default: op
   copimine.narcotics.clearoverdose:
     description: Снятие активной передозировки у игрока

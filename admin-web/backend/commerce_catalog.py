@@ -51,6 +51,8 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
         item_id = str(entry.get("id") or "").strip().lower()
         if not item_id:
             continue
+        if str(entry.get("source") or "AR_SHOP").strip().upper() == "ADMIN_ONLY":
+            continue
         ar_items.append(
             {
                 "item_id": item_id,

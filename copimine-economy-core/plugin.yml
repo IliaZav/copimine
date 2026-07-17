@@ -2,7 +2,7 @@ name: CopiMineEconomyCore
 version: '1.0.0'
 main: me.copimine.economycore.CopiMineEconomyCore
 api-version: '1.21'
-author: OpenAI Codex
+author: CopiMine
 load: POSTWORLD
 libraries:
   - org.postgresql:postgresql:42.7.5

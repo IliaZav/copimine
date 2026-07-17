@@ -20,7 +20,9 @@ donation:
   fixed-packs: [50, 100, 250, 500, 1000]
 
 custom-block-visuals:
-  enabled: true
+  # ItemDisplay overlays used the same paper model as the marker and could leave
+  # visual strips behind after a chunk reload. Keep the shop block itself only.
+  enabled: false
   models:
     ARTIFACT_SHOP:
       model-id: artifact_shop_marker

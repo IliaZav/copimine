@@ -213,12 +213,17 @@ body .public-nav { background-color: var(--nav-surface) !important; }
 .public-hero-copy h1 { font-size: clamp(2.2rem, 5vw, 4.4rem); }
 .public-hero-side { display: grid; gap: 12px; min-width: 0; }
 .scene-card, .hero-side-card { padding: 18px; border: 1px solid var(--line); background: var(--surface); }
-.scene-card { min-height: 150px; display: flex; align-items: flex-end; }
+.scene-card { min-height: 150px; display: grid; align-content: start; gap: 14px; }
 .scene-card-copy { max-width: 38rem; }
 .scene-card-copy strong { display: block; margin: 6px 0; font-size: 1.1rem; }
+.scene-card-image { display: block; width: 100%; height: 152px; object-fit: cover; border: 1px solid var(--line); background: var(--surface-soft); }
 .hero-media-card { display: grid; gap: 14px; }
 .hero-media-art { min-height: 160px; display: grid; place-items: center; overflow: hidden; border-bottom: 1px solid var(--line); }
 .hero-media-art img { width: min(100%, 480px) !important; height: auto !important; max-height: 180px; object-fit: contain; }
+.hero-media-art .hero-scene-image { width: 100% !important; max-width: none; max-height: 198px; aspect-ratio: 16 / 7; object-fit: cover; }
+.theme-dark-asset { display: none !important; }
+:root[data-theme="dark"] .theme-light-asset { display: none !important; }
+:root[data-theme="dark"] .theme-dark-asset { display: block !important; }
 .hero-inline-status, .hero-sprite-strip, .public-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .hero-inline-card { flex: 1 1 180px; padding: 12px; border: 1px solid var(--line); background: var(--surface); }
 .hero-inline-card span { display: block; color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
@@ -365,6 +370,7 @@ textarea:focus-visible {
   .public-nav a { padding: 6px; font-size: .82rem; }
   .public-brand-logo { width: 44px !important; height: 44px !important; flex-basis: 44px; }
   .public-hero-copy h1 { font-size: 2.2rem; }
+  .scene-card-image { height: 126px; }
   .public-shop-card-head { display: grid; }
   .auth-card { padding: 16px; }
 }

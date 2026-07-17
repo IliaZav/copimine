@@ -83,7 +83,7 @@ export function createPlayerTreasuryPages(deps) {
   }
 
   function recipientOptions(rows) {
-    return asArray(rows)
+    const options = asArray(rows)
       .map((row) => {
         const name = String(row.name || "").trim();
         if (!name) return "";
@@ -91,10 +91,11 @@ export function createPlayerTreasuryPages(deps) {
         if (row.username) metaParts.push(String(row.username));
         if (row.bankLinked) metaParts.push("банк привязан");
         const meta = metaParts.join(" · ");
-        return `<option value="${esc(name)}">${esc(meta || name)}</option>`;
+        return `<option value="${esc(name)}">${esc(meta ? `${name} · ${meta}` : name)}</option>`;
       })
-      .filter(Boolean)
-      .join("");
+      .filter(Boolean);
+    if (!options.length) return '<option value="">Получатели не найдены</option>';
+    return `<option value="">Выберите игрока</option><optgroup label="Получатели с привязанным банком">${options.join("")}</optgroup>`;
   }
 
   async function loadPlayerBank() {
@@ -259,7 +260,7 @@ export function createPlayerTreasuryPages(deps) {
               ? "Переводы закрыты, пока временный PIN не заменён."
               : (usingTreasury
                 ? "Доступно президенту и администраторам."
-                : "Выбери получателя из списка или введи ник вручную."),
+                : "Выбери получателя с привязанным банковским счётом."),
             (!usingTreasury && transferLocked)
               ? `
                 <div class="notice">${pin.status === "temporary-expired"
@@ -271,8 +272,7 @@ export function createPlayerTreasuryPages(deps) {
                   <div class="bank-form-grid">
                     <label class="field-stack field-span-2">
                       <span>Получатель</span>
-                      <input id="bankRecipient" list="bankRecipientList" placeholder="Начни вводить ник игрока" />
-                      <datalist id="bankRecipientList">${recipientOptions(recipients)}</datalist>
+                      <select id="bankRecipient" class="player-select">${recipientOptions(recipients)}</select>
                     </label>
                     <label class="field-stack">
                       <span>Сумма</span>

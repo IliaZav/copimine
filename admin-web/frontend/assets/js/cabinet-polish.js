@@ -45,6 +45,60 @@ function hideBootStageIfReady() {
   }
 }
 
+function ensureCabinetNavBackdrop() {
+  const app = document.getElementById("app");
+  const toggle = document.getElementById("mobileNavToggle");
+  if (!(app instanceof HTMLElement) || !(toggle instanceof HTMLButtonElement)) return null;
+
+  toggle.classList.add("cabinet-nav-toggle");
+  toggle.setAttribute("aria-controls", "nav");
+
+  let backdrop = document.querySelector(".cabinet-nav-backdrop");
+  if (!(backdrop instanceof HTMLButtonElement)) {
+    backdrop = document.createElement("button");
+    backdrop.type = "button";
+    backdrop.className = "cabinet-nav-backdrop";
+    backdrop.setAttribute("aria-label", "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e");
+    app.insertAdjacentElement("afterend", backdrop);
+    backdrop.addEventListener("click", () => {
+      app.classList.remove("nav-open");
+      syncCabinetNavState();
+      toggle.focus({ preventScroll: true });
+    });
+  }
+  return backdrop;
+}
+
+function syncCabinetNavState() {
+  const app = document.getElementById("app");
+  const toggle = document.getElementById("mobileNavToggle");
+  const backdrop = document.querySelector(".cabinet-nav-backdrop");
+  if (!(app instanceof HTMLElement) || !(toggle instanceof HTMLButtonElement)) return;
+  const open = app.classList.contains("nav-open");
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  document.body.classList.toggle("cabinet-nav-open", open);
+  if (backdrop instanceof HTMLElement) {
+    backdrop.classList.toggle("is-open", open);
+    backdrop.setAttribute("aria-hidden", open ? "false" : "true");
+    backdrop.tabIndex = open ? 0 : -1;
+  }
+}
+
+function bindCabinetNavPolish() {
+  const app = document.getElementById("app");
+  if (!(app instanceof HTMLElement)) return;
+  ensureCabinetNavBackdrop();
+  syncCabinetNavState();
+  const navObserver = new MutationObserver(syncCabinetNavState);
+  navObserver.observe(app, { attributes: true, attributeFilter: ["class"] });
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 980 && app.classList.contains("nav-open")) {
+      app.classList.remove("nav-open");
+    }
+    syncCabinetNavState();
+  });
+}
+
 function bindCabinetHeaderActions() {
   const logout = document.getElementById("publicLogoutBtn");
   const cabinet = document.getElementById("publicCabinetBtn");
@@ -80,6 +134,7 @@ window.addEventListener("copimine:auth-state", (event) => {
 });
 
 window.addEventListener("load", () => {
+  bindCabinetNavPolish();
   bindCabinetHeaderActions();
   syncCabinetHeader({});
   hideBootStageIfReady();

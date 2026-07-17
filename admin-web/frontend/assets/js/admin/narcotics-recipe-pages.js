@@ -288,6 +288,7 @@ export function createAdminNarcoticsRecipePages(deps) {
       recipes[row.id] = list;
     }
     const headers = await dangerConfirm("Сохранить рецепты CopiMineNarcotics?", "NARCOTICS_RECIPES_SAVE");
+    if (!headers) return;
     const result = await api("/api/admin/narcotics/recipes", {
       method: "POST",
       headers,

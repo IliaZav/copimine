@@ -27,6 +27,9 @@ function currentThemeLabelDisplay(theme) {
 
 function ensureButtonContent(button) {
   if (!(button instanceof HTMLButtonElement)) return null;
+  [...button.childNodes].forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) node.remove();
+  });
   let icon = button.querySelector(".theme-toggle-icon");
   if (!(icon instanceof HTMLElement)) {
     icon = document.createElement("span");
@@ -48,17 +51,21 @@ function syncThemeButtons() {
   document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
     const isButton = button instanceof HTMLButtonElement;
     const currentLabel = currentThemeLabelDisplay(current);
+    const compact = button.getAttribute("data-theme-toggle-compact") === "true";
     button.setAttribute("data-theme-current", current);
+    button.setAttribute("role", "switch");
+    button.setAttribute("aria-checked", current === "dark" ? "true" : "false");
     button.setAttribute(
       "aria-label",
       `\u041f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u0442\u0435\u043c\u0443. \u0421\u0435\u0439\u0447\u0430\u0441 \u0432\u043a\u043b\u044e\u0447\u0435\u043d\u0430 ${currentThemeLabel(current)} \u0442\u0435\u043c\u0430.`,
     );
     button.setAttribute("title", currentLabel);
     if (isButton) {
+      button.classList.add("ui-switch");
       const content = ensureButtonContent(button);
       if (content) {
-        content.icon.textContent = current === "dark" ? "\u263E" : "\u2600";
-        content.label.textContent = currentLabel;
+        content.icon.textContent = "";
+        content.label.textContent = compact ? "\u0422\u0435\u043c\u0430" : currentLabel;
       }
     } else {
       button.textContent = currentLabel;
@@ -71,6 +78,7 @@ function onToggleClick(event) {
   if (!target) return;
   event.preventDefault();
   themeApi().toggleTheme();
+  syncThemeButtons();
 }
 
 export function initThemeToggle() {

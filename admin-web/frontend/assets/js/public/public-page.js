@@ -1,5 +1,5 @@
 import { bindHomepageEvents, loadPublicPage } from "./homepage.js";
-import { initThemeToggle } from "../theme/theme-toggle.js";
+import { initThemeToggle } from "../theme/theme-toggle.js?v=20260718r1";
 import { initPublicNav } from "./public-nav.js";
 
 initPublicNav();

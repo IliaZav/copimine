@@ -117,6 +117,28 @@ def main() -> None:
         (world / "stats").mkdir()
         (world / "advancements").mkdir()
         (base / "logs").mkdir(parents=True)
+        narcotics_dir = base / "plugins" / "CopiMineNarcotics"
+        narcotics_dir.mkdir(parents=True)
+        narcotics_config = narcotics_dir / "config.yml"
+        narcotics_config.write_text(
+            """items:
+  test_item:
+    display_name: Test recipe
+    material: SUGAR
+    recipe:
+      - material:sugar
+      - material:redstone
+      - potion:water
+  zhuzevo:
+    display_name: Hidden base item
+    material: PAPER
+    recipe:
+      - material:paper
+      - material:paper
+      - material:paper
+""",
+            encoding="utf-8",
+        )
         (base / "ops.json").write_text(json.dumps([
             {"uuid":"u1","name":"SudoKillDash9","level":4},
             {"uuid":"u2","name":"Alvarez_227","level":4},
@@ -159,10 +181,18 @@ def main() -> None:
             "REQUIRE_WHITELIST_FOR_LOGIN": "1",
             "COPIMINE_ADMIN_DATA": str(data_dir),
             "COPIMINE_BACKUPS_DIR": str(Path(tmp) / "backups"),
+            "RCON_PASSWORD": "test-rcon-password",
         })
         appmod = import_backend_main()
         if appmod is None:
             return
+        rcon_commands: list[str] = []
+
+        def fake_rcon(command: str) -> str:
+            rcon_commands.append(command)
+            return "CopiMineNarcotics reloaded"
+
+        appmod.rcon_quick = fake_rcon
         from fastapi.testclient import TestClient
         with TestClient(appmod.app) as c:
             assert c.get("/api/health").status_code == 200
@@ -185,6 +215,31 @@ def main() -> None:
             csrf_token = c.cookies.get(appmod.CSRF_COOKIE_NAME)
             assert csrf_token, "CSRF cookie was not issued"
             h = {appmod.CSRF_HEADER_NAME: csrf_token}
+            recipes = c.get("/api/admin/narcotics/recipes")
+            assert recipes.status_code == 200, recipes.text
+            assert [row["id"] for row in recipes.json()["recipes"]] == ["test_item"]
+            recipe_payload = {
+                "recipes": {
+                    "test_item": ["material:sugar", "material:glowstone_dust", "potion:water"],
+                }
+            }
+            missing_confirm = c.post("/api/admin/narcotics/recipes", headers=h, json=recipe_payload)
+            assert missing_confirm.status_code == 409, missing_confirm.text
+            recipe_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "NARCOTICS_RECIPES_SAVE"}
+            saved_recipe = c.post("/api/admin/narcotics/recipes", headers=recipe_headers, json=recipe_payload)
+            assert saved_recipe.status_code == 200, saved_recipe.text
+            saved_payload = saved_recipe.json()
+            assert saved_payload["reload"]["reloaded"] is True, saved_payload
+            assert saved_payload["reload"]["manual"] is False, saved_payload
+            assert rcon_commands == ["cmnarcotics reload"], rcon_commands
+            assert "material:glowstone_dust" in narcotics_config.read_text(encoding="utf-8")
+            assert list(narcotics_dir.glob("config.yml.bak-*")), "Recipe save did not create a backup"
+            blocked_recipe = c.post(
+                "/api/admin/narcotics/recipes",
+                headers=recipe_headers,
+                json={"recipes": {"test_item": ["material:sugar", "material:diamond_ore", "potion:water"]}},
+            )
+            assert blocked_recipe.status_code == 400, blocked_recipe.text
             for url in [
                 "/api/auth/me", "/api/status", "/api/server/files", "/api/minecraft/access-lists",
                 "/api/backups", "/api/resourcepack/status", "/api/security/admins",

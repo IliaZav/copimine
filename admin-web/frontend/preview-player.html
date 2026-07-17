@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CopiMine Preview — Личный кабинет</title>
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
   <link rel="stylesheet" href="/assets/style.css" />
   <link rel="stylesheet" href="/assets/css/preview.css" />
 </head>
@@ -37,7 +38,7 @@
           <p>Игровой счёт, переводы, PIN, история операций и добровольный налог без лишних карточек и рекламного мусора.</p>
         </div>
         <div class="preview-actions">
-          <div class="preview-chip">Привязка: активна</div>
+          <button class="preview-chip theme-toggle" data-theme-toggle="true" type="button">Тема</button>
           <div class="preview-chip">Minecraft: SudoKillDash9</div>
           <div class="preview-chip">Статус: игрок</div>
           <div class="preview-chip">PIN: настроен</div>
@@ -104,7 +105,11 @@
             <div class="preview-form-grid">
               <label class="preview-field">
                 <span>Получатель</span>
-                <input class="preview-input" placeholder="Ник игрока" />
+                <select class="preview-input" data-preview-player-select>
+                  <option value="">Выберите игрока</option>
+                  <optgroup label="Сейчас онлайн"></optgroup>
+                  <optgroup label="Оффлайн"></optgroup>
+                </select>
               </label>
               <label class="preview-field">
                 <span>Сумма</span>
@@ -145,5 +150,6 @@
       </section>
     </section>
   </main>
+  <script type="module" src="/assets/js/preview-nav.js?v=20260718r1"></script>
 </body>
 </html>

@@ -422,17 +422,49 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function playerChoiceRows(rows) {
-  return asArray(rows)
-    .map((row) => cleanText(row.name || row.username || row.player || row.minecraft_name || row.minecraftName || row.uuid))
-    .filter(isMinecraftName)
-    .filter((name, index, all) => all.indexOf(name) === index)
-    .sort((a, b) => a.localeCompare(b, "ru"));
+function playerChoiceRecords(rows) {
+  const choices = new Map();
+  asArray(rows).forEach((row) => {
+    const source = typeof row === "string" ? { name: row } : (row || {});
+    const name = cleanText(source.name || source.username || source.player || source.minecraft_name || source.minecraftName || source.uuid);
+    if (!isMinecraftName(name)) return;
+    const key = name.toLowerCase();
+    const onlineKnown = Object.prototype.hasOwnProperty.call(source, "online");
+    const next = { ...source, name, online: Boolean(source.online), onlineKnown };
+    const current = choices.get(key);
+    if (!current || next.online || (!current.onlineKnown && next.onlineKnown)) choices.set(key, next);
+  });
+  return [...choices.values()].sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    return a.name.localeCompare(b.name, "ru");
+  });
 }
 
-function playerDatalistHtml(id, rows) {
-  const options = playerChoiceRows(rows).map((name) => `<option value="${esc(name)}"></option>`).join("");
-  return `<datalist id="${esc(id)}">${options}</datalist>`;
+function playerSelectOptions(rows, { placeholder = "Выберите игрока", selected = "" } = {}) {
+  const choices = playerChoiceRecords(rows);
+  const selectedName = cleanText(selected).toLowerCase();
+  const optionHtml = (row) => `<option value="${esc(row.name)}"${row.name.toLowerCase() === selectedName ? " selected" : ""}>${esc(row.name)}</option>`;
+  const groups = [];
+  const online = choices.filter((row) => row.onlineKnown && row.online);
+  const offline = choices.filter((row) => row.onlineKnown && !row.online);
+  const unknown = choices.filter((row) => !row.onlineKnown);
+  if (online.length) groups.push(`<optgroup label="Сейчас онлайн">${online.map(optionHtml).join("")}</optgroup>`);
+  if (offline.length) groups.push(`<optgroup label="Оффлайн">${offline.map(optionHtml).join("")}</optgroup>`);
+  if (unknown.length) groups.push(`<optgroup label="Все игроки">${unknown.map(optionHtml).join("")}</optgroup>`);
+  const emptyLabel = choices.length ? placeholder : "Игроки не найдены";
+  return `<option value="">${esc(emptyLabel)}</option>${groups.join("")}`;
+}
+
+async function loadAdminPlayerChoices() {
+  const [playersData, onlineData] = await Promise.all([
+    safeApi("/api/players", { players: [] }),
+    safeApi("/api/players/online", { players: [] })
+  ]);
+  const onlineNames = new Set(asArray(onlineData.players).map((name) => cleanText(name).toLowerCase()).filter(Boolean));
+  return playerChoiceRecords(asArray(playersData.players).map((row) => {
+    const name = cleanText(row.name || row.username || row.player || row.uuid);
+    return { ...row, name, online: onlineNames.has(name.toLowerCase()) };
+  }));
 }
 
 function firstArray(...values) {
@@ -1498,6 +1530,7 @@ window.reviewElectionApplication = async (applicationId, decision) => {
   const label = decision === "approved" ? "одобрить" : "отклонить";
   try {
     const headers = await dangerConfirm(`Нужно ${label} заявку кандидата?`, `ELECTION_APPLICATION_${decision.toUpperCase()}`);
+    if (!headers) return;
     await api(`/api/elections/applications/${encodeURIComponent(applicationId)}/review`, {
       method: "POST",
       headers,
@@ -2503,16 +2536,7 @@ async function loadDashboard(silent = false) {
 
 async function loadPlayers() {
   setLoading("Загружаю игроков");
-  const [playersData, onlineData] = await Promise.all([
-    safeApi("/api/players", { players: [] }),
-    safeApi("/api/players/online", { players: [] })
-  ]);
-  const online = new Set(asArray(onlineData.players).map(cleanText).filter(isMinecraftName));
-  state.players = asArray(playersData.players).map(row => ({
-    ...row,
-    name: cleanText(row.name || row.username || row.player || row.uuid),
-    online: online.has(cleanText(row.name || row.username || row.player || row.uuid))
-  })).filter(row => row.name);
+  state.players = await loadAdminPlayerChoices();
   if (!state.selectedPlayer && state.players[0]) state.selectedPlayer = state.players[0].name;
   const list = state.players.length ? `
     <div class="toolbar">
@@ -2597,7 +2621,7 @@ async function playerDetailsHtml(player) {
         </label>
         <label class="field-stack" for="playerActionTarget">
           <span>Цель для телепорта</span>
-          <input id="playerActionTarget" list="playersDatalist" placeholder="Ник игрока" autocomplete="off" />
+          <select id="playerActionTarget" class="player-select">${playerSelectOptions(state.players, { placeholder: "Выберите цель" })}</select>
         </label>
         <div class="field-stack">
           <span>&nbsp;</span>
@@ -2809,16 +2833,14 @@ function openInventoryModal(snapshot) {
 
 async function loadInventories() {
   setLoading("Готовлю инвентари");
-  const playersData = await safeApi("/api/players", { players: [] });
-  const rows = asArray(playersData.players).map(p => ({ name: cleanText(p.name || p.username || p.player || p.uuid), uuid: p.uuid || "" })).filter(x => x.name);
+  const rows = await loadAdminPlayerChoices();
   setView(`
     <section class="layout-grid grid-wide">
       ${panel("Снимки инвентарей", "Создай снимок по игроку и открой историю из профиля", `
         <div class="toolbar">
-          <input id="inventoryPlayerInput" class="grow" placeholder="Ник игрока" list="playersDatalist" />
+          <select id="inventoryPlayerInput" class="grow player-select">${playerSelectOptions(rows)}</select>
           <button class="btn btn-primary" data-click="snapshotInventoryFromInput()">Создать снимок</button>
         </div>
-        <datalist id="playersDatalist">${rows.map(x => `<option value="${esc(x.name)}"></option>`).join("")}</datalist>
         ${table("inventory-players", rows, [
           { key: "name", label: "Игрок" },
           { key: "name", label: "Действие", render: v => `<button class="btn btn-secondary btn-small" data-click="snapshotInventory('${esc(v)}')">Снимок</button>` }
@@ -3117,16 +3139,15 @@ async function loadArtifacts() {
 
 async function loadRequests() {
   setLoading("Загружаю заявки");
-  const [status, applications, reports, playersData] = await Promise.all([
+  const [status, applications, reports, requestPlayers] = await Promise.all([
     safeApi("/api/" + String.fromCharCode(100,105,115,99,111,114,100) + "/status", {}),
     safeApi("/api/applications", { applications: [] }),
     safeApi("/api/reports", { reports: [] }),
-    safeApi("/api/players", { players: [] })
+    loadAdminPlayerChoices()
   ]);
   const configured = status.configured || {};
   const ready = Object.values(configured).filter(Boolean).length;
   const total = Object.keys(configured).length || 1;
-  const requestPlayers = asArray(playersData.players);
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Связь", `${ready}/${total}`, "бот, каналы и роль", ready === total ? "good" : "warn")}
@@ -3137,17 +3158,16 @@ async function loadRequests() {
     <section class="layout-grid grid-2">
       ${panel("Новая заявка", "Создайте обращение вручную, если игрок написал вне сайта.", `
         <div class="form-grid">
-          <input id="appPlayer" placeholder="Ник игрока" list="requestPlayersDatalist" />
-          <input id="appContact" placeholder="Контакт или игровой ник" list="requestPlayersDatalist" />
+          <select id="appPlayer" class="player-select">${playerSelectOptions(requestPlayers)}</select>
+          <input id="appContact" placeholder="Контакт или игровой ник" />
           <textarea id="appWhy" class="full" placeholder="Почему игрок хочет участвовать / стать кандидатом"></textarea>
           <button class="btn btn-primary full" data-click="createRequestApplication()">Создать заявку</button>
         </div>
-        ${playerDatalistHtml("requestPlayersDatalist", requestPlayers)}
       `)}
       ${panel("Новая жалоба", "Запишите жалобу с игроком, целью и местом события.", `
         <div class="form-grid">
-          <input id="repReporter" placeholder="Кто жалуется" list="requestPlayersDatalist" />
-          <input id="repTarget" placeholder="На кого / цель" list="requestPlayersDatalist" />
+          <select id="repReporter" class="player-select">${playerSelectOptions(requestPlayers, { placeholder: "Кто жалуется" })}</select>
+          <select id="repTarget" class="player-select">${playerSelectOptions(requestPlayers, { placeholder: "На кого жалоба" })}</select>
           <select id="repSeverity"><option value="normal">normal</option><option value="high">high</option><option value="critical">critical</option></select>
           <input id="repWorld" placeholder="world" />
           <textarea id="repMessage" class="full" placeholder="Описание проблемы"></textarea>
@@ -3433,24 +3453,22 @@ async function loadLogs() {
 
 async function loadInvestigations() {
   setLoading("Готовлю расследования");
-  const [sources, rows, playersData] = await Promise.all([
+  const [sources, rows, investigationPlayers] = await Promise.all([
     safeApi("/api/investigations/sources", { tables: [] }),
     safeApi("/api/investigations/block-logs?limit=120", { rows: [] }),
-    safeApi("/api/players", { players: [] })
+    loadAdminPlayerChoices()
   ]);
-  const investigationPlayers = asArray(playersData.players);
   setView(`
     <section class="layout-grid grid-wide">
       ${panel("Поиск CoreProtect", "Фильтры по игроку, координатам и радиусу", `
         <div class="toolbar">
-          <input id="invPlayer" placeholder="Игрок" list="investigationPlayersDatalist" />
+          <select id="invPlayer" class="player-select">${playerSelectOptions(investigationPlayers, { placeholder: "Любой игрок" })}</select>
           <input id="invX" placeholder="X" />
           <input id="invY" placeholder="Y" />
           <input id="invZ" placeholder="Z" />
           <input id="invRadius" placeholder="Радиус" value="0" />
           <button class="btn btn-primary" data-click="searchInvestigation()">Искать</button>
         </div>
-        ${playerDatalistHtml("investigationPlayersDatalist", investigationPlayers)}
         <div id="investigationResults">${table("investigation-rows", asArray(rows.rows), null, { pageSize: 18 })}</div>
       `)}
       ${panel("Источники расследований", "Таблицы и колонки для поиска.", table("investigation-sources", asArray(sources.tables).map(t => ({ table: t.name, columns: asArray(t.columns).join(", ") })), [
@@ -3499,16 +3517,15 @@ async function loadAudit() {
 
 async function loadSecurity() {
   setLoading("Загружаю доступы");
-  const [access, lists, whitelist, ipAlerts, playersData] = await Promise.all([
+  const [access, lists, whitelist, ipAlerts, securityPlayers] = await Promise.all([
     safeApi("/api/security/access", {}),
     safeApi("/api/minecraft/access-lists", {}),
     safeApi("/api/admin/whitelist/requests?limit=60", { requests: [], count: 0 }),
     safeApi("/api/admin/security/ip-alerts?limit=60", { alerts: [], count: 0 }),
-    safeApi("/api/players", { players: [] })
+    loadAdminPlayerChoices()
   ]);
   const whitelistRows = asArray(whitelist.requests);
   const alertRows = asArray(ipAlerts.alerts);
-  const securityPlayers = asArray(playersData.players);
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Whitelist", asArray(lists.whitelist).length, "Игроки с доступом к серверу")}
@@ -3533,7 +3550,7 @@ async function loadSecurity() {
       `)}
       ${panel("Minecraft-доступ", "Выдай доступ, права или ограничение без лишних команд.", `
         <div class="form-grid">
-          <input id="accessPlayer" placeholder="Ник игрока" list="securityPlayersDatalist" />
+          <select id="accessPlayer" class="player-select">${playerSelectOptions(securityPlayers)}</select>
           <select id="accessAction">
             <option value="whitelist_add">Разрешить вход</option>
             <option value="whitelist_remove">Убрать доступ</option>
@@ -3545,7 +3562,6 @@ async function loadSecurity() {
           <input id="accessReason" class="full" placeholder="Причина" />
           <button class="btn btn-primary full" data-click="runAccessAction()">Выполнить</button>
         </div>
-        ${playerDatalistHtml("securityPlayersDatalist", securityPlayers)}
         <div class="spacer-12"></div>
         ${kv([
           ["Требуется OP для входа", access.requireOp],
@@ -3590,11 +3606,14 @@ async function loadSecurity() {
 
 async function loadAdmins() {
   setLoading("Загружаю команду панели");
-  const [admins, access] = await Promise.all([
+  const [admins, access, adminPlayers] = await Promise.all([
     safeApi("/api/security/admins", { admins: [], whitelistCandidates: [] }),
-    safeApi("/api/security/access", {})
+    safeApi("/api/security/access", {}),
+    loadAdminPlayerChoices()
   ]);
   const rows = asArray(admins.admins);
+  const adminNames = new Set(rows.map((row) => cleanText(row.username).toLowerCase()).filter(Boolean));
+  const availableAdminPlayers = playerChoiceRecords(adminPlayers).filter((row) => !adminNames.has(row.name.toLowerCase()));
   const activeRows = rows.filter(row => row.enabled);
   const fullAdmins = activeRows.filter(row => String(row.role || "").toLowerCase() === "admin" || String(row.role || "").toLowerCase() === "owner");
   const juniorAdmins = activeRows.filter(row => String(row.role || "").toLowerCase() === "junior_admin");
@@ -3629,7 +3648,7 @@ async function loadAdmins() {
           `)
         : panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
             <div class="form-grid danger-zone admin-create-panel">
-              <input id="newAdminUsername" placeholder="Minecraft-ник" />
+              <select id="newAdminUsername" class="player-select">${playerSelectOptions(availableAdminPlayers)}</select>
               <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
               <select id="newAdminRole">
                 <option value="admin">Полный админ</option>
@@ -3884,81 +3903,6 @@ async function loadPlayerLink() {
 
 async function loadPlayerBank() {
   return getPlayerTreasuryPages().loadPlayerBank();
-  setLoading("Загрузка банка AR");
-  const me = await api("/api/player/me");
-  state.user = me.account || {};
-  if (!state.user.linked) {
-    setView(`
-      ${panel("Банк AR закрыт", "Для банка нужна привязка Minecraft-ника.", `
-        <div class="notice">Сначала запроси одноразовый код привязки. После этого банк откроется здесь и в игре.</div>
-      `, `<button class="btn btn-primary" data-click="setTab('link')">Открыть привязку</button>`)}
-    `);
-    return;
-  }
-  const bank = await api("/api/player/bank");
-  const accounts = asArray(bank.accounts);
-  if (!accounts.some((x) => String(x.scope || "").toUpperCase() === state.playerBankScope)) {
-    state.playerBankScope = "PERSONAL";
-  }
-  const selectedAccount = accounts.find((x) => String(x.scope || "").toUpperCase() === state.playerBankScope) || accounts[0] || {};
-  const pin = bank.pin || {};
-  const tempPin = bank.temporaryPin || {};
-  const treasuryPin = bank.treasuryPin || {};
-  const transferLocked = Boolean(pin.mustChange || pin.status === "temporary-expired");
-  const ledger = asArray(selectedAccount.ledger || bank.ledger);
-  const usingTreasury = String(selectedAccount.scope || "").toUpperCase() === "TREASURY";
-  const selectedPinState = usingTreasury ? (treasuryPin.visiblePin ? "Настроен" : "Не задан") : bankPinState(pin);
-  const accountTabs = bank.canAccessTreasury ? `
-    <div class="segmented">
-      <button class="btn ${state.playerBankScope === "PERSONAL" ? "btn-primary" : "btn-secondary"}" data-click="selectPlayerBankScope('PERSONAL')">Личный счёт</button>
-      <button class="btn ${state.playerBankScope === "TREASURY" ? "btn-primary" : "btn-secondary"}" data-click="selectPlayerBankScope('TREASURY')">Казна</button>
-    </div>
-  ` : "";
-  setMiniHealthSummary(state.user.username || "игрок", [
-    `${selectedAccount.label || "Банк AR"}: ${formatAr(selectedAccount.balance || bank.account?.balance || 0)}`,
-    `PIN: ${selectedPinState}`,
-  ]);
-  setView(`
-    <section class="layout-grid grid-4">
-      ${metric("Баланс", formatAr(selectedAccount.balance || bank.account?.balance || 0), usingTreasury ? "Казна" : "Личный счёт", "good")}
-      ${metric("Последние операции", ledger.length, "Подтверждённые записи", "neutral")}
-      ${metric("PIN", selectedPinState, usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны") : (pin.locked ? `Заблокирован до ${dt(pin.lockedUntil)}` : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinTone(pin))}
-      ${metric("Minecraft", state.user.minecraftName || "—", "Привязан", "good")}
-    </section>
-    ${accountTabs}
-    ${safetyRail([
-      ["Счёт", usingTreasury ? "Доступен президенту и админам" : "Сайт, банкомат и игровые оплаты", "good"],
-      ["PIN", usingTreasury ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задайте PIN казны") : (tempPin.code ? "Сейчас действует временный PIN" : (pin.set ? "PIN уже задан" : "Задайте PIN")), usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
-      ["Блокировка", usingTreasury ? "Лимит попыток действует и для казны" : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "После ошибок PIN временно блокируется"), pin.locked && !usingTreasury ? "bad" : "neutral"]
-    ])}
-    ${!usingTreasury && tempPin.code ? panel("Временный PIN", "Сначала войди по нему, потом задай новый.", kv([
-      ["Временный PIN", tempPin.code],
-      ["Выдан", dt(tempPin.createdAt)],
-      ["Истекает", dt(tempPin.expiresAt)]
-    ])) : ""}
-    <section class="layout-grid grid-2">
-      ${panel(usingTreasury ? "PIN казны" : "Задать или изменить PIN", usingTreasury ? "PIN казны виден президенту и админам." : (tempPin.code ? "Сначала введи временный PIN." : "PIN нужен для переводов."), `
-        <div class="form-grid">
-          ${usingTreasury ? `<div class="notice full">PIN казны: <strong>${esc(treasuryPin.visiblePin || "не задан")}</strong></div>` : ""}
-          <input id="bankOldPin" type="password" inputmode="numeric" placeholder="${usingTreasury ? "Текущий PIN казны" : (tempPin.code ? "Текущий временный PIN" : "Текущий PIN")}" />
-          <input id="bankNewPin" type="password" inputmode="numeric" placeholder="Новый PIN, 4-8 цифр" />
-          <button class="btn btn-primary full" data-click="playerSetPin()">Сохранить PIN</button>
-        </div>
-      `)}
-      ${panel(usingTreasury ? "Перевести AR из казны" : "Перевести AR", !usingTreasury && transferLocked ? "Переводы закрыты, пока временный PIN не заменён." : (usingTreasury ? "Доступно президенту и админам." : "Перевод на другой счёт."), (!usingTreasury && transferLocked) ? `
-        <div class="notice">${pin.status === "temporary-expired" ? "Временный PIN истёк. Попроси команду сервера сбросить его ещё раз." : "Сначала задай личный PIN. После этого переводы и ATM-операции откроются автоматически."}</div>
-      ` : `
-        <div class="form-grid">
-          <input id="bankRecipient" placeholder="Логин получателя или Minecraft-ник" />
-          <input id="bankAmount" type="number" min="1" step="1" placeholder="Сумма" />
-          <input id="bankPinInput" type="password" inputmode="numeric" placeholder="PIN" />
-          <input id="bankNote" class="full" placeholder="Комментарий, необязательно" />
-          <button class="btn btn-primary full" data-click="playerTransfer()">Отправить AR</button>
-        </div>
-      `)}
-    </section>
-    ${panel("Журнал операций", "Последние движения счёта.", transactionFeed(ledger, 18))}
-  `);
 }
 
 window.playerRequestLinkCode = async () => {

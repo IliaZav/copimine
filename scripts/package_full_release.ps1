@@ -29,7 +29,8 @@ function Resolve-GitRoot {
 
 $gitRoot = Resolve-GitRoot -StartPath $ProjectRoot
 $sourceCommitBeforeBuild = (git -C $gitRoot rev-parse --short HEAD).Trim()
-$sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $gitRoot status --short))
+$sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $gitRoot status --short --untracked-files=no))
+$untrackedSourceEntries = @(git -C $gitRoot ls-files --others --exclude-standard)
 
 if (-not $ReleaseDir) {
     $workspaceRoot = Split-Path (Split-Path $ProjectRoot -Parent) -Parent
@@ -332,6 +333,12 @@ foreach ($relative in @(
     "minecraft\server\plugins\TAB\users.yml",
     "thirdparty\_modpack_stage"
 )) {
+    Remove-PayloadPath -RelativePath $relative
+}
+
+# Release archives include generated, ignored artifacts such as the resource pack,
+# but never unrelated local files that were not committed to the source tree.
+foreach ($relative in $untrackedSourceEntries) {
     Remove-PayloadPath -RelativePath $relative
 }
 

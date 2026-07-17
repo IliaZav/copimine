@@ -19,7 +19,7 @@ function initPreviewNavigation() {
   const backdrop = document.createElement("button");
   backdrop.type = "button";
   backdrop.className = "preview-nav-backdrop";
-  backdrop.setAttribute("aria-label", "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e");
+  backdrop.setAttribute("aria-label", "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e \u043f\u043e \u0444\u043e\u043d\u0443");
   backdrop.tabIndex = -1;
 
   topbar.prepend(toggle);

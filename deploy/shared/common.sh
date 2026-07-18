@@ -66,6 +66,42 @@ copimine_http_wait() {
   return 1
 }
 
+copimine_url_host() {
+  python3 - "$1" <<'PY'
+from urllib.parse import urlparse
+import sys
+
+parsed = urlparse(sys.argv[1])
+if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    raise SystemExit("invalid public URL")
+print(parsed.hostname)
+PY
+}
+
+copimine_verify_public_endpoints() {
+  local admin_url public_url tls_enabled public_host http_health_url
+  admin_url="$(copimine_env_value ADMIN_PUBLIC_BASE_URL)"
+  public_url="$(copimine_env_value PUBLIC_PANEL_URL)"
+  tls_enabled="${COPIMINE_TLS_ENABLED:-$(copimine_env_value COPIMINE_TLS_ENABLED)}"
+  tls_enabled="${tls_enabled:-0}"
+  [[ "$admin_url" =~ ^https?:// ]] || copimine_fail "ADMIN_PUBLIC_BASE_URL must use http:// or https://"
+  [[ "$public_url" =~ ^https?:// ]] || copimine_fail "PUBLIC_PANEL_URL must use http:// or https://"
+
+  copimine_http_wait "${admin_url%/}/api/health" "" 90 || copimine_fail "public admin health endpoint failed: $admin_url"
+  copimine_http_wait "${public_url%/}/downloads/CopiMineMods.zip" "" 90 || copimine_fail "public modpack endpoint failed: $public_url"
+  copimine_http_wait "${public_url%/}/resourcepacks/CopiMineResourcePack.zip" "" 90 || copimine_fail "public resourcepack endpoint failed: $public_url"
+
+  if [[ "$tls_enabled" == "1" ]]; then
+    public_host="$(copimine_url_host "$public_url")"
+    http_health_url="http://${public_host}:18080/api/health"
+    # TLS mode keeps the legacy HTTP listener for game downloads and status;
+    # verify it explicitly so both configured transports stay usable.
+    copimine_http_wait "$http_health_url" "$public_host" 90 || copimine_fail "HTTP compatibility endpoint failed: $http_health_url"
+    copimine_http_wait "http://${public_host}:18080/downloads/CopiMineMods.zip" "$public_host" 90 || copimine_fail "HTTP modpack compatibility endpoint failed"
+    copimine_http_wait "http://${public_host}:18080/resourcepacks/CopiMineResourcePack.zip" "$public_host" 90 || copimine_fail "HTTP resourcepack compatibility endpoint failed"
+  fi
+}
+
 copimine_require_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     copimine_fail "Run with sudo/root."
@@ -201,9 +237,14 @@ tls_enabled = values.get("COPIMINE_TLS_ENABLED", "0").strip()
 if tls_enabled not in {"0", "1"}:
     raise SystemExit("COPIMINE_TLS_ENABLED must be 0 or 1")
 admin_is_https = values["ADMIN_PUBLIC_BASE_URL"].lower().startswith("https://")
+panel_is_https = values["PUBLIC_PANEL_URL"].lower().startswith("https://")
 if tls_enabled == "1" and not admin_is_https:
     raise SystemExit("TLS configuration requires ADMIN_PUBLIC_BASE_URL to use https://")
+if tls_enabled == "1" and not panel_is_https:
+    raise SystemExit("TLS configuration requires PUBLIC_PANEL_URL to use https://")
 if tls_enabled == "0" and admin_is_https:
+    raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
+if tls_enabled == "0" and panel_is_https:
     raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
 if tls_enabled == "1":
     values["AUTH_COOKIE_SECURE"] = "1"
@@ -858,8 +899,7 @@ copimine_verify_runtime() {
   fi
   copimine_http_wait "http://127.0.0.1:8090/api/health" "" 90 || copimine_fail "/api/health failed"
   copimine_http_wait "http://127.0.0.1:8090/api/runtime" "" 90 || copimine_fail "/api/runtime failed"
-  copimine_http_wait "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "copimine.ru:18080" 90 || copimine_fail "modpack download route failed"
-  copimine_http_wait "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "copimine.ru:18080" 90 || copimine_fail "resourcepack download route failed"
+  copimine_verify_public_endpoints
 }
 
 copimine_install_flow() {

@@ -262,10 +262,26 @@ AUTH_COOKIE_SECURE = (
     if AUTH_COOKIE_SECURE_RAW
     else ADMIN_PUBLIC_BASE_URL.lower().startswith("https://")
 )
+
+
+def resolve_http_auth_setting(raw_value: Optional[str], public_base_url: str) -> bool:
+    """Resolve the temporary HTTP login switch without breaking HTTP-only installs.
+
+    A missing value follows the configured public transport: an HTTP-only
+    installation remains usable until TLS is provisioned, while an HTTPS
+    installation stays secure by default.  An explicit value always wins so
+    operators can disable HTTP login before exposing a temporary network.
+    """
+    raw = str(raw_value or "").strip().lower()
+    if raw:
+        return raw in {"1", "true", "yes", "on"}
+    return str(public_base_url or "").strip().lower().startswith("http://")
+
+
 # Public HTTP remains available for the site, files and status endpoints. A
 # reusable login cookie is deliberately HTTPS-only unless an operator makes a
 # conscious, local-network-only opt-in for a temporary migration.
-ALLOW_INSECURE_HTTP_AUTH = os.getenv("ALLOW_INSECURE_HTTP_AUTH", "0").strip().lower() in {"1", "true", "yes", "on"}
+ALLOW_INSECURE_HTTP_AUTH = resolve_http_auth_setting(os.getenv("ALLOW_INSECURE_HTTP_AUTH"), ADMIN_PUBLIC_BASE_URL)
 AUTH_BEARER_FALLBACK_ENABLED = os.getenv("AUTH_BEARER_FALLBACK_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")
 CSRF_HEADER_NAME = "X-CSRF-Token"

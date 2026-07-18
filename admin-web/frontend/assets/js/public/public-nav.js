@@ -1,5 +1,9 @@
+const OPEN_MENU_LABEL = "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
+const CLOSE_MENU_LABEL = "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
+
 function setExpanded(button, expanded) {
   button.setAttribute("aria-expanded", expanded ? "true" : "false");
+  button.setAttribute("aria-label", expanded ? CLOSE_MENU_LABEL : OPEN_MENU_LABEL);
 }
 
 function createToggleButton() {
@@ -7,7 +11,7 @@ function createToggleButton() {
   button.id = "mobileNavToggle";
   button.type = "button";
   button.className = "btn icon-btn mobile-only hidden public-mobile-toggle";
-  button.setAttribute("aria-label", "Открыть меню");
+  button.setAttribute("aria-label", OPEN_MENU_LABEL);
   button.setAttribute("aria-hidden", "true");
   button.tabIndex = -1;
   button.textContent = "\u2630";
@@ -30,7 +34,7 @@ export function initPublicNav() {
   } else {
     toggle.classList.add("public-mobile-toggle");
     toggle.textContent = "\u2630";
-    toggle.setAttribute("aria-label", "Открыть меню");
+    toggle.setAttribute("aria-label", OPEN_MENU_LABEL);
     setExpanded(toggle, false);
   }
 

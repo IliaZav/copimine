@@ -485,6 +485,8 @@
   width: 44px;
   min-width: 44px;
   padding: 0;
+  position: relative;
+  z-index: 52;
 }
 
 .preview-nav-toggle-icon,

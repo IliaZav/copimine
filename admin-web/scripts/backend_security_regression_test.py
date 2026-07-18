@@ -228,6 +228,13 @@ def assert_http_does_not_issue_reusable_auth_cookies(main) -> None:
         main.ALLOW_INSECURE_HTTP_AUTH = original_opt_in
 
 
+def assert_http_auth_setting_follows_public_url(main) -> None:
+    assert main.resolve_http_auth_setting(None, "http://panel.example.test") is True
+    assert main.resolve_http_auth_setting(None, "https://panel.example.test") is False
+    assert main.resolve_http_auth_setting("0", "http://panel.example.test") is False
+    assert main.resolve_http_auth_setting("1", "https://panel.example.test") is True
+
+
 def assert_untrusted_forwarded_origin_is_not_accepted(main) -> None:
     from starlette.requests import Request
 
@@ -618,6 +625,7 @@ def main() -> None:
         assert_only_correlated_plugin_reports_keep_technical_context(main_module)
         assert_public_health_has_no_runtime_diagnostics(main_module)
         assert_http_does_not_issue_reusable_auth_cookies(main_module)
+        assert_http_auth_setting_follows_public_url(main_module)
         assert_untrusted_forwarded_origin_is_not_accepted(main_module)
         assert_reverse_proxy_http_is_not_mistaken_for_a_local_login(main_module)
         assert_automatic_whitelist_cannot_be_approved_into_identity_ownership(main_module)

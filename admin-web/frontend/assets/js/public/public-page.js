@@ -1,7 +1,7 @@
 import { bindHomepageEvents, loadPublicPage } from "./homepage.js";
 import { initCartPage } from "./cart-page.js";
 import { initThemeToggle } from "../theme/theme-toggle.js?v=20260718r1";
-import { initPublicNav } from "./public-nav.js";
+import { initPublicNav } from "./public-nav.js?v=20260718r3";
 
 initPublicNav();
 initThemeToggle();

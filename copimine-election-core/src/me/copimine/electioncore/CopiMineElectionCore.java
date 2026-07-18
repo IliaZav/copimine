@@ -259,6 +259,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent event) {
         try {
+            cleanupQueuedElectionVisuals(event.getChunk().getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ());
             repairProtectedBlockVisuals(event.getChunk().getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ());
         } catch (Exception error) {
             getLogger().warning("repair visuals chunk: " + safeError(error));
@@ -2163,53 +2164,91 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openPresidentTaxRosterMenu(Player player, boolean paid, int page) {
-        if (!isPresident(player) && !hasElectionAdmin(player)) {
-            player.sendMessage(color("&cAccess denied for this list."));
+        if (player == null || !player.isOnline()) {
             return;
         }
-        try {
-            Map<String, Object> tax = activeTax();
-            List<Map<String, Object>> rows = new ArrayList<>();
-            if (tax != null) {
-                String taxId = string(tax.get("id"));
-                List<Map<String, Object>> players = queryList("SELECT owner_uuid,owner_name FROM cmv4_bank_accounts WHERE account_type='PLAYER' AND status='ACTIVE' ORDER BY lower(owner_name),owner_uuid LIMIT 500");
-                for (Map<String, Object> row : players) {
-                    String uuid = string(row.get("owner_uuid"));
-                    if (uuid.isBlank()) {
-                        continue;
-                    }
-                    boolean isPaid = isTaxClockExempt(uuid) || dueTaxAmount(uuid, taxId, tax) <= 0L;
-                    if (isPaid == paid) {
-                        rows.add(row);
-                    }
+        UUID playerUuid = player.getUniqueId();
+        boolean electionAdmin = hasElectionAdmin(player);
+        int safePage = Math.max(0, Math.min(10_000, page));
+        player.sendActionBar(color("&7Загружаю список налога..."));
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            try {
+                if (!electionAdmin && !isPresidentUuid(playerUuid.toString())) {
+                    Bukkit.getScheduler().runTask(this, () -> {
+                        Player current = Bukkit.getPlayer(playerUuid);
+                        if (current != null && current.isOnline()) {
+                            current.sendMessage(color("&cAccess denied for this list."));
+                        }
+                    });
+                    return;
                 }
+                PresidentTaxRoster roster = loadPresidentTaxRoster(paid, safePage);
+                Bukkit.getScheduler().runTask(this, () -> {
+                    Player current = Bukkit.getPlayer(playerUuid);
+                    if (current != null && current.isOnline()) {
+                        openPresidentTaxRosterMenu(current, paid, safePage, roster);
+                    }
+                });
+            } catch (Exception error) {
+                getLogger().warning("tax roster: " + safeError(error));
+                Bukkit.getScheduler().runTask(this, () -> {
+                    Player current = Bukkit.getPlayer(playerUuid);
+                    if (current != null && current.isOnline()) {
+                        current.sendMessage(color("&cНе удалось загрузить список налога."));
+                    }
+                });
             }
+        });
+    }
+
+    private void openPresidentTaxRosterMenu(Player player, boolean paid, int page, PresidentTaxRoster roster) {
+        if (player == null || roster == null) {
+            return;
+        }
             MenuHolder holder = new MenuHolder("president-tax-roster", paid ? "paid" : "unpaid");
             Inventory inv = holder.create(54, color(paid ? "&aPaid players" : "&cUnpaid players"));
             int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
-            int start = Math.max(0, page) * 21;
-            for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
-                Map<String, Object> row = rows.get(start + i);
+            for (int i = 0; i < slots.length && i < roster.rows().size(); i++) {
+                Map<String, Object> row = roster.rows().get(i);
                 String uuid = string(row.get("owner_uuid"));
                 String name = first(string(row.get("owner_name")), shortId(uuid));
                 String action = paid ? "none" : "president:mark-paid:" + uuid + ":" + Math.max(0, page);
                 setButton(holder, slots[i], paid ? Material.LIME_DYE : Material.GRAY_DYE, "&f" + name,
                         List.of(paid ? "&7Налог за текущий период оплачен." : "&7Нажми, если деньги переданы президенту лично."), action);
             }
-            if (rows.isEmpty()) {
+            if (roster.rows().isEmpty()) {
                 setStatic(inv, 22, infoItem(paid ? Material.LIME_DYE : Material.GRAY_DYE, paid ? "&aСписок пуст" : "&cСписок пуст", List.of("&7Для текущего периода игроков нет.")));
             }
             setButton(holder, 53, Material.BARRIER, "&cЗакрыть", List.of(), "close");
             String kind = paid ? "paid" : "unpaid";
-            pageButtons(holder, inv, page, rows.size(), 21,
+            pageButtons(holder, inv, page, roster.totalRows(), 21,
                     "president:tax-roster:" + kind + ":" + (page - 1),
                     "president:tax-roster:" + kind + ":" + (page + 1),
                     "president:open-mandate");
             player.openInventory(inv);
-        } catch (Exception error) {
-            player.sendMessage(color("&cНе удалось загрузить список налога."));
-            getLogger().warning("tax roster: " + safeError(error));
+    }
+
+    private PresidentTaxRoster loadPresidentTaxRoster(boolean paid, int page) throws Exception {
+        Map<String, Object> tax = activeTax();
+        if (tax == null) {
+            return new PresidentTaxRoster(List.of(), 0);
         }
+        int safePage = Math.max(0, Math.min(10_000, page));
+        long currentTime = now();
+        long taxAmount = Math.max(0L, Math.min(5L, longValue(tax.get("amount"))));
+        long windowStart = taxWindowStart(longValue(tax.get("created_at")), taxPeriodMs(tax), currentTime);
+        long windowEnd = windowStart + taxPeriodMs(tax);
+        String rosterQuery = "SELECT accounts.owner_uuid,accounts.owner_name,CASE WHEN exemptions.player_uuid IS NOT NULL OR COALESCE(payments.paid_amount,0)>=? THEN 1 ELSE 0 END AS paid_state " +
+                "FROM cmv4_bank_accounts accounts " +
+                "LEFT JOIN (SELECT player_uuid FROM president_tax_exemptions WHERE status='ACTIVE' AND expires_at>? GROUP BY player_uuid) exemptions ON exemptions.player_uuid=accounts.owner_uuid " +
+                "LEFT JOIN (SELECT player_uuid,COALESCE(SUM(amount),0) AS paid_amount FROM president_tax_payments WHERE tax_id=? AND created_at>=? AND created_at<? GROUP BY player_uuid) payments ON payments.player_uuid=accounts.owner_uuid " +
+                "WHERE accounts.account_type='PLAYER' AND accounts.status='ACTIVE' AND accounts.owner_uuid<>''";
+        int paidState = paid ? 1 : 0;
+        long total = scalarLong("SELECT COUNT(*) FROM (" + rosterQuery + ") roster WHERE paid_state=?",
+                taxAmount, currentTime, string(tax.get("id")), windowStart, windowEnd, paidState);
+        List<Map<String, Object>> rows = queryList("SELECT owner_uuid,owner_name FROM (" + rosterQuery + ") roster WHERE paid_state=? ORDER BY lower(owner_name),owner_uuid LIMIT ? OFFSET ?",
+                taxAmount, currentTime, string(tax.get("id")), windowStart, windowEnd, paidState, 21, safePage * 21);
+        return new PresidentTaxRoster(rows, (int) Math.min(Integer.MAX_VALUE, Math.max(0L, total)));
     }
 
     private void markTaxPaidByPresident(Player player, String playerUuid) throws Exception {
@@ -4828,10 +4867,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return false;
         }
         try {
-            return scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE' AND ends_at>?", player.getUniqueId().toString(), now()) > 0;
+            return isPresidentUuid(player.getUniqueId().toString());
         } catch (Exception error) {
             return false;
         }
+    }
+
+    private boolean isPresidentUuid(String playerUuid) throws Exception {
+        return playerUuid != null
+                && !playerUuid.isBlank()
+                && scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE' AND ends_at>?", playerUuid, now()) > 0;
     }
 
     private void enforceCurrentMenuAccess(Player player, String action) {
@@ -5047,6 +5092,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void resetElections(String actor) throws Exception {
         removeElectionManagedVisuals();
         tx(connection -> {
+            queueElectionVisualCleanup(connection);
             for (String table : List.of(
                     "votes",
                     "ballots",
@@ -5105,6 +5151,101 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 }
             }
         }
+    }
+
+    private void queueElectionVisualCleanup(Connection connection) throws Exception {
+        long queuedAt = now();
+        String visuals = "SELECT 'STATION_LABEL' AS kind,id AS linked_id,world,x,y,z FROM polling_stations " +
+                "UNION ALL SELECT 'POLLING_STATION' AS kind,id AS linked_id,world,x,y,z FROM polling_stations " +
+                "UNION ALL SELECT 'TAX_LABEL' AS kind,linked_id,world,x,y,z FROM protected_blocks WHERE kind='TAX_OFFICE' AND active=1 " +
+                "UNION ALL SELECT 'TAX_OFFICE' AS kind,linked_id,world,x,y,z FROM protected_blocks WHERE kind='TAX_OFFICE' AND active=1";
+        update(connection,
+                "INSERT INTO election_visual_cleanup_queue(id,kind,linked_id,world,x,y,z,created_at) " +
+                        "SELECT 'reset:' || kind || ':' || linked_id,kind,linked_id,world,x,y,z,? FROM (" + visuals + ") queued " +
+                        "ON CONFLICT(id) DO UPDATE SET world=excluded.world,x=excluded.x,y=excluded.y,z=excluded.z,created_at=excluded.created_at",
+                queuedAt);
+    }
+
+    private void cleanupQueuedElectionVisuals(String worldName, int chunkX, int chunkZ) {
+        Runnable work = () -> {
+            try {
+                List<Map<String, Object>> queued = queryList(
+                        "SELECT id,kind,linked_id,world,x,y,z FROM election_visual_cleanup_queue WHERE world=? AND (x >> 4)=? AND (z >> 4)=?",
+                        worldName,
+                        chunkX,
+                        chunkZ
+                );
+                if (queued.isEmpty()) {
+                    return;
+                }
+                Bukkit.getScheduler().runTask(this, () -> {
+                    World world = Bukkit.getWorld(worldName);
+                    if (world == null || !world.isChunkLoaded(chunkX, chunkZ)) {
+                        return;
+                    }
+                    List<String> completed = new ArrayList<>();
+                    for (Map<String, Object> row : queued) {
+                        removeQueuedElectionVisual(world, row);
+                        completed.add(string(row.get("id")));
+                    }
+                    deleteQueuedElectionVisualCleanup(completed);
+                });
+            } catch (Exception error) {
+                getLogger().warning("queued election visual cleanup fetch: " + safeError(error));
+            }
+        };
+        if (Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTaskAsynchronously(this, work);
+        } else {
+            work.run();
+        }
+    }
+
+    private void removeQueuedElectionVisual(World world, Map<String, Object> row) {
+        if (world == null || row == null) {
+            return;
+        }
+        String kind = string(row.get("kind"));
+        String linkedId = string(row.get("linked_id"));
+        if (kind.isBlank() || linkedId.isBlank()) {
+            return;
+        }
+        Location center = new Location(world, intValue(row.get("x")) + 0.5D, intValue(row.get("y")) + 1.4D, intValue(row.get("z")) + 0.5D);
+        for (Entity entity : world.getNearbyEntities(center, 1.8D, 2.4D, 1.8D)) {
+            PersistentDataContainer pdc = entity.getPersistentDataContainer();
+            if (("STATION_LABEL".equals(kind) || "TAX_LABEL".equals(kind))
+                    && entity instanceof TextDisplay
+                    && kind.equals(readString(pdc, textTypeKey))
+                    && linkedId.equals(readString(pdc, textLinkedIdKey))) {
+                entity.remove();
+            }
+            if (("POLLING_STATION".equals(kind) || "TAX_OFFICE".equals(kind))
+                    && entity instanceof ItemDisplay
+                    && "PROTECTED_BLOCK_VISUAL".equals(readString(pdc, visualEntityTypeKey))
+                    && kind.equals(readString(pdc, visualKindKey))
+                    && linkedId.equals(readString(pdc, visualLinkedIdKey))) {
+                entity.remove();
+            }
+        }
+    }
+
+    private void deleteQueuedElectionVisualCleanup(List<String> ids) {
+        List<String> cleanupIds = ids == null ? List.of() : ids.stream().filter(id -> id != null && !id.isBlank()).toList();
+        if (cleanupIds.isEmpty()) {
+            return;
+        }
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            try {
+                tx(connection -> {
+                    for (String id : cleanupIds) {
+                        update(connection, "DELETE FROM election_visual_cleanup_queue WHERE id=?", id);
+                    }
+                    return null;
+                });
+            } catch (Exception error) {
+                getLogger().warning("queued election visual cleanup delete: " + safeError(error));
+            }
+        });
     }
 
     private void expirePresidentTermsSafe() {
@@ -6286,6 +6427,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE TABLE IF NOT EXISTS protected_blocks(id TEXT PRIMARY KEY,kind TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,linked_id TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_block_visuals(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,entity_uuid TEXT NOT NULL DEFAULT '',base_material TEXT NOT NULL DEFAULT 'PAPER',custom_model_data INTEGER NOT NULL DEFAULT 0,model_id TEXT NOT NULL DEFAULT '',offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,yaw DOUBLE PRECISION NOT NULL DEFAULT 0,pitch DOUBLE PRECISION NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
             update(connection, "CREATE TABLE IF NOT EXISTS text_display_links(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL DEFAULT '',entity_uuid TEXT NOT NULL DEFAULT '',text TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
+            update(connection, "CREATE TABLE IF NOT EXISTS election_visual_cleanup_queue(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,created_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "ALTER TABLE cik_chairs ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE cik_chairs ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE cik_chairs ADD COLUMN IF NOT EXISTS assigned_at BIGINT NOT NULL DEFAULT 0");
@@ -6379,6 +6521,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_blocks_coords ON protected_blocks(world,x,y,z,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_location ON protected_block_visuals(world,x,y,z,active)");
+            update(connection, "CREATE INDEX IF NOT EXISTS idx_election_visual_cleanup_queue_chunk ON election_visual_cleanup_queue(world,x,z)");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_candidate_applications_election_player ON candidate_applications(election_id,player_uuid)");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_candidates_election_player ON candidates(election_id,player_uuid)");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_votes_ballot_id ON votes(ballot_id)");
@@ -6388,6 +6531,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_round_candidates_round_player ON round_candidates(election_id,round_no,candidate_uuid)");
             update(connection, "INSERT INTO cmv4_schema_migrations(version,applied_at,component) VALUES('20260621_007_copimine_election_core_rebuild',?,'election-core') ON CONFLICT(version) DO NOTHING", now());
             update(connection, "INSERT INTO cmv4_schema_migrations(version,applied_at,component) VALUES('20260623_008_copimine_election_core_phase1_stability',?,'election-core') ON CONFLICT(version) DO NOTHING", now());
+            update(connection, "INSERT INTO cmv4_schema_migrations(version,applied_at,component) VALUES('20260718_012_election_visual_cleanup_queue',?,'election-core') ON CONFLICT(version) DO NOTHING", now());
             return null;
         });
     }
@@ -6917,6 +7061,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private record TaxRecipient(String presidentUuid, String presidentName) {
+    }
+
+    private record PresidentTaxRoster(List<Map<String, Object>> rows, int totalRows) {
     }
 
     private record TaxEconomyProof(boolean confirmed, String bankTxId) {

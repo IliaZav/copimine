@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 umask 077
+export PAGER=cat
+export PSQL_PAGER=cat
 
 ROOT="${COPIMINE_ROOT:-/opt/copimine}"
 MODE="archive"

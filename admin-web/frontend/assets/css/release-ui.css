@@ -1169,3 +1169,439 @@ body.player-mode :where(.panel, .metric):hover { border-color: var(--line-strong
     transition-duration: .01ms !important;
   }
 }
+
+/*
+ * Release refinement — a compact civic-inventory layer.
+ *
+ * The public shop reads like a Minecraft inventory ledger: two clearly
+ * separated currencies, quiet item cells and an obvious next action. The
+ * authenticated interfaces use the same restrained square geometry so dense
+ * operational data stays readable instead of becoming a wall of cards.
+ */
+:root {
+  --ui-display: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", Arial, sans-serif;
+  --ui-body: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --ui-data: "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --shop-ar: #1d7841;
+  --shop-ar-soft: #dceee1;
+  --shop-donation: #176f68;
+  --shop-donation-soft: #dceeea;
+  --surface-inset: color-mix(in srgb, var(--surface-soft) 86%, var(--accent-soft));
+}
+
+:root[data-theme="dark"] {
+  --shop-ar: #72e69a;
+  --shop-ar-soft: #1c4c30;
+  --shop-donation: #78d3c3;
+  --shop-donation-soft: #193e38;
+  --surface-inset: color-mix(in srgb, var(--surface-soft) 88%, var(--accent-soft));
+}
+
+body { font-family: var(--ui-body); }
+
+:where(h1, h2, h3, h4, .page-heading h1, .metric-value, .shop-product-price, .cart-total) {
+  font-family: var(--ui-display);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Keep controls deliberately square; toggles retain their small round thumb. */
+.public-nav,
+.hero-media-card,
+.hero-side-card,
+.scene-card,
+.showcase-card,
+.public-panel,
+.public-shop-card,
+.auth-card,
+.shop-product-card,
+.cart-checkout-section,
+.cart-global-notice,
+.cart-item,
+.loading {
+  border-radius: var(--r-lg) !important;
+}
+
+.hero-media-art,
+.shop-item-chip,
+.hero-sprite-chip,
+.shop-product-art,
+.shop-product-category,
+.cart-item-art,
+.cart-item-remove,
+.status-chip,
+.route-chip,
+.badge,
+.chip,
+.pill {
+  border-radius: var(--r) !important;
+}
+
+@media (min-width: 761px) {
+  /* The navigation trigger is a mobile affordance, never a desktop control. */
+  .public-mobile-toggle,
+  .cabinet-nav-toggle,
+  #mobileNavToggle {
+    display: none !important;
+  }
+}
+
+/* Public navigation: one calm bar, not a row of detached pills. */
+.public-nav {
+  gap: 12px;
+  padding: 8px 10px;
+  border-color: color-mix(in srgb, var(--line) 86%, var(--accent-soft));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--surface) 97%, var(--accent-soft)), var(--surface));
+}
+
+.public-nav nav { gap: 2px; }
+
+.public-nav nav > a,
+.app-nav a,
+.topbar nav a {
+  border-radius: var(--r) !important;
+  letter-spacing: .005em;
+}
+
+.public-nav .theme-toggle {
+  min-width: 0;
+  padding-inline: 10px;
+}
+
+/* The two shop shelves share a system but never blend their balances. */
+.shop-catalog-band-ar,
+.cart-checkout-section-ar { --catalog-accent: var(--shop-ar); --catalog-soft: var(--shop-ar-soft); }
+
+.shop-catalog-band-donation,
+.cart-checkout-section-donation { --catalog-accent: var(--shop-donation); --catalog-soft: var(--shop-donation-soft); }
+
+.shop-catalog-band {
+  gap: 13px;
+  padding-top: 8px;
+}
+
+.shop-catalog-band + .shop-catalog-band {
+  padding-top: 26px;
+  border-top-color: color-mix(in srgb, var(--line) 86%, var(--catalog-accent));
+}
+
+.shop-catalog-head {
+  align-items: center;
+  min-height: 56px;
+  padding-left: 12px;
+  border-left: 3px solid var(--catalog-accent);
+}
+
+.shop-catalog-eyebrow {
+  color: var(--catalog-accent);
+  letter-spacing: .08em;
+}
+
+.shop-catalog-head h2 {
+  letter-spacing: -.022em;
+}
+
+.shop-product-grid { gap: 10px; }
+
+.shop-product-card {
+  --product-accent: var(--shop-ar);
+  position: relative;
+  border-color: color-mix(in srgb, var(--line) 86%, var(--product-accent));
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+.shop-product-card-donation { --product-accent: var(--shop-donation); }
+
+.shop-product-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 3px;
+  background: linear-gradient(90deg, var(--product-accent), color-mix(in srgb, var(--product-accent) 28%, transparent));
+  pointer-events: none;
+}
+
+.shop-product-card:hover,
+.shop-product-card:focus-within {
+  border-color: var(--product-accent);
+  box-shadow: 0 11px 24px color-mix(in srgb, var(--product-accent) 17%, transparent);
+}
+
+.shop-product-art {
+  border-bottom-color: color-mix(in srgb, var(--line) 82%, var(--product-accent));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--product-accent) 10%, transparent) 1px, transparent 1px) 0 0 / 14px 14px,
+    linear-gradient(color-mix(in srgb, var(--product-accent) 10%, transparent) 1px, transparent 1px) 0 0 / 14px 14px,
+    linear-gradient(145deg, var(--surface-inset), var(--surface-soft));
+}
+
+.shop-product-art img {
+  filter: drop-shadow(0 8px 8px color-mix(in srgb, var(--product-accent) 24%, transparent));
+}
+
+.shop-product-body { gap: 9px; padding: 13px 14px 14px; }
+
+.shop-product-category {
+  width: max-content;
+  max-width: 100%;
+  padding: 3px 6px;
+  background: color-mix(in srgb, var(--product-accent) 12%, var(--surface));
+  color: var(--product-accent);
+  letter-spacing: .07em;
+}
+
+.shop-product-body h3 {
+  font-family: var(--ui-display);
+  letter-spacing: -.012em;
+}
+
+.shop-product-footer {
+  min-height: 59px;
+  padding: 10px 13px 12px;
+  background: color-mix(in srgb, var(--surface-soft) 88%, var(--product-accent) 4%);
+}
+
+.shop-product-price,
+.cart-total,
+.cart-item-price {
+  color: var(--product-accent, var(--catalog-accent, var(--accent-strong)));
+  font-family: var(--ui-data);
+  font-weight: 750;
+  letter-spacing: -.02em;
+}
+
+.shop-product-add {
+  border-color: color-mix(in srgb, var(--product-accent) 52%, var(--line-strong)) !important;
+}
+
+.shop-product-add:hover:not(:disabled),
+.shop-product-add:focus-visible:not(:disabled) {
+  border-color: var(--product-accent) !important;
+  background: color-mix(in srgb, var(--product-accent) 13%, var(--surface)) !important;
+  color: var(--product-accent) !important;
+}
+
+/* Cart is a ledger with two checkout desks, not two unrelated cards. */
+.shop-cart-button {
+  border-radius: var(--r) !important;
+  border-color: color-mix(in srgb, var(--line-strong) 74%, var(--accent));
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent-soft));
+}
+
+.shop-cart-button.has-items {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shop-cart-count {
+  border-radius: var(--r-sm);
+  font-family: var(--ui-data);
+  font-weight: 800;
+}
+
+.shop-cart-button.has-items .shop-cart-count {
+  animation: cart-count-pop 300ms cubic-bezier(.2, .85, .3, 1) both;
+}
+
+.cart-checkout-grid { gap: 16px; }
+
+.cart-checkout-section {
+  --catalog-accent: var(--shop-ar);
+  --catalog-soft: var(--shop-ar-soft);
+  gap: 14px;
+  padding: 16px;
+  border-top: 3px solid var(--catalog-accent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--surface) 97%, var(--catalog-soft)), var(--surface-soft));
+  box-shadow: var(--shadow-1);
+}
+
+.cart-checkout-section-donation { border-top-color: var(--catalog-accent); }
+
+.cart-checkout-head {
+  padding-bottom: 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, var(--catalog-accent));
+}
+
+.cart-checkout-head .shop-catalog-eyebrow { color: var(--catalog-accent); }
+
+.cart-checkout-section .cart-total { color: var(--catalog-accent); }
+
+.cart-item {
+  gap: 10px;
+  padding: 9px;
+  border-color: color-mix(in srgb, var(--line) 84%, var(--catalog-accent));
+  background: color-mix(in srgb, var(--surface) 72%, var(--catalog-soft));
+}
+
+.cart-item-art {
+  border-color: color-mix(in srgb, var(--line) 74%, var(--catalog-accent));
+  background: color-mix(in srgb, var(--surface) 75%, var(--catalog-soft));
+}
+
+.cart-checkout-section .cart-item-price { color: var(--catalog-accent); }
+
+.cart-checkout-controls input:focus-visible {
+  border-color: var(--catalog-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--catalog-accent) 20%, transparent) !important;
+}
+
+/* Compact working surfaces for player and staff panels. */
+body.player-mode .sidebar,
+body.panel-admin-mode .sidebar,
+body.junior-admin-mode .sidebar,
+body.player-mode .side-brand,
+body.panel-admin-mode .side-brand,
+body.junior-admin-mode .side-brand,
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar,
+body.player-mode .panel,
+body.panel-admin-mode .panel,
+body.junior-admin-mode .panel,
+body.player-mode .metric,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .metric,
+body.player-mode .table-wrap,
+body.panel-admin-mode .table-wrap,
+body.junior-admin-mode .table-wrap {
+  border-radius: var(--r-lg) !important;
+}
+
+body.player-mode .nav-item,
+body.panel-admin-mode .nav-item,
+body.junior-admin-mode .nav-item,
+body.player-mode .mini-health,
+body.panel-admin-mode .mini-health,
+body.junior-admin-mode .mini-health,
+body.player-mode .inventory-card,
+body.panel-admin-mode .inventory-card,
+body.junior-admin-mode .inventory-card,
+body.panel-admin-mode .stack-card,
+body.junior-admin-mode .stack-card,
+body.panel-admin-mode .detail-chip,
+body.junior-admin-mode .detail-chip {
+  border-radius: var(--r) !important;
+}
+
+body.player-mode .nav-item,
+body.panel-admin-mode .nav-item,
+body.junior-admin-mode .nav-item {
+  min-height: 44px;
+  padding: 9px 10px;
+  border-color: var(--line) !important;
+  background: color-mix(in srgb, var(--surface-soft) 88%, transparent) !important;
+}
+
+body.player-mode .nav-item.active,
+body.panel-admin-mode .nav-item.active,
+body.junior-admin-mode .nav-item.active {
+  border-color: color-mix(in srgb, var(--accent) 66%, var(--line)) !important;
+  background: var(--status-gradient) !important;
+  box-shadow: inset 3px 0 0 var(--accent) !important;
+}
+
+body.player-mode .nav-group-title,
+body.panel-admin-mode .nav-group-title,
+body.junior-admin-mode .nav-group-title,
+body.player-mode .metric-label,
+body.panel-admin-mode .metric-label,
+body.junior-admin-mode .metric-label {
+  color: var(--muted) !important;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .075em;
+}
+
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  padding: 14px 16px !important;
+  box-shadow: var(--shadow-1) !important;
+}
+
+body.player-mode .page-heading h1,
+body.panel-admin-mode .page-heading h1,
+body.junior-admin-mode .page-heading h1 {
+  font-family: var(--ui-display);
+  letter-spacing: -.03em;
+}
+
+body.player-mode .panel,
+body.panel-admin-mode .panel,
+body.junior-admin-mode .panel,
+body.player-mode .metric,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .metric {
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 8%, transparent) !important;
+}
+
+body.player-mode .metric-value,
+body.panel-admin-mode .metric-value,
+body.junior-admin-mode .metric-value {
+  color: var(--ink) !important;
+  font-family: var(--ui-display);
+  letter-spacing: -.026em;
+  line-height: 1.08;
+}
+
+body.player-mode .table-wrap,
+body.panel-admin-mode .table-wrap,
+body.junior-admin-mode .table-wrap {
+  overflow: auto;
+  box-shadow: none !important;
+}
+
+body.player-mode th,
+body.panel-admin-mode th,
+body.junior-admin-mode th {
+  background: color-mix(in srgb, var(--surface-soft) 92%, var(--accent-soft));
+  color: var(--muted);
+  font-size: .7rem;
+  letter-spacing: .065em;
+}
+
+body.player-mode td,
+body.panel-admin-mode td,
+body.junior-admin-mode td { line-height: 1.42; }
+
+body.player-mode tbody tr:hover,
+body.panel-admin-mode tbody tr:hover,
+body.junior-admin-mode tbody tr:hover {
+  background: var(--status-gradient);
+}
+
+body.panel-admin-mode .admin-search-fab,
+body.junior-admin-mode .admin-search-fab {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--r) !important;
+  box-shadow: var(--shadow-1);
+}
+
+body.panel-admin-mode .admin-search-panel,
+body.junior-admin-mode .admin-search-panel {
+  border-radius: var(--r-lg) !important;
+}
+
+@keyframes cart-count-pop {
+  0% { transform: scale(.84); }
+  68% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+@media (max-width: 760px) {
+  .public-nav { padding: 7px; }
+  .shop-catalog-head { min-height: 0; padding-left: 9px; }
+  .shop-product-grid { gap: 8px; }
+  .shop-product-body { gap: 7px; padding: 10px; }
+  .shop-product-footer { min-height: 0; padding: 9px 10px 10px; }
+  .cart-checkout-section { padding: 13px; }
+  .cart-checkout-head { gap: 10px; }
+}
+
+@media (forced-colors: active) {
+  .shop-product-card::before { background: Highlight; }
+  .shop-catalog-head { border-left-color: Highlight; }
+}

@@ -1,7 +1,8 @@
 param(
     [string]$ProjectRoot = "",
     [string]$ReleaseDir = "",
-    [string]$DbDumpPath = ""
+    [string]$DbDumpPath = "",
+    [string]$ResourcePackDownloadUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,7 +31,9 @@ function Resolve-GitRoot {
 $gitRoot = Resolve-GitRoot -StartPath $ProjectRoot
 $sourceCommitBeforeBuild = (git -C $gitRoot rev-parse --short HEAD).Trim()
 $sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $gitRoot status --short --untracked-files=no))
-$untrackedSourceEntries = @(git -C $gitRoot ls-files --others --exclude-standard)
+if ($sourceTreeDirtyBeforeBuild) {
+    throw 'Release packaging requires committed tracked changes. Commit or stash them before packaging.'
+}
 
 if (-not $ReleaseDir) {
     $workspaceRoot = Split-Path (Split-Path $ProjectRoot -Parent) -Parent
@@ -61,14 +64,26 @@ $deployVerify = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
 $deployUnpack = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
 $deployReplace = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
 $deployCommon = Join-Path $ProjectRoot "deploy\shared\common.sh"
+$deployGameHardening = Join-Path $ProjectRoot "deploy\ubuntu\apply_game_hardening.sh"
+$gameHardeningRuntime = Join-Path $ProjectRoot "deploy\shared\harden_game_runtime.py"
+$gameHardeningPolicy = Join-Path $ProjectRoot "deploy\templates\game-runtime-hardening.json"
+$voicechatTemplate = Join-Path $ProjectRoot "deploy\templates\voicechat-server.properties"
+$gameHardeningService = Join-Path $ProjectRoot "admin-web\deploy\copimine-game-hardening.service"
 $uploadScript = Join-Path $ProjectRoot "scripts\windows\upload_release.ps1"
 $validateReleaseScript = Join-Path $ProjectRoot "scripts\validate_release_bundle.ps1"
 $embeddedUnpackScript = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
 $embeddedReplaceScript = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
 $embeddedCommonScript = Join-Path $ProjectRoot "deploy\shared\common.sh"
 $serverPropertiesPath = Join-Path $ProjectRoot "minecraft\server\server.properties"
-$resourcePackDownloadUrl = "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
+$resourcePackDownloadUrl = if ($ResourcePackDownloadUrl) {
+    $ResourcePackDownloadUrl
+} else {
+    "http://copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
+}
 $modpackDownloadUrl = "/downloads/CopiMineMods.zip"
+if ($resourcePackDownloadUrl -notmatch '^https?://[^/]+(?:/.*)?$') {
+    throw 'ResourcePackDownloadUrl must be an absolute http:// or https:// URL.'
+}
 
 function Write-Utf8NoBomFile {
     param(
@@ -77,6 +92,40 @@ function Write-Utf8NoBomFile {
     )
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($LiteralPath, $Content + [Environment]::NewLine, $utf8NoBom)
+}
+
+function Update-ServerProperties {
+    param(
+        [Parameter(Mandatory = $true)][string]$LiteralPath,
+        [Parameter(Mandatory = $true)][string]$ResourcePackUrl,
+        [Parameter(Mandatory = $true)][string]$ResourcePackSha1
+    )
+    if (-not (Test-Path -LiteralPath $LiteralPath)) {
+        throw "Missing server.properties template: $LiteralPath"
+    }
+    $updates = [ordered]@{
+        'level-seed' = '-1861153001556076901'
+        'resource-pack' = ($ResourcePackUrl -replace ':', '\:')
+        'resource-pack-sha1' = $ResourcePackSha1
+    }
+    $seen = @{}
+    $result = foreach ($line in Get-Content -LiteralPath $LiteralPath -Encoding UTF8) {
+        if ($line.StartsWith('#') -or $line -notmatch '=') {
+            $line
+            continue
+        }
+        $key = $line.Split('=', 2)[0]
+        if ($updates.Contains($key)) {
+            $seen[$key] = $true
+            "$key=$($updates[$key])"
+        } else {
+            $line
+        }
+    }
+    foreach ($key in $updates.Keys) {
+        if (-not $seen.ContainsKey($key)) { $result += "$key=$($updates[$key])" }
+    }
+    Write-Utf8NoBomFile -LiteralPath $LiteralPath -Content ($result -join "`n")
 }
 
 function Invoke-Checked {
@@ -106,15 +155,19 @@ function Write-Checksums {
         "thirdparty\server-plugins\CoreProtect-CE-23.0.jar",
         "thirdparty\server-plugins\emotecraft-2.4.12-bukkit.jar"
     )
+    $hashes = @{}
     $lines = foreach ($relative in $entries) {
         $full = Join-Path $ProjectRoot $relative
         if (-not (Test-Path -LiteralPath $full)) {
             throw "Missing checksum file: $relative"
         }
-        $sha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $full).Hash.ToLowerInvariant()
-        "SHA1  $($relative -replace '\\','/')  $sha1"
+        $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
+        $normalized = $relative -replace '\\','/'
+        $hashes[$normalized] = $sha256
+        "SHA256  $normalized  $sha256"
     }
     Set-Content -LiteralPath (Join-Path $ProjectRoot "thirdparty\checksums.txt") -Value ($lines -join "`n") -Encoding ascii
+    return $hashes
 }
 
 function Remove-PayloadPath {
@@ -133,7 +186,7 @@ if (-not (Test-Path -LiteralPath $clientJar)) {
 
 Write-Host "[2/8] Sync client jar into site modpack inputs"
 Copy-Item -LiteralPath $clientJar -Destination $thirdpartyClientJar -Force
-Write-Checksums
+$thirdpartySha256 = Write-Checksums
 
 Write-Host "[3/8] Build site modpack archive"
 Invoke-Checked -FilePath "powershell" -Arguments @("-ExecutionPolicy", "Bypass", "-File", $buildModpackScript, "-ProjectRoot", $ProjectRoot)
@@ -154,15 +207,29 @@ $modpackSha1 = (Get-Content -Raw -Encoding UTF8 $modpackShaFile).Trim()
 $modpackSha256 = (Get-Content -Raw -Encoding UTF8 $modpackSha256File).Trim()
 $clientSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $thirdpartyClientJar).Hash.ToLowerInvariant()
 $clientSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $thirdpartyClientJar).Hash.ToLowerInvariant()
+$serverPropertiesPath = Join-Path $ProjectRoot 'minecraft\server\server.properties'
+Update-ServerProperties -LiteralPath $serverPropertiesPath -ResourcePackUrl $resourcePackDownloadUrl -ResourcePackSha1 $resourcepackSha1
 $commit = $sourceCommitBeforeBuild
 $gitDirty = $sourceTreeDirtyBeforeBuild
 
 Write-Host "[5/8] Update release manifests"
 $thirdpartyManifest = Get-Content -Raw -Encoding UTF8 $thirdpartyManifestPath | ConvertFrom-Json
 $thirdpartyManifest.clientArchive.sha1 = $modpackSha1
+$thirdpartyManifest.clientArchive | Add-Member -NotePropertyName sha256 -NotePropertyValue $modpackSha256 -Force
 foreach ($artifact in $thirdpartyManifest.artifacts.clientMods) {
+    $relative = ([string]$artifact.path).Replace('\\', '/')
+    if ($thirdpartySha256.ContainsKey($relative)) {
+        $artifact | Add-Member -NotePropertyName sha256 -NotePropertyValue $thirdpartySha256[$relative] -Force
+    }
     if ($artifact.path -eq "thirdparty/client-mods/CopiMineClient-0.1.0.jar") {
         $artifact.sha1 = $clientSha1
+        $artifact.sha256 = $clientSha256
+    }
+}
+foreach ($artifact in $thirdpartyManifest.artifacts.serverPlugins) {
+    $relative = ([string]$artifact.path).Replace('\\', '/')
+    if ($thirdpartySha256.ContainsKey($relative)) {
+        $artifact | Add-Member -NotePropertyName sha256 -NotePropertyValue $thirdpartySha256[$relative] -Force
     }
 }
 Write-Utf8NoBomFile -LiteralPath $thirdpartyManifestPath -Content ($thirdpartyManifest | ConvertTo-Json -Depth 16)
@@ -232,6 +299,28 @@ $installerManifest = [ordered]@{
                 path = "deploy/shared/common.sh"
                 sha256 = (Get-Sha256Lower -LiteralPath $embeddedCommonScript)
             }
+            gameRuntimeHardening = [ordered]@{
+                applyScript = [ordered]@{
+                    path = "deploy/ubuntu/apply_game_hardening.sh"
+                    sha256 = (Get-Sha256Lower -LiteralPath $deployGameHardening)
+                }
+                runtimeScript = [ordered]@{
+                    path = "deploy/shared/harden_game_runtime.py"
+                    sha256 = (Get-Sha256Lower -LiteralPath $gameHardeningRuntime)
+                }
+                policy = [ordered]@{
+                    path = "deploy/templates/game-runtime-hardening.json"
+                    sha256 = (Get-Sha256Lower -LiteralPath $gameHardeningPolicy)
+                }
+                voicechatTemplate = [ordered]@{
+                    path = "deploy/templates/voicechat-server.properties"
+                    sha256 = (Get-Sha256Lower -LiteralPath $voicechatTemplate)
+                }
+                systemdUnit = [ordered]@{
+                    path = "admin-web/deploy/copimine-game-hardening.service"
+                    sha256 = (Get-Sha256Lower -LiteralPath $gameHardeningService)
+                }
+            }
         }
         routes = [ordered]@{
             modpack = $modpackDownloadUrl
@@ -258,126 +347,74 @@ Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerMani
 Write-Host "[6/8] Stage Linux replacement payload"
 $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-release-" + [guid]::NewGuid().ToString())
 $payloadRoot = Join-Path $stageRoot "copimine"
-New-Item -ItemType Directory -Force -Path $payloadRoot | Out-Null
-
-$sourceDirs = Get-ChildItem -LiteralPath $ProjectRoot -Force
-$excludeNames = @(".git", ".gradle", ".gradle-dist")
-foreach ($entry in $sourceDirs) {
-    if ($excludeNames -contains $entry.Name) {
-        continue
-    }
-    if ($entry.Name -eq "admin-web" -and (Test-Path -LiteralPath (Join-Path $entry.FullName ".venv"))) {
-        Copy-Item -LiteralPath $entry.FullName -Destination $payloadRoot -Recurse -Force
-        Remove-Item -LiteralPath (Join-Path $payloadRoot "admin-web\.venv") -Recurse -Force -ErrorAction SilentlyContinue
-        continue
-    }
-    if ($entry.Name -eq "thirdparty" -and (Test-Path -LiteralPath (Join-Path $entry.FullName "_modpack_stage"))) {
-        Copy-Item -LiteralPath $entry.FullName -Destination $payloadRoot -Recurse -Force
-        Remove-Item -LiteralPath (Join-Path $payloadRoot "thirdparty\_modpack_stage") -Recurse -Force -ErrorAction SilentlyContinue
-        continue
-    }
-    Copy-Item -LiteralPath $entry.FullName -Destination $payloadRoot -Recurse -Force
+$trackedTreeTar = Join-Path $stageRoot 'tracked-tree.tar'
+New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null
+& git -C $ProjectRoot archive --format=tar --prefix=copimine/ HEAD -o $trackedTreeTar
+if ($LASTEXITCODE -ne 0) {
+    throw 'git archive failed while staging the tracked release tree.'
 }
-
-foreach ($relative in @(
-    "admin-web.zip",
-    "admin-web\.env",
-    "admin-web\.venv",
-    "admin-web\backups",
-    "admin-web\data",
-    "admin-web\backend\__pycache__",
-    "admin-web\scripts\__pycache__",
-    "copimine-admin-plugin\build",
-    "copimine-artifacts\build",
-    "copimine-economy-core\build",
-    "copimine-election-core\build",
-    "copimine-narcotics\build",
-    "copimine-world-core\build",
-    "CopiMineClient\.gradle",
-    "CopiMineClient\.gradle-dist",
-    "CopiMineClient\build\tmp",
-    "CopiMineClient\build\reports",
-    "CopiMineClient\build\test-results",
-    "minecraft\server\.console_history",
-    "minecraft\server\.vscode",
-    "minecraft\server\cache",
-    "minecraft\server\config-backups",
-    "minecraft\server\crash-reports",
-    "minecraft\server\debug",
-    "minecraft\server\libraries",
-    "minecraft\server\logs",
-    "minecraft\server\paper-world-defaults",
-    "minecraft\server\CopiMine",
-    "minecraft\server\CopiMine_nether",
-    "minecraft\server\CopiMine_the_end",
-    "minecraft\server\world",
-    "minecraft\server\world_nether",
-    "minecraft\server\world_the_end",
-    "minecraft\server\world_test",
-    "minecraft\server\world_test_nether",
-    "minecraft\server\world_test_the_end",
-    "minecraft\server\worldTestCP",
-    "minecraft\server\worldTestCP_nether",
-    "minecraft\server\worldTestCP_the_end",
-    "minecraft\server\banned-ips.json",
-    "minecraft\server\banned-players.json",
-    "minecraft\server\ops.json",
-    "minecraft\server\usercache.json",
-    "minecraft\server\whitelist.json",
-    "minecraft\server\map-color-cache.dat",
-    "minecraft\server\plugins\.paper-remapped",
-    "minecraft\server\plugins\AuthEffects\target",
-    "minecraft\server\plugins\TAB\anti-override.log",
-    "minecraft\server\plugins\TAB\playerdata.yml",
-    "minecraft\server\plugins\TAB\skincache.yml",
-    "minecraft\server\plugins\TAB\users.yml",
-    "thirdparty\_modpack_stage"
-)) {
-    Remove-PayloadPath -RelativePath $relative
+tar -xf $trackedTreeTar -C $stageRoot
+if ($LASTEXITCODE -ne 0) {
+    throw 'Failed to extract the tracked release tree into the staging directory.'
 }
+Remove-Item -LiteralPath $trackedTreeTar -Force
 
-# Release archives include generated, ignored artifacts such as the resource pack,
-# but never unrelated local files that were not committed to the source tree.
-foreach ($relative in $untrackedSourceEntries) {
-    Remove-PayloadPath -RelativePath $relative
-}
-
-Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -Recurse -ErrorAction SilentlyContinue |
-    Where-Object {
-        $_.Name -like "*.bak*" -or
-        $_.Name -like "*.old" -or
-        $_.Name -like "*.backup*" -or
-        $_.Name -like "*.before-*"
-    } |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-
-Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server\plugins") -Force -Recurse -ErrorAction SilentlyContinue |
-    Where-Object {
-        $_.Name -like "*.bak*" -or
-        $_.Name -like "*.log"
-    } |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-
-Get-ChildItem -LiteralPath (Join-Path $payloadRoot "admin-web\backend") -Force -ErrorAction SilentlyContinue |
-    Where-Object {
-        $_.Name -like "*.backup-*" -or
-        $_.Name -like "*.before-*" -or
-        $_.Name -like "*.broken-*"
-    } |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-
-Get-ChildItem -LiteralPath $payloadRoot -Force -Recurse -ErrorAction SilentlyContinue |
-    Where-Object {
-        $_.Name -eq "__pycache__" -or
-        $_.Name -like "*.pyc" -or
-        $_.Name -like "*.pyo"
-    } |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-
-if (Test-Path -LiteralPath (Join-Path $payloadRoot "minecraft\server")) {
-    Get-ChildItem -LiteralPath (Join-Path $payloadRoot "minecraft\server") -Force -Directory |
-        Where-Object { $_.Name -match '^(world|world_|CopiMine|CopiMine_|paper-world)' } |
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+# Only these generated artifacts are permitted to enter a release archive.  This
+# prevents ignored runtime data, local secrets and ad-hoc downloads from being
+# copied just because they exist in the developer checkout.
+$generatedReleaseFiles = @(
+    'admin-web\frontend\assets\public-data\modpack_snapshot.json',
+    'deploy\installer_manifest.json',
+    'deploy\release_manifest.json',
+    'minecraft\server\server.properties',
+    'resourcepacks\build\CopiMineResourcePack.zip',
+    'resourcepacks\build\CopiMineResourcePack.sha1',
+    'resourcepacks\build\CopiMineResourcePack.sha256',
+    'thirdparty\CopiMineMods.zip',
+    'thirdparty\CopiMineMods.sha1',
+    'thirdparty\CopiMineMods.sha256',
+    'thirdparty\checksums.txt',
+    'thirdparty\thirdparty_manifest.json'
+)
+$serverReleaseJars = @(
+    'minecraft\server\purpur.jar',
+    'minecraft\server\plugins\AuthEffects.jar',
+    'minecraft\server\plugins\AuthMe-5.6.0.jar',
+    'minecraft\server\plugins\Chunky-Bukkit-1.4.40.jar',
+    'minecraft\server\plugins\CopiMineArtifacts.jar',
+    'minecraft\server\plugins\CopiMineEconomyCore.jar',
+    'minecraft\server\plugins\CopiMineElectionCore.jar',
+    'minecraft\server\plugins\CopiMineNarcotics.jar',
+    'minecraft\server\plugins\CopiMineUltimateAdminPlus.jar',
+    'minecraft\server\plugins\CopiMineWorldCore.jar',
+    'minecraft\server\plugins\CoreProtect-CE-23.0.jar',
+    'minecraft\server\plugins\emotecraft-2.4.12-bukkit.jar',
+    'minecraft\server\plugins\EntityClearer.jar',
+    'minecraft\server\plugins\EssentialsX-2.21.2.jar',
+    'minecraft\server\plugins\EssentialsXChat-2.21.2.jar',
+    'minecraft\server\plugins\EssentialsXSpawn-2.21.2.jar',
+    'minecraft\server\plugins\FarmControl-1.3.0.jar',
+    'minecraft\server\plugins\GrimAC.jar',
+    'minecraft\server\plugins\GSit.jar',
+    'minecraft\server\plugins\ImageFrame.jar',
+    'minecraft\server\plugins\LuckPerms-Bukkit-5.5.42.jar',
+    'minecraft\server\plugins\PlaceholderAPI-2.12.2.jar',
+    'minecraft\server\plugins\ProtocolLib.jar',
+    'minecraft\server\plugins\SeeMore-1.0.2.jar',
+    'minecraft\server\plugins\TAB.v6.0.1.jar',
+    'minecraft\server\plugins\Vault.jar',
+    'minecraft\server\plugins\voicechat-bukkit-2.6.11.jar',
+    'minecraft\server\plugins\worldedit-bukkit-7.3.9.jar',
+    'minecraft\server\plugins\worldguard-bukkit-7.0.12-dist.jar'
+)
+foreach ($relative in ($generatedReleaseFiles + $serverReleaseJars)) {
+    $source = Join-Path $ProjectRoot $relative
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "Required release artifact is missing: $relative"
+    }
+    $destination = Join-Path $payloadRoot $relative
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"

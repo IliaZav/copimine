@@ -63,6 +63,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     public void openAdminWorldHub(Player player) {
+        if (player == null || !player.hasPermission("copimine.world.admin")) {
+            if (player != null) {
+                player.sendMessage(color("&cНет прав."));
+            }
+            return;
+        }
         MenuHolder holder = new MenuHolder("world-root");
         Inventory inventory = holder.create(27, color("&9&lМиры CopiMine"));
         button(holder, inventory, 10, Material.GRASS_BLOCK, "&aГраница мира", List.of(
@@ -361,6 +367,11 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
+        if (!player.hasPermission("copimine.world.admin")) {
+            player.closeInventory();
+            player.sendMessage(color("&cНет прав."));
+            return;
+        }
         String action = event.isRightClick() ? holder.rightActions.get(event.getRawSlot()) : holder.actions.get(event.getRawSlot());
         if (action == null || action.isBlank()) {
             return;
@@ -615,17 +626,6 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if (access == null || player == null) {
             return;
         }
-        boolean denyOnlyMode = true;
-        if (denyOnlyMode) {
-            World world = player.getWorld();
-            String worldName = world == null ? access.redirectWorld() : world.getName();
-            String previous = blockedWorldWarnings.get(player.getUniqueId());
-            if (!worldName.equalsIgnoreCase(previous)) {
-                player.sendMessage(message);
-                blockedWorldWarnings.put(player.getUniqueId(), worldName);
-            }
-            return;
-        }
         World target = Bukkit.getWorld(access.redirectWorld());
         if (target == null && !Bukkit.getWorlds().isEmpty()) {
             target = Bukkit.getWorlds().getFirst();
@@ -639,8 +639,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             player.sendMessage(color("&cНе удалось найти безопасную точку для перемещения."));
             return;
         }
-        player.teleport(safe);
-        player.sendMessage(message);
+        if (player.teleport(safe)) {
+            blockedWorldWarnings.remove(player.getUniqueId());
+            player.sendMessage(message);
+        } else {
+            getLogger().warning("WorldCore could not redirect " + player.getName() + " from a closed world.");
+        }
     }
 
     private Location safeSpawn(World world) {

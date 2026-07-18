@@ -45,7 +45,7 @@ if (Test-Path $config) {
   $cfg = Get-Content -Raw -Encoding UTF8 $config
   foreach ($marker in @(
     "textures:",
-    "mode: VANILLA",
+    "mode: CUSTOM",
     "client_bridge:",
     "visuals:",
     "enabled: true",

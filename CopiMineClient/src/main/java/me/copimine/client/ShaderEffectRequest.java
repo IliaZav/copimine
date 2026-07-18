@@ -17,7 +17,7 @@ public record ShaderEffectRequest(
         effectId = normalizeEffectId(effectId);
         shaderpack = shaderpack == null ? "" : shaderpack.trim();
         durationMillis = clamp(durationMillis, 1_000, 600_000);
-        intensity = Math.max(0.0F, Math.min(1.0F, intensity));
+        intensity = clampIntensity(intensity);
         fadeInMillis = clamp(fadeInMillis, 0, 10_000);
         fadeOutMillis = clamp(fadeOutMillis, 0, 10_000);
         source = source == null ? "" : source.trim();
@@ -33,5 +33,12 @@ public record ShaderEffectRequest(
 
     private static int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static float clampIntensity(float value) {
+        if (!Float.isFinite(value)) {
+            return 0.0F;
+        }
+        return Math.max(0.0F, Math.min(1.0F, value));
     }
 }

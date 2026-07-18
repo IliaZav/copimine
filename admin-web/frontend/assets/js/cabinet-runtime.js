@@ -1,4 +1,6 @@
 import { getStoredUiState, removeStoredUiState, setStoredUiState } from "./shared/browser-state.js";
+import { buildCsvContent } from "./shared/csv.js";
+import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
 import { createAdminCommercePages } from "./admin/commerce-pages.js";
@@ -1768,7 +1770,7 @@ window.exportTable = (id, type) => {
   let ext = "json";
   if (type === "csv") {
     const keys = t.columns.map(c => c.key);
-    content = [keys.join(","), ...rows.map(row => keys.map(k => `"${String(row[k] ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
+    content = buildCsvContent(keys, rows);
     mime = "text/csv;charset=utf-8";
     ext = "csv";
   } else {
@@ -2857,103 +2859,6 @@ async function playerDetailsHtml(player) {
     pranks: extraPranks,
     narcoticsAudit: extraNarcoticsAudit,
   });
-  const actionOptions = playerActions.map(([action, label]) => `<option value="${esc(action)}">${esc(label)}</option>`).join("");
-  const actionButtons = playerActions.map(([action, label]) => `<button class="btn btn-secondary btn-small" data-click="playerAction('${esc(player)}','${action}')">${esc(label)}</button>`).join("");
-  const quickActions = hasFullAdminAccess()
-    ? `
-      <div class="field-grid compact admin-player-action-form">
-        <label class="field-stack" for="playerActionSelect">
-          <span>Действие</span>
-          <select id="playerActionSelect">${actionOptions}</select>
-        </label>
-        <label class="field-stack" for="playerActionReason">
-          <span>Причина</span>
-          <input id="playerActionReason" value="CopiMine" autocomplete="off" />
-        </label>
-        <label class="field-stack" for="playerActionTarget">
-          <span>Цель для телепорта</span>
-          <select id="playerActionTarget" class="player-select">${playerSelectOptions(state.players, { placeholder: "Выберите цель" })}</select>
-        </label>
-        <div class="field-stack">
-          <span>&nbsp;</span>
-          <button class="btn btn-primary" data-click="playerActionFromPanel('${esc(player)}')">Выполнить</button>
-        </div>
-      </div>
-      <div class="action-strip">${actionButtons}</div>
-    `
-    : `<div class="notice">Младший админ может просматривать профиль, инвентарь и историю, но не выполнять опасные действия.</div>`;
-  const site = profile.siteAccount || {};
-  const bank = profile.bank || {};
-  const donationAccount = profile.donation || {};
-  const pin = profile.pin || {};
-  const pinState = bankPinState(pin);
-  const canManagePins = hasFullAdminAccess();
-  const pinButtons = site.id && canManagePins
-    ? `
-      <div class="action-strip">
-        <button class="btn btn-secondary btn-small" data-click="playerResetBankPin('${esc(player)}')">Сбросить PIN</button>
-        <button class="btn btn-secondary btn-small" data-click="playerRandomizeBankPin('${esc(player)}')">Случайный PIN</button>
-      </div>
-      <div class="toolbar compact">
-        <input id="playerAdminPinInput" inputmode="numeric" autocomplete="off" placeholder="Новый PIN, 4-8 цифр" />
-        <button class="btn btn-secondary btn-small" data-click="playerSetBankPinAdmin('${esc(player)}')">Задать PIN</button>
-      </div>
-    `
-    : (site.id && !canManagePins ? `<div class="notice">Младший админ видит статус PIN, но не может раскрывать, сбрасывать или задавать его.</div>` : "");
-  return `
-    <div class="panel-header">
-      <div>
-        <h2 class="panel-title">${esc(player)}</h2>
-        <p class="panel-subtitle">Профиль игрока, история действий и инвентарь</p>
-      </div>
-      <div class="action-strip">
-        <button class="btn btn-primary btn-small" data-click="snapshotInventory('${esc(player)}')">Снимок инвентаря</button>
-      </div>
-    </div>
-    <div class="layout-grid grid-3">
-      ${metric("", profile.health ?? "", ` ${profile.food ?? ""}`)}
-      ${metric("XP", profile.xpLevel ?? "", profile.dimension || " ")}
-      ${metric("", number(profile.ar?.inventory) + number(profile.ar?.enderChest), ` ${profile.ar?.inventory ?? 0}   ${profile.ar?.enderChest ?? 0}`, "good")}
-    </div>
-    <div class="spacer-12"></div>
-    ${panel("Кабинет и банк", "Привязка, баланс и PIN.", kv([
-      ["Аккаунт сайта", site.username || "Не привязан"],
-      ["Кабинет привязан", Boolean(site.id)],
-      ["Последний вход на сайт", dt(site.lastLoginAt)],
-      ["Счёт", bank.accountId ? "Открыт" : "Не открыт"],
-      ["Баланс банка", formatAr(bank.balance || 0)],
-      ["Состояние PIN", pinState],
-      ["Текущий PIN", canManagePins ? (pin.visiblePin || "Скрыт / не задан") : "Скрыт"],
-      ["PIN заблокирован", Boolean(pin.locked)],
-      ["Временный PIN истекает", pin.temporaryExpiresAt ? dt(pin.temporaryExpiresAt) : "--"]
-    ]), pinButtons)}
-    ${panel("Быстрые действия", "Все действия записываются в журнал и требуют серверные права.", quickActions)}
-    ${panel("Текущий инвентарь", "Если игрок онлайн, первым берётся свежий игровой снимок.", `
-      ${inventorySummary(live)}
-      <div class="spacer-12"></div>
-      ${inventoryGrid(firstArray(live?.inventory, inventory.inventory, []), 18)}
-    `)}
-    ${panel("Эндер-сундук и свежие снимки", "Последние игровые снимки помогают разбирать спорные ситуации без ручного поиска по файлам.", `
-      ${inventoryGrid(firstArray(live?.enderChest, inventory.enderChest, []), 18)}
-      <div class="spacer-12"></div>
-      ${table("player-live-history", asArray(liveInventory.onlineSnapshots).map(x => ({ createdAt: x.createdAt, source: x.source, inventory: asArray(x.inventory).length, ender: asArray(x.enderChest).length, ar: number(x.arInInventory) + number(x.arInEnderChest), world: x.world })), [
-        { key: "createdAt", label: "Время", render: v => dt(v) },
-        { key: "source", label: "Источник" },
-        { key: "inventory", label: "Инв." },
-        { key: "ender", label: "Эндер" },
-        { key: "ar", label: "АР" },
-        { key: "world", label: "Мир" }
-      ], { pageSize: 6 })}
-    `)}
-    ${panel("История снимков", "Архив последних сохранённых инвентарей и эндер-сундуков.", table("player-history", asArray(history.snapshots).map(x => ({ createdAt: x.createdAt, inventory: asArray(x.inventory).length, enderChest: asArray(x.enderChest).length, ar: number(x.arInInventory) + number(x.arInEnderChest) })), [
-      { key: "createdAt", label: "Время", render: v => dt(v) },
-      { key: "inventory", label: "Слоты инв." },
-      { key: "enderChest", label: "Слоты эндера" },
-      { key: "ar", label: "АР" }
-    ], { pageSize: 8 }))}
-    ${panel("Лента действий", "Проверки, AR и игровые события по времени.", `<div class="player-actions-log">${activityTimeline(timelineData.rows)}</div>`)}
-    ${panel("Последние действия CoreProtect", "События по игроку.", table("player-actions", asArray(actions.rows), null, { pageSize: 12 }))}
-  `;
 }
 
 function renderPlayerFullDetails(player, detail, ctx) {
@@ -2986,13 +2891,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
   const pin = profile.pin || {};
   const pinState = bankPinState(pin);
   const canManagePins = hasFullAdminAccess();
-  const donationCurrent = number(
-    donationAccount.balance
-      ?? donationLedger[0]?.balance_after
-      ?? donationLedger[0]?.balanceAfter
-      ?? donationSessions[0]?.balance_after
-      ?? 0
-  );
+  const donationCurrent = number(resolveDonationBalance(profile.donation, donationLedger, donationSessions));
   const arCurrent = number(Math.max(number(bank.balance || 0), number(bank.livePluginBalance || 0)));
   const bankRows = asArray(bankLedger).map((row) => ({
     created_at: row.created_at || row.createdAt || row.time || 0,

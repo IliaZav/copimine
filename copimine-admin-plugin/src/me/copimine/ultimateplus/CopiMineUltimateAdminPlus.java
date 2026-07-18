@@ -969,8 +969,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private boolean openWorldCoreHub(Player p){
-        if(isRestrictedJuniorAdmin(p)){
-            warn(p,"Младшему админу недоступно управление мирами.");
+        if(!hasWorldCoreAdmin(p)){
+            warn(p,"Для управления мирами нужна роль copimine.world.admin.");
             return false;
         }
         Plugin plugin=Bukkit.getPluginManager().getPlugin("CopiMineWorldCore");
@@ -2455,7 +2455,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Object[][] polished={{44,Material.WRITABLE_BOOK,"&fБюрократия","paperwork"},{46,Material.MAP,"&aМини-квест","tinyquest"},{47,Material.FEATHER,"&fЧих","sneeze"},{48,Material.SNOW_BLOCK,"&bСнежное облако","snowcloud"},{50,Material.WIND_CHARGE,"&fОтталкивание","knockback"},{51,Material.END_CRYSTAL,"&dФейковые титры","fakecredits"}};
         for(Object[] b:polished) btn(m,(int)b[0],(Material)b[1],(String)b[2],List.of(),"p:"+b[3]+":"+n);
         nav(m,"player:"+n,"open:p-pranks:"+n); a.openInventory(m.inv); }
-    private void openPCheck(Player a,String n){ Menu m=new Menu("pcheck"); create(m,54,"&6&lПроверка &8| &f"+n);
+    private void openPCheck(Player a,String n){
+        if(!hasPlayerCheckPermission(a)){warn(a,"Для проверок игроков нужна роль copimine.players.check."); return;}
+        Menu m=new Menu("pcheck"); create(m,54,"&6&lПроверка &8| &f"+n);
         btn(m,4,Material.SPYGLASS,"&6Режим проверки",List.of("&7ТП к админу, freeze,","&7запрет команд/действий.","&7Voice-chat не блокируется."),"none");
         btn(m,20,Material.LIME_CONCRETE,"&aНачать",List.of(),"p:check-start:"+n); btn(m,22,Material.RED_CONCRETE,"&cЗакончить и вернуть",List.of(),"p:check-stop-return:"+n); btn(m,23,Material.ORANGE_CONCRETE,"&6Закончить без возврата",List.of(),"p:check-stop:"+n); btn(m,24,Material.BELL,"&eНапомнить",List.of(),"p:check-remind:"+n);
         nav(m,"player:"+n,"open:p-check:"+n); a.openInventory(m.inv); }
@@ -2539,7 +2541,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openDatabaseHealthAsync(Player p){
-        if(!hasAnyAdmin(p)){warn(p,"Нет прав на здоровье БД."); return;}
+        if(!hasDatabaseMaintenancePermission(p)){warn(p,"Для работы с БД нужна роль copimine.database.maintenance."); return;}
         msg(p,"&7Загружаю состояние базы...");
         dbAsyncLoad("openDatabaseHealth",()->new DatabaseHealthSnapshot(
                 safeScalar("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE'"),
@@ -2568,7 +2570,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void runDatabaseMaintenanceAsync(Player p,boolean checkpoint){
-        if(!hasAnyAdmin(p)){warn(p,"Нет прав на обслуживание БД."); return;}
+        if(!hasDatabaseMaintenancePermission(p)){warn(p,"Для обслуживания БД нужна роль copimine.database.maintenance."); return;}
         msg(p,checkpoint?"&7Запрашиваю ANALYZE и checkpoint...":"&7Запускаю ANALYZE...");
         dbAsyncLoad("runDatabaseMaintenance",()->runDatabaseMaintenance(p.getName(),checkpoint),result->{
             if(!p.isOnline())return;
@@ -2740,8 +2742,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(a.equals("players:snapshot-all")){msg(p,"&aSnapshots: &e"+snapshotAllOnline(p.getName())); openPlayersTools(p);return;}
         if(a.equals("players:heal-all")){int n=healAllOnline(); msg(p,"&aHealed: &e"+n); openPlayersTools(p);return;}
         if(a.equals("players:feed-all")){int n=feedAllOnline(); msg(p,"&aFed: &e"+n); openPlayersTools(p);return;}
-        if(a.equals("players:unfreeze-all")){int n=unfreezeAllPlayers(p.getName()); msg(p,"&aUnfrozen/checks closed: &e"+n); openPlayersTools(p);return;}
-        if(a.equals("players:remind-checks")){int n=remindCheckedPlayers(); msg(p,"&eReminded: &f"+n); openPlayersTools(p);return;}
+        if(a.equals("players:unfreeze-all")){if(!hasPlayerCheckPermission(p)){warn(p,"Для проверок игроков нужна роль copimine.players.check.");return;} int n=unfreezeAllPlayers(p); msg(p,"&aUnfrozen/checks closed: &e"+n); openPlayersTools(p);return;}
+        if(a.equals("players:remind-checks")){if(!hasPlayerCheckPermission(p)){warn(p,"Для проверок игроков нужна роль copimine.players.check.");return;} int n=remindCheckedPlayers(); msg(p,"&eReminded: &f"+n); openPlayersTools(p);return;}
         if(a.equals("players:save-all")){if(click!=ClickType.SHIFT_RIGHT){warn(p,"Только Shift+ПКМ: серверное сохранение.");return;} msg(p,saveAllPlayers(p.getName())); openPlayersTools(p);return;}
         if(a.equals("players:night-vision-all")){if(click!=ClickType.SHIFT_RIGHT){warn(p,"Только Shift+ПКМ: эффект всем игрокам.");return;} int n=nightVisionAllPlayers(p.getName()); msg(p,"&dNight vision: &f"+n); openPlayersTools(p);return;}
         if(a.equals("players:clear-negative-effects-all")){if(click!=ClickType.SHIFT_RIGHT){warn(p,"Только Shift+ПКМ: массовая очистка эффектов.");return;} int n=clearNegativeEffectsAllPlayers(p.getName()); msg(p,"&aNegative effects cleared: &f"+n); openPlayersTools(p);return;}
@@ -2750,6 +2752,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private void playerAction(Player admin, ClickType click, String a) throws Exception {
         String[] parts=a.split(":",3); if(parts.length<3)return; String act=parts[1], name=parts[2]; Player t=Bukkit.getPlayerExact(name); if(t==null){warn(admin,"Игрок оффлайн.");return;}
+        if(("freeze".equals(act)||act.startsWith("check-"))&&!hasPlayerCheckPermission(admin)){warn(admin,"Для проверок игроков нужна роль copimine.players.check.");return;}
+        if("cleanse".equals(act)&&!hasNarcoticsClearPermission(admin)){warn(admin,"Для очистки передозировки нужна роль copimine.narcotics.clearoverdose.");return;}
         recordPlayerActivity(t,"ADMIN_ACTION",t.getLocation(),"admin="+admin.getName()+" action="+act,true);
         if(isExtraPrank(act)){handleExtraPrank(admin,t,act); audit(admin.getName(),"ULTRA7_PLAYER_"+act.toUpperCase(Locale.ROOT),t.getName(),true); snapshotOnlineInventory(t,"admin_"+act); return;}
         if("givebook".equals(act)||"giveballot".equals(act)){
@@ -2800,7 +2804,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private int snapshotAllOnline(String actor){int n=0; for(Player t:Bukkit.getOnlinePlayers()){snapshotOnlineInventory(t,"admin_snapshot_all"); recordPlayerActivity(t,"ADMIN_SNAPSHOT",t.getLocation(),"admin="+actor,true); n++;} return n;}
     private int healAllOnline(){int n=0; for(Player t:Bukkit.getOnlinePlayers()){try{t.setHealth(Math.min(t.getMaxHealth(),20.0)); t.setFoodLevel(20); t.setSaturation(20f); t.setFireTicks(0); n++;}catch(Throwable ignored){}} return n;}
     private int feedAllOnline(){int n=0; for(Player t:Bukkit.getOnlinePlayers()){t.setFoodLevel(20); t.setSaturation(20f); n++;} return n;}
-    private int unfreezeAllPlayers(String actor){int n=frozen.size()+checkMode.size(); frozen.clear(); checkMode.clear(); checkReturn.clear(); try{exec("UPDATE cmv7_player_checks SET active=0,details=COALESCE(details,'')||' | force-unfreeze by '||? WHERE active=1",actor);}catch(Throwable ignored){} staffNotify("&aAll player checks/freeze states were cleared by &f"+actor); return n;}
+    private int unfreezeAllPlayers(Player admin){if(!hasPlayerCheckPermission(admin)){warn(admin,"Для проверок игроков нужна роль copimine.players.check.");return 0;} String actor=admin.getName(); int n=frozen.size()+checkMode.size(); frozen.clear(); checkMode.clear(); checkReturn.clear(); try{exec("UPDATE cmv7_player_checks SET active=0,details=COALESCE(details,'')||' | force-unfreeze by '||? WHERE active=1",actor);}catch(Throwable ignored){} staffNotify("&aAll player checks/freeze states were cleared by &f"+actor); return n;}
     private int remindCheckedPlayers(){int n=0; for(UUID id:checkMode.keySet()){Player t=Bukkit.getPlayer(id); if(t!=null&&t.isOnline()){t.sendTitle(c("&c&lПРОВЕРКА"),c("&fСтой на месте и отвечай администрации"),10,80,10); sound(t,"BLOCK_NOTE_BLOCK_PLING",1f,.8f); n++;}} return n;}
     private String saveAllPlayers(String actor){
         boolean ok=Bukkit.dispatchCommand(Bukkit.getConsoleSender(),"save-all");
@@ -4416,9 +4420,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 },
                 error->warn(actor,"Не удалось подготовить безопасный scan. Подробности записаны в лог."));
     }
-    private void startCheck(Player admin,Player t)throws Exception{checkReturn.putIfAbsent(t.getUniqueId(),t.getLocation()); checkMode.put(t.getUniqueId(),admin.getUniqueId()); frozen.add(t.getUniqueId()); t.teleport(admin.getLocation()); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(); dbAsync("player check start",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'START',1,?)",time,adminUuid,adminName,targetUuid,targetName,"Проверка")); t.sendTitle(c("&c&lПРОВЕРКА"),c("&fСтой на месте и отвечай администрации"),10,100,20); msg(t,"&cТы вызван на проверку. Voice-chat не блокируется."); staffNotify("&6Игрок вызван на проверку: &e"+t.getName()+" &7админом &f"+admin.getName());}
-    private void stopCheck(Player admin,Player t,boolean back)throws Exception{checkMode.remove(t.getUniqueId()); frozen.remove(t.getUniqueId()); Location loc=checkReturn.remove(t.getUniqueId()); if(back&&loc!=null)t.teleport(loc); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(), details=back?"return":"no return"; dbAsync("player check stop",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'STOP',0,?)",time,adminUuid,adminName,targetUuid,targetName,details)); msg(t,"&aПроверка завершена."); staffNotify("&aПроверка завершена: &e"+t.getName()+" &7админом &f"+admin.getName());}
-    private void toggleFreeze(Player a,Player t){ if(frozen.remove(t.getUniqueId())){staffNotify("&bFreeze снят: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&aТы разморожен.");}else{frozen.add(t.getUniqueId()); staffNotify("&cFreeze включён: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&cТы заморожен.");}}
+    private void startCheck(Player admin,Player t)throws Exception{if(!hasPlayerCheckPermission(admin)){warn(admin,"Для проверок игроков нужна роль copimine.players.check.");return;} checkReturn.putIfAbsent(t.getUniqueId(),t.getLocation()); checkMode.put(t.getUniqueId(),admin.getUniqueId()); frozen.add(t.getUniqueId()); t.teleport(admin.getLocation()); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(); dbAsync("player check start",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'START',1,?)",time,adminUuid,adminName,targetUuid,targetName,"Проверка")); t.sendTitle(c("&c&lПРОВЕРКА"),c("&fСтой на месте и отвечай администрации"),10,100,20); msg(t,"&cТы вызван на проверку. Voice-chat не блокируется."); staffNotify("&6Игрок вызван на проверку: &e"+t.getName()+" &7админом &f"+admin.getName());}
+    private void stopCheck(Player admin,Player t,boolean back)throws Exception{if(!hasPlayerCheckPermission(admin)){warn(admin,"Для проверок игроков нужна роль copimine.players.check.");return;} checkMode.remove(t.getUniqueId()); frozen.remove(t.getUniqueId()); Location loc=checkReturn.remove(t.getUniqueId()); if(back&&loc!=null)t.teleport(loc); long time=now(); String adminUuid=admin.getUniqueId().toString(), adminName=admin.getName(), targetUuid=t.getUniqueId().toString(), targetName=t.getName(), details=back?"return":"no return"; dbAsync("player check stop",()->exec("INSERT INTO cmv7_player_checks(time,admin_uuid,admin_name,player_uuid,player_name,action,active,details) VALUES(?,?,?,?,?,'STOP',0,?)",time,adminUuid,adminName,targetUuid,targetName,details)); msg(t,"&aПроверка завершена."); staffNotify("&aПроверка завершена: &e"+t.getName()+" &7админом &f"+admin.getName());}
+    private void toggleFreeze(Player a,Player t){if(!hasPlayerCheckPermission(a)){warn(a,"Для проверок игроков нужна роль copimine.players.check.");return;} if(frozen.remove(t.getUniqueId())){staffNotify("&bFreeze снят: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&aТы разморожен.");}else{frozen.add(t.getUniqueId()); staffNotify("&cFreeze включён: &e"+t.getName()+" &7админом &f"+a.getName()); msg(t,"&cТы заморожен.");}}
     private void repairHand(Player a,Player t){ItemStack it=t.getInventory().getItemInMainHand(); if(it==null||it.getType()==Material.AIR)return; ItemMeta im=it.getItemMeta(); if(im instanceof org.bukkit.inventory.meta.Damageable d){d.setDamage(0); it.setItemMeta((ItemMeta)d);}}
     private void armorOff(Player a,Player t){PlayerInventory inv=t.getInventory(); ItemStack[] armor=inv.getArmorContents(); for(ItemStack it:armor) if(it!=null&&it.getType()!=Material.AIR) inv.addItem(it).values().forEach(left->t.getWorld().dropItemNaturally(t.getLocation(),left)); inv.setArmorContents(null);}
     private void shuffleHotbar(Player t){List<ItemStack> h=new ArrayList<>(); for(int i=0;i<9;i++)h.add(t.getInventory().getItem(i)); Collections.shuffle(h); for(int i=0;i<9;i++)t.getInventory().setItem(i,h.get(i)); t.updateInventory();}
@@ -5171,6 +5175,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean hasAdmin(CommandSender s){if(!(s instanceof Player p))return true; return p.isOp()||p.hasPermission("copimine.admin")||p.hasPermission("copimine.ultra.admin");}
     private boolean hasJuniorAdmin(CommandSender s){if(!(s instanceof Player p))return false; return !hasAdmin(s)&&p.hasPermission("copimine.admin.junior");}
     private boolean isRestrictedJuniorAdmin(CommandSender s){return hasJuniorAdmin(s)&&!hasAdmin(s);}
+    private boolean hasWorldCoreAdmin(CommandSender s){if(hasAdmin(s))return true; return s instanceof Player p&&p.hasPermission("copimine.world.admin");}
+    private boolean hasDatabaseMaintenancePermission(CommandSender s){if(hasAdmin(s))return true; return s instanceof Player p&&p.hasPermission("copimine.database.maintenance");}
+    private boolean hasPlayerCheckPermission(CommandSender s){if(hasAdmin(s))return true; return s instanceof Player p&&p.hasPermission("copimine.players.check");}
+    private boolean hasNarcoticsClearPermission(CommandSender s){return !(s instanceof Player p)||p.hasPermission("copimine.narcotics.clearoverdose");}
     private boolean hasElectionAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
     private boolean hasElectionRecoveryAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
     private boolean hasEconomyAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(!(s instanceof Player p))return true; return hasAdmin(s)||p.hasPermission("copimine.economy.admin")||p.hasPermission("copimine.bank.admin");}
@@ -5838,7 +5846,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 case "audit" -> {return handleAuditCommand(sender,args);}
                 case "election","sidebar","issueapp","issueballot","annulapp","annulballot" -> {msg(sender,"&eУправление выборами перенесено в новый GUI CopiMineElectionCore через /cadm -> Выборы. Техническая команда игрока: &f/hidelive"); return true;}
                 case "ar" -> {if(args.length>=2&&args[1].equalsIgnoreCase("sync")){if(sender instanceof Player p){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} warn(sender,"AR sync перенесён в CopiMineEconomyCore."); economy.openAdminEconomyHub(p);} else msg(sender,"AR sync перенесён в CopiMineEconomyCore.");}}
-                case "check" -> {if(!(sender instanceof Player a)){warn(sender,"Только из игры.");return true;} if(args.length<3){msg(sender,"&6/cmultra check start|stop|return <player>");return true;} Player t=Bukkit.getPlayerExact(args[2]); if(t==null){warn(sender,"Игрок оффлайн.");return true;} if(args[1].equalsIgnoreCase("start"))startCheck(a,t); else if(args[1].equalsIgnoreCase("stop"))stopCheck(a,t,false); else if(args[1].equalsIgnoreCase("return"))stopCheck(a,t,true);}
+                case "check" -> {if(!(sender instanceof Player a)){warn(sender,"Только из игры.");return true;} if(!hasPlayerCheckPermission(a)){warn(sender,"Для проверок игроков нужна роль copimine.players.check.");return true;} if(args.length<3){msg(sender,"&6/cmultra check start|stop|return <player>");return true;} Player t=Bukkit.getPlayerExact(args[2]); if(t==null){warn(sender,"Игрок оффлайн.");return true;} if(args[1].equalsIgnoreCase("start"))startCheck(a,t); else if(args[1].equalsIgnoreCase("stop"))stopCheck(a,t,false); else if(args[1].equalsIgnoreCase("return"))stopCheck(a,t,true);}
                 case "resetworldobjects" -> {return handleResetWorldObjectsCommand(sender,args);}
                 case "clearfloatingtexts" -> {return handleClearFloatingTextsCommand(sender,args);}
                 default -> help(sender);

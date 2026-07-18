@@ -2,7 +2,7 @@
 set -euo pipefail
 
 COPIMINE_ROOT="${COPIMINE_ROOT:-/opt/copimine}"
-COPIMINE_APP_USER="${COPIMINE_APP_USER:-qwerty}"
+COPIMINE_APP_USER="${COPIMINE_APP_USER:-copimine}"
 COPIMINE_APP_GROUP="${COPIMINE_APP_GROUP:-$COPIMINE_APP_USER}"
 COPIMINE_ADMIN_DIR="${COPIMINE_ADMIN_DIR:-$COPIMINE_ROOT/admin-web}"
 COPIMINE_ENV_FILE="${COPIMINE_ENV_FILE:-$COPIMINE_ADMIN_DIR/.env}"
@@ -16,13 +16,24 @@ COPIMINE_RELEASE_MANIFEST="${COPIMINE_RELEASE_MANIFEST:-$COPIMINE_ROOT/deploy/re
 COPIMINE_INSTALLER_MANIFEST="${COPIMINE_INSTALLER_MANIFEST:-$COPIMINE_ROOT/deploy/installer_manifest.json}"
 COPIMINE_CLEAN_WORLD_STATE_SQL="${COPIMINE_CLEAN_WORLD_STATE_SQL:-$COPIMINE_ROOT/db/runtime/clean_world_state.sql}"
 COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-18080.conf}"
+COPIMINE_NGINX_TLS_TEMPLATE="${COPIMINE_NGINX_TLS_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-https.conf}"
 COPIMINE_NGINX_AVAILABLE="${COPIMINE_NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 COPIMINE_NGINX_ENABLED="${COPIMINE_NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
+COPIMINE_GAME_HARDENING_SCRIPT="${COPIMINE_GAME_HARDENING_SCRIPT:-$COPIMINE_ROOT/deploy/shared/harden_game_runtime.py}"
+COPIMINE_GAME_HARDENING_POLICY="${COPIMINE_GAME_HARDENING_POLICY:-$COPIMINE_ROOT/deploy/templates/game-runtime-hardening.json}"
+COPIMINE_VOICECHAT_TEMPLATE="${COPIMINE_VOICECHAT_TEMPLATE:-$COPIMINE_ROOT/deploy/templates/voicechat-server.properties}"
+COPIMINE_TLS_ENABLED="${COPIMINE_TLS_ENABLED:-}"
+COPIMINE_TLS_CERT_PATH="${COPIMINE_TLS_CERT_PATH:-}"
+COPIMINE_TLS_KEY_PATH="${COPIMINE_TLS_KEY_PATH:-}"
+COPIMINE_SERVER_NAMES="${COPIMINE_SERVER_NAMES:-}"
+COPIMINE_DATABASE_RESTORE_ACTIVE_DB="${COPIMINE_DATABASE_RESTORE_ACTIVE_DB:-}"
+COPIMINE_DATABASE_RESTORE_BACKUP_DB="${COPIMINE_DATABASE_RESTORE_BACKUP_DB:-}"
 COPIMINE_SERVICES=(
   "copimine-admin"
   "copimine-discord-bot"
   "copimine-minecraft-discord-bridge"
   "copimine-minecraft"
+  "copimine-game-hardening"
 )
 
 copimine_log() {
@@ -93,6 +104,22 @@ copimine_start_services() {
 copimine_ensure_layout() {
   mkdir -p "$COPIMINE_SECRETS_DIR" "$COPIMINE_BACKUP_DIR"
   chmod 700 "$COPIMINE_SECRETS_DIR"
+  chmod 700 "$COPIMINE_BACKUP_DIR"
+}
+
+copimine_ensure_app_user() {
+  if ! getent group "$COPIMINE_APP_GROUP" >/dev/null 2>&1; then
+    groupadd --system "$COPIMINE_APP_GROUP"
+  fi
+  if ! id -u "$COPIMINE_APP_USER" >/dev/null 2>&1; then
+    useradd \
+      --system \
+      --gid "$COPIMINE_APP_GROUP" \
+      --home-dir "$COPIMINE_ROOT" \
+      --shell /usr/sbin/nologin \
+      --no-create-home \
+      "$COPIMINE_APP_USER"
+  fi
 }
 
 copimine_secret() {
@@ -114,16 +141,22 @@ copimine_write_env() {
   local rcon_password="$4"
   local env_example="$COPIMINE_ADMIN_DIR/.env.example"
   copimine_require_path "$env_example"
-  python3 - "$env_example" "$COPIMINE_ENV_FILE" "$postgres_password" "$secret_key" "$plugin_api_key" "$rcon_password" <<'PY'
+  COPIMINE_POSTGRES_PASSWORD="$postgres_password" \
+  COPIMINE_SECRET_KEY="$secret_key" \
+  COPIMINE_PLUGIN_API_KEY="$plugin_api_key" \
+  COPIMINE_RCON_PASSWORD="$rcon_password" \
+  python3 - "$env_example" "$COPIMINE_ENV_FILE" <<'PY'
+import os
 from pathlib import Path
 import sys
+from urllib.parse import urlparse
 
 example = Path(sys.argv[1])
 target = Path(sys.argv[2])
-postgres_password = sys.argv[3]
-secret_key = sys.argv[4]
-plugin_api_key = sys.argv[5]
-rcon_password = sys.argv[6]
+postgres_password = os.environ["COPIMINE_POSTGRES_PASSWORD"]
+secret_key = os.environ["COPIMINE_SECRET_KEY"]
+plugin_api_key = os.environ["COPIMINE_PLUGIN_API_KEY"]
+rcon_password = os.environ["COPIMINE_RCON_PASSWORD"]
 
 def parse(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
@@ -148,15 +181,43 @@ values.update({
     "POSTGRES_PASSWORD": postgres_password,
     "DATABASE_URL": f"postgresql://copimine:{postgres_password}@127.0.0.1:5432/copimine",
     "COPIMINE_ENV_FILE": "/opt/copimine/admin-web/.env",
-    "ADMIN_PUBLIC_BASE_URL": values.get("ADMIN_PUBLIC_BASE_URL", "http://copimine.ru:18080"),
+    "ADMIN_PUBLIC_BASE_URL": values.get("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080"),
     "PUBLIC_PANEL_URL": values.get("PUBLIC_PANEL_URL", "http://copimine.ru:18080"),
     "BACKEND_INTERNAL_BASE_URL": values.get("BACKEND_INTERNAL_BASE_URL", "http://127.0.0.1:8090"),
     "MINECRAFT_SERVICE": values.get("MINECRAFT_SERVICE", "copimine-minecraft"),
     "RCON_HOST": values.get("RCON_HOST", "127.0.0.1"),
     "RCON_PORT": values.get("RCON_PORT", "25575"),
     "RCON_PASSWORD": rcon_password,
-    "AUTH_COOKIE_SECURE": values.get("AUTH_COOKIE_SECURE", "0") if values.get("AUTH_COOKIE_SECURE", "").strip() not in {"", "CHANGE_ME"} else "0",
+    "NGINX_SERVER_NAMES": values.get("NGINX_SERVER_NAMES", "admin.copimine.ru copimine.ru www.copimine.ru"),
+    "COPIMINE_TLS_ENABLED": values.get("COPIMINE_TLS_ENABLED", "0"),
+    "COPIMINE_TLS_CERT_PATH": values.get("COPIMINE_TLS_CERT_PATH", ""),
+    "COPIMINE_TLS_KEY_PATH": values.get("COPIMINE_TLS_KEY_PATH", ""),
 })
+for url_key in ("ADMIN_PUBLIC_BASE_URL", "PUBLIC_PANEL_URL"):
+    parsed = urlparse(values[url_key])
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise SystemExit(f"{url_key} must be an absolute http:// or https:// URL")
+tls_enabled = values.get("COPIMINE_TLS_ENABLED", "0").strip()
+if tls_enabled not in {"0", "1"}:
+    raise SystemExit("COPIMINE_TLS_ENABLED must be 0 or 1")
+admin_is_https = values["ADMIN_PUBLIC_BASE_URL"].lower().startswith("https://")
+if tls_enabled == "1" and not admin_is_https:
+    raise SystemExit("TLS configuration requires ADMIN_PUBLIC_BASE_URL to use https://")
+if tls_enabled == "0" and admin_is_https:
+    raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
+if tls_enabled == "1":
+    values["AUTH_COOKIE_SECURE"] = "1"
+    values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
+else:
+    values["AUTH_COOKIE_SECURE"] = "0"
+    if values.get("ALLOW_INSECURE_HTTP_AUTH", "").strip() in {"", "CHANGE_ME"}:
+        # This keeps the temporary no-TLS installation usable. Operators can
+        # explicitly set 0 to disable HTTP login before TLS is configured.
+        values["ALLOW_INSECURE_HTTP_AUTH"] = "1"
+if values.get("ALLOW_INSECURE_HTTP_AUTH", "") not in {"0", "1"}:
+    raise SystemExit("ALLOW_INSECURE_HTTP_AUTH must be 0 or 1")
+if values.get("RESOURCE_PACK_PUBLIC_URL", "").strip() in {"", "CHANGE_ME"}:
+    values["RESOURCE_PACK_PUBLIC_URL"] = values["PUBLIC_PANEL_URL"].rstrip("/") + "/resourcepacks/CopiMineResourcePack.zip"
 if values.get("SECRET_KEY", "CHANGE_ME") in {"", "CHANGE_ME"}:
     values["SECRET_KEY"] = secret_key
 if values.get("PLUGIN_API_KEY", "CHANGE_ME") in {"", "CHANGE_ME"}:
@@ -178,16 +239,14 @@ PY
 
 copimine_ensure_postgres() {
   local postgres_password="$1"
-  runuser -u postgres -- psql -v ON_ERROR_STOP=1 postgres <<SQL
-DO \$\$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'copimine') THEN
-        CREATE ROLE copimine LOGIN PASSWORD '${postgres_password}';
-    ELSE
-        ALTER ROLE copimine WITH LOGIN PASSWORD '${postgres_password}';
-    END IF;
-END
-\$\$;
+  [[ -n "$postgres_password" && "$postgres_password" != "CHANGE_ME" ]] || copimine_fail "POSTGRES_PASSWORD is missing"
+  runuser -u postgres -- psql -v ON_ERROR_STOP=1 -v db_password="$postgres_password" postgres <<'SQL'
+SELECT format('CREATE ROLE copimine LOGIN PASSWORD %L', :'db_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'copimine')
+\gexec
+SELECT format('ALTER ROLE copimine WITH LOGIN PASSWORD %L', :'db_password')
+WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'copimine')
+\gexec
 SQL
 
   if ! runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname='copimine'" | grep -q 1; then
@@ -228,6 +287,44 @@ for raw in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
 PY
 }
 
+copimine_validate_voicechat_security() {
+  local allow_exception exception_reason
+  allow_exception="${COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT:-$(copimine_env_value COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT)}"
+  exception_reason="${COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON:-$(copimine_env_value COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON)}"
+  allow_exception="${allow_exception:-0}"
+  python3 "$COPIMINE_GAME_HARDENING_SCRIPT" check-voicechat \
+    --server-properties "$COPIMINE_SERVER_PROPERTIES" \
+    --voicechat-config "$COPIMINE_SERVER_DIR/plugins/voicechat/voicechat-server.properties" \
+    --allow-insecure-offline-voicechat "$allow_exception" \
+    --exception-reason "$exception_reason"
+}
+
+copimine_sync_game_runtime_hardening() {
+  copimine_require_path "$COPIMINE_GAME_HARDENING_SCRIPT"
+  copimine_require_path "$COPIMINE_GAME_HARDENING_POLICY"
+  copimine_require_path "$COPIMINE_VOICECHAT_TEMPLATE"
+  python3 "$COPIMINE_GAME_HARDENING_SCRIPT" sync \
+    --server-dir "$COPIMINE_SERVER_DIR" \
+    --policy "$COPIMINE_GAME_HARDENING_POLICY" \
+    --voicechat-template "$COPIMINE_VOICECHAT_TEMPLATE"
+  copimine_validate_voicechat_security
+  copimine_log "Game runtime config hardening is synchronized."
+}
+
+copimine_apply_post_start_game_hardening() {
+  local rcon_password admin_group
+  rcon_password="$(copimine_env_value RCON_PASSWORD)"
+  [[ -n "$rcon_password" && "$rcon_password" != "CHANGE_ME" ]] || copimine_fail "RCON_PASSWORD is missing in $COPIMINE_ENV_FILE"
+  admin_group="${COPIMINE_IMAGEFRAME_ADMIN_GROUP:-$(copimine_env_value COPIMINE_IMAGEFRAME_ADMIN_GROUP)}"
+  admin_group="${admin_group:-admin}"
+  COPIMINE_RCON_PASSWORD="$rcon_password" python3 "$COPIMINE_GAME_HARDENING_SCRIPT" apply-luckperms-imageframe \
+    --server-properties "$COPIMINE_SERVER_PROPERTIES" \
+    --password-env COPIMINE_RCON_PASSWORD \
+    --timeout-seconds "${COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-90}" \
+    --admin-group "$admin_group"
+  copimine_log "ImageFrame LuckPerms hardening policy applied."
+}
+
 copimine_apply_clean_world_state() {
   copimine_need psql
   copimine_require_path "$COPIMINE_CLEAN_WORLD_STATE_SQL"
@@ -238,6 +335,84 @@ copimine_apply_clean_world_state() {
   [[ -n "$pg_user" && -n "$pg_db" && -n "$pg_password" ]] || copimine_fail "PostgreSQL credentials are incomplete in $COPIMINE_ENV_FILE"
   PGPASSWORD="$pg_password" psql -h 127.0.0.1 -U "$pg_user" -v ON_ERROR_STOP=1 -d "$pg_db" -f "$COPIMINE_CLEAN_WORLD_STATE_SQL" >/dev/null
   copimine_log "Cleaned world-bound runtime state in PostgreSQL."
+}
+
+copimine_apply_migrations() {
+  local migration_runner="$COPIMINE_ROOT/deploy/ubuntu/migrate.sh"
+  copimine_require_path "$migration_runner"
+  COPIMINE_ROOT="$COPIMINE_ROOT" \
+  COPIMINE_ENV_FILE="$COPIMINE_ENV_FILE" \
+  COPIMINE_MIGRATIONS_DIR="$COPIMINE_ROOT/db/migrations" \
+  bash "$migration_runner"
+  copimine_log "PostgreSQL migrations are current."
+}
+
+copimine_restore_database_safely() {
+  local dump_path="$1"
+  copimine_require_path "$dump_path"
+
+  local pg_host pg_port pg_user pg_db pg_password
+  pg_host="$(copimine_env_value POSTGRES_HOST)"
+  pg_port="$(copimine_env_value POSTGRES_PORT)"
+  pg_user="$(copimine_env_value POSTGRES_USER)"
+  pg_db="$(copimine_env_value POSTGRES_DB)"
+  pg_password="$(copimine_env_value POSTGRES_PASSWORD)"
+  pg_host="${pg_host:-127.0.0.1}"
+  pg_port="${pg_port:-5432}"
+  [[ "$pg_user" =~ ^[A-Za-z_][A-Za-z0-9_]{0,48}$ ]] || copimine_fail "POSTGRES_USER must be a PostgreSQL identifier"
+  [[ "$pg_db" =~ ^[A-Za-z_][A-Za-z0-9_]{0,40}$ ]] || copimine_fail "POSTGRES_DB must be a PostgreSQL identifier"
+  [[ -n "$pg_password" && "$pg_password" != "CHANGE_ME" ]] || copimine_fail "POSTGRES_PASSWORD is missing in $COPIMINE_ENV_FILE"
+
+  local timestamp staging_db backup_db database_exists
+  timestamp="$(date +%Y%m%d%H%M%S)"
+  staging_db="${pg_db}_restore_${timestamp}_$RANDOM"
+  backup_db="${pg_db}_pre_restore_${timestamp}"
+  staging_db="${staging_db:0:63}"
+  backup_db="${backup_db:0:63}"
+
+  runuser -u postgres -- dropdb --if-exists "$staging_db"
+  runuser -u postgres -- createdb -O "$pg_user" "$staging_db"
+  if [[ "$dump_path" == *.sql ]]; then
+    PGPASSWORD="$pg_password" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -v ON_ERROR_STOP=1 -d "$staging_db" -f "$dump_path" >/dev/null
+  else
+    PGPASSWORD="$pg_password" pg_restore -h "$pg_host" -p "$pg_port" -U "$pg_user" -v -d "$staging_db" "$dump_path" >/dev/null
+  fi
+  PGPASSWORD="$pg_password" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -v ON_ERROR_STOP=1 -d "$staging_db" -tAc 'SELECT 1' >/dev/null
+
+  database_exists="$(runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname = '$pg_db'" postgres | tr -d '[:space:]')"
+  if [[ "$database_exists" == "1" ]]; then
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 postgres <<SQL
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = '$pg_db' AND pid <> pg_backend_pid();
+ALTER DATABASE "$pg_db" RENAME TO "$backup_db";
+ALTER DATABASE "$staging_db" RENAME TO "$pg_db";
+SQL
+    COPIMINE_DATABASE_RESTORE_ACTIVE_DB="$pg_db"
+    COPIMINE_DATABASE_RESTORE_BACKUP_DB="$backup_db"
+    copimine_log "Database restore activated. Previous database is preserved as $backup_db."
+  else
+    runuser -u postgres -- psql -v ON_ERROR_STOP=1 postgres -c "ALTER DATABASE \"$staging_db\" RENAME TO \"$pg_db\";"
+    copimine_log "Database restore activated for newly created database $pg_db."
+  fi
+}
+
+copimine_rollback_database_restore() {
+  local active_db="$COPIMINE_DATABASE_RESTORE_ACTIVE_DB"
+  local backup_db="$COPIMINE_DATABASE_RESTORE_BACKUP_DB"
+  [[ -n "$active_db" && -n "$backup_db" ]] || return 0
+  [[ "$active_db" =~ ^[A-Za-z_][A-Za-z0-9_]{0,40}$ ]] || copimine_fail "Unsafe active database rollback identifier"
+  [[ "$backup_db" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]] || copimine_fail "Unsafe backup database rollback identifier"
+  runuser -u postgres -- psql -v ON_ERROR_STOP=1 postgres <<SQL
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = '$active_db' AND pid <> pg_backend_pid();
+ALTER DATABASE "$active_db" RENAME TO "${active_db}_failed_$(date +%s)";
+ALTER DATABASE "$backup_db" RENAME TO "$active_db";
+SQL
+  COPIMINE_DATABASE_RESTORE_ACTIVE_DB=""
+  COPIMINE_DATABASE_RESTORE_BACKUP_DB=""
+  copimine_log "Restored the database that was active before the failed replacement."
 }
 
 copimine_python_env() {
@@ -287,14 +462,49 @@ print(current)
 PY
 }
 
+copimine_sync_server_secrets() {
+  local rcon_password
+  rcon_password="$(copimine_env_value RCON_PASSWORD)"
+  [[ -n "$rcon_password" && "$rcon_password" != "CHANGE_ME" ]] || copimine_fail "RCON_PASSWORD is missing in $COPIMINE_ENV_FILE"
+  COPIMINE_RCON_PASSWORD="$rcon_password" python3 - "$COPIMINE_SERVER_PROPERTIES" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+rcon_password = os.environ["COPIMINE_RCON_PASSWORD"]
+lines = path.read_text(encoding="utf-8").splitlines()
+updates = {
+    "rcon.password": rcon_password,
+}
+seen = set()
+output = []
+for line in lines:
+    if "=" not in line or line.startswith("#"):
+        output.append(line)
+        continue
+    key, _ = line.split("=", 1)
+    if key in updates:
+        output.append(f"{key}={updates[key]}")
+        seen.add(key)
+    else:
+        output.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        output.append(f"{key}={value}")
+path.write_text("\n".join(output) + "\n", encoding="utf-8")
+PY
+}
+
 copimine_sync_server_properties() {
-  local resourcepack_sha1
+  local resourcepack_sha1 resourcepack_url public_panel_url
   resourcepack_sha1="$(sha1sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
-  local resourcepack_url
-  resourcepack_url="$(copimine_release_value "resourcePack.downloadUrl")"
-  if [[ -z "$resourcepack_url" ]]; then
-    resourcepack_url="http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip"
+  resourcepack_url="$(copimine_env_value RESOURCE_PACK_PUBLIC_URL)"
+  if [[ -z "$resourcepack_url" || "$resourcepack_url" == "CHANGE_ME" ]]; then
+    public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
+    resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip"
   fi
+  [[ "$resourcepack_url" =~ ^https?:// ]] || copimine_fail "RESOURCE_PACK_PUBLIC_URL must use http:// or https://"
   python3 - "$COPIMINE_SERVER_PROPERTIES" "$resourcepack_sha1" "$resourcepack_url" "$COPIMINE_WORLD_SEED" <<'PY'
 from pathlib import Path
 import sys
@@ -326,6 +536,57 @@ for key, value in updates.items():
         output.append(f"{key}={value}")
 path.write_text("\n".join(output) + "\n", encoding="utf-8")
 PY
+  copimine_sync_server_secrets
+}
+
+copimine_sync_runtime_urls() {
+  local public_panel_url
+  public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
+  [[ "$public_panel_url" =~ ^https?:// ]] || copimine_fail "PUBLIC_PANEL_URL must use http:// or https://"
+  COPIMINE_PUBLIC_PANEL_URL="$public_panel_url" python3 - \
+    "$COPIMINE_ROOT/minecraft/server/plugins/CopiMineArtifacts/config.yml" \
+    "$COPIMINE_ROOT/copimine-artifacts/config.yml" \
+    "$COPIMINE_ROOT/minecraft/server/plugins/CopiMineArtifacts/items.yml" \
+    "$COPIMINE_ROOT/copimine-artifacts/items.yml" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+url = os.environ["COPIMINE_PUBLIC_PANEL_URL"].rstrip("/")
+
+def update_mapping(path: Path, section: str) -> None:
+    if not path.is_file():
+        return
+    lines = path.read_text(encoding="utf-8").splitlines()
+    output: list[str] = []
+    in_section = False
+    replaced = False
+    section_indent = ""
+    for line in lines:
+        stripped = line.lstrip()
+        indent = line[: len(line) - len(stripped)]
+        if line == f"{section}:":
+            in_section = True
+            section_indent = indent
+            output.append(line)
+            continue
+        if in_section and stripped and not stripped.startswith("#") and len(indent) <= len(section_indent):
+            if not replaced:
+                output.append(f'{section_indent}  website-base-url: "{url}"')
+                replaced = True
+            in_section = False
+        if in_section and stripped.startswith("website-base-url:"):
+            output.append(f'{indent}website-base-url: "{url}"')
+            replaced = True
+        else:
+            output.append(line)
+    if in_section and not replaced:
+        output.append(f'{section_indent}  website-base-url: "{url}"')
+    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+for candidate in map(Path, sys.argv[1:]):
+    update_mapping(candidate, "donation" if candidate.name == "config.yml" else "donation-catalog")
+PY
 }
 
 copimine_write_modpack_hashes() {
@@ -340,17 +601,69 @@ copimine_write_modpack_hashes() {
   printf '%s\n' "$modpack_sha256" > "$sha256_path"
 }
 
+copimine_render_nginx_config() {
+  local template tls_enabled cert_path key_path server_names
+  tls_enabled="${COPIMINE_TLS_ENABLED:-$(copimine_env_value COPIMINE_TLS_ENABLED)}"
+  tls_enabled="${tls_enabled:-0}"
+  server_names="${COPIMINE_SERVER_NAMES:-$(copimine_env_value NGINX_SERVER_NAMES)}"
+  server_names="${server_names:-admin.copimine.ru copimine.ru www.copimine.ru}"
+  template="$COPIMINE_NGINX_TEMPLATE"
+  cert_path=""
+  key_path=""
+  case "$tls_enabled" in
+    0)
+      ;;
+    1)
+      template="$COPIMINE_NGINX_TLS_TEMPLATE"
+      cert_path="${COPIMINE_TLS_CERT_PATH:-$(copimine_env_value COPIMINE_TLS_CERT_PATH)}"
+      key_path="${COPIMINE_TLS_KEY_PATH:-$(copimine_env_value COPIMINE_TLS_KEY_PATH)}"
+      [[ -n "$cert_path" && -f "$cert_path" ]] || copimine_fail "COPIMINE_TLS_CERT_PATH must point to a readable certificate when TLS is enabled"
+      [[ -n "$key_path" && -f "$key_path" ]] || copimine_fail "COPIMINE_TLS_KEY_PATH must point to a readable private key when TLS is enabled"
+      ;;
+    *)
+      copimine_fail "COPIMINE_TLS_ENABLED must be 0 or 1"
+      ;;
+  esac
+  copimine_require_path "$template"
+  COPIMINE_NGINX_SERVER_NAMES="$server_names" \
+  COPIMINE_NGINX_TLS_CERT_PATH="$cert_path" \
+  COPIMINE_NGINX_TLS_KEY_PATH="$key_path" \
+  python3 - "$template" "$COPIMINE_NGINX_AVAILABLE" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+template = Path(sys.argv[1]).read_text(encoding="utf-8")
+target = Path(sys.argv[2])
+replacements = {
+    "__COPIMINE_SERVER_NAMES__": os.environ["COPIMINE_NGINX_SERVER_NAMES"],
+    "__COPIMINE_TLS_CERT_PATH__": os.environ["COPIMINE_NGINX_TLS_CERT_PATH"],
+    "__COPIMINE_TLS_KEY_PATH__": os.environ["COPIMINE_NGINX_TLS_KEY_PATH"],
+}
+for marker, value in replacements.items():
+    template = template.replace(marker, value)
+if "__COPIMINE_" in template:
+    raise SystemExit("Unresolved CopiMine nginx template marker")
+target.parent.mkdir(parents=True, exist_ok=True)
+target.write_text(template, encoding="utf-8")
+PY
+  chmod 644 "$COPIMINE_NGINX_AVAILABLE"
+}
+
 copimine_install_system_files() {
   install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-admin.service" /etc/systemd/system/copimine-admin.service
   install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-discord-bot.service" /etc/systemd/system/copimine-discord-bot.service
   install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-minecraft-discord-bridge.service" /etc/systemd/system/copimine-minecraft-discord-bridge.service
   install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-minecraft.service" /etc/systemd/system/copimine-minecraft.service
-  if [[ -f "$COPIMINE_NGINX_TEMPLATE" ]]; then
-    install -m 0644 "$COPIMINE_NGINX_TEMPLATE" "$COPIMINE_NGINX_AVAILABLE"
-    ln -sfn "$COPIMINE_NGINX_AVAILABLE" "$COPIMINE_NGINX_ENABLED"
-    rm -f /etc/nginx/sites-enabled/default
-    nginx -t
-  fi
+  install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-game-hardening.service" /etc/systemd/system/copimine-game-hardening.service
+  copimine_render_nginx_config
+  ln -sfn "$COPIMINE_NGINX_AVAILABLE" "$COPIMINE_NGINX_ENABLED"
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t
+  systemctl daemon-reload
+  # Recreate the install symlink when the unit's WantedBy target changes
+  # between releases; a plain enable would retain an obsolete boot target.
+  systemctl reenable copimine-game-hardening.service >/dev/null
 }
 
 copimine_write_runtime_metadata() {
@@ -381,6 +694,8 @@ PY
 copimine_refresh_release_artifacts() {
   copimine_write_modpack_hashes
   copimine_sync_server_properties
+  copimine_sync_runtime_urls
+  copimine_sync_game_runtime_hardening
   copimine_write_runtime_metadata
 }
 
@@ -492,9 +807,16 @@ copimine_backup_snapshot() {
   local backup_name="${1:-copimine-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
   local backup_path="$COPIMINE_BACKUP_DIR/$backup_name"
   mkdir -p "$COPIMINE_BACKUP_DIR"
-  tar -C /opt -czf "$backup_path" \
-    "$(basename "$COPIMINE_ROOT")" \
-    "$(basename "$COPIMINE_SECRETS_DIR")" 2>/dev/null || true
+  chmod 700 "$COPIMINE_BACKUP_DIR"
+  (
+    umask 077
+    tar -C /opt -czf "$backup_path" \
+      "$(basename "$COPIMINE_ROOT")" \
+      "$(basename "$COPIMINE_SECRETS_DIR")"
+  )
+  chmod 600 "$backup_path"
+  sha256sum "$backup_path" | awk '{print $1}' > "${backup_path}.sha256"
+  chmod 600 "${backup_path}.sha256"
   printf '%s\n' "$backup_path"
 }
 
@@ -549,6 +871,7 @@ copimine_install_flow() {
   copimine_need psql
   copimine_need nginx
   copimine_ensure_layout
+  copimine_ensure_app_user
   local postgres_password secret_key plugin_api_key rcon_password
   postgres_password="$(copimine_secret postgres-password.txt 24)"
   secret_key="$(copimine_secret secret-key.txt 32)"
@@ -557,6 +880,7 @@ copimine_install_flow() {
   copimine_write_env "$postgres_password" "$secret_key" "$plugin_api_key" "$rcon_password"
   chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_ROOT"
   copimine_ensure_postgres "$postgres_password"
+  copimine_apply_migrations
   copimine_python_env
   copimine_build_assets
   copimine_refresh_release_artifacts

@@ -23,7 +23,8 @@ usage:
   zhuzevo_forces_overdose: false
 
 textures:
-  mode: VANILLA
+  # The release resource pack contains the item models used by the active server.
+  mode: CUSTOM
 
 client_bridge:
   enabled: true

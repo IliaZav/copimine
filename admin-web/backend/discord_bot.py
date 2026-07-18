@@ -46,7 +46,16 @@ REPORT_ADMIN_CH = os.getenv("DISCORD_REPORTS_ADMIN_CHANNEL_ID", "").strip() or R
 WHITELIST_CH = os.getenv("DISCORD_WHITELIST_CHANNEL_ID", "1499841407400284271").strip()
 ADMIN_ROLE_ID = os.getenv("DISCORD_ADMIN_ROLE_ID", "").strip()
 ADMIN_ALLOWLIST = {x.strip() for x in os.getenv("DISCORD_ADMIN_ALLOWLIST", "").split(",") if x.strip()}
-WHITELIST_APPROVER_ROLE_NAMES = {x.strip().lower() for x in os.getenv("DISCORD_WHITELIST_ROLE_NAMES", "Operator,st.admin,admin").split(",") if x.strip()}
+WHITELIST_APPROVER_ROLE_IDS = {
+    value.strip()
+    for value in os.getenv("DISCORD_WHITELIST_APPROVER_ROLE_IDS", "").split(",")
+    if value.strip().isdigit()
+}
+# Kept as an explicitly empty compatibility marker for older deployments.  Role
+# names are intentionally never evaluated: Discord names are mutable and the
+# approval gate below accepts only numeric role IDs (or the explicit admin
+# allowlist/administrator permission).
+WHITELIST_APPROVER_ROLE_NAMES: set[str] = set()
 STATUS_CHANNEL_ID = os.getenv("DISCORD_SERVER_STATUS_CHANNEL_ID", "").strip() or DEFAULT_STATUS_CHANNEL_ID
 ELECTIONS_STATUS_CHANNEL_ID = os.getenv("DISCORD_ELECTIONS_STATUS_CHANNEL_ID", "").strip()
 ADMIN_ALERTS_CHANNEL_ID = os.getenv("DISCORD_ADMIN_ALERTS_CHANNEL_ID", "").strip() or APP_ADMIN_CH
@@ -425,8 +434,8 @@ def can_approve_whitelist(member: Any) -> bool:
     if is_admin(member):
         return True
     for role in getattr(member, "roles", []) or []:
-        name = str(getattr(role, "name", "") or "").strip().lower()
-        if name in WHITELIST_APPROVER_ROLE_NAMES:
+        role_id = str(getattr(role, "id", "") or "")
+        if role_id in WHITELIST_APPROVER_ROLE_IDS:
             return True
     return False
 
@@ -809,8 +818,13 @@ def approve_whitelist_request(request_id: str, actor: str) -> dict[str, Any]:
         if not row:
             raise RuntimeError("whitelist_request_not_found")
         item = row_to_dict(row)
+        status = str(item.get("status") or "").upper()
         if str(item.get("status") or "").upper() == "APPROVED":
+            status = "APPROVED"
+        if status == "APPROVED":
             return item
+        if status != "PENDING":
+            raise RuntimeError("whitelist_request_not_pending")
         minecraft_name = str(item.get("minecraft_name") or "")
         minecraft_uuid = str(item.get("minecraft_uuid") or "")
         if minecraft_name and not minecraft_uuid:
@@ -1172,11 +1186,20 @@ class Bot(discord.Client):
         e.add_field(name="Игрок", value=short(get_col(d, "player_name", "reporter", default="unknown"), 256), inline=True)
         e.add_field(name="Статус", value=short(status, 256), inline=True)
         e.add_field(name="Дата", value=ts(get_col(d, "created_at", default=0)), inline=True)
+        if not admin:
+            e.set_footer(text="CopiMine • публичная версия без технических данных")
+            return e
         e.add_field(name="ID", value=f"`{get_col(d, 'id', default='')}`", inline=False)
         if get_col(d, "snapshot", default=""):
             e.add_field(name="Snapshot", value=short(get_col(d, "snapshot", default=""), 1024), inline=False)
         e.set_footer(text="CopiMine Ultra Admin")
         return e
+
+    def report_has_technical_context(self, row: Any | dict[str, Any]) -> bool:
+        item = row_to_dict(row)
+        message = str(get_col(item, "message", default="") or "").strip().upper()
+        snapshot = str(get_col(item, "snapshot", default="") or "").lower()
+        return message.startswith("[BUG ") or any(marker in snapshot for marker in ("error=", "exception", "stacktrace", "technical"))
 
     def masked_ip(self, value: Any) -> str:
         raw = str(value or "").strip()
@@ -1207,7 +1230,7 @@ class Bot(discord.Client):
             embed.add_field(name="Одобрил", value=short(row.get("approved_by"), 128), inline=True)
         if row.get("approved_at"):
             embed.add_field(name="Одобрено", value=ts(row.get("approved_at")), inline=True)
-        embed.set_footer(text="Нажми реакцию approve, если у тебя есть роль Operator / st.admin / admin")
+        embed.set_footer(text="Нажми реакцию approve, если у тебя есть роль администратора или назначенная роль по ID")
         return embed
 
     async def sync_whitelist_requests(self) -> None:
@@ -1608,7 +1631,7 @@ class Bot(discord.Client):
             public_ch = await self.channel(REPORT_CH)
             admin_ch = await self.channel(REPORT_ADMIN_CH)
 
-            if public_ch and REPORT_CH and REPORT_CH != REPORT_ADMIN_CH:
+            if public_ch and REPORT_CH and REPORT_CH != REPORT_ADMIN_CH and not self.report_has_technical_context(row):
                 public_msg = await public_ch.send(embed=self.report_embed(row, admin=False))
                 await asyncio.to_thread(log_notification, str(public_msg.channel.id), "report_public", rid, "created")
 

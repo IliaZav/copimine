@@ -2,7 +2,7 @@ world_limits:
   overworld:
     enabled: true
     world_names:
-      - world
+      - CopiMine
     center_mode: SPAWN
     radius: 10000
     use_vanilla_worldborder: true
@@ -14,16 +14,18 @@ world_access:
   nether:
     enabled: false
     world_names:
+      - CopiMine_nether
       - world_nether
     allow_portals: false
     allow_commands_teleport: false
-    redirect_world: world
+    redirect_world: CopiMine
     redirect_to_safe_spawn: true
   end:
     enabled: false
     world_names:
+      - CopiMine_the_end
       - world_the_end
     allow_portals: false
     allow_commands_teleport: false
-    redirect_world: world
+    redirect_world: CopiMine
     redirect_to_safe_spawn: true

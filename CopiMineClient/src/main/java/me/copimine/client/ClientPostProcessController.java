@@ -82,6 +82,9 @@ public final class ClientPostProcessController {
     }
 
     private float clamp(float intensity) {
+        if (!Float.isFinite(intensity)) {
+            return 0.0F;
+        }
         return Math.max(0.0F, Math.min(1.0F, intensity));
     }
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+from contextvars import ContextVar
 import csv
 import gzip
 import hashlib
@@ -261,6 +262,10 @@ AUTH_COOKIE_SECURE = (
     if AUTH_COOKIE_SECURE_RAW
     else ADMIN_PUBLIC_BASE_URL.lower().startswith("https://")
 )
+# Public HTTP remains available for the site, files and status endpoints. A
+# reusable login cookie is deliberately HTTPS-only unless an operator makes a
+# conscious, local-network-only opt-in for a temporary migration.
+ALLOW_INSECURE_HTTP_AUTH = os.getenv("ALLOW_INSECURE_HTTP_AUTH", "0").strip().lower() in {"1", "true", "yes", "on"}
 AUTH_BEARER_FALLBACK_ENABLED = os.getenv("AUTH_BEARER_FALLBACK_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")
 CSRF_HEADER_NAME = "X-CSRF-Token"
@@ -795,6 +800,43 @@ def clip_text(value: Any, limit: int = 800) -> str:
     return text[: max(0, limit - 3)] + "..."
 
 
+TECHNICAL_REPORT_SOURCES = {"plugin"}
+BUG_REPORT_MESSAGE_RE = re.compile(r"^\s*\[BUG\s+([A-Z0-9-]{4,80})\]", re.IGNORECASE)
+
+
+def report_metadata_without_technical_context(metadata: Any) -> dict[str, Any]:
+    """Keep only non-technical provenance that a normal player may submit."""
+    raw = safe_mapping(metadata)
+    allowed: dict[str, Any] = {}
+    source_page = clip_text(raw.get("sourcePage"), 120)
+    if source_page:
+        allowed["sourcePage"] = source_page
+    site_account_id = clip_text(raw.get("siteAccountId"), 80)
+    if site_account_id:
+        allowed["siteAccountId"] = site_account_id
+    site_username = clip_text(raw.get("siteUsername"), 64)
+    if site_username:
+        allowed["siteUsername"] = site_username
+    if raw.get("legacyTicket") is True:
+        allowed["legacyTicket"] = True
+    return allowed
+
+
+def technical_bug_report_is_correlated(metadata: Any, message: str) -> bool:
+    """Accept a plugin bug snapshot only when it matches the visible bug token."""
+    raw = safe_mapping(metadata)
+    bug = safe_mapping(raw.get("bugReport"))
+    code = clip_text(bug.get("errorCode") or raw.get("errorCode") or bug.get("token") or raw.get("token"), 80).upper()
+    match = BUG_REPORT_MESSAGE_RE.match(str(message or ""))
+    diagnostics = safe_mapping(bug.get("diagnostics"))
+    request_id = clip_text(diagnostics.get("requestId") or raw.get("requestId"), 160)
+    if not code or not re.fullmatch(r"[A-Z0-9-]{4,80}", code):
+        return False
+    if match is None or not hmac.compare_digest(match.group(1).upper(), code):
+        return False
+    return bool(request_id)
+
+
 def normalize_bug_report_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     raw = safe_mapping(metadata)
     bug = safe_mapping(raw.get("bugReport"))
@@ -866,17 +908,27 @@ def normalize_bug_report_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def normalize_report_metadata(metadata: Any) -> dict[str, Any]:
+def normalize_report_metadata_for_source(metadata: Any, source: str, message: str) -> dict[str, Any]:
     raw = safe_mapping(metadata)
     report_kind = str(raw.get("reportKind") or raw.get("kind") or "").strip().lower()
-    if report_kind == "bug" or raw.get("bugReport") or raw.get("errorCode") or raw.get("errorSummary"):
+    trusted_source = str(source or "").strip().lower() in TECHNICAL_REPORT_SOURCES
+    if (
+        trusted_source
+        and (report_kind == "bug" or raw.get("bugReport") or raw.get("errorCode") or raw.get("errorSummary"))
+        and technical_bug_report_is_correlated(raw, message)
+    ):
         return normalize_bug_report_metadata(raw)
-    return raw
+    return report_metadata_without_technical_context(raw)
+
+
+def normalize_report_metadata(metadata: Any) -> dict[str, Any]:
+    """Compatibility helper for untrusted or legacy rows without a source marker."""
+    return normalize_report_metadata_for_source(metadata, "", "")
 
 
 def public_player_report(item: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
     row = dict(item or {})
-    metadata = normalize_report_metadata(row.get("metadata"))
+    metadata = normalize_report_metadata_for_source(row.get("metadata"), str(row.get("source") or ""), str(row.get("message") or ""))
     public_metadata: dict[str, Any] = {}
     for key in ("sourcePage", "siteAccountId", "siteUsername", "reportKind", "errorCode", "errorSummary"):
         if metadata.get(key) not in ("", None, {}, []):
@@ -913,7 +965,7 @@ def public_player_report(item: Mapping[str, Any] | dict[str, Any]) -> dict[str, 
 
 def normalized_report_row(item: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
     row = dict(item or {})
-    row["metadata"] = normalize_report_metadata(row.get("metadata"))
+    row["metadata"] = normalize_report_metadata_for_source(row.get("metadata"), str(row.get("source") or ""), str(row.get("message") or ""))
     row["reportType"] = str(row.get("reportType") or row["metadata"].get("reportKind") or "report")
     row["errorCode"] = clip_text(row.get("errorCode") or row["metadata"].get("errorCode"), 80)
     row["errorSummary"] = clip_text(row.get("errorSummary") or row["metadata"].get("errorSummary"), 240)
@@ -1210,7 +1262,7 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
-    if request.url.scheme.lower() == "https":
+    if request_transport_is_secure(request):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     response.headers.setdefault(
         "Content-Security-Policy",
@@ -1293,61 +1345,136 @@ def verify_csrf_token(token: str) -> bool:
     return hmac.compare_digest(signature, expected)
 
 
-def set_csrf_cookie(response: Response, token: Optional[str] = None, max_age: Optional[int] = SESSION_TTL_SECONDS) -> str:
+def direct_request_host(request: Optional[Request]) -> str:
+    return str(request.client.host if request and request.client else "").strip().lower()
+
+
+def request_uses_trusted_proxy(request: Optional[Request]) -> bool:
+    return direct_request_host(request) in {entry.lower() for entry in TRUSTED_PROXY_IPS}
+
+
+def request_transport_is_secure(request: Optional[Request]) -> bool:
+    if request is None:
+        return bool(AUTH_COOKIE_SECURE)
+    if str(request.url.scheme or "").lower() == "https":
+        return True
+    if request_uses_trusted_proxy(request):
+        forwarded_proto = _first_forwarded_value(request.headers.get("x-forwarded-proto") or "").lower()
+        return forwarded_proto == "https"
+    return False
+
+
+def request_is_direct_loopback(request: Request) -> bool:
+    """Allow local HTTP only when the request bypassed every proxy header."""
+    if not is_loopback_request(request):
+        return False
+    forwarding_headers = ("forwarded", "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "x-forwarded-origin", "x-real-ip")
+    return not any(str(request.headers.get(header) or "").strip() for header in forwarding_headers)
+
+
+def auth_transport_is_allowed(request: Request) -> bool:
+    return request_transport_is_secure(request) or request_is_direct_loopback(request) or ALLOW_INSECURE_HTTP_AUTH
+
+
+def require_secure_auth_transport(request: Request) -> None:
+    if auth_transport_is_allowed(request):
+        return
+    raise HTTPException(
+        status_code=426,
+        detail="Для входа через публичную сеть нужен HTTPS. HTTP оставлен для публичных страниц и загрузок; "
+        "в доверенной локальной сети администратор может временно включить ALLOW_INSECURE_HTTP_AUTH=1.",
+    )
+
+
+def cookie_secure_for_request(request: Optional[Request]) -> bool:
+    return request_transport_is_secure(request)
+
+
+_AUTH_COOKIE_REQUEST: ContextVar[Optional[Request]] = ContextVar("copimine_auth_cookie_request", default=None)
+
+
+def set_csrf_cookie(
+    response: Response,
+    request: Optional[Request] = None,
+    token: Optional[str] = None,
+    max_age: Optional[int] = SESSION_TTL_SECONDS,
+) -> str:
     value = token or make_csrf_token()
     response.set_cookie(
         CSRF_COOKIE_NAME,
         value,
         max_age=max_age,
         httponly=False,
-        secure=AUTH_COOKIE_SECURE,
+        secure=cookie_secure_for_request(request),
         samesite="lax",
         path="/",
     )
     return value
 
 
-def clear_csrf_cookie(response: Response) -> None:
-    response.delete_cookie(CSRF_COOKIE_NAME, path="/")
+def clear_csrf_cookie(response: Response, request: Optional[Request] = None) -> None:
+    response.delete_cookie(CSRF_COOKIE_NAME, path="/", secure=cookie_secure_for_request(request), samesite="lax")
 
 
-def set_access_cookie(response: Response, token: str, max_age: Optional[int] = ACCESS_TOKEN_TTL_SECONDS) -> None:
+def set_access_cookie(
+    response: Response,
+    token: str,
+    request: Optional[Request] = None,
+    max_age: Optional[int] = ACCESS_TOKEN_TTL_SECONDS,
+) -> None:
     response.set_cookie(
         AUTH_COOKIE_NAME,
         token,
         max_age=max_age,
         httponly=True,
-        secure=AUTH_COOKIE_SECURE,
+        secure=cookie_secure_for_request(request),
         samesite="lax",
         path="/",
     )
 
 
 def set_refresh_cookie(response: Response, token: str, max_age: Optional[int] = REFRESH_TOKEN_TTL_SECONDS) -> None:
+    request = _AUTH_COOKIE_REQUEST.get()
     response.set_cookie(
         AUTH_REFRESH_COOKIE_NAME,
         token,
         max_age=max_age,
         httponly=True,
-        secure=AUTH_COOKIE_SECURE,
+        secure=cookie_secure_for_request(request),
         samesite="lax",
         path="/",
     )
 
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str, remember_me: bool = False) -> None:
+    request = _AUTH_COOKIE_REQUEST.get()
     access_max_age = ACCESS_TOKEN_TTL_SECONDS if remember_me else None
     refresh_max_age = REFRESH_TOKEN_TTL_SECONDS if remember_me else None
     csrf_max_age = REFRESH_TOKEN_TTL_SECONDS if remember_me else None
-    set_access_cookie(response, access_token, access_max_age)
+    set_access_cookie(response, access_token, request, access_max_age)
     set_refresh_cookie(response, refresh_token, refresh_max_age)
-    set_csrf_cookie(response, max_age=csrf_max_age)
+    set_csrf_cookie(response, request, max_age=csrf_max_age)
 
 
-def clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie(AUTH_COOKIE_NAME, path="/", secure=AUTH_COOKIE_SECURE, samesite="lax", httponly=True)
-    response.delete_cookie(AUTH_REFRESH_COOKIE_NAME, path="/", secure=AUTH_COOKIE_SECURE, samesite="lax", httponly=True)
-    clear_csrf_cookie(response)
+def set_auth_cookies_for_request(
+    response: Response,
+    request: Request,
+    access_token: str,
+    refresh_token: str,
+    remember_me: bool = False,
+) -> None:
+    context_token = _AUTH_COOKIE_REQUEST.set(request)
+    try:
+        set_auth_cookies(response, access_token, refresh_token, remember_me)
+    finally:
+        _AUTH_COOKIE_REQUEST.reset(context_token)
+
+
+def clear_auth_cookies(response: Response, request: Optional[Request] = None) -> None:
+    secure = cookie_secure_for_request(request)
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/", secure=secure, samesite="lax", httponly=True)
+    response.delete_cookie(AUTH_REFRESH_COOKIE_NAME, path="/", secure=secure, samesite="lax", httponly=True)
+    clear_csrf_cookie(response, request)
 
 
 def csrf_exempt_paths() -> set[str]:
@@ -1387,15 +1514,16 @@ def origin_allowed(request: Request, origin: str) -> bool:
         allowed.add(public_panel_url.rstrip("/"))
     if backend_internal:
         allowed.add(backend_internal.rstrip("/"))
-    forwarded_host = _first_forwarded_value(request.headers.get("x-forwarded-host") or request.headers.get("host") or "")
-    forwarded_proto = _first_forwarded_value(request.headers.get("x-forwarded-proto") or request.url.scheme or "http").lower()
-    if forwarded_host:
-        allowed.add(f"{forwarded_proto}://{forwarded_host}".rstrip("/"))
-        allowed.add(f"http://{forwarded_host}".rstrip("/"))
-        allowed.add(f"https://{forwarded_host}".rstrip("/"))
-    forwarded_origin = _first_forwarded_value(request.headers.get("x-forwarded-origin") or "")
-    if forwarded_origin:
-        allowed.add(forwarded_origin.rstrip("/"))
+    if request_uses_trusted_proxy(request):
+        forwarded_host = _first_forwarded_value(request.headers.get("x-forwarded-host") or request.headers.get("host") or "")
+        forwarded_proto = _first_forwarded_value(request.headers.get("x-forwarded-proto") or request.url.scheme or "http").lower()
+        if forwarded_host:
+            allowed.add(f"{forwarded_proto}://{forwarded_host}".rstrip("/"))
+            allowed.add(f"http://{forwarded_host}".rstrip("/"))
+            allowed.add(f"https://{forwarded_host}".rstrip("/"))
+        forwarded_origin = _first_forwarded_value(request.headers.get("x-forwarded-origin") or "")
+        if forwarded_origin:
+            allowed.add(forwarded_origin.rstrip("/"))
     allowed.update(ALLOWED_ORIGINS)
     return origin.rstrip("/") in {item.rstrip("/") for item in allowed if item}
 
@@ -3762,7 +3890,7 @@ def read_player_whitelist_state_sync(site_account_id: str, minecraft_uuid: str, 
             whitelisted = bool(int(row["whitelisted"] or 0)) if row else False
         request = conn.execute(
             """
-            SELECT id,status,created_at,updated_at,approved_at,approved_by,note
+            SELECT id,minecraft_uuid,minecraft_name,status,created_at,updated_at,approved_at,approved_by,note
             FROM whitelist_requests
             WHERE site_account_id=%s
             ORDER BY created_at DESC
@@ -3772,6 +3900,9 @@ def read_player_whitelist_state_sync(site_account_id: str, minecraft_uuid: str, 
         ).fetchone()
         conn.commit()
     latest = dict(request) if request else {}
+    automatic_registration = str(latest.get("status") or "").upper() == "AUTO_APPROVED"
+    if automatic_registration:
+        whitelisted = True
     return {
         "whitelisted": whitelisted,
         "whitelistRequest": {
@@ -3783,9 +3914,72 @@ def read_player_whitelist_state_sync(site_account_id: str, minecraft_uuid: str, 
             "approvedBy": str(latest.get("approved_by") or ""),
             "note": str(latest.get("note") or ""),
         } if latest else None,
-        "minecraftName": minecraft_name,
-        "minecraftUuid": effective_uuid,
+        "minecraftName": minecraft_name or str(latest.get("minecraft_name") or ""),
+        "minecraftUuid": effective_uuid or str(latest.get("minecraft_uuid") or ""),
     }
+
+
+def minecraft_identity_seen_on_server(minecraft_name: str, minecraft_uuid: str) -> bool:
+    """Return true for an identity that has already left a server-side footprint."""
+    name = str(minecraft_name or "").strip().lower()
+    resolved_uuid = str(find_player_uuid(minecraft_name) or minecraft_uuid or "").strip().lower()
+    for path in (MC_SERVER_DIR / "usercache.json", MC_SERVER_DIR / "whitelist.json", MC_SERVER_DIR / "ops.json"):
+        rows = read_json(path, [])
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_name = str(row.get("name") or "").strip().lower()
+            row_uuid = str(row.get("uuid") or "").strip().lower()
+            if (name and row_name == name) or (resolved_uuid and row_uuid == resolved_uuid):
+                return True
+    if resolved_uuid:
+        for directory, suffix in ((WORLD_DIR / "playerdata", ".dat"), (WORLD_DIR / "stats", ".json"), (WORLD_DIR / "advancements", ".json")):
+            if (directory / f"{resolved_uuid}{suffix}").exists():
+                return True
+    return False
+
+
+def minecraft_identity_is_bound_to_site(conn: Any, minecraft_uuid: str, minecraft_name: str) -> bool:
+    name = str(minecraft_name or "").strip()
+    uuid_value = str(minecraft_uuid or "").strip()
+    checks = [
+        ("SELECT 1 FROM minecraft_account_links WHERE minecraft_uuid=%s LIMIT 1", (uuid_value,)),
+        ("SELECT 1 FROM whitelist_account_links WHERE minecraft_uuid=%s LIMIT 1", (uuid_value,)),
+        (
+            "SELECT 1 FROM site_accounts WHERE minecraft_uuid=%s OR LOWER(minecraft_name)=LOWER(%s) LIMIT 1",
+            (uuid_value, name),
+        ),
+    ]
+    for query, params in checks:
+        if conn.execute(query, params).fetchone():
+            return True
+    return False
+
+
+def ensure_minecraft_identity_linkable(conn: Any, site_account_id: str, minecraft_uuid: str, minecraft_name: str) -> None:
+    """Prevent a confirmation code from moving a live identity to another account."""
+    account_id = str(site_account_id or "").strip()
+    uuid_value = str(minecraft_uuid or "").strip()
+    name = str(minecraft_name or "").strip()
+    if not account_id or not uuid_value or not valid_minecraft_name(name):
+        raise HTTPException(status_code=400, detail="Некорректные данные привязки Minecraft")
+    checks = (
+        ("minecraft_account_links", "site_account_id", "minecraft_uuid=%s", (uuid_value,)),
+        ("whitelist_account_links", "site_account_id", "minecraft_uuid=%s", (uuid_value,)),
+        ("site_accounts", "id", "(minecraft_uuid=%s OR LOWER(minecraft_name)=LOWER(%s))", (uuid_value, name)),
+    )
+    for table, owner_column, predicate, params in checks:
+        rows = conn.execute(f"SELECT {owner_column} FROM {table} WHERE {predicate}", params).fetchall()
+        for row in rows:
+            owner = str(row_get(row, owner_column, "") or "")
+            if owner and owner != account_id:
+                raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже привязан к другому аккаунту. Используйте восстановление доступа.")
+    current = conn.execute("SELECT minecraft_uuid FROM site_accounts WHERE id=%s", (account_id,)).fetchone()
+    current_uuid = str(row_get(current, "minecraft_uuid", "") or "")
+    if current_uuid and current_uuid != uuid_value:
+        raise HTTPException(status_code=409, detail="К этому аккаунту уже привязан другой Minecraft-ник")
 
 
 def create_whitelist_request_sync(account: dict[str, Any], request_ip: str) -> dict[str, Any]:
@@ -3906,6 +4100,8 @@ def approve_whitelist_request_sync(request_id: str, actor: str, note: str = "", 
             raise HTTPException(status_code=404, detail="Whitelist request not found")
         item = dict(row)
         status = str(item.get("status") or "PENDING").upper()
+        if status not in {"PENDING", "APPROVED"}:
+            raise HTTPException(status_code=409, detail="Этот запрос whitelist нельзя одобрить повторно")
         minecraft_uuid = resolve_minecraft_uuid(str(item.get("minecraft_uuid") or ""), str(item.get("minecraft_name") or ""))
         minecraft_name = str(item.get("minecraft_name") or "")
         if not minecraft_uuid:
@@ -5540,6 +5736,7 @@ def confirm_link_code_sync(account: dict[str, Any], code: str) -> dict[str, Any]
             raise HTTPException(status_code=403, detail="Код неверный или истёк")
         minecraft_name = str(row["minecraft_name"] or "")
         minecraft_uuid = str(row["minecraft_uuid"] or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
+        ensure_minecraft_identity_linkable(conn, str(account.get("id") or ""), minecraft_uuid, minecraft_name)
         conn.execute("UPDATE one_time_link_codes SET status='USED',used_at=%s WHERE id=%s", (now, row["id"]))
         conn.execute(
             "UPDATE site_accounts SET minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
@@ -8260,7 +8457,7 @@ def application_description(item: dict[str, Any]) -> str:
 
 
 def report_description(item: dict[str, Any]) -> str:
-    metadata = normalize_report_metadata(item.get("metadata"))
+    metadata = normalize_report_metadata_for_source(item.get("metadata"), str(item.get("source") or ""), str(item.get("message") or ""))
     coords = ""
     if item.get("world") or item.get("x") is not None or item.get("y") is not None or item.get("z") is not None:
         coords = f"{item.get('world') or 'world'} {item.get('x', '')} {item.get('y', '')} {item.get('z', '')}".strip()
@@ -8669,6 +8866,7 @@ def enqueue_discord_object_update(object_type: str, item: dict[str, Any], reason
 
 @app.post("/api/auth/login")
 async def login(data: LoginIn, request: Request, response: Response) -> dict[str, Any]:
+    require_secure_auth_transport(request)
     username = data.username.strip()
     check_rate_limit(request, "auth-login-ip", limit=20, window_seconds=300)
     assert_not_locked(request, username)
@@ -8687,7 +8885,7 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
     if not is_panel_admin_role(role):
         raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
     access_token, refresh_token = issue_admin_auth_pair(real_username, role, request, data.remember_me)
-    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
+    set_auth_cookies_for_request(response, request, access_token, refresh_token, data.remember_me)
     audit_event(real_username, "auth.login", status="ok", details={"ip": get_client_ip(request)})
     append_panel_event("admin-panel", "admin_login", actor=real_username, metadata={"ip": get_client_ip(request)}, tags=["security"])
     pg_record_auth_state("admin_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "user": real_username})
@@ -8703,6 +8901,7 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
 
 @app.post("/api/session/login")
 async def session_login(data: PlayerLoginIn, request: Request, response: Response) -> dict[str, Any]:
+    require_secure_auth_transport(request)
     username = data.username.strip()
     check_rate_limit(request, "session-login-ip", limit=20, window_seconds=300)
     assert_not_locked(request, "session:" + username)
@@ -8720,7 +8919,7 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
             raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
         clear_failed_login(request, "session:" + username)
         access_token, refresh_token = issue_admin_auth_pair(real_username, role, request, data.remember_me)
-        set_auth_cookies(response, access_token, refresh_token, data.remember_me)
+        set_auth_cookies_for_request(response, request, access_token, refresh_token, data.remember_me)
         audit_event(real_username, "auth.session_login", status="ok", details={"role": role, "ip": get_client_ip(request)})
         return {
             "username": real_username,
@@ -8744,7 +8943,7 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
             clear_failed_login(request, "session:" + username)
             pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
             access_token, refresh_token = issue_player_auth_pair(account, request, remember_me=data.remember_me)
-            set_auth_cookies(response, access_token, refresh_token, data.remember_me)
+            set_auth_cookies_for_request(response, request, access_token, refresh_token, data.remember_me)
             account["last_login_at"] = now_ts()
             audit_event(username, "auth.session_login", status="ok", details={"role": "player", "ip": get_client_ip(request)})
             return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
@@ -8755,24 +8954,26 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
 
 
 @app.get("/api/auth/csrf")
-async def auth_csrf(response: Response) -> dict[str, Any]:
-    set_csrf_cookie(response)
+async def auth_csrf(request: Request, response: Response) -> dict[str, Any]:
+    set_csrf_cookie(response, request)
     return {"ok": True, "cookie": CSRF_COOKIE_NAME, "header": CSRF_HEADER_NAME}
 
 
 @app.get("/api/csrf")
-async def csrf_alias(response: Response) -> dict[str, Any]:
-    return await auth_csrf(response)
+async def csrf_alias(request: Request, response: Response) -> dict[str, Any]:
+    return await auth_csrf(request, response)
 
 
 @app.post("/api/auth/refresh")
 async def auth_refresh(request: Request, response: Response) -> dict[str, Any]:
+    require_secure_auth_transport(request)
     refresh_token = request_refresh_token(request)
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh-сессия отсутствует")
     result = await bg(rotate_auth_pair_from_refresh_sync, refresh_token, request, "admin")
-    set_auth_cookies(
+    set_auth_cookies_for_request(
         response,
+        request,
         str(result.pop("accessToken")),
         str(result.pop("refreshToken")),
         bool(result.pop("rememberMe", False)),
@@ -8798,7 +8999,7 @@ async def logout(request: Request, response: Response, authorization: str = Head
             revoke_refresh_session(str(payload.get("jti", "")))
         except Exception:
             pass
-    clear_auth_cookies(response)
+    clear_auth_cookies(response, request)
     audit_event(actor or "unknown", "auth.logout")
     return {"ok": True}
 
@@ -8963,6 +9164,7 @@ async def public_donation_shop_catalog() -> dict[str, Any]:
 
 @app.post("/api/player/register")
 async def player_register(data: PlayerRegisterIn, request: Request, response: Response) -> dict[str, Any]:
+    require_secure_auth_transport(request)
     username = data.username.strip()
     if not valid_site_username(username):
         raise HTTPException(status_code=400, detail="Укажи корректный логин")
@@ -8976,6 +9178,8 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
     registration_ip = get_client_ip(request)
     account_id = secrets.token_hex(16)
     now = now_ts()
+    auto_whitelist = False
+    known_minecraft_identity = False
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         if player_account_by_username(conn, username):
@@ -8992,33 +9196,47 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
             INSERT INTO site_accounts(id,username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip)
             VALUES(%s,%s,%s,%s,'player',1,%s,%s,%s,%s,%s,%s)
             """,
-            (account_id, username, username.lower(), make_password_hash(data.password), minecraft_uuid, minecraft_name, now, now, now, registration_ip),
+            # Registration may request automatic whitelist access, but it must
+            # never grant ownership of an existing Minecraft identity or bank.
+            (account_id, username, username.lower(), make_password_hash(data.password), "", "", now, now, now, registration_ip),
         )
         conn.execute(
             "INSERT INTO auth_effects_disable_audit(actor,target_uuid,created_at,details) VALUES(%s,%s,%s,%s)",
             (username, "", now, "site registration entered staged auth flow"),
         )
         if minecraft_name:
-            add_player_to_whitelist_sync(minecraft_uuid, minecraft_name)
-            conn.execute(
-                """
-                INSERT INTO whitelist_account_links(minecraft_uuid,minecraft_name,site_account_id,whitelisted,synced_at)
-                VALUES(%s,%s,%s,1,%s)
-                ON CONFLICT (minecraft_uuid) DO UPDATE SET
-                    minecraft_name=EXCLUDED.minecraft_name,
-                    site_account_id=EXCLUDED.site_account_id,
-                    whitelisted=1,
-                    synced_at=EXCLUDED.synced_at
-                """,
-                (minecraft_uuid, minecraft_name, account_id, now),
+            known_minecraft_identity = minecraft_identity_seen_on_server(minecraft_name, minecraft_uuid) or minecraft_identity_is_bound_to_site(
+                conn, minecraft_uuid, minecraft_name
             )
+            if not known_minecraft_identity:
+                auto_whitelist = True
+                conn.execute(
+                    """
+                    INSERT INTO whitelist_requests(id,site_account_id,minecraft_uuid,minecraft_name,request_ip,status,created_at,updated_at,approved_at,approved_by,note)
+                    VALUES(%s,%s,%s,%s,%s,'AUTO_APPROVED',%s,%s,%s,'automatic-registration','Automatic whitelist; Minecraft ownership still requires an in-game link code')
+                    """,
+                    (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now, now),
+                )
         conn.commit()
+    whitelist_state = "NOT_REQUESTED"
+    if auto_whitelist:
+        try:
+            await bg(add_player_to_whitelist_sync, minecraft_uuid, minecraft_name)
+            whitelist_state = "AUTO_APPROVED"
+        except Exception:
+            whitelist_state = "PENDING"
+            with auth_conn() as conn:
+                conn.execute(
+                    "UPDATE whitelist_requests SET status='PENDING',updated_at=%s,note='Automatic whitelist write failed; manual approval required' WHERE site_account_id=%s AND status='AUTO_APPROVED'",
+                    (now_ts(), account_id),
+                )
+                conn.commit()
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
     account_payload = {
         "id": account_id,
         "username": username,
-        "minecraft_uuid": minecraft_uuid,
-        "minecraft_name": minecraft_name,
+        "minecraft_uuid": "",
+        "minecraft_name": "",
         "enabled": 1,
         "created_at": now,
         "updated_at": now,
@@ -9029,17 +9247,20 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
         request,
         remember_me=data.remember_me,
     )
-    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
+    set_auth_cookies_for_request(response, request, access_token, refresh_token, data.remember_me)
     return {
         "role": "player",
         "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
         "cookieAuth": True,
         "account": public_player_account(account_payload),
+        "minecraftLinkRequired": bool(minecraft_name),
+        "whitelistState": whitelist_state,
     }
 
 
 @app.post("/api/player/login")
 async def player_login(data: PlayerLoginIn, request: Request, response: Response) -> dict[str, Any]:
+    require_secure_auth_transport(request)
     username = data.username.strip()
     check_rate_limit(request, "player-login-ip", limit=20, window_seconds=300)
     assert_not_locked(request, "player:" + username)
@@ -9058,7 +9279,7 @@ async def player_login(data: PlayerLoginIn, request: Request, response: Response
     clear_failed_login(request, "player:" + username)
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now_ts(), "latestLoginUser": username})
     access_token, refresh_token = issue_player_auth_pair(account, request, remember_me=data.remember_me)
-    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
+    set_auth_cookies_for_request(response, request, access_token, refresh_token, data.remember_me)
     account["last_login_at"] = now_ts()
     return {"role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": public_player_account(account)}
 
@@ -9071,6 +9292,7 @@ async def player_recovery_start(data: PlayerRecoveryStartIn, request: Request) -
 
 @app.post("/api/player/recovery/confirm")
 async def player_recovery_confirm(data: PlayerRecoveryConfirmIn, request: Request, response: Response) -> dict[str, Any]:
+    require_secure_auth_transport(request)
     check_rate_limit(request, "player-recovery-confirm", limit=8, window_seconds=300)
     result = await bg(confirm_player_recovery_code_sync, data.minecraft_name.strip(), data.code.strip().upper(), data.new_password)
     account = dict(result.get("account") or {})
@@ -9084,18 +9306,20 @@ async def player_recovery_confirm(data: PlayerRecoveryConfirmIn, request: Reques
         request,
         remember_me=data.remember_me,
     )
-    set_auth_cookies(response, access_token, refresh_token, data.remember_me)
+    set_auth_cookies_for_request(response, request, access_token, refresh_token, data.remember_me)
     return {"ok": True, "role": "player", "expiresIn": ACCESS_TOKEN_TTL_SECONDS, "cookieAuth": True, "account": account}
 
 
 @app.post("/api/player/refresh")
 async def player_refresh(request: Request, response: Response) -> dict[str, Any]:
+    require_secure_auth_transport(request)
     refresh_token = request_refresh_token(request)
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh-сессия отсутствует")
     result = await bg(rotate_auth_pair_from_refresh_sync, refresh_token, request, "player")
-    set_auth_cookies(
+    set_auth_cookies_for_request(
         response,
+        request,
         str(result.pop("accessToken")),
         str(result.pop("refreshToken")),
         bool(result.pop("rememberMe", False)),
@@ -9270,12 +9494,13 @@ async def player_create_report(request: Request, data: PlayerSupportReportIn, ac
         message=str(data.message or "").strip(),
         world=str(data.world or "").strip()[:80] or None,
         severity=str(data.severity or "normal").strip().lower()[:40] or "normal",
-        attached_events=list(data.attached_events or [])[:20],
+        # Player-site reports intentionally contain only the player's text.
+        # Technical snapshots are accepted solely from the plugin-key endpoint.
+        attached_events=[],
         metadata={
             "sourcePage": "player-cabinet",
             "siteAccountId": str(account.get("id") or "").strip(),
             "siteUsername": str(account.get("username") or "").strip(),
-            **(data.metadata if isinstance(data.metadata, dict) else {}),
         },
     )
     item = await bg(create_report_sync, payload, "player-site", str(account.get("username") or reporter_name or "player"))
@@ -10300,7 +10525,7 @@ def create_application_sync(data: DiscordApplicationIn, source: str, actor: str)
 
 def create_report_sync(data: DiscordReportIn, source: str, actor: str) -> dict[str, Any]:
     item = data.model_dump()
-    item["metadata"] = normalize_report_metadata(item.get("metadata"))
+    item["metadata"] = normalize_report_metadata_for_source(item.get("metadata"), source, str(item.get("message") or ""))
     item["reportType"] = str(item["metadata"].get("reportKind") or "report")
     item["errorCode"] = clip_text(item["metadata"].get("errorCode"), 80)
     item["errorSummary"] = clip_text(item["metadata"].get("errorSummary"), 240)
@@ -13647,16 +13872,49 @@ async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
     }
 
 
+def public_health_projection(report: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    """Expose only service state; paths, hosts and diagnostic payloads stay admin-only."""
+    raw = dict(report or {})
+    raw_summary = safe_mapping(raw.get("summary"))
+    summary = {
+        "total": max(0, int(raw_summary.get("total") or 0)),
+        "failures": max(0, int(raw_summary.get("failures") or 0)),
+        "warnings": max(0, int(raw_summary.get("warnings") or 0)),
+    }
+    checks = []
+    for raw_check in raw.get("checks", []) if isinstance(raw.get("checks"), list) else []:
+        check = safe_mapping(raw_check)
+        key = clip_text(check.get("key"), 80)
+        status = str(check.get("status") or "unknown").lower()
+        if not key or status not in {"ok", "warn", "fail"}:
+            continue
+        checks.append({"key": key, "status": status, "required": bool(check.get("required", True))})
+    return {"ok": bool(raw.get("ok", False)), "summary": summary, "checks": checks}
+
+
+def public_auth_transport_state() -> dict[str, Any]:
+    if ALLOW_INSECURE_HTTP_AUTH:
+        return {
+            "http": "authenticated-opt-in",
+            "authenticatedSessions": "insecure-http-opt-in",
+            "warning": "HTTP authentication is explicitly enabled; use HTTPS for public access.",
+        }
+    return {
+        "http": "public-only",
+        "authenticatedSessions": "https-required",
+        "warning": "Public pages and downloads work over HTTP; login cookies require HTTPS.",
+    }
+
+
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
     report = _STARTUP_REPORT or run_startup_checks()
     return {
-        "ok": bool(report.get("ok", False)),
+        **public_health_projection(report),
         "name": "CopiMine Ultimate Admin",
         "version": APP_VERSION,
         "time": int(time.time()),
-        "summary": report.get("summary", {}),
-        "checks": report.get("checks", []),
+        "transport": public_auth_transport_state(),
     }
 
 

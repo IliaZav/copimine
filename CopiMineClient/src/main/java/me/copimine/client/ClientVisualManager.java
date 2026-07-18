@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ClientVisualManager {
+    private static final String CLIENT_OVERLAY_ROUTE = "CLIENT_OVERLAY";
+
     @FunctionalInterface
     public interface FinishedVisualHandler {
         void onFinished(long seq, String effectId, String reason);
@@ -59,7 +61,8 @@ public final class ClientVisualManager {
         );
         active.put(seq, visual);
         lastServerSeq = seq;
-        return refreshRuntime();
+        boolean runtimeApplied = refreshRuntime();
+        return runtimeApplied || hasActiveVisuals();
     }
 
     public void startLocalTest(String effectId, int seconds, float intensity) {
@@ -213,7 +216,8 @@ public final class ClientVisualManager {
     }
 
     public String activeRuntimeRouteName() {
-        return shaderRuntimeManager == null ? "NONE" : shaderRuntimeManager.activeRouteName();
+        String runtimeRoute = shaderRuntimeManager == null ? "NONE" : shaderRuntimeManager.activeRouteName();
+        return hasActiveVisuals() && "NONE".equals(runtimeRoute) ? CLIENT_OVERLAY_ROUTE : runtimeRoute;
     }
 
     public String lastFailureReason() {
@@ -358,6 +362,9 @@ public final class ClientVisualManager {
     }
 
     private float clamp(float value) {
+        if (!Float.isFinite(value)) {
+            return 0.0F;
+        }
         return Math.max(0.0F, Math.min(1.0F, value));
     }
 

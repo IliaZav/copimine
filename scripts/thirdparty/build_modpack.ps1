@@ -14,6 +14,7 @@ $sha = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha1"
 $sha256 = Join-Path $ProjectRoot "thirdparty\CopiMineMods.sha256"
 $frontendPublicDataDir = Join-Path $ProjectRoot "admin-web\frontend\assets\public-data"
 $frontendSnapshot = Join-Path $frontendPublicDataDir "modpack_snapshot.json"
+$checksumsPath = Join-Path $ProjectRoot "thirdparty\checksums.txt"
 
 function Write-Utf8NoBomJson {
     param(
@@ -22,6 +23,22 @@ function Write-Utf8NoBomJson {
     )
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($LiteralPath, $Content + [Environment]::NewLine, $utf8NoBom)
+}
+
+function Assert-ReleaseChecksum {
+    param([Parameter(Mandatory = $true)][string]$RelativePath)
+    if (-not (Test-Path -LiteralPath $checksumsPath)) {
+        throw "Missing SHA-256 checksum manifest: $checksumsPath"
+    }
+    $normalized = $RelativePath.Replace('\', '/')
+    $line = Get-Content -LiteralPath $checksumsPath -Encoding ascii |
+        Where-Object { $_ -match '^SHA256\s+' -and ($_ -split '\s+')[1] -eq $normalized } |
+        Select-Object -First 1
+    if (-not $line) { throw "Missing SHA-256 pin for $normalized" }
+    $expected = ($line -split '\s+')[2].ToLowerInvariant()
+    if ($expected -notmatch '^[0-9a-f]{64}$') { throw "Malformed SHA-256 pin for $normalized" }
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $ProjectRoot $RelativePath)).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) { throw "SHA-256 mismatch for $normalized" }
 }
 
 if (Test-Path -LiteralPath $stage) {
@@ -44,6 +61,7 @@ foreach ($relative in $files) {
     if (-not (Test-Path -LiteralPath $source)) {
         throw "Missing file for modpack: $relative"
     }
+    Assert-ReleaseChecksum -RelativePath $relative
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "mods") -Force
 }
 

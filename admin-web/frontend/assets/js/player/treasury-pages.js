@@ -1,3 +1,5 @@
+import { fullTaxPaymentAmount, isPlayerBankRoute } from "../shared/player-bank.js";
+
 export function createPlayerTreasuryPages(deps) {
   const {
     $,
@@ -205,9 +207,9 @@ export function createPlayerTreasuryPages(deps) {
           <div class="bank-tax-box">
             <div class="notice full">К оплате за текущий период: <strong>${formatAr(taxDue)}</strong>. Уже оплачено: <strong>${formatAr(taxPaid)}</strong>.</div>
             <div class="bank-tax-form">
-              <input id="electionTaxAmount" type="number" min="1" max="${Math.max(0, taxDue)}" value="${taxDue > 0 ? taxDue : ""}" placeholder="Сумма налога" ${tax ? "" : "disabled"} />
+              <input id="electionTaxAmount" type="number" value="${taxDue > 0 ? taxDue : ""}" aria-label="Полная сумма налога" readonly />
               <input id="electionTaxPin" type="password" inputmode="numeric" placeholder="PIN" ${tax ? "" : "disabled"} />
-              <button class="btn btn-primary" data-click="playerPayElectionTax()" ${!tax || taxDue <= 0 ? "disabled" : ""}>Оплатить налог</button>
+              <button id="electionTaxPayButton" class="btn btn-primary" data-tax-due="${taxDue}" data-click="playerPayElectionTax()" ${!tax || taxDue <= 0 ? "disabled" : ""}>Оплатить налог</button>
             </div>
           </div>
         `) : ""}
@@ -345,7 +347,7 @@ export function createPlayerTreasuryPages(deps) {
       const result = await api("/api/player/elections/tax/pay", {
         method: "POST",
         body: JSON.stringify({
-          amount: number($("electionTaxAmount")?.value || 0),
+          amount: fullTaxPaymentAmount($("electionTaxPayButton")?.dataset.taxDue),
           pin: $("electionTaxPin")?.value || "",
         }),
       });
@@ -360,7 +362,7 @@ export function createPlayerTreasuryPages(deps) {
   async function selectPlayerBankScope(scope = "PERSONAL") {
     state.playerBankScope = String(scope || "PERSONAL").toUpperCase();
     setStoredUiState("copiminePlayerBankScope", state.playerBankScope);
-    if (state.tab === "bank") {
+    if (isPlayerBankRoute(state.tab)) {
       await loadPlayerBank();
     }
   }

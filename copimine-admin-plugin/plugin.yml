@@ -72,6 +72,12 @@ permissions:
   copimine.players.admin:
     description: Управление игроками
     default: op
+  copimine.players.check:
+    description: Проверки игроков, freeze и возврат из проверки
+    default: op
+  copimine.database.maintenance:
+    description: Обслуживание базы данных (ANALYZE и checkpoint)
+    default: op
   copimine.reports.admin:
     description: Управление обращениями игроков
     default: op

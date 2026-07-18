@@ -5,11 +5,16 @@ import json
 import mimetypes
 import os
 import subprocess
+import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from .envfile import parse_env_file, resolve_env_file
+
+
+_ARTIFACT_SNAPSHOT_CACHE: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = {}
+_ARTIFACT_SNAPSHOT_CACHE_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,16 @@ def digest_file(path: Path, algorithm: str) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def file_fingerprint(path: Path | None) -> tuple[bool, int, int]:
+    if path is None:
+        return (False, 0, 0)
+    try:
+        stat = path.stat()
+        return (path.is_file(), int(stat.st_size), int(stat.st_mtime_ns))
+    except OSError:
+        return (False, 0, 0)
 
 
 def read_sidecar_hash(path: Path | None) -> str:
@@ -124,30 +139,45 @@ def managed_artifacts(project_root: Path) -> dict[str, ManagedArtifact]:
 
 
 def artifact_snapshot(artifact: ManagedArtifact) -> dict[str, Any]:
-    exists = artifact.exists()
-    guessed_type = mimetypes.guess_type(artifact.filename)[0] or artifact.media_type
-    sha1 = digest_file(artifact.path, "sha1") if exists else ""
-    sha256 = digest_file(artifact.path, "sha256") if exists else ""
-    sidecar = read_sidecar_hash(artifact.hash_sidecar_path)
-    manifest = safe_json(artifact.manifest_path) if artifact.manifest_path is not None else {}
-    payload = asdict(artifact)
-    payload["path"] = str(artifact.path)
-    payload["manifest_path"] = str(artifact.manifest_path) if artifact.manifest_path else ""
-    payload["hash_sidecar_path"] = str(artifact.hash_sidecar_path) if artifact.hash_sidecar_path else ""
-    payload.update(
-        {
-            "exists": exists,
-            "size": artifact.path.stat().st_size if exists else 0,
-            "modified": int(artifact.path.stat().st_mtime) if exists else None,
-            "media_type": guessed_type,
-            "sha1": sha1,
-            "sha256": sha256,
-            "recordedSha1": sidecar,
-            "sha1MatchesSidecar": bool(sha1 and sidecar and sha1.lower() == sidecar.lower()),
-            "manifest": manifest,
-        }
+    cache_key = "|".join((artifact.key, artifact.bucket, artifact.filename, str(artifact.path.resolve())))
+    fingerprint = (
+        file_fingerprint(artifact.path),
+        file_fingerprint(artifact.hash_sidecar_path),
+        file_fingerprint(artifact.manifest_path),
     )
-    return payload
+    # Download routes call this for both HEAD and GET. Holding this small lock
+    # makes concurrent first requests share the same digest calculation instead
+    # of repeatedly reading a large archive from disk.
+    with _ARTIFACT_SNAPSHOT_CACHE_LOCK:
+        cached = _ARTIFACT_SNAPSHOT_CACHE.get(cache_key)
+        if cached and cached[0] == fingerprint:
+            return dict(cached[1])
+
+        exists, size, modified_ns = fingerprint[0]
+        guessed_type = mimetypes.guess_type(artifact.filename)[0] or artifact.media_type
+        sha1 = digest_file(artifact.path, "sha1") if exists else ""
+        sha256 = digest_file(artifact.path, "sha256") if exists else ""
+        sidecar = read_sidecar_hash(artifact.hash_sidecar_path)
+        manifest = safe_json(artifact.manifest_path) if artifact.manifest_path is not None else {}
+        payload = asdict(artifact)
+        payload["path"] = str(artifact.path)
+        payload["manifest_path"] = str(artifact.manifest_path) if artifact.manifest_path else ""
+        payload["hash_sidecar_path"] = str(artifact.hash_sidecar_path) if artifact.hash_sidecar_path else ""
+        payload.update(
+            {
+                "exists": exists,
+                "size": size,
+                "modified": int(modified_ns // 1_000_000_000) if exists else None,
+                "media_type": guessed_type,
+                "sha1": sha1,
+                "sha256": sha256,
+                "recordedSha1": sidecar,
+                "sha1MatchesSidecar": bool(sha1 and sidecar and sha1.lower() == sidecar.lower()),
+                "manifest": manifest,
+            }
+        )
+        _ARTIFACT_SNAPSHOT_CACHE[cache_key] = (fingerprint, dict(payload))
+        return payload
 
 
 def runtime_snapshot(project_root: Path, app_root: Path) -> dict[str, Any]:

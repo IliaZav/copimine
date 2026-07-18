@@ -209,6 +209,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         TxnResult creditAccount(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details);
         TxnResult transferToAccount(UUID playerUuid, String playerName, String pin, String toAccountId, String toOwnerUuid, String toOwnerName, long amount, String idempotencyKey, String action, String details);
         TxnResult transferFromAccount(String fromAccountId, String fromOwnerUuid, String fromOwnerName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details);
+        /**
+         * Returns charged shop transfers that have no matching artifact row.
+         * The economy plugin owns this recovery query so feature plugins never
+         * read bank tables directly.
+         */
+        List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit);
         long balance(UUID playerUuid, String playerName);
         Health health(UUID playerUuid, String context);
     }
@@ -277,6 +283,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             Class.forName("org.postgresql.Driver");
             db = loadDbSettings();
             ensureSchema();
+            int interruptedSettlements = quarantineInterruptedPendingArSettlements();
+            if (interruptedSettlements > 0) {
+                getLogger().warning("Quarantined " + interruptedSettlements + " interrupted pending AR delivery record(s) for manual review.");
+            }
             loadAtmCache();
         } catch (Exception error) {
             getLogger().severe("CopiMineEconomyCore PostgreSQL init failed: " + safeError(error));
@@ -348,8 +358,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     public void openAdminEconomyHub(Player player) throws Exception {
-        if (!hasEconomyAdmin(player)) {
-            player.sendMessage(color("&cДоступно только администрации экономики."));
+        if (!requireEconomyAdmin(player)) {
             return;
         }
         MenuHolder holder = new MenuHolder("economy:hub", "");
@@ -367,6 +376,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     public void openAtmDirectory(Player player) throws Exception {
+        if (!requireEconomyAdmin(player)) {
+            return;
+        }
         openBankAtms(player);
     }
 
@@ -413,10 +425,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     public String createAtmFromTarget(Player player) throws Exception {
+        if (!requireEconomyAdmin(player)) {
+            return "";
+        }
         return createBankAtmFromTargetAsync(player);
     }
 
     public String archiveAtm(Player actor, String atmId) throws Exception {
+        if (!requireEconomyAdmin(actor)) {
+            return "";
+        }
         return archiveBankAtmAsync(actor, atmId);
     }
 
@@ -536,14 +554,23 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private void handleMenuAction(Player player, MenuHolder menu, String action) throws Exception {
         if (action.equals("economy:atms")) {
+            if (!requireEconomyAdmin(player)) {
+                return;
+            }
             openBankAtms(player);
             return;
         }
         if (action.equals("economy:summary")) {
+            if (!requireEconomyAdmin(player)) {
+                return;
+            }
             openEconomySummary(player);
             return;
         }
         if (action.equals("atm:create-target")) {
+            if (!requireEconomyAdmin(player)) {
+                return;
+            }
             player.sendMessage(color(createBankAtmFromTargetAsync(player)));
             return;
         }
@@ -552,11 +579,21 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return;
         }
         if (action.startsWith("atm:delete-confirm:")) {
+            if (!requireEconomyAdmin(player)) {
+                return;
+            }
             openAtmDeleteConfirm(player, action.substring("atm:delete-confirm:".length()));
             return;
         }
         if (action.startsWith("atm:delete:")) {
+            if (!requireEconomyAdmin(player)) {
+                return;
+            }
             player.sendMessage(color(archiveBankAtmAsync(player, action.substring("atm:delete:".length()))));
+            return;
+        }
+        if (action.equals("atm:close")) {
+            player.closeInventory();
             return;
         }
         if (action.startsWith("atm:deposit-hand:")) {
@@ -613,14 +650,23 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (action.startsWith("nav:")) {
             String target = action.substring("nav:".length());
             if (target.equals("hub")) {
+                if (!requireEconomyAdmin(player)) {
+                    return;
+                }
                 openAdminEconomyHub(player);
             } else if (target.equals("atms")) {
+                if (!requireEconomyAdmin(player)) {
+                    return;
+                }
                 openBankAtms(player);
             }
         }
     }
 
     private void openAtmDeleteConfirm(Player player, String atmId) {
+        if (!requireEconomyAdmin(player)) {
+            return;
+        }
         MenuHolder holder = new MenuHolder("economy:atm-delete", atmId);
         Inventory inventory = holder.create(27, color("&cУдалить банкомат"));
         button(holder, inventory, 11, Material.RED_WOOL, "&cДа, удалить", List.of(
@@ -638,6 +684,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openEconomySummary(Player player) throws Exception {
+        if (!requireEconomyAdmin(player)) {
+            return;
+        }
         UUID playerUuid = player.getUniqueId();
         String playerName = player.getName();
         dbFuture("open economy summary", () -> {
@@ -666,9 +715,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openBankAtms(Player player) throws Exception {
+        if (!requireEconomyAdmin(player)) {
+            return;
+        }
         dbFuture("open atm directory", () -> queryList("SELECT id,name,world,x,y,z,created_at FROM ar_atms WHERE active=1 ORDER BY created_at DESC LIMIT 28"))
                 .whenComplete((rows, error) -> Bukkit.getScheduler().runTask(this, () -> {
-                    if (!player.isOnline()) {
+                    if (!player.isOnline() || !hasEconomyAdmin(player)) {
                         return;
                     }
                     if (error != null) {
@@ -697,6 +749,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String createBankAtmFromTarget(Player player) throws Exception {
+        if (!requireEconomyAdmin(player)) {
+            return "";
+        }
         Block block = player.getTargetBlockExact(6);
         if (block == null) {
             return "&cСначала посмотри на блок банкомата.";
@@ -706,8 +761,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         String id = "atm_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
-        update("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0)",
+        int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
                 id, block.getWorld().getName(), block.getX(), block.getY(), block.getZ(), player.getName(), t);
+        if (created != 1) {
+            return "&eНа этом блоке уже есть банкомат.";
+        }
         cacheAtm(id, block);
         spawnOrReplaceProtectedBlockVisual(block.getLocation(), "ATM", id, Material.PAPER, MODEL_ATM_TERMINAL, "atm_terminal");
         pluginEvent("economy_core", "atm_created", player.getName(), id, "world=" + block.getWorld().getName());
@@ -715,6 +773,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String createBankAtmFromTargetAsync(Player player) throws Exception {
+        if (!requireEconomyAdmin(player)) {
+            return "";
+        }
         Block block = player.getTargetBlockExact(6);
         if (block == null) {
             return "&cСначала посмотри на блок банкомата.";
@@ -730,14 +791,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         int z = block.getZ();
         Location location = block.getLocation();
         dbFuture("create atm", () -> {
-            List<Map<String, Object>> existing = queryList(
-                    "SELECT id FROM ar_atms WHERE world=? AND x=? AND y=? AND z=? AND active=1 LIMIT 1",
-                    worldName, x, y, z);
-            if (!existing.isEmpty()) {
-                throw new IllegalStateException("ATM_EXISTS:" + first(string(existing.getFirst().get("id")), ""));
-            }
-            update("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0)",
+            int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
                     id, worldName, x, y, z, player.getName(), t);
+            if (created != 1) {
+                throw new IllegalStateException("ATM_EXISTS:");
+            }
             pluginEvent("economy_core", "atm_created", player.getName(), id, "world=" + worldName);
             return id;
         }).whenComplete((createdId, error) -> Bukkit.getScheduler().runTask(this, () -> {
@@ -747,7 +805,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (error != null) {
                 Throwable root = unwrap(error);
                 String message = safeError(root);
-                if (message.startsWith("ATM_EXISTS:")) {
+                if (message.startsWith("ATM_EXISTS")) {
                     player.sendMessage(color("&eНа этом блоке уже есть активный банкомат."));
                     return;
                 }
@@ -772,6 +830,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String archiveBankAtm(Player actor, String atmId) throws Exception {
+        if (!requireEconomyAdmin(actor)) {
+            return "";
+        }
         int changed = tx(connection -> {
             update(connection, "UPDATE ar_atms SET active=0,archived_by=?,archived_at=? WHERE id=? AND active=1", actor.getName(), now(), atmId);
             cleanupProtectedBlockVisuals("ATM", atmId);
@@ -783,6 +844,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String archiveBankAtmAsync(Player actor, String atmId) throws Exception {
+        if (!requireEconomyAdmin(actor)) {
+            return "";
+        }
         dbFuture("archive atm", () -> {
             int changed = tx(connection -> {
                 Map<String, Object> row = queryOne(connection, "SELECT id FROM ar_atms WHERE id=? AND active=1 FOR UPDATE", atmId);
@@ -834,7 +898,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     List.of("&7Обычный банковский счёт и личный PIN."), "atm:account:" + atmId + ":PERSONAL");
             button(holder, inventory, 15, Material.GOLD_BLOCK, "&6Казна",
                     List.of("&7Отдельный счёт казны.", "&7Доступ только у президента и админов."), "atm:account:" + atmId + ":TREASURY");
-            button(holder, inventory, 22, Material.ARROW, "&aК банкоматам", List.of(), "nav:atms");
+            button(holder, inventory, 22, Material.BARRIER, "&7Закрыть", List.of(), "atm:close");
             holder.actions.put(4, "atm:balance:" + atmId + ":PERSONAL");
             player.openInventory(inventory);
             return;
@@ -925,7 +989,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             button(holder, inventory, 28, Material.EMERALD, "&eСнять 1 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":1");
             button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eСнять 16 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":16");
             button(holder, inventory, 32, Material.DIAMOND_ORE, "&eСнять 64 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":64");
-            button(holder, inventory, 49, Material.ARROW, "&aК банкоматам", List.of(), "nav:atms");
+            button(holder, inventory, 49, Material.BARRIER, "&7Закрыть", List.of(), "atm:close");
             player.openInventory(inventory);
         }));
     }
@@ -1287,7 +1351,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                                     getLogger().warning("pending AR settlements reserve: " + safeError(reserveError));
                                     return;
                                 }
-                                if (!player.isOnline() || reserved == null || reserved != ids.size()) {
+                                if (!player.isOnline()) {
+                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(ids));
+                                    return;
+                                }
+                                if (reserved == null || reserved != ids.size()) {
+                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(ids));
                                     return;
                                 }
                                 if (arCapacity(player.getInventory()) < totalAmount || !issueOfficialArAmount(player, totalAmount, "pending-ar-settlement", false)) {
@@ -2358,8 +2427,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return player.isOp() || player.hasPermission("copimine.admin") || player.hasPermission("copimine.economy.admin") || player.hasPermission("copimine.bank.admin");
     }
 
+    private boolean requireEconomyAdmin(Player player) {
+        if (player != null && hasEconomyAdmin(player)) {
+            return true;
+        }
+        if (player != null) {
+            player.sendMessage(color("&cДоступно только администрации экономики."));
+        }
+        return false;
+    }
+
     private void ensureSchema() throws Exception {
-        tx(connection -> {
+        int archivedDuplicateAtms = tx(connection -> {
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_accounts(account_id TEXT PRIMARY KEY,owner_uuid TEXT NOT NULL,owner_name TEXT NOT NULL DEFAULT '',account_type TEXT NOT NULL DEFAULT 'PLAYER',currency TEXT NOT NULL DEFAULT 'AR',balance BIGINT NOT NULL DEFAULT 0 CHECK(balance>=0),status TEXT NOT NULL DEFAULT 'ACTIVE',version BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_ledger(tx_id TEXT PRIMARY KEY,account_id TEXT NOT NULL,counterparty_account_id TEXT NOT NULL DEFAULT '',player_uuid TEXT NOT NULL DEFAULT '',tx_type TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>=0),balance_after BIGINT NOT NULL DEFAULT 0,idempotency_key TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'COMMITTED',created_at BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_transfers(tx_id TEXT PRIMARY KEY,from_account_id TEXT NOT NULL,to_account_id TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>0),currency TEXT NOT NULL DEFAULT 'AR',status TEXT NOT NULL DEFAULT 'COMMITTED',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '')");
@@ -2397,6 +2476,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS archived_by TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS archived_at BIGINT NOT NULL DEFAULT 0");
+            int archived = archiveDuplicateActiveAtms(connection);
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_owner_type_active ON cmv4_bank_accounts(owner_uuid,account_type,currency) WHERE status='ACTIVE'");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_ledger_idempotency ON cmv4_bank_ledger(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_transfers_idempotency ON cmv4_bank_transfers(idempotency_key) WHERE idempotency_key<>''");
@@ -2408,11 +2488,31 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_purchases_player_status ON donation_purchases(player_uuid,status,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_claims_player_status ON donation_item_claims(player_uuid,status,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv4_pending_ar_player_status ON cmv4_pending_ar_settlements(player_uuid,status,created_at ASC)");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_ar_atms_location_active ON ar_atms(world,x,y,z) WHERE active=1");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_ar_atms_location ON ar_atms(world,x,y,z,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_location ON protected_block_visuals(world,x,y,z,active)");
-            return null;
+            return archived;
         });
+        if (archivedDuplicateAtms > 0) {
+            getLogger().warning("Archived " + archivedDuplicateAtms + " duplicate active ATM record(s) before enforcing the location uniqueness constraint.");
+        }
+    }
+
+    private int archiveDuplicateActiveAtms(Connection connection) throws Exception {
+        return updateCount(connection,
+                "WITH ranked AS (" +
+                        "SELECT id,ROW_NUMBER() OVER (PARTITION BY world,x,y,z ORDER BY created_at ASC,id ASC) AS duplicate_rank " +
+                        "FROM ar_atms WHERE active=1" +
+                        ") UPDATE ar_atms SET active=0,archived_by='SYSTEM_DUPLICATE_CLEANUP',archived_at=? " +
+                        "WHERE id IN (SELECT id FROM ranked WHERE duplicate_rank>1)",
+                now());
+    }
+
+    private int quarantineInterruptedPendingArSettlements() throws Exception {
+        return tx(connection -> updateCount(connection,
+                "UPDATE cmv4_pending_ar_settlements SET status='DELIVERY_REVIEW',reason=CASE WHEN reason='' THEN 'interrupted_after_reservation' ELSE reason || ';interrupted_after_reservation' END,updated_at=? WHERE status='DELIVERING'",
+                now()));
     }
 
     private DbSettings loadDbSettings() throws Exception {
@@ -2508,9 +2608,17 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void update(Connection connection, String sql, Object... args) throws Exception {
+        updateCount(connection, sql, args);
+    }
+
+    private int updateCount(String sql, Object... args) throws Exception {
+        return tx(connection -> updateCount(connection, sql, args));
+    }
+
+    private int updateCount(Connection connection, String sql, Object... args) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             bind(statement, args);
-            statement.executeUpdate();
+            return statement.executeUpdate();
         }
     }
 
@@ -3604,16 +3712,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         @Override
         public void openAtmDirectory(Player player) throws Exception {
+            if (!requireEconomyAdmin(player)) {
+                return;
+            }
             openBankAtms(player);
         }
 
         @Override
         public String createAtTarget(Player player) throws Exception {
+            if (!requireEconomyAdmin(player)) {
+                return "";
+            }
             return createBankAtmFromTargetAsync(player);
         }
 
         @Override
         public String archive(Player actor, String atmId) throws Exception {
+            if (!requireEconomyAdmin(actor)) {
+                return "";
+            }
             return archiveBankAtmAsync(actor, atmId);
         }
     }
@@ -3647,6 +3764,29 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         @Override
         public TxnResult transferFromAccount(String fromAccountId, String fromOwnerUuid, String fromOwnerName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
             return CopiMineEconomyCore.this.transferFromAccount(fromAccountId, fromOwnerUuid, fromOwnerName, toUuid, toName, amount, idempotencyKey, action, details);
+        }
+
+        @Override
+        public List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit) {
+            requireAsyncBankContext("ArtifactsBridge.findOrphanedArtifactShopTransfers");
+            int boundedLimit = Math.max(1, Math.min(limit, 256));
+            try {
+                return queryList(
+                    "SELECT t.tx_id,t.to_account_id,t.amount,t.idempotency_key,l.player_uuid,l.actor "
+                        + "FROM cmv4_bank_transfers t "
+                        + "JOIN cmv4_bank_ledger l ON l.tx_id=t.tx_id || ':out' AND l.tx_type='AR_SHOP_PURCHASE' "
+                        + "WHERE t.idempotency_key LIKE 'artifact-purchase-%' "
+                        + "  AND NOT EXISTS (SELECT 1 FROM artifact_purchases p WHERE p.idempotency_key=t.idempotency_key) "
+                        + "  AND NOT EXISTS (SELECT 1 FROM cmv4_bank_transfers r WHERE r.idempotency_key IN ( "
+                        + "      REPLACE(t.idempotency_key,'artifact-purchase-','artifact-refund-'), "
+                        + "      REPLACE(t.idempotency_key,'artifact-purchase-','artifact-orphan-refund-'))) "
+                        + "ORDER BY t.created_at ASC LIMIT ?",
+                    boundedLimit
+                );
+            } catch (Exception error) {
+                getLogger().log(java.util.logging.Level.WARNING, "Artifact orphan transfer lookup failed", error);
+                return List.of();
+            }
         }
 
         @Override

@@ -170,6 +170,9 @@ def main() -> None:
             "MC_LOG_FILE": str(base / "logs" / "latest.log"),
             "SECRET_KEY": "x" * 64,
             "ADMIN_PUBLIC_BASE_URL": "http://127.0.0.1:18080",
+            # The smoke test intentionally models a trusted local HTTP setup.
+            # Production public sessions stay HTTPS-only unless this opt-in is set.
+            "ALLOW_INSECURE_HTTP_AUTH": "1",
             "COPIMINE_AUTH_STORAGE": "sqlite",
             "COPIMINE_AUTH_DB": str(data_dir / "auth.sqlite3"),
             "DATABASE_URL": f"sqlite:///{(data_dir / 'auth.sqlite3').as_posix()}",

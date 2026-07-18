@@ -1,0 +1,18 @@
+[Unit]
+Description=CopiMine post-start game runtime hardening
+After=copimine-minecraft.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=COPIMINE_ROOT=/opt/copimine
+ExecStart=/opt/copimine/deploy/ubuntu/apply_game_hardening.sh
+TimeoutStartSec=110
+RemainAfterExit=yes
+
+[Install]
+# Start when Minecraft is started, but do not make Minecraft or the boot target
+# require this one-shot unit. A failure remains visible in this unit and causes
+# the explicit install/upgrade verification to fail.
+WantedBy=copimine-minecraft.service

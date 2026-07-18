@@ -10,8 +10,25 @@ if [[ -z "$ARCHIVE_PATH" ]]; then
   exit 1
 fi
 
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  echo "Run this patch with sudo/root."
+  exit 1
+fi
+
 if [[ ! -f "$ARCHIVE_PATH" ]]; then
   echo "Archive not found: $ARCHIVE_PATH"
+  exit 1
+fi
+
+SHA256_PATH="${ARCHIVE_PATH}.sha256"
+if [[ ! -f "$SHA256_PATH" ]]; then
+  echo "Missing required SHA256 sidecar: $SHA256_PATH"
+  exit 1
+fi
+EXPECTED_SHA256="$(awk '{print tolower($1)}' "$SHA256_PATH" | head -n 1)"
+ACTUAL_SHA256="$(sha256sum "$ARCHIVE_PATH" | awk '{print tolower($1)}')"
+if [[ ! "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]] || [[ "$EXPECTED_SHA256" != "$ACTUAL_SHA256" ]]; then
+  echo "Auth patch archive SHA256 verification failed."
   exit 1
 fi
 
@@ -46,6 +63,7 @@ detect_payload_root() {
 
 echo "[1/8] Preparing backup"
 mkdir -p "$BACKUP_ROOT"
+chmod 700 "$BACKUP_ROOT"
 cp -a "$PROJECT_ROOT/minecraft/server/plugins/." "$BACKUP_ROOT/plugins-before/" >/dev/null 2>&1 || true
 
 echo "[2/8] Stopping minecraft service"

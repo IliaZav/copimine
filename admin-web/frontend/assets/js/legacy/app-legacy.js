@@ -1,4 +1,5 @@
 import { getStoredUiState, removeStoredUiState, setStoredUiState } from "../shared/browser-state.js";
+import { buildCsvContent } from "../shared/csv.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "../shared/dom.js";
 import { createAdminCmsPages } from "../admin/cms-pages.js";
 import { createAdminCommercePages } from "../admin/commerce-pages.js";
@@ -1672,7 +1673,7 @@ window.exportTable = (id, type) => {
   let ext = "json";
   if (type === "csv") {
     const keys = t.columns.map(c => c.key);
-    content = [keys.join(","), ...rows.map(row => keys.map(k => `"${String(row[k] ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
+    content = buildCsvContent(keys, rows);
     mime = "text/csv;charset=utf-8";
     ext = "csv";
   } else {

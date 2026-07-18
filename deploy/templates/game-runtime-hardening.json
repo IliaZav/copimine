@@ -1,0 +1,45 @@
+{
+  "imageframe": {
+    "Settings": {
+      "RestrictImageUrl": {
+        "Enabled": true,
+        "Whitelist": [
+          "https://i.imgur.com",
+          "https://cdn.discordapp.com",
+          "https://media.discordapp.net",
+          "https://textures.minecraft.net"
+        ]
+      },
+      "MaxSize": 32,
+      "MaxImageFileSize": 8388608,
+      "MaxProcessingTime": 15,
+      "ParallelProcessingLimit": 1,
+      "PlayerCreationLimit": {
+        "default": 0,
+        "admin": -1
+      },
+      "MapMarkerLimit": 10,
+      "MapPacketSendingRateLimit": 20,
+      "CacheControlMode": "DYNAMIC"
+    },
+    "UploadService": {
+      "Enabled": false,
+      "WebServer": {
+        "Host": "127.0.0.1",
+        "Port": 8517
+      }
+    }
+  },
+  "authme": {
+    "settings": {
+      "security": {
+        "minPasswordLength": 12,
+        "passwordHash": "BCRYPT",
+        "legacyHashes": ["SHA256"]
+      }
+    },
+    "ExternalBoardOptions": {
+      "bCryptLog2Round": 12
+    }
+  }
+}

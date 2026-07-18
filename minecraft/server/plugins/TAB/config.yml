@@ -35,7 +35,7 @@ scoreboard-teams:
   can-see-friendly-invisibles: false
   disable-condition: '%world%=disabledworld'
   sorting-types:
-  - GROUPS:admin,president,curator,default
+  - GROUPS:owner,admin,president,curator,moderator,helper,default
   - PLACEHOLDER_A_TO_Z:%player%
 playerlist-objective:
   enabled: true
@@ -184,10 +184,12 @@ placeholder-refresh-intervals:
   '%rel_factionsuuid_relation_color%': 1000
 assign-groups-by-permissions: false
 primary-group-finding-list:
-- Owner
-- Admin
-- Mod
-- Helper
+- owner
+- admin
+- president
+- curator
+- moderator
+- helper
 - default
 permission-refresh-interval: 3000
 debug: false

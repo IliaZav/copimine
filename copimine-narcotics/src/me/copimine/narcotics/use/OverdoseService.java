@@ -35,6 +35,7 @@ public final class OverdoseService {
     private final Set<UUID> loadingStates = ConcurrentHashMap.newKeySet();
     private final Set<UUID> readyStates = ConcurrentHashMap.newKeySet();
     private final AtomicLong stateEpoch = new AtomicLong(0L);
+    private final Map<UUID, Long> sessionEpochs = new ConcurrentHashMap<>();
 
     public OverdoseService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, VisualRuntimeService visualRuntime) {
         this.plugin = plugin;
@@ -52,12 +53,13 @@ public final class OverdoseService {
             return;
         }
         long requestEpoch = stateEpoch.longValue();
+        long requestSessionEpoch = sessionEpoch(playerUuid);
         database.loadPlayerState(playerUuid).thenAccept(state -> {
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        loadingStates.remove(playerUuid);
-                        if (stateEpoch.longValue() != requestEpoch) {
+                        if (stateEpoch.longValue() != requestEpoch || sessionEpoch(playerUuid) != requestSessionEpoch) {
                             return;
                         }
+                        loadingStates.remove(playerUuid);
                         PlayerState loaded = state == null ? PlayerState.empty(playerUuid) : state;
                         states.compute(playerUuid, (ignored, current) -> current == null || loaded.stateVersion() >= current.stateVersion() ? loaded : current);
                         readyStates.add(playerUuid);
@@ -69,6 +71,9 @@ public final class OverdoseService {
                 })
                 .exceptionally(error -> {
                     Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (stateEpoch.longValue() != requestEpoch || sessionEpoch(playerUuid) != requestSessionEpoch) {
+                            return;
+                        }
                         loadingStates.remove(playerUuid);
                         readyStates.remove(playerUuid);
                         plugin.getLogger().warning("Failed to preload narcotics state: " + error.getMessage());
@@ -275,6 +280,20 @@ public final class OverdoseService {
         movementGuard.clear();
         loadingStates.clear();
         readyStates.clear();
+        sessionEpochs.clear();
+    }
+
+    public void releasePlayerSession(Player player) {
+        if (player == null) {
+            return;
+        }
+        UUID playerUuid = player.getUniqueId();
+        clearActiveEffects(player, true);
+        invalidateSession(playerUuid);
+        states.remove(playerUuid);
+        movementGuard.remove(playerUuid);
+        loadingStates.remove(playerUuid);
+        readyStates.remove(playerUuid);
     }
 
     public void forceClearOverdose(Player player) {
@@ -288,6 +307,14 @@ public final class OverdoseService {
 
     public PlayerState state(UUID playerUuid) {
         return states.getOrDefault(playerUuid, PlayerState.empty(playerUuid));
+    }
+
+    private long sessionEpoch(UUID playerUuid) {
+        return sessionEpochs.getOrDefault(playerUuid, 0L);
+    }
+
+    private void invalidateSession(UUID playerUuid) {
+        sessionEpochs.merge(playerUuid, 1L, Long::sum);
     }
 
     private PlayerState applyOverdose(Player player, NarcoticDefinition definition, PlayerState state, long now) {

@@ -1,3 +1,5 @@
+import { readRecipeDragIndex, writeRecipeDragIndex } from "../shared/recipe-drag.js";
+
 const RECIPE_ITEM_TABS = [
   {
     id: "basic",
@@ -174,7 +176,7 @@ export function createAdminNarcoticsRecipePages(deps) {
     if (!tape) return;
     tape.querySelectorAll("[draggable='true']").forEach((node) => {
       node.addEventListener("dragstart", (event) => {
-        event.dataTransfer?.setData("text/plain", node.dataset.index || "");
+        writeRecipeDragIndex(event.dataTransfer, Number(node.dataset.index));
         document.body.classList.add("recipe-dragging");
         $("recipeTrash")?.classList.add("is-live");
       });
@@ -185,7 +187,9 @@ export function createAdminNarcoticsRecipePages(deps) {
       node.addEventListener("dragover", (event) => event.preventDefault());
       node.addEventListener("drop", (event) => {
         event.preventDefault();
-        const from = Number(event.dataTransfer?.getData("text/plain"));
+        const recipe = currentRecipeMutable();
+        const from = readRecipeDragIndex(event.dataTransfer, recipe?.recipe?.length || 0);
+        if (from === null) return;
         const to = Number(node.dataset.index || 0);
         moveRecipeItem(from, to);
       });
@@ -193,7 +197,9 @@ export function createAdminNarcoticsRecipePages(deps) {
     $("recipeTrash")?.addEventListener("dragover", (event) => event.preventDefault());
     $("recipeTrash")?.addEventListener("drop", (event) => {
       event.preventDefault();
-      const from = Number(event.dataTransfer?.getData("text/plain"));
+      const recipe = currentRecipeMutable();
+      const from = readRecipeDragIndex(event.dataTransfer, recipe?.recipe?.length || 0);
+      if (from === null) return;
       document.body.classList.remove("recipe-dragging");
       $("recipeTrash")?.classList.remove("is-live");
       removeRecipeItem(from);
@@ -209,14 +215,14 @@ export function createAdminNarcoticsRecipePages(deps) {
 
   function removeRecipeItem(index) {
     const recipe = currentRecipeMutable();
-    if (!recipe) return;
+    if (!recipe || !Number.isInteger(index) || index < 0 || index >= recipe.recipe.length) return;
     recipe.recipe.splice(index, 1);
     renderEditor();
   }
 
   function moveRecipeItem(from, to) {
     const recipe = currentRecipeMutable();
-    if (!recipe || Number.isNaN(from) || Number.isNaN(to) || from === to) return;
+    if (!recipe || !Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= recipe.recipe.length || to >= recipe.recipe.length || from === to) return;
     const [item] = recipe.recipe.splice(from, 1);
     recipe.recipe.splice(to, 0, item);
     renderEditor();

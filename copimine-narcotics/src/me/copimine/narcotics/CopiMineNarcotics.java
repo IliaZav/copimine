@@ -326,8 +326,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        overdoseService.clearActiveEffects(event.getPlayer(), true);
-        visualRuntime.clear(event.getPlayer());
+        overdoseService.releasePlayerSession(event.getPlayer());
         visualRuntime.clearTracking(event.getPlayer());
     }
 
@@ -754,7 +753,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(message("player_not_found"));
             return true;
         }
-        overdoseService.clearActiveEffects(target, true);
         clientBridge.visuals().clearVisuals(target, "admin-stop");
         visualRuntime.clear(target);
         database.auditAsync(sender.getName(), "stop", "target=" + target.getName());

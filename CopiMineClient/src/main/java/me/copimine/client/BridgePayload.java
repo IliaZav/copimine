@@ -336,6 +336,9 @@ public record BridgePayload(
     }
 
     private static float clampIntensity(float value) {
+        if (!Float.isFinite(value)) {
+            return 0.0F;
+        }
         return Math.max(0.0F, Math.min(1.0F, value));
     }
 

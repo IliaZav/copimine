@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=qwerty
+User=copimine
 WorkingDirectory=/opt/copimine/admin-web
 EnvironmentFile=/opt/copimine/admin-web/.env
 Environment=COPIMINE_ENV_FILE=/opt/copimine/admin-web/.env

@@ -13,7 +13,6 @@ DECLARE
         'atm_audit',
         'ar_atms',
         'artifact_shops',
-        'artifact_pending_deliveries',
         'candidates',
         'round_candidates',
         'candidate_applications',

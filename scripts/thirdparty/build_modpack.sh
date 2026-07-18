@@ -8,6 +8,16 @@ SHA="$PROJECT_ROOT/thirdparty/CopiMineMods.sha1"
 SHA256="$PROJECT_ROOT/thirdparty/CopiMineMods.sha256"
 FRONTEND_PUBLIC_DATA_DIR="$PROJECT_ROOT/admin-web/frontend/assets/public-data"
 FRONTEND_SNAPSHOT="$FRONTEND_PUBLIC_DATA_DIR/modpack_snapshot.json"
+CHECKSUMS="$PROJECT_ROOT/thirdparty/checksums.txt"
+
+verify_release_artifact() {
+  local relative="$1"
+  local expected actual
+  expected="$(awk -v path="$relative" '$1 == "SHA256" && $2 == path {print tolower($3)}' "$CHECKSUMS")"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "Missing SHA-256 pin for $relative" >&2; exit 1; }
+  actual="$(sha256sum "$PROJECT_ROOT/$relative" | awk '{print tolower($1)}')"
+  [[ "$actual" == "$expected" ]] || { echo "SHA-256 mismatch for $relative" >&2; exit 1; }
+}
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE/mods"
@@ -21,6 +31,7 @@ for file in \
   "thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar"
 do
   [[ -f "$PROJECT_ROOT/$file" ]] || { echo "Missing file for modpack: $file" >&2; exit 1; }
+  verify_release_artifact "$file"
   cp "$PROJECT_ROOT/$file" "$STAGE/mods/"
 done
 

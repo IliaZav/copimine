@@ -75,7 +75,7 @@ Invoke-NativeChecked -FilePath scp -Arguments @("-P", "$Port", $archivePath, "${
 Invoke-NativeChecked -FilePath scp -Arguments @("-P", "$Port", $shaPath, "${Server}:$RemoteDir/")
 Invoke-NativeChecked -FilePath scp -Arguments @("-P", "$Port", $bootstrapPath, "${Server}:$RemoteDir/")
 
-$remoteCheck = "cd '$RemoteDir' && sha256sum '$archiveName' && cat '$archiveName.sha256' && test -f '$bootstrapName'"
+$remoteCheck = "cd '$RemoteDir' && expected=`$(awk '{print tolower(`$1)}' '$archiveName.sha256' | head -n 1) && actual=`$(sha256sum '$archiveName' | awk '{print tolower(`$1)}') && test `"`$expected`" = `"`$actual`" && test -f '$bootstrapName'"
 Invoke-NativeChecked -FilePath ssh -Arguments @("-p", "$Port", $Server, $remoteCheck)
 
 Write-Host ""

@@ -7,9 +7,10 @@ import {
   loadPublicTreasuryFallback,
 } from "./site-data.js";
 import { createHomepageRenderer } from "./site-render.js";
+import { createSuccessfulLoadRegistry } from "../shared/successful-load-registry.js";
 
 const renderer = createHomepageRenderer();
-const loadedPages = new Set();
+const pageLoads = createSuccessfulLoadRegistry();
 let homepageEventsBound = false;
 
 function bindCopyIpButton() {
@@ -101,12 +102,12 @@ async function renderFallbackForKind(kind) {
 }
 
 export async function loadPublicPage(kind = resolvePublicPageKind()) {
-  if (loadedPages.has(kind)) return;
-  loadedPages.add(kind);
-  bindCopyIpButton();
   try {
-    const authState = await loadPublicAuthState();
-    await loadPublicPageByKind(kind, authState);
+    await pageLoads.run(kind, async () => {
+      bindCopyIpButton();
+      const authState = await loadPublicAuthState();
+      await loadPublicPageByKind(kind, authState);
+    });
   } catch (_error) {
     await renderFallbackForKind(kind);
   }

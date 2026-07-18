@@ -12,6 +12,15 @@ ENV_FILE = resolve_env_file(APP_ROOT / ".env")
 MC_LOG = Path(os.getenv("MC_LOG_FILE", "/opt/copimine/minecraft/server/logs/latest.log"))
 STATE_FILE = APP_ROOT / "data" / "minecraft_discord_bridge.offset"
 DEDUPE_FILE = APP_ROOT / "data" / "minecraft_discord_bridge.dedupe.json"
+RATE_FILE = APP_ROOT / "data" / "minecraft_discord_bridge.rate.json"
+
+
+def bounded_env_int(values: dict, key: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(values.get(key, str(default)) or default)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
 
 def load_env():
     return parse_env_file(ENV_FILE)
@@ -20,7 +29,9 @@ env = load_env()
 TOKEN = env.get("DISCORD_BOT_TOKEN", "")
 APPLICATIONS_CHANNEL_ID = env.get("DISCORD_APPLICATIONS_CHANNEL_ID", "")
 REPORTS_CHANNEL_ID = env.get("DISCORD_REPORTS_CHANNEL_ID", "")
-DISCORD_BRIDGE_DEDUPE_SECONDS = int(env.get("DISCORD_BRIDGE_DEDUPE_SECONDS", "90") or "90")
+DISCORD_BRIDGE_DEDUPE_SECONDS = bounded_env_int(env, "DISCORD_BRIDGE_DEDUPE_SECONDS", 90, 30, 3600)
+DISCORD_BRIDGE_PLAYER_LIMIT = bounded_env_int(env, "DISCORD_BRIDGE_PLAYER_LIMIT", 4, 1, 20)
+DISCORD_BRIDGE_PLAYER_WINDOW_SECONDS = bounded_env_int(env, "DISCORD_BRIDGE_PLAYER_WINDOW_SECONDS", 300, 30, 3600)
 BRIDGE_DEDUPE_V2 = "structured-embed-dedupe"
 
 if not TOKEN:
@@ -80,6 +91,59 @@ def should_skip_duplicate(key: str) -> bool:
     save_dedupe(state)
     return False
 
+
+def load_rate_state() -> dict:
+    try:
+        raw = json.loads(RATE_FILE.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_rate_state(state: dict) -> None:
+    RATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    cutoff = int(time.time()) - DISCORD_BRIDGE_PLAYER_WINDOW_SECONDS
+    compact: dict[str, list[int]] = {}
+    for key, raw_values in state.items():
+        values = raw_values if isinstance(raw_values, list) else []
+        timestamps = []
+        for value in values:
+            try:
+                timestamp = int(value)
+            except (TypeError, ValueError):
+                continue
+            if timestamp >= cutoff:
+                timestamps.append(timestamp)
+        if timestamps:
+            compact[str(key)[:64]] = timestamps[-DISCORD_BRIDGE_PLAYER_LIMIT:]
+    temporary = RATE_FILE.with_suffix(RATE_FILE.suffix + ".tmp")
+    temporary.write_text(json.dumps(compact, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    temporary.replace(RATE_FILE)
+
+
+def allow_player_delivery(player: str) -> bool:
+    key = str(player or "unknown").strip().lower()[:64] or "unknown"
+    now = int(time.time())
+    cutoff = now - DISCORD_BRIDGE_PLAYER_WINDOW_SECONDS
+    state = load_rate_state()
+    existing = state.get(key, [])
+    timestamps = []
+    for value in existing if isinstance(existing, list) else []:
+        try:
+            timestamp = int(value)
+        except (TypeError, ValueError):
+            continue
+        if timestamp >= cutoff:
+            timestamps.append(timestamp)
+    if len(timestamps) >= DISCORD_BRIDGE_PLAYER_LIMIT:
+        state[key] = timestamps
+        save_rate_state(state)
+        return False
+    timestamps.append(now)
+    state[key] = timestamps
+    save_rate_state(state)
+    return True
+
 def build_bridge_embed_payload(kind: str, player: str, title: str, description: str, source: str):
     color = 0x57F287 if kind == "application" else 0xED4245 if kind == "report" else 0x5865F2
     return {
@@ -134,7 +198,7 @@ def process_line(line: str):
         kind = classify(cmd, text)
 
         if kind == "application":
-            if should_skip_duplicate(f"{kind}:{player}:/{cmd}:{text[:240]}"):
+            if should_skip_duplicate(f"{kind}:{player}:/{cmd}:{text[:240]}") or not allow_player_delivery(player):
                 return
             send_discord(
                 APPLICATIONS_CHANNEL_ID,
@@ -147,7 +211,7 @@ def process_line(line: str):
             return
 
         if kind == "report":
-            if should_skip_duplicate(f"{kind}:{player}:/{cmd}:{text[:240]}"):
+            if should_skip_duplicate(f"{kind}:{player}:/{cmd}:{text[:240]}") or not allow_player_delivery(player):
                 return
             send_discord(
                 REPORTS_CHANNEL_ID,
@@ -166,7 +230,7 @@ def process_line(line: str):
         kind = classify("", text)
 
         if kind == "application":
-            if should_skip_duplicate(f"{kind}:{player}:chat:{text[:240]}"):
+            if should_skip_duplicate(f"{kind}:{player}:chat:{text[:240]}") or not allow_player_delivery(player):
                 return
             send_discord(
                 APPLICATIONS_CHANNEL_ID,
@@ -179,7 +243,7 @@ def process_line(line: str):
             return
 
         if kind == "report":
-            if should_skip_duplicate(f"{kind}:{player}:chat:{text[:240]}"):
+            if should_skip_duplicate(f"{kind}:{player}:chat:{text[:240]}") or not allow_player_delivery(player):
                 return
             send_discord(
                 REPORTS_CHANNEL_ID,

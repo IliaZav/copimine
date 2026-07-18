@@ -4,8 +4,8 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-/opt/copimine}"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt/copimine-backups}"
-APP_USER="${APP_USER:-$(stat -c '%U' "$PROJECT_ROOT" 2>/dev/null || echo copimine)}"
-APP_GROUP="${APP_GROUP:-$(stat -c '%G' "$PROJECT_ROOT" 2>/dev/null || echo "$APP_USER")}"
+APP_USER="${APP_USER:-copimine}"
+APP_GROUP="${APP_GROUP:-$APP_USER}"
 ARCHIVE_PATH="${1:-}"
 DB_DUMP_PATH="${2:-}"
 CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
@@ -24,6 +24,7 @@ SERVICES=(
   "copimine-discord-bot"
   "copimine-minecraft-discord-bridge"
   "copimine-minecraft"
+  "copimine-game-hardening"
 )
 
 RUNTIME_PATHS=(
@@ -58,6 +59,7 @@ SYSTEM_FILES=(
   "copimine-discord-bot.service:/etc/systemd/system/copimine-discord-bot.service"
   "copimine-minecraft-discord-bridge.service:/etc/systemd/system/copimine-minecraft-discord-bridge.service"
   "copimine-minecraft.service:/etc/systemd/system/copimine-minecraft.service"
+  "copimine-game-hardening.service:/etc/systemd/system/copimine-game-hardening.service"
 )
 
 NginxTemplateRelative="admin-web/deploy/nginx-copimine-admin-18080.conf"
@@ -110,6 +112,7 @@ rollback_active_release() {
     log "Rollback restored previous release to $live_root"
   fi
   restore_runtime_state "$live_root"
+  copimine_rollback_database_restore || log "WARNING: database rollback could not be completed automatically."
   restore_system_files
   systemctl daemon-reload || true
   restart_services || true
@@ -122,6 +125,26 @@ require_file() {
 
 require_dir() {
   [[ -d "$1" ]] || fail "Directory not found: $1"
+}
+
+load_shared_helpers() {
+  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
+  COPIMINE_ROOT="$PROJECT_ROOT"
+  COPIMINE_APP_USER="$APP_USER"
+  COPIMINE_APP_GROUP="$APP_GROUP"
+  COPIMINE_ADMIN_DIR="$PROJECT_ROOT/admin-web"
+  COPIMINE_ENV_FILE="$PROJECT_ROOT/admin-web/.env"
+  COPIMINE_SERVER_DIR="$PROJECT_ROOT/minecraft/server"
+  COPIMINE_SERVER_PROPERTIES="$PROJECT_ROOT/minecraft/server/server.properties"
+  COPIMINE_BACKUP_DIR="$BACKUP_ROOT"
+  COPIMINE_RELEASE_MANIFEST="$PROJECT_ROOT/deploy/release_manifest.json"
+  COPIMINE_INSTALLER_MANIFEST="$PROJECT_ROOT/deploy/installer_manifest.json"
+  COPIMINE_RUNTIME_METADATA="$PROJECT_ROOT/deploy/runtime_metadata.json"
+  COPIMINE_NGINX_AVAILABLE="$NginxAvailable"
+  COPIMINE_NGINX_ENABLED="$NginxEnabled"
+  # shellcheck source=/dev/null
+  source "$common_script"
 }
 
 check_disk_space() {
@@ -147,9 +170,41 @@ sha256_file() {
   sha256sum "$file" | awk '{print $1}'
 }
 
-sha1_file() {
-  local file="$1"
-  sha1sum "$file" | awk '{print $1}'
+validate_archive_members() {
+  python3 - "$ARCHIVE_PATH" <<'PY'
+from pathlib import PurePosixPath
+import stat
+import sys
+import tarfile
+import zipfile
+
+archive = sys.argv[1]
+
+def safe_name(value: str) -> bool:
+    value = value.replace("\\", "/")
+    path = PurePosixPath(value)
+    return bool(value) and not path.is_absolute() and ".." not in path.parts
+
+def check_link(value: str) -> bool:
+    return safe_name(value) and not PurePosixPath(value.replace("\\", "/")).is_absolute()
+
+if archive.endswith((".tar.gz", ".tgz")):
+    with tarfile.open(archive, "r:gz") as bundle:
+        for member in bundle.getmembers():
+            if not safe_name(member.name):
+                raise SystemExit(f"Unsafe archive member path: {member.name!r}")
+            if (member.issym() or member.islnk()) and not check_link(member.linkname):
+                raise SystemExit(f"Unsafe archive link: {member.name!r}")
+elif archive.endswith(".zip"):
+    with zipfile.ZipFile(archive) as bundle:
+        for member in bundle.infolist():
+            if not safe_name(member.filename):
+                raise SystemExit(f"Unsafe archive member path: {member.filename!r}")
+            if stat.S_ISLNK(member.external_attr >> 16):
+                raise SystemExit(f"Archive symlinks are not allowed: {member.filename!r}")
+else:
+    raise SystemExit("Unsupported archive extension")
+PY
 }
 
 preflight_system() {
@@ -163,7 +218,6 @@ preflight_system() {
   need sed
   need stat
   need sha256sum
-  need sha1sum
   need python3
   need systemctl
   need runuser
@@ -208,6 +262,7 @@ validate_archive() {
       fail "Unsupported archive format: $ARCHIVE_PATH"
       ;;
   esac
+  validate_archive_members
 
   local sidecar=""
   if [[ -f "${ARCHIVE_PATH}.sha256" ]]; then
@@ -220,17 +275,14 @@ validate_archive() {
     sidecar="${ARCHIVE_PATH%.zip}.sha256"
   fi
 
-  if [[ -n "$sidecar" ]]; then
-    local expected actual
-    expected="$(awk '{print tolower($1)}' "$sidecar" | head -n 1)"
-    [[ "${#expected}" -eq 64 ]] || fail "SHA256 sidecar is malformed: $sidecar"
-    [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || fail "SHA256 sidecar contains non-hex characters: $sidecar"
-    actual="$(sha256_file "$ARCHIVE_PATH")"
-    [[ "$expected" == "$actual" ]] || fail "SHA256 mismatch for archive. Expected $expected, got $actual."
-    log "Archive SHA256 verified: $actual"
-  else
-    log "WARNING: SHA256 sidecar not found. Continuing without checksum file."
-  fi
+  [[ -n "$sidecar" ]] || fail "A SHA256 sidecar is required for replacement archives."
+  local expected actual
+  expected="$(awk '{print tolower($1)}' "$sidecar" | head -n 1)"
+  [[ "${#expected}" -eq 64 ]] || fail "SHA256 sidecar is malformed: $sidecar"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || fail "SHA256 sidecar contains non-hex characters: $sidecar"
+  actual="$(sha256_file "$ARCHIVE_PATH")"
+  [[ "$expected" == "$actual" ]] || fail "SHA256 mismatch for archive. Expected $expected, got $actual."
+  log "Archive SHA256 verified: $actual"
 }
 
 prepare_temp_dirs() {
@@ -246,7 +298,7 @@ extract_archive() {
   log "[4/14] Extract archive"
   case "$ARCHIVE_PATH" in
     *.tar.gz|*.tgz)
-      tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_ROOT"
+      tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_ROOT" --no-same-owner --no-same-permissions
       ;;
     *.zip)
       unzip -q "$ARCHIVE_PATH" -d "$EXTRACT_ROOT"
@@ -278,6 +330,7 @@ snapshot_runtime_state() {
   local live_root="$PROJECT_ROOT"
   local backup_dir="$BACKUP_ROOT/full-replace-$TS"
   mkdir -p "$backup_dir"
+  chmod 700 "$BACKUP_ROOT" "$backup_dir"
 
   if [[ -d "$live_root" ]]; then
     cp -a "$live_root" "$backup_dir/copimine-pre-replace"
@@ -295,6 +348,7 @@ snapshot_runtime_state() {
     fi
     if [[ -n "$pg_password" ]]; then
       PGPASSWORD="$pg_password" pg_dump -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 || log "WARNING: PostgreSQL backup skipped."
+      [[ -f "$backup_dir/copimine-db.dump" ]] && chmod 600 "$backup_dir/copimine-db.dump"
     else
       log "WARNING: PostgreSQL password not found in .env, database backup skipped."
     fi
@@ -368,20 +422,8 @@ restore_runtime_state() {
 }
 
 restore_system_files() {
-  local live_root="$PROJECT_ROOT"
-  for item in "${SYSTEM_FILES[@]}"; do
-    local source_name="${item%%:*}"
-    local target_path="${item#*:}"
-    local source_path="$live_root/admin-web/deploy/$source_name"
-    if [[ -f "$source_path" ]]; then
-      install -m 0644 "$source_path" "$target_path"
-    fi
-  done
-  if [[ -f "$live_root/$NginxTemplateRelative" ]]; then
-    install -m 0644 "$live_root/$NginxTemplateRelative" "$NginxAvailable"
-    mkdir -p "$(dirname "$NginxEnabled")"
-    ln -sfn "$NginxAvailable" "$NginxEnabled"
-  fi
+  load_shared_helpers
+  copimine_install_system_files
 }
 
 atomic_swap() {
@@ -394,6 +436,22 @@ atomic_swap() {
   mv "${PROJECT_ROOT}.new" "$PROJECT_ROOT"
   restore_runtime_state "$PROJECT_ROOT"
   ROLLBACK_READY=1
+}
+
+bootstrap_runtime_environment() {
+  log "[9b/14] Bootstrap protected runtime configuration"
+  load_shared_helpers
+  copimine_ensure_layout
+  copimine_ensure_app_user
+  if [[ ! -f "$COPIMINE_ENV_FILE" ]]; then
+    local postgres_password secret_key plugin_api_key rcon_password
+    postgres_password="$(copimine_secret postgres-password.txt 24)"
+    secret_key="$(copimine_secret secret-key.txt 32)"
+    plugin_api_key="$(copimine_secret plugin-api-key.txt 32)"
+    rcon_password="$(copimine_secret rcon-password.txt 32)"
+    copimine_write_env "$postgres_password" "$secret_key" "$plugin_api_key" "$rcon_password"
+  fi
+  copimine_ensure_postgres "$(copimine_env_value POSTGRES_PASSWORD)"
 }
 
 restore_database() {
@@ -412,24 +470,14 @@ restore_database() {
     return 0
   fi
 
-  local env_file="$PROJECT_ROOT/admin-web/.env"
-  require_file "$env_file"
-  local pg_password pg_db pg_user
-  pg_password="$(grep -E '^POSTGRES_PASSWORD=' "$env_file" | tail -n 1 | cut -d= -f2-)"
-  pg_db="$(grep -E '^POSTGRES_DB=' "$env_file" | tail -n 1 | cut -d= -f2-)"
-  pg_user="$(grep -E '^POSTGRES_USER=' "$env_file" | tail -n 1 | cut -d= -f2-)"
-  [[ -n "$pg_password" && -n "$pg_db" && -n "$pg_user" ]] || fail "PostgreSQL credentials are incomplete in $env_file"
+  load_shared_helpers
+  copimine_restore_database_safely "$selected_dump"
+}
 
-  sudo -u postgres dropdb --if-exists "$pg_db"
-  sudo -u postgres createdb -O "$pg_user" "$pg_db"
-  case "$selected_dump" in
-    *.sql)
-      PGPASSWORD="$pg_password" psql -h 127.0.0.1 -U "$pg_user" -v ON_ERROR_STOP=1 -d "$pg_db" -f "$selected_dump" >/dev/null
-      ;;
-    *)
-      PGPASSWORD="$pg_password" pg_restore -h 127.0.0.1 -U "$pg_user" -v -d "$pg_db" "$selected_dump" >/dev/null
-      ;;
-  esac
+apply_database_migrations() {
+  log "[10a/14] Apply ordered database migrations"
+  load_shared_helpers
+  copimine_apply_migrations
 }
 
 clean_world_state_if_requested() {
@@ -437,15 +485,14 @@ clean_world_state_if_requested() {
     return 0
   fi
   log "[10b/14] Clean world-bound database state"
-  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
-  [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
-  # shellcheck source=/dev/null
-  source "$common_script"
+  load_shared_helpers
   copimine_apply_clean_world_state
 }
 
 fix_permissions() {
   log "[11/14] Fix ownership and permissions"
+  load_shared_helpers
+  copimine_ensure_app_user
   chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT"
   find "$PROJECT_ROOT" -type d -exec chmod 755 {} \;
   find "$PROJECT_ROOT" -type f -exec chmod 644 {} \;
@@ -453,56 +500,28 @@ fix_permissions() {
   if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
     chmod 600 "$PROJECT_ROOT/admin-web/.env"
   fi
+  for private_dir in "$PROJECT_ROOT/admin-web/data" "$PROJECT_ROOT/admin-web/backups"; do
+    [[ -d "$private_dir" ]] && chmod 700 "$private_dir"
+  done
 }
 
 refresh_managed_release_artifacts() {
   log "[12/14] Refresh managed hashes and runtime metadata"
-  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
-  [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
-  # shellcheck source=/dev/null
-  source "$common_script"
+  load_shared_helpers
   copimine_refresh_release_artifacts
   copimine_validate_release_contract
 }
 
 prepare_python_runtime() {
   log "[12b/15] Rebuild admin-web Python runtime"
-  local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
-  [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
-  # shellcheck source=/dev/null
-  source "$common_script"
-  COPIMINE_ROOT="$PROJECT_ROOT"
-  COPIMINE_APP_USER="$APP_USER"
-  COPIMINE_APP_GROUP="$APP_GROUP"
-  COPIMINE_ADMIN_DIR="$PROJECT_ROOT/admin-web"
-  COPIMINE_ENV_FILE="$PROJECT_ROOT/admin-web/.env"
-  COPIMINE_SERVER_DIR="$PROJECT_ROOT/minecraft/server"
-  COPIMINE_SERVER_PROPERTIES="$PROJECT_ROOT/minecraft/server/server.properties"
-  COPIMINE_RELEASE_MANIFEST="$PROJECT_ROOT/deploy/release_manifest.json"
-  COPIMINE_INSTALLER_MANIFEST="$PROJECT_ROOT/deploy/installer_manifest.json"
-  COPIMINE_RUNTIME_METADATA="$PROJECT_ROOT/deploy/runtime_metadata.json"
+  load_shared_helpers
   copimine_python_env
 }
 
 install_system_files() {
   log "[13/15] Refresh systemd and nginx config"
-  for item in "${SYSTEM_FILES[@]}"; do
-    local source_name="${item%%:*}"
-    local target_path="${item#*:}"
-    local source_path="$PROJECT_ROOT/admin-web/deploy/$source_name"
-    if [[ -f "$source_path" ]]; then
-      install -m 0644 "$source_path" "$target_path"
-    fi
-  done
-
-  if [[ -f "$PROJECT_ROOT/$NginxTemplateRelative" ]]; then
-    install -m 0644 "$PROJECT_ROOT/$NginxTemplateRelative" "$NginxAvailable"
-    mkdir -p "$(dirname "$NginxEnabled")"
-    ln -sfn "$NginxAvailable" "$NginxEnabled"
-    rm -f /etc/nginx/sites-enabled/default
-    nginx -t || fail "nginx config test failed"
-  fi
-
+  load_shared_helpers
+  copimine_install_system_files
   systemctl daemon-reload
 }
 
@@ -541,12 +560,12 @@ validate_release_tree() {
   if [[ -f "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" ]]; then
     validate_zip_artifact "$PROJECT_ROOT/thirdparty/CopiMineMods.zip"
   fi
-  if [[ -f "$PROJECT_ROOT/thirdparty/CopiMineMods.sha1" ]]; then
-    local expected_sha1
-    expected_sha1="$(python3 -c "from pathlib import Path; print(Path(r'$PROJECT_ROOT/thirdparty/CopiMineMods.sha1').read_text(encoding='utf-8-sig').strip())")"
-    [[ -n "$expected_sha1" ]] || fail "thirdparty/CopiMineMods.sha1 is empty"
-    [[ "$(sha1_file "$PROJECT_ROOT/thirdparty/CopiMineMods.zip")" == "$expected_sha1" ]] || fail "Modpack SHA1 mismatch"
-  fi
+  local modpack_sha256_path="$PROJECT_ROOT/thirdparty/CopiMineMods.sha256"
+  [[ -f "$modpack_sha256_path" ]] || fail "Missing modpack SHA256 sidecar"
+  local expected_sha256
+  expected_sha256="$(tr -d '\r\n' < "$modpack_sha256_path" | tr '[:upper:]' '[:lower:]')"
+  [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] || fail "Modpack SHA256 sidecar is malformed"
+  [[ "$(sha256_file "$PROJECT_ROOT/thirdparty/CopiMineMods.zip")" == "$expected_sha256" ]] || fail "Modpack SHA256 mismatch"
 }
 
 wait_for_service() {
@@ -647,7 +666,9 @@ main() {
   stop_services
   stage_payload
   atomic_swap
+  bootstrap_runtime_environment
   restore_database
+  apply_database_migrations
   clean_world_state_if_requested
   fix_permissions
   refresh_managed_release_artifacts

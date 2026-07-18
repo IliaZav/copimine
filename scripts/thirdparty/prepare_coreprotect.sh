@@ -28,11 +28,17 @@ esac
 
 TARGET="$TARGET_DIR/$(basename "$SOURCE_JAR")"
 cp "$SOURCE_JAR" "$TARGET"
-SHA1="$(sha1sum "$TARGET" | awk '{print $1}')"
+EXPECTED_SHA256="402075d0eca6c3748d67d5b580bc5faf78b1b5ba91446ac15ccc7c7225457a81"
+SHA256="$(sha256sum "$TARGET" | awk '{print $1}')"
+if [[ "$SHA256" != "$EXPECTED_SHA256" ]]; then
+  rm -f "$TARGET"
+  echo "CoreProtect SHA-256 does not match the pinned CopiMine release artifact." >&2
+  exit 1
+fi
 
 echo "CoreProtect staged:"
 echo "  file: $TARGET"
-echo "  sha1: $SHA1"
+echo "  sha256: $SHA256"
 echo "Official source:"
 echo "  https://hangar.papermc.io/CORE/CoreProtect"
 echo "  https://github.com/PlayPro/CoreProtect"

@@ -98,6 +98,8 @@ public final class ShaderpackRegistry {
         EFFECT_TO_SHADERPACK.put("BLOBS", "acid_shaders.zip");
         EFFECT_TO_SHADERPACK.put("PENCIL", "cursed_metamorphopsia.zip");
         EFFECT_TO_SHADERPACK.put("CHAOS", "random");
+        EFFECT_TO_SHADERPACK.put("OVERDOSE", "random");
+        EFFECT_TO_SHADERPACK.put("ZHUZEVO_TRIP", "trippy_shaderpack.zip");
     }
 
     public List<ShaderpackProfile> profiles() {

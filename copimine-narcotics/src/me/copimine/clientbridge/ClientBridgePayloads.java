@@ -51,7 +51,9 @@ public final class ClientBridgePayloads {
             "WOBBLE",
             "BLOBS",
             "PENCIL",
-            "CHAOS"
+            "CHAOS",
+            "OVERDOSE",
+            "ZHUZEVO_TRIP"
     );
 
     private ClientBridgePayloads() {

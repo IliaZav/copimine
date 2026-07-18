@@ -47,7 +47,18 @@ public final class ClientVisualManager {
             return false;
         }
         if ("REPLACE_ALL_FULLSCREEN".equalsIgnoreCase(clearPolicy)) {
-            clearAll("replace");
+            ActiveVisual sameRuntime = active.values().stream()
+                    .filter(current -> current.effectId().equalsIgnoreCase(normalize(effectId)))
+                    .filter(current -> current.shaderpack().equalsIgnoreCase(shaderpack == null ? "" : shaderpack.trim()))
+                    .findFirst()
+                    .orElse(null);
+            if (sameRuntime == null) {
+                clearAll("replace");
+            } else {
+                // Keep the already loaded pipeline alive. Only the server-side
+                // expiry is refreshed, so repeated drug use does not stutter.
+                active.remove(sameRuntime.seq());
+            }
         }
         ActiveVisual visual = new ActiveVisual(
                 seq,
@@ -168,6 +179,10 @@ public final class ClientVisualManager {
             float pulse = 0.6F + (float) ((Math.sin((now / 180.0D) + visual.effectId().hashCode()) + 1.0D) * 0.2D);
             drawEffect(context, width, height, visual, pulse);
         }
+        active.values().stream()
+                .filter(visual -> isConsolidatedEffect(visual.effectId()))
+                .max((left, right) -> Float.compare(left.intensity(), right.intensity()))
+                .ifPresent(visual -> drawStatusBadge(context, visual));
         if (config.debugOverlay()) {
             context.drawText(client.textRenderer, statusLine(), 8, 8, 0xFFFFFFFF, true);
         }
@@ -268,6 +283,16 @@ public final class ClientVisualManager {
                 drawNoiseGrid(context, width, height, 0x66FF33AA, 0.08F * pulse * alphaFactor, Math.max(4, 12 - Math.round(5.0F * motionFactor)));
                 drawScanPulse(context, width, height, 0.6F * alphaFactor);
             }
+            case "OVERDOSE" -> {
+                drawColorShiftPass(context, width, height, 0x995A123F, 0.13F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x66E04B83, 0.08F * pulse * alphaFactor, 14);
+                drawVignette(context, width, height, 0x661B0714, 0.16F * alphaFactor);
+            }
+            case "ZHUZEVO_TRIP" -> {
+                drawColorShiftPass(context, width, height, 0x883C207A, 0.10F * pulse * alphaFactor);
+                drawColorShiftPass(context, width, height, 0x6657B8A6, 0.06F * pulse * alphaFactor);
+                drawNoiseGrid(context, width, height, 0x665CDBFF, 0.06F * pulse * alphaFactor, 18);
+            }
             default -> {
                 drawColorShiftPass(context, width, height, 0x66AA44FF, 0.07F * pulse * alphaFactor);
                 drawNoiseGrid(context, width, height, 0x44FFFFFF, 0.04F * pulse * alphaFactor, 16);
@@ -277,10 +302,22 @@ public final class ClientVisualManager {
 
     private void drawNoiseGrid(DrawContext context, int width, int height, int rgb, float alpha, int cell) {
         long frame = System.currentTimeMillis() / 80L;
-        for (int x = 0; x < width; x += cell) {
-            for (int y = 0; y < height; y += cell) {
-                if (((x / cell) + (y / cell) + frame) % 3 == 0) {
-                    context.fill(x, y, Math.min(width, x + (cell / 2)), Math.min(height, y + (cell / 2)), alpha(rgb, alpha));
+        // Keep the HUD overlay bounded on large monitors.  A raw pixel grid
+        // could issue tens of thousands of fill calls per frame while an
+        // Iris shaderpack is active; a capped lattice preserves the texture
+        // while keeping the client render cost predictable.
+        int columns = Math.min(64, Math.max(1, (width + Math.max(8, cell) - 1) / Math.max(8, cell)));
+        int rows = Math.min(36, Math.max(1, (height + Math.max(8, cell) - 1) / Math.max(8, cell)));
+        int stepX = Math.max(1, (width + columns - 1) / columns);
+        int stepY = Math.max(1, (height + rows - 1) / rows);
+        int fillWidth = Math.max(1, stepX / 2);
+        int fillHeight = Math.max(1, stepY / 2);
+        for (int column = 0; column < columns; column++) {
+            for (int row = 0; row < rows; row++) {
+                if ((column + row + frame) % 3 == 0) {
+                    int x = column * stepX;
+                    int y = row * stepY;
+                    context.fill(x, y, Math.min(width, x + fillWidth), Math.min(height, y + fillHeight), alpha(rgb, alpha));
                 }
             }
         }
@@ -329,7 +366,7 @@ public final class ClientVisualManager {
             }
             return true;
         }
-        String runtimeKey = strongest.seq() + ":" + strongest.effectId() + ":" + strongest.shaderpack();
+        String runtimeKey = strongest.effectId() + ":" + strongest.shaderpack();
         if (runtimeKey.equals(appliedRuntimeKey)) {
             return true;
         }
@@ -350,6 +387,52 @@ public final class ClientVisualManager {
         appliedRuntimeKey = "";
         CopiMineClientLogger.warn("Visual runtime apply failed, keeping overlay fallback active: effect=" + strongest.effectId() + ", shaderpack=" + strongest.shaderpack() + ", reason=" + lastFailureReason());
         return false;
+    }
+
+    private boolean isConsolidatedEffect(String effectId) {
+        return "OVERDOSE".equalsIgnoreCase(effectId) || "ZHUZEVO_TRIP".equalsIgnoreCase(effectId);
+    }
+
+    private void drawStatusBadge(DrawContext context, ActiveVisual visual) {
+        int x = 10;
+        int y = 24;
+        int width = 142;
+        int height = 30;
+        boolean overdose = "OVERDOSE".equalsIgnoreCase(visual.effectId());
+        int background = overdose ? 0xD530172B : 0xD51D3D46;
+        int border = overdose ? 0xFFE04B83 : 0xFF72D8C4;
+        context.fill(x, y, x + width, y + height, background);
+        context.fill(x, y, x + width, y + 2, border);
+        drawBadgeIcon(context, x + 7, y + 7, overdose, border);
+        String label = overdose ? "Overdose" : "Zhuzevo trip";
+        context.drawText(client.textRenderer, label, x + 32, y + 8, 0xFFFFFFFF, true);
+        long secondsLeft = Math.max(0L, (visual.untilMillis() - System.currentTimeMillis()) / 1_000L);
+        context.drawText(client.textRenderer, secondsLeft + "s", x + width - 28, y + 8, border, true);
+    }
+
+    private void drawBadgeIcon(DrawContext context, int x, int y, boolean overdose, int color) {
+        if (overdose) {
+            int dark = 0xFF321020;
+            context.fill(x + 3, y, x + 13, y + 2, color);
+            context.fill(x + 1, y + 2, x + 15, y + 12, color);
+            context.fill(x + 3, y + 12, x + 13, y + 15, color);
+            context.fill(x + 4, y + 4, x + 6, y + 7, dark);
+            context.fill(x + 10, y + 4, x + 12, y + 7, dark);
+            context.fill(x + 6, y + 9, x + 10, y + 11, dark);
+            return;
+        }
+        // Pixel spiral for the Zhuzevo trip badge.  It remains readable at
+        // tiny HUD scales and is intentionally different from the overdose
+        // skull so players can identify the two states at a glance.
+        int dark = 0xFF12363A;
+        context.fill(x + 3, y, x + 13, y + 2, color);
+        context.fill(x + 1, y + 2, x + 3, y + 12, color);
+        context.fill(x + 3, y + 12, x + 13, y + 14, color);
+        context.fill(x + 11, y + 4, x + 13, y + 12, color);
+        context.fill(x + 5, y + 3, x + 11, y + 5, dark);
+        context.fill(x + 5, y + 5, x + 7, y + 10, dark);
+        context.fill(x + 7, y + 8, x + 11, y + 10, dark);
+        context.fill(x + 9, y + 5, x + 11, y + 8, dark);
     }
 
     private int alpha(int rgb, float alpha) {

@@ -122,6 +122,7 @@ const state = {
   user: null,
   config: null,
   selectedPlayer: "",
+  playerStatusFilter: "all",
   players: [],
   tables: {},
   refreshTimer: null,
@@ -2385,16 +2386,17 @@ function activityTimeline(rows) {
   if (!rows.length) return empty("Действий пока нет", "Записей по игроку нет.");
   return `<div class="activity-timeline">${rows.map(row => `
     <article class="activity-row">
-      <div class="activity-icon">${esc(short(row.type || row.source || "log", 2).toUpperCase())}</div>
+      <div class="activity-icon">${row.blockSprite ? `<img class="activity-block-sprite" src="${esc(row.blockSprite)}" alt="" loading="lazy">` : esc(short(row.type || row.source || "log", 2).toUpperCase())}</div>
       <div class="activity-main">
         <div class="activity-head">
-          <strong>${esc(row.type || "событие")}</strong>
+          <strong>${esc(row.actionLabel || row.type || "событие")}</strong>
           <span>${esc(row.source || "server")} · ${dt(row.time || row.createdAt || row.timestamp)}</span>
         </div>
         <div class="activity-meta">
           ${row.actor ? `<span>админ: ${esc(row.actor)}</span>` : ""}
           ${row.player ? `<span>игрок: ${esc(row.player)}</span>` : ""}
-          ${compactCoords(row) ? `<span>${esc(compactCoords(row))}</span>` : ""}
+          ${row.coordinates || compactCoords(row) ? `<span>${esc(row.coordinates || compactCoords(row))}</span>` : ""}
+          ${row.blockLabel ? `<span>${esc(row.blockLabel)}</span>` : ""}
           ${row.amount ? `<span>кол-во: ${esc(row.amount)}</span>` : ""}
           ${row.material ? `<span>${esc(row.material)}</span>` : ""}
         </div>
@@ -2542,6 +2544,11 @@ async function loadPlayers() {
   const list = state.players.length ? `
     <div class="toolbar">
       <input class="grow" id="playerSearch" placeholder="Найти игрока" data-input="filterPlayers" />
+      <select id="playerStatusFilter" class="player-select" data-input="filterPlayers" aria-label="Фильтр игроков">
+        <option value="all">Все игроки</option>
+        <option value="online">Только онлайн</option>
+        <option value="offline">Только оффлайн</option>
+      </select>
       <button class="btn btn-secondary" data-click="loadPlayers()">Обновить</button>
     </div>
     <div id="playerList" class="player-list">${playerListHtml(state.players)}</div>
@@ -2573,9 +2580,15 @@ function renderPlayerList(rows) {
   replaceChildrenSafe(root, [fragmentFromHtml(playerListHtml(rows))]);
 }
 
-window.filterPlayers = (query) => {
-  const q = query.trim().toLowerCase();
-  const rows = state.players.filter(row => JSON.stringify(row).toLowerCase().includes(q));
+window.filterPlayers = () => {
+  const q = ($("playerSearch")?.value || "").trim().toLowerCase();
+  const status = $("playerStatusFilter")?.value || "all";
+  state.playerStatusFilter = status;
+  const rows = state.players.filter(row => {
+    const matchesQuery = !q || JSON.stringify(row).toLowerCase().includes(q);
+    const matchesStatus = status === "all" || (status === "online" ? Boolean(row.online) : !row.online);
+    return matchesQuery && matchesStatus;
+  });
   renderPlayerList(rows);
 };
 
@@ -2647,8 +2660,35 @@ async function playerDetailsHtml(player) {
         <input id="playerAdminPinInput" inputmode="numeric" autocomplete="off" placeholder="Новый PIN, 4-8 цифр" />
         <button class="btn btn-secondary btn-small" data-click="playerSetBankPinAdmin('${esc(player)}')">Задать PIN</button>
       </div>
+      <div class="toolbar compact">
+        <input id="playerVisiblePin" type="password" value="${esc(pin.visiblePin || "")}" readonly aria-label="Текущий PIN" />
+        <button class="btn btn-secondary btn-small" data-click="revealPlayerPin()">Показать</button>
+        <button class="btn btn-secondary btn-small" data-click="copyPlayerVisiblePin()">Копировать</button>
+      </div>
     `
     : (site.id && !canManagePins ? `<div class="notice">Младший админ видит статус PIN, но не может раскрывать, сбрасывать или задавать его.</div>` : "");
+  const credentialControls = site.id && canManagePins
+    ? `
+      <div class="admin-player-credentials">
+        <div class="field-grid compact">
+          <label class="field-stack" for="playerSiteUsernameInput">
+            <span>Логин сайта</span>
+            <input id="playerSiteUsernameInput" value="${esc(site.username || "")}" autocomplete="username" maxlength="32" />
+          </label>
+          <label class="field-stack" for="playerSitePasswordInput">
+            <span>Новый пароль</span>
+            <input id="playerSitePasswordInput" type="password" autocomplete="new-password" placeholder="Оставь пустым, если не меняешь" maxlength="128" />
+          </label>
+        </div>
+        <div class="credential-actions">
+          <button class="btn btn-secondary btn-small" data-click="generatePlayerPassword('${esc(player)}')">Сгенерировать</button>
+          <button class="btn btn-secondary btn-small" data-click="copyPlayerPassword()">Скопировать</button>
+          <button class="btn btn-primary btn-small" data-click="updatePlayerSiteAccount('${esc(player)}')">Сохранить</button>
+        </div>
+        <span class="credential-hint">Текущий пароль не показывается. Сгенерированный пароль можно скопировать до сохранения.</span>
+      </div>
+    `
+    : (site.id ? `<div class="notice">Только полный админ может менять данные входа.</div>` : `<div class="notice">У игрока нет привязанного аккаунта сайта.</div>`);
   return `
     <div class="panel-header">
       <div>
@@ -2676,6 +2716,7 @@ async function playerDetailsHtml(player) {
       ["PIN заблокирован", Boolean(pin.locked)],
       ["Временный PIN истекает", pin.temporaryExpiresAt ? dt(pin.temporaryExpiresAt) : "--"]
     ]), pinButtons)}
+    ${panel("Данные входа сайта", "Логин виден, текущий пароль не раскрывается.", credentialControls)}
     ${panel("Быстрые действия", "Все действия записываются в журнал и требуют серверные права.", quickActions)}
     ${panel("Текущий инвентарь", "Если игрок онлайн, первым берётся свежий игровой снимок.", `
       ${inventorySummary(live)}
@@ -2701,7 +2742,12 @@ async function playerDetailsHtml(player) {
       { key: "ar", label: "АР" }
     ], { pageSize: 8 }))}
     ${panel("Лента действий", "Проверки, AR и игровые события по времени.", `<div class="player-actions-log">${activityTimeline(timelineData.rows)}</div>`)}
-    ${panel("Последние действия CoreProtect", "События по игроку.", table("player-actions", asArray(actions.rows), null, { pageSize: 12 }))}
+    ${panel("Последние действия CoreProtect", "События по игроку с блоком, координатами и понятным действием.", table("player-actions", asArray(actions.rows), [
+      { key: "actionLabel", label: "Действие", render: (value, row) => `${row.blockSprite ? `<img class="activity-block-sprite" src="${esc(row.blockSprite)}" alt="" loading="lazy">` : ""} ${esc(value || row.action_name || row.action || "событие")}` },
+      { key: "blockLabel", label: "Блок", render: (value, row) => esc(value || row.material_name || row.material || "—") },
+      { key: "coordinates", label: "Координаты", render: (value, row) => esc(value || compactCoords(row) || "—") },
+      { key: "datetime", label: "Время", render: (value, row) => esc(value || dt(row.time)) }
+    ], { pageSize: 12 }))}
   `;
 }
 
@@ -3013,6 +3059,65 @@ window.scanAresWorld = async () => getAdminCommercePages().scanAresWorld();
 window.adminArAddBalance = async () => getAdminCommercePages().adminArAddBalance();
 
 window.adminDonationAddBalance = async () => getAdminCommercePages().adminDonationAddBalance();
+
+window.revealPlayerPin = () => {
+  const input = $("playerVisiblePin");
+  if (input) input.type = input.type === "password" ? "text" : "password";
+};
+
+window.copyPlayerVisiblePin = async () => {
+  const value = $("playerVisiblePin")?.value || "";
+  if (!value) return toast("PIN не задан.", true);
+  await copyText(value, "PIN скопирован");
+};
+
+window.generatePlayerPassword = (player = state.selectedPlayer) => {
+  const input = $("playerSitePasswordInput");
+  if (!input) return;
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  const getRandomValues = globalThis.crypto?.getRandomValues?.bind(globalThis.crypto);
+  if (!getRandomValues) {
+    return toast("Браузер не поддерживает безопасную генерацию пароля. Откройте админку по HTTPS.", true);
+  }
+  const bytes = new Uint32Array(20);
+  getRandomValues(bytes);
+  let password = "";
+  for (let i = 0; i < bytes.length; i += 1) password += alphabet[bytes[i] % alphabet.length];
+  input.value = password;
+  input.type = "text";
+  input.dataset.generatedFor = cleanText(player);
+  toast("Новый пароль создан. Скопируй его до сохранения.");
+};
+
+window.copyPlayerPassword = async () => {
+  const value = $("playerSitePasswordInput")?.value || "";
+  if (!value) return toast("Сначала введи или сгенерируй новый пароль.", true);
+  await copyText(value, "Новый пароль скопирован");
+};
+
+window.updatePlayerSiteAccount = async (player = state.selectedPlayer) => {
+  if (!player) return toast("Игрок не выбран", true);
+  const username = $("playerSiteUsernameInput")?.value?.trim() || "";
+  const newPassword = $("playerSitePasswordInput")?.value || "";
+  if (!username && !newPassword) return toast("Укажи новый логин или пароль.", true);
+  const headers = await dangerConfirm(`Изменить данные входа сайта для ${player}? Текущий пароль не будет раскрыт.`, "PLAYER_SITE_ACCOUNT_UPDATE");
+  if (!headers) return;
+  try {
+    const result = await api(`/api/players/${encodeURIComponent(player)}/site-account`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ username: username || null, new_password: newPassword || null })
+    });
+    toast(`Данные входа обновлены: ${result.username || username}.`);
+    if ($("playerSitePasswordInput")) {
+      $("playerSitePasswordInput").value = "";
+      $("playerSitePasswordInput").type = "password";
+    }
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);

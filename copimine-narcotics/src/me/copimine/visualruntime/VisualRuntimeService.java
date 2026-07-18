@@ -232,6 +232,27 @@ public final class VisualRuntimeService {
         return resolvedRouteFor(null, effectId).name();
     }
 
+    /**
+     * True only after the optional client has completed its authenticated-in-session
+     * handshake.  The server still owns every gameplay effect; this flag is used
+     * solely to decide whether vanilla status icons can be consolidated.
+     */
+    public boolean clientModAvailable(Player player) {
+        return clientModAvailable(player, "OVERDOSE");
+    }
+
+    /**
+     * A consolidated icon is safe only when this exact visual id is advertised
+     * by the connected client.  Older client builds keep their vanilla icons
+     * instead of hiding debuffs they cannot render themselves.
+     */
+    public boolean clientModAvailable(Player player, String effectId) {
+        return player != null
+                && configService.allowClientModVisuals()
+                && clientBridge.enabled()
+                && clientBridge.capabilities().supportsEffect(player, effectId);
+    }
+
     public String sessionSummary(UUID playerUuid) {
         VisualSession session = sessions.get(playerUuid);
         if (session == null) {
@@ -251,11 +272,60 @@ public final class VisualRuntimeService {
             return;
         }
         VisualRoute route = forceServerRoute ? forcedServerRoute(player, normalized) : resolveRoute(player, normalized, ignoreGate);
-        clear(player);
         if (route == VisualRoute.DISABLED) {
+            clear(player);
             return;
         }
-        long untilMillis = System.currentTimeMillis() + (durationSeconds * 1000L);
+        long nowMillis = System.currentTimeMillis();
+        long untilMillis = nowMillis + (Math.max(1, durationSeconds) * 1000L);
+        VisualSession current = sessions.get(player.getUniqueId());
+        if (sameVisualSession(current, route, normalized, nowMillis)) {
+            long extendedUntil = Math.max(current.untilMillis(), untilMillis);
+            sessions.put(player.getUniqueId(), new VisualSession(normalized, route, extendedUntil, overdose));
+            if (route == VisualRoute.CLIENT_MOD_VISUAL && extendedUntil > current.untilMillis()) {
+                // Keep the client-side shader pipeline alive while extending
+                // the visible timer.  A refresh packet is cheaper than a
+                // clear/start pair and the client deduplicates the same
+                // effect+shaderpack without reloading Iris.
+                int refreshSeconds = (int) Math.max(1L, Math.min(600L,
+                        (long) Math.ceil((extendedUntil - nowMillis) / 1000.0D)));
+                clientBridge.visuals().sendVisualRefresh(
+                        player,
+                        normalized,
+                        requestedClientShaderpack(normalized, overdose),
+                        refreshSeconds,
+                        overdose ? 1.0F : 0.85F,
+                        CLIENT_SHADER_FADE_IN_MILLIS,
+                        CLIENT_SHADER_FADE_OUT_MILLIS,
+                        ignoreGate ? "ADMIN_TEST_REFRESH" : "NARCOTICS_REFRESH",
+                        (playerUuid, clientEffectId, seconds, intensity, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            Player online = plugin.getServer().getPlayer(playerUuid);
+                            if (online == null || !online.isOnline()) {
+                                return;
+                            }
+                            VisualSession session = sessions.get(playerUuid);
+                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
+                                return;
+                            }
+                            applyServerFallbackRoute(online, clientEffectId, seconds, session.overdose());
+                        }),
+                        (playerUuid, clientEffectId, source, reason) -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            Player online = plugin.getServer().getPlayer(playerUuid);
+                            if (online == null) {
+                                return;
+                            }
+                            VisualSession session = sessions.get(playerUuid);
+                            if (session == null || session.route() != VisualRoute.CLIENT_MOD_VISUAL || !session.effectId().equalsIgnoreCase(clientEffectId)) {
+                                return;
+                            }
+                            clearInternal(online, false);
+                        })
+                );
+            }
+            scheduleCleanup(player, extendedUntil);
+            return;
+        }
+        clear(player);
         sessions.put(player.getUniqueId(), new VisualSession(normalized, route, untilMillis, overdose));
         switch (route) {
             case CLIENT_MOD_VISUAL -> clientBridge.visuals().sendVisualStart(
@@ -299,6 +369,13 @@ public final class VisualRuntimeService {
             }
         }
         scheduleCleanup(player, untilMillis);
+    }
+
+    private boolean sameVisualSession(VisualSession current, VisualRoute route, String effectId, long nowMillis) {
+        return current != null
+                && current.route() == route
+                && current.effectId().equalsIgnoreCase(effectId)
+                && current.untilMillis() > nowMillis;
     }
 
     private void applyServerFallbackRoute(Player player, String effectId, int durationSeconds, boolean overdose) {
@@ -497,6 +574,14 @@ public final class VisualRuntimeService {
             case "CHAOS" -> {
                 player.spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 20, 0.45D, 0.45D, 0.45D, 0.02D);
                 player.spawnParticle(Particle.PORTAL, player.getLocation().add(0.0D, 1.0D, 0.0D), 20, 0.45D, 0.45D, 0.45D, 0.04D);
+            }
+            case "OVERDOSE" -> {
+                player.spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), overdose ? 28 : 18, 0.45D, 0.55D, 0.45D, 0.02D);
+                player.spawnParticle(Particle.PORTAL, player.getLocation().add(0.0D, 1.0D, 0.0D), overdose ? 24 : 14, 0.45D, 0.55D, 0.45D, 0.04D);
+            }
+            case "ZHUZEVO_TRIP" -> {
+                player.spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 22, 0.4D, 0.5D, 0.4D, 0.02D);
+                player.spawnParticle(Particle.END_ROD, player.getLocation().add(0.0D, 1.0D, 0.0D), 12, 0.35D, 0.45D, 0.35D, 0.01D);
             }
             default -> player.spawnParticle(Particle.SMOKE, player.getLocation().add(0.0D, 1.0D, 0.0D), overdose ? 18 : 8, 0.3D, 0.3D, 0.3D, 0.01D);
         }

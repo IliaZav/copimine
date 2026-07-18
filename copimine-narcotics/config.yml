@@ -55,6 +55,8 @@ visuals:
     BLOBS: true
     PENCIL: true
     CHAOS: true
+    OVERDOSE: true
+    ZHUZEVO_TRIP: true
 
 storage:
   allow_player_inventory: true

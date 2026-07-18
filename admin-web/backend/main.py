@@ -588,6 +588,11 @@ class PlayerPasswordChangeIn(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class AdminPlayerAccountUpdateIn(BaseModel):
+    username: Optional[str] = Field(default=None, min_length=3, max_length=32)
+    new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+
 class AdminWhitelistApproveIn(BaseModel):
     request_id: str = Field(min_length=8, max_length=120)
     note: str = Field(default="", max_length=240)
@@ -4840,6 +4845,73 @@ def player_site_bank_profile_sync(minecraft_uuid: str, minecraft_name: str) -> d
     }
 
 
+def admin_update_player_account_sync(player: str, actor: str, data: AdminPlayerAccountUpdateIn) -> dict[str, Any]:
+    """Change a linked player's site credentials without ever returning secrets."""
+    requested_username = str(data.username or "").strip()
+    requested_password = data.new_password
+    if not requested_username and requested_password is None:
+        raise HTTPException(status_code=400, detail="Укажи новый логин или новый пароль")
+    if requested_username and not valid_site_username(requested_username):
+        raise HTTPException(status_code=400, detail="Укажи корректный логин")
+    if requested_password is not None:
+        ok, reason = password_policy_ok(requested_password)
+        if not ok:
+            raise HTTPException(status_code=400, detail=reason)
+    uuid = find_player_uuid(player) or ""
+    if not uuid:
+        raise HTTPException(status_code=404, detail="Player was not found")
+    now = now_ts()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute(
+            """
+            SELECT id,username,username_norm,minecraft_uuid,minecraft_name,enabled
+            FROM site_accounts
+            WHERE minecraft_uuid=%s AND role='player'
+            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
+            LIMIT 1
+            """,
+            (uuid,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
+        current = dict(row)
+        username_changed = bool(requested_username and requested_username.lower() != str(current.get("username") or "").lower())
+        if username_changed:
+            collision = conn.execute(
+                "SELECT id FROM site_accounts WHERE username_norm=%s AND id<>%s LIMIT 1",
+                (requested_username.lower(), current["id"]),
+            ).fetchone()
+            if collision:
+                raise HTTPException(status_code=409, detail="Такой логин уже занят")
+        password_changed = requested_password is not None
+        assignments: list[str] = []
+        params: list[Any] = []
+        if username_changed:
+            assignments.extend(["username=%s", "username_norm=%s"])
+            params.extend([requested_username, requested_username.lower()])
+        if password_changed:
+            assignments.append("password_hash=%s")
+            params.append(make_password_hash(requested_password or ""))
+        assignments.append("updated_at=%s")
+        params.extend([now, current["id"]])
+        conn.execute(f"UPDATE site_accounts SET {', '.join(assignments)} WHERE id=%s", params)
+        conn.execute(
+            "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PLAYER_SITE_ACCOUNT_UPDATE',%s,'admin-web')",
+            (now, actor, f"minecraft_uuid={uuid} username_changed={int(username_changed)} password_changed={int(password_changed)}"),
+        )
+        conn.commit()
+    return {
+        "ok": True,
+        "minecraftUuid": uuid,
+        "minecraftName": uuid_to_name().get(uuid, player),
+        "siteAccountId": str(current.get("id") or ""),
+        "username": requested_username if username_changed else str(current.get("username") or ""),
+        "usernameChanged": username_changed,
+        "passwordChanged": password_changed,
+    }
+
+
 def generate_temporary_pin() -> str:
     return "".join(secrets.choice("0123456789") for _ in range(temporary_pin_length()))
 
@@ -7322,6 +7394,27 @@ def coreprotect_action_name(table: str, action: Any) -> str:
     return maps.get(table, {}).get(value, str(action))
 
 
+def normalize_coreprotect_event(row: dict[str, Any], player: str = "") -> dict[str, Any]:
+    """Attach readable action text and a safe block sprite path for the admin timeline."""
+    item = dict(row or {})
+    table = str(item.get("source_table") or item.get("type") or "").lower()
+    action_label = str(item.get("action_name") or coreprotect_action_name(table, item.get("action")) or "изменил мир")
+    material = str(item.get("material_name") or item.get("material") or item.get("block") or item.get("type") or "stone")
+    slug = re.sub(r"[^a-z0-9_]+", "_", material.lower().replace("minecraft:", "")).strip("_") or "stone"
+    sprite = FRONTEND_DIR / "assets" / "mc-icons" / "item" / f"{slug}.png"
+    if not sprite.is_file():
+        slug = "stone"
+    item.update({
+        "source": "CoreProtect",
+        "actionLabel": action_label,
+        "blockLabel": material,
+        "blockSprite": f"/assets/mc-icons/item/{slug}.png",
+        "coordinates": f"{item.get('world_name') or item.get('world') or 'world'} {item.get('x', '')} {item.get('y', '')} {item.get('z', '')}".strip(),
+        "player": item.get("player_name") or item.get("player") or player,
+    })
+    return item
+
+
 def detect_election_tables_sync() -> dict[str, Any]:
     db_path = admin_plugin_db_path()
     result: dict[str, Any] = {"db": admin_plugin_db_location(db_path), "tables": [], "groups": {}, "antiFraud": []}
@@ -9747,17 +9840,22 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
         coreprotect_error = public_error_message(exc)
     timeline_rows = list(plugin_timeline.get("rows", []))
     for row in core_rows:
+        core_event = normalize_coreprotect_event(row, name)
         timeline_rows.append(
             {
                 "time": row.get("time"),
                 "source": "CoreProtect",
-                "type": row.get("source_table") or "coreprotect",
-                "player": row.get("player") or name,
-                "world": row.get("world"),
-                "x": row.get("x"),
-                "y": row.get("y"),
-                "z": row.get("z"),
-                "details": row,
+                "type": core_event.get("source_table") or "coreprotect",
+                "player": core_event.get("player") or name,
+                "world": core_event.get("world_name") or core_event.get("world"),
+                "x": core_event.get("x"),
+                "y": core_event.get("y"),
+                "z": core_event.get("z"),
+                "actionLabel": core_event.get("actionLabel"),
+                "blockLabel": core_event.get("blockLabel"),
+                "blockSprite": core_event.get("blockSprite"),
+                "coordinates": core_event.get("coordinates"),
+                "details": core_event,
                 "adminOnly": True,
             }
         )
@@ -10049,6 +10147,38 @@ async def player_full_profile(
     return await bg(player_full_detail_sync, player, bool(context.get("fullAccess")), limit)
 
 
+@app.post("/api/players/{player}/site-account")
+async def player_site_account_update(
+    player: str,
+    data: AdminPlayerAccountUpdateIn,
+    request: Request,
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    require_sensitive_confirm(request, "PLAYER_SITE_ACCOUNT_UPDATE")
+    result = await bg(admin_update_player_account_sync, player, username, data)
+    audit_event(
+        username,
+        "player.site_account_update",
+        target=player,
+        details={
+            "usernameChanged": bool(result.get("usernameChanged")),
+            "passwordChanged": bool(result.get("passwordChanged")),
+        },
+    )
+    append_panel_event(
+        "admin-panel",
+        "player_site_account_update",
+        actor=username,
+        target=player,
+        metadata={
+            "usernameChanged": bool(result.get("usernameChanged")),
+            "passwordChanged": bool(result.get("passwordChanged")),
+        },
+        tags=["player", "security", "account"],
+    )
+    return result
+
+
 @app.post("/api/players/{player}/bank-pin/reset")
 async def player_bank_pin_reset(player: str, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
     require_sensitive_confirm(request, "PLAYER_BANK_PIN_RESET")
@@ -10127,7 +10257,10 @@ async def treasury_public(limit: int = 30) -> dict[str, Any]:
 
 @app.get("/api/players/{player}/inventory")
 async def player_inventory(player: str, _: str = Depends(require_panel_admin)) -> dict[str, Any]:
-    await bg(rcon_quick, "save-all")
+    # A profile read must never force a world-wide save. Live plugin snapshots
+    # are preferred when the player is online; the NBT file is used as the
+    # bounded offline fallback. An explicit snapshot action remains available
+    # for admins who intentionally want a fresh capture.
     live = await bg(plugin_inventory_live_sync, player, 1)
     latest_live = live.get("latest")
     uuid = await bg(find_player_uuid, player)
@@ -10196,16 +10329,21 @@ async def player_timeline(player: str, limit: int = 260, _: str = Depends(requir
         core_error = public_error_message(exc.detail)
     rows = list(plugin.get("rows", []))
     for row in core:
+        core_event = normalize_coreprotect_event(row, player)
         rows.append({
             "time": row.get("time"),
             "source": "CoreProtect",
-            "type": row.get("source_table") or "coreprotect",
-            "player": row.get("player") or player,
-            "world": row.get("world"),
-            "x": row.get("x"),
-            "y": row.get("y"),
-            "z": row.get("z"),
-            "details": row,
+            "type": core_event.get("source_table") or "coreprotect",
+            "player": core_event.get("player") or player,
+            "world": core_event.get("world_name") or core_event.get("world"),
+            "x": core_event.get("x"),
+            "y": core_event.get("y"),
+            "z": core_event.get("z"),
+            "actionLabel": core_event.get("actionLabel"),
+            "blockLabel": core_event.get("blockLabel"),
+            "blockSprite": core_event.get("blockSprite"),
+            "coordinates": core_event.get("coordinates"),
+            "details": core_event,
             "adminOnly": True,
         })
     rows.sort(key=lambda r: int(r.get("time") or 0), reverse=True)

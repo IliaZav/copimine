@@ -32,7 +32,9 @@ public final class ClientBridgeProtocol {
             "WOBBLE",
             "BLOBS",
             "PENCIL",
-            "CHAOS"
+            "CHAOS",
+            "OVERDOSE",
+            "ZHUZEVO_TRIP"
     );
 
     private static final int MAX_HELLO_ATTEMPTS = 10;

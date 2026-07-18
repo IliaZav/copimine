@@ -1170,6 +1170,41 @@ body.player-mode :where(.panel, .metric):hover { border-color: var(--line-strong
   }
 }
 
+/* Player audit details: a readable block/action trail instead of raw log text. */
+.activity-block-sprite {
+  width: 30px;
+  height: 30px;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+.activity-icon:has(.activity-block-sprite) {
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  background: var(--surface-soft);
+}
+
+.admin-player-credentials {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-soft);
+}
+
+.admin-player-credentials .credential-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-player-credentials .credential-hint {
+  color: var(--muted);
+  font-size: .82rem;
+}
+
 /*
  * Release refinement — a compact civic-inventory layer.
  *

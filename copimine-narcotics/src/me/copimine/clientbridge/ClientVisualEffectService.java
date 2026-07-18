@@ -51,6 +51,68 @@ public final class ClientVisualEffectService {
             ClientVisualCommand.FallbackHandler fallbackHandler,
             ClientVisualCommand.FinishHandler finishHandler
     ) {
+        return sendVisualStartInternal(
+                player,
+                effectId,
+                shaderpack,
+                seconds,
+                intensity,
+                fadeInMillis,
+                fadeOutMillis,
+                source,
+                fallbackHandler,
+                finishHandler,
+                true
+        );
+    }
+
+    /**
+     * Refresh an already-running visual without sending clear-all first.  The
+     * client keeps the same shader pipeline for the same effect/shaderpack and
+     * only replaces its expiry timestamp.  This is used when a repeated drug
+     * use extends an effect, so the visual duration stays in sync without a
+     * shader reload or a one-frame flash.
+     */
+    public long sendVisualRefresh(
+            Player player,
+            String effectId,
+            String shaderpack,
+            int seconds,
+            float intensity,
+            int fadeInMillis,
+            int fadeOutMillis,
+            String source,
+            ClientVisualCommand.FallbackHandler fallbackHandler,
+            ClientVisualCommand.FinishHandler finishHandler
+    ) {
+        return sendVisualStartInternal(
+                player,
+                effectId,
+                shaderpack,
+                seconds,
+                intensity,
+                fadeInMillis,
+                fadeOutMillis,
+                source,
+                fallbackHandler,
+                finishHandler,
+                false
+        );
+    }
+
+    private long sendVisualStartInternal(
+            Player player,
+            String effectId,
+            String shaderpack,
+            int seconds,
+            float intensity,
+            int fadeInMillis,
+            int fadeOutMillis,
+            String source,
+            ClientVisualCommand.FallbackHandler fallbackHandler,
+            ClientVisualCommand.FinishHandler finishHandler,
+            boolean clearBeforeStart
+    ) {
         if (player == null || !player.isOnline()) {
             return -1L;
         }
@@ -58,7 +120,14 @@ public final class ClientVisualEffectService {
         if (state == null || !state.supportsEffect(effectId)) {
             return -1L;
         }
-        clearVisuals(player, "replace-before-start");
+        if (clearBeforeStart) {
+            clearVisuals(player, "replace-before-start");
+        } else {
+            // Drop only the old server-side command.  The client receives a
+            // new start packet and its same-runtime path keeps the shader
+            // pipeline alive while refreshing the expiry timestamp.
+            removePlayerCommands(player.getUniqueId());
+        }
         long seq = nextSeq.getAndIncrement();
         long now = System.currentTimeMillis();
         ClientVisualCommand command = new ClientVisualCommand(

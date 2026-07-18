@@ -584,6 +584,32 @@ def assert_public_discord_report_never_includes_snapshot(discord_bot) -> None:
     assert "never-public" not in values, values
 
 
+def assert_admin_player_credentials_never_return_plaintext(main) -> None:
+    now = main.now_ts()
+    uuid = main.find_player_uuid("ExistingHero")
+    with main.auth_conn() as conn:
+        main.ensure_v4_schema(conn)
+        conn.execute(
+            "INSERT INTO site_accounts(id,username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip) VALUES(%s,%s,%s,%s,'player',1,%s,%s,%s,%s,%s,'')",
+            ("profile-account", "oldprofile", "oldprofile", main.make_password_hash("OldPassword!23"), uuid, "ExistingHero", now, now, now),
+        )
+        conn.commit()
+    result = main.admin_update_player_account_sync(
+        "ExistingHero",
+        "AdminUser",
+        main.AdminPlayerAccountUpdateIn(username="newprofile", new_password="NewPassword!45"),
+    )
+    assert result["username"] == "newprofile", result
+    assert result["passwordChanged"] is True, result
+    assert "password" not in result and "password_hash" not in result, result
+    with main.auth_conn() as conn:
+        row = conn.execute("SELECT username,password_hash FROM site_accounts WHERE id=%s", ("profile-account",)).fetchone()
+        conn.commit()
+    assert row["username"] == "newprofile", row
+    assert main.verify_password_hash(row["password_hash"], "NewPassword!45")
+    assert "NewPassword!45" not in str(row["password_hash"])
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="copimine-backend-security-") as raw_temp:
         temp = Path(raw_temp)
@@ -598,6 +624,7 @@ def main() -> None:
         assert_registration_does_not_claim_an_existing_minecraft_identity(main_module)
         assert_fresh_registration_keeps_automatic_whitelist_without_bank_link(main_module)
         assert_link_code_cannot_reassign_another_players_identity(main_module)
+        assert_admin_player_credentials_never_return_plaintext(main_module)
         assert_artifact_digest_is_cached(runtime, temp)
         assert_bridge_limits_distinct_messages(bridge, temp)
         assert_discord_rejects_mutable_role_names(discord_bot)

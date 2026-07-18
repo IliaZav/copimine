@@ -101,7 +101,7 @@ public final class OverdoseService {
             return;
         }
         int remainingSeconds = (int) Math.min(Integer.MAX_VALUE, state.overdoseUntil() - now);
-        applyConfiguredEffects(player, buildOverdoseEffects(definition), Math.max(1, remainingSeconds));
+        applyConfiguredEffects(player, buildOverdoseEffects(definition), Math.max(1, remainingSeconds), clientModAvailable(player, "OVERDOSE"));
         visualRuntime.apply(player, resolveOverdoseVisual(definition), Math.max(1, remainingSeconds), true);
     }
 
@@ -242,7 +242,7 @@ public final class OverdoseService {
         clearTransientEffects(player, false);
         List<ConfiguredEffect> effectsToApply = buildOverdoseEffects(definition);
         int effectiveSeconds = Math.max(1, durationSeconds);
-        applyConfiguredEffects(player, effectsToApply, effectiveSeconds);
+        applyConfiguredEffects(player, effectsToApply, effectiveSeconds, clientModAvailable(player, "OVERDOSE"));
         if (includeVisuals) {
             visualRuntime.apply(player, resolveOverdoseVisual(definition), effectiveSeconds, true);
         }
@@ -319,7 +319,7 @@ public final class OverdoseService {
 
     private PlayerState applyOverdose(Player player, NarcoticDefinition definition, PlayerState state, long now) {
         List<ConfiguredEffect> effectsToApply = buildOverdoseEffects(definition);
-        applyConfiguredEffects(player, effectsToApply);
+        applyConfiguredEffects(player, effectsToApply, -1, clientModAvailable(player, "OVERDOSE"));
         int duration = effectiveDuration(Math.max(30, maxDuration(effectsToApply)));
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 30, 0.45D, 0.55D, 0.45D, 0.01D);
         visualRuntime.apply(player, resolveOverdoseVisual(definition), duration, true);
@@ -341,11 +341,12 @@ public final class OverdoseService {
         boolean luckyShader = random.nextInt(10) == 0;
         if (luckyShader) {
             effects.add(new ConfiguredEffect("WITHER", 0, Math.min(duration, 60)));
-            visualRuntime.apply(player, resolveOverdoseVisual(definition), duration, false);
-        } else if (state.overdoseUntil() <= now) {
-            visualRuntime.clear(player);
+            visualRuntime.apply(player, "OVERDOSE", duration, true);
+        } else {
+            visualRuntime.apply(player, "ZHUZEVO_TRIP", duration, false);
         }
-        applyConfiguredEffects(player, effects, duration);
+        String visibleEffect = luckyShader ? "OVERDOSE" : "ZHUZEVO_TRIP";
+        applyConfiguredEffects(player, effects, duration, clientModAvailable(player, visibleEffect));
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 18, 0.35D, 0.45D, 0.35D, 0.01D);
         return new PlayerState(
                 state.playerUuid(),
@@ -359,10 +360,14 @@ public final class OverdoseService {
     }
 
     private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects) {
-        applyConfiguredEffects(player, configuredEffects, -1);
+        applyConfiguredEffects(player, configuredEffects, -1, false);
     }
 
     private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects, int overrideDurationSeconds) {
+        applyConfiguredEffects(player, configuredEffects, overrideDurationSeconds, false);
+    }
+
+    private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects, int overrideDurationSeconds, boolean hideNegativeIcons) {
         Set<PotionEffectType> tracked = trackedEffects.computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet());
         for (ConfiguredEffect configured : configuredEffects) {
             PotionEffectType type = resolveEffect(configured.type());
@@ -371,7 +376,10 @@ public final class OverdoseService {
             }
             int effectSeconds = overrideDurationSeconds > 0 ? overrideDurationSeconds : effectiveDuration(configured.durationSeconds());
             int ticks = Math.max(1, effectSeconds) * 20;
-            player.addPotionEffect(new PotionEffect(type, ticks, Math.max(0, configured.amplifier()), false, false, true));
+            // The optional client mod replaces the noisy vanilla list with one
+            // consolidated badge. Gameplay remains server-authoritative: only
+            // the icon is hidden, the potion effect itself is unchanged.
+            player.addPotionEffect(new PotionEffect(type, ticks, Math.max(0, configured.amplifier()), false, false, !hideNegativeIcons));
             tracked.add(type);
         }
     }
@@ -397,17 +405,7 @@ public final class OverdoseService {
     }
 
     private String resolveOverdoseVisual(NarcoticDefinition definition) {
-        if (!"zhuzevo".equals(definition.id())) {
-            return definition.visualEffectId();
-        }
-        List<String> visuals = new ArrayList<>();
-        for (NarcoticDefinition source : configService.items().values()) {
-            if (!"zhuzevo".equals(source.id())) {
-                visuals.add(source.visualEffectId());
-            }
-        }
-        Collections.shuffle(visuals);
-        return visuals.isEmpty() ? definition.visualEffectId() : visuals.get(0);
+        return "OVERDOSE";
     }
 
     private PotionEffectType resolveEffect(String raw) {
@@ -422,6 +420,10 @@ public final class OverdoseService {
             case "UNLUCK", "BAD_OMEN", "LUCK", "DARKNESS" -> PotionEffectType.getByName(normalized);
             default -> PotionEffectType.getByName(normalized);
         };
+    }
+
+    private boolean clientModAvailable(Player player, String effectId) {
+        return visualRuntime.clientModAvailable(player, effectId);
     }
 
     private int maxDuration(List<ConfiguredEffect> effects) {

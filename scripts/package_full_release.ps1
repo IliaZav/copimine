@@ -373,6 +373,7 @@ $generatedReleaseFiles = @(
     'thirdparty\CopiMineMods.zip',
     'thirdparty\CopiMineMods.sha1',
     'thirdparty\CopiMineMods.sha256',
+    'thirdparty\client-mods\CopiMineClient-0.1.0.jar',
     'thirdparty\checksums.txt',
     'thirdparty\thirdparty_manifest.json'
 )
@@ -416,6 +417,21 @@ foreach ($relative in ($generatedReleaseFiles + $serverReleaseJars)) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
+
+# Git archives use the repository blob bytes (LF on this project), while the
+# Windows checkout may have CRLF files. Recalculate embedded deploy hashes from
+# the staged payload so the manifest validates on Ubuntu exactly as extracted.
+$installerManifest.deploy.scripts.unpackAndVerify.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\ubuntu\copimine_unpack_and_verify.sh')
+$installerManifest.deploy.scripts.fullReplace.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\ubuntu\copimine_full_replace.sh')
+$installerManifest.deploy.scripts.sharedCommon.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\shared\common.sh')
+$installerManifest.deploy.scripts.gameRuntimeHardening.applyScript.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\ubuntu\apply_game_hardening.sh')
+$installerManifest.deploy.scripts.gameRuntimeHardening.runtimeScript.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\shared\harden_game_runtime.py')
+$installerManifest.deploy.scripts.gameRuntimeHardening.policy.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\templates\game-runtime-hardening.json')
+$installerManifest.deploy.scripts.gameRuntimeHardening.voicechatTemplate.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\templates\voicechat-server.properties')
+$installerManifest.deploy.scripts.gameRuntimeHardening.systemdUnit.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'admin-web\deploy\copimine-game-hardening.service')
+$installerManifestJson = $installerManifest | ConvertTo-Json -Depth 16
+Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content $installerManifestJson
+Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\installer_manifest.json') -Content $installerManifestJson
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"
 New-Item -ItemType Directory -Force -Path $runtimeDbDir | Out-Null

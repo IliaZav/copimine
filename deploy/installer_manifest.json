@@ -1,38 +1,60 @@
 {
-    "generatedAtUtc":  "2026-07-18T10:55:00.7180040Z",
-    "gitCommit":  "5587bab",
+    "generatedAtUtc":  "2026-07-18T22:35:42.4528265Z",
+    "gitCommit":  "3d6a512",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
                                            "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                                           "sha1":  "0863ed6913ec5e42708ddbdf4eb0771d4c96ddfa",
-                                           "sha256":  "849876e4626d60080b9013946ffd7cc10ba65b4de09f4ccb98cc28b06faf146c"
+                                           "sha1":  "83faa40dd9530e5ba34cead94379b799a0ff930b",
+                                           "sha256":  "65a6d3b9e36240b6fd8c66aeec0f185279c4896e99127500b76062bb95ed625d"
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "f9c1d21a69981dc004386bcfb1861e7a46ff7558",
-                                      "sha256":  "9b45f898ea79d86f4495852b0894facf5ab5cd3ef6922665b23c2fad751d7019"
+                                      "sha1":  "564b31965c0eab0edceeb3adf939b0aa2b2ec397",
+                                      "sha256":  "8e2dc1447f2986d7dc9c57e3cde52f64dee31fbd59f9a748c2761f05f4667d9d"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
-                                        "sha1":  "3e238b1b9b19b50b9776cbc28da3df1b97755bf0",
-                                        "sha256":  "56c724844d46f41acac873de9f5d1df5fb767049338519371963034d52c94e14"
+                                        "sha1":  "98360e754caa6bffe749855a3476ee201bee13e5",
+                                        "sha256":  "835896c62521aa0ad07ae2e8292f06eedc61ce94470e08450f7678834d549aba"
                                     }
                   },
     "deploy":  {
                    "scripts":  {
                                    "unpackAndVerify":  {
                                                            "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
-                                                           "sha256":  "d13941341d2450d9cdde69742ca6d34d1ee608e120de7ddccc9af2409097b2f5"
+                                                           "sha256":  "55224703d704ab4c822c1191f1953a4431e6f9dc39e229f64452b2b4d12cab1f"
                                                        },
                                    "fullReplace":  {
                                                        "path":  "deploy/ubuntu/copimine_full_replace.sh",
-                                                       "sha256":  "1cb87836376090a7bae1cf4c6c52a2878bdc4800933be2260e983273ea76abfb"
+                                                       "sha256":  "30c677e6ae9b0147b64348dc392841718e1755997cb4e6aa5397c3989c0aae65"
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
-                                                        "sha256":  "9083a7f8a1f84ede13fd4d0b50c4d81eddba7f1b2d5a07889358ddaeace59a0a"
-                                                    }
+                                                        "sha256":  "bc480288cea10cd380e88a2bbe32cccaaabea26e35ed56d4f189c0cd41c44198"
+                                                    },
+                                   "gameRuntimeHardening":  {
+                                                                "applyScript":  {
+                                                                                    "path":  "deploy/ubuntu/apply_game_hardening.sh",
+                                                                                    "sha256":  "ccea07bcfbced19351ced471310e56af1149dec75729715479eeae3462a1cbff"
+                                                                                },
+                                                                "runtimeScript":  {
+                                                                                      "path":  "deploy/shared/harden_game_runtime.py",
+                                                                                      "sha256":  "4c32912c0ba720345047db0090441f8762a528e8b8d72a2de23f6dded9c19f76"
+                                                                                  },
+                                                                "policy":  {
+                                                                               "path":  "deploy/templates/game-runtime-hardening.json",
+                                                                               "sha256":  "c40bbf7ad4d0c55a97fd7f97d68fbd565f7355d6d862d3ae0612480afa2312e0"
+                                                                           },
+                                                                "voicechatTemplate":  {
+                                                                                          "path":  "deploy/templates/voicechat-server.properties",
+                                                                                          "sha256":  "115b9bc4251ec98544a80ffec103d745e0014316e5405f3b1464e5a8dd56c0c1"
+                                                                                      },
+                                                                "systemdUnit":  {
+                                                                                    "path":  "admin-web/deploy/copimine-game-hardening.service",
+                                                                                    "sha256":  "13462230b74f93cb975bbf69669372e2571f354977b3232223ff00dc02bb3407"
+                                                                                }
+                                                            }
                                },
                    "routes":  {
                                   "modpack":  "/downloads/CopiMineMods.zip",
@@ -42,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "753c5428f6042229b0a1639d75215bd4fcc2b577cfae4a523f554ca4d530c3ab"
+                                             "sha256":  "7d21d6c3a30672ed1d129483830b51c96268527ece744dc7b72877cfba179001"
                                          }
                  },
     "serverProperties":  {
@@ -50,7 +72,7 @@
                              "required":  {
                                               "levelSeed":  "-1861153001556076901",
                                               "resourcePack":  "http\\://admin.copimine.ru\\:18080/resourcepacks/CopiMineResourcePack.zip",
-                                              "resourcePackSha1":  "0863ed6913ec5e42708ddbdf4eb0771d4c96ddfa"
+                                              "resourcePackSha1":  "83faa40dd9530e5ba34cead94379b799a0ff930b"
                                           }
                          }
 }

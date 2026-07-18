@@ -34,7 +34,10 @@ export function createPlayerDonationPages(deps) {
   let lastShopPayload = null;
 
   function paymentModeLabel(value) {
-    return String(value || "").toUpperCase() === "MOCK_SBP" ? "Тестовая оплата" : String(value || "Тестовая оплата");
+    const provider = String(value || "").toUpperCase();
+    if (provider === "YOOKASSA") return "ЮKassa";
+    if (provider === "MOCK_SBP") return "Тестовая оплата";
+    return "Оплата недоступна";
   }
 
   function donationItemId(row) {
@@ -142,9 +145,17 @@ export function createPlayerDonationPages(deps) {
       <button class="btn btn-primary" data-click="playerCreateDonationSession(${number(pack.amount || 0)})">${esc(`${pack.amount} Donation`)}</button>
     `).join("");
 
+    const confirmationUrl = String(session?.confirmation_url || "").trim();
+    const providerCheckout = confirmationUrl ? `
+      <div class="payment-provider-card">
+        <strong>Оплата в ЮKassa</strong>
+        <p>Откроется защищённая страница провайдера. Баланс изменится только после подтверждения платежа.</p>
+        <a class="btn btn-primary" href="${esc(confirmationUrl)}" target="_blank" rel="noopener noreferrer">Перейти к оплате</a>
+      </div>
+    ` : `<img class="qr-image" src="/api/player/donation/sbp/session/${esc(donationSessionKey(session))}/qr.png?_fresh=${Date.now()}" alt="QR оплаты" />`;
     const sessionPanel = session ? `
       <div class="qr-block">
-        <img class="qr-image" src="/api/player/donation/sbp/session/${esc(donationSessionKey(session))}/qr.png?_fresh=${Date.now()}" alt="QR оплаты" />
+        ${providerCheckout}
         <div class="qr-copy">
           ${kv([
             ["Сессия", donationSessionKey(session)],
@@ -169,7 +180,7 @@ export function createPlayerDonationPages(deps) {
       <section class="layout-grid grid-4">
         ${metric("Donation", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
         ${metric("Курс", `${packs.rubPerUnit || 1} ₽ = 1 DC`, "Фиксированный курс", "neutral")}
-        ${metric("Режим оплаты", paymentModeLabel(packs.provider), "ожидает подключения СБП", "warn")}
+        ${metric("Режим оплаты", paymentModeLabel(packs.provider), packs.providerConfigured === false ? "Требуется настройка ЮKassa" : (String(packs.provider || "").toUpperCase() === "YOOKASSA" ? "Оплата на защищённой странице провайдера" : "Тестовый режим"), packs.providerConfigured === false ? "warn" : "good")}
         ${metric("Сессия", session ? statusLabel(session.status || "created") : "нет", session ? `Код ${session.session_code || short(donationSessionKey(session), 8)}` : "Создай новую сессию", session ? "neutral" : "good")}
       </section>
       ${panel("Donation-баланс", "Отдельный баланс для donation-лавки.", kv([
@@ -183,7 +194,7 @@ export function createPlayerDonationPages(deps) {
         <div class="spacer-12"></div>
         <div class="notice">Пакеты: 50 / 100 / 250 / 500 / 1000. Donation не меняется на AR.</div>
       `)}
-      ${panel("Платёжная сессия", "QR, ссылка и код оплаты.", sessionPanel)}
+      ${panel("Платёжная сессия", "Ссылка ЮKassa или QR тестовой оплаты.", sessionPanel)}
       ${panel("История", "Только операции donation-баланса.", table("player-donation-history", asArray(history.history), [
         { key: "created_at", label: "Время", render: (value) => dt(value) },
         { key: "delta", label: "Изменение", render: (value) => formatDonate(value || 0) },
@@ -324,7 +335,7 @@ export function createPlayerDonationPages(deps) {
       });
       state.donationSessionId = donationSessionKey(result?.session);
       if (state.donationSessionId) setStoredUiState("copimineDonationSessionId", state.donationSessionId);
-      toast(`Создана сессия на ${number(amount || 0)} Donation.`);
+      toast(result?.session?.confirmation_url ? "Сессия ЮKassa создана. Открой страницу оплаты." : `Создана сессия на ${number(amount || 0)} Donation.`);
       await loadPlayerDonationBalance();
     } catch (err) {
       toast(err.message, true);
@@ -354,7 +365,9 @@ export function createPlayerDonationPages(deps) {
 
   async function playerCopyDonationPaymentUrl() {
     if (!state.donationSessionId) return;
-    await copyText(`${location.origin}${appRouteHref("donation-balance", { session: state.donationSessionId })}`, "Ссылка оплаты скопирована");
+    const result = await safeApi(`/api/player/donation/sbp/session/${encodeURIComponent(state.donationSessionId)}`, null);
+    const confirmationUrl = String(result?.session?.confirmation_url || "").trim();
+    await copyText(confirmationUrl || `${location.origin}${appRouteHref("donation-balance", { session: state.donationSessionId })}`, "Ссылка оплаты скопирована");
   }
 
   function playerSelectDonationItem(itemId) {

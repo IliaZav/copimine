@@ -76,6 +76,7 @@ from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from .envfile import load_env_file_to_os, resolve_env_file
 from .startup_checks import run_startup_checks
+from .yookassa_gateway import YooKassaGateway, YooKassaGatewayError, YooKassaSettings
 from .plugin_registry import (
     PluginRegistryError,
     apply_registry_values,
@@ -102,7 +103,8 @@ THIRDPARTY_MANIFEST = THIRDPARTY_DIR / "thirdparty_manifest.json"
 ARTIFACTS_ITEMS_FILE = PROJECT_ROOT / "copimine-artifacts" / "items.yml"
 NARCOTICS_SOURCE_CONFIG_FILE = PROJECT_ROOT / "copimine-narcotics" / "config.yml"
 DONATION_FIXED_PACKS = (50, 100, 250, 500, 1000)
-DONATION_PROVIDER = "MOCK_SBP"
+YOOKASSA_SETTINGS = YooKassaSettings.from_env()
+DONATION_PROVIDER = "YOOKASSA" if YOOKASSA_SETTINGS.enabled else "MOCK_SBP"
 DONATION_SESSION_TTL_SECONDS = int(os.getenv("DONATION_SESSION_TTL_SECONDS", str(15 * 60)))
 DONATION_SESSION_TTL_MS = DONATION_SESSION_TTL_SECONDS * 1000
 DONATION_EPOCH_MS_THRESHOLD = 100_000_000_000
@@ -2655,6 +2657,8 @@ def ensure_v4_schema(conn: Any) -> None:
             status TEXT NOT NULL DEFAULT 'CREATED',
             qr_payload TEXT NOT NULL DEFAULT '',
             qr_image_path TEXT NOT NULL DEFAULT '',
+            provider_payment_id TEXT NOT NULL DEFAULT '',
+            provider_confirmation_url TEXT NOT NULL DEFAULT '',
             callback_payload_json TEXT NOT NULL DEFAULT '',
             idempotency_key TEXT NOT NULL DEFAULT '',
             created_at BIGINT NOT NULL DEFAULT 0,
@@ -2705,6 +2709,8 @@ def ensure_v4_schema(conn: Any) -> None:
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS donation_units BIGINT NOT NULL DEFAULT 0")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'RUB'")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS qr_image_path TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS provider_payment_id TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS provider_confirmation_url TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS callback_payload_json TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS paid_at BIGINT NOT NULL DEFAULT 0")
@@ -2734,6 +2740,7 @@ def ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_transfers_idempotency ON cmv4_bank_transfers(idempotency_key) WHERE idempotency_key<>''")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_donation_balance_ledger_idempotency ON donation_balance_ledger(idempotency_key) WHERE idempotency_key<>''")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_donation_sessions_idempotency ON donation_payment_sessions(idempotency_key) WHERE idempotency_key<>''")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_donation_sessions_provider_payment ON donation_payment_sessions(provider_payment_id) WHERE provider_payment_id<>''")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_donation_purchases_idempotency ON donation_purchases(idempotency_key) WHERE idempotency_key<>''")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_donation_balance_ledger_player_time ON donation_balance_ledger(player_uuid,created_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_donation_sessions_player_status ON donation_payment_sessions(player_uuid,status,created_at DESC)")
@@ -11720,6 +11727,7 @@ def normalize_donation_session_row(conn: Any, row: Mapping[str, Any] | dict[str,
     item["session_id"] = session_id
     item["session_code"] = session_id[-8:]
     item["payment_url"] = donation_payment_page_url(session_id)
+    item["confirmation_url"] = str(item.get("provider_confirmation_url") or "").strip()
     return item
 
 
@@ -11729,7 +11737,7 @@ def read_donation_sessions_sync(limit: int = 100) -> list[dict[str, Any]]:
     with auth_conn() as conn:
         rows = conn.execute(
             """
-            SELECT id,player_uuid,player_name,provider,amount,amount_rub,donation_units,status,created_at,expires_at,paid_at,cancelled_at,updated_at
+            SELECT id,player_uuid,player_name,provider,amount,amount_rub,donation_units,status,provider_payment_id,provider_confirmation_url,created_at,expires_at,paid_at,cancelled_at,updated_at
             FROM donation_payment_sessions
             ORDER BY created_at DESC
             LIMIT %s
@@ -11747,6 +11755,7 @@ def public_player_donation_session(session: Mapping[str, Any] | dict[str, Any]) 
     item = dict(session or {})
     item.pop("player_uuid", None)
     item.pop("qr_payload", None)
+    item.pop("provider_payment_id", None)
     item.pop("callback_payload_json", None)
     return item
 
@@ -11952,6 +11961,20 @@ def ensure_donation_account_row(conn: Any, player_uuid: str, player_name: str) -
     )
 
 
+def donation_yookassa_gateway() -> YooKassaGateway:
+    return YooKassaGateway(YOOKASSA_SETTINGS)
+
+
+def yookassa_http_error(error: YooKassaGatewayError) -> HTTPException:
+    if error.code in {"not_configured", "http_client_missing"}:
+        return HTTPException(status_code=503, detail="Оплата через ЮKassa пока не настроена")
+    if error.code in {"invalid_amount", "invalid_idempotency_key", "invalid_session", "invalid_payment"}:
+        return HTTPException(status_code=400, detail=str(error))
+    if error.code == "not_paid":
+        return HTTPException(status_code=409, detail=str(error))
+    return HTTPException(status_code=502, detail="Не удалось подтвердить платёж через ЮKassa")
+
+
 def create_donation_session_sync(player_uuid: str, player_name: str, amount: int, actor: str, source: str, idempotency_key: str) -> dict[str, Any]:
     if not pg_ready():
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
@@ -11966,49 +11989,105 @@ def create_donation_session_sync(player_uuid: str, player_name: str, amount: int
         raise HTTPException(status_code=400, detail="idempotency_key обязателен")
     now = donation_now_ms()
     expires_at = now + DONATION_SESSION_TTL_MS
+    session: dict[str, Any]
     with auth_conn() as conn:
         lock_donation_idempotency_sync(conn, "donation-session", key)
         existing = conn.execute(
-            "SELECT id,player_uuid,player_name,provider,amount,amount_rub,donation_units,status,qr_payload,created_at,expires_at,updated_at FROM donation_payment_sessions WHERE idempotency_key=%s LIMIT 1",
+            "SELECT id,player_uuid,player_name,provider,amount,amount_rub,donation_units,status,qr_payload,provider_payment_id,provider_confirmation_url,created_at,expires_at,paid_at,cancelled_at,updated_at FROM donation_payment_sessions WHERE idempotency_key=%s LIMIT 1",
             (key,),
         ).fetchone()
         if existing:
-            row = dict(existing)
-            if str(row.get("player_uuid") or "") != player_uuid:
+            session = dict(existing)
+            if str(session.get("player_uuid") or "") != player_uuid:
                 raise HTTPException(status_code=409, detail="idempotency_key уже используется другой платёжной сессией")
-            if int(row.get("amount_rub") or row.get("amount") or 0) != safe_amount:
+            if int(session.get("amount_rub") or session.get("amount") or 0) != safe_amount:
                 raise HTTPException(status_code=409, detail="idempotency_key уже занят платёжной сессией с другой суммой")
-            return normalize_donation_session_row(conn, row, now)
-        session_id = f"don-session-{secrets.token_hex(8)}"
-        qr_payload = generate_mock_sbp_qr_payload(player_uuid, safe_amount, session_id)
-        conn.execute(
-            """
-            INSERT INTO donation_payment_sessions(
-                id,player_uuid,player_name,provider,amount,amount_rub,donation_units,currency,status,
-                qr_payload,qr_image_path,callback_payload_json,idempotency_key,created_at,expires_at,paid_at,cancelled_at,updated_at
-            ) VALUES(%s,%s,%s,%s,%s,%s,%s,'RUB','PENDING',%s,'','',%s,%s,%s,0,0,%s)
-            """,
-            (session_id, player_uuid, player_name or "", DONATION_PROVIDER, safe_amount, safe_amount, safe_amount, qr_payload, key, now, expires_at, now),
-        )
+        else:
+            session_id = f"don-session-{secrets.token_hex(8)}"
+            is_yookassa = DONATION_PROVIDER == "YOOKASSA"
+            qr_payload = "" if is_yookassa else generate_mock_sbp_qr_payload(player_uuid, safe_amount, session_id)
+            status = "CREATED" if is_yookassa else "PENDING"
+            conn.execute(
+                """
+                INSERT INTO donation_payment_sessions(
+                    id,player_uuid,player_name,provider,amount,amount_rub,donation_units,currency,status,
+                    qr_payload,qr_image_path,provider_payment_id,provider_confirmation_url,callback_payload_json,
+                    idempotency_key,created_at,expires_at,paid_at,cancelled_at,updated_at
+                ) VALUES(%s,%s,%s,%s,%s,%s,%s,'RUB',%s,%s,'','','','',%s,%s,%s,0,0,%s)
+                """,
+                (session_id, player_uuid, player_name or "", DONATION_PROVIDER, safe_amount, safe_amount, safe_amount, status, qr_payload, key, now, expires_at, now),
+            )
+            session = {
+                "id": session_id,
+                "player_uuid": player_uuid,
+                "player_name": player_name,
+                "provider": DONATION_PROVIDER,
+                "amount": safe_amount,
+                "amount_rub": safe_amount,
+                "donation_units": safe_amount,
+                "status": status,
+                "qr_payload": qr_payload,
+                "provider_payment_id": "",
+                "provider_confirmation_url": "",
+                "created_at": now,
+                "expires_at": expires_at,
+                "paid_at": 0,
+                "cancelled_at": 0,
+                "updated_at": now,
+            }
+    session_id = str(session.get("id") or "")
+    if str(session.get("provider") or "").upper() == "YOOKASSA" and not str(session.get("provider_payment_id") or ""):
+        try:
+            payment = donation_yookassa_gateway().create_payment(
+                idempotency_key=f"copimine-{session_id}",
+                amount_rub=safe_amount,
+                description="Пополнение CopiMine Donation",
+                session_id=session_id,
+                player_uuid=player_uuid,
+            )
+        except YooKassaGatewayError as error:
+            with auth_conn() as conn:
+                conn.execute(
+                    "UPDATE donation_payment_sessions SET callback_payload_json=%s,updated_at=%s WHERE id=%s AND provider='YOOKASSA'",
+                    (json.dumps({"provider": "YOOKASSA", "error": error.code}, ensure_ascii=False), donation_now_ms(), session_id),
+                )
+            raise yookassa_http_error(error) from error
+        with auth_conn() as conn:
+            row = conn.execute("SELECT * FROM donation_payment_sessions WHERE id=%s FOR UPDATE", (session_id,)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Платёжная сессия не найдена")
+            session = dict(row)
+            known_payment_id = str(session.get("provider_payment_id") or "")
+            if known_payment_id and known_payment_id != payment.payment_id:
+                raise HTTPException(status_code=409, detail="Сессия уже привязана к другому платежу. Нужна ручная проверка.")
+            update_now = donation_now_ms()
+            conn.execute(
+                "UPDATE donation_payment_sessions SET provider_payment_id=%s,provider_confirmation_url=%s,status=%s,callback_payload_json=%s,updated_at=%s WHERE id=%s",
+                (
+                    payment.payment_id,
+                    payment.confirmation_url,
+                    "PENDING",
+                    json.dumps({"provider": "YOOKASSA", "paymentId": payment.payment_id, "status": payment.status}, ensure_ascii=False),
+                    update_now,
+                    session_id,
+                ),
+            )
+            session.update({
+                "provider_payment_id": payment.payment_id,
+                "provider_confirmation_url": payment.confirmation_url,
+                "status": "PENDING",
+                "updated_at": update_now,
+            })
+        if payment.paid and payment.status == "succeeded":
+            return mark_donation_session_paid_sync(
+                session_id,
+                "yookassa:create",
+                "provider-created-succeeded-payment",
+                expected_provider_payment_id=payment.payment_id,
+            )
     audit_event(actor, "donation.session.create", target=player_name or player_uuid, details={"sessionId": session_id, "amount": safe_amount, "source": source})
     append_panel_event("donation", "session_create", actor=actor, target=player_name or player_uuid, metadata={"sessionId": session_id, "amount": safe_amount, "source": source}, tags=["donation", "payment"])
-    return {
-        "id": session_id,
-        "session_id": session_id,
-        "player_uuid": player_uuid,
-        "player_name": player_name,
-        "provider": DONATION_PROVIDER,
-        "amount": safe_amount,
-        "amount_rub": safe_amount,
-        "donation_units": safe_amount,
-        "status": "PENDING",
-        "qr_payload": qr_payload,
-        "created_at": now,
-        "expires_at": expires_at,
-        "updated_at": now,
-        "payment_url": donation_payment_page_url(session_id),
-        "session_code": session_id[-8:],
-    }
+    return normalize_donation_session_row(None, session, donation_now_ms())
 
 
 def read_donation_session_sync(session_id: str) -> dict[str, Any]:
@@ -12016,7 +12095,7 @@ def read_donation_session_sync(session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
     with auth_conn() as conn:
         row = conn.execute(
-            "SELECT id,player_uuid,player_name,provider,amount,amount_rub,donation_units,status,qr_payload,created_at,expires_at,paid_at,cancelled_at,updated_at FROM donation_payment_sessions WHERE id=%s LIMIT 1",
+            "SELECT id,player_uuid,player_name,provider,amount,amount_rub,donation_units,status,qr_payload,provider_payment_id,provider_confirmation_url,created_at,expires_at,paid_at,cancelled_at,updated_at FROM donation_payment_sessions WHERE id=%s LIMIT 1",
             (session_id,),
         ).fetchone()
         if not row:
@@ -12024,7 +12103,13 @@ def read_donation_session_sync(session_id: str) -> dict[str, Any]:
         return normalize_donation_session_row(conn, row)
 
 
-def mark_donation_session_paid_sync(session_id: str, actor: str, note: str = "") -> dict[str, Any]:
+def mark_donation_session_paid_sync(
+    session_id: str,
+    actor: str,
+    note: str = "",
+    *,
+    expected_provider_payment_id: str = "",
+) -> dict[str, Any]:
     if not pg_ready():
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
     now = donation_now_ms()
@@ -12037,7 +12122,17 @@ def mark_donation_session_paid_sync(session_id: str, actor: str, note: str = "")
             raise HTTPException(status_code=404, detail="Платёжная сессия не найдена")
         data = dict(row)
         status = str(data.get("status") or "").upper()
-        if donation_session_is_expired(data, now):
+        provider = str(data.get("provider") or "MOCK_SBP").upper()
+        stored_provider_payment_id = str(data.get("provider_payment_id") or "").strip()
+        verified_provider_payment_id = str(expected_provider_payment_id or "").strip()
+        if provider == "YOOKASSA":
+            if not verified_provider_payment_id:
+                raise HTTPException(status_code=409, detail="Платёж ЮKassa подтверждается только webhook-ом провайдера")
+            if stored_provider_payment_id != verified_provider_payment_id:
+                raise HTTPException(status_code=409, detail="Платёж ЮKassa не совпадает с сессией")
+        elif verified_provider_payment_id:
+            raise HTTPException(status_code=409, detail="Провайдер не совпадает с платёжной сессией")
+        if donation_session_is_expired(data, now) and not verified_provider_payment_id:
             conn.execute("UPDATE donation_payment_sessions SET status='EXPIRED',updated_at=%s WHERE id=%s AND status IN ('CREATED','PENDING')", (now, session_id))
             raise HTTPException(status_code=409, detail="Сессия уже истекла")
         if status == "CANCELLED":
@@ -12070,13 +12165,58 @@ def mark_donation_session_paid_sync(session_id: str, actor: str, note: str = "")
             conn.execute("UPDATE donation_accounts SET balance=%s,updated_at=%s,player_name=%s WHERE player_uuid=%s", (after, now, player_name, player_uuid))
             conn.execute(
                 "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (ledger_id, player_uuid, amount, after, "DONATION_TOPUP", actor, "mock_sbp", ledger_key, now),
+                (ledger_id, player_uuid, amount, after, "DONATION_TOPUP", actor, "yookassa" if provider == "YOOKASSA" else "mock_sbp", ledger_key, now),
             )
         if status != "PAID":
-            conn.execute("UPDATE donation_payment_sessions SET status='PAID',paid_at=%s,updated_at=%s WHERE id=%s", (now, now, session_id))
+            callback = json.dumps(
+                {"provider": provider, "paymentId": verified_provider_payment_id, "status": "PAID"},
+                ensure_ascii=False,
+            )
+            conn.execute(
+                "UPDATE donation_payment_sessions SET status='PAID',paid_at=%s,callback_payload_json=%s,updated_at=%s WHERE id=%s",
+                (now, callback, now, session_id),
+            )
     audit_event(actor, "donation.session.mark_paid", target=player_name or player_uuid, details={"sessionId": session_id, "amount": amount, "note": note})
     append_panel_event("donation", "session_paid", actor=actor, target=player_name or player_uuid, metadata={"sessionId": session_id, "amount": amount}, tags=["donation", "payment"])
     return {"ok": True, "sessionId": session_id, "amount": amount, "balanceAfter": after, "status": "PAID", "paidAt": now if status != "PAID" else paid_at}
+
+
+def confirm_yookassa_payment_sync(payment_id: str, webhook_event: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    safe_payment_id = str(payment_id or "").strip()
+    if len(safe_payment_id) < 8 or len(safe_payment_id) > 128:
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор платежа")
+    with auth_conn() as conn:
+        row = conn.execute(
+            "SELECT id,player_uuid,amount_rub,amount,provider,provider_payment_id FROM donation_payment_sessions WHERE provider='YOOKASSA' AND provider_payment_id=%s FOR UPDATE",
+            (safe_payment_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Платёж ЮKassa не связан с CopiMine-сессией")
+        session = dict(row)
+    session_id = str(session.get("id") or "")
+    expected_amount = int(session.get("amount_rub") or session.get("amount") or 0)
+    try:
+        verified = donation_yookassa_gateway().verify_succeeded_payment(safe_payment_id, expected_amount, session_id)
+    except YooKassaGatewayError as error:
+        raise yookassa_http_error(error) from error
+    with auth_conn() as conn:
+        conn.execute(
+            "UPDATE donation_payment_sessions SET callback_payload_json=%s,updated_at=%s WHERE id=%s AND provider_payment_id=%s",
+            (
+                json.dumps({"provider": "YOOKASSA", "event": str(webhook_event or ""), "paymentId": verified.payment_id, "status": verified.status}, ensure_ascii=False),
+                donation_now_ms(),
+                session_id,
+                verified.payment_id,
+            ),
+        )
+    return mark_donation_session_paid_sync(
+        session_id,
+        "yookassa:webhook",
+        str(webhook_event or "payment.succeeded"),
+        expected_provider_payment_id=verified.payment_id,
+    )
 
 
 def cancel_donation_session_sync(session_id: str, actor: str, note: str = "") -> dict[str, Any]:
@@ -12085,7 +12225,7 @@ def cancel_donation_session_sync(session_id: str, actor: str, note: str = "") ->
     now = donation_now_ms()
     with auth_conn() as conn:
         row = conn.execute(
-            "SELECT id,player_uuid,player_name,status,expires_at,updated_at FROM donation_payment_sessions WHERE id=%s FOR UPDATE",
+            "SELECT id,player_uuid,player_name,provider,status,expires_at,updated_at FROM donation_payment_sessions WHERE id=%s FOR UPDATE",
             (session_id,),
         ).fetchone()
         if not row:
@@ -12097,6 +12237,8 @@ def cancel_donation_session_sync(session_id: str, actor: str, note: str = "") ->
             raise HTTPException(status_code=409, detail="Сессия уже истекла")
         if status == "PAID":
             raise HTTPException(status_code=409, detail="Оплаченную сессию нельзя отменить")
+        if str(data.get("provider") or "").upper() == "YOOKASSA":
+            raise HTTPException(status_code=409, detail="Сессию ЮKassa отменяй в личном кабинете провайдера")
         if status != "CANCELLED":
             conn.execute("UPDATE donation_payment_sessions SET status='CANCELLED',cancelled_at=%s,updated_at=%s WHERE id=%s", (now, now, session_id))
     audit_event(actor, "donation.session.cancel", target=str(data.get("player_name") or data.get("player_uuid") or ""), details={"sessionId": session_id, "note": note})
@@ -12928,6 +13070,7 @@ async def player_donation_packs(account: dict[str, Any] = Depends(require_player
         "rubPerUnit": 1,
         "packs": [{"amount": amount, "rub": amount, "label": f"{amount} Donation"} for amount in DONATION_FIXED_PACKS],
         "provider": DONATION_PROVIDER,
+        "providerConfigured": DONATION_PROVIDER != "YOOKASSA" or YOOKASSA_SETTINGS.configured,
     }
 
 
@@ -12945,6 +13088,26 @@ async def player_donation_create_session(data: PlayerDonationSessionCreateIn, re
         "provider": DONATION_PROVIDER,
         "message": "Сессия оплаты создана. Баланс пополнится только после статуса PAID.",
     }
+
+
+@app.post("/api/payments/yookassa/webhook")
+async def yookassa_webhook(request: Request) -> dict[str, Any]:
+    check_rate_limit(request, "yookassa-webhook", limit=120, window_seconds=60)
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Некорректный webhook ЮKassa") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Некорректный webhook ЮKassa")
+    event = str(payload.get("event") or "").strip()
+    if event != "payment.succeeded":
+        return {"ok": True, "ignored": True}
+    payment = payload.get("object")
+    if not isinstance(payment, dict):
+        raise HTTPException(status_code=400, detail="Webhook ЮKassa не содержит платежа")
+    payment_id = str(payment.get("id") or "").strip()
+    result = await bg(confirm_yookassa_payment_sync, payment_id, event)
+    return {"ok": True, "sessionId": result.get("sessionId"), "status": result.get("status")}
 
 
 @app.get("/api/player/donation/sbp/session/{session_id}")

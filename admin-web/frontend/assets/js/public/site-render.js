@@ -5,6 +5,7 @@ import { addShopCartItem, getShopCartCount, hasShopCartItem, setShopCartScope } 
 const MC_ICON_ROOT = "/assets/mc-icons/item";
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
+const LIVE_DONATION_INSTANCE_STATUSES = new Set(["ACTIVE", "DELIVERING", "PENDING_DELIVERY"]);
 
 function mcIcon(fileName) {
   return `${MC_ICON_ROOT}/${fileName}`;
@@ -312,13 +313,14 @@ function buildShopProductItem(row, mode = "ar", purchaseReady = false, needsLink
 function shopItemAvailability(row, currency, ownership = {}) {
   const itemId = String(row?.item_id || "").trim().toLowerCase();
   if (!itemId) return { unavailable: true, label: "Недоступен" };
+  if (row?.enabled === false) return { unavailable: true, label: "Снято с продажи" };
   if (currency === "ar") {
     if (Number(row?.per_player_limit || 0) <= 0) return {};
     const purchases = Array.isArray(ownership?.artifacts?.purchases) ? ownership.artifacts.purchases : [];
     const pending = Array.isArray(ownership?.artifacts?.pending) ? ownership.artifacts.pending : [];
     const matchingPurchases = purchases.filter((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId);
     const livePurchase = matchingPurchases.filter((entry) => ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase()));
-    const pendingDelivery = pending.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["PENDING", "DELIVERING"].includes(String(entry?.status || "").toUpperCase()));
+    const pendingDelivery = pending.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["PENDING", "DELIVERING", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase()));
     if (!livePurchase.length && !pendingDelivery) return {};
     return { unavailable: true, label: pendingDelivery ? "В выдаче" : "Уже получен" };
   }
@@ -326,8 +328,13 @@ function shopItemAvailability(row, currency, ownership = {}) {
   const instances = Array.isArray(ownership?.owned?.instances) ? ownership.owned.instances : [];
   const claim = claims.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["UNCLAIMED", "RESERVED", "DELIVERING", "DELIVERY_REVIEW"].includes(String(entry?.status || "").toUpperCase()));
   if (claim) return { unavailable: true, label: "В выдаче" };
-  const instance = instances.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["ACTIVE", "DELIVERING", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase()));
-  return instance ? { unavailable: true, label: "Уже получен" } : {};
+  const pendingInstance = instances.some((entry) => {
+    const status = String(entry?.status || "").toUpperCase();
+    return String(entry?.item_id || "").trim().toLowerCase() === itemId && status !== "ACTIVE" && LIVE_DONATION_INSTANCE_STATUSES.has(status);
+  });
+  if (pendingInstance) return { unavailable: true, label: "В выдаче" };
+  const activeInstance = instances.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && String(entry?.status || "").toUpperCase() === "ACTIVE");
+  return activeInstance ? { unavailable: true, label: "Уже получен" } : {};
 }
 
 function syncShopCartItemButtons() {
@@ -502,8 +509,8 @@ export function createHomepageRenderer() {
     }
     const shops = cmsEntry(payload, "shops_note");
     if (shops && pageKind === "public-shops") {
-      setCmsText("#shopStorefrontTitle", shops.title);
-      setCmsText(".shop-storefront-head p", shops.body);
+      setCmsText("#shopCmsNoteTitle", shops.title);
+      setCmsText("#shopCmsNoteBody", shops.body);
     } else if (shops && pageKind === "public-home") {
       setCmsText(".public-section .section-head h2", shops.title);
       setCmsText(".public-section .section-head p", shops.body);

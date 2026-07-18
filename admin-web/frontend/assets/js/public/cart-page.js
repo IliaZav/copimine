@@ -1,6 +1,7 @@
 import { makeElement, replaceChildrenSafe } from "../shared/dom.js";
-import { appRouteHref } from "../shared/app-routes.js";
+import { appRouteHref, defaultAppRouteForRole } from "../shared/app-routes.js";
 import { loadPublicAuthState, loadPublicShopsPageData } from "./site-data.js";
+import { createCheckoutBlockGuard, shouldBlockCheckoutAfterRefresh } from "./cart-checkout-guard.js";
 import {
   clearShopCartItems,
   getShopCartScope,
@@ -12,6 +13,7 @@ import {
 
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
+const LIVE_DONATION_INSTANCE_STATUSES = new Set(["ACTIVE", "DELIVERING", "PENDING_DELIVERY"]);
 const CURRENCY_META = {
   ar: {
     catalogKey: "arCatalog",
@@ -41,6 +43,7 @@ const CURRENCY_META = {
 
 let authState = { role: "", cookieAuth: false };
 let catalogState = { arCatalog: { items: [] }, donationCatalog: { items: [] } };
+const checkoutBlockGuard = createCheckoutBlockGuard();
 
 function formatAmount(value, label) {
   const amount = Number(value || 0);
@@ -79,6 +82,27 @@ function setStatus(currency, message = "", tone = "") {
   node.dataset.tone = tone;
 }
 
+function checkoutCartSignature(currency, cart = readShopCart()) {
+  const rows = Array.isArray(cart?.[currency]) ? cart[currency] : [];
+  return rows.map((row) => String(row?.itemId || "")).sort().join(",");
+}
+
+function blockCheckoutCurrency(currency, submittedSignature) {
+  return checkoutBlockGuard.blockIfSignatureMatches(
+    currency,
+    submittedSignature,
+    checkoutCartSignature(currency),
+  );
+}
+
+function clearChangedCheckoutBlocks(cart) {
+  for (const currency of Object.keys(CURRENCY_META)) {
+    if (checkoutBlockGuard.clearIfSignatureChanged(currency, checkoutCartSignature(currency, cart))) {
+      setStatus(currency);
+    }
+  }
+}
+
 function setGlobalNotice(message = "", tone = "") {
   const node = document.getElementById("cartGlobalNotice");
   if (!node) return;
@@ -88,20 +112,24 @@ function setGlobalNotice(message = "", tone = "") {
 }
 
 function syncCartAuthNav() {
-  const authenticated = Boolean(authState?.cookieAuth && authState?.role === "player");
+  const role = String(authState?.role || "").trim().toLowerCase();
+  const authenticated = Boolean(authState?.cookieAuth && authState?.role);
   const signin = document.getElementById("publicSigninLink");
   const register = document.getElementById("publicRegisterLink");
-  const cabinet = document.getElementById("publicCartCabinetLink");
-  const logout = document.getElementById("publicCartLogoutBtn");
+  const cabinet = document.getElementById("publicCabinetBtn");
+  const logout = document.getElementById("publicLogoutBtn");
   signin?.classList.toggle("hidden", authenticated);
   register?.classList.toggle("hidden", authenticated);
   cabinet?.classList.toggle("hidden", !authenticated);
   logout?.classList.toggle("hidden", !authenticated);
-  if (cabinet instanceof HTMLAnchorElement) cabinet.href = appRouteHref("balance");
+  if (cabinet instanceof HTMLAnchorElement) {
+    cabinet.href = appRouteHref(defaultAppRouteForRole(role));
+    cabinet.textContent = role === "player" ? "Личный кабинет" : "Панель управления";
+  }
 }
 
 function bindCartAuthNav() {
-  const logout = document.getElementById("publicCartLogoutBtn");
+  const logout = document.getElementById("publicLogoutBtn");
   if (!(logout instanceof HTMLButtonElement) || logout.dataset.bound === "true") return;
   logout.dataset.bound = "true";
   logout.addEventListener("click", async () => {
@@ -116,6 +144,7 @@ function bindCartAuthNav() {
       });
     } finally {
       authState = { role: "", cookieAuth: false };
+      checkoutBlockGuard.clear();
       setShopCartScope("guest");
       syncCartAuthNav();
       renderCart();
@@ -147,20 +176,36 @@ function cartItemAvailability(currency, item) {
   const itemId = String(item?.item_id || "").trim().toLowerCase();
   const ownership = catalogState?.ownership || {};
   if (!itemId) return { unavailable: true, label: "Недоступен" };
+  if (item?.enabled === false) return { unavailable: true, label: "Снято с продажи" };
   if (currency === "ar") {
     if (Number(item?.per_player_limit || 0) <= 0) return {};
     const purchases = Array.isArray(ownership?.artifacts?.purchases) ? ownership.artifacts.purchases : [];
     const pending = Array.isArray(ownership?.artifacts?.pending) ? ownership.artifacts.pending : [];
     const matchingPurchases = purchases.filter((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId);
     const livePurchase = matchingPurchases.filter((entry) => ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase()));
-    const pendingDelivery = pending.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["PENDING", "DELIVERING"].includes(String(entry?.status || "").toUpperCase()));
+    const pendingDelivery = pending.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["PENDING", "DELIVERING", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase()));
     if (!livePurchase.length && !pendingDelivery) return {};
     return { unavailable: true, label: pendingDelivery ? "В выдаче" : "Уже получен" };
   }
   const claims = Array.isArray(ownership?.owned?.claims) ? ownership.owned.claims : [];
   const instances = Array.isArray(ownership?.owned?.instances) ? ownership.owned.instances : [];
   if (claims.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["UNCLAIMED", "RESERVED", "DELIVERING", "DELIVERY_REVIEW"].includes(String(entry?.status || "").toUpperCase()))) return { unavailable: true, label: "В выдаче" };
-  return instances.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["ACTIVE", "DELIVERING", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase())) ? { unavailable: true, label: "Уже получен" } : {};
+  const pendingInstance = instances.some((entry) => {
+    const status = String(entry?.status || "").toUpperCase();
+    return String(entry?.item_id || "").trim().toLowerCase() === itemId && status !== "ACTIVE" && LIVE_DONATION_INSTANCE_STATUSES.has(status);
+  });
+  if (pendingInstance) return { unavailable: true, label: "В выдаче" };
+  const activeInstance = instances.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && String(entry?.status || "").toUpperCase() === "ACTIVE");
+  return activeInstance ? { unavailable: true, label: "Уже получен" } : {};
+}
+
+function cartHasUnavailableRow(currency) {
+  const meta = CURRENCY_META[currency];
+  const rows = readShopCart()[currency] || [];
+  return rows.some((cartRow) => {
+    const item = itemForCartRow(currency, cartRow);
+    return !item || cartItemAvailability(currency, item).unavailable || Number(item[meta.priceField] || 0) <= 0;
+  });
 }
 
 function buildEmptyState(currency) {
@@ -221,7 +266,7 @@ function renderCurrencyCart(currency) {
   const total = valid.reduce((sum, entry) => sum + Number(entry.item[meta.priceField] || 0), 0);
   totalNode.textContent = formatAmount(total, meta.label);
   replaceChildrenSafe(mount, mapped.length ? mapped.map((entry) => buildCartItem(currency, entry.cartRow, entry.item, entry.availability)) : [buildEmptyState(currency)]);
-  checkoutButton.disabled = !valid.length || valid.length !== mapped.length || !canCheckout();
+  checkoutButton.disabled = !valid.length || valid.length !== mapped.length || !canCheckout() || checkoutBlockGuard.isBlocked(currency);
   if (authState?.cookieAuth && authState?.role === "player" && !authState?.linked && mapped.length) {
     setStatus(currency, "Сначала привяжите Minecraft-ник в личном кабинете.", "warning");
   } else if (!canCheckout() && mapped.length) {
@@ -235,6 +280,21 @@ function renderCurrencyCart(currency) {
 
 function canCheckout() {
   return Boolean(authState?.cookieAuth && authState?.role === "player" && authState?.linked);
+}
+
+function shouldRefreshCatalogAfterCheckoutError(message) {
+  const value = String(message || "");
+  const staleCatalogFragments = [
+    "Цена предметов изменилась",
+    "Один из AR-предметов больше недоступен",
+    "Один из donation-предметов больше недоступен",
+    "Один из выбранных предметов пока нельзя купить на сайте",
+    "Для одного из выбранных предметов не задана цена",
+    "Лимит поставки",
+    "Персональный лимит",
+    "активный или ожидающий выдачи",
+  ];
+  return staleCatalogFragments.some((fragment) => value.includes(fragment));
 }
 
 function renderCart() {
@@ -264,6 +324,10 @@ async function checkoutCurrency(currency) {
     setStatus(currency, "Сначала привяжите Minecraft-ник в личном кабинете.", "warning");
     return;
   }
+  if (checkoutBlockGuard.isBlocked(currency)) {
+    setStatus(currency, "Обновите состав корзины перед повторной оплатой.", "warning");
+    return;
+  }
   if (!valid.length || valid.length !== entries.length) {
     setStatus(currency, "Проверьте состав корзины перед оплатой.", "error");
     return;
@@ -278,6 +342,7 @@ async function checkoutCurrency(currency) {
   const button = document.getElementById(meta.buttonId);
   const itemIds = valid.map((entry) => String(entry.cartRow.itemId));
   const expectedTotal = valid.reduce((sum, entry) => sum + Number(entry.item[meta.priceField] || 0), 0);
+  const submittedSignature = checkoutCartSignature(currency);
   if (button instanceof HTMLButtonElement) {
     button.disabled = true;
     button.dataset.loading = "true";
@@ -308,11 +373,17 @@ async function checkoutCurrency(currency) {
     setGlobalNotice("Оплата прошла. Предметы добавлены в отложенную выдачу.", "success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Оплата не прошла";
-    if (message.includes("Цена предметов изменилась")) {
+    if (shouldRefreshCatalogAfterCheckoutError(message)) {
+      const shouldBlock = shouldBlockCheckoutAfterRefresh(message);
+      const blockedSubmittedCart = shouldBlock && blockCheckoutCurrency(currency, submittedSignature);
       try {
         catalogState = await loadPublicShopsPageData(authState);
+        if (blockedSubmittedCart) {
+          checkoutBlockGuard.resolveAfterRefresh(currency, checkoutCartSignature(currency), cartHasUnavailableRow(currency));
+        }
       } catch (_reloadError) {
         // The existing catalog remains visible if a refresh is temporarily unavailable.
+        blockCheckoutCurrency(currency, submittedSignature);
       }
     }
     setStatus(currency, message, "error");
@@ -339,11 +410,16 @@ export async function initCartPage() {
   bindCheckoutForm("ar");
   bindCheckoutForm("donation");
   bindCartAuthNav();
-  window.addEventListener("shopCartChanged", renderCart);
+  window.addEventListener("shopCartChanged", (event) => {
+    clearChangedCheckoutBlocks(event?.detail?.cart);
+    renderCart();
+  });
   try {
     authState = await loadPublicAuthState();
+    syncCartAuthNav();
     catalogState = await loadPublicShopsPageData(authState);
     const accountId = String(authState?.role === "player" ? authState?.accountId || "" : "").trim().toLowerCase();
+    checkoutBlockGuard.clear();
     setShopCartScope(accountId ? `player-${accountId}` : "guest");
   } catch (_error) {
     setGlobalNotice("Не удалось загрузить каталог. Повторите попытку позже.", "error");

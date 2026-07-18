@@ -30,7 +30,10 @@ export function createAdminCommercePages(deps) {
   let cachedEconomySnapshot = null;
 
   function paymentModeLabel(value) {
-    return String(value || "").toUpperCase() === "MOCK_SBP" ? "Тестовый режим" : String(value || "—");
+    const provider = String(value || "").toUpperCase();
+    if (provider === "YOOKASSA") return "ЮKassa";
+    if (provider === "MOCK_SBP") return "Тестовый режим";
+    return "Оплата недоступна";
   }
 
   function playerLabel(row) {
@@ -328,6 +331,7 @@ export function createAdminCommercePages(deps) {
               if (status === "PAID") return `<span class="btn btn-secondary btn-small disabled">Оплачено</span>`;
               if (status === "CANCELLED") return `<span class="btn btn-secondary btn-small disabled">Отменено</span>`;
               if (status === "EXPIRED") return `<span class="btn btn-secondary btn-small disabled">Истекла</span>`;
+              if (String(row.provider || "").toUpperCase() === "YOOKASSA") return `<span class="btn btn-secondary btn-small disabled">Ожидает ЮKassa</span>`;
               return `<div class="action-strip"><button class="btn btn-primary btn-small" data-click="adminDonationMarkPaid('${row.id}')">Подтвердить</button><button class="btn btn-secondary btn-small" data-click="adminDonationCancelSession('${row.id}')">Отменить</button></div>`;
             },
           },

@@ -94,7 +94,38 @@ systemctl status copimine-discord-bot --no-pager -l
 
 Если Discord `.env` ещё не заполнен, сервис будет честно писать в journal, что не хватает конфигурации, и сайт продолжит работать.
 
-## 8. Rollback
+## 8. Включить ЮKassa после проверки сайта
+
+Не включайте платёжный режим, пока сайт не доступен по HTTPS на основном домене. В
+`/opt/copimine/admin-web/.env` заполните только на сервере:
+
+```dotenv
+YOOKASSA_ENABLED=1
+YOOKASSA_SHOP_ID=<идентификатор_магазина_из_ЮKassa>
+YOOKASSA_SECRET_KEY=<секретный_ключ_из_ЮKassa>
+YOOKASSA_API_BASE_URL=https://api.yookassa.ru/v3
+YOOKASSA_RETURN_URL=https://copimine.ru/cabinet/donation-balance.html
+```
+
+В кабинете ЮKassa укажите адрес уведомлений:
+
+```text
+https://copimine.ru/api/payments/yookassa/webhook
+```
+
+После изменения `.env` перезапустите только backend и проверьте журнал:
+
+```bash
+sudo systemctl restart copimine-admin
+sudo journalctl -u copimine-admin -n 100 --no-pager
+```
+
+Сделайте один платёж в тестовом магазине ЮKassa. Donation начисляется только после
+того, как backend сам запросит у ЮKassa подтверждённый платёж; браузер и входящий
+webhook не могут начислить баланс сами. Не копируйте секретный ключ в Git, nginx,
+страницы сайта или сообщения Discord.
+
+## 9. Rollback
 
 ```bash
 set -euo pipefail

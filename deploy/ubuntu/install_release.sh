@@ -6,6 +6,11 @@ set -Eeuo pipefail
 # with the release. Runtime data and the database are preserved by default.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-/opt/copimine}"
+LOG_FILE="${COPIMINE_INSTALL_LOG:-/var/log/copimine-install.log}"
+mkdir -p "$(dirname "$LOG_FILE")"
+touch "$LOG_FILE"
+chmod 600 "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
 ARCHIVE_PATH="${1:-}"
 ARCHIVE_SHA256=""
 DB_DUMP_PATH=""
@@ -15,6 +20,7 @@ RESET_GAMEPLAY=0
 
 usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path]\n' "$0" >&2; }
 [[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }
+[[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
 shift
 if [[ "${1:-}" != --* && -n "${1:-}" ]]; then ARCHIVE_SHA256="$1"; shift; fi
 while [[ $# -gt 0 ]]; do
@@ -27,6 +33,70 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+preflight() {
+  local actual expected dump_listing
+  for command in sha256sum tar gzip python3 systemctl curl psql pg_restore; do
+    command -v "$command" >/dev/null 2>&1 || { echo "Missing required command: $command" >&2; exit 3; }
+  done
+  [[ -f "$ARCHIVE_PATH" && -s "$ARCHIVE_PATH" ]] || { echo "Archive not found or empty: $ARCHIVE_PATH" >&2; exit 3; }
+  if [[ -z "$ARCHIVE_SHA256" && -f "${ARCHIVE_PATH}.sha256" ]]; then
+    ARCHIVE_SHA256="$(awk '{print $1}' "${ARCHIVE_PATH}.sha256" | head -n1 | tr -d '\r\n')"
+  fi
+  [[ "$ARCHIVE_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]] || { echo 'Archive SHA256 is invalid or missing.' >&2; exit 3; }
+  actual="$(sha256sum "$ARCHIVE_PATH" | awk '{print tolower($1)}')"
+  expected="${ARCHIVE_SHA256,,}"
+  [[ "$actual" == "$expected" ]] || { echo "Archive SHA256 mismatch: expected=$expected actual=$actual" >&2; exit 3; }
+  echo "[preflight] archive sha256 OK: $actual"
+  tar -tzf "$ARCHIVE_PATH" >/dev/null
+  if [[ -n "$DB_DUMP_PATH" ]]; then
+    [[ -s "$DB_DUMP_PATH" ]] || { echo "Database dump not found: $DB_DUMP_PATH" >&2; exit 3; }
+    dump_listing="$(mktemp /tmp/copimine-dump-list-XXXXXX)"
+    pg_restore --list "$DB_DUMP_PATH" >"$dump_listing"
+    rm -f -- "$dump_listing"
+    echo '[preflight] external database dump is readable'
+  fi
+  if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
+    local db_host db_port db_name db_user db_password
+    db_host="$(awk -F= '$1=="POSTGRES_HOST" {print $2; exit}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
+    db_port="$(awk -F= '$1=="POSTGRES_PORT" {print $2; exit}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
+    db_name="$(awk -F= '$1=="POSTGRES_DB" {print $2; exit}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
+    db_user="$(awk -F= '$1=="POSTGRES_USER" {print $2; exit}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
+    db_password="$(awk -F= '$1=="POSTGRES_PASSWORD" {sub(/^[^=]*=/,"",$0); print $0; exit}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
+    if [[ -n "$db_user" && -n "$db_name" && -n "$db_password" ]]; then
+      PGPASSWORD="$db_password" psql -h "${db_host:-127.0.0.1}" -p "${db_port:-5432}" -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >/dev/null
+      echo '[preflight] PostgreSQL credentials OK'
+    else
+      echo '[preflight] PostgreSQL credentials are not configured yet; installer will bootstrap them.'
+    fi
+  else
+    echo '[preflight] .env is absent; installer will create protected runtime credentials.'
+  fi
+}
+
+verify_runtime() {
+  local expected_sha actual_sha expected_modpack actual_modpack properties_sha
+  for service in copimine-admin copimine-minecraft nginx; do
+    systemctl is-active --quiet "$service" || { echo "Service is not active: $service" >&2; return 1; }
+    echo "[verify] service active: $service"
+  done
+  expected_sha="$(sha1sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
+  actual_sha="$(curl -fsS --max-time 30 http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip | sha1sum | awk '{print $1}')"
+  [[ "$expected_sha" == "$actual_sha" ]] || { echo "Resource pack SHA1 mismatch: local=$expected_sha served=$actual_sha" >&2; return 1; }
+  echo "[verify] resource pack SHA1 OK: $actual_sha"
+  expected_modpack="$(sha256sum "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
+  actual_modpack="$(curl -fsS --max-time 30 http://127.0.0.1:18080/downloads/CopiMineMods.zip | sha256sum | awk '{print $1}')"
+  [[ "$expected_modpack" == "$actual_modpack" ]] || { echo "Modpack SHA256 mismatch: local=$expected_modpack served=$actual_modpack" >&2; return 1; }
+  echo "[verify] modpack SHA256 OK: $actual_modpack"
+  grep -q '^require-resource-pack=true$' "$PROJECT_ROOT/minecraft/server/server.properties" || { echo 'require-resource-pack=true is missing' >&2; return 1; }
+  properties_sha="$(sed -n 's/^resource-pack-sha1=//p' "$PROJECT_ROOT/minecraft/server/server.properties" | tr -d '\r\n')"
+  [[ "$properties_sha" == "$expected_sha" ]] || { echo "server.properties resource-pack-sha1 mismatch: $properties_sha" >&2; return 1; }
+  echo '[verify] server.properties resource-pack requirement and SHA1 OK'
+  curl -fsS --max-time 15 http://127.0.0.1:18080/api/runtime >/dev/null
+  echo '[verify] HTTP runtime endpoint OK'
+}
+
+preflight
+
 if [[ "$WIPE_DB" == "1" ]]; then
   [[ "${COPIMINE_ALLOW_DB_WIPE:-}" == "YES" ]] || { echo 'Refusing database wipe. Set COPIMINE_ALLOW_DB_WIPE=YES and pass --wipe-db.' >&2; exit 3; }
   [[ "${COPIMINE_CONFIRM_DB_NAME:-}" == "copimine" ]] || { echo 'Refusing database wipe. Set COPIMINE_CONFIRM_DB_NAME=copimine.' >&2; exit 3; }
@@ -38,4 +108,15 @@ if [[ "$WIPE_DB" == "1" ]]; then
   PGPASSWORD="$(copimine_env_value POSTGRES_PASSWORD)" psql -h "$(copimine_env_value POSTGRES_HOST || echo 127.0.0.1)" -p "$(copimine_env_value POSTGRES_PORT || echo 5432)" -U "$(copimine_env_value POSTGRES_USER)" -d copimine -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS copimine CASCADE; CREATE SCHEMA copimine;'
 fi
 
-WIPE_WORLDS="$WIPE_WORLDS" CLEAN_WORLD_STATE="$RESET_GAMEPLAY" exec "$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh" "$ARCHIVE_PATH" "$ARCHIVE_SHA256" "$DB_DUMP_PATH"
+set +e
+WIPE_WORLDS="$WIPE_WORLDS" CLEAN_WORLD_STATE="$RESET_GAMEPLAY" \
+  "$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh" "$ARCHIVE_PATH" "$ARCHIVE_SHA256" "$DB_DUMP_PATH"
+result=$?
+set -e
+if [[ "$result" -ne 0 ]]; then
+  echo "INSTALL FAILED with exit code $result" >&2
+  systemctl --no-pager --plain --full status copimine-admin copimine-minecraft nginx || true
+  exit "$result"
+fi
+verify_runtime
+echo "INSTALL COMPLETE. Log: $LOG_FILE"

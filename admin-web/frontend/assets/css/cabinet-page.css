@@ -1,0 +1,31 @@
+@import url("./player.css");
+@import url("./account.css");
+@import url("./dashboard.css");
+@import url("./bank.css");
+@import url("./elections.css");
+@import url("./donation.css");
+@import url("./admin.css");
+@import url("./artifacts.css");
+@import url("./president.css");
+@import url("./errors.css");
+@import url("./admin-release.css");
+@import url("./ui-polish.css");
+
+.app { max-width: 1800px; margin-inline: auto; }
+
+.sidebar, .topbar { background: var(--panel, #172033); }
+
+.panel, .metric-card, .bank-hero, .bank-form-card { border-radius: 7px; }
+
+.player-row { border-radius: 6px; }
+
+.player-row.active { box-shadow: inset 3px 0 0 var(--accent, #34b6a8); }
+
+.notice.full { display: flex; align-items: center; min-height: 3.1rem; }
+
+#taxExemptionCountdown { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .topbar { position: sticky; top: 0; z-index: 20; }
+  #taxExemptionCountdown { white-space: normal; }
+}

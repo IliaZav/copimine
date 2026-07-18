@@ -20,6 +20,6 @@ Require-Contains $common 'panel_is_https' 'TLS configuration must keep the publi
 Require-Contains $verify 'copimine_verify_runtime' 'Ubuntu live verification must call the runtime endpoint checks.'
 Require-Contains $httpsTemplate 'listen 443 ssl' 'HTTPS nginx template must expose TLS.'
 Require-Contains $httpsTemplate 'listen 18080' 'HTTPS nginx template must preserve the HTTP download endpoint.'
-Require-Contains $envExample 'ALLOW_INSECURE_HTTP_AUTH=1' 'HTTP-only example configuration must remain usable for the current server.'
+Require-Contains $envExample 'ALLOW_INSECURE_HTTP_AUTH=0' 'HTTP login must be disabled by default; operators may opt in explicitly on a trusted LAN.'
 
 Write-Host 'CopiMine HTTP/HTTPS contract OK'

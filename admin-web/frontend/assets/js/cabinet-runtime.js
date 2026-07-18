@@ -124,6 +124,7 @@ const state = {
   config: null,
   selectedPlayer: String(initialRouteState.params.get("player") || "").trim(),
   players: [],
+  adminGiftCatalog: null,
   tables: {},
   refreshTimer: null,
   refreshPromise: null,
@@ -137,6 +138,7 @@ const state = {
   donationFocusItemId: String(initialRouteState.params.get("item") || "").trim().toLowerCase(),
   donationBusy: false,
   playerBankScope: getStoredUiState("copiminePlayerBankScope", "PERSONAL") || "PERSONAL",
+  playerBankTransferKey: "",
   adminSearchQuery: "",
   adminSearchOpen: false,
   adminSearchTarget: "",
@@ -550,6 +552,28 @@ async function loadAdminPlayerChoices() {
     const name = cleanText(row.name || row.username || row.player || row.uuid);
     return { ...row, name, online: onlineNames.has(name.toLowerCase()) };
   }));
+}
+
+async function loadAdminGiftCatalog() {
+  if (state.adminGiftCatalog) return state.adminGiftCatalog;
+  const data = await safeApi("/api/admin/shop/admin-gift-items", { categories: {} });
+  const categories = data?.categories && typeof data.categories === "object" ? data.categories : {};
+  state.adminGiftCatalog = {
+    AR: asArray(categories.AR),
+    DONATION: asArray(categories.DONATION),
+    HIDDEN: asArray(categories.HIDDEN),
+  };
+  return state.adminGiftCatalog;
+}
+
+function adminGiftItemOptions(catalog, category = "AR") {
+  const items = asArray(catalog?.[String(category || "AR").toUpperCase()]);
+  if (!items.length) return '<option value="">В этой категории нет предметов</option>';
+  return items.map((item) => {
+    const itemId = cleanText(item.item_id || item.itemId || "");
+    const label = cleanText(item.display_name || item.name || itemId || "Предмет");
+    return `<option value="${esc(itemId)}">${esc(label)} · ${esc(itemId)}</option>`;
+  }).join("");
 }
 
 function firstArray(...values) {
@@ -2799,20 +2823,23 @@ window.toggleAdminSearchDock = (force) => {
 
 async function playerDetailsHtml(player) {
   if (!player) return empty("Игрок не выбран", "Выбери игрока в списке слева.");
-  const detail = await safeApi(`/api/players/${encodeURIComponent(player)}/full?limit=120`, {
-    profile: {},
-    inventory: {},
-    timeline: { rows: [] },
-    actions: [],
-    reports: [],
-    applications: [],
-    audit: [],
-    adminActions: [],
-    pluginEvents: [],
-    economy: {},
-    elections: {},
-    fun: {},
-  });
+  const [detail, giftCatalog] = await Promise.all([
+    safeApi(`/api/players/${encodeURIComponent(player)}/full?limit=120`, {
+      profile: {},
+      inventory: {},
+      timeline: { rows: [] },
+      actions: [],
+      reports: [],
+      applications: [],
+      audit: [],
+      adminActions: [],
+      pluginEvents: [],
+      economy: {},
+      elections: {},
+      fun: {},
+    }),
+    loadAdminGiftCatalog(),
+  ]);
   const profile = detail.profile || {};
   const inventory = detail.inventory?.summary || {};
   const liveInventory = { latest: detail.inventory?.live || null, onlineSnapshots: detail.inventory?.liveSnapshots || [] };
@@ -2858,6 +2885,7 @@ async function playerDetailsHtml(player) {
     candidateApplications: extraCandidateApplications,
     pranks: extraPranks,
     narcoticsAudit: extraNarcoticsAudit,
+    giftCatalog,
   });
 }
 
@@ -2885,6 +2913,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
     candidateApplications = [],
     pranks = [],
     narcoticsAudit = [],
+    giftCatalog = {},
   } = ctx || {};
   const site = profile.siteAccount || {};
   const bank = profile.bank || {};
@@ -3103,6 +3132,32 @@ function renderPlayerFullDetails(player, detail, ctx) {
           <span class="detail-chip wide"><strong>${esc(player)}</strong><small>Текущая цель редактирования</small></span>
         </div>
         <div class="spacer-12"></div>
+        <div class="stack-list">
+          <article class="stack-card admin-player-commerce-card">
+            <header class="stack-card-head"><strong>Пополнить этому игроку</strong><span>Ник уже выбран — второй список не нужен.</span></header>
+            <div class="form-grid compact-grid">
+              <label class="field-stack"><span>AR</span><input id="playerAdminArAddAmount" type="number" min="1" step="1" placeholder="Сколько AR добавить" /></label>
+              <label class="field-stack"><span>Причина AR</span><input id="playerAdminArAddReason" value="admin-player-page" /></label>
+            </div>
+            <button class="btn btn-primary full" data-click="playerAdminArAddBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Пополнить AR этому игроку</button>
+            <div class="spacer-12"></div>
+            <div class="form-grid compact-grid">
+              <label class="field-stack"><span>Donation</span><input id="playerAdminDonationAddAmount" type="number" min="1" step="1" placeholder="Сколько donation добавить" /></label>
+              <label class="field-stack"><span>Причина donation</span><input id="playerAdminDonationAddReason" value="admin-player-page" /></label>
+            </div>
+            <button class="btn btn-secondary full" data-click="playerAdminDonationAddBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Пополнить donation этому игроку</button>
+          </article>
+          <article class="stack-card admin-player-commerce-card">
+            <header class="stack-card-head"><strong>Выдать предмет в отложенную выдачу</strong><span>Деньги игрока не списываются. Предмет забирается в игре.</span></header>
+            <div class="form-grid compact-grid">
+              <label class="field-stack"><span>Категория</span><select id="playerAdminGiftCategory" data-input="syncPlayerGiftCatalog"><option value="AR">AR</option><option value="DONATION">Donation</option><option value="HIDDEN">Скрытые</option></select></label>
+              <label class="field-stack"><span>Предмет</span><select id="playerAdminGiftItem">${adminGiftItemOptions(giftCatalog, "AR")}</select></label>
+            </div>
+            <label class="field-stack"><span>Комментарий в аудите</span><input id="playerAdminGiftNote" value="admin-player-page" maxlength="160" /></label>
+            <button class="btn btn-primary full" data-click="playerAdminGift('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Выдать выбранному игроку</button>
+          </article>
+        </div>
+        <div class="spacer-16"></div>
         <div class="form-grid compact-grid">
           <input id="playerAdminArBalanceValue" type="number" min="0" step="1" value="${esc(arCurrent)}" placeholder="Итоговый баланс AR" />
           <input id="playerAdminArReason" placeholder="Причина изменения AR" value="admin-player-page" />
@@ -3598,6 +3653,93 @@ window.playerAdminArSetBalance = async (player = state.selectedPlayer, uuid = ""
       }),
     });
     toast("AR-баланс сохранён");
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerAdminArAddBalance = async (player = state.selectedPlayer, uuid = "") => {
+  if (!player) return toast("Игрок не выбран", true);
+  const amount = Math.max(0, number($("playerAdminArAddAmount")?.value || 0));
+  if (amount <= 0) return toast("Укажи положительное количество AR", true);
+  try {
+    const headers = await dangerConfirm(`Пополнить AR игроку ${player} на ${formatAr(amount)}?`, "AR_ADD_BALANCE");
+    if (!headers) return;
+    await api("/api/admin/economy/ar/add-balance", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        minecraft_uuid: uuid || "",
+        minecraft_name: player,
+        amount,
+        reason: $("playerAdminArAddReason")?.value?.trim() || "admin-player-page",
+        idempotency_key: randomActionKey("player-ar-add"),
+      }),
+    });
+    toast(`AR зачислены игроку ${player}`);
+    if ($("playerAdminArAddAmount")) $("playerAdminArAddAmount").value = "";
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerAdminDonationAddBalance = async (player = state.selectedPlayer, uuid = "") => {
+  if (!player) return toast("Игрок не выбран", true);
+  const amount = Math.max(0, number($("playerAdminDonationAddAmount")?.value || 0));
+  if (amount <= 0) return toast("Укажи положительное количество donation", true);
+  try {
+    const headers = await dangerConfirm(`Пополнить donation игроку ${player} на ${formatDonate(amount)}?`, "DONATION_ADD_BALANCE");
+    if (!headers) return;
+    await api("/api/admin/donation/add-balance", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        minecraft_uuid: uuid || "",
+        minecraft_name: player,
+        amount,
+        reason: $("playerAdminDonationAddReason")?.value?.trim() || "admin-player-page",
+        idempotency_key: randomActionKey("player-donation-add"),
+      }),
+    });
+    toast(`Donation зачислен игроку ${player}`);
+    if ($("playerAdminDonationAddAmount")) $("playerAdminDonationAddAmount").value = "";
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.syncPlayerGiftCatalog = (category = "AR") => {
+  const select = $("playerAdminGiftItem");
+  if (!select) return;
+  replaceChildrenSafe(select, [fragmentFromHtml(adminGiftItemOptions(state.adminGiftCatalog || {}, category))]);
+};
+
+window.playerAdminGift = async (player = state.selectedPlayer, uuid = "") => {
+  if (!player) return toast("Игрок не выбран", true);
+  const category = $("playerAdminGiftCategory")?.value || "AR";
+  const itemId = $("playerAdminGiftItem")?.value?.trim() || "";
+  if (!itemId) return toast("В выбранной категории нет предмета", true);
+  const note = $("playerAdminGiftNote")?.value?.trim() || "admin-player-page";
+  try {
+    const headers = await dangerConfirm(`Выдать ${itemId} игроку ${player} без списания денег?`, "ADMIN_ARTIFACT_GIFT");
+    if (!headers) return;
+    const result = await api("/api/admin/artifacts/gift", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        minecraft_uuid: uuid || "",
+        minecraft_name: player,
+        item_id: itemId,
+        category,
+        note,
+        idempotency_key: randomActionKey("player-gift"),
+      }),
+    });
+    toast(`Предмет поставлен в отложенную выдачу игроку ${player}`);
+    if (result?.status && $("playerAdminGiftNote")) $("playerAdminGiftNote").value = note;
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
@@ -4891,6 +5033,7 @@ function getPlayerTreasuryPages() {
       esc,
       transactionFeed,
       number,
+      randomActionKey,
       toast,
       setMiniHealthSummary,
       setStoredUiState,

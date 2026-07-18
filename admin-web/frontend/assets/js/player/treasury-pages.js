@@ -18,6 +18,7 @@ export function createPlayerTreasuryPages(deps) {
     esc,
     transactionFeed,
     number,
+    randomActionKey,
     toast,
     setMiniHealthSummary,
     setStoredUiState,
@@ -322,6 +323,7 @@ export function createPlayerTreasuryPages(deps) {
 
   async function playerTransfer() {
     try {
+      state.playerBankTransferKey ||= randomActionKey("bank-transfer");
       const result = await api("/api/player/bank/transfer", {
         method: "POST",
         body: JSON.stringify({
@@ -330,9 +332,11 @@ export function createPlayerTreasuryPages(deps) {
           pin: $("bankPinInput")?.value || "",
           note: $("bankNote")?.value?.trim() || "",
           from_account: state.playerBankScope || "PERSONAL",
+          idempotency_key: state.playerBankTransferKey,
         }),
       });
       toast(`Переведено ${result.amount} AR получателю ${result.recipient}.`);
+      state.playerBankTransferKey = "";
       ["bankRecipient", "bankAmount", "bankPinInput", "bankNote"].forEach((id) => {
         if ($(id)) $(id).value = "";
       });

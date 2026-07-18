@@ -7,7 +7,7 @@ foreach ($marker in @(
   '"recipes_reloaded"',
   '"reload": reload_result',
   'const reload = result.reload || {}',
-  'const reloadMessage = reload.reloaded'
+  'const reloadMessage = mode === "save"'
 )) {
   if (($backend + $frontend) -notmatch [regex]::Escape($marker)) {
     throw "Narcotics recipe hot-reload marker missing: $marker"

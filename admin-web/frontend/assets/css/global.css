@@ -1,0 +1,35 @@
+@import url("./tokens.css");
+@import url("./themes.css");
+@import url("./base.css");
+@import url("./layout.css");
+@import url("./components.css");
+@import url("./animations.css");
+@import url("./responsive.css");
+
+:root {
+  --shell-max: 1440px;
+  --surface-raised: color-mix(in srgb, var(--panel, #172033) 92%, white 8%);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent, #34b6a8) 42%, transparent);
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--bg, #0d1320); }
+
+body { min-width: 320px; }
+
+button, input, select, textarea { font: inherit; }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn, .status-chip, .route-chip, .pill { border-radius: 6px; }
+
+.btn.icon-btn { width: 2.5rem; padding-inline: 0; display: inline-grid; place-items: center; }
+
+.field-stack select, .toolbar select, .bank-form-grid select {
+  width: 100%; min-height: 2.6rem; border: 1px solid var(--border, #38465e);
+  border-radius: 5px; background: var(--surface-raised); color: var(--text-primary, #eef4ff); padding: 0 .7rem;
+}

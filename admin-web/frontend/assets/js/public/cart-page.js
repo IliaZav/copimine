@@ -227,10 +227,19 @@ function buildCartItem(currency, cartRow, catalogItem, availability = {}) {
   const item = makeElement("article", "cart-item");
   const art = makeElement("div", "cart-item-art");
   const image = document.createElement("img");
-  image.src = String(row.image_url || "/assets/mc-icons/item/barrel_top.png");
+  const explicitTextureRaw = String(row.image_url || row.imageUrl || "").trim();
+  const explicitTexture = /^\/assets\/item-textures\/[a-z0-9_-]+\.png$/i.test(explicitTextureRaw)
+    ? explicitTextureRaw
+    : "";
+  const derivedTexture = /^[a-z0-9_-]+$/i.test(itemId)
+    ? `/assets/item-textures/${itemId.toLowerCase()}.png`
+    : "";
+  image.src = explicitTexture || derivedTexture || "/assets/mc-icons/item/barrel_top.png";
   image.alt = "";
   image.loading = "lazy";
-  image.addEventListener("error", () => { image.src = "/assets/mc-icons/item/barrel_top.png"; }, { once: true });
+  image.addEventListener("error", () => {
+    image.src = "/assets/mc-icons/item/barrel_top.png";
+  }, { once: true });
   art.append(image);
 
   const copy = makeElement("div", "cart-item-copy");

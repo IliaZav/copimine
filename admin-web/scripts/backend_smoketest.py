@@ -221,14 +221,25 @@ def main() -> None:
             recipes = c.get("/api/admin/narcotics/recipes")
             assert recipes.status_code == 200, recipes.text
             assert [row["id"] for row in recipes.json()["recipes"]] == ["test_item"]
+            minecraft_items = recipes.json().get("minecraftItems") or []
+            assert len(minecraft_items) >= 100, len(minecraft_items)
+            assert all(str(row.get("iconUrl") or "").startswith("/assets/mc-icons/item/") for row in minecraft_items[:20])
             recipe_payload = {
                 "recipes": {
                     "test_item": ["material:sugar", "material:glowstone_dust", "potion:water"],
-                }
+                },
+                "apply_mode": "apply",
             }
             missing_confirm = c.post("/api/admin/narcotics/recipes", headers=h, json=recipe_payload)
             assert missing_confirm.status_code == 409, missing_confirm.text
-            recipe_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "NARCOTICS_RECIPES_SAVE"}
+            save_only_payload = {**recipe_payload, "apply_mode": "save"}
+            save_only_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "NARCOTICS_RECIPES_SAVE"}
+            save_only = c.post("/api/admin/narcotics/recipes", headers=save_only_headers, json=save_only_payload)
+            assert save_only.status_code == 200, save_only.text
+            assert save_only.json()["reload"]["applyMode"] == "save-only", save_only.json()
+            assert save_only.json()["reload"]["reloaded"] is False, save_only.json()
+            assert rcon_commands == [], rcon_commands
+            recipe_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "NARCOTICS_RECIPES_APPLY"}
             saved_recipe = c.post("/api/admin/narcotics/recipes", headers=recipe_headers, json=recipe_payload)
             assert saved_recipe.status_code == 200, saved_recipe.text
             saved_payload = saved_recipe.json()
@@ -240,7 +251,7 @@ def main() -> None:
             blocked_recipe = c.post(
                 "/api/admin/narcotics/recipes",
                 headers=recipe_headers,
-                json={"recipes": {"test_item": ["material:sugar", "material:diamond_ore", "potion:water"]}},
+                json={"recipes": {"test_item": ["material:sugar", "material:diamond_ore", "potion:water"]}, "apply_mode": "apply"},
             )
             assert blocked_recipe.status_code == 400, blocked_recipe.text
             for url in [

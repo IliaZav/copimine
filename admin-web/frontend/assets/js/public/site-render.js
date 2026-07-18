@@ -25,7 +25,14 @@ function materialIconName(material) {
   return raw ? `${raw}.png` : "";
 }
 
-function resolveShopIcon(row = {}, mode = "ar") {
+function resolveCustomShopIcon(row = {}) {
+  const explicit = String(row.image_url || row.imageUrl || "").trim();
+  if (/^\/assets\/item-textures\/[a-z0-9_-]+\.png$/i.test(explicit)) return explicit;
+  const itemId = String(row.item_id || row.itemId || "").trim().toLowerCase();
+  return /^[a-z0-9_-]+$/.test(itemId) ? `/assets/item-textures/${itemId}.png` : "";
+}
+
+function resolveVanillaShopIcon(row = {}, mode = "ar") {
   const material = materialIconName(row.base_material);
   if (material) return mcIcon(material);
   const itemId = String(row.item_id || "").toLowerCase();
@@ -33,6 +40,10 @@ function resolveShopIcon(row = {}, mode = "ar") {
   if (itemId.includes("sword")) return mcIcon("diamond_sword.png");
   if (itemId.includes("book")) return mcIcon("written_book.png");
   return mode === "ar" ? mcIcon("diamond_ore.png") : mcIcon("totem_of_undying.png");
+}
+
+function resolveShopIcon(row = {}, mode = "ar") {
+  return resolveCustomShopIcon(row) || resolveVanillaShopIcon(row, mode);
 }
 
 function formatAr(value) {
@@ -266,12 +277,13 @@ function buildShopProductItem(row, mode = "ar", purchaseReady = false, needsLink
   const card = makeElement("article", `shop-product-card shop-product-card-${currency}`);
   const visual = makeElement("div", "shop-product-art");
   const image = document.createElement("img");
-  image.src = String(row.image_url || resolveShopIcon(row, mode));
+  const customIcon = resolveCustomShopIcon(row);
+  image.src = customIcon || resolveVanillaShopIcon(row, mode);
   image.alt = "";
   image.loading = "lazy";
   image.decoding = "async";
   image.addEventListener("error", () => {
-    image.src = resolveShopIcon(row, mode);
+    image.src = resolveVanillaShopIcon(row, mode);
   }, { once: true });
   visual.append(image);
 

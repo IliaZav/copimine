@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import os
 import re
 import secrets
@@ -72,7 +73,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from .commerce_catalog import ar_catalog_snapshot, donation_catalog_snapshot
+from .commerce_catalog import admin_gift_catalog_snapshot, ar_catalog_snapshot, donation_catalog_snapshot
 from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from .envfile import load_env_file_to_os, resolve_env_file
@@ -265,17 +266,11 @@ AUTH_COOKIE_SECURE = (
 
 
 def resolve_http_auth_setting(raw_value: Optional[str], public_base_url: str) -> bool:
-    """Resolve the temporary HTTP login switch without breaking HTTP-only installs.
-
-    A missing value follows the configured public transport: an HTTP-only
-    installation remains usable until TLS is provisioned, while an HTTPS
-    installation stays secure by default.  An explicit value always wins so
-    operators can disable HTTP login before exposing a temporary network.
-    """
+    """Resolve HTTP login securely by default; HTTP login requires opt-in."""
     raw = str(raw_value or "").strip().lower()
     if raw:
         return raw in {"1", "true", "yes", "on"}
-    return str(public_base_url or "").strip().lower().startswith("http://")
+    return False
 
 
 # Public HTTP remains available for the site, files and status endpoints. A
@@ -550,6 +545,7 @@ class PlayerBankTransferIn(BaseModel):
     pin: str = Field(min_length=4, max_length=8)
     note: Optional[str] = Field(default="", max_length=160)
     from_account: str = Field(default="PERSONAL", min_length=4, max_length=32)
+    idempotency_key: str = Field(min_length=8, max_length=120)
 
 
 class PlayerElectionTaxPayIn(BaseModel):
@@ -652,6 +648,15 @@ class AdminDonationTestPurchaseIn(BaseModel):
     item_id: str = Field(min_length=2, max_length=120)
 
 
+class AdminArtifactGiftIn(BaseModel):
+    minecraft_uuid: Optional[str] = Field(default="", max_length=64)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    item_id: str = Field(min_length=2, max_length=120)
+    category: str = Field(default="AR", min_length=2, max_length=20)
+    note: str = Field(default="admin-player-page", min_length=2, max_length=160)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
 class AdminDonationSessionActionIn(BaseModel):
     note: str = Field(default="", max_length=240)
 
@@ -673,6 +678,7 @@ class PluginRegistryConfigIn(BaseModel):
 
 class NarcoticsRecipesIn(BaseModel):
     recipes: dict[str, list[str]] = Field(default_factory=dict)
+    apply_mode: str = Field(default="save", min_length=4, max_length=24)
 
 
 class PropertiesPatchIn(BaseModel):
@@ -3178,6 +3184,22 @@ def current_admin_users() -> dict[str, dict[str, Any]]:
 
 
 ADMIN_USERS = DEFAULT_ADMIN_USERS  # legacy snapshot; runtime checks use current_admin_users()
+
+
+def is_reserved_admin_username(username: str) -> bool:
+    """Prevent player accounts from colliding with enabled panel accounts."""
+    normalized = str(username or "").strip().casefold()
+    if not normalized:
+        return False
+    try:
+        admins = current_admin_users_nonblocking()
+    except Exception:
+        # Fail closed if the admin directory cannot be read.
+        return True
+    return any(
+        str(name).strip().casefold() == normalized and bool(meta.get("enabled", True))
+        for name, meta in admins.items()
+    )
 def now_ts() -> int:
     return int(time.time())
 
@@ -4688,7 +4710,8 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
             ).fetchall()]
             treasury_pin = {
                 "set": bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone()),
-                "visiblePin": visible_account_pin(conn, TREASURY_ACCOUNT_ID),
+                # Never return the treasury PIN in a regular player response.
+                "visiblePin": "",
                 "status": "configured",
             }
         conn.commit()
@@ -5489,10 +5512,17 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
         raise HTTPException(status_code=409, detail="Minecraft account is not linked")
     amount = int(data.amount)
     from_scope = str(data.from_account or "PERSONAL").strip().upper()
+    if from_scope not in {"PERSONAL", "TREASURY"}:
+        raise HTTPException(status_code=400, detail="Unknown bank account scope")
+    safe_key = str(data.idempotency_key or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,96}", safe_key):
+        raise HTTPException(status_code=400, detail="Некорректный ключ операции")
     now = donation_now_ms()
     tx_id = secrets.token_hex(18)
     with auth_conn() as conn:
         ensure_v4_schema(conn)
+        transfer_key = f"player-bank-transfer-{safe_key}"
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (transfer_key,))
         if from_scope == "TREASURY":
             if not has_treasury_access(conn, account):
                 raise HTTPException(status_code=403, detail="Treasury account is not available")
@@ -5502,6 +5532,28 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
             verify_bank_pin(conn, account, data.pin)
             from_bank = ensure_player_bank_account(conn, str(account.get("minecraft_uuid")), str(account.get("minecraft_name") or ""))
         to_uuid, to_name = resolve_bank_recipient(conn, data.recipient)
+        existing = conn.execute(
+            "SELECT tx_id,from_account_id,to_account_id,amount,status FROM cmv4_bank_transfers WHERE idempotency_key=%s LIMIT 1",
+            (transfer_key,),
+        ).fetchone()
+        if existing:
+            row = dict(existing)
+            if int(row.get("amount") or 0) != amount or str(row.get("to_account_id") or "") != f"ar:{to_uuid}" or str(row.get("from_account_id") or "") != str(from_bank.get("account_id") or ""):
+                raise HTTPException(status_code=409, detail="Ключ операции уже использован для другого перевода")
+            balance_row = conn.execute(
+                "SELECT balance_after FROM cmv4_bank_ledger WHERE tx_id=%s LIMIT 1",
+                (f"{row.get('tx_id')}:out",),
+            ).fetchone()
+            return {
+                "ok": True,
+                "txId": str(row.get("tx_id") or ""),
+                "amount": amount,
+                "balance": int(row_get(balance_row, "balance_after", 0) or 0),
+                "recipient": to_name,
+                "fromScope": from_scope,
+                "status": str(row.get("status") or "COMMITTED"),
+                "idempotent": True,
+            }
         if from_scope != "TREASURY" and to_uuid == account.get("minecraft_uuid"):
             raise HTTPException(status_code=400, detail="Cannot transfer to yourself")
         to_bank = ensure_player_bank_account(conn, to_uuid, to_name)
@@ -5514,8 +5566,8 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
         conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (to_after, now, to_locked["account_id"]))
         note = json.dumps({"note": data.note or "", "recipient": to_name, "from_scope": from_scope}, ensure_ascii=False)
         conn.execute(
-            "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR','COMMITTED',%s,%s,%s)",
-            (tx_id, from_locked["account_id"], to_locked["account_id"], amount, now, account.get("username") or "", note),
+            "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR','COMMITTED',%s,%s,%s,%s)",
+            (tx_id, from_locked["account_id"], to_locked["account_id"], amount, transfer_key, now, account.get("username") or "", note),
         )
         conn.execute(
             "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'TRANSFER_OUT',%s,%s,'COMMITTED',%s,%s,%s)",
@@ -5526,7 +5578,7 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
             (tx_id + ":in", to_locked["account_id"], from_locked["account_id"], to_uuid, amount, to_after, now, account.get("username") or "", note),
         )
         conn.commit()
-    return {"ok": True, "txId": tx_id, "amount": amount, "balance": from_after, "recipient": to_name, "fromScope": from_scope}
+    return {"ok": True, "txId": tx_id, "amount": amount, "balance": from_after, "recipient": to_name, "fromScope": from_scope, "idempotent": False}
 
 
 def active_president_term(conn: Any) -> dict[str, Any]:
@@ -7650,6 +7702,10 @@ def write_server_properties(values: dict[str, str]) -> dict[str, Any]:
     unknown = [k for k in values if k not in allowed]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Запрещённые ключи: {', '.join(unknown)}")
+    for key, value in values.items():
+        text = str(value)
+        if len(text) > 2048 or any(ord(char) < 0x20 or ord(char) == 0x7F for char in text):
+            raise HTTPException(status_code=400, detail=f"Недопустимое значение server.properties: {key}")
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     seen = set()
     out = []
@@ -9277,6 +9333,8 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
     username = data.username.strip()
     if not valid_site_username(username):
         raise HTTPException(status_code=400, detail="Укажи корректный логин")
+    if is_reserved_admin_username(username):
+        raise HTTPException(status_code=409, detail="Этот логин зарезервирован администрацией")
     ok, reason = password_policy_ok(data.password)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
@@ -9318,28 +9376,16 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
                 conn, minecraft_uuid, minecraft_name
             )
             if not known_minecraft_identity:
-                auto_whitelist = True
+                auto_whitelist = False
                 conn.execute(
                     """
                     INSERT INTO whitelist_requests(id,site_account_id,minecraft_uuid,minecraft_name,request_ip,status,created_at,updated_at,approved_at,approved_by,note)
-                    VALUES(%s,%s,%s,%s,%s,'AUTO_APPROVED',%s,%s,%s,'automatic-registration','Automatic whitelist; Minecraft ownership still requires an in-game link code')
+                    VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s,NULL,NULL,'Manual approval required; Minecraft ownership must be proven in-game')
                     """,
-                    (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now, now),
+                    (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now),
                 )
         conn.commit()
-    whitelist_state = "NOT_REQUESTED"
-    if auto_whitelist:
-        try:
-            await bg(add_player_to_whitelist_sync, minecraft_uuid, minecraft_name)
-            whitelist_state = "AUTO_APPROVED"
-        except Exception:
-            whitelist_state = "PENDING"
-            with auth_conn() as conn:
-                conn.execute(
-                    "UPDATE whitelist_requests SET status='PENDING',updated_at=%s,note='Automatic whitelist write failed; manual approval required' WHERE site_account_id=%s AND status='AUTO_APPROVED'",
-                    (now_ts(), account_id),
-                )
-                conn.commit()
+    whitelist_state = "PENDING" if minecraft_name and not known_minecraft_identity else "NOT_REQUESTED"
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
     account_payload = {
         "id": account_id,
@@ -9459,6 +9505,8 @@ async def player_change_username(
     new_username = data.new_username.strip()
     if not valid_site_username(new_username):
         raise HTTPException(status_code=400, detail="Укажи корректный логин")
+    if is_reserved_admin_username(new_username):
+        raise HTTPException(status_code=409, detail="Этот логин зарезервирован администрацией")
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         current = player_account_by_id(conn, str(account.get("id") or ""))
@@ -10368,8 +10416,12 @@ async def player_timeline(player: str, limit: int = 260, _: str = Depends(requir
 
 @app.post("/api/players/{player}/command/{action}")
 async def player_action(player: str, action: str, data: PlayerActionIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
-    reason = (data.reason or "CopiMine Admin").replace("\n", " ")[:180]
-    target = (data.target or "").strip()
+    player = clean_mc_player(player)
+    reason = clean_mc_reason(data.reason or "CopiMine Admin")
+    target = clean_mc_player(data.target) if data.target else ""
+    for coordinate in (data.x, data.y, data.z):
+        if coordinate is not None and (not math.isfinite(float(coordinate)) or abs(float(coordinate)) > 30_000_000):
+            raise HTTPException(status_code=400, detail="Некорректные координаты")
     allowed = {
         "kick": f"kick {player} {reason}",
         "ban": f"ban {player} {reason}",
@@ -11898,6 +11950,10 @@ def ar_catalog_snapshot_sync() -> dict[str, Any]:
     return ar_catalog_snapshot(ARTIFACTS_ITEMS_FILE)
 
 
+def admin_gift_catalog_snapshot_sync() -> dict[str, Any]:
+    return admin_gift_catalog_snapshot(ARTIFACTS_ITEMS_FILE)
+
+
 def plugin_registry_audit_sync(plugin_id: str, limit: int = 80) -> list[dict[str, Any]]:
     rows = read_site_audit_rows(max(1, min(limit, 200)), "plugin.registry", "")
     safe_plugin_id = str(plugin_id or "").strip()
@@ -12928,6 +12984,9 @@ def checkout_ar_cart_sync(account: dict[str, Any], data: PlayerCartCheckoutIn) -
             existing_by_id = {str(row.get("item_id") or ""): row for row in existing_rows}
             if set(existing_by_id) != set(item_ids) or len(existing_rows) != len(item_ids) or any(str(row.get("player_uuid") or "") != player_uuid for row in existing_rows):
                 raise HTTPException(status_code=409, detail="Этот ключ оплаты уже использован для другой корзины")
+            existing_total = sum(int(row.get("price_ar") or 0) for row in existing_rows)
+            if int(data.expected_total) != existing_total:
+                raise HTTPException(status_code=409, detail="Сумма повторной оплаты не совпадает с исходной корзиной")
             balance_row = conn.execute(
                 "SELECT balance FROM cmv4_bank_accounts WHERE owner_uuid=%s AND account_type='PLAYER' AND currency='AR' AND status='ACTIVE' LIMIT 1",
                 (player_uuid,),
@@ -12944,7 +13003,7 @@ def checkout_ar_cart_sync(account: dict[str, Any], data: PlayerCartCheckoutIn) -
                     }
                     for item_id in item_ids
                 ],
-                "totalPriceAr": sum(int(row.get("price_ar") or 0) for row in existing_rows),
+                "totalPriceAr": existing_total,
                 "balanceAfter": int(row_get(balance_row, "balance", 0) or 0),
                 "pickupHint": "Все оплаченные предметы уже ждут выдачи в игре через /cmartifacts claim.",
                 "idempotent": True,
@@ -13101,6 +13160,9 @@ def checkout_donation_cart_sync(player_uuid: str, player_name: str, data: Player
             existing_by_id = {str(row.get("item_id") or ""): row for row in existing_rows}
             if set(existing_by_id) != set(item_ids) or len(existing_rows) != len(item_ids) or any(str(row.get("player_uuid") or "") != player_uuid for row in existing_rows):
                 raise HTTPException(status_code=409, detail="Этот ключ оплаты уже использован для другой корзины")
+            existing_total = sum(int(row.get("price_donation") or 0) for row in existing_rows)
+            if int(data.expected_total) != existing_total:
+                raise HTTPException(status_code=409, detail="Сумма повторной оплаты не совпадает с исходной корзиной")
             balance_row = conn.execute("SELECT balance FROM donation_accounts WHERE player_uuid=%s LIMIT 1", (player_uuid,)).fetchone()
             return {
                 "ok": True,
@@ -13114,7 +13176,7 @@ def checkout_donation_cart_sync(player_uuid: str, player_name: str, data: Player
                     }
                     for item_id in item_ids
                 ],
-                "totalPriceDonation": sum(int(row.get("price_donation") or 0) for row in existing_rows),
+                "totalPriceDonation": existing_total,
                 "balanceAfter": int(row_get(balance_row, "balance", 0) or 0),
                 "pickupHint": "Все оплаченные предметы уже ждут выдачи в игре через лавку donation.",
                 "idempotent": True,
@@ -13259,6 +13321,137 @@ def admin_set_ar_balance_sync(player_uuid: str, player_name: str, balance: int, 
         conn.commit()
     audit_event(actor, "ar.balance.set", target=player_name, details={"uuid": player_uuid, "before": before, "after": after, "delta": delta, "reason": reason})
     return {"ok": True, "txId": tx_id, "balanceBefore": before, "balanceAfter": after, "delta": delta}
+
+
+def admin_create_artifact_gift_sync(
+    player_uuid: str,
+    player_name: str,
+    item_id: str,
+    category: str,
+    actor: str,
+    note: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    """Create a free, auditable pending delivery for the selected player."""
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    player_uuid, player_name = normalize_donation_player_target(player_uuid, player_name)
+    safe_category = str(category or "AR").strip().upper()
+    if safe_category not in {"AR", "DONATION", "HIDDEN"}:
+        raise HTTPException(status_code=400, detail="Неизвестная категория подарка")
+    safe_item_id = str(item_id or "").strip().lower()
+    safe_key = str(idempotency_key or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,96}", safe_key):
+        raise HTTPException(status_code=400, detail="Некорректный ключ операции")
+    catalog = admin_gift_catalog_snapshot_sync().get("categories") or {}
+    item = next((dict(row) for row in list(catalog.get(safe_category) or []) if str(row.get("item_id") or "") == safe_item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Предмет недоступен для административной выдачи")
+    if safe_category == "HIDDEN" and str(item.get("source") or "").upper() != "ADMIN_ONLY":
+        raise HTTPException(status_code=403, detail="Скрытый предмет нельзя выдать из этой категории")
+    if safe_category == "AR" and str(item.get("source") or "").upper() == "ADMIN_ONLY":
+        raise HTTPException(status_code=403, detail="Админский предмет нельзя выдать как обычный AR-предмет")
+    now = donation_now_ms()
+
+    if safe_category == "DONATION":
+        gift_key = f"admin-donation-gift-{safe_key}"
+        with auth_conn() as conn:
+            lock_donation_idempotency_sync(conn, "admin-donation-gift", safe_key)
+            existing = conn.execute(
+                "SELECT id,player_uuid,player_name,item_id,status FROM donation_purchases WHERE idempotency_key=%s LIMIT 1",
+                (gift_key,),
+            ).fetchone()
+            if existing:
+                row = dict(existing)
+                if str(row.get("player_uuid") or "") != player_uuid or str(row.get("item_id") or "") != safe_item_id:
+                    raise HTTPException(status_code=409, detail="idempotency_key уже используется другой выдачей")
+                return {
+                    "ok": True,
+                    "category": safe_category,
+                    "itemId": safe_item_id,
+                    "purchaseId": str(row.get("id") or ""),
+                    "status": str(row.get("status") or "CLAIM_PENDING"),
+                    "idempotent": True,
+                    "charged": 0,
+                }
+            lock_donation_entitlement_sync(conn, player_uuid, safe_item_id)
+            if donation_entitlement_conflict_sync(conn, player_uuid, safe_item_id):
+                raise HTTPException(status_code=409, detail="У игрока уже есть активный или незавершённый donation-предмет")
+            purchase_id = f"admin-gift-{secrets.token_hex(10)}"
+            claim_id = f"admin-gift-claim-{secrets.token_hex(10)}"
+            conn.execute(
+                "INSERT INTO donation_purchases(id,player_uuid,player_name,item_id,price,price_donation,status,source,idempotency_key,created_at,updated_at) VALUES(%s,%s,%s,%s,0,0,'CLAIM_PENDING','ADMIN_GIFT',%s,%s,%s)",
+                (purchase_id, player_uuid, player_name, safe_item_id, gift_key, now, now),
+            )
+            conn.execute(
+                "INSERT INTO donation_item_claims(id,player_uuid,item_id,amount,status,claimed_at,created_at,updated_at,purchase_id,actor) VALUES(%s,%s,%s,1,'UNCLAIMED',0,%s,%s,%s,%s)",
+                (claim_id, player_uuid, safe_item_id, now, now, purchase_id, actor),
+            )
+        result = {
+            "ok": True,
+            "category": safe_category,
+            "itemId": safe_item_id,
+            "purchaseId": purchase_id,
+            "claimId": claim_id,
+            "status": "CLAIM_PENDING",
+            "claimStatus": "UNCLAIMED",
+            "charged": 0,
+        }
+    else:
+        gift_key = f"admin-artifact-gift-{safe_key}"
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (gift_key,))
+            lock_donation_entitlement_sync(conn, player_uuid, safe_item_id)
+            existing = conn.execute(
+                "SELECT purchase_id,unique_item_id,player_uuid,item_id,status FROM artifact_purchases WHERE idempotency_key=%s LIMIT 1",
+                (gift_key,),
+            ).fetchone()
+            if existing:
+                row = dict(existing)
+                if str(row.get("player_uuid") or "") != player_uuid or str(row.get("item_id") or "") != safe_item_id:
+                    raise HTTPException(status_code=409, detail="idempotency_key уже используется другой выдачей")
+                return {
+                    "ok": True,
+                    "category": safe_category,
+                    "itemId": safe_item_id,
+                    "purchaseId": str(row.get("purchase_id") or ""),
+                    "uniqueItemId": str(row.get("unique_item_id") or ""),
+                    "status": str(row.get("status") or "PENDING_DELIVERY"),
+                    "charged": 0,
+                    "idempotent": True,
+                }
+            if donation_entitlement_conflict_sync(conn, player_uuid, safe_item_id):
+                raise HTTPException(status_code=409, detail="У игрока уже есть активный или незавершённый предмет")
+            purchase_id = f"admin-gift-{secrets.token_hex(10)}"
+            unique_item_id = f"admin-gift-item-{uuid.uuid4()}"
+            delivery_id = f"admin-gift-delivery-{secrets.token_hex(10)}"
+            conn.execute(
+                "INSERT INTO artifact_purchases(purchase_id,unique_item_id,player_uuid,player_name,item_id,shop_id,price_ar,bank_tx_id,idempotency_key,status,delivery_mode,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,'',0,'ADMIN_GIFT',%s,'PENDING_DELIVERY','PENDING',%s,%s)",
+                (purchase_id, unique_item_id, player_uuid, player_name, safe_item_id, gift_key, now, now),
+            )
+            conn.execute(
+                "INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at) VALUES(%s,%s,%s,%s,'PENDING_DELIVERY',0,%s,%s)",
+                (unique_item_id, safe_item_id, player_uuid, purchase_id, now, now),
+            )
+            conn.execute(
+                "INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)",
+                (delivery_id, purchase_id, unique_item_id, player_uuid, safe_item_id, now, now),
+            )
+        result = {
+            "ok": True,
+            "category": safe_category,
+            "itemId": safe_item_id,
+            "purchaseId": purchase_id,
+            "uniqueItemId": unique_item_id,
+            "deliveryId": delivery_id,
+            "status": "PENDING_DELIVERY",
+            "charged": 0,
+        }
+
+    audit_event(actor, "admin.artifact.gift", target=player_name, details={"uuid": player_uuid, "itemId": safe_item_id, "category": safe_category, "note": note})
+    append_panel_event("artifacts", "admin_gift", actor=actor, target=player_name, metadata={"itemId": safe_item_id, "category": safe_category, "note": note, "charged": 0}, tags=["artifacts", "admin-gift"])
+    return result
 
 
 def admin_create_donation_test_purchase_sync(player_uuid: str, player_name: str, item_id: str, actor: str) -> dict[str, Any]:
@@ -13628,6 +13821,29 @@ async def admin_ar_shop_items(_: str = Depends(require_admin)) -> dict[str, Any]
     return {"items": catalog.get("items", []), "count": len(catalog.get("items", []))}
 
 
+@app.get("/api/admin/shop/admin-gift-items")
+async def admin_gift_shop_items(_: str = Depends(require_admin)) -> dict[str, Any]:
+    catalog = await bg(admin_gift_catalog_snapshot_sync)
+    return {"categories": catalog.get("categories", {}), "count": len(catalog.get("items", []))}
+
+
+@app.post("/api/admin/artifacts/gift")
+async def admin_artifact_gift(data: AdminArtifactGiftIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "ADMIN_ARTIFACT_GIFT")
+    check_rate_limit(request, "admin-artifact-gift", limit=10, window_seconds=60)
+    result = await bg(
+        admin_create_artifact_gift_sync,
+        data.minecraft_uuid or "",
+        data.minecraft_name,
+        data.item_id,
+        data.category,
+        username,
+        data.note,
+        data.idempotency_key,
+    )
+    return result
+
+
 @app.post("/api/admin/economy/ar/add-balance")
 async def admin_ar_add_balance(data: AdminArBalanceIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
     require_sensitive_confirm(request, "AR_ADD_BALANCE")
@@ -13829,6 +14045,52 @@ async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
 
 NARCOTICS_RECIPE_BLOCKED_TOKENS = {"MATERIAL:DIAMOND_ORE", "MATERIAL:DEEPSLATE_DIAMOND_ORE"}
 NARCOTICS_RECIPE_TOKEN_RE = re.compile(r"^(material|potion):[A-Z0-9_]+$", re.IGNORECASE)
+NARCOTICS_RECIPE_APPLY_MODES = {"save", "apply"}
+NARCOTICS_RECIPE_TECHNICAL_SUFFIXES = (
+    "_top",
+    "_bottom",
+    "_side",
+    "_front",
+    "_back",
+    "_on",
+    "_off",
+    "_lit",
+    "_unlit",
+    "_open",
+    "_closed",
+    "_stem",
+)
+NARCOTICS_RECIPE_TECHNICAL_RE = re.compile(
+    r"(^potted_|^empty_|^debug\d*$|^light_\d+$|^structure_block_|^suspicious_(?:gravel|sand)_\d+$|"
+    r"^sniffer_egg_(?:not_cracked|slightly_cracked|very_cracked)_|^pointed_dripstone_.*|"
+    r"^(?:fire|soul_fire|frosted_ice)_\d+$|^(?:spawn_egg)$|"
+    r"^(?:bow|crossbow)_pulling_\d+$|^crossbow_(?:arrow|firework)$|"
+    r"^(?:campfire|soul_campfire)_(?:fire|log)$|^composter_(?:compost|ready)$|^crafter_(?:east|north|south|west)$|"
+    r"^empty_slot_|^empty_armor_slot_|^calibrated_sculk_sensor_amethyst$|^broken_elytra$|^bundle_filled$|"
+    r"^chorus_flower_dead$|^end_portal_frame_eye$|^grass_block_snow$|^hopper_(?:inside|outside)$|^jigsaw_lock$|"
+    r"^lectern_sides$|^magma$|^mangrove_propagule_hanging$|^mushroom_block_inside$|^piston_top_sticky$|"
+    r"^rail_corner$|^spyglass_model$|^stonecutter_saw$|^tipped_arrow_head$|^trial_spawner_top_ejecting_reward$|"
+    r"^beehive_end$|^big_dripleaf_tip$|^bamboo_(?:large_leaves|singleleaf|small_leaves|stalk)$|"
+    r"_stage\d+$|"
+    r"(?:^|_)stage_?\d+$|_(?:particle|inner|outer|base|round|pivot|vertical|conditional|powered|triggered|crafting|"
+    r"ejecting|ominous|inactive|active|bloom|tendril|overlay|markings|pulling|cast|standby|moist|still|flow|"
+    r"line\d*|dot|honey|not_cracked|slightly_cracked|very_cracked|cracked|empty|occupied|plant|pot|side\d+|"
+    r"top\d+|bottom\d+|frame\d*)$)",
+    re.IGNORECASE,
+)
+NARCOTICS_POTION_ITEMS = (
+    ("SPEED", "Зелье скорости"),
+    ("WEAKNESS", "Зелье слабости"),
+    ("POISON", "Зелье отравления"),
+    ("SLOWNESS", "Зелье замедления"),
+    ("REGENERATION", "Зелье регенерации"),
+    ("STRENGTH", "Зелье силы"),
+    ("WATER_BREATHING", "Зелье подводного дыхания"),
+    ("INVISIBILITY", "Зелье невидимости"),
+    ("FIRE_RESISTANCE", "Зелье огнестойкости"),
+    ("HARM", "Зелье вреда"),
+)
+_NARCOTICS_RECIPE_ITEMS_CACHE: tuple[int, list[dict[str, Any]]] = (0, [])
 
 
 def narcotics_runtime_config_path() -> Path:
@@ -13862,6 +14124,78 @@ def _public_recipe_item(item_id: str, item: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
+    """Build a complete material picker from the bundled vanilla textures.
+
+    The asset directory is already populated from the matching Minecraft
+    client version.  Technical block-face textures are excluded, while every
+    remaining icon is exposed as a valid material token with its own sprite.
+    A tiny mtime cache keeps opening the recipe editor cheap.
+    """
+    global _NARCOTICS_RECIPE_ITEMS_CACHE
+    icon_dir = FRONTEND_DIR / "assets" / "mc-icons" / "item"
+    if not icon_dir.exists():
+        return []
+    try:
+        files = sorted(icon_dir.glob("*.png"), key=lambda path: path.name.lower())
+        stamp = max((int(path.stat().st_mtime_ns) for path in files), default=0)
+    except OSError:
+        return []
+    if _NARCOTICS_RECIPE_ITEMS_CACHE[0] == stamp:
+        return list(_NARCOTICS_RECIPE_ITEMS_CACHE[1])
+
+    blocked = {token.split(":", 1)[1].lower() for token in NARCOTICS_RECIPE_BLOCKED_TOKENS}
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in files:
+        item_id = path.stem.lower()
+        if not item_id or item_id in blocked or item_id in seen:
+            continue
+        if item_id.endswith(NARCOTICS_RECIPE_TECHNICAL_SUFFIXES) or NARCOTICS_RECIPE_TECHNICAL_RE.search(item_id):
+            continue
+        # Mojang stores animated compass/clock frames as compass_00, clock_01,
+        # etc.  The material is still COMPASS/CLOCK, but the frame is not a
+        # separate item and would only create confusing duplicates in the UI.
+        frame_match = re.match(r"^(compass|clock|recovery_compass)_\d+$", item_id)
+        if frame_match:
+            canonical = frame_match.group(1)
+            if canonical in seen:
+                continue
+            item_id = canonical
+        seen.add(item_id)
+        rows.append(
+            {
+                "id": item_id.upper(),
+                "name": item_id.replace("_", " ").title(),
+                "token": f"material:{item_id}",
+                "iconUrl": f"/assets/mc-icons/item/{path.name}",
+            }
+        )
+    rows.sort(key=lambda row: (str(row.get("name") or ""), str(row.get("id") or "")))
+    _NARCOTICS_RECIPE_ITEMS_CACHE = (stamp, rows)
+    return list(rows)
+
+
+def _minecraft_recipe_potion_catalog() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": item_id,
+            "name": name,
+            "token": f"potion:{item_id.lower()}",
+            "iconUrl": "/assets/mc-icons/item/potion.png",
+        }
+        for item_id, name in NARCOTICS_POTION_ITEMS
+    ]
+
+
+def _restart_minecraft_for_narcotics() -> dict[str, Any]:
+    """Attempt the explicit fallback restart without hiding a saved config."""
+    try:
+        return run_systemctl("restart")
+    except Exception as exc:
+        return {"returncode": -1, "stdout": "", "stderr": str(exc)[:400], "command": "systemctl restart"}
+
+
 def _validate_narcotics_recipe_token(token: str) -> str:
     normalized = str(token or "").strip().replace(" ", "_").upper()
     if ":" not in normalized:
@@ -13887,10 +14221,15 @@ def read_narcotics_recipes_sync() -> dict[str, Any]:
         "configPath": safe_location(path),
         "blocked": sorted(NARCOTICS_RECIPE_BLOCKED_TOKENS),
         "recipes": recipes,
+        "minecraftItems": _minecraft_recipe_item_catalog(),
+        "potionItems": _minecraft_recipe_potion_catalog(),
     }
 
 
-def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str) -> dict[str, Any]:
+def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str, apply_mode: str = "save") -> dict[str, Any]:
+    normalized_apply_mode = str(apply_mode or "save").strip().lower()
+    if normalized_apply_mode not in NARCOTICS_RECIPE_APPLY_MODES:
+        raise HTTPException(status_code=400, detail="Неизвестный режим применения рецептов")
     path, data = _load_narcotics_config()
     items = data.get("items")
     if not isinstance(items, dict):
@@ -13914,29 +14253,46 @@ def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str) -> di
     os.replace(tmp, path)
     reload_result: dict[str, Any] = {
         "reloaded": False,
-        "manual": True,
+        "manual": normalized_apply_mode == "apply",
+        "applyMode": "save-only" if normalized_apply_mode == "save" else "pending",
         "reloadCommand": "cmnarcotics reload",
-        "message": "Конфиг сохранён. RCON не настроен, поэтому выполни cmnarcotics reload вручную.",
+        "message": "Конфиг сохранён. Изменения вступят в силу после применения рецептов.",
     }
-    if RCON_PASSWORD:
+    if normalized_apply_mode == "save":
+        reload_result["message"] = "Конфиг сохранён без перезагрузки. Примени рецепты отдельной кнопкой, когда будешь готов."
+    elif RCON_PASSWORD:
         try:
             response = str(rcon_quick("cmnarcotics reload") or "").strip()
             reload_result = {
                 "reloaded": True,
                 "manual": False,
+                "applyMode": "plugin-reload",
                 "reloadCommand": "cmnarcotics reload",
                 "response": response[:400],
                 "message": "Конфиг сохранён, CopiMineNarcotics перечитал его без перезапуска сервера.",
             }
         except Exception as exc:
+            restart = _restart_minecraft_for_narcotics()
             reload_result = {
-                "reloaded": False,
-                "manual": True,
+                "reloaded": restart.get("returncode") == 0,
+                "manual": restart.get("returncode") != 0,
+                "applyMode": "server-restart",
                 "reloadCommand": "cmnarcotics reload",
-                "message": f"Конфиг сохранён, но reload не выполнен: {str(exc)[:180]}",
+                "restart": restart,
+                "message": "RCON reload не выполнен, поэтому запущен перезапуск сервера." if restart.get("returncode") == 0 else f"RCON reload и перезапуск не выполнены: {str(exc)[:180]}",
             }
-    append_panel_event("narcotics", "recipes_saved", actor=actor, target="CopiMineNarcotics", metadata={"updated": updated, "backup": str(backup)}, tags=["narcotics", "config"])
-    append_panel_event("narcotics", "recipes_reloaded" if reload_result["reloaded"] else "recipes_reload_pending", actor=actor, target="CopiMineNarcotics", metadata={"command": "cmnarcotics reload", "reloaded": reload_result["reloaded"]}, tags=["narcotics", "config", "rcon"])
+    else:
+        restart = _restart_minecraft_for_narcotics()
+        reload_result = {
+            "reloaded": restart.get("returncode") == 0,
+            "manual": restart.get("returncode") != 0,
+            "applyMode": "server-restart",
+            "reloadCommand": "cmnarcotics reload",
+            "restart": restart,
+            "message": "Конфиг сохранён и сервер перезапущен для применения рецептов." if restart.get("returncode") == 0 else "Конфиг сохранён, но перезапуск сервера не выполнен. Проверь права systemctl.",
+        }
+    append_panel_event("narcotics", "recipes_saved", actor=actor, target="CopiMineNarcotics", metadata={"updated": updated, "backup": str(backup), "applyMode": normalized_apply_mode}, tags=["narcotics", "config"])
+    append_panel_event("narcotics", "recipes_reloaded" if reload_result["reloaded"] else "recipes_reload_pending", actor=actor, target="CopiMineNarcotics", metadata={"command": reload_result.get("reloadCommand"), "reloaded": reload_result["reloaded"], "applyMode": reload_result.get("applyMode")}, tags=["narcotics", "config", "rcon"])
     return {"ok": True, "updated": updated, "backup": safe_location(backup), "configPath": safe_location(path), "reload": reload_result}
 
 
@@ -13947,9 +14303,12 @@ async def admin_narcotics_recipes(_: str = Depends(require_admin)) -> dict[str, 
 
 @app.post("/api/admin/narcotics/recipes")
 async def admin_narcotics_recipes_save(data: NarcoticsRecipesIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
-    require_sensitive_confirm(request, "NARCOTICS_RECIPES_SAVE")
+    normalized_apply_mode = str(data.apply_mode or "save").strip().lower()
+    if normalized_apply_mode not in NARCOTICS_RECIPE_APPLY_MODES:
+        raise HTTPException(status_code=400, detail="Неизвестный режим применения рецептов")
+    require_sensitive_confirm(request, "NARCOTICS_RECIPES_APPLY" if normalized_apply_mode == "apply" else "NARCOTICS_RECIPES_SAVE")
     check_rate_limit(request, "admin-narcotics-recipes", limit=10, window_seconds=60)
-    return await bg(save_narcotics_recipes_sync, data.recipes, username)
+    return await bg(save_narcotics_recipes_sync, data.recipes, username, normalized_apply_mode)
 
 
 @app.post("/api/admin/cms/entries")

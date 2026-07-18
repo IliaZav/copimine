@@ -145,3 +145,67 @@ def donation_catalog_snapshot(items_file: Path | None = None, fallback_base_url:
 
 def ar_catalog_snapshot(items_file: Path | None = None) -> dict[str, Any]:
     return load_commerce_catalog(items_file, "")["ar"]
+
+
+def admin_gift_catalog_snapshot(items_file: Path | None = None) -> dict[str, Any]:
+    """Return the complete admin-gift catalog, including hidden items.
+
+    Public shop snapshots intentionally omit ADMIN_ONLY entries.  The admin
+    card needs a separate, explicit snapshot so a hidden item can be granted
+    without accidentally becoming purchasable by players.
+    """
+    source = items_file or DEFAULT_ITEMS_FILE
+    raw = _safe_yaml_load(source)
+    buckets: dict[str, list[dict[str, Any]]] = {"AR": [], "DONATION": [], "HIDDEN": []}
+
+    for entry in raw.get("items") or []:
+        if not isinstance(entry, dict):
+            continue
+        item_id = str(entry.get("id") or "").strip().lower()
+        if not item_id:
+            continue
+        item_source = str(entry.get("source") or "AR_SHOP").strip().upper()
+        bucket = "HIDDEN" if item_source == "ADMIN_ONLY" else "AR"
+        lore = _string_list(entry.get("lore") or [])
+        buckets[bucket].append(
+            {
+                "item_id": item_id,
+                "display_name": strip_minecraft_format(str(entry.get("name") or item_id)),
+                "description": _item_description(lore, "Официальный предмет CopiMine."),
+                "image_url": f"/assets/item-textures/{item_id}.png",
+                "base_material": str(entry.get("material") or "STONE").strip().upper(),
+                "category": str(entry.get("category") or "RP").strip().upper(),
+                "source": item_source,
+                "enabled": True,
+                "price_ar": int(entry.get("price_ar") or 0),
+                "lore": lore,
+            }
+        )
+
+    donation_root = raw.get("donation-catalog") or {}
+    for entry in donation_root.get("items") or []:
+        if not isinstance(entry, dict):
+            continue
+        item_id = str(entry.get("item-id") or "").strip().lower()
+        if not item_id:
+            continue
+        lore = _string_list(entry.get("lore") or [])
+        effect_description = str(entry.get("effect-description") or "").strip()
+        buckets["DONATION"].append(
+            {
+                "item_id": item_id,
+                "display_name": strip_minecraft_format(str(entry.get("display-name") or item_id)),
+                "description": _item_description(lore, effect_description or "Именной предмет CopiMine."),
+                "image_url": f"/assets/item-textures/{item_id}.png",
+                "base_material": str(entry.get("base-material") or "PAPER").strip().upper(),
+                "category": "DONATION",
+                "source": str(entry.get("source") or "DONATION_SHOP").strip().upper(),
+                "enabled": bool(entry.get("enabled", True)),
+                "price_donation": int(entry.get("price-donation") or 0),
+                "lore": lore,
+            }
+        )
+
+    for rows in buckets.values():
+        rows.sort(key=lambda row: str(row.get("display_name") or row.get("item_id") or ""))
+    return {"categories": buckets, "items": [item for rows in buckets.values() for item in rows]}

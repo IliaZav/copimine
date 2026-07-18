@@ -4,6 +4,7 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $shops = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web/frontend/shops.html')
 $cart = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web/frontend/cart.html') -ErrorAction SilentlyContinue
 $renderer = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web/frontend/assets/js/public/site-render.js')
+$cartPage = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web/frontend/assets/js/public/cart-page.js') -ErrorAction SilentlyContinue
 $cartModule = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web/frontend/assets/js/public/shop-cart.js') -ErrorAction SilentlyContinue
 $required = @(
   @{ source = $shops; value = 'id="shopCartButton"'; name = 'shop header cart button' },
@@ -13,6 +14,8 @@ $required = @(
   @{ source = $cart; value = 'id="donationCartSection"'; name = 'donation cart section' },
   @{ source = $renderer; value = 'addShopCartItem'; name = 'catalog add-to-cart action' },
   @{ source = $renderer; value = 'image_url'; name = 'item texture rendering' },
+  @{ source = $renderer; value = 'resolveCustomShopIcon'; name = 'custom shop texture fallback' },
+  @{ source = $cartPage; value = '/assets/item-textures/'; name = 'cart custom texture fallback' },
   @{ source = $cartModule; value = 'shopCartChanged'; name = 'cart count updates' }
 )
 

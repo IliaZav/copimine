@@ -48,14 +48,20 @@ const RECIPE_ITEM_TABS = [
 ];
 
 const BLOCKED_RECIPE_MATERIALS = new Set(["DIAMOND_ORE", "DEEPSLATE_DIAMOND_ORE"]);
+const RECIPE_PICKER_TABS = [
+  { id: "items", label: "Все предметы", potion: false },
+  { id: "potions", label: "Зелья", potion: true },
+];
 
 export function createAdminNarcoticsRecipePages(deps) {
   const { $, state, api, safeApi, setLoading, setView, panel, metric, esc, cleanText, dangerConfirm, toast } = deps;
 
   function recipeState() {
     if (!state.narcoticsRecipeEditor) {
-      state.narcoticsRecipeEditor = { selected: "", tab: "basic", query: "", pickerOpen: false, recipes: [] };
+      state.narcoticsRecipeEditor = { selected: "", tab: "items", query: "", pickerOpen: false, recipes: [], itemCatalog: [], potionCatalog: [] };
     }
+    if (!Array.isArray(state.narcoticsRecipeEditor.itemCatalog)) state.narcoticsRecipeEditor.itemCatalog = [];
+    if (!Array.isArray(state.narcoticsRecipeEditor.potionCatalog)) state.narcoticsRecipeEditor.potionCatalog = [];
     return state.narcoticsRecipeEditor;
   }
 
@@ -76,9 +82,19 @@ export function createAdminNarcoticsRecipePages(deps) {
 
   function displayName(token) {
     const { kind, value } = tokenParts(token);
-    const tab = RECIPE_ITEM_TABS.find((entry) => entry.potion === (kind === "POTION"));
-    const found = RECIPE_ITEM_TABS.flatMap((entry) => entry.items).find(([id]) => id === value);
-    return found?.[1] || value.replace(/_/g, " ").toLowerCase();
+    const rs = recipeState();
+    const source = kind === "POTION" ? rs.potionCatalog : rs.itemCatalog;
+    const found = source.find((item) => String(item.id || "").toLowerCase() === value.toLowerCase());
+    if (found?.name) return found.name;
+    const fallback = RECIPE_ITEM_TABS.flatMap((entry) => entry.items || []).find(([id]) => id === value);
+    return fallback?.[1] || value.replace(/_/g, " ").toLowerCase();
+  }
+
+  function catalogItemFor(token) {
+    const { kind, value } = tokenParts(token);
+    const rs = recipeState();
+    const source = kind === "POTION" ? rs.potionCatalog : rs.itemCatalog;
+    return source.find((item) => String(item.id || "").toLowerCase() === value.toLowerCase()) || null;
   }
 
   function recipeById(id) {
@@ -102,11 +118,13 @@ export function createAdminNarcoticsRecipePages(deps) {
     const slots = items.map((token, index) => {
       const { kind, value } = tokenParts(token);
       const potion = kind === "POTION";
+      const catalogItem = catalogItemFor(token);
       return `
-        <button class="recipe-slot" draggable="true" title="${esc(displayName(token))}"
+        <button class="recipe-slot recipe-slot-removable" draggable="true" title="${esc(displayName(token))}" aria-label="Удалить ${esc(displayName(token))}"
           data-drag-token="${esc(token)}" data-index="${index}"
           data-click="adminRecipeRemove(${index})">
-          <img src="${iconFor(value, potion)}" alt="" onerror="this.style.visibility='hidden'" />
+          <img src="${esc(catalogItem?.iconUrl || iconFor(value, potion))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
+          <b class="recipe-remove-cross" aria-hidden="true">×</b>
           <span>${esc(displayName(token))}</span>
         </button>`;
     }).join("");
@@ -118,24 +136,25 @@ export function createAdminNarcoticsRecipePages(deps) {
     if (!rs.pickerOpen) {
       return `<div class="recipe-inventory-closed">Нажмите плюс в ленте рецепта, чтобы открыть список предметов.</div>`;
     }
-    const active = RECIPE_ITEM_TABS.find((tab) => tab.id === rs.tab) || RECIPE_ITEM_TABS[0];
+    const active = RECIPE_PICKER_TABS.find((tab) => tab.id === rs.tab) || RECIPE_PICKER_TABS[0];
     const query = String(rs.query || "").trim().toLowerCase();
-    const items = active.items
-      .filter(([id]) => !BLOCKED_RECIPE_MATERIALS.has(id))
-      .filter(([id, name]) => !query || `${id} ${name}`.toLowerCase().includes(query));
+    const source = active.potion ? rs.potionCatalog : rs.itemCatalog;
+    const items = source
+      .filter((item) => !BLOCKED_RECIPE_MATERIALS.has(String(item.id || "").toUpperCase()))
+      .filter((item) => !query || `${item.id || ""} ${item.name || ""}`.toLowerCase().includes(query));
     return `
       <div class="recipe-inventory-head">
         <div class="segmented recipe-tabs">
-          ${RECIPE_ITEM_TABS.map((tab) => `<button class="${tab.id === rs.tab ? "active" : ""}" data-click="adminRecipeTab('${tab.id}')">${esc(tab.label)}</button>`).join("")}
+          ${RECIPE_PICKER_TABS.map((tab) => `<button class="${tab.id === rs.tab ? "active" : ""}" data-click="adminRecipeTab('${tab.id}')">${esc(tab.label)}</button>`).join("")}
         </div>
-        <input id="recipeItemSearch" data-input="adminRecipeSearch" value="${esc(rs.query)}" placeholder="Поиск предмета" autocomplete="off" />
+        <label class="recipe-search-field"><span>Поиск по предметам</span><input id="recipeItemSearch" data-input="adminRecipeSearch" value="${esc(rs.query)}" placeholder="Например, diamond или сахар" autocomplete="off" /></label>
       </div>
       <div class="creative-inventory-grid">
-        ${items.map(([id, name]) => {
-          const token = `${active.potion ? "potion" : "material"}:${id}`;
-          return `<button class="creative-item" title="${esc(name)}" data-click="adminRecipeAdd('${token}')">
-            <img src="${iconFor(id, active.potion)}" alt="" onerror="this.style.visibility='hidden'" />
-            <span>${esc(name)}</span>
+        ${items.map((item) => {
+          const token = String(item.token || `${active.potion ? "potion" : "material"}:${item.id || ""}`).toLowerCase();
+          return `<button class="creative-item" title="${esc(item.name || item.id || "Предмет")}" data-click="adminRecipeAdd('${esc(token)}')">
+            <img src="${esc(item.iconUrl || iconFor(item.id, active.potion))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
+            <span>${esc(item.name || item.id || "Предмет")}</span>
           </button>`;
         }).join("") || `<div class="recipe-empty">Ничего не найдено.</div>`}
       </div>`;
@@ -152,7 +171,7 @@ export function createAdminNarcoticsRecipePages(deps) {
       <section class="layout-grid grid-3 recipe-summary-row">
         ${metric("Наркотик", recipe.name || recipe.id, recipe.id, "good")}
         ${metric("Ингредиентов", count, count >= 3 ? "готов к сохранению" : "минимум 3", count >= 3 ? "good" : "warn")}
-        ${metric("Доступ", "админка", "изменения сразу уходят в конфиг", "neutral")}
+        ${metric("Доступ", "админка", "сохранение и применение отдельными кнопками", "neutral")}
       </section>
       ${panel("Редактор рецепта", "Соберите ленту ингредиентов. Порядок в игре не важен.", `
         <div class="recipe-toolbar">
@@ -161,8 +180,10 @@ export function createAdminNarcoticsRecipePages(deps) {
             <select id="recipeDrugSelect" data-input="adminRecipeSelect">${recipeOptions()}</select>
           </label>
           <button class="btn btn-secondary" data-click="adminRecipeClear()">Очистить ленту</button>
-          <button class="btn btn-primary" data-click="adminRecipeSave()">Сохранить рецепты</button>
+          <button class="btn btn-secondary" data-click="adminRecipeSave('save')">Сохранить</button>
+          <button class="btn btn-primary" data-click="adminRecipeSave('apply')">Сохранить и применить</button>
         </div>
+        <p class="recipe-apply-hint">«Сохранить» меняет конфиг без перезагрузки. «Сохранить и применить» сначала делает reload плагина, а если RCON недоступен — перезапускает Minecraft.</p>
         <div class="recipe-tape" id="recipeTape">${renderTape(recipe)}</div>
         <div class="recipe-trash" id="recipeTrash">Отпустите ингредиент здесь, чтобы удалить.</div>
       `)}
@@ -233,6 +254,8 @@ export function createAdminNarcoticsRecipePages(deps) {
     const data = await safeApi("/api/admin/narcotics/recipes", { recipes: [] });
     const rs = recipeState();
     rs.recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    rs.itemCatalog = Array.isArray(data.minecraftItems) ? data.minecraftItems : [];
+    rs.potionCatalog = Array.isArray(data.potionItems) ? data.potionItems : [];
     if (!rs.selected && rs.recipes[0]) rs.selected = rs.recipes[0].id;
     renderEditor();
   }
@@ -243,12 +266,20 @@ export function createAdminNarcoticsRecipePages(deps) {
   }
 
   function adminRecipeSearch(value) {
+    const input = $("recipeItemSearch");
+    const selectionStart = Number(input?.selectionStart ?? String(value || "").length);
+    const selectionEnd = Number(input?.selectionEnd ?? selectionStart);
     recipeState().query = String(value || "");
     renderEditor();
+    const nextInput = $("recipeItemSearch");
+    if (nextInput) {
+      nextInput.focus();
+      nextInput.setSelectionRange(Math.min(selectionStart, nextInput.value.length), Math.min(selectionEnd, nextInput.value.length));
+    }
   }
 
   function adminRecipeTab(id) {
-    recipeState().tab = String(id || "basic");
+    recipeState().tab = String(id || "items");
     renderEditor();
   }
 
@@ -267,7 +298,7 @@ export function createAdminNarcoticsRecipePages(deps) {
     const recipe = currentRecipeMutable();
     if (!recipe) return;
     recipe.recipe.push(`${kind.toLowerCase()}:${value}`);
-    recipeState().pickerOpen = false;
+    recipeState().pickerOpen = true;
     renderEditor();
   }
 
@@ -282,7 +313,7 @@ export function createAdminNarcoticsRecipePages(deps) {
     renderEditor();
   }
 
-  async function adminRecipeSave() {
+  async function adminRecipeSave(applyMode = "save") {
     const rs = recipeState();
     const recipes = {};
     for (const row of rs.recipes) {
@@ -293,18 +324,22 @@ export function createAdminNarcoticsRecipePages(deps) {
       }
       recipes[row.id] = list;
     }
-    const headers = await dangerConfirm("Сохранить рецепты CopiMineNarcotics?", "NARCOTICS_RECIPES_SAVE");
+    const mode = String(applyMode || "save").toLowerCase() === "apply" ? "apply" : "save";
+    const headers = await dangerConfirm(
+      mode === "apply" ? "Сохранить рецепты и применить их через reload или перезапуск сервера?" : "Сохранить рецепты без перезагрузки сервера?",
+      mode === "apply" ? "NARCOTICS_RECIPES_APPLY" : "NARCOTICS_RECIPES_SAVE",
+    );
     if (!headers) return;
     const result = await api("/api/admin/narcotics/recipes", {
       method: "POST",
       headers,
-      body: JSON.stringify({ recipes }),
+      body: JSON.stringify({ recipes, apply_mode: mode }),
     });
     const reload = result.reload || {};
-    const reloadMessage = reload.reloaded
-      ? " CopiMineNarcotics перечитал конфиг без перезапуска."
-      : ` ${reload.message || "Нужен ручной reload плагина."}`;
-    toast(`Рецепты сохранены: ${result.updated?.length || 0}.${reloadMessage}`, !reload.reloaded);
+    const reloadMessage = mode === "save"
+      ? (reload.message || "Конфиг сохранён без применения.")
+      : (reload.message || (reload.reloaded ? "Рецепты применены." : "Рецепты сохранены, но применение не завершилось."));
+    toast(`Рецепты сохранены: ${result.updated?.length || 0}. ${reloadMessage}`, mode === "apply" && !reload.reloaded);
     await loadRecipes();
   }
 

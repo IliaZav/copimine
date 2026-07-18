@@ -40,7 +40,7 @@ DECLARE
         'narcotics_admin_audit','narcotics_player_overdose',
         'narcotics_player_usage_window','narcotics_brewing_states',
         -- World-bound displays, protected blocks and plugin runtime state.
-        'protected_blocks','text_display_links','plugin_events',
+        'protected_blocks','protected_block_visuals','text_display_links','plugin_events',
         'bridge_events','status_channel_snapshots','discord_notifications_log',
         'discord_status_state','player_profile_cache','player_last_seen',
         'admin_actions','moderation_actions','prank_audit','smoke_results',

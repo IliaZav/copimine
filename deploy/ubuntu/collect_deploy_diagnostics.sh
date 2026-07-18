@@ -104,6 +104,9 @@ if [[ "$MODE" == "stdout" ]]; then
 else
   tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")"
   chmod 600 "$ARCHIVE"
+  if [[ -n "${SUDO_USER:-}" ]] && id "$SUDO_USER" >/dev/null 2>&1; then
+    chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$ARCHIVE"
+  fi
   rm -rf "$OUT"
   log "Created $ARCHIVE"
   printf '%s\n' "$ARCHIVE"

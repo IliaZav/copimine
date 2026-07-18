@@ -32,7 +32,14 @@ $gitRoot = Resolve-GitRoot -StartPath $ProjectRoot
 $sourceCommitBeforeBuild = (git -C $gitRoot rev-parse --short HEAD).Trim()
 $sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $gitRoot status --short --untracked-files=no))
 if ($sourceTreeDirtyBeforeBuild) {
-    throw 'Release packaging requires committed tracked changes. Commit or stash them before packaging.'
+    # Windows may materialize tracked text files as CRLF even though the Git
+    # blob is clean. Permit that line-ending-only difference; all real content
+    # changes still require an explicit commit before packaging.
+    git -C $gitRoot diff --quiet --ignore-space-at-eol --exit-code -- .
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Release packaging requires committed tracked changes. Commit or stash them before packaging.'
+    }
+    $sourceTreeDirtyBeforeBuild = $false
 }
 
 if (-not $ReleaseDir) {

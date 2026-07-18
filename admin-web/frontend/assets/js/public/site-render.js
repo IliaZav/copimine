@@ -1,5 +1,6 @@
 import { makeElement, replaceChildrenSafe } from "../shared/dom.js";
 import { appRouteHref, authLandingHref, defaultAppRouteForRole } from "../shared/app-routes.js";
+import { addShopCartItem, getShopCartCount, hasShopCartItem, setShopCartScope } from "./shop-cart.js";
 
 const MC_ICON_ROOT = "/assets/mc-icons/item";
 const CSRF_COOKIE = "cm_csrf";
@@ -240,13 +241,110 @@ function buildShopItem(row, mode = "ar") {
   const meta = makeElement("div", "shop-item-meta");
   const material = String(row.base_material || "").trim();
   const effect = String(row.effect_description || row.effect_profile_id || "").trim();
-  if (material) meta.append(makeElement("span", "", material));
-  if (effect) meta.append(makeElement("span", "", effect));
   if (Number(row.cooldown_seconds || 0) > 0) {
     meta.append(makeElement("span", "", `${Number(row.cooldown_seconds)} сек. кулдаун`));
   }
   card.append(meta);
   return card;
+}
+
+function shopCategoryLabel(value, mode) {
+  const labels = {
+    WEAPON: "Оружие",
+    TOOL: "Инструмент",
+    ARMOR: "Броня",
+    UTILITY: "Полезное",
+    RP: "Особое",
+  };
+  return labels[String(value || "").trim().toUpperCase()] || (mode === "ar" ? "AR-предмет" : "Donation-предмет");
+}
+
+function buildShopProductItem(row, mode = "ar", purchaseReady = false, needsLink = false, availability = {}) {
+  const currency = mode === "ar" ? "ar" : "donation";
+  const itemId = String(row.item_id || "").trim().toLowerCase();
+  const card = makeElement("article", `shop-product-card shop-product-card-${currency}`);
+  const visual = makeElement("div", "shop-product-art");
+  const image = document.createElement("img");
+  image.src = String(row.image_url || resolveShopIcon(row, mode));
+  image.alt = "";
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.addEventListener("error", () => {
+    image.src = resolveShopIcon(row, mode);
+  }, { once: true });
+  visual.append(image);
+
+  const body = makeElement("div", "shop-product-body");
+  body.append(
+    makeElement("span", "shop-product-category", shopCategoryLabel(row.category, mode)),
+    makeElement("h3", "", String(row.display_name || itemId || "Товар")),
+    makeElement("p", "", String(row.description || "Описание предмета появится в игре.")),
+  );
+
+  const footer = makeElement("div", "shop-product-footer");
+  const price = makeElement(
+    "strong",
+    "shop-product-price",
+    mode === "ar" ? formatAr(row.price_ar || 0) : formatDonate(row.price_donation || 0),
+  );
+  const unavailable = Boolean(availability?.unavailable);
+  const addButton = makeElement("button", "btn btn-primary shop-product-add", unavailable ? String(availability.label || "Недоступен") : needsLink ? "Привязать ник" : purchaseReady ? "В корзину" : "Войти для покупки");
+  addButton.type = "button";
+  addButton.disabled = unavailable;
+  if (purchaseReady && !unavailable) {
+    addButton.dataset.shopCartItem = itemId;
+    addButton.dataset.shopCartCurrency = currency;
+  }
+  addButton.addEventListener("click", () => {
+    if (!purchaseReady) {
+      window.location.href = needsLink ? appRouteHref("link") : authLandingHref("signin");
+      return;
+    }
+    if (!itemId) return;
+    addShopCartItem(itemId, currency);
+    syncShopCartItemButtons();
+  });
+  footer.append(price, addButton);
+  card.append(visual, body, footer);
+  return card;
+}
+
+function shopItemAvailability(row, currency, ownership = {}) {
+  const itemId = String(row?.item_id || "").trim().toLowerCase();
+  if (!itemId) return { unavailable: true, label: "Недоступен" };
+  if (currency === "ar") {
+    if (Number(row?.per_player_limit || 0) <= 0) return {};
+    const purchases = Array.isArray(ownership?.artifacts?.purchases) ? ownership.artifacts.purchases : [];
+    const pending = Array.isArray(ownership?.artifacts?.pending) ? ownership.artifacts.pending : [];
+    const matchingPurchases = purchases.filter((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId);
+    const livePurchase = matchingPurchases.filter((entry) => ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase()));
+    const pendingDelivery = pending.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["PENDING", "DELIVERING"].includes(String(entry?.status || "").toUpperCase()));
+    if (!livePurchase.length && !pendingDelivery) return {};
+    return { unavailable: true, label: pendingDelivery ? "В выдаче" : "Уже получен" };
+  }
+  const claims = Array.isArray(ownership?.owned?.claims) ? ownership.owned.claims : [];
+  const instances = Array.isArray(ownership?.owned?.instances) ? ownership.owned.instances : [];
+  const claim = claims.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["UNCLAIMED", "RESERVED", "DELIVERING", "DELIVERY_REVIEW"].includes(String(entry?.status || "").toUpperCase()));
+  if (claim) return { unavailable: true, label: "В выдаче" };
+  const instance = instances.some((entry) => String(entry?.item_id || "").trim().toLowerCase() === itemId && ["ACTIVE", "DELIVERING", "PENDING_DELIVERY"].includes(String(entry?.status || "").toUpperCase()));
+  return instance ? { unavailable: true, label: "Уже получен" } : {};
+}
+
+function syncShopCartItemButtons() {
+  document.querySelectorAll("[data-shop-cart-item][data-shop-cart-currency]").forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) return;
+    const itemId = String(button.dataset.shopCartItem || "");
+    const currency = String(button.dataset.shopCartCurrency || "");
+    const inCart = hasShopCartItem(itemId, currency);
+    button.disabled = inCart;
+    button.textContent = inCart ? "В корзине" : "В корзину";
+    button.setAttribute("aria-pressed", inCart ? "true" : "false");
+  });
+}
+
+function syncShopCartScope(auth = {}) {
+  const accountId = String(auth?.role === "player" ? auth?.accountId || "" : "").trim().toLowerCase();
+  setShopCartScope(accountId ? `player-${accountId}` : "guest");
 }
 
 export function createHomepageRenderer() {
@@ -360,19 +458,33 @@ export function createHomepageRenderer() {
     }
   }
 
-  function renderCommerce(arCatalog = {}, donationCatalog = {}) {
+  function syncShopCartButton() {
+    const count = getShopCartCount();
+    document.querySelectorAll(".shop-cart-count").forEach((node) => { node.textContent = String(count); });
+    document.querySelectorAll(".shop-cart-button").forEach((node) => {
+      node.classList.toggle("has-items", count > 0);
+      node.setAttribute("aria-label", count ? `Корзина: ${count} предмета` : "Корзина пуста");
+    });
+    syncShopCartItemButtons();
+  }
+
+  function renderCommerce(arCatalog = {}, donationCatalog = {}, auth = {}, ownership = {}) {
+    syncShopCartScope(auth);
+    const purchaseReady = Boolean(auth?.cookieAuth && auth?.role === "player" && auth?.linked);
+    const needsLink = Boolean(auth?.cookieAuth && auth?.role === "player" && !auth?.linked);
     if (arShopMount) {
       const cards = Array.isArray(arCatalog.items) && arCatalog.items.length
-        ? arCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "ar"))
+        ? arCatalog.items.map((row) => buildShopProductItem(row, "ar", purchaseReady, needsLink, shopItemAvailability(row, "ar", ownership)))
         : [cardStrong("AR-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("diamond_ore.png"))];
       replaceChildrenSafe(arShopMount, cards);
     }
     if (donationShopMount) {
       const cards = Array.isArray(donationCatalog.items) && donationCatalog.items.length
-        ? donationCatalog.items.slice(0, 6).map((row) => buildShopItem(row, "donation"))
+        ? donationCatalog.items.map((row) => buildShopProductItem(row, "donation", purchaseReady, needsLink, shopItemAvailability(row, "donation", ownership)))
         : [cardStrong("Донат-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("totem_of_undying.png"))];
       replaceChildrenSafe(donationShopMount, cards);
     }
+    syncShopCartButton();
   }
 
   function renderCms(payload = {}, pageKind = "") {
@@ -389,7 +501,10 @@ export function createHomepageRenderer() {
       }
     }
     const shops = cmsEntry(payload, "shops_note");
-    if (shops && (pageKind === "public-shops" || pageKind === "public-home")) {
+    if (shops && pageKind === "public-shops") {
+      setCmsText("#shopStorefrontTitle", shops.title);
+      setCmsText(".shop-storefront-head p", shops.body);
+    } else if (shops && pageKind === "public-home") {
       setCmsText(".public-section .section-head h2", shops.title);
       setCmsText(".public-section .section-head p", shops.body);
     }
@@ -641,6 +756,7 @@ export function createHomepageRenderer() {
   }
 
   function renderAuthState(auth = {}) {
+    syncShopCartScope(auth);
     currentAuth = auth || { role: "", cookieAuth: false };
     const role = String(auth.role || "");
     const authed = Boolean(role || auth.cookieAuth);
@@ -701,6 +817,8 @@ export function createHomepageRenderer() {
   bindSkinControls();
   bindCabinetButton();
   bindCommerceButtons();
+  window.addEventListener("shopCartChanged", syncShopCartButton);
+  syncShopCartButton();
   setSkinRotation(-16);
 
   return {

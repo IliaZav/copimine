@@ -57,8 +57,8 @@ async function loadPublicPageByKind(kind, authState) {
       return;
     }
     case "public-shops": {
-      const payload = await loadPublicShopsPageData();
-      renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState);
+      const payload = await loadPublicShopsPageData(authState);
+      renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState, payload.ownership || {});
       renderer.renderAuthState(authState);
       renderer.renderCms(payload.cms || {}, kind);
       return;
@@ -72,13 +72,13 @@ async function loadPublicPageByKind(kind, authState) {
     }
     case "public-home":
     default: {
-      const payload = await loadPublicHomepageData();
+      const payload = await loadPublicHomepageData(authState);
       renderer.renderServerHero(payload.config, payload.status, payload.modpack);
       renderer.renderStatus(payload.status, payload.config);
       renderer.renderBudget(payload.budget || {});
       renderer.renderPresidentCard(payload.president || payload.budget || {});
       renderer.renderHistory(payload.history.items || []);
-      renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState);
+      renderer.renderCommerce(payload.arCatalog || {}, payload.donationCatalog || {}, authState, payload.ownership || {});
       renderer.renderAuthState(authState);
       renderer.renderCms(payload.cms || {}, kind);
     }

@@ -312,6 +312,84 @@ def main() -> None:
             assert rr.status_code == 200 and rr.json()["count"] == 1, rr.text
             rr = c.get("/api/reports", headers=h)
             assert rr.status_code == 200 and rr.json()["count"] == 1, rr.text
+            if appmod.pg_ready():
+                with TestClient(appmod.app) as player_client:
+                    registered = player_client.post("/api/player/register", json={
+                        "username": "shopcartuser",
+                        "password": "CartPassword123!",
+                        "minecraft_name": "ShopCartUser",
+                    })
+                    assert registered.status_code == 200, registered.text
+                    player_account = registered.json()["account"]
+                    player_uuid = str(player_account["minecraftUuid"])
+                    player_name = str(player_account["minecraftName"])
+
+                    admin_ar_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "AR_ADD_BALANCE"}
+                    rr = c.post("/api/admin/economy/ar/add-balance", headers=admin_ar_headers, json={
+                        "minecraft_uuid": player_uuid,
+                        "minecraft_name": player_name,
+                        "amount": 100000,
+                        "reason": "cart smoke funding",
+                        "idempotency_key": "cart-smoke-ar-funding-001",
+                    })
+                    assert rr.status_code == 200, rr.text
+                    admin_donation_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "DONATION_ADD_BALANCE"}
+                    rr = c.post("/api/admin/donation/add-balance", headers=admin_donation_headers, json={
+                        "minecraft_uuid": player_uuid,
+                        "minecraft_name": player_name,
+                        "amount": 100000,
+                        "reason": "cart smoke funding",
+                        "idempotency_key": "cart-smoke-donation-funding-001",
+                    })
+                    assert rr.status_code == 200, rr.text
+
+                    csrf_boot = player_client.get("/api/auth/csrf")
+                    assert csrf_boot.status_code == 200, csrf_boot.text
+                    player_csrf = player_client.cookies.get(appmod.CSRF_COOKIE_NAME)
+                    assert player_csrf, "Player CSRF cookie was not issued"
+                    player_headers = {appmod.CSRF_HEADER_NAME: player_csrf}
+                    rr = player_client.post("/api/player/bank/pin", headers=player_headers, json={"new_pin": "1234"})
+                    assert rr.status_code == 200, rr.text
+
+                    ar_cart = {
+                        "item_ids": ["zmei_gorynych", "smena_bez_perekura_pickaxe"],
+                        "pin": "1234",
+                        "expected_total": 3000,
+                        "idempotency_key": "cart-smoke-ar-checkout-001",
+                    }
+                    rr = player_client.post("/api/player/shop/cart/ar/checkout", headers=player_headers, json=ar_cart)
+                    assert rr.status_code == 200, rr.text
+                    ar_checkout = rr.json()
+                    assert len(ar_checkout["items"]) == 2, ar_checkout
+                    assert all(item["status"] == "PENDING_DELIVERY" for item in ar_checkout["items"]), ar_checkout
+                    rr = player_client.post("/api/player/shop/cart/ar/checkout", headers=player_headers, json=ar_cart)
+                    assert rr.status_code == 200 and rr.json().get("idempotent") is True, rr.text
+                    duplicate_ar = player_client.post("/api/player/shop/cart/ar/checkout", headers=player_headers, json={
+                        "item_ids": ["zmei_gorynych", "zmei_gorynych"],
+                        "pin": "1234",
+                        "idempotency_key": "cart-smoke-ar-duplicate-001",
+                    })
+                    assert duplicate_ar.status_code == 400, duplicate_ar.text
+
+                    donation_cart = {
+                        "item_ids": ["batin_remen_sudnogo_dnya", "nu_ty_i_nakopal_blyat_pickaxe"],
+                        "pin": "1234",
+                        "expected_total": 950,
+                        "idempotency_key": "cart-smoke-donation-checkout-001",
+                    }
+                    rr = player_client.post("/api/player/shop/cart/donation/checkout", headers=player_headers, json=donation_cart)
+                    assert rr.status_code == 200, rr.text
+                    donation_checkout = rr.json()
+                    assert len(donation_checkout["items"]) == 2, donation_checkout
+                    assert all(item["claimStatus"] == "UNCLAIMED" for item in donation_checkout["items"]), donation_checkout
+                    rr = player_client.post("/api/player/shop/cart/donation/checkout", headers=player_headers, json=donation_cart)
+                    assert rr.status_code == 200 and rr.json().get("idempotent") is True, rr.text
+                    artifacts = player_client.get("/api/player/artifacts")
+                    assert artifacts.status_code == 200 and len(artifacts.json()["pending"]) == 2, artifacts.text
+                    owned = player_client.get("/api/player/shop/owned")
+                    assert owned.status_code == 200 and len(owned.json()["claims"]) == 2, owned.text
+            else:
+                print("Cart checkout smoke skipped: PostgreSQL is required for real balance and delivery checks.")
             rr = c.post("/api/rcon", headers=h, json={"command":"op TestUser"})
             assert rr.status_code == 403, rr.text
             rr = c.post("/api/backups", headers=h, json={"scope":"configs", "include_logs":True, "include_world":False})

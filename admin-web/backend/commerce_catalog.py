@@ -40,6 +40,14 @@ def _string_list(values: Any) -> list[str]:
     return out
 
 
+def _item_description(lore: list[str], fallback: str = "") -> str:
+    for line in lore:
+        text = strip_minecraft_format(line).strip()
+        if text:
+            return text
+    return strip_minecraft_format(fallback).strip()
+
+
 def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str = "") -> dict[str, Any]:
     source = items_file or DEFAULT_ITEMS_FILE
     raw = _safe_yaml_load(source)
@@ -53,13 +61,18 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             continue
         if str(entry.get("source") or "AR_SHOP").strip().upper() == "ADMIN_ONLY":
             continue
+        lore = _string_list(entry.get("lore") or [])
         ar_items.append(
             {
                 "item_id": item_id,
                 "display_name": strip_minecraft_format(str(entry.get("name") or item_id)),
+                "description": _item_description(lore, "Официальный предмет CopiMine."),
+                "image_url": f"/assets/item-textures/{item_id}.png",
                 "category": str(entry.get("category") or "RP").strip().upper(),
                 "base_material": str(entry.get("material") or "STONE").strip().upper(),
                 "price_ar": int(entry.get("price_ar") or 0),
+                "supply_limit": int(entry.get("supply_limit") or 0),
+                "per_player_limit": int(entry.get("per_player_limit") or 0),
                 "enabled": True,
                 "source": str(entry.get("source") or "AR_SHOP").strip().upper(),
                 "cooldown_seconds": int(entry.get("cooldown_seconds") or 0),
@@ -67,7 +80,7 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
                 "repairable": bool(entry.get("repairable", True)),
                 "custom_model_data": int(entry.get("custom_model_data") or 0),
                 "visual_effect_id": str(entry.get("visual_effect_id") or "").strip().upper(),
-                "lore": _string_list(entry.get("lore") or []),
+                "lore": lore,
             }
         )
     ar_items.sort(key=lambda row: (int(row.get("price_ar") or 0), str(row.get("display_name") or row.get("item_id") or "")))
@@ -82,9 +95,13 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
         item_id = str(entry.get("item-id") or "").strip().lower()
         if not item_id:
             continue
+        lore = _string_list(entry.get("lore") or [])
+        effect_description = str(entry.get("effect-description") or "").strip()
         row = {
             "item_id": item_id,
             "display_name": strip_minecraft_format(str(entry.get("display-name") or item_id)),
+            "description": _item_description(lore, effect_description or "Именной предмет CopiMine."),
+            "image_url": f"/assets/item-textures/{item_id}.png",
             "base_material": str(entry.get("base-material") or "PAPER").strip().upper(),
             "price_donation": int(entry.get("price-donation") or 0),
             "enabled": bool(entry.get("enabled", True)),
@@ -93,7 +110,7 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             "reclaim_policy": str(entry.get("reclaim-policy") or "LOSS_ONLY").strip().upper(),
             "consume_policy": str(entry.get("consume-policy") or "PERSISTENT").strip().upper(),
             "effect_profile_id": str(entry.get("effect-profile-id") or "").strip().upper(),
-            "effect_description": str(entry.get("effect-description") or "").strip(),
+            "effect_description": effect_description,
             "cooldown_seconds": int(entry.get("cooldown-seconds") or 0),
             "proc_chance": float(entry.get("proc-chance") or 0.0),
             "max_stack": int(entry.get("max-stack") or 1),
@@ -101,7 +118,7 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             "custom_texture_mode_allowed": bool(entry.get("custom-texture-mode-allowed", True)),
             "custom_model_data": int(entry.get("custom-model-data") or 0),
             "visual_effect_id": str(entry.get("visual-effect-id") or "").strip().upper(),
-            "lore": _string_list(entry.get("lore") or []),
+            "lore": lore,
         }
         donation_items.append(row)
         donation_by_id[item_id] = row

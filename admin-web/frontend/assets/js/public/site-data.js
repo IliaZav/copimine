@@ -112,17 +112,28 @@ export async function loadPublicServerPageData() {
   };
 }
 
-export async function loadPublicShopsPageData() {
-  const [arCatalogPayload, donationCatalogPayload, cmsPayload] = await Promise.all([
+export async function loadPlayerShopOwnership() {
+  const [artifacts, owned] = await Promise.all([
+    fetchJson("/api/player/artifacts", { linked: false, purchases: [], pending: [], repairs: [] }),
+    fetchJson("/api/player/shop/owned", { linked: false, claims: [], instances: [], summary: {} }),
+  ]);
+  return { artifacts, owned };
+}
+
+export async function loadPublicShopsPageData(authState = {}) {
+  const shouldLoadOwnership = Boolean(authState?.cookieAuth && authState?.role === "player" && authState?.linked);
+  const [arCatalogPayload, donationCatalogPayload, cmsPayload, ownership] = await Promise.all([
     fetchArCatalogPayload(),
     fetchDonationCatalogPayload(),
     fetchCmsPayload(),
+    shouldLoadOwnership ? loadPlayerShopOwnership() : Promise.resolve({ artifacts: { purchases: [], pending: [] }, owned: { claims: [], instances: [] } }),
   ]);
 
   return {
     arCatalog: arCatalogPayload?.data || { items: [] },
     donationCatalog: donationCatalogPayload?.data || { items: [] },
     cms: cmsPayload || { items: [], sections: [] },
+    ownership,
   };
 }
 
@@ -146,11 +157,11 @@ export async function loadPublicModsPageData() {
   };
 }
 
-export async function loadPublicHomepageData() {
+export async function loadPublicHomepageData(authState = {}) {
   const [home, server, shops] = await Promise.all([
     loadPublicHomePageData(),
     loadPublicServerPageData(),
-    loadPublicShopsPageData(),
+    loadPublicShopsPageData(authState),
   ]);
 
   return {
@@ -162,6 +173,7 @@ export async function loadPublicHomepageData() {
     president: server.president,
     arCatalog: shops.arCatalog,
     donationCatalog: shops.donationCatalog,
+    ownership: shops.ownership,
     cms: home.cms || shops.cms || { items: [], sections: [] },
   };
 }
@@ -181,6 +193,7 @@ export async function loadPublicAuthState() {
       role: "player",
       cookieAuth: true,
       linked: Boolean(session.account?.linked),
+      accountId: String(session.account?.id || ""),
     };
   }
   return {

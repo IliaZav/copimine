@@ -1,14 +1,19 @@
 import { bindHomepageEvents, loadPublicPage } from "./homepage.js";
+import { initCartPage } from "./cart-page.js";
 import { initThemeToggle } from "../theme/theme-toggle.js?v=20260718r1";
 import { initPublicNav } from "./public-nav.js";
 
 initPublicNav();
 initThemeToggle();
-bindHomepageEvents();
 
-if (document.querySelector(".public-site")) {
+const pageKind = String(document.body?.dataset.pageKind || "").trim().toLowerCase();
+
+if (pageKind === "public-cart") {
+  void initCartPage();
+} else if (document.querySelector(".public-site")) {
+  bindHomepageEvents();
   window.setTimeout(() => {
-    const kind = String(document.body?.dataset.pageKind || "").trim().toLowerCase() || "public-home";
+    const kind = pageKind || "public-home";
     void loadPublicPage(kind);
   }, 120);
 }

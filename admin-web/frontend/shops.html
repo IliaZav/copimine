@@ -29,7 +29,15 @@
         <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button>
         <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
         <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
+        <a id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-label="Корзина пуста">
+          <span>Корзина</span>
+          <span id="shopCartCount" class="shop-cart-count" aria-live="polite">0</span>
+        </a>
       </nav>
+      <a class="shop-cart-button shop-cart-mobile-shortcut" href="/cart.html" aria-label="Корзина пуста">
+        <span>Корзина</span>
+        <span class="shop-cart-count" aria-live="polite">0</span>
+      </a>
     </header>
 
     <div class="public-page-shell">
@@ -70,7 +78,44 @@
         </aside>
       </section>
 
-      <section class="public-section public-shop-board-section">
+      <section class="shop-storefront" aria-labelledby="shopStorefrontTitle">
+        <div class="shop-storefront-head">
+          <div>
+            <span class="hero-kicker">Витрина</span>
+            <h2 id="shopStorefrontTitle">Выберите предметы и оплатите их одной корзиной.</h2>
+            <p>AR и donation не смешиваются: у каждого раздела свой баланс и отдельная оплата.</p>
+          </div>
+          <a class="btn btn-secondary shop-storefront-cart-link" href="/cart.html">Открыть корзину</a>
+        </div>
+
+        <section class="shop-catalog-band shop-catalog-band-ar" aria-labelledby="arShopTitle">
+          <header class="shop-catalog-head">
+            <div>
+              <span class="shop-catalog-eyebrow">AR-магазин</span>
+              <h2 id="arShopTitle">Предметы за AR</h2>
+              <p>После оплаты все предметы сразу появляются в отложенной выдаче.</p>
+            </div>
+          </header>
+          <div id="publicArShopPreview" class="shop-product-grid" aria-live="polite">
+            <p class="shop-catalog-loading">Загружаем предметы.</p>
+          </div>
+        </section>
+
+        <section class="shop-catalog-band shop-catalog-band-donation" aria-labelledby="donationShopTitle">
+          <header class="shop-catalog-head">
+            <div>
+              <span class="shop-catalog-eyebrow">Donation-магазин</span>
+              <h2 id="donationShopTitle">Именные предметы</h2>
+              <p>Эти предметы оплачиваются только donation-балансом и выдаются в игре.</p>
+            </div>
+          </header>
+          <div id="publicDonationShopPreview" class="shop-product-grid" aria-live="polite">
+            <p class="shop-catalog-loading">Загружаем предметы.</p>
+          </div>
+        </section>
+      </section>
+
+      <section class="public-section public-shop-board-section" hidden>
         <div class="section-head">
           <span>Витрины</span>
           <h2>Каталог AR и donation.</h2>
@@ -87,7 +132,7 @@
               </div>
               <button id="openArShopBtn" class="btn btn-secondary" type="button">Открыть AR-магазин</button>
             </div>
-            <div id="publicArShopPreview" class="shop-rail">
+            <div id="legacyPublicArShopPreview" class="shop-rail">
               <article class="shop-item-chip"><strong>Получаем каталог</strong></article>
             </div>
           </article>
@@ -101,7 +146,7 @@
               </div>
               <button id="openDonationShopBtn" class="btn btn-secondary" type="button">Открыть donation-магазин</button>
             </div>
-            <div id="publicDonationShopPreview" class="shop-rail">
+            <div id="legacyPublicDonationShopPreview" class="shop-rail">
               <article class="shop-item-chip"><strong>Получаем каталог</strong></article>
             </div>
           </article>

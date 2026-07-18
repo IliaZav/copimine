@@ -555,6 +555,13 @@ class PlayerArPurchaseIntentIn(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class PlayerCartCheckoutIn(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=12)
+    pin: str = Field(min_length=4, max_length=8)
+    expected_total: int = Field(gt=0, le=1000000000)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
 class PlayerSupportReportIn(BaseModel):
     target: Optional[str] = Field(default="", max_length=64)
     message: str = Field(min_length=8, max_length=5000)
@@ -8912,9 +8919,10 @@ async def public_modpack() -> dict[str, Any]:
 async def public_ar_shop_catalog() -> dict[str, Any]:
     catalog = await bg(ar_catalog_snapshot_sync)
     items: list[dict[str, Any]] = []
-    for row in catalog.get("items", [])[:12]:
+    for row in catalog.get("items", []):
         item = dict(row)
-        item.pop("lore", None)
+        for field in ("lore", "base_material", "effect_profile_id", "visual_effect_id", "custom_model_data", "source"):
+            item.pop(field, None)
         items.append(item)
     return {"ok": True, "data": {"count": len(catalog.get("items", [])), "items": items}}
 
@@ -8923,10 +8931,11 @@ async def public_ar_shop_catalog() -> dict[str, Any]:
 async def public_donation_shop_catalog() -> dict[str, Any]:
     catalog = await bg(donation_catalog_snapshot_sync)
     items: list[dict[str, Any]] = []
-    for row in catalog.get("items", [])[:12]:
+    for row in catalog.get("items", []):
         item = dict(row)
         item["item_url"] = donation_item_page_url(str(item.get("item_id") or ""))
-        item.pop("lore", None)
+        for field in ("lore", "base_material", "effect_profile_id", "visual_effect_id", "custom_model_data", "source"):
+            item.pop(field, None)
         items.append(item)
     return {
         "ok": True,
@@ -8961,7 +8970,7 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
         if minecraft_name and player_account_by_minecraft_name(conn, minecraft_name):
             raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже привязан. Используйте восстановление доступа.")
         same_ip = conn.execute("SELECT COUNT(*) AS c FROM site_accounts WHERE registration_ip=%s", (registration_ip,)).fetchone()
-        if int((same_ip or {}).get("c") or 0) >= 5:
+        if int(row_get(same_ip, "c", 0) or 0) >= 5:
             conn.commit()
             await bg(create_ip_alert_sync, registration_ip, username, minecraft_name, "site-account-limit", {"limit": 5, "stage": "register"})
             raise HTTPException(status_code=400, detail="Ошибка регистрации. Проверьте данные и попробуйте позже.")
@@ -12249,6 +12258,8 @@ def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentI
             }
         verify_bank_pin(conn, account, data.pin)
         item_id = str(item.get("item_id") or "").strip()
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-supply:{item_id.lower()}",))
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-player:{player_uuid.lower()}:{item_id.lower()}",))
         supply_limit = int(item.get("supply_limit") or 0)
         per_player_limit = int(item.get("per_player_limit") or 0)
         if supply_limit > 0 and artifact_purchase_count_sync(conn, item_id) >= supply_limit:
@@ -12324,6 +12335,325 @@ def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentI
         "priceAr": price,
         "balanceAfter": after,
         "pickupHint": "Заберите предмет в игре через /cmartifacts claim.",
+    }
+
+
+CART_IDEMPOTENCY_KEY_RE = re.compile(r"[A-Za-z0-9-]{8,96}")
+CART_ITEM_ID_RE = re.compile(r"[a-z0-9_-]{2,120}")
+
+
+def normalize_cart_checkout_input(data: PlayerCartCheckoutIn) -> tuple[list[str], str]:
+    item_ids: list[str] = []
+    seen: set[str] = set()
+    for raw_item_id in list(data.item_ids or []):
+        item_id = str(raw_item_id or "").strip().lower()
+        if not CART_ITEM_ID_RE.fullmatch(item_id):
+            raise HTTPException(status_code=400, detail="В корзине указан некорректный предмет")
+        if item_id in seen:
+            raise HTTPException(status_code=400, detail="Один и тот же предмет нельзя добавить в корзину дважды")
+        seen.add(item_id)
+        item_ids.append(item_id)
+    if not item_ids or len(item_ids) > 12:
+        raise HTTPException(status_code=400, detail="В одной корзине можно оплатить от 1 до 12 предметов")
+    key = str(data.idempotency_key or "").strip()
+    if not CART_IDEMPOTENCY_KEY_RE.fullmatch(key):
+        raise HTTPException(status_code=400, detail="Не удалось безопасно подтвердить оплату корзины. Обновите страницу и повторите попытку")
+    return item_ids, key
+
+
+def checkout_ar_cart_sync(account: dict[str, Any], data: PlayerCartCheckoutIn) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    player_uuid = str(account.get("minecraft_uuid") or "").strip()
+    player_name = str(account.get("minecraft_name") or account.get("username") or "").strip()
+    if not player_uuid:
+        raise HTTPException(status_code=400, detail="Сначала привяжи Minecraft-ник")
+    item_ids, key = normalize_cart_checkout_input(data)
+    catalog = ar_catalog_snapshot_sync()
+    catalog_by_id = dict(catalog.get("byId") or {})
+    selected_items: list[dict[str, Any]] = []
+    for item_id in item_ids:
+        item = dict(catalog_by_id.get(item_id) or {})
+        if not item or not bool(item.get("enabled")):
+            raise HTTPException(status_code=404, detail="Один из AR-предметов больше недоступен")
+        if str(item.get("category") or "").upper() == "RP":
+            raise HTTPException(status_code=409, detail="Один из выбранных предметов пока нельзя купить на сайте")
+        price = int(item.get("price_ar") or 0)
+        if price <= 0:
+            raise HTTPException(status_code=409, detail="Для одного из выбранных предметов не задана цена AR")
+        selected_items.append(item)
+
+    now = donation_now_ms()
+    cart_key = f"web-ar-cart-{key}"
+    item_purchase_keys = {item_id: f"{cart_key}:{item_id}" for item_id in item_ids}
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (cart_key,))
+        verify_bank_pin(conn, account, data.pin)
+        existing_rows = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT purchase_id,unique_item_id,player_uuid,item_id,status,price_ar FROM artifact_purchases WHERE idempotency_key LIKE %s ORDER BY item_id",
+                (f"{cart_key}:%",),
+            ).fetchall()
+        ]
+        if existing_rows:
+            existing_by_id = {str(row.get("item_id") or ""): row for row in existing_rows}
+            if set(existing_by_id) != set(item_ids) or len(existing_rows) != len(item_ids) or any(str(row.get("player_uuid") or "") != player_uuid for row in existing_rows):
+                raise HTTPException(status_code=409, detail="Этот ключ оплаты уже использован для другой корзины")
+            balance_row = conn.execute(
+                "SELECT balance FROM cmv4_bank_accounts WHERE owner_uuid=%s AND account_type='PLAYER' AND currency='AR' AND status='ACTIVE' LIMIT 1",
+                (player_uuid,),
+            ).fetchone()
+            return {
+                "ok": True,
+                "items": [
+                    {
+                        "itemId": item_id,
+                        "purchaseId": existing_by_id[item_id].get("purchase_id"),
+                        "uniqueItemId": existing_by_id[item_id].get("unique_item_id"),
+                        "status": existing_by_id[item_id].get("status"),
+                        "priceAr": int(existing_by_id[item_id].get("price_ar") or 0),
+                    }
+                    for item_id in item_ids
+                ],
+                "totalPriceAr": sum(int(row.get("price_ar") or 0) for row in existing_rows),
+                "balanceAfter": int(row_get(balance_row, "balance", 0) or 0),
+                "pickupHint": "Все оплаченные предметы уже ждут выдачи в игре через /cmartifacts claim.",
+                "idempotent": True,
+            }
+
+        total_price = sum(int(item.get("price_ar") or 0) for item in selected_items)
+        if int(data.expected_total) != total_price:
+            raise HTTPException(status_code=409, detail="Цена предметов изменилась. Обновите корзину перед оплатой")
+        for item in sorted(selected_items, key=lambda row: str(row.get("item_id") or "")):
+            item_id = str(item.get("item_id") or "")
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-supply:{item_id.lower()}",))
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-player:{player_uuid.lower()}:{item_id.lower()}",))
+            supply_limit = int(item.get("supply_limit") or 0)
+            per_player_limit = int(item.get("per_player_limit") or 0)
+            if supply_limit > 0 and artifact_purchase_count_sync(conn, item_id) >= supply_limit:
+                raise HTTPException(status_code=409, detail=f"Лимит поставки предмета «{item.get('display_name') or item_id}» исчерпан")
+            if per_player_limit > 0 and artifact_purchase_count_sync(conn, item_id, player_uuid) >= per_player_limit:
+                raise HTTPException(status_code=409, detail=f"Персональный лимит на предмет «{item.get('display_name') or item_id}» уже достигнут")
+
+        player_bank = ensure_player_bank_account(conn, player_uuid, player_name)
+        treasury_bank = ensure_treasury_bank_account(conn)
+        player_locked, treasury_locked = lock_bank_accounts_ordered(conn, str(player_bank["account_id"]), str(treasury_bank["account_id"]))
+        before = int(player_locked.get("balance") or 0)
+        if before < total_price:
+            raise HTTPException(status_code=409, detail="Недостаточно AR на банковском счёте для оплаты всей корзины")
+        after = before - total_price
+        treasury_after = int(treasury_locked.get("balance") or 0) + total_price
+        tx_id = f"ar-web-cart-{secrets.token_hex(12)}"
+        details = json.dumps(
+            {
+                "items": [
+                    {"itemId": str(item.get("item_id") or ""), "displayName": item.get("display_name") or "", "priceAr": int(item.get("price_ar") or 0)}
+                    for item in selected_items
+                ],
+                "source": "site-shop-cart",
+            },
+            ensure_ascii=False,
+        )
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (after, now, player_locked["account_id"]))
+        conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s", (treasury_after, now, treasury_locked["account_id"]))
+        conn.execute(
+            "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR','COMMITTED',%s,%s,%s,%s)",
+            (tx_id, player_locked["account_id"], treasury_locked["account_id"], total_price, cart_key, now, player_name or player_uuid, details),
+        )
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR_SHOP_CART',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id + ":out", player_locked["account_id"], treasury_locked["account_id"], player_uuid, total_price, after, cart_key + ":out", now, player_name or player_uuid, details),
+        )
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,%s,%s,'AR_SHOP_CART',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id + ":in", treasury_locked["account_id"], player_locked["account_id"], player_uuid, total_price, treasury_after, cart_key + ":in", now, player_name or player_uuid, details),
+        )
+
+        created_items: list[dict[str, Any]] = []
+        for item in selected_items:
+            item_id = str(item.get("item_id") or "")
+            price = int(item.get("price_ar") or 0)
+            purchase_id = f"web-ar-cart-purchase-{secrets.token_hex(10)}"
+            unique_item_id = f"web-ar-cart-item-{uuid.uuid4()}"
+            delivery_id = f"web-ar-cart-delivery-{secrets.token_hex(10)}"
+            conn.execute(
+                """
+                INSERT INTO artifact_purchases(purchase_id,unique_item_id,player_uuid,player_name,item_id,shop_id,price_ar,bank_tx_id,idempotency_key,status,delivery_mode,created_at,updated_at)
+                VALUES(%s,%s,%s,%s,%s,'site-shop',%s,%s,%s,'PENDING_DELIVERY','PENDING',%s,%s)
+                """,
+                (purchase_id, unique_item_id, player_uuid, player_name, item_id, price, tx_id, item_purchase_keys[item_id], now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO artifact_item_instances(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at)
+                VALUES(%s,%s,%s,%s,'PENDING_DELIVERY',0,%s,%s)
+                """,
+                (unique_item_id, item_id, player_uuid, purchase_id, now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at)
+                VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)
+                """,
+                (delivery_id, purchase_id, unique_item_id, player_uuid, item_id, now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO artifact_revenue_payouts(purchase_id,president_uuid,president_name,recipient_account_id,buyer_uuid,buyer_name,item_id,shop_id,amount_ar,status,bank_tx_id,idempotency_key,last_error,created_at,updated_at)
+                VALUES(%s,'',%s,%s,%s,%s,%s,'site-shop',%s,'CREDITED',%s,%s,'',%s,%s)
+                ON CONFLICT(purchase_id) DO NOTHING
+                """,
+                (purchase_id, TREASURY_ACCOUNT_LABEL, TREASURY_ACCOUNT_ID, player_uuid, player_name, item_id, price, tx_id, f"artifact-president-budget-{purchase_id}", now, now),
+            )
+            created_items.append(
+                {
+                    "itemId": item_id,
+                    "purchaseId": purchase_id,
+                    "uniqueItemId": unique_item_id,
+                    "deliveryId": delivery_id,
+                    "status": "PENDING_DELIVERY",
+                    "priceAr": price,
+                }
+            )
+        conn.commit()
+    actor = str(account.get("username") or player_name or player_uuid)
+    audit_event(actor, "artifact.purchase.web_cart", target=player_name or player_uuid, details={"itemIds": item_ids, "totalPriceAr": total_price, "txId": tx_id})
+    append_panel_event("artifacts", "web_cart_purchase", actor=actor, target=player_name or player_uuid, metadata={"itemIds": item_ids, "totalPriceAr": total_price, "txId": tx_id}, tags=["artifacts", "shop"])
+    return {
+        "ok": True,
+        "items": created_items,
+        "totalPriceAr": total_price,
+        "balanceAfter": after,
+        "pickupHint": "Все оплаченные предметы уже ждут выдачи в игре через /cmartifacts claim.",
+    }
+
+
+def checkout_donation_cart_sync(player_uuid: str, player_name: str, data: PlayerCartCheckoutIn) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    player_uuid = str(player_uuid or "").strip()
+    if not player_uuid:
+        raise HTTPException(status_code=400, detail="Сначала привяжи Minecraft-ник")
+    player_name = str(player_name or "").strip()
+    item_ids, key = normalize_cart_checkout_input(data)
+    catalog = donation_catalog_snapshot_sync()
+    catalog_by_id = dict(catalog.get("byId") or {})
+    selected_items: list[dict[str, Any]] = []
+    for item_id in item_ids:
+        item = dict(catalog_by_id.get(item_id) or {})
+        if not item or not bool(item.get("enabled")):
+            raise HTTPException(status_code=404, detail="Один из donation-предметов больше недоступен")
+        price = int(item.get("price_donation") or 0)
+        if price <= 0:
+            raise HTTPException(status_code=409, detail="Для одного из выбранных предметов не задана цена donation")
+        selected_items.append(item)
+
+    now = donation_now_ms()
+    cart_key = f"donation-cart-{key}"
+    item_purchase_keys = {item_id: f"{cart_key}:{item_id}" for item_id in item_ids}
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        verify_bank_pin(conn, {"minecraft_uuid": player_uuid, "minecraft_name": player_name}, data.pin)
+        lock_donation_idempotency_sync(conn, "donation-cart", key)
+        existing_rows = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT p.id,p.player_uuid,p.item_id,p.status,p.price_donation,c.status AS claim_status
+                FROM donation_purchases p
+                LEFT JOIN donation_item_claims c ON c.purchase_id=p.id
+                WHERE p.idempotency_key LIKE %s
+                ORDER BY p.item_id
+                """,
+                (f"{cart_key}:%",),
+            ).fetchall()
+        ]
+        if existing_rows:
+            existing_by_id = {str(row.get("item_id") or ""): row for row in existing_rows}
+            if set(existing_by_id) != set(item_ids) or len(existing_rows) != len(item_ids) or any(str(row.get("player_uuid") or "") != player_uuid for row in existing_rows):
+                raise HTTPException(status_code=409, detail="Этот ключ оплаты уже использован для другой корзины")
+            balance_row = conn.execute("SELECT balance FROM donation_accounts WHERE player_uuid=%s LIMIT 1", (player_uuid,)).fetchone()
+            return {
+                "ok": True,
+                "items": [
+                    {
+                        "itemId": item_id,
+                        "purchaseId": existing_by_id[item_id].get("id"),
+                        "status": existing_by_id[item_id].get("status"),
+                        "claimStatus": existing_by_id[item_id].get("claim_status") or "UNCLAIMED",
+                        "priceDonation": int(existing_by_id[item_id].get("price_donation") or 0),
+                    }
+                    for item_id in item_ids
+                ],
+                "totalPriceDonation": sum(int(row.get("price_donation") or 0) for row in existing_rows),
+                "balanceAfter": int(row_get(balance_row, "balance", 0) or 0),
+                "pickupHint": "Все оплаченные предметы уже ждут выдачи в игре через лавку donation.",
+                "idempotent": True,
+            }
+
+        total_price = sum(int(item.get("price_donation") or 0) for item in selected_items)
+        if int(data.expected_total) != total_price:
+            raise HTTPException(status_code=409, detail="Цена предметов изменилась. Обновите корзину перед оплатой")
+        for item in sorted(selected_items, key=lambda row: str(row.get("item_id") or "")):
+            item_id = str(item.get("item_id") or "")
+            lock_donation_entitlement_sync(conn, player_uuid, item_id)
+            if donation_entitlement_conflict_sync(conn, player_uuid, item_id):
+                raise HTTPException(status_code=409, detail=f"У тебя уже есть активный или ожидающий выдачи предмет «{item.get('display_name') or item_id}»")
+
+        ensure_donation_account_row(conn, player_uuid, player_name)
+        balance_row = conn.execute("SELECT COALESCE(balance,0) AS balance FROM donation_accounts WHERE player_uuid=%s FOR UPDATE", (player_uuid,)).fetchone() or {"balance": 0}
+        before = int(row_get(balance_row, "balance", 0) or 0)
+        if before < total_price:
+            raise HTTPException(status_code=409, detail="Недостаточно donation-баланса для оплаты всей корзины")
+        after = before - total_price
+        ledger_id = f"don-cart-ledger-{secrets.token_hex(8)}"
+        conn.execute("UPDATE donation_accounts SET balance=%s,updated_at=%s,player_name=%s WHERE player_uuid=%s", (after, now, player_name, player_uuid))
+        conn.execute(
+            "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (ledger_id, player_uuid, -total_price, after, "DONATION_CART_PURCHASE", player_name or player_uuid, "player-web-cart", cart_key, now),
+        )
+
+        created_items: list[dict[str, Any]] = []
+        for item in selected_items:
+            item_id = str(item.get("item_id") or "")
+            price = int(item.get("price_donation") or 0)
+            purchase_id = f"don-cart-purchase-{secrets.token_hex(8)}"
+            claim_id = f"don-cart-claim-{secrets.token_hex(8)}"
+            conn.execute(
+                """
+                INSERT INTO donation_purchases(id,player_uuid,player_name,item_id,price,price_donation,status,source,idempotency_key,created_at,updated_at)
+                VALUES(%s,%s,%s,%s,%s,%s,'CLAIM_PENDING','player-web-cart',%s,%s,%s)
+                """,
+                (purchase_id, player_uuid, player_name, item_id, price, price, item_purchase_keys[item_id], now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO donation_item_claims(id,player_uuid,item_id,amount,status,claimed_at,created_at,updated_at,purchase_id,actor)
+                VALUES(%s,%s,%s,1,'UNCLAIMED',0,%s,%s,%s,%s)
+                """,
+                (claim_id, player_uuid, item_id, now, now, purchase_id, player_name or player_uuid),
+            )
+            created_items.append(
+                {
+                    "itemId": item_id,
+                    "purchaseId": purchase_id,
+                    "claimId": claim_id,
+                    "status": "CLAIM_PENDING",
+                    "claimStatus": "UNCLAIMED",
+                    "priceDonation": price,
+                }
+            )
+        conn.commit()
+    audit_event(player_name or player_uuid, "donation.purchase.web_cart", target=player_name or player_uuid, details={"itemIds": item_ids, "totalPriceDonation": total_price, "ledgerId": ledger_id})
+    append_panel_event("donation", "web_cart_purchase", actor=player_name or player_uuid, target=player_name or player_uuid, metadata={"itemIds": item_ids, "totalPriceDonation": total_price, "ledgerId": ledger_id}, tags=["donation", "purchase"])
+    return {
+        "ok": True,
+        "items": created_items,
+        "totalPriceDonation": total_price,
+        "balanceAfter": after,
+        "pickupHint": "Все оплаченные предметы уже ждут выдачи в игре через лавку donation.",
     }
 
 
@@ -12712,6 +13042,22 @@ async def player_donation_purchase_intent(data: PlayerDonationPurchaseIntentIn, 
 async def player_ar_purchase_intent(data: PlayerArPurchaseIntentIn, request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     check_rate_limit(request, "player-ar-purchase", limit=8, window_seconds=60)
     return await bg(purchase_ar_item_sync, account, data)
+
+
+@app.post("/api/player/shop/cart/ar/checkout")
+async def player_ar_cart_checkout(data: PlayerCartCheckoutIn, request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    check_rate_limit(request, "player-ar-cart-checkout", limit=5, window_seconds=60)
+    return await bg(checkout_ar_cart_sync, account, data)
+
+
+@app.post("/api/player/shop/cart/donation/checkout")
+async def player_donation_cart_checkout(data: PlayerCartCheckoutIn, request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    player_uuid = str(account.get("minecraft_uuid") or "").strip()
+    player_name = str(account.get("minecraft_name") or account.get("username") or "").strip()
+    if not player_uuid:
+        raise HTTPException(status_code=400, detail="Сначала привяжи Minecraft-ник")
+    check_rate_limit(request, "player-donation-cart-checkout", limit=5, window_seconds=60)
+    return await bg(checkout_donation_cart_sync, player_uuid, player_name, data)
 
 
 @app.post("/api/player/donation/claim")

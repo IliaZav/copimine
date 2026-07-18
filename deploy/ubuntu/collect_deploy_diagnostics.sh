@@ -3,6 +3,11 @@ set -Eeuo pipefail
 umask 077
 
 ROOT="${COPIMINE_ROOT:-/opt/copimine}"
+MODE="archive"
+if [[ "${1:-}" == "--stdout" ]]; then
+  MODE="stdout"
+  shift
+fi
 OUT="${1:-/tmp/copimine-diagnostics-$(date +%Y%m%d-%H%M%S)}"
 ARCHIVE="${OUT}.tar.gz"
 mkdir -p "$OUT"
@@ -85,8 +90,19 @@ if command -v curl >/dev/null 2>&1; then
   curl -fsS --max-time 10 http://127.0.0.1:18080/api/runtime >"$OUT/http-runtime.json" 2>&1 || true
 fi
 
-tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")"
-chmod 600 "$ARCHIVE"
-rm -rf "$OUT"
-log "Created $ARCHIVE"
-printf '%s\n' "$ARCHIVE"
+if [[ "$MODE" == "stdout" ]]; then
+  printf '\n===== COPIMINE DIAGNOSTICS BEGIN =====\n'
+  for file in "$OUT"/*; do
+    [[ -f "$file" ]] || continue
+    printf '\n===== %s =====\n' "$(basename "$file")"
+    cat "$file"
+  done
+  printf '\n===== COPIMINE DIAGNOSTICS END =====\n'
+  rm -rf "$OUT"
+else
+  tar -czf "$ARCHIVE" -C "$(dirname "$OUT")" "$(basename "$OUT")"
+  chmod 600 "$ARCHIVE"
+  rm -rf "$OUT"
+  log "Created $ARCHIVE"
+  printf '%s\n' "$ARCHIVE"
+fi

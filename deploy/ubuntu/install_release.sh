@@ -35,7 +35,7 @@ done
 
 preflight() {
   local actual expected dump_listing
-  for command in sha256sum tar gzip python3 systemctl curl psql pg_restore; do
+  for command in sha256sum tar gzip python3 systemctl curl psql pg_restore pg_isready runuser; do
     command -v "$command" >/dev/null 2>&1 || { echo "Missing required command: $command" >&2; exit 3; }
   done
   [[ -f "$ARCHIVE_PATH" && -s "$ARCHIVE_PATH" ]] || { echo "Archive not found or empty: $ARCHIVE_PATH" >&2; exit 3; }
@@ -63,8 +63,46 @@ preflight() {
     db_user="$(awk -F= '$1=="POSTGRES_USER" {print $2; exit}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
     db_password="$(awk -F= '$1=="POSTGRES_PASSWORD" {sub(/^[^=]*=/,"",$0); print $0; exit}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
     if [[ -n "$db_user" && -n "$db_name" && -n "$db_password" ]]; then
-      PGPASSWORD="$db_password" psql -h "${db_host:-127.0.0.1}" -p "${db_port:-5432}" -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >/dev/null
-      echo '[preflight] PostgreSQL credentials OK'
+      local configured_host="${db_host:-127.0.0.1}" configured_port="${db_port:-5432}"
+      if PGPASSWORD="$db_password" psql -h "$configured_host" -p "$configured_port" -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >/dev/null 2>&1; then
+        echo "[preflight] PostgreSQL credentials OK ($configured_host:$configured_port)"
+      elif [[ "$configured_host" != "127.0.0.1" || "$configured_port" != "5432" ]] \
+        && runuser -u postgres -- pg_isready -q >/dev/null 2>&1 \
+        && PGPASSWORD="$db_password" psql -h 127.0.0.1 -p 5432 -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >/dev/null 2>&1; then
+        python3 - "$PROJECT_ROOT/admin-web/.env" <<'PY'
+import re, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+lines = p.read_text(encoding='utf-8', errors='replace').splitlines()
+updates = {'POSTGRES_HOST': '127.0.0.1', 'POSTGRES_PORT': '5432'}
+out = []
+seen = set()
+for line in lines:
+    m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)=', line)
+    if m and m.group(1) in updates:
+        out.append(f"{m.group(1)}={updates[m.group(1)]}")
+        seen.add(m.group(1))
+    elif m and m.group(1) == 'DATABASE_URL':
+        value = line.split('=', 1)[1]
+        value = re.sub(r'@[^/:]+:\d+/', '@127.0.0.1:5432/', value, count=1)
+        out.append(f'DATABASE_URL={value}')
+        seen.add('DATABASE_URL')
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f'{key}={value}')
+tmp = p.with_name('.env.install-tmp')
+tmp.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
+tmp.chmod(0o600)
+tmp.replace(p)
+PY
+        echo "[preflight] PostgreSQL connection repaired: $configured_host:$configured_port -> 127.0.0.1:5432"
+      else
+        echo "[preflight] PostgreSQL connection failed for $configured_host:$configured_port" >&2
+        echo '[preflight] Check POSTGRES_HOST/POSTGRES_PORT in /opt/copimine/admin-web/.env.' >&2
+        return 1
+      fi
     else
       echo '[preflight] PostgreSQL credentials are not configured yet; installer will bootstrap them.'
     fi

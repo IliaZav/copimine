@@ -7,7 +7,7 @@ import shutil
 import struct
 import zlib
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 
 ROOT = Path(__file__).resolve().parent
@@ -19,6 +19,8 @@ TEXTURE_SOURCES = ROOT / "item_texture_sources.json"
 SERVER_PROPERTIES = ROOT.parent / "minecraft" / "server" / "server.properties"
 DEFAULT_RESOURCE_PACK_URL = r"http\://admin.copimine.ru\:18080/resourcepacks/CopiMineResourcePack.zip"
 DEFAULT_WORLD_SEED = "-1861153001556076901"
+RESOURCE_PACK_ZIP_TIMESTAMP = (2024, 1, 1, 0, 0, 0)
+RESOURCE_PACK_TEXT_SUFFIXES = {".json", ".mcmeta"}
 
 REQUIRED_SOURCE_FILES = [
     "pack.mcmeta",
@@ -104,8 +106,21 @@ def solid_png(path: Path, color: tuple[int, int, int, int], size: int = 32) -> N
 
 
 def write_json(path: Path, payload: dict) -> None:
+    write_utf8_lf(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+
+def write_utf8_lf(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(content)
+
+
+def normalize_stage_text_files() -> None:
+    for path in sorted(STAGE.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in RESOURCE_PACK_TEXT_SUFFIXES:
+            continue
+        normalized = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+        write_utf8_lf(path, normalized)
 
 
 def update_server_properties_sha1(sha1: str) -> None:
@@ -267,16 +282,23 @@ def build_stage() -> None:
             },
         )
 
+    normalize_stage_text_files()
+
 
 def pack_zip() -> tuple[Path, str]:
     BUILD.mkdir(parents=True, exist_ok=True)
     zip_path = BUILD / "CopiMineResourcePack.zip"
     if zip_path.exists():
         zip_path.unlink()
-    with ZipFile(zip_path, "w", compression=ZIP_DEFLATED) as zf:
+    with ZipFile(zip_path, "w", compression=ZIP_STORED) as zf:
         for file in sorted(STAGE.rglob("*")):
             if file.is_file():
-                zf.write(file, file.relative_to(STAGE).as_posix())
+                archive_name = file.relative_to(STAGE).as_posix()
+                entry = ZipInfo(archive_name, date_time=RESOURCE_PACK_ZIP_TIMESTAMP)
+                entry.compress_type = ZIP_STORED
+                entry.create_system = 3
+                entry.external_attr = 0o100644 << 16
+                zf.writestr(entry, file.read_bytes(), compress_type=ZIP_STORED)
 
     with ZipFile(zip_path, "r") as zf:
         broken = zf.testzip()

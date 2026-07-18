@@ -405,6 +405,10 @@ wipe_worlds_if_requested() {
   for world in world world_nether world_the_end; do
     rm -rf "$server_dir/$world"
   done
+  if [[ "${KEEP_WORLD_SEED:-1}" == "1" && -f "$PRESERVE_ROOT/minecraft/server/server.properties" ]]; then
+    preserved_seed="$(awk -F= '$1=="level-seed" {print substr($0,index($0,"=")+1); exit}' "$PRESERVE_ROOT/minecraft/server/server.properties")"
+    [[ -n "$preserved_seed" ]] && WORLD_SEED="$preserved_seed"
+  fi
   python3 - "$server_dir/server.properties" "$WORLD_SEED" <<'PY'
 from pathlib import Path
 import sys

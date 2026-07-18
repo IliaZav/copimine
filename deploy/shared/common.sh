@@ -862,13 +862,19 @@ copimine_backup_snapshot() {
 }
 
 copimine_wipe_worlds() {
-  local world
+  local world existing_seed
   for world in world world_nether world_the_end; do
     if [[ -d "$COPIMINE_SERVER_DIR/$world" ]]; then
       rm -rf -- "$COPIMINE_SERVER_DIR/$world"
       copimine_log "Removed world directory: $COPIMINE_SERVER_DIR/$world"
     fi
   done
+  # A world reset must regenerate the same seed, not silently switch to the
+  # template default. Operators can still override it with KEEP_WORLD_SEED=0.
+  if [[ "${KEEP_WORLD_SEED:-1}" == "1" && -f "$COPIMINE_SERVER_PROPERTIES" ]]; then
+    existing_seed="$(awk -F= '$1=="level-seed" {print substr($0,index($0,"=")+1); exit}' "$COPIMINE_SERVER_PROPERTIES")"
+    [[ -n "$existing_seed" ]] && COPIMINE_WORLD_SEED="$existing_seed"
+  fi
   python3 - "$COPIMINE_SERVER_PROPERTIES" "$COPIMINE_WORLD_SEED" <<'PY'
 from pathlib import Path
 import sys

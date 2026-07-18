@@ -11,7 +11,7 @@ $preload = [regex]::Match($service, '(?s)public void preloadCacheIfEnabled\(\) \
 if (-not $preload.Success -or
     $preload.Value -match 'clearBrewingStates\(' -or
     $preload.Value -notmatch 'database\.loadBrewingStates\(\)' -or
-    $preload.Value -notmatch 'cache\.put\(' -or
+    $preload.Value -notmatch 'cache\.merge\(' -or
     $preload.Value -notmatch 'Bukkit\.getScheduler\(\)\.runTask\(plugin') {
     throw 'Brewing states must be restored into the main-thread cache rather than cleared at startup.'
 }

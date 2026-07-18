@@ -6,6 +6,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -112,18 +113,20 @@ public final class NarcoticsConfigService {
             }
         }
 
-        visualEffectIds.clear();
-        visualEffectToggles.clear();
+        Map<String, NarcoticDefinition> loadedItems = new LinkedHashMap<>();
+        Set<String> loadedVisualEffectIds = new LinkedHashSet<>();
+        Map<String, Boolean> loadedVisualEffectToggles = new LinkedHashMap<>();
+        Set<String> customModelDataKeys = new LinkedHashSet<>();
+        Set<String> recipeSignatures = new LinkedHashSet<>();
         ConfigurationSection effectsSection = root.getConfigurationSection("visuals.effects");
         if (effectsSection != null) {
             for (String key : effectsSection.getKeys(false)) {
                 String normalized = key.toUpperCase(Locale.ROOT);
-                visualEffectIds.add(normalized);
-                visualEffectToggles.put(normalized, effectsSection.getBoolean(key, true));
+                loadedVisualEffectIds.add(normalized);
+                loadedVisualEffectToggles.put(normalized, effectsSection.getBoolean(key, true));
             }
         }
 
-        items.clear();
         ConfigurationSection itemsSection = root.getConfigurationSection("items");
         if (itemsSection == null) {
             throw new IllegalStateException("items section is required for CopiMineNarcotics.");
@@ -131,30 +134,47 @@ public final class NarcoticsConfigService {
         for (String itemId : itemsSection.getKeys(false)) {
             ConfigurationSection section = itemsSection.getConfigurationSection(itemId);
             if (section == null) {
-                continue;
+                throw new IllegalStateException("items." + itemId + " must be a section.");
             }
-            Material material = parseMaterial(section.getString("material"), Material.PAPER);
-            Material fallback = parseMaterial(section.getString("fallback_material"), material);
+            String normalizedItemId = itemId == null ? "" : itemId.trim().toLowerCase(Locale.ROOT);
+            if (normalizedItemId.isBlank() || loadedItems.containsKey(normalizedItemId)) {
+                throw new IllegalStateException("Narcotics item id must be unique and non-empty: " + itemId);
+            }
+            Material material = requiredItemMaterial(section.getString("material"), "items." + normalizedItemId + ".material");
+            Material fallback = section.isSet("fallback_material")
+                    ? requiredItemMaterial(section.getString("fallback_material"), "items." + normalizedItemId + ".fallback_material")
+                    : material;
             List<String> recipe = normalizeList(section.getStringList("recipe"));
-            List<ConfiguredEffect> normalEffects = parseEffects(section.getStringList("normal_effects"));
-            List<ConfiguredEffect> overdoseEffects = parseEffects(section.getStringList("overdose_effects"));
+            validateRecipe(normalizedItemId, recipe);
+            validateRecipeSignature(normalizedItemId, recipe, recipeSignatures);
+            List<ConfiguredEffect> normalEffects = parseEffects(normalizedItemId, "normal_effects", section.getStringList("normal_effects"));
+            List<ConfiguredEffect> overdoseEffects = parseEffects(normalizedItemId, "overdose_effects", section.getStringList("overdose_effects"));
+            int customModelData = section.getInt("custom_model_data", 0);
+            validateCustomModelData(material, customModelData, normalizedItemId, customModelDataKeys);
             NarcoticDefinition definition = NarcoticDefinition.of(
-                    itemId,
-                    section.getString("display_name", itemId),
+                    normalizedItemId,
+                    section.getString("display_name", normalizedItemId),
                     material,
                     fallback,
-                    section.getString("texture_key", itemId),
-                    section.getInt("custom_model_data", 0),
+                    section.getString("texture_key", normalizedItemId),
+                    customModelData,
                     section.getInt("overdose_weight", 0),
                     section.getString("visual_effect", "CHAOS"),
                     recipe,
                     normalEffects,
                     overdoseEffects
             );
-            items.put(definition.id(), definition);
-            visualEffectIds.add(definition.visualEffectId());
-            visualEffectToggles.putIfAbsent(definition.visualEffectId(), true);
+            loadedItems.put(definition.id(), definition);
+            loadedVisualEffectIds.add(definition.visualEffectId());
+            loadedVisualEffectToggles.putIfAbsent(definition.visualEffectId(), true);
         }
+
+        items.clear();
+        items.putAll(loadedItems);
+        visualEffectIds.clear();
+        visualEffectIds.addAll(loadedVisualEffectIds);
+        visualEffectToggles.clear();
+        visualEffectToggles.putAll(loadedVisualEffectToggles);
     }
 
     public Map<String, NarcoticDefinition> items() {
@@ -418,52 +438,135 @@ public final class NarcoticsConfigService {
         }
     }
 
-    private Material parseMaterial(String raw, Material fallback) {
-        if (raw == null || raw.isBlank()) {
-            return fallback;
+    private Material requiredItemMaterial(String raw, String field) {
+        Material material = raw == null || raw.isBlank() ? null : Material.matchMaterial(raw.toUpperCase(Locale.ROOT));
+        if (material == null || material == Material.AIR || !material.isItem()) {
+            throw new IllegalStateException("Invalid item material for " + field + ": " + raw);
         }
-        Material material = Material.matchMaterial(raw.toUpperCase(Locale.ROOT));
-        return material == null ? fallback : material;
+        return material;
     }
 
     private List<String> normalizeList(List<String> raw) {
         List<String> values = new ArrayList<>();
         for (String value : raw) {
             if (value != null && !value.isBlank()) {
-                values.add(value.trim().toUpperCase(Locale.ROOT));
+                String normalized = value.trim().toUpperCase(Locale.ROOT);
+                if (normalized.startsWith("POTION:")) {
+                    String canonical = canonicalEffectId(normalized.substring("POTION:".length()));
+                    if (canonical != null) {
+                        normalized = "POTION:" + canonicalEffectId(normalized.substring("POTION:".length()));
+                    }
+                }
+                values.add(normalized);
             }
         }
         return values;
     }
 
-    private List<ConfiguredEffect> parseEffects(List<String> raw) {
+    private void validateCustomModelData(Material material, int customModelData, String itemId, Set<String> seenKeys) {
+        if (customModelData <= 0) {
+            throw new IllegalStateException("items." + itemId + ".custom_model_data must be positive.");
+        }
+        String key = material.name() + ":" + customModelData;
+        if (!seenKeys.add(key)) {
+            throw new IllegalStateException("Duplicate custom model data for " + key + ".");
+        }
+    }
+
+    private void validateRecipe(String itemId, List<String> recipe) {
+        if ("zhuzevo".equals(itemId)) {
+            if (!recipe.isEmpty()) {
+                throw new IllegalStateException("Zhuzevo must not be listed as a normal recipe.");
+            }
+            return;
+        }
+        if (recipe.size() < 3) {
+            throw new IllegalStateException("items." + itemId + ".recipe must contain at least three ingredients.");
+        }
+        for (String ingredient : recipe) {
+            if (ingredient.startsWith("MATERIAL:")) {
+                requiredItemMaterial(ingredient.substring("MATERIAL:".length()), "items." + itemId + ".recipe");
+                continue;
+            }
+            if (ingredient.startsWith("POTION:") && canonicalEffectId(ingredient.substring("POTION:".length())) != null) {
+                continue;
+            }
+            throw new IllegalStateException("Invalid recipe ingredient for items." + itemId + ": " + ingredient);
+        }
+    }
+
+    private void validateRecipeSignature(String itemId, List<String> recipe, Set<String> knownSignatures) {
+        if (recipe.isEmpty()) {
+            return;
+        }
+        List<String> ordered = new ArrayList<>(recipe);
+        ordered.sort(String::compareTo);
+        String signature = String.join("|", ordered);
+        if (!knownSignatures.add(signature)) {
+            throw new IllegalStateException("Duplicate recipe for items." + itemId + ".");
+        }
+    }
+
+    private String canonicalEffectId(String raw) {
+        String normalized = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
+        normalized = switch (normalized) {
+            case "CONFUSION" -> "NAUSEA";
+            case "HARM" -> "INSTANT_DAMAGE";
+            case "SLOW_DIGGING" -> "MINING_FATIGUE";
+            default -> normalized;
+        };
+        if (normalized.isBlank() || "WEAVING".equals(normalized) || PotionEffectType.getByName(normalized) == null) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private List<ConfiguredEffect> parseEffects(String itemId, String listName, List<String> raw) {
         List<ConfiguredEffect> effects = new ArrayList<>();
         for (String line : raw) {
             if (line == null || line.isBlank()) {
-                continue;
+                throw new IllegalStateException("Blank effect entry in items." + itemId + "." + listName + ".");
             }
             String[] parts = line.split(",");
             String type = "";
             int amplifier = 0;
             int durationSeconds = 0;
+            boolean durationConfigured = false;
             for (String part : parts) {
                 String[] kv = part.split(":", 2);
                 if (kv.length != 2) {
-                    continue;
+                    throw new IllegalStateException("Invalid effect entry in items." + itemId + "." + listName + ": " + line);
                 }
                 String key = kv[0].trim().toLowerCase(Locale.ROOT);
                 String value = kv[1].trim();
                 switch (key) {
                     case "type" -> type = value.toUpperCase(Locale.ROOT);
-                    case "amplifier" -> amplifier = parseInt(value, 0);
-                    case "duration_seconds" -> durationSeconds = parseInt(value, 1);
-                    default -> {
+                    case "amplifier" -> amplifier = requiredEffectInteger(itemId, listName, "amplifier", value);
+                    case "duration_seconds" -> {
+                        durationSeconds = requiredEffectInteger(itemId, listName, "duration_seconds", value);
+                        durationConfigured = true;
                     }
+                    default -> throw new IllegalStateException("Unknown effect field in items." + itemId + "." + listName + ": " + key);
                 }
             }
-            effects.add(new ConfiguredEffect(type, amplifier, durationSeconds));
+            String canonicalType = canonicalEffectId(type);
+            if (canonicalType == null) {
+                throw new IllegalStateException("Invalid potion effect in items." + itemId + "." + listName + ": " + type);
+            }
+            if (!durationConfigured || durationSeconds <= 0 || amplifier < 0) {
+                throw new IllegalStateException("Invalid effect duration or amplifier in items." + itemId + "." + listName + ".");
+            }
+            effects.add(new ConfiguredEffect(canonicalType, amplifier, durationSeconds));
         }
         return effects;
+    }
+
+    private int requiredEffectInteger(String itemId, String listName, String field, String raw) {
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException parseError) {
+            throw new IllegalStateException("Invalid " + field + " in items." + itemId + "." + listName + ": " + raw, parseError);
+        }
     }
 
     private int parseInt(String raw, int fallback) {

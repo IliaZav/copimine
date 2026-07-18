@@ -75,7 +75,15 @@ public final class NarcoticItemFactory {
         if (definition == null) {
             return null;
         }
+        if (stack.getType() != definition.material()) {
+            return null;
+        }
         if (version != null && version > configService.narcoticVersion()) {
+            return null;
+        }
+        if (configService.textureMode() == NarcoticsConfigService.TextureMode.CUSTOM
+                && definition.customModelData() > 0
+                && (!meta.hasCustomModelData() || meta.getCustomModelData() != definition.customModelData())) {
             return null;
         }
         if (meta.hasCustomModelData() && meta.getCustomModelData() != definition.customModelData()) {
@@ -163,7 +171,7 @@ public final class NarcoticItemFactory {
         if (textValue != null) {
             return "true".equalsIgnoreCase(textValue) || "1".equals(textValue);
         }
-        return meta.getPersistentDataContainer().has(narcoticIdKey, PersistentDataType.STRING);
+        return false;
     }
 
     private String color(String text) {

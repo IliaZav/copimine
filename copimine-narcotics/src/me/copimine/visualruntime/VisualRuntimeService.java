@@ -5,7 +5,6 @@ import me.copimine.clientbridge.CopiMineClientBridge;
 import me.copimine.narcotics.CopiMineNarcotics;
 import me.copimine.narcotics.config.NarcoticsConfigService;
 import net.kyori.adventure.key.Key;
-import net.kyori.adventure.text.Component;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Particle;
 import org.bukkit.entity.Player;
@@ -434,10 +433,8 @@ public final class VisualRuntimeService {
     }
 
     private void applyServerOverlay(Player player, String effectId, int durationSeconds, boolean overdose) {
-        // The old title/actionbar overlay rendered large resource-pack pictures over the screen.
-        // Real shaderpacks and particle fallback stay active; legacy fullscreen glyphs are cleared.
-        player.clearTitle();
-        player.sendActionBar(Component.empty());
+        // Server-side title/actionbar overlays are intentionally unavailable. Clearing these
+        // global player surfaces here would erase UI owned by unrelated plugins.
     }
 
     private void applyOverlay(Player player, String effectId, int durationSeconds, boolean overdose) {
@@ -445,11 +442,7 @@ public final class VisualRuntimeService {
     }
 
     private void clearServerVisualSurface(Player player) {
-        VisualSession session = clearHints.remove(player.getUniqueId());
-        if (session != null && (session.route() == VisualRoute.SERVER_RESOURCE_PACK_OVERLAY || configService.serverOverlayClearOnStop())) {
-            player.clearTitle();
-            player.sendActionBar(Component.empty());
-        }
+        clearHints.remove(player.getUniqueId());
     }
 
     private boolean hasAllOverlayAssets() {

@@ -387,9 +387,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getInventory().getHolder() instanceof MenuHolder holder) {
+        InventoryView view = event.getView();
+        if (view.getTopInventory().getHolder() instanceof MenuHolder holder) {
             event.setCancelled(true);
             if (!(event.getWhoClicked() instanceof Player player)) {
+                return;
+            }
+            if (event.getRawSlot() < 0 || event.getRawSlot() >= view.getTopInventory().getSize()) {
                 return;
             }
             String action = null;
@@ -413,7 +417,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         ItemStack current = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
         if (isProtectedOfficialItem(current) || isProtectedOfficialItem(cursor)) {
-            InventoryView view = event.getView();
             if (view.getTopInventory() != null && view.getTopInventory().getHolder() != null && !(view.getTopInventory().getHolder() instanceof Player)) {
                 event.setCancelled(true);
             }
@@ -422,11 +425,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInventoryDrag(InventoryDragEvent event) {
+        InventoryView view = event.getView();
+        if (view.getTopInventory().getHolder() instanceof MenuHolder) {
+            event.setCancelled(true);
+            return;
+        }
         ItemStack cursor = event.getOldCursor();
         if (!isProtectedOfficialItem(cursor)) {
             return;
         }
-        InventoryView view = event.getView();
         if (view.getTopInventory() != null && view.getTopInventory().getHolder() != null && !(view.getTopInventory().getHolder() instanceof Player)) {
             event.setCancelled(true);
         }
@@ -659,6 +666,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void handleMenuAction(Player player, String action, ClickType click, MenuHolder holder) throws Exception {
+        enforceCurrentMenuAccess(player, action);
         if (action.equals("close")) {
             player.closeInventory();
             return;
@@ -787,17 +795,27 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.startsWith("president:tax-roster:")) {
-            openPresidentTaxRosterMenu(player, "paid".equalsIgnoreCase(action.substring("president:tax-roster:".length())));
+            String[] parts = action.substring("president:tax-roster:".length()).split(":", 2);
+            boolean paid = parts.length > 0 && "paid".equalsIgnoreCase(parts[0]);
+            int page = parts.length > 1 ? parseInt(parts[1], 0) : 0;
+            openPresidentTaxRosterMenu(player, paid, page);
             return;
         }
         if (action.startsWith("president:mark-paid:")) {
-            String uuid = action.substring("president:mark-paid:".length());
-            openConfirmationMenu(player, "Mark tax as paid", List.of("This records a voluntary cash payment for the current tax period.", "The player is not charged by the server."), "apply:president:mark-paid:" + uuid, "president:tax-roster:unpaid");
+            String payload = action.substring("president:mark-paid:".length());
+            String uuid = rosterPlayerUuid(payload);
+            int page = rosterPage(payload);
+            if (uuid.isBlank()) {
+                player.sendMessage(color("&cНе удалось определить игрока для отметки оплаты."));
+                return;
+            }
+            openConfirmationMenu(player, "Mark tax as paid", List.of("This records a voluntary cash payment for the current tax period.", "The player is not charged by the server."), "apply:president:mark-paid:" + uuid + ":" + page, "president:tax-roster:unpaid:" + page);
             return;
         }
         if (action.startsWith("apply:president:mark-paid:")) {
-            markTaxPaidByPresident(player, action.substring("apply:president:mark-paid:".length()));
-            openPresidentTaxRosterMenu(player, false);
+            String payload = action.substring("apply:president:mark-paid:".length());
+            markTaxPaidByPresident(player, rosterPlayerUuid(payload));
+            openPresidentTaxRosterMenu(player, false, rosterPage(payload));
             return;
         }
         if (action.equals("apply:manage:stop")) {
@@ -2141,6 +2159,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openPresidentTaxRosterMenu(Player player, boolean paid) {
+        openPresidentTaxRosterMenu(player, paid, 0);
+    }
+
+    private void openPresidentTaxRosterMenu(Player player, boolean paid, int page) {
         if (!isPresident(player) && !hasElectionAdmin(player)) {
             player.sendMessage(color("&cAccess denied for this list."));
             return;
@@ -2165,19 +2187,24 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             MenuHolder holder = new MenuHolder("president-tax-roster", paid ? "paid" : "unpaid");
             Inventory inv = holder.create(54, color(paid ? "&aPaid players" : "&cUnpaid players"));
             int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
-            for (int i = 0; i < slots.length && i < rows.size(); i++) {
-                Map<String, Object> row = rows.get(i);
+            int start = Math.max(0, page) * 21;
+            for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
+                Map<String, Object> row = rows.get(start + i);
                 String uuid = string(row.get("owner_uuid"));
                 String name = first(string(row.get("owner_name")), shortId(uuid));
-                String action = paid ? "none" : "president:mark-paid:" + uuid;
+                String action = paid ? "none" : "president:mark-paid:" + uuid + ":" + Math.max(0, page);
                 setButton(holder, slots[i], paid ? Material.LIME_DYE : Material.GRAY_DYE, "&f" + name,
                         List.of(paid ? "&7Налог за текущий период оплачен." : "&7Нажми, если деньги переданы президенту лично."), action);
             }
             if (rows.isEmpty()) {
                 setStatic(inv, 22, infoItem(paid ? Material.LIME_DYE : Material.GRAY_DYE, paid ? "&aСписок пуст" : "&cСписок пуст", List.of("&7Для текущего периода игроков нет.")));
             }
-            setButton(holder, 49, Material.ARROW, "&aНазад", List.of(), "open:president");
             setButton(holder, 53, Material.BARRIER, "&cЗакрыть", List.of(), "close");
+            String kind = paid ? "paid" : "unpaid";
+            pageButtons(holder, inv, page, rows.size(), 21,
+                    "president:tax-roster:" + kind + ":" + (page - 1),
+                    "president:tax-roster:" + kind + ":" + (page + 1),
+                    "president:open-mandate");
             player.openInventory(inv);
         } catch (Exception error) {
             player.sendMessage(color("&cНе удалось загрузить список налога."));
@@ -4715,12 +4742,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (player == null) {
             return;
         }
-        String message = safeError(error);
-        if (message == null || message.isBlank()) {
-            player.sendMessage(color(fallback));
-            return;
-        }
-        player.sendMessage(color("&c" + message));
+        player.sendMessage(color(fallback));
     }
 
     private boolean hasActiveSeal(Player player, String stationId) throws Exception {
@@ -4810,6 +4832,78 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         } catch (Exception error) {
             return false;
         }
+    }
+
+    private void enforceCurrentMenuAccess(Player player, String action) {
+        if (requiresElectionAdminAction(action) && !hasElectionAdmin(player)) {
+            throw new IllegalStateException("Недостаточно прав для этого действия.");
+        }
+        if (requiresPresidentOrElectionAdminAction(action) && !isPresident(player) && !hasElectionAdmin(player)) {
+            throw new IllegalStateException("Президентский мандат больше не активен.");
+        }
+    }
+
+    private boolean requiresElectionAdminAction(String action) {
+        if (action == null || action.isBlank()) {
+            return false;
+        }
+        return action.equals("open:manage")
+                || action.startsWith("open:stations")
+                || action.equals("open:cik")
+                || action.startsWith("open:cik:")
+                || action.startsWith("open:cik-chairs")
+                || action.startsWith("open:cik-chair-requests")
+                || action.startsWith("open:applications")
+                || action.equals("open:results")
+                || action.equals("open:president")
+                || action.startsWith("station:access:admin:")
+                || action.startsWith("station:assign-chair:")
+                || action.startsWith("station:remove-chair:")
+                || action.startsWith("station:remove-protection:")
+                || action.startsWith("station:cleanup-labels:")
+                || action.startsWith("station:issue-target:")
+                || action.startsWith("issuepicker:")
+                || action.startsWith("admin:")
+                || action.startsWith("chairpicker:")
+                || action.startsWith("cik:")
+                || action.startsWith("chairreq:")
+                || action.startsWith("application:")
+                || action.startsWith("results:")
+                || action.startsWith("manage:")
+                || action.startsWith("stage:")
+                || action.startsWith("stations:")
+                || action.startsWith("apply:manage:")
+                || action.startsWith("apply:stage:")
+                || action.startsWith("apply:station:")
+                || action.startsWith("apply:cik:")
+                || action.startsWith("apply:chairreq:")
+                || action.startsWith("apply:application:")
+                || action.startsWith("apply:results:")
+                || action.equals("president:remove")
+                || action.equals("apply:president:remove")
+                || action.startsWith("law:")
+                || action.startsWith("apply:law:")
+                || action.startsWith("tax:")
+                || action.startsWith("apply:tax:")
+                || action.startsWith("legacy-disabled:tax:")
+                || action.startsWith("legacy-disabled:apply:tax:")
+                || action.equals("live:refresh");
+    }
+
+    private boolean requiresPresidentOrElectionAdminAction(String action) {
+        if (action == null || action.isBlank()) {
+            return false;
+        }
+        return action.equals("president:open-mandate")
+                || action.startsWith("president:payments:")
+                || action.startsWith("president:tax-roster:")
+                || action.startsWith("president:mark-paid:")
+                || action.startsWith("apply:president:mark-paid:")
+                || action.startsWith("president:taxperiod:")
+                || action.startsWith("mandate:")
+                || action.startsWith("apply:mandate:")
+                || action.startsWith("legacy-disabled:mandate:")
+                || action.startsWith("legacy-disabled:apply:mandate:");
     }
 
     private boolean hasElectionAdmin(CommandSender sender) {
@@ -5282,15 +5376,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private List<Map<String, Object>> currentTaxPayments() {
         try {
+            Map<String, Object> tax = activeTax();
+            Map<String, Object> term = activeTerm();
+            if (tax == null || term == null) {
+                return List.of();
+            }
             return queryList(
-                    "SELECT player_name, amount, source, created_at, 0 AS expires_at, 1 AS row_priority FROM president_tax_payments " +
+                    "SELECT player_name, amount, source, created_at, 0 AS expires_at, 1 AS row_priority FROM president_tax_payments WHERE tax_id=? " +
                             "UNION ALL " +
                             "SELECT buyer_name AS player_name, amount_ar AS amount, 'ARTIFACT_SHOP' AS source, created_at, 0 AS expires_at, 2 AS row_priority " +
-                            "FROM artifact_revenue_payouts WHERE recipient_account_id='PRESIDENT_BUDGET' AND status='CREDITED' " +
+                            "FROM artifact_revenue_payouts WHERE recipient_account_id='PRESIDENT_BUDGET' AND status='CREDITED' AND created_at>=? " +
                             "UNION ALL " +
                             "SELECT player_name, 0 AS amount, 'TAX_CLOCK_EXEMPTION' AS source, created_at, expires_at, 0 AS row_priority " +
-                            "FROM president_tax_exemptions WHERE status='ACTIVE' AND expires_at>? " +
+                            "FROM president_tax_exemptions WHERE term_id=? AND status='ACTIVE' AND expires_at>? " +
                             "ORDER BY row_priority ASC, created_at DESC LIMIT 500",
+                    string(tax.get("id")),
+                    longValue(term.get("started_at")),
+                    string(term.get("id")),
                     now()
             );
         } catch (Exception error) {
@@ -6689,6 +6791,27 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         } catch (Exception error) {
             return fallback;
         }
+    }
+
+    private String rosterPlayerUuid(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return "";
+        }
+        int marker = payload.lastIndexOf(':');
+        String candidate = marker > 0 ? payload.substring(0, marker) : payload;
+        try {
+            return UUID.fromString(candidate).toString();
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    private int rosterPage(String payload) {
+        if (payload == null) {
+            return 0;
+        }
+        int marker = payload.lastIndexOf(':');
+        return marker > 0 ? Math.max(0, parseInt(payload.substring(marker + 1), 0)) : 0;
     }
 
     private String shortId(String id) {

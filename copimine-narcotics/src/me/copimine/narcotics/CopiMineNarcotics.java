@@ -180,6 +180,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
                 return;
             }
+            if (!database.hasAsyncCapacity()) {
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.YELLOW + "Наркотики временно недоступны: база данных занята. Попробуйте через несколько секунд.");
+                return;
+            }
             event.setCancelled(true);
             long now = Instant.now().getEpochSecond();
             int cooldownSeconds = configService.consumeCooldownSeconds();
@@ -216,7 +221,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
         cauldronService.handleCauldronBroken(block, event.getPlayer().getLocation());
@@ -225,7 +230,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCauldronLevelChange(CauldronLevelChangeEvent event) {
         cauldronService.handleCauldronLevelChange(event.getBlock(), event.getNewState().getBlockData());
     }
@@ -536,15 +541,21 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(message("no_permission"));
             return true;
         }
-        reloadConfig();
-        configService.reload();
-        recipeService.reload(configService);
-        itemFactory.reload(configService);
-        clientBridge.reload(configService);
-        visualRuntime.reload(configService);
-        overdoseService.reload(configService);
-        cauldronService.reload(configService, recipeService, itemFactory);
-        sender.sendMessage(message("reload_ok"));
+        try {
+            NarcoticsConfigService candidate = new NarcoticsConfigService(this);
+            candidate.reload();
+            configService = candidate;
+            recipeService.reload(configService);
+            itemFactory.reload(configService);
+            clientBridge.reload(configService);
+            visualRuntime.reload(configService);
+            overdoseService.reload(configService);
+            cauldronService.reload(configService, recipeService, itemFactory);
+            sender.sendMessage(message("reload_ok"));
+        } catch (Exception error) {
+            getLogger().warning("Narcotics reload rejected: " + error.getMessage());
+            sender.sendMessage(ChatColor.RED + "Рецепты не изменены: новая конфигурация содержит ошибку.");
+        }
         return true;
     }
 

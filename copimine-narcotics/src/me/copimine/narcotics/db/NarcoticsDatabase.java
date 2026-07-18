@@ -25,9 +25,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -74,6 +74,13 @@ public final class NarcoticsDatabase {
         if (executor != null) {
             executor.shutdownNow();
         }
+    }
+
+    public boolean hasAsyncCapacity() {
+        if (!(executor instanceof ThreadPoolExecutor pool) || pool.isShutdown() || pool.isTerminated()) {
+            return false;
+        }
+        return pool.getActiveCount() < pool.getMaximumPoolSize() || pool.getQueue().remainingCapacity() > 0;
     }
 
     public CompletableFuture<Map<BlockKey, LoadedBrewingState>> loadBrewingStates() {
@@ -430,23 +437,46 @@ public final class NarcoticsDatabase {
     }
 
     private CompletableFuture<Void> runAsync(SqlVoidWork work) {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                work.run();
-            } catch (Exception error) {
-                throw new CompletionException(error);
-            }
-        }, executor);
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        ExecutorService currentExecutor = executor;
+        if (currentExecutor == null) {
+            future.completeExceptionally(new IllegalStateException("Narcotics database executor is unavailable."));
+            return future;
+        }
+        try {
+            currentExecutor.execute(() -> {
+                try {
+                    work.run();
+                    future.complete(null);
+                } catch (Exception error) {
+                    future.completeExceptionally(error);
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            future.completeExceptionally(error);
+        }
+        return future;
     }
 
     private <T> CompletableFuture<T> supplyAsync(SqlWork<T> work) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return work.run();
-            } catch (Exception error) {
-                throw new CompletionException(error);
-            }
-        }, executor);
+        CompletableFuture<T> future = new CompletableFuture<>();
+        ExecutorService currentExecutor = executor;
+        if (currentExecutor == null) {
+            future.completeExceptionally(new IllegalStateException("Narcotics database executor is unavailable."));
+            return future;
+        }
+        try {
+            currentExecutor.execute(() -> {
+                try {
+                    future.complete(work.run());
+                } catch (Exception error) {
+                    future.completeExceptionally(error);
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            future.completeExceptionally(error);
+        }
+        return future;
     }
 
     private <T> T tx(ConnectionWork<T> work) throws Exception {

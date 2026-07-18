@@ -33,6 +33,7 @@ public final class OverdoseService {
     private final Map<UUID, Set<PotionEffectType>> trackedEffects = new ConcurrentHashMap<>();
     private final Set<UUID> movementGuard = ConcurrentHashMap.newKeySet();
     private final Set<UUID> loadingStates = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> readyStates = ConcurrentHashMap.newKeySet();
     private final AtomicLong stateEpoch = new AtomicLong(0L);
 
     public OverdoseService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, VisualRuntimeService visualRuntime) {
@@ -47,7 +48,7 @@ public final class OverdoseService {
     }
 
     public void preloadState(UUID playerUuid) {
-        if (playerUuid == null || !loadingStates.add(playerUuid)) {
+        if (playerUuid == null || readyStates.contains(playerUuid) || !loadingStates.add(playerUuid)) {
             return;
         }
         long requestEpoch = stateEpoch.longValue();
@@ -59,6 +60,7 @@ public final class OverdoseService {
                         }
                         PlayerState loaded = state == null ? PlayerState.empty(playerUuid) : state;
                         states.compute(playerUuid, (ignored, current) -> current == null || loaded.stateVersion() >= current.stateVersion() ? loaded : current);
+                        readyStates.add(playerUuid);
                         Player player = Bukkit.getPlayer(playerUuid);
                         if (player != null && player.isOnline()) {
                             restoreActiveOverdose(player);
@@ -68,6 +70,7 @@ public final class OverdoseService {
                 .exceptionally(error -> {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         loadingStates.remove(playerUuid);
+                        readyStates.remove(playerUuid);
                         plugin.getLogger().warning("Failed to preload narcotics state: " + error.getMessage());
                         Bukkit.getScheduler().runTaskLater(plugin, () -> preloadState(playerUuid), 100L);
                     });
@@ -76,7 +79,7 @@ public final class OverdoseService {
     }
 
     public boolean isStateReady(Player player) {
-        return player != null && !loadingStates.contains(player.getUniqueId());
+        return player != null && readyStates.contains(player.getUniqueId());
     }
 
     public void restoreActiveOverdose(Player player) {
@@ -271,6 +274,7 @@ public final class OverdoseService {
         trackedEffects.clear();
         movementGuard.clear();
         loadingStates.clear();
+        readyStates.clear();
     }
 
     public void forceClearOverdose(Player player) {
@@ -316,7 +320,15 @@ public final class OverdoseService {
         }
         applyConfiguredEffects(player, effects, duration);
         player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D), 18, 0.35D, 0.45D, 0.35D, 0.01D);
-        return new PlayerState(state.playerUuid(), state.currentScale(), now, state.overdoseUntil(), state.invertedMovementUntil(), definition.id(), state.stateVersion() + 1L);
+        return new PlayerState(
+                state.playerUuid(),
+                state.currentScale(),
+                now,
+                state.overdoseUntil(),
+                state.invertedMovementUntil(),
+                state.overdoseUntil() > now ? state.lastItemId() : definition.id(),
+                state.stateVersion() + 1L
+        );
     }
 
     private void applyConfiguredEffects(Player player, List<ConfiguredEffect> configuredEffects) {

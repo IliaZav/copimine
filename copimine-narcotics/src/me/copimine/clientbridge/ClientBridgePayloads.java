@@ -415,6 +415,9 @@ public final class ClientBridgePayloads {
     }
 
     public static float clampIntensity(float value) {
+        if (!Float.isFinite(value)) {
+            return 1.0F;
+        }
         return Math.max(0.0F, Math.min(1.0F, value));
     }
 

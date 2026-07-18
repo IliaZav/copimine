@@ -5,6 +5,8 @@ import me.copimine.narcotics.item.NarcoticItemFactory;
 import me.copimine.narcotics.model.NarcoticDefinition;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionType;
@@ -77,6 +79,9 @@ public final class NarcoticsRecipeService {
         if (itemFactory != null && itemFactory.isOfficialFinishedItem(stack)) {
             return null;
         }
+        if (!isRoundTripSafeIngredient(stack)) {
+            return null;
+        }
         IngredientEntry recognized = ingredientEntry(stack);
         if (recognized != null) {
             return recognized;
@@ -85,6 +90,24 @@ public final class NarcoticsRecipeService {
             return createPotionEntry(stack, genericPotionKey(stack));
         }
         return new IngredientEntry("MATERIAL:" + stack.getType().name(), stack.getType().name(), "", "", 1);
+    }
+
+    private boolean isRoundTripSafeIngredient(ItemStack stack) {
+        if (!stack.hasItemMeta()) {
+            return true;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null || meta instanceof BlockStateMeta) {
+            return false;
+        }
+        if (!(meta instanceof PotionMeta potionMeta)) {
+            return false;
+        }
+        return !potionMeta.hasCustomEffects()
+                && !potionMeta.hasDisplayName()
+                && !potionMeta.hasLore()
+                && !potionMeta.hasEnchants()
+                && potionMeta.getPersistentDataContainer().getKeys().isEmpty();
     }
 
     public NarcoticDefinition matchExact(List<IngredientEntry> ingredientEntries) {

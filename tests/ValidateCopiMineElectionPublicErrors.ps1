@@ -13,4 +13,9 @@ if (-not $presidentSay.Success -or $presidentSay.Value -match 'player\.sendMessa
     throw 'President broadcast failures must not send internal exception text to a player.'
 }
 
+$menuError = [regex]::Match($source, '(?s)private void sendUserError\(Player player, Exception error, String fallback\) \{.*?(?=\r?\n\s*private boolean hasActiveSeal)')
+if (-not $menuError.Success -or $menuError.Value -match 'safeError\(error\)' -or $menuError.Value -notmatch 'player\.sendMessage\(color\(fallback\)\)') {
+    throw 'Election GUI failures must show the generic fallback instead of internal exception text.'
+}
+
 Write-Host 'Election public error redaction contract OK'

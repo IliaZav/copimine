@@ -40,13 +40,17 @@ public record IngredientEntry(
         if (parts.length != 5) {
             return fromLegacyKey(raw);
         }
-        return new IngredientEntry(
-                decode(parts[0]),
-                decode(parts[1]),
-                decode(parts[2]),
-                decode(parts[3]),
-                parseInt(parts[4], 1)
-        );
+        try {
+            return new IngredientEntry(
+                    decode(parts[0]),
+                    decode(parts[1]),
+                    decode(parts[2]),
+                    decode(parts[3]),
+                    parseInt(parts[4], 1)
+            );
+        } catch (IllegalArgumentException parseError) {
+            return null;
+        }
     }
 
     public static IngredientEntry fromLegacyKey(String key) {

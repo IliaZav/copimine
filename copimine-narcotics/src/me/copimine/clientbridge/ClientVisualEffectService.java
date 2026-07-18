@@ -205,9 +205,9 @@ public final class ClientVisualEffectService {
 
     public void forgetPlayer(UUID playerUuid, String reason) {
         removePlayerCommands(playerUuid);
-        if (reason != null && !reason.isBlank()) {
-            lastFinishedByPlayer.put(playerUuid, reason);
-        }
+        lastAckByPlayer.remove(playerUuid);
+        lastFinishedByPlayer.remove(playerUuid);
+        lastErrorByPlayer.remove(playerUuid);
     }
 
     private void handleAck(Player player, ClientBridgePayloads.Message message) {

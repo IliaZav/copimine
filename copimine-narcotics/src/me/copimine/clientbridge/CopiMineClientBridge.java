@@ -15,13 +15,21 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public final class CopiMineClientBridge implements Listener, PluginMessageListener {
+    private static final int MAX_INBOUND_MESSAGE_BYTES = 4_096;
+    private static final long INBOUND_MESSAGE_INTERVAL_MILLIS = 50L;
+
     private final CopiMineNarcotics plugin;
     private NarcoticsConfigService configService;
     private final ClientCapabilityService capabilities;
     private final ClientVisualEffectService visuals;
+    private final Map<UUID, Long> nextInboundMessageAt = new ConcurrentHashMap<>();
+    private boolean clientModEnforcementWarningLogged = false;
 
     public CopiMineClientBridge(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
         this.plugin = plugin;
@@ -45,6 +53,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         }
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, ClientBridgePayloads.CHANNEL, this);
         Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, ClientBridgePayloads.CHANNEL);
+        nextInboundMessageAt.clear();
         visuals.shutdown();
     }
 
@@ -87,6 +96,13 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         if (!ClientBridgePayloads.CHANNEL.equalsIgnoreCase(channel) || !enabled()) {
             return;
         }
+        if (message == null || message.length > MAX_INBOUND_MESSAGE_BYTES) {
+            capabilities.reportProblem(player, "payload-too-large");
+            return;
+        }
+        if (!allowInboundMessage(player)) {
+            return;
+        }
         try {
             ClientBridgePayloads.Message payload = ClientBridgePayloads.decode(message);
             switch (payload.type()) {
@@ -116,21 +132,17 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         if (!enabled() || !configService.requireClientMod() || !configService.kickIfMissingClient()) {
             return;
         }
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            Player player = event.getPlayer();
-            if (!player.isOnline()) {
-                return;
-            }
-            if (!capabilities.hasCopiMineClient(player)) {
-                player.kickPlayer(ChatColor.RED + "Для полной версии CopiMine нужен клиентский мод CopiMineClient. Установите мод из сборки сервера.");
-            }
-        }, Math.max(20L, configService.handshakeTimeoutSeconds() * 20L));
+        if (!clientModEnforcementWarningLogged) {
+            clientModEnforcementWarningLogged = true;
+            plugin.getLogger().warning("CopiMineClient channel HELLO cannot prove that a client mod is installed; automatic kicking is disabled.");
+        }
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         visuals.forgetPlayer(event.getPlayer());
         capabilities.clear(event.getPlayer().getUniqueId());
+        nextInboundMessageAt.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -167,9 +179,16 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             return true;
         }
         if ("require".equals(sub) && args.length >= 3 && "client".equalsIgnoreCase(args[1])) {
+            if (!sender.hasPermission("copimine.narcotics.admin")) {
+                sender.sendMessage(ChatColor.RED + "Для изменения требования клиента нужны права администратора наркотиков.");
+                return true;
+            }
             boolean required = Boolean.parseBoolean(args[2]);
             configService.setRequireClientMod(required);
-            sender.sendMessage(ChatColor.GREEN + "Требование CopiMineClient: " + required);
+            sender.sendMessage(ChatColor.GREEN + "Режим CopiMineClient: " + required);
+            if (required && configService.kickIfMissingClient()) {
+                sender.sendMessage(ChatColor.YELLOW + "Автоматическое исключение отключено: сообщение канала не доказывает наличие мода у клиента.");
+            }
             return true;
         }
         if (args.length < 2) {
@@ -262,6 +281,20 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             return true;
         }
         sender.sendMessage(ChatColor.RED + "Неизвестная команда cmclient.");
+        return true;
+    }
+
+    private boolean allowInboundMessage(Player player) {
+        if (player == null) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        UUID playerUuid = player.getUniqueId();
+        long nextAllowed = nextInboundMessageAt.getOrDefault(playerUuid, 0L);
+        if (nextAllowed > now) {
+            return false;
+        }
+        nextInboundMessageAt.put(playerUuid, now + INBOUND_MESSAGE_INTERVAL_MILLIS);
         return true;
     }
 }

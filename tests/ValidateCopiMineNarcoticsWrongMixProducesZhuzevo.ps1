@@ -3,8 +3,8 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $source = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\cauldron\CauldronBrewingService.java')
 foreach ($marker in @(
   'configService.items().get("zhuzevo")',
-  'finishWrongMix(block, key, nextVersion, current.size())',
-  'finishBrewing(block, key, zhuzevo, version, ingredientCount, true)',
+  'finishWrongMix(block, key, nextVersion, current.size(), player)',
+  'finishBrewing(block, key, zhuzevo, version, ingredientCount, true, initiator)',
   'Particle.EXPLOSION',
   'ThreadLocalRandom.current().nextDouble(6.0D, 15.0001D)'
 )) {

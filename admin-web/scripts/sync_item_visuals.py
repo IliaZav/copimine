@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageChops, ImageDraw
 except ImportError as exc:  # pragma: no cover - documented deployment dependency
     raise SystemExit("Pillow is required. Install admin-web/requirements.txt first.") from exc
 
@@ -17,6 +17,7 @@ MAPPING_FILE = ROOT / "resourcepacks" / "item_texture_sources.json"
 MODELS_FILE = ROOT / "resourcepacks" / "models_manifest.json"
 TEXTURES_DIR = ROOT / "resourcepacks" / "src" / "assets" / "copimine" / "textures" / "item" / "artifacts"
 OUTPUT_DIR = ROOT / "admin-web" / "frontend" / "assets" / "item-textures"
+SHIELD_PREVIEW_ITEM_ID = "ne_segodnya_suka_shield"
 
 
 def read_json(path: Path) -> dict:
@@ -36,6 +37,28 @@ def preview_image(source: Path, destination: Path) -> None:
         # the first complete frame so a card never renders as a tall sprite sheet.
         preview = image.crop((0, 0, width, width)) if height > width else image.copy()
         preview.convert("RGBA").save(destination, format="PNG", optimize=True)
+
+
+def shield_preview(source: Path, destination: Path) -> None:
+    """Turn the shield entity UV texture into the compact icon used by the website."""
+    with Image.open(source) as image:
+        source_image = image.convert("RGBA")
+        if source_image.width < 17 or source_image.height < 23:
+            raise SystemExit(f"Unexpected shield texture size for {source}: {source_image.size}")
+
+        # The left panel is the visible front of the shield. The remaining parts
+        # are UV faces and the handle, which are useful in Minecraft but not in a shop card.
+        front = source_image.crop((3, 0, 15, 23)).resize((20, 27), Image.Resampling.NEAREST)
+        preview = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+        preview.paste(front, (6, 2))
+
+        mask = Image.new("L", preview.size, 0)
+        ImageDraw.Draw(mask).polygon(
+            [(7, 2), (24, 2), (24, 20), (22, 25), (19, 28), (16, 30), (13, 28), (9, 25), (7, 20)],
+            fill=255,
+        )
+        preview.putalpha(ImageChops.multiply(preview.getchannel("A"), mask))
+        preview.save(destination, format="PNG", optimize=True)
 
 
 def main() -> None:
@@ -61,7 +84,11 @@ def main() -> None:
         source = TEXTURES_DIR / f"{item_id}.png"
         if not source.is_file():
             raise SystemExit(f"Resource-pack texture is missing for {item_id}: {source}")
-        preview_image(source, OUTPUT_DIR / f"{item_id}.png")
+        destination = OUTPUT_DIR / f"{item_id}.png"
+        if item_id == SHIELD_PREVIEW_ITEM_ID:
+            shield_preview(source, destination)
+        else:
+            preview_image(source, destination)
         synced += 1
     print(f"Synced {synced} website item textures to {OUTPUT_DIR}")
 

@@ -35,4 +35,16 @@ if ($content -notmatch "pointCompassToLastDeath") { throw "Missing loot compass 
 if ($content -notmatch "EntityResurrectEvent") { throw "Missing donation totem resurrect hook." }
 if ($content -notmatch "TOTEM_OF_UNDYING") { throw "Missing donation totem runtime guard." }
 
+$items = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot '..\copimine-artifacts\items.yml')
+$smena = [regex]::Match($items, '(?ms)^  - id: smena_bez_perekura_pickaxe\r?\n.*?(?=^  - id:|\z)')
+$miner = [regex]::Match($items, '(?ms)^  - id: copimine_miner_pickaxe\r?\n.*?(?=^  - id:|\z)')
+if (-not $smena.Success -or $smena.Value -notmatch 'effect:\s*HASTE_BURST_LONG' -or -not $miner.Success -or $miner.Value -notmatch 'effect:\s*MINER_3X3') {
+  throw "Each mining pickaxe must match its stated ability: shiftless haste for Smena and 3x3 mining for CopiMine Miner."
+}
+
+$taxClock = [regex]::Match($items, '(?ms)^    - item-id: vremya_platit_nalogi_clock\r?\n.*?(?=^    - item-id:|\z)')
+if (-not $taxClock.Success -or $taxClock.Value -notmatch 'effect-profile-id:\s*TAX_CLOCK' -or $taxClock.Value -notmatch 'proc-chance:\s*1(?:\.0+)?') {
+  throw "Tax clock activation is deterministic and its catalog must not advertise a random proc chance."
+}
+
 Write-Host "PASS"

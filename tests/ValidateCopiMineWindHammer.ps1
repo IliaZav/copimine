@@ -46,12 +46,16 @@ foreach ($expected in @(
     'getNearbyEntities(center, 10.0D, 10.0D, 10.0D)',
     'distanceSquared(center) > 100.0D',
     'instanceof LivingEntity',
-    'setY(Math.max(living.getVelocity().getY(), 0.9D))',
+    'setY(Math.max(living.getVelocity().getY(), 1.0D))',
     'PotionEffectType.LEVITATION, 80, 0'
 )) {
     if ($ability.Value -notlike "*$expected*") {
         throw "Wind hammer ability contract is missing: $expected"
     }
+}
+
+if ($ability.Value -notmatch 'distanceSquared\(center\) > 100\.0D') {
+    throw 'Wind hammer must use a true spherical 10-block radius.'
 }
 
 Write-Host 'Wind hammer contract OK'

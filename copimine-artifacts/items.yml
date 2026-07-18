@@ -28,7 +28,7 @@
     supply_limit: 0
     per_player_limit: 1
     cooldown_seconds: 420
-    effect: MINER_3X3
+    effect: HASTE_BURST_LONG
     effect_chance_percent: 100
     visual_effect_id: PIXEL_WAVE
     lore:
@@ -404,7 +404,7 @@ donation-catalog:
       effect-profile-id: TAX_CLOCK
       effect-description: "Отключает налоги владельца на 3 календарных месяца реального времени."
       cooldown-seconds: 20
-      proc-chance: 0.15
+      proc-chance: 1.0
       max-stack: 1
       repairable: false
       custom-texture-mode-allowed: true

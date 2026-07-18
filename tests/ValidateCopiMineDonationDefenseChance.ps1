@@ -6,7 +6,7 @@ foreach ($marker in @(
   'rollEffectChance(var13)',
   'rollEffectChance(var4)',
   'rollEffectChance(var5)',
-  'actionCooldowns.put(var2.getUniqueId()'
+  'actionCooldowns.put(this.actionCooldownKey(var2,'
 )) {
   if ($text -notmatch [regex]::Escape($marker)) { $errors.Add("Missing defense chance/cooldown marker: $marker") }
 }

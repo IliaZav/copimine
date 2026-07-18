@@ -152,7 +152,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Set<String> adminOnlyCatalogItems = ConcurrentHashMap.newKeySet();
    private final Map<UUID, CopiMineArtifacts.SessionState> sessions = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.Shop> shopsByLocation = new ConcurrentHashMap<>();
-   private final Map<UUID, Long> actionCooldowns = new ConcurrentHashMap<>();
+   private final Map<String, Long> actionCooldowns = new ConcurrentHashMap<>();
    private final Map<UUID, Long> pozdnyakovNauseaCooldowns = new ConcurrentHashMap<>();
    private final Map<String, PozdnyakovMagmaRestore> pozdnyakovMagmaRestores = new ConcurrentHashMap<>();
    private final Map<UUID, Location> lastDeathLocations = new ConcurrentHashMap<>();
@@ -896,47 +896,58 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if (var4 != null) {
                String var5 = var4.effect().toUpperCase(Locale.ROOT);
                if (this.artifactToolEffects().contains(var5)) {
-                  long var6 = this.actionCooldowns.getOrDefault(var3.getUniqueId(), 0L);
-                  long var8 = this.now();
-                  if (var6 <= var8) {
-                     this.actionCooldowns.put(var3.getUniqueId(), var8 + (long)Math.max(2, var4.cooldownSeconds()));
-                     switch (var5) {
-                        case "MINER_PULSE":
-                        case "HASTE_BURST":
-                           var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 100, 1, false, false, true));
-                           var3.getWorld().spawnParticle(Particle.ENCHANT, var1.getBlock().getLocation().add(0.5, 0.8, 0.5), 10, 0.35, 0.35, 0.35, 0.01);
-                           break;
-                        case "MINER_3X3":
-                           this.breakMinerArea(var3, var1.getBlock(), var3.getInventory().getItemInMainHand());
-                           break;
-                        case "FORESTER_FOCUS":
-                           var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
-                           var3.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 0, false, false, true));
-                           var3.getWorld().playSound(var3.getLocation(), Sound.BLOCK_WOOD_BREAK, 0.35F, 1.25F);
-                           break;
-                        case "SURVEYOR_TOUCH":
-                           var3.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 0, false, false, true));
-                           var3.getWorld().spawnParticle(Particle.DUST, var1.getBlock().getLocation().add(0.5, 0.5, 0.5), 8, 0.25, 0.25, 0.25, 0.01);
-                           break;
-                        case "CRAFTSMAN_CHECK":
-                           var3.addPotionEffect(new PotionEffect(PotionEffectType.LUCK, 100, 0, false, false, true));
-                           var3.getWorld().playSound(var3.getLocation(), Sound.BLOCK_ANVIL_USE, 0.25F, 1.6F);
-                           break;
-                        case "FORESTER_CHAIN":
-                           if (!this.rollEffectChance(var4)) {
-                              return;
-                           }
+                   long var6 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var3, var4), 0L);
+                   long var8 = this.now();
+                   if (var6 <= var8) {
+                      boolean activated = false;
+                      switch (var5) {
+                         case "MINER_PULSE":
+                         case "HASTE_BURST":
+                            var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 100, 1, false, false, true));
+                            var3.getWorld().spawnParticle(Particle.ENCHANT, var1.getBlock().getLocation().add(0.5, 0.8, 0.5), 10, 0.35, 0.35, 0.35, 0.01);
+                            activated = true;
+                            break;
+                         case "MINER_3X3":
+                            this.breakMinerArea(var3, var1.getBlock(), var3.getInventory().getItemInMainHand());
+                            activated = true;
+                            break;
+                         case "FORESTER_FOCUS":
+                            var3.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
+                            var3.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 0, false, false, true));
+                            var3.getWorld().playSound(var3.getLocation(), Sound.BLOCK_WOOD_BREAK, 0.35F, 1.25F);
+                            activated = true;
+                            break;
+                         case "SURVEYOR_TOUCH":
+                            var3.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 60, 0, false, false, true));
+                            var3.getWorld().spawnParticle(Particle.DUST, var1.getBlock().getLocation().add(0.5, 0.5, 0.5), 8, 0.25, 0.25, 0.25, 0.01);
+                            activated = true;
+                            break;
+                         case "CRAFTSMAN_CHECK":
+                            var3.addPotionEffect(new PotionEffect(PotionEffectType.LUCK, 100, 0, false, false, true));
+                            var3.getWorld().playSound(var3.getLocation(), Sound.BLOCK_ANVIL_USE, 0.25F, 1.6F);
+                            activated = true;
+                            break;
+                         case "FORESTER_CHAIN":
+                            if (!this.rollEffectChance(var4)) {
+                               return;
+                            }
 
-                           this.tryForesterChain(var3, var1.getBlock(), var3.getInventory().getItemInMainHand());
-                           break;
-                        case "TRENCH_BONUS":
-                           if (!this.rollEffectChance(var4)) {
-                              return;
-                           }
+                            this.tryForesterChain(var3, var1.getBlock(), var3.getInventory().getItemInMainHand());
+                            activated = true;
+                            break;
+                         case "TRENCH_BONUS":
+                            if (!this.rollEffectChance(var4)) {
+                               return;
+                            }
 
-                           this.grantTrenchBonus(var3, var1.getBlock());
-                     }
-                  }
+                            this.grantTrenchBonus(var3, var1.getBlock());
+                            activated = true;
+                      }
+
+                      if (activated && var4.cooldownSeconds() > 0) {
+                         this.actionCooldowns.put(this.actionCooldownKey(var3, var4), var8 + (long)var4.cooldownSeconds());
+                      }
+                   }
                }
             }
          }
@@ -1450,7 +1461,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
 
             long var6 = this.now();
-            long var8 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var3), 0L);
             if (var8 > var6) {
                var2.sendMessage(
                   this.color(
@@ -1477,7 +1488,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   default -> false;
                };
                if (var10) {
-                  this.actionCooldowns.put(var2.getUniqueId(), var6 + (long)Math.max(1, var3.cooldownSeconds()));
+                  this.actionCooldowns.put(this.actionCooldownKey(var2, var3), var6 + (long)Math.max(1, var3.cooldownSeconds()));
                   if (!var3.visualEffectId().isBlank()) {
                      this.visualEffects.applyTo(var2, var3.visualEffectId(), Math.max(4, var3.cooldownSeconds()));
                   }
@@ -1498,7 +1509,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (!(entity instanceof LivingEntity living) || living.getLocation().distanceSquared(center) > 100.0D) {
             continue;
          }
-         living.setVelocity(living.getVelocity().setY(Math.max(living.getVelocity().getY(), 0.9D)));
+         living.setVelocity(living.getVelocity().setY(Math.max(living.getVelocity().getY(), 1.0D)));
          living.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION, 80, 0, false, false, true));
       }
       player.getWorld().spawnParticle(Particle.CLOUD, center, 60, 3.5D, 0.3D, 3.5D, 0.08D);
@@ -1529,29 +1540,29 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
          if (var13 != null && "PRORAB_HELMET".equalsIgnoreCase(var13.effect()) && var1.getCause() == DamageCause.FALL) {
             long var6 = this.now();
-            long var8 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var13), 0L);
             if (var8 <= var6 && this.rollEffectChance(var13)) {
                var1.setDamage(var1.getDamage() * 0.4);
                var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 0, false, false, true));
                var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
-               this.actionCooldowns.put(var2.getUniqueId(), var6 + (long)Math.max(8, var13.cooldownSeconds()));
+               this.actionCooldowns.put(this.actionCooldownKey(var2, var13), var6 + (long)Math.max(8, var13.cooldownSeconds()));
             }
          }
 
          if (var4 != null && "TANK_VEST".equalsIgnoreCase(var4.effect())) {
             long var6 = this.now();
-            long var8 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var4), 0L);
             if (var8 <= var6 && var1.getDamage() >= 4.0 && this.rollEffectChance(var4)) {
                var1.setDamage(var1.getDamage() * 0.8);
                var2.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 100, 0, false, false, true));
                var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 0, false, false, true));
-               this.actionCooldowns.put(var2.getUniqueId(), var6 + (long)Math.max(8, var4.cooldownSeconds()));
+               this.actionCooldowns.put(this.actionCooldownKey(var2, var4), var6 + (long)Math.max(8, var4.cooldownSeconds()));
             }
          }
 
          if (var5 != null && "NOT_TODAY_SHIELD".equalsIgnoreCase(var5.effect()) && var2.isBlocking() && var1 instanceof EntityDamageByEntityEvent var14) {
             long var7 = this.now();
-            long var9 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+            long var9 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var5), 0L);
             if (var9 <= var7 && this.rollEffectChance(var5)) {
                if (var14.getDamager() instanceof LivingEntity var11) {
                   var11.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
@@ -1560,7 +1571,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 0, false, false, true));
                var2.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, var2.getLocation().add(0.0, 1.0, 0.0), 16, 0.45, 0.55, 0.45, 0.03);
-               this.actionCooldowns.put(var2.getUniqueId(), var7 + (long)Math.max(6, var5.cooldownSeconds()));
+               this.actionCooldowns.put(this.actionCooldownKey(var2, var5), var7 + (long)Math.max(6, var5.cooldownSeconds()));
             }
          }
       }
@@ -1603,10 +1614,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             String var16 = var15.effect().toUpperCase(Locale.ROOT);
             if (this.artifactCombatEffects().contains(var16)) {
                if (this.rollEffectChance(var15)) {
-                  long var19 = this.actionCooldowns.getOrDefault(var2.getUniqueId(), 0L);
+                  long var19 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var15), 0L);
                   long var8 = this.now();
                   if (var19 <= var8) {
-                     this.actionCooldowns.put(var2.getUniqueId(), var8 + (long)var15.cooldownSeconds());
+                     this.actionCooldowns.put(this.actionCooldownKey(var2, var15), var8 + (long)var15.cooldownSeconds());
                      LivingEntity var10 = var1.getEntity() instanceof LivingEntity var11 ? var11 : null;
                      Location var20 = var1.getEntity().getLocation().add(0.0, 1.0, 0.0);
                      switch (var16) {
@@ -9906,6 +9917,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private String blockKey(Location var1) {
       return var1.getWorld().getName() + ":" + var1.getBlockX() + ":" + var1.getBlockY() + ":" + var1.getBlockZ();
+   }
+
+   private String actionCooldownKey(Player player, CopiMineArtifacts.CatalogItem item) {
+      if (player == null || item == null || item.itemId().isBlank()) {
+         return "";
+      }
+      return player.getUniqueId() + ":" + item.itemId();
    }
 
    private long now() {

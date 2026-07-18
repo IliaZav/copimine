@@ -74,7 +74,8 @@ Require-Contains $migrationRunner 'pg_advisory_xact_lock' 'Migration runner must
 Require-Contains $migrationRunner 'Migration checksum mismatch' 'Migration runner must reject a modified migration that was already applied.'
 Require-Contains $fullReplace 'copimine_restore_database_safely' 'Full replacement must restore the database through the guarded helper.'
 Require-Contains $unpack 'copimine_restore_database_safely' 'Unpack replacement must restore the database through the guarded helper.'
-Require-NotContains $cleanWorldState 'artifact_pending_deliveries' 'World-state cleanup must never delete paid deferred deliveries.'
+Require-Contains $cleanWorldState 'artifact_pending_deliveries' 'Fresh gameplay reset must clear deferred deliveries together with the old economy.'
+Require-NotContains $cleanWorldState "'site_accounts'" 'Gameplay reset must preserve registered site accounts.'
 Require-Contains $migration006 'IF NOT EXISTS' 'Election hardening migration must be safe to run on a clean schema.'
 
 Require-Contains $package 'archive --format=tar' 'Release packager must stage tracked files from Git, not copy ignored runtime files.'

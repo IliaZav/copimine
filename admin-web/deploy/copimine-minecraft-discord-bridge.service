@@ -11,9 +11,11 @@ EnvironmentFile=/opt/copimine/admin-web/.env
 Environment=COPIMINE_ENV_FILE=/opt/copimine/admin-web/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/opt/copimine/admin-web/backend:/opt/copimine/admin-web
-ExecStart=/opt/copimine/admin-web/.venv/bin/python /opt/copimine/admin-web/backend/minecraft_discord_bridge.py
+ExecStart=/opt/copimine/admin-web/.venv/bin/python -m backend.minecraft_discord_bridge
 Restart=always
 RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
 NoNewPrivileges=true
 PrivateTmp=true
 

@@ -49,12 +49,13 @@ public final class NarcoticsDatabase {
         try {
             Class.forName("org.postgresql.Driver");
             DriverManager.setLoginTimeout(10);
+            int workers = configService.asyncThreads();
             executor = new ThreadPoolExecutor(
-                    1,
-                    1,
+                    workers,
+                    workers,
                     30L,
                     TimeUnit.SECONDS,
-                    new LinkedBlockingQueue<>(512),
+                    new LinkedBlockingQueue<>(configService.asyncQueueCapacity()),
                     task -> {
                 Thread thread = new Thread(task, "copimine-narcotics-db");
                 thread.setDaemon(true);
@@ -123,7 +124,7 @@ public final class NarcoticsDatabase {
                 statement.setString(6, joinStatePayload(ingredients));
                 statement.setLong(7, version);
                 statement.setBoolean(8, false);
-                statement.setLong(9, Instant.now().getEpochSecond());
+                statement.setLong(9, Instant.now().toEpochMilli());
                 statement.executeUpdate();
             }
             return null;
@@ -152,7 +153,7 @@ public final class NarcoticsDatabase {
                 statement.setString(6, "");
                 statement.setLong(7, version);
                 statement.setBoolean(8, true);
-                statement.setLong(9, Instant.now().getEpochSecond());
+                statement.setLong(9, Instant.now().toEpochMilli());
                 statement.executeUpdate();
             }
             return null;
@@ -551,7 +552,7 @@ public final class NarcoticsDatabase {
         void run() throws Exception;
     }
 
-    public record LoadedBrewingState(List<IngredientEntry> ingredients, long version, long updatedAtEpochSeconds) {
+    public record LoadedBrewingState(List<IngredientEntry> ingredients, long version, long updatedAtEpochMillis) {
     }
 
     private record DbSettings(String host, int port, String database, String user, String password, String schema, Path envFile) {

@@ -2,6 +2,7 @@
   narcotic_version: 1
   strict_release_mode: true
   async_threads: 2
+  async_queue_capacity: 512
 
 database:
   schema_version: 1

@@ -14,7 +14,7 @@ foreach ($marker in @(
   'Material.LAVA',
   'Material.MAGMA_BLOCK',
   'PotionEffectType.NAUSEA, 100, 2',
-  'current + 30_000L',
+  'current + 30L',
   'persistAdminGrantedInstance',
   'copimine.artifacts.admin.give',
   'isAdminOnlyCatalogItem'
@@ -26,7 +26,7 @@ foreach ($marker in @(
 foreach ($marker in @(
   'POZDNYAKOV_LAVA_RADIUS = 2',
   'POZDNYAKOV_LAVA_RESTORE_TICKS = 100L',
-  'current + 30_000L',
+  'current + 30L',
   'Material.MAGMA_BLOCK',
   'originalType == Material.LAVA',
   'block.getType() == Material.MAGMA_BLOCK'

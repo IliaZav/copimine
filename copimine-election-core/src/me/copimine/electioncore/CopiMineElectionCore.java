@@ -192,12 +192,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Bukkit.getPluginManager().registerEvents(this, this);
         try {
             repairProtectedBlockVisuals();
-        } catch (Exception error) {
-            getLogger().warning("repair visuals startup: " + safeError(error));
-        }
-        Bukkit.getScheduler().runTaskAsynchronously(this, this::reconcilePendingTaxPaymentsSafe);
-        Bukkit.getScheduler().runTaskAsynchronously(this, this::refreshSnapshotAndPush);
-        Bukkit.getScheduler().runTaskTimerAsynchronously(this, this::refreshSnapshotAndPush, 40L, 60L);
+         } catch (Exception error) {
+             getLogger().warning("repair visuals startup: " + safeError(error));
+         }
+         Bukkit.getScheduler().runTaskAsynchronously(this, this::expirePresidentTermsSafe);
+         Bukkit.getScheduler().runTaskAsynchronously(this, this::reconcilePendingTaxPaymentsSafe);
+         Bukkit.getScheduler().runTaskAsynchronously(this, this::refreshSnapshotAndPush);
+         Bukkit.getScheduler().runTaskTimerAsynchronously(this, this::expirePresidentTermsSafe, 1200L, 1200L);
+         Bukkit.getScheduler().runTaskTimerAsynchronously(this, this::refreshSnapshotAndPush, 40L, 60L);
         for (Player player : Bukkit.getOnlinePlayers()) {
             restoreOfficialItems(player);
         }
@@ -620,7 +622,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             sendPresidentBroadcast(player, format, text);
             player.sendMessage(color("&aОбращение отправлено."));
         } catch (Exception error) {
-            player.sendMessage(color("&cНе удалось отправить обращение: &f" + safeError(error)));
+            getLogger().warning("president broadcast: " + safeError(error));
+            player.sendMessage(color("&cНе удалось отправить обращение: &f" + publicErrorMessage(error)));
         }
         return true;
     }
@@ -1445,15 +1448,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (action.startsWith("legacy-disabled:mandate:tax:")) {
             int amount = parseInt(action.substring("mandate:tax:".length()), 0);
             openConfirmationMenu(player, "&6Установить налог", List.of(
-                    "&7Новый размер налога: &f" + Math.max(0, Math.min(50, amount)) + " AR",
+                    "&7Новый размер налога: &f" + Math.max(taxMinAmount(), Math.min(taxMaxAmount(), amount)) + " AR",
                     "&7Оплаты будут идти на личный счёт президента."
             ), "apply:mandate:tax:" + amount, "president:open-mandate");
             return;
         }
-        if (action.equals("mandate:payments")) {
-            openPresidentPaymentsMenu(player, 0);
-            return;
-        }
+         if (action.equals("mandate:payments")) {
+             if (!isPresident(player) && !hasElectionAdmin(player)) {
+                 player.sendMessage(color("&cНет прав президента."));
+                 return;
+             }
+             openPresidentPaymentsMenu(player, 0);
+             return;
+         }
         if (action.startsWith("taxpay:bank:")) {
             openTaxOfficeMenu(player, action.substring("taxpay:bank:".length()), "BANK_PIN", null);
             return;
@@ -1992,9 +1999,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
         int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
         MenuHolder holder = new MenuHolder("president-admin", Integer.toString(resolvedPeriod));
+        Inventory inv = holder.create(54, color("&dПрезидент"));
         setButton(holder, 42, Material.LIME_DYE, "Paid players", List.of("Open players who paid the current period."), "president:tax-roster:paid");
         setButton(holder, 43, Material.GRAY_DYE, "Unpaid players", List.of("Open players who have not paid yet."), "president:tax-roster:unpaid");
-        Inventory inv = holder.create(54, color("&dПрезидент"));
         setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
                 "&7Текущий: &f" + first(snap.presidentName(), "нет"),
                 "&7Срок: &f" + snap.termDays() + " дн.",
@@ -2080,9 +2087,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
         int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
         MenuHolder holder = new MenuHolder("president-mandate", Integer.toString(resolvedPeriod));
-        setButton(holder, 42, Material.LIME_DYE, "Paid players", List.of("Open players who paid the current period."), "president:tax-roster:paid");
-        setButton(holder, 43, Material.GRAY_DYE, "Unpaid players", List.of("Open players who have not paid yet."), "president:tax-roster:unpaid");
         Inventory inv = holder.create(54, color("&dМандат президента"));
+        setButton(holder, 45, Material.LIME_DYE, "Paid players", List.of("Open players who paid the current period."), "president:tax-roster:paid");
+        setButton(holder, 46, Material.GRAY_DYE, "Unpaid players", List.of("Open players who have not paid yet."), "president:tax-roster:unpaid");
         setStatic(inv, 4, infoItem(Material.NETHER_STAR, "&fПрезидент", List.of(
                 "&7Действующий президент: &f" + first(snap.presidentName(), "нет"),
                 "&7Законов: &f" + snap.laws().size(),
@@ -2202,6 +2209,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openPresidentPaymentsMenu(Player player, int page) {
+        if (!isPresident(player) && !hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНет прав президента."));
+            return;
+        }
         List<Map<String, Object>> rows = currentTaxPayments();
         MenuHolder holder = new MenuHolder("president-payments", "");
         Inventory inv = holder.create(54, color("&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438"));
@@ -2516,7 +2527,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "&7Наличными налог не принимается.",
                     "&7Используй кнопку оплаты через банк."
             )));
-            setButton(holder, 40, Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Открыть последние начисления."), "mandate:payments");
+            setStatic(inv, 40, infoItem(Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Список доступен президенту и администрации.")));
             setButton(holder, 49, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
             player.openInventory(inv);
             return;
@@ -2529,7 +2540,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "&7налоги сейчас не показываются и не начисляются.",
                     "&7При включении период оплаты: &f24 часа&7."
             )));
-            setButton(holder, 15, Material.BOOKSHELF, "&aПоступления из лавки", List.of("&7Открыть последние зачисления президенту."), "mandate:payments");
+            setStatic(inv, 15, infoItem(Material.BOOKSHELF, "&aПоступления из лавки", List.of("&7Список доступен президенту и администрации.")));
             setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть это меню."), "close");
             player.openInventory(inv);
             return;
@@ -2541,7 +2552,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 "&7\u0414\u043e\u0445\u043e\u0434 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u043f\u043e\u0441\u0442\u0443\u043f\u0430\u0435\u0442",
                 "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0438\u0437 AR-\u043b\u0430\u0432\u043a\u0438 CopiMine."
         )));
-        setButton(holder, 15, Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u0437\u0430\u0447\u0438\u0441\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443."), "mandate:payments");
+        setStatic(inv, 15, infoItem(Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u0421\u043f\u0438\u0441\u043e\u043a \u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443 \u0438 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438.")));
         setButton(holder, 22, Material.BARRIER, "&c\u0417\u0430\u043a\u0440\u044b\u0442\u044c", List.of("&7\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u044d\u0442\u043e \u043c\u0435\u043d\u044e."), "close");
         player.openInventory(inv);
     }
@@ -4254,7 +4265,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 }
 
                 markTaxPaymentOperation(operationId, "ECONOMY_CONFIRMED", result.txId, "");
-                completeTaxPaymentOperation(operationId, result.txId);
+                try {
+                    completeTaxPaymentOperation(operationId, result.txId);
+                } catch (Exception completionError) {
+                    markTaxPaymentOperation(operationId, "RECONCILE_REQUIRED", result.txId, safeError(completionError));
+                    getLogger().warning("tax payment finalization queued for recovery: " + safeError(completionError));
+                    Bukkit.getScheduler().runTask(this, () -> player.sendMessage(color("&eПлатёж принят банком и будет подтверждён автоматически.")));
+                    return;
+                }
                 refreshSnapshotAndPush();
                 Bukkit.getScheduler().runTask(this, () -> {
                     player.sendMessage(color("&aНалог оплачен: &f" + due + " AR"));
@@ -4381,7 +4399,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void reconcilePendingTaxPaymentsSafe() {
         try {
-            for (Map<String, Object> row : queryList("SELECT id FROM president_tax_payment_ops WHERE status='RECONCILE_REQUIRED' ORDER BY updated_at ASC LIMIT 200")) {
+            for (Map<String, Object> row : queryList("SELECT id FROM president_tax_payment_ops WHERE status IN ('PENDING','ECONOMY_CONFIRMED','RECONCILE_REQUIRED') ORDER BY updated_at ASC LIMIT 200")) {
                 try {
                     reconcileTaxPaymentOperation(string(row.get("id")));
                 } catch (Exception error) {
@@ -4784,11 +4802,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private boolean isPresident(Player player) {
+        if (player == null) {
+            return false;
+        }
         try {
-            return scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'", player.getUniqueId().toString()) > 0
-                    || player.hasPermission("copimine.election.president");
+            return scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE' AND ends_at>?", player.getUniqueId().toString(), now()) > 0;
         } catch (Exception error) {
-            return player.hasPermission("copimine.election.president");
+            return false;
         }
     }
 
@@ -4931,6 +4951,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void resetElections(String actor) throws Exception {
+        removeElectionManagedVisuals();
         tx(connection -> {
             for (String table : List.of(
                     "votes",
@@ -4967,6 +4988,69 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             removeOfficialItemsFromPlayer(online, "APPLICATION_BOOK");
             removeOfficialItemsFromPlayer(online, "BALLOT");
             removeOfficialItemsFromPlayer(online, "PRESIDENT_MANDATE");
+        }
+    }
+
+    private void removeElectionManagedVisuals() {
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                PersistentDataContainer pdc = entity.getPersistentDataContainer();
+                if (entity instanceof TextDisplay) {
+                    String textKind = readString(pdc, textTypeKey);
+                    if ("STATION_LABEL".equals(textKind) || "TAX_LABEL".equals(textKind)) {
+                        entity.remove();
+                    }
+                    continue;
+                }
+                if (entity instanceof ItemDisplay
+                        && "PROTECTED_BLOCK_VISUAL".equals(readString(pdc, visualEntityTypeKey))) {
+                    String visualKind = readString(pdc, visualKindKey);
+                    if ("POLLING_STATION".equals(visualKind) || "TAX_OFFICE".equals(visualKind)) {
+                        entity.remove();
+                    }
+                }
+            }
+        }
+    }
+
+    private void expirePresidentTermsSafe() {
+        long expiredAt = now();
+        try {
+            List<String> expiredPresidents = tx(connection -> {
+                List<Map<String, Object>> expiredTerms = queryList(connection,
+                        "SELECT id,election_id,president_uuid FROM president_terms WHERE status='ACTIVE' AND ends_at>0 AND ends_at<=? FOR UPDATE",
+                        expiredAt);
+                List<String> presidentUuids = new ArrayList<>();
+                for (Map<String, Object> term : expiredTerms) {
+                    String termId = string(term.get("id"));
+                    String electionId = string(term.get("election_id"));
+                    String presidentUuid = string(term.get("president_uuid"));
+                    update(connection, "UPDATE president_terms SET status='EXPIRED',removed_at=?,removed_by='SYSTEM' WHERE id=? AND status='ACTIVE'", expiredAt, termId);
+                    update(connection, "UPDATE president_taxes SET status='EXPIRED' WHERE term_id=? AND status='ACTIVE'", termId);
+                    update(connection, "UPDATE elections SET president_uuid='',president_name='',updated_at=? WHERE id=? AND president_uuid=?", expiredAt, electionId, presidentUuid);
+                    logPluginEvent(connection, "election_core", "president_term_expired", "SYSTEM", termId, presidentUuid);
+                    if (!presidentUuid.isBlank()) {
+                        presidentUuids.add(presidentUuid);
+                    }
+                }
+                return presidentUuids;
+            });
+            if (!expiredPresidents.isEmpty()) {
+                Bukkit.getScheduler().runTask(this, () -> {
+                    for (String presidentUuid : expiredPresidents) {
+                        try {
+                            Player online = Bukkit.getPlayer(UUID.fromString(presidentUuid));
+                            if (online != null) {
+                                removeOfficialItemsFromPlayer(online, "PRESIDENT_MANDATE");
+                            }
+                        } catch (IllegalArgumentException ignored) {
+                        }
+                    }
+                });
+                refreshSnapshotAndPush();
+            }
+        } catch (Exception error) {
+            getLogger().warning("president term expiry: " + safeError(error));
         }
     }
 
@@ -5049,7 +5133,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private Map<String, Object> activeTerm() throws Exception {
-        return queryOne("SELECT * FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1");
+        return queryOne("SELECT * FROM president_terms WHERE status='ACTIVE' AND ends_at>? ORDER BY started_at DESC LIMIT 1", now());
     }
 
     public Map<String, Object> activePresidentRevenueProfile() {
@@ -5262,7 +5346,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (isTaxClockExempt(playerUuid)) {
             return 0L;
         }
-        long amount = Math.max(0L, longValue(tax.get("amount")));
+        long amount = Math.max(0L, Math.min(5L, longValue(tax.get("amount"))));
         if (amount <= 0L) {
             return 0L;
         }
@@ -5271,12 +5355,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
 
     private int taxMinAmount() {
-        return Math.max(0, getConfig().getInt("president-tax.min-amount-ar", 0));
+        return 0;
     }
 
 
     private int taxMaxAmount() {
-        return Math.max(taxMinAmount(), getConfig().getInt("president-tax.max-amount-ar", 50));
+        return 5;
     }
 
 
@@ -5328,16 +5412,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private List<Integer> taxAmountPresets(int currentAmount) {
         LinkedHashSet<Integer> presets = new LinkedHashSet<>();
-        presets.add(taxMinAmount());
-        presets.add(5);
-        presets.add(10);
-        presets.add(15);
-        presets.add(20);
-        presets.add(25);
-        presets.add(30);
-        presets.add(40);
-        presets.add(50);
-        presets.add(currentAmount);
+        for (int amount = taxMinAmount(); amount <= taxMaxAmount(); amount++) {
+            presets.add(amount);
+        }
+        presets.add(Math.max(taxMinAmount(), Math.min(taxMaxAmount(), currentAmount)));
         List<Integer> result = new ArrayList<>();
         for (Integer value : presets) {
             if (value == null) {
@@ -6552,11 +6630,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private String publicErrorMessage(Throwable error) {
-        String message = safeError(error);
-        if (message == null || message.isBlank()) {
-            return "неизвестная ошибка";
-        }
-        return message.length() > 160 ? message.substring(0, 160) : message;
+        return "Попробуйте позже. Код: ELECTION_OPERATION_FAILED";
     }
 
     private String first(String... values) {

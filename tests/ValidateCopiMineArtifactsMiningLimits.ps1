@@ -7,7 +7,7 @@ $errors = [System.Collections.Generic.List[string]]::new()
 if ($source -notmatch 'while \(!var4\.isEmpty\(\) && var6\.size\(\) < 19\)') {
   $errors.Add('Forester chain must cap additional blocks at 19 so the triggering block keeps the total at 20.')
 }
-if ($source -notmatch 'if \(!var14\.breakNaturally\(var3\)\) \{\s*this\.chainedTreeBreaks\.remove\(var15\);\s*\}') {
+if ($source -notmatch 'if \(!var1\.breakBlock\(var14\)\) \{\s*this\.chainedTreeBreaks\.remove\(var15\);\s*\}') {
   $errors.Add('Cancelled forester breaks must remove their chain marker.')
 }
 if ($source -notmatch 'if \(!player\.breakBlock\(target\)\) \{\s*this\.chainedTreeBreaks\.remove\(targetKey\);\s*\}') {

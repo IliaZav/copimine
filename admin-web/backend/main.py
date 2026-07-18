@@ -5250,10 +5250,11 @@ def active_president_term(conn: Any) -> dict[str, Any]:
         """
         SELECT id,election_id,president_uuid,president_name,status,started_at,ends_at
         FROM president_terms
-        WHERE status='ACTIVE'
+        WHERE status='ACTIVE' AND ends_at>%s
         ORDER BY started_at DESC
         LIMIT 1
-        """
+        """,
+        (donation_now_ms(),),
     ).fetchone()
     return dict(row) if row else {}
 
@@ -5263,6 +5264,10 @@ def normalize_president_tax_period_hours(hours: int) -> int:
     if hours in (24, 48, 72):
         return hours
     return 24
+
+
+def normalize_president_tax_amount(amount: Any) -> int:
+    return max(0, min(5, int(amount or 0)))
 
 
 def active_president_tax(conn: Any, term_id: str = "") -> dict[str, Any]:
@@ -5350,10 +5355,11 @@ def player_election_tax_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
             window_start = president_tax_window_start(int(tax.get("created_at") or 0), period_hours, now_ms)
             window_end = window_start + (period_hours * 60 * 60 * 1000)
             paid = president_tax_paid_amount(conn, str(tax.get("id") or ""), minecraft_uuid, window_start, window_end)
-            due = max(0, int(tax.get("amount") or 0) - paid)
+            amount = normalize_president_tax_amount(tax.get("amount"))
+            due = max(0, amount - paid)
             tax_payload = {
                 "id": str(tax.get("id") or ""),
-                "amount": int(tax.get("amount") or 0),
+                "amount": amount,
                 "periodHours": period_hours,
                 "windowStart": window_start,
                 "windowEnd": window_end,
@@ -5439,7 +5445,7 @@ def pay_player_election_tax_sync(account: dict[str, Any], data: PlayerElectionTa
         window_start = president_tax_window_start(int(tax.get("created_at") or 0), period_hours, now_ms)
         window_end = window_start + (period_hours * 60 * 60 * 1000)
         paid = president_tax_paid_amount(conn, str(tax.get("id") or ""), player_uuid, window_start, window_end)
-        due = max(0, int(tax.get("amount") or 0) - paid)
+        due = max(0, normalize_president_tax_amount(tax.get("amount")) - paid)
         if due <= 0:
             return {"ok": True, "amount": 0, "due": 0, "paid": paid, "balance": int(bank_locked.get("balance") or 0), "voluntary": True}
         requested_amount = int(data.amount or 0)

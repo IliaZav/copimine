@@ -160,18 +160,20 @@
     material: MACE
     source: AR_SHOP
     custom_model_data: 10012
-    name: "&6Молот Ремесленника"
+    name: "&6Молот Ветра"
     rarity: RARE
     price_ar: 1700
     supply_limit: 0
     per_player_limit: 1
-    cooldown_seconds: 20
-    effect: HASTE_BURST_LONG
+    cooldown_seconds: 60
+    effect: WIND_HAMMER
     effect_chance_percent: 100
     visual_effect_id: STATIC_NOISE
     lore:
-      - "&7ПКМ в воздух: Спешка II на 3 минуты."
-      - "&7Перезарядка: 20 секунд."
+      - "&7ПКМ по земле: удар ветра."
+      - "&7Все существа в радиусе 10 блоков взлетают на 5 блоков."
+      - "&7Левитация: 4 секунды."
+      - "&7Перезарядка: 1 минута."
       - "&7Не чинится на наковальне и не уходит в автокрафт."
 
   - id: kozyrny_tuz_pozdnyakova

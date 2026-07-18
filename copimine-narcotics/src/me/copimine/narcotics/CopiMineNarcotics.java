@@ -46,6 +46,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerResourcePackStatusEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
@@ -111,6 +112,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
         }
         Bukkit.getPluginManager().registerEvents(this, this);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            overdoseService.preloadState(player.getUniqueId());
+        }
         scheduleIntegritySweep();
         getLogger().info("CopiMineNarcotics with optional CopiMineClient bridge enabled.");
     }
@@ -163,6 +167,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
 
         if (official != null) {
+            if (!overdoseService.isStateReady(player)) {
+                event.setCancelled(true);
+                event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+                player.sendMessage(ChatColor.YELLOW + "Состояние наркотиков загружается. Попробуйте ещё раз через секунду.");
+                return;
+            }
             event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
             if (event.getAction() == Action.RIGHT_CLICK_BLOCK && isUnsafeConsumeTarget(event.getClickedBlock())) {
                 event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
@@ -225,7 +235,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (cauldronService.cachedStateCount() <= 0) {
             return;
         }
-        getServer().getScheduler().runTaskLater(this, cauldronService::runIntegritySweep, 1L);
+        getServer().getScheduler().runTaskLater(this, () -> cauldronService.reconcileLoadedChunk(event.getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ()), 1L);
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -323,9 +333,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     }
 
     @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        Bukkit.getScheduler().runTask(this, () -> overdoseService.restoreActiveOverdose(event.getPlayer()));
+    }
+
+    @EventHandler
     public void onWorldChange(PlayerChangedWorldEvent event) {
         overdoseService.clearActiveEffects(event.getPlayer(), true);
         visualRuntime.clear(event.getPlayer());
+        Bukkit.getScheduler().runTask(this, () -> overdoseService.restoreActiveOverdose(event.getPlayer()));
     }
 
     @EventHandler

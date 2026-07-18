@@ -33,6 +33,7 @@ public final class NarcoticsConfigService {
 
     private int narcoticVersion;
     private int asyncThreads;
+    private int asyncQueueCapacity;
     private boolean preloadBrewingCacheOnEnable;
     private boolean requireFullWater;
     private boolean clearCauldronOnCompletion;
@@ -72,6 +73,7 @@ public final class NarcoticsConfigService {
         ConfigurationSection root = plugin.getConfig();
         narcoticVersion = root.getInt("runtime.narcotic_version", 1);
         asyncThreads = Math.max(2, root.getInt("runtime.async_threads", 2));
+        asyncQueueCapacity = clamp(root.getInt("runtime.async_queue_capacity", 512), 64, 10000);
         schemaVersion = root.getInt("database.schema_version", 1);
         preloadBrewingCacheOnEnable = root.getBoolean("database.preload_brewing_cache_on_enable", true);
         requireFullWater = root.getBoolean("cauldron.require_full_water", true);
@@ -169,6 +171,10 @@ public final class NarcoticsConfigService {
 
     public int asyncThreads() {
         return asyncThreads;
+    }
+
+    public int asyncQueueCapacity() {
+        return asyncQueueCapacity;
     }
 
     public int schemaVersion() {

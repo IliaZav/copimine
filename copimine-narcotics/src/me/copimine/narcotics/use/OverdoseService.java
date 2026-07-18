@@ -32,6 +32,7 @@ public final class OverdoseService {
     private final Map<UUID, PlayerState> states = new ConcurrentHashMap<>();
     private final Map<UUID, Set<PotionEffectType>> trackedEffects = new ConcurrentHashMap<>();
     private final Set<UUID> movementGuard = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> loadingStates = ConcurrentHashMap.newKeySet();
     private final AtomicLong stateEpoch = new AtomicLong(0L);
 
     public OverdoseService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, VisualRuntimeService visualRuntime) {
@@ -46,17 +47,54 @@ public final class OverdoseService {
     }
 
     public void preloadState(UUID playerUuid) {
+        if (playerUuid == null || !loadingStates.add(playerUuid)) {
+            return;
+        }
         long requestEpoch = stateEpoch.longValue();
         database.loadPlayerState(playerUuid).thenAccept(state -> {
-                    if (stateEpoch.longValue() != requestEpoch) {
-                        return;
-                    }
-                    states.compute(playerUuid, (ignored, current) -> current == null || state.stateVersion() >= current.stateVersion() ? state : current);
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        loadingStates.remove(playerUuid);
+                        if (stateEpoch.longValue() != requestEpoch) {
+                            return;
+                        }
+                        PlayerState loaded = state == null ? PlayerState.empty(playerUuid) : state;
+                        states.compute(playerUuid, (ignored, current) -> current == null || loaded.stateVersion() >= current.stateVersion() ? loaded : current);
+                        Player player = Bukkit.getPlayer(playerUuid);
+                        if (player != null && player.isOnline()) {
+                            restoreActiveOverdose(player);
+                        }
+                    });
                 })
                 .exceptionally(error -> {
-                    plugin.getLogger().warning("Failed to preload narcotics state: " + error.getMessage());
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        loadingStates.remove(playerUuid);
+                        plugin.getLogger().warning("Failed to preload narcotics state: " + error.getMessage());
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> preloadState(playerUuid), 100L);
+                    });
                     return null;
                 });
+    }
+
+    public boolean isStateReady(Player player) {
+        return player != null && !loadingStates.contains(player.getUniqueId());
+    }
+
+    public void restoreActiveOverdose(Player player) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        PlayerState state = states.get(player.getUniqueId());
+        long now = System.currentTimeMillis() / 1000L;
+        if (state == null || state.overdoseUntil() <= now) {
+            return;
+        }
+        NarcoticDefinition definition = configService.items().get(state.lastItemId());
+        if (definition == null) {
+            return;
+        }
+        int remainingSeconds = (int) Math.min(Integer.MAX_VALUE, state.overdoseUntil() - now);
+        applyConfiguredEffects(player, buildOverdoseEffects(definition), Math.max(1, remainingSeconds));
+        visualRuntime.apply(player, resolveOverdoseVisual(definition), Math.max(1, remainingSeconds), true);
     }
 
     public void consume(Player player, NarcoticDefinition definition) {
@@ -67,13 +105,24 @@ public final class OverdoseService {
         }
         boolean activeOverdose = state.overdoseUntil() > now;
         if ("zhuzevo".equals(definition.id())) {
-            PlayerState updated = applyZhuzevo(player, definition, state, now);
+            PlayerState base = new PlayerState(
+                    player.getUniqueId(),
+                    state.currentScale(),
+                    now,
+                    state.overdoseUntil(),
+                    state.invertedMovementUntil(),
+                    definition.id(),
+                    state.stateVersion() + 1L
+            );
+            PlayerState updated = configService.zhuzevoForcesOverdose()
+                    ? applyOverdose(player, definition, base, now)
+                    : applyZhuzevo(player, definition, state, now);
             states.put(player.getUniqueId(), updated);
             database.savePlayerState(updated);
             return;
         }
         int newScale = state.currentScale() + Math.max(0, configService.overdoseWeightFor(definition));
-        boolean overdose = activeOverdose || ("zhuzevo".equals(definition.id()) && configService.zhuzevoForcesOverdose());
+        boolean overdose = activeOverdose;
         overdose = overdose || newScale >= configService.overdoseThreshold();
 
         if (configService.clearNormalEffectsBeforeNewUse() && !activeOverdose) {
@@ -211,8 +260,6 @@ public final class OverdoseService {
                 player.removePotionEffect(effect);
             }
         }
-        player.removePotionEffect(PotionEffectType.DARKNESS);
-        player.removePotionEffect(PotionEffectType.NAUSEA);
         if (clearVisuals) {
             visualRuntime.clear(player);
         }
@@ -223,6 +270,7 @@ public final class OverdoseService {
         states.clear();
         trackedEffects.clear();
         movementGuard.clear();
+        loadingStates.clear();
     }
 
     public void forceClearOverdose(Player player) {

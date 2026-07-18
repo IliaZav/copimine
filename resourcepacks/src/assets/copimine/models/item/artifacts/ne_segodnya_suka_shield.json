@@ -1,5 +1,5 @@
 {
-  "parent": "minecraft:item/generated",
+  "parent": "minecraft:builtin/entity",
   "textures": {
     "layer0": "copimine:item/artifacts/ne_segodnya_suka_shield"
   }

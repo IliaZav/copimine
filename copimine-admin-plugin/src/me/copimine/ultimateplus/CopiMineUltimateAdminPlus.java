@@ -999,9 +999,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             return false;
         }
         try{
-            var method=plugin.getClass().getDeclaredMethod("openAdminShops",Player.class);
-            method.setAccessible(true);
-            method.invoke(plugin,p);
+            plugin.getClass().getMethod("openAdminShopHub",Player.class).invoke(plugin,p);
             return true;
         }catch(NoSuchMethodException ignored){
             return Bukkit.dispatchCommand(p,"cmartifacts shop");
@@ -4940,26 +4938,38 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         return pending;
     }
-    private void handleReport(CommandSender sender,String[] args)throws Exception{
+    private void handleReport(CommandSender sender,String[] args){
         if(!(sender instanceof Player p)){warn(sender,"Only an in-game player can create a report.");return;}
         if(args.length==0){warn(p,"Напиши текст обращения: /report <проблема>");return;}
-        String text=String.join(" ",args).trim();
-        text=clipped(text,1000);
-        if(text.length()<3){warn(p,"Слишком короткое обращение.");return;}
+        String reportText=clipped(String.join(" ",args).trim(),1000);
+        if(reportText.length()<3){warn(p,"Слишком короткое обращение.");return;}
         if(!allowReportSubmission(p)){return;}
         long duplicateCutoff=now()-REPORT_COOLDOWN_MS;
-        if(scalarLong("SELECT COUNT(*) FROM admin_requests WHERE player_uuid=? AND message=? AND status='OPEN' AND created_at>=?",p.getUniqueId().toString(),text,duplicateCutoff)>0){
-            msg(p,"&eПохожее обращение уже отправлено и находится в очереди.");
-            return;
-        }
         String id=UUID.randomUUID().toString();
         long n=now();
         Location l=p.getLocation();
         String snapshot="world="+(l.getWorld()==null?"":l.getWorld().getName())+" x="+l.getBlockX()+" y="+l.getBlockY()+" z="+l.getBlockZ()+" gm="+p.getGameMode()+" hp="+Math.round(p.getHealth());
-        exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?)",id,p.getUniqueId().toString(),p.getName(),text,n,n,snapshot);
-        audit(p.getName(),"ADMIN_REQUEST_CREATE",id+" "+text,false);
-        msg(p,"&aОбращение отправлено администрации. ID: &e"+shortId(id));
-        staffNotify("&eНовое обращение от &f"+p.getName()+"&e: &f"+text);
+        String playerUuid=p.getUniqueId().toString();
+        String playerName=p.getName();
+        dbAsyncLoad("report submission",()->{
+            if(scalarLong("SELECT COUNT(*) FROM admin_requests WHERE player_uuid=? AND message=? AND status='OPEN' AND created_at>=?",playerUuid,reportText,duplicateCutoff)>0){
+                return "";
+            }
+            exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?)",id,playerUuid,playerName,reportText,n,n,snapshot);
+            audit(playerName,"ADMIN_REQUEST_CREATE",id+" "+reportText,false);
+            return id;
+        },requestId->{
+            if(!p.isOnline())return;
+            if(requestId.isBlank()){
+                msg(p,"&eПохожее обращение уже отправлено и находится в очереди.");
+                return;
+            }
+            msg(p,"&aОбращение отправлено администрации. ID: &e"+shortId(requestId));
+            staffNotify("&eНовое обращение от &f"+playerName+"&e: &f"+reportText);
+        },error->{
+            reportCooldowns.remove(p.getUniqueId());
+            if(p.isOnline())warn(p,"Не удалось сохранить обращение. Попробуйте ещё раз.");
+        });
     }
     private boolean handleReportaCommand(CommandSender sender,String[] args)throws Exception{
         if(!(sender instanceof Player p)){warn(sender,"Only an in-game player can create a report.");return true;}
@@ -4990,22 +5000,31 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String playerNote=args.length>2?String.join(" ",Arrays.copyOfRange(args,2,args.length)).trim():"Игрок отправил лог без отдельного описания.";
         return submitBugReport(p,pending,playerNote);
     }
-    private boolean submitBugReport(Player p,PendingBugReport pending,String playerNote)throws Exception{
+    private boolean submitBugReport(Player p,PendingBugReport pending,String playerNote){
         if(!allowReportSubmission(p)){return true;}
-        pendingBugReports.remove(p.getUniqueId());
         String requestId=UUID.randomUUID().toString();
         long createdAt=now();
         String snapshot="world="+pending.world()+" x="+pending.x()+" y="+pending.y()+" z="+pending.z()+" item="+first(pending.itemType(),"AIR")+" source="+pending.source()+" action="+pending.action()+" error="+pending.exceptionClass()+" summary="+pending.errorSummary();
         String visibleNote=first(playerNote,"Игрок отправил лог без отдельного описания.");
         visibleNote=clipped(visibleNote,1000);
         String message="[BUG "+pending.token()+"] "+visibleNote;
-        exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?)",
-                requestId,pending.playerUuid(),pending.playerName(),message,createdAt,createdAt,snapshot);
-        audit(pending.playerName(),"BUG_REPORT_CREATE",requestId+" "+pending.source()+" "+pending.action(),true);
-        pluginEvent("adminplus","BUG_REPORT_CREATE",pending.playerName(),requestId,"code="+pending.token()+" source="+pending.source()+" action="+pending.action()+" note="+clipped(visibleNote,160));
-        pushBackendBugArtifactsAsync(pending, requestId, message);
-        msg(p,"&aОтчёт отправлен администрации. Код: &e"+pending.token()+" &8| &7ID: &f"+shortId(requestId));
-        staffNotify("&cНовый баг-репорт от &f"+pending.playerName()+"&c: &f"+pending.source()+" &8| &7"+pending.action());
+        String finalVisibleNote=visibleNote;
+        dbAsyncLoad("bug report submission",()->{
+            exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?)",
+                    requestId,pending.playerUuid(),pending.playerName(),message,createdAt,createdAt,snapshot);
+            audit(pending.playerName(),"BUG_REPORT_CREATE",requestId+" "+pending.source()+" "+pending.action(),true);
+            pluginEvent("adminplus","BUG_REPORT_CREATE",pending.playerName(),requestId,"code="+pending.token()+" source="+pending.source()+" action="+pending.action()+" note="+clipped(finalVisibleNote,160));
+            pushBackendBugArtifactsAsync(pending, requestId, message);
+            return requestId;
+        },savedRequestId->{
+            pendingBugReports.remove(p.getUniqueId(),pending);
+            if(!p.isOnline())return;
+            msg(p,"&aОтчёт отправлен администрации. Код: &e"+pending.token()+" &8| &7ID: &f"+shortId(savedRequestId));
+            staffNotify("&cНовый баг-репорт от &f"+pending.playerName()+"&c: &f"+pending.source()+" &8| &7"+pending.action());
+        },error->{
+            reportCooldowns.remove(p.getUniqueId());
+            if(p.isOnline())warn(p,"Не удалось сохранить отчёт. Опишите проблему и отправьте его ещё раз.");
+        });
         return true;
     }
     private boolean handleAuditCommand(CommandSender sender,String[] args)throws Exception{
@@ -5166,7 +5185,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 || action.startsWith("open:p-timeline:")
                 || action.equals("close"));
     }
-    private boolean isCurator(Player p){return false;}
+    private boolean isCurator(Player p){return p!=null&&p.hasPermission("copimine.election.cik");}
     private boolean isChair(Player p){return cachedElectionRole(p).chair();}
     private boolean isPresident(Player p){return cachedElectionRole(p).president();}
     public ArtifactsBridge artifactsBridge(){return artifactsBridge;}
@@ -5379,14 +5398,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
     }
     private void dbAsync(String label,SqlVoid body){
-        if(dbExecutor==null||dbExecutor.isShutdown()){
-            try{body.run();}catch(Exception e){getLogger().warning(label+": "+safeErr(e));}
-            return;
-        }
-        dbExecutor.execute(()->{
+        Runnable work=()->{
             try{body.run();}
             catch(Exception e){getLogger().warning(label+": "+safeErr(e));}
-        });
+        };
+        if(dbExecutor!=null&&!dbExecutor.isShutdown())dbExecutor.execute(work); else Bukkit.getScheduler().runTaskAsynchronously(this,work);
     }
     private <T> void dbAsyncLoad(String label,SqlSupplier<T> body,Consumer<T> onSuccess,Consumer<Exception> onError){
         Runnable work=()->{
@@ -5398,7 +5414,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 Bukkit.getScheduler().runTask(this,()->onError.accept(e));
             }
         };
-        if(dbExecutor==null||dbExecutor.isShutdown())work.run(); else dbExecutor.execute(work);
+        if(dbExecutor!=null&&!dbExecutor.isShutdown())dbExecutor.execute(work); else Bukkit.getScheduler().runTaskAsynchronously(this,work);
     }
     private CachedElectionRole cachedElectionRole(Player p){
         boolean permissionPresident=p.hasPermission("copimine.election.president");

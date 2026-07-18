@@ -8,6 +8,7 @@ import me.copimine.narcotics.model.NarcoticDefinition;
 import me.copimine.narcotics.recipe.IngredientEntry;
 import me.copimine.narcotics.recipe.NarcoticsRecipeService;
 import me.copimine.narcotics.util.BlockKey;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -56,9 +57,19 @@ public final class CauldronBrewingService {
         if (!configService.preloadBrewingCacheOnEnable()) {
             return;
         }
-        database.clearBrewingStates().thenRun(() -> plugin.getLogger().info("Temporary cauldron brew states cleared on enable."))
+        database.loadBrewingStates().thenAccept(states -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    for (Map.Entry<BlockKey, NarcoticsDatabase.LoadedBrewingState> entry : states.entrySet()) {
+                        NarcoticsDatabase.LoadedBrewingState loaded = entry.getValue();
+                        long updatedAtMillis = loaded.updatedAtEpochMillis();
+                        if (updatedAtMillis > 0L && updatedAtMillis < 10_000_000_000L) {
+                            updatedAtMillis *= 1000L;
+                        }
+                        cache.put(entry.getKey(), new CauldronState(List.copyOf(loaded.ingredients()), loaded.version(), updatedAtMillis));
+                    }
+                    plugin.getLogger().info("Restored " + states.size() + " pending cauldron brew state(s).");
+                }))
                 .exceptionally(error -> {
-                    plugin.getLogger().warning("Brewing cache preload failed: " + error.getMessage());
+                    plugin.getLogger().warning("Brewing state restore failed: " + error.getMessage());
                     return null;
                 });
     }
@@ -68,7 +79,7 @@ public final class CauldronBrewingService {
         for (Map.Entry<BlockKey, CauldronState> entry : List.copyOf(cache.entrySet())) {
             BlockKey key = entry.getKey();
             World world = plugin.getServer().getWorld(key.world());
-            if (world == null) {
+            if (world == null || !world.isChunkLoaded(key.x() >> 4, key.z() >> 4)) {
                 continue;
             }
             Block block = world.getBlockAt(key.x(), key.y(), key.z());
@@ -77,6 +88,26 @@ public final class CauldronBrewingService {
                 continue;
             }
             if (entry.getValue().isStale(nowMillis)) {
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
+                continue;
+            }
+            spawnQueuedParticles(block, entry.getValue().ingredients().size(), false);
+        }
+    }
+
+    public void reconcileLoadedChunk(String worldName, int chunkX, int chunkZ) {
+        World world = plugin.getServer().getWorld(worldName);
+        if (world == null || !world.isChunkLoaded(chunkX, chunkZ)) {
+            return;
+        }
+        long nowMillis = System.currentTimeMillis();
+        for (Map.Entry<BlockKey, CauldronState> entry : List.copyOf(cache.entrySet())) {
+            BlockKey key = entry.getKey();
+            if (!worldName.equals(key.world()) || (key.x() >> 4) != chunkX || (key.z() >> 4) != chunkZ) {
+                continue;
+            }
+            Block block = world.getBlockAt(key.x(), key.y(), key.z());
+            if (!isSupportedCauldron(block) || entry.getValue().isStale(nowMillis)) {
                 handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
                 continue;
             }

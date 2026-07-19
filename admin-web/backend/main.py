@@ -2985,7 +2985,11 @@ def _ensure_v4_schema(conn: Any) -> None:
 
 
 def is_pg_conn(conn: Any) -> bool:
-    return isinstance(conn, PgCompatConnection)
+    # auth_conn() returns a pooled wrapper around the real psycopg connection
+    # in production, not only PgCompatConnection.  Treat both wrappers as
+    # PostgreSQL so SQLite metadata queries never reach the PG driver with
+    # question-mark placeholders.
+    return auth_storage_backend() != "sqlite" and isinstance(conn, (PgCompatConnection, _PooledPgConnection))
 
 
 def pg_table_exists(conn: Any, table: str) -> bool:
@@ -6745,10 +6749,10 @@ def tables(conn: sqlite3.Connection) -> list[str]:
             """
             SELECT table_name AS name
             FROM information_schema.tables
-            WHERE table_schema=? AND table_type IN ('BASE TABLE','VIEW')
+            WHERE table_schema=%s AND table_type IN ('BASE TABLE','VIEW')
             ORDER BY table_name
             """,
-            [POSTGRES_SCHEMA],
+            (POSTGRES_SCHEMA,),
         ).fetchall()
         return [str(r["name"]) for r in rows]
     return [r[0] for r in conn.execute("select name from sqlite_master where type='table' order by name").fetchall()]
@@ -6760,10 +6764,10 @@ def table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
             """
             SELECT column_name AS name
             FROM information_schema.columns
-            WHERE table_schema=? AND table_name=?
+            WHERE table_schema=%s AND table_name=%s
             ORDER BY ordinal_position
             """,
-            [POSTGRES_SCHEMA, table],
+            (POSTGRES_SCHEMA, table),
         ).fetchall()
         return [str(r["name"]) for r in rows]
     return [r[1] for r in conn.execute(f"PRAGMA table_info({quote_ident(table)})").fetchall()]
@@ -6798,9 +6802,9 @@ def sqlite_has_table(conn: sqlite3.Connection, table: str) -> bool:
             """
             SELECT count(*) AS c
             FROM information_schema.tables
-            WHERE table_schema=? AND table_name=? AND table_type IN ('BASE TABLE','VIEW')
+            WHERE table_schema=%s AND table_name=%s AND table_type IN ('BASE TABLE','VIEW')
             """,
-            [POSTGRES_SCHEMA, table],
+            (POSTGRES_SCHEMA, table),
         ).fetchone()
         return bool(row and int(row["c"] or 0) > 0)
     row = conn.execute("select count(*) as c from sqlite_master where type in ('table','view') and name=?", [table]).fetchone()
@@ -6823,7 +6827,7 @@ def safe_sqlite_rows(
         sql += " where " + (pg_compat_sql(where) if is_pg_conn(conn) else where)
     if order:
         sql += " order by " + (pg_compat_sql(order) if is_pg_conn(conn) else order)
-    sql += " limit ?"
+    sql += " limit %s" if is_pg_conn(conn) else " limit ?"
     return rows_to_dicts(conn.execute(sql, (params or []) + [limit]).fetchall())
 
 
@@ -7357,8 +7361,9 @@ def sqlite_table_rows(path: str, table: str, limit: int = 200, offset: int = 0, 
         params: list[Any] = []
         if q:
             parts = []
+            placeholder = "%s" if is_pg_conn(conn) else "?"
             for c in cols:
-                parts.append(f"cast({quote_ident(c)} as text) like ?")
+                parts.append(f"cast({quote_ident(c)} as text) like {placeholder}")
                 params.append(f"%{q}%")
             if parts:
                 where = " where " + " or ".join(parts)
@@ -7377,7 +7382,8 @@ def sqlite_table_rows(path: str, table: str, limit: int = 200, offset: int = 0, 
                 order = " order by rowid desc"
         count_row = conn.execute(f"select count(*) as c from {quote_ident(table)}{where}", params).fetchone()
         count = count_row["c"] if isinstance(count_row, dict) else count_row["c"]
-        rows = rows_to_dicts(conn.execute(f"select {select_expr} from {quote_ident(table)}{where}{order} limit ? offset ?", params + [limit, offset]).fetchall())
+        page_sql = "%s" if is_pg_conn(conn) else "?"
+        rows = rows_to_dicts(conn.execute(f"select {select_expr} from {quote_ident(table)}{where}{order} limit {page_sql} offset {page_sql}", params + [limit, offset]).fetchall())
         public_cols = (["rowid"] if (not pk_cols and not is_pg_conn(conn)) else []) + cols
         return {"table": table, "columns": public_cols, "count": count, "rows": rows}
 
@@ -11066,9 +11072,9 @@ def sqlite_column_meta(conn: sqlite3.Connection, table: str) -> list[dict[str, A
              AND kcu.constraint_name=tc.constraint_name
              AND kcu.table_schema=tc.table_schema
              AND kcu.table_name=tc.table_name
-            WHERE tc.table_schema=? AND tc.table_name=? AND tc.constraint_type='PRIMARY KEY'
+            WHERE tc.table_schema=%s AND tc.table_name=%s AND tc.constraint_type='PRIMARY KEY'
             """,
-            [POSTGRES_SCHEMA, table],
+            (POSTGRES_SCHEMA, table),
         ).fetchall()
         pk = {str(r["name"]) for r in pk_rows}
         rows = conn.execute(
@@ -11076,10 +11082,10 @@ def sqlite_column_meta(conn: sqlite3.Connection, table: str) -> list[dict[str, A
             SELECT ordinal_position AS cid, column_name AS name, data_type AS type,
                    is_nullable AS nullable, column_default AS default
             FROM information_schema.columns
-            WHERE table_schema=? AND table_name=?
+            WHERE table_schema=%s AND table_name=%s
             ORDER BY ordinal_position
             """,
-            [POSTGRES_SCHEMA, table],
+            (POSTGRES_SCHEMA, table),
         ).fetchall()
         cols: list[dict[str, Any]] = []
         for r in rows:

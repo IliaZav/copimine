@@ -1875,10 +1875,10 @@ function buildNavButton([id, label, hint, icon]) {
     makeElement("span", "nav-hint", hint),
   );
   button.append(iconNode, copy);
-  button.addEventListener("click", () => {
-    setTab(id);
-    setMobileNav(false);
-  });
+  // Use the same delegated action path as the rest of the cabinet.  This
+  // keeps dynamically re-rendered nav buttons clickable on mobile as well as
+  // desktop and gives the common error/toast handling a single entry point.
+  button.dataset.click = `setTab('${id}')`;
   return button;
 }
 
@@ -2049,6 +2049,7 @@ async function setTab(tab) {
     if (document.body) document.body.dataset.appRoute = routeTab;
   }
   state.tab = routeTab;
+  setMobileNav(false);
   if (state.tab !== "donation-shop") state.donationFocusItemId = "";
   const meta = metaMap[state.tab];
   $("pageTitle").textContent = meta.title;

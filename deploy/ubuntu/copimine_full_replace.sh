@@ -611,8 +611,20 @@ restart_services() {
     fi
   done
   if systemctl list-unit-files | grep -q '^nginx\.service'; then
+    systemctl stop nginx.service 2>/dev/null || true
+    local elapsed=0
+    while (( elapsed < 30 )); do
+      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+        break
+      fi
+      sleep 1
+      elapsed=$((elapsed + 1))
+    done
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      fail 'nginx port 18080 is still occupied after stop'
+    fi
     systemctl enable nginx >/dev/null 2>&1 || true
-    systemctl restart nginx
+    systemctl start nginx
   fi
 }
 

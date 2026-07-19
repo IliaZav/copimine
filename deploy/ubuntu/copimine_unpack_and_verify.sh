@@ -575,8 +575,25 @@ restart_services() {
     fi
   done
   if systemctl cat nginx.service >/dev/null 2>&1; then
+    # A previous nginx master can outlive the stop request for a short time.
+    # Wait for the listener to disappear before starting the replacement;
+    # otherwise a harmless restart race can roll back the whole release.
+    systemctl stop nginx.service 2>/dev/null || true
+    local elapsed=0
+    while (( elapsed < 30 )); do
+      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+        break
+      fi
+      sleep 1
+      elapsed=$((elapsed + 1))
+    done
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      log 'ERROR: nginx port 18080 is still occupied after stop'
+      ss -ltnp || true
+      return 1
+    fi
     systemctl enable nginx.service >/dev/null 2>&1 || true
-    if ! systemctl restart nginx.service; then
+    if ! systemctl start nginx.service; then
       log 'ERROR: failed to restart nginx'
       systemctl --no-pager --full status nginx.service || true
       journalctl -u nginx.service -n 160 --no-pager || true

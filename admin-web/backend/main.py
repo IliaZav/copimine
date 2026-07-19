@@ -13569,9 +13569,15 @@ def admin_set_ar_balance_sync(player_uuid: str, player_name: str, balance: int, 
             ensure_ascii=False,
         )
         conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s,owner_name=%s WHERE account_id=%s", (after, now, player_name, bank["account_id"]))
+        # The ledger column stores a non-negative magnitude (the table has a
+        # CHECK constraint for that).  The actual direction is kept in the
+        # signed ``delta`` field inside details, while balance_after remains
+        # the authoritative result.  Using abs(delta) lets an admin lower a
+        # balance without triggering a database error.
+        ledger_amount = abs(delta)
         conn.execute(
             "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,'',%s,'ADMIN_AR_SET',%s,%s,%s,'COMMITTED',%s,%s,%s)",
-            (tx_id, bank["account_id"], player_uuid, delta, after, f"admin-ar-set-{safe_key}", now, actor, note),
+            (tx_id, bank["account_id"], player_uuid, ledger_amount, after, f"admin-ar-set-{safe_key}", now, actor, note),
         )
         conn.commit()
     audit_event(actor, "ar.balance.set", target=player_name, details={"uuid": player_uuid, "before": before, "after": after, "delta": delta, "reason": reason})

@@ -17,8 +17,9 @@ DB_DUMP_PATH=""
 WIPE_DB=0
 WIPE_WORLDS=0
 RESET_GAMEPLAY=0
+RESET_TREASURY=0
 
-usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path]\n' "$0" >&2; }
+usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n' "$0" >&2; }
 [[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
 shift
@@ -27,6 +28,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --wipe-worlds) WIPE_WORLDS=1; RESET_GAMEPLAY=1; shift ;;
     --reset-gameplay) RESET_GAMEPLAY=1; shift ;;
+    --reset-treasury) RESET_TREASURY=1; shift ;;
     --db-dump) [[ -n "${2:-}" ]] || { usage; exit 2; }; DB_DUMP_PATH="$2"; shift 2 ;;
     --wipe-db) echo 'Use repair_postgres_credentials.sh --recreate-db for an explicit database wipe.' >&2; exit 3 ;;
     *) usage; exit 2 ;;
@@ -134,6 +136,42 @@ verify_runtime() {
   echo '[verify] server.properties resource-pack requirement and SHA1 OK'
   curl -fsS --max-time 15 http://127.0.0.1:18080/api/runtime >/dev/null
   echo '[verify] HTTP runtime endpoint OK'
+}
+
+reset_treasury() {
+  local env_file="$PROJECT_ROOT/admin-web/.env"
+  [[ -f "$env_file" ]] || { echo "Cannot reset treasury: missing $env_file" >&2; return 1; }
+  local pg_host pg_port pg_db pg_user pg_password before tx_id now
+  pg_host="$(awk -F= '$1=="POSTGRES_HOST" {v=$2} END{print v}' "$env_file" | tr -d '\r"')"
+  pg_port="$(awk -F= '$1=="POSTGRES_PORT" {v=$2} END{print v}' "$env_file" | tr -d '\r"')"
+  pg_db="$(awk -F= '$1=="POSTGRES_DB" {v=$2} END{print v}' "$env_file" | tr -d '\r"')"
+  pg_user="$(awk -F= '$1=="POSTGRES_USER" {v=$2} END{print v}' "$env_file" | tr -d '\r"')"
+  pg_password="$(awk -F= '$1=="POSTGRES_PASSWORD" {v=substr($0,index($0,"=")+1)} END{print v}' "$env_file" | tr -d '\r"')"
+  pg_host="${pg_host:-127.0.0.1}"; pg_port="${pg_port:-5432}"
+  [[ -n "$pg_db" && -n "$pg_user" && -n "$pg_password" ]] || { echo 'Cannot reset treasury: incomplete PostgreSQL settings.' >&2; return 1; }
+  before="$(PGPASSWORD="$pg_password" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -d "$pg_db" -v ON_ERROR_STOP=1 -Atc "SELECT COALESCE(balance,0) FROM copimine.cmv4_bank_accounts WHERE account_id='PRESIDENT_BUDGET' LIMIT 1")"
+  before="${before:-0}"
+  [[ "$before" =~ ^[0-9]+$ ]] || { echo "Cannot reset treasury: invalid current balance '$before'." >&2; return 1; }
+  if [[ "$before" == '0' ]]; then
+    echo '[treasury] already at 0 AR'
+    return 0
+  fi
+  tx_id="release-treasury-reset-$(date +%s)-$RANDOM"
+  now="$(date +%s%3N)"
+  PGPASSWORD="$pg_password" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -d "$pg_db" -v ON_ERROR_STOP=1 \
+    -v tx_id="$tx_id" -v before="$before" -v now="$now" <<'SQL'
+BEGIN;
+UPDATE copimine.cmv4_bank_accounts
+SET balance=0, version=version+1, updated_at=:'now'
+WHERE account_id='PRESIDENT_BUDGET';
+INSERT INTO copimine.cmv4_bank_ledger
+  (tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details)
+VALUES
+  (:'tx_id','PRESIDENT_BUDGET','','','ADMIN_TREASURY_RESET',:'before',0,:'tx_id','COMMITTED',:'now','release-installer',
+   json_build_object('source','release-installer','delta',-(:'before'::bigint),'reason','explicit treasury reset')::text);
+COMMIT;
+SQL
+  echo "[treasury] reset from ${before} AR to 0 AR; audit transaction ${tx_id}"
 }
 
 enable_offline_voicechat() {
@@ -253,4 +291,7 @@ if [[ "$result" -ne 0 ]]; then
 fi
 remove_retired_frontend
 verify_runtime
+if [[ "$RESET_TREASURY" == "1" ]]; then
+  reset_treasury
+fi
 echo "INSTALL COMPLETE. Log: $LOG_FILE"

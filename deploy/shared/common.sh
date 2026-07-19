@@ -2,7 +2,10 @@
 set -euo pipefail
 
 COPIMINE_ROOT="${COPIMINE_ROOT:-/opt/copimine}"
-COPIMINE_APP_USER="${COPIMINE_APP_USER:-copimine}"
+# Keep upgrades on the account that owns the existing runtime.  The previous
+# copimine default could create a second user on qwerty deployments and leave
+# systemd unable to read the protected environment file.
+COPIMINE_APP_USER="${COPIMINE_APP_USER:-qwerty}"
 COPIMINE_APP_GROUP="${COPIMINE_APP_GROUP:-$COPIMINE_APP_USER}"
 COPIMINE_ADMIN_DIR="${COPIMINE_ADMIN_DIR:-$COPIMINE_ROOT/admin-web}"
 COPIMINE_ENV_FILE="${COPIMINE_ENV_FILE:-$COPIMINE_ADMIN_DIR/.env}"
@@ -273,6 +276,55 @@ values["ALLOWED_ORIGINS"] = ",".join(origins)
 target.parent.mkdir(parents=True, exist_ok=True)
 ordered = [f"{key}={values[key]}" for key in sorted(values)]
 target.write_text("\n".join(ordered) + "\n", encoding="utf-8")
+PY
+  chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_ENV_FILE"
+  chmod 600 "$COPIMINE_ENV_FILE"
+}
+
+copimine_normalize_transport_auth() {
+  # Existing installations keep their .env during a release replacement, so
+  # transport flags must also be reconciled when the file already exists.  In
+  # HTTP-only mode this keeps the public cabinet usable; once TLS is enabled
+  # it immediately disables HTTP authentication and marks cookies Secure.
+  [[ -f "$COPIMINE_ENV_FILE" ]] || return 0
+  COPIMINE_ENV_FILE="$COPIMINE_ENV_FILE" python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path(os.environ["COPIMINE_ENV_FILE"])
+lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+values = {}
+for line in lines:
+    if "=" in line and not line.lstrip().startswith("#"):
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+
+tls = values.get("COPIMINE_TLS_ENABLED", "0").strip() == "1"
+updates = {
+    "ALLOW_INSECURE_HTTP_AUTH": "0" if tls else values.get("ALLOW_INSECURE_HTTP_AUTH", "1"),
+    "AUTH_COOKIE_SECURE": "1" if tls else values.get("AUTH_COOKIE_SECURE", "0"),
+}
+if updates["ALLOW_INSECURE_HTTP_AUTH"] not in {"0", "1"}:
+    updates["ALLOW_INSECURE_HTTP_AUTH"] = "0" if tls else "1"
+if updates["AUTH_COOKIE_SECURE"] not in {"0", "1"}:
+    updates["AUTH_COOKIE_SECURE"] = "1" if tls else "0"
+
+out, seen = [], set()
+for line in lines:
+    key = line.split("=", 1)[0].strip() if "=" in line else ""
+    if key in updates:
+        out.append(f"{key}={updates[key]}")
+        seen.add(key)
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f"{key}={value}")
+
+temporary = path.with_name(".env.transport-tmp")
+temporary.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+temporary.chmod(0o600)
+temporary.replace(path)
 PY
   chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_ENV_FILE"
   chmod 600 "$COPIMINE_ENV_FILE"

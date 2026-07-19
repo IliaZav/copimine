@@ -22,7 +22,21 @@ WIPE_WORLDS="${WIPE_WORLDS:-0}"
 WORLD_SEED="${WORLD_SEED:--1861153001556076901}"
 CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
 
-APP_USER="${APP_USER:-copimine}"
+CURRENT_ENV_USER=""
+CURRENT_UNIT_USER=""
+if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
+  CURRENT_ENV_USER="$(stat -c '%U' "$PROJECT_ROOT/admin-web/.env" 2>/dev/null || true)"
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  CURRENT_UNIT_USER="$(systemctl show copimine-admin.service -p User --value 2>/dev/null || true)"
+fi
+# Keep the account already owning the runtime configuration.  Falling back to
+# a new `copimine` account on an existing qwerty deployment makes systemd use a
+# different user and breaks access to the protected .env file.
+APP_USER="${APP_USER:-${COPIMINE_APP_USER:-${CURRENT_ENV_USER:-${CURRENT_UNIT_USER:-${SUDO_USER:-copimine}}}}}"
+if [[ "$APP_USER" == "root" || -z "$APP_USER" ]]; then
+  APP_USER="${CURRENT_UNIT_USER:-${SUDO_USER:-copimine}}"
+fi
 APP_GROUP="${APP_GROUP:-$APP_USER}"
 
 NGINX_TEMPLATE_REL="admin-web/deploy/nginx-copimine-admin-18080.conf"
@@ -371,6 +385,7 @@ bootstrap_runtime_environment() {
     rcon_password="$(copimine_secret rcon-password.txt 32)"
     copimine_write_env "$postgres_password" "$secret_key" "$plugin_api_key" "$rcon_password"
   fi
+  copimine_normalize_transport_auth
   copimine_ensure_postgres "$(copimine_env_value POSTGRES_PASSWORD)"
 }
 

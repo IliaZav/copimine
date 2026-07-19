@@ -4,7 +4,23 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-/opt/copimine}"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt/copimine-backups}"
-APP_USER="${APP_USER:-copimine}"
+# Existing Ubuntu installs run the game and web service as the account that
+# owns the runtime tree (qwerty on the production server).  Defaulting to a
+# new `copimine` account makes systemd fail with 216/GROUP and hides .env from
+# the service.  Prefer an explicit override, then the current .env owner or
+# service user, and use qwerty only for a brand-new production tree.
+CURRENT_ENV_USER=""
+CURRENT_UNIT_USER=""
+if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
+  CURRENT_ENV_USER="$(stat -c '%U' "$PROJECT_ROOT/admin-web/.env" 2>/dev/null || true)"
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  CURRENT_UNIT_USER="$(systemctl show copimine-admin.service -p User --value 2>/dev/null || true)"
+fi
+APP_USER="${APP_USER:-${COPIMINE_APP_USER:-${CURRENT_ENV_USER:-${CURRENT_UNIT_USER:-qwerty}}}}"
+if [[ "$APP_USER" == "root" || -z "$APP_USER" ]]; then
+  APP_USER="${CURRENT_UNIT_USER:-qwerty}"
+fi
 APP_GROUP="${APP_GROUP:-$APP_USER}"
 ARCHIVE_PATH="${1:-}"
 DB_DUMP_PATH="${2:-}"
@@ -451,6 +467,7 @@ bootstrap_runtime_environment() {
     rcon_password="$(copimine_secret rcon-password.txt 32)"
     copimine_write_env "$postgres_password" "$secret_key" "$plugin_api_key" "$rcon_password"
   fi
+  copimine_normalize_transport_auth
   copimine_ensure_postgres "$(copimine_env_value POSTGRES_PASSWORD)"
 }
 

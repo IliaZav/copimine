@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-19T02:25:47.9211523Z",
-    "gitCommit":  "9ac1fb3",
+    "generatedAtUtc":  "2026-07-19T02:50:45.8638395Z",
+    "gitCommit":  "1f60ed7",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,8 +10,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "63c87a53c018ba0a15831f7837e02c7d1cffe780",
-                                      "sha256":  "9fdf46d37e015af1fc363ef5e7662a038ef3740e3d062d1a69e026daada6d370"
+                                      "sha1":  "ea352952155a107d31de14682e237ab4d49bf9e8",
+                                      "sha256":  "3ed71c857b31ecd34bfe1b9d17c5f10837f5c4d13e6dc5d48af86623996a70be"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -31,7 +31,7 @@
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
-                                                        "sha256":  "184bf1e6ff5790ffe3522a2298d2f7aad745530ae8e7500ef59beac8883097c7"
+                                                        "sha256":  "f87f683d36d57fef377c75819e4df8a1afa89fc9e33ba51f5cbc397fd8f47547"
                                                     },
                                    "gameRuntimeHardening":  {
                                                                 "applyScript":  {
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "6ccb0e1e8974d228590cb4b86dd6459c855a68f380f434c2e1850dcbb47a5d35"
+                                             "sha256":  "ca7cc5be1039a0ccbe25dc3629a74a3d4689d952ed86ce45397b9261c40ab088"
                                          }
                  },
     "serverProperties":  {

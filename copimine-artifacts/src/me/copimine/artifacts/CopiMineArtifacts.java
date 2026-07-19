@@ -1742,6 +1742,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.debugGui = this.getConfig().getBoolean("debug_gui", false);
                this.loadCatalogFromConfig();
                this.syncCatalogToPostgres();
+               this.loadShopsFromPostgres();
+               this.repairShopTitleDisplays();
                var1.sendMessage("CopiMineArtifacts catalog reloaded.");
             } catch (Exception error) {
                this.getLogger().log(Level.WARNING, "Artifacts console reload failed", error);
@@ -1793,6 +1795,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                try {
                   this.syncCatalogToPostgres();
+                  this.loadShopsFromPostgres();
+                  this.repairShopTitleDisplays();
                   var5.sendMessage(this.color("&aCopiMineArtifacts catalog reloaded."));
                } catch (SQLException var7) {
                   this.getLogger().log(Level.WARNING, "Artifacts reload failed", (Throwable)var7);
@@ -2009,6 +2013,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          } else {
             var1.sendMessage(this.color("&e/cmartifacts shop create <shop_id>"));
             var1.sendMessage(this.color("&e/cmartifacts shop remove"));
+            var1.sendMessage(this.color("&e/cmartifacts shop rename <shop_id> <название>"));
             var1.sendMessage(this.color("&e/cmartifacts shop list"));
             var1.sendMessage(this.color("&e/cmartifacts shop open <shop_id>"));
             return true;
@@ -2152,6 +2157,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                }
             }
          }
+      } else if ("rename".equalsIgnoreCase(var2[0])) {
+         if (!this.hasSeniorShopPermission(var1)) {
+            this.noPermission(var1);
+            return true;
+         }
+         if (var2.length < 3) {
+            var1.sendMessage(this.color("&cИспользование: /cmartifacts shop rename <код> <новое название>"));
+            return true;
+         }
+         String shopId = var2[1].trim();
+         String title = String.join(" ", Arrays.copyOfRange(var2, 2, var2.length)).trim();
+         if (!shopId.matches("[A-Za-z0-9_-]{1,64}") || title.isBlank() || title.length() > 64) {
+            var1.sendMessage(this.color("&cКод лавки или название некорректны: название 1–64 символа."));
+            return true;
+         }
+         CopiMineArtifacts.Shop current = this.shopsByLocation.values().stream()
+            .filter(value -> value.shopId().equalsIgnoreCase(shopId))
+            .findFirst().orElse(null);
+         if (current == null) {
+            var1.sendMessage(this.color("&cЛавка не найдена: &f" + shopId));
+            return true;
+         }
+         CopiMineArtifacts.Shop renamed = new CopiMineArtifacts.Shop(current.shopId(), title, current.world(), current.x(), current.y(), current.z(), current.enabled());
+         this.runAsync(() -> {
+            try {
+               this.updateShopTitle(renamed);
+               this.shopsByLocation.put(renamed.locationKey(), renamed);
+               this.audit(var1.getName(), "shop_rename", renamed.shopId(), title);
+               this.runSync(() -> {
+                  Location location = this.shopLocation(renamed);
+                  if (location != null) {
+                     this.spawnShopTitleDisplay(location, renamed.shopId(), renamed.title());
+                  }
+                  var1.sendMessage(this.color("&aНазвание лавки изменено: &f" + renamed.title()));
+               });
+            } catch (SQLException error) {
+               this.getLogger().log(Level.WARNING, "Artifact shop rename failed", error);
+               this.runSync(() -> var1.sendMessage(this.color("&cНе удалось переименовать лавку. Код: ARTIFACT_SHOP_RENAME_FAILED")));
+            }
+         });
+         return true;
       } else if ("list".equalsIgnoreCase(var2[0])) {
          if (!this.hasArtifactPermission(var1, "copimine.artifacts.shop.list")) {
             this.noPermission(var1);
@@ -2436,14 +2482,35 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private String nextGeneratedShopId() {
-      for (int attempt = 0; attempt < 32; ++attempt) {
-         String candidate = "shop-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-         boolean exists = this.shopsByLocation.values().stream().anyMatch(shop -> shop.shopId().equalsIgnoreCase(candidate));
-         if (!exists) {
-            return candidate;
+      // Keep the visible/database identifier short and readable.  The
+      // database check below is still required because two admins can click
+      // the button concurrently while this in-memory map has not updated.
+      final String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+      for (int attempt = 0; attempt < 64; ++attempt) {
+         StringBuilder value = new StringBuilder(5);
+         for (int index = 0; index < 5; ++index) {
+            value.append(alphabet.charAt(this.random.nextInt(alphabet.length())));
          }
+         String candidate = value.toString();
+         boolean exists = this.shopsByLocation.values().stream().anyMatch(shop -> shop.shopId().equalsIgnoreCase(candidate));
+         if (!exists) return candidate;
       }
-      return "shop-" + UUID.randomUUID().toString().replace("-", "");
+      return UUID.randomUUID().toString().replace("-", "").substring(0, 5).toUpperCase(Locale.ROOT);
+   }
+
+   private boolean shopIdExistsInDatabase(String shopId) throws SQLException {
+      Connection connection = null;
+      try {
+         connection = this.pgPool.acquire();
+         try (PreparedStatement statement = connection.prepareStatement("SELECT 1 FROM artifact_shops WHERE lower(shop_id)=lower(?) LIMIT 1")) {
+            statement.setString(1, shopId);
+            try (ResultSet result = statement.executeQuery()) {
+               return result.next();
+            }
+         }
+      } finally {
+         if (connection != null) this.pgPool.release(connection);
+      }
    }
 
    private Location shopLocation(CopiMineArtifacts.Shop shop) {
@@ -2459,10 +2526,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       Block target = player.getTargetBlockExact(6);
       if (target == null || target.getType().isAir()) { player.sendMessage(this.color("&cСмотрите на существующий блок в пределах 6 блоков.")); return; }
       if (this.shopsByLocation.containsKey(this.blockKey(target.getLocation()))) { player.sendMessage(this.color("&cНа этом блоке уже есть лавка.")); return; }
-      String generatedId = this.nextGeneratedShopId();
-      CopiMineArtifacts.Shop shop = new CopiMineArtifacts.Shop(generatedId, "Лавка " + generatedId.substring(generatedId.length() - 4), target.getWorld().getName(), target.getX(), target.getY(), target.getZ(), true);
       this.runAsync(() -> {
-         try { this.saveShop(shop); this.shopsByLocation.put(shop.locationKey(), shop); this.audit(player.getName(), "shop_create", shop.shopId(), shop.locationKey());
+         try {
+            String generatedId = this.nextGeneratedShopId();
+            if (this.shopIdExistsInDatabase(generatedId)) {
+               generatedId = this.nextGeneratedShopId();
+               if (this.shopIdExistsInDatabase(generatedId)) throw new SQLException("Generated shop name already exists");
+            }
+            CopiMineArtifacts.Shop shop = new CopiMineArtifacts.Shop(generatedId, "Лавка " + generatedId, target.getWorld().getName(), target.getX(), target.getY(), target.getZ(), true);
+            this.saveShop(shop);
+            this.shopsByLocation.put(shop.locationKey(), shop);
+            this.audit(player.getName(), "shop_create", shop.shopId(), shop.locationKey());
             this.runSync(() -> { try { this.spawnOrReplaceProtectedBlockVisual(target.getLocation(), "ARTIFACT_SHOP", shop.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker"); this.spawnShopTitleDisplay(target.getLocation(), shop.shopId(), shop.title()); } catch (Exception ignored) {} if (player.isOnline()) player.sendMessage(this.color("&aЛавка создана.")); });
          } catch (SQLException error) { this.getLogger().log(Level.WARNING, "Admin shop create failed", error); this.runSync(() -> { if (player.isOnline()) player.sendMessage(this.color("&cНе удалось создать лавку.")); }); }
       });
@@ -8899,6 +8973,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                });
             }
          });
+      }
+   }
+
+   private void updateShopTitle(CopiMineArtifacts.Shop shop) throws SQLException {
+      Connection connection = this.pgPool.acquire();
+      try (PreparedStatement statement = connection.prepareStatement("UPDATE artifact_shops SET title=?,updated_at=? WHERE shop_id=?")) {
+         statement.setString(1, shop.title());
+         statement.setLong(2, this.now());
+         statement.setString(3, shop.shopId());
+         if (statement.executeUpdate() != 1) {
+            throw new SQLException("Shop not found: " + shop.shopId());
+         }
+      } finally {
+         this.pgPool.release(connection);
       }
    }
 

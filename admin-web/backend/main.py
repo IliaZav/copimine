@@ -649,6 +649,17 @@ class AdminDonationBalanceIn(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class AdminBalanceTopupIn(BaseModel):
+    """One confirmed operation for the two independent player balances."""
+    minecraft_uuid: str = Field(default="", max_length=64)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    ar_amount: int = Field(default=0, ge=0, le=1000000000)
+    donation_amount: int = Field(default=0, ge=0, le=1000000000)
+    ar_reason: str = Field(default="admin-ar-topup", min_length=2, max_length=160)
+    donation_reason: str = Field(default="admin-topup", min_length=2, max_length=160)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
 class AdminArBalanceSetIn(BaseModel):
     minecraft_uuid: str = Field(default="", max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
@@ -1210,12 +1221,25 @@ _copimine_fastapi_routing.serialize_response = _copimine_serialize_response_safe
 class FrontendStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: Mapping[str, Any]) -> Response:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
+            # The cabinet is a module graph (HTML -> app -> bootstrap ->
+            # runtime).  A long-lived browser cache can otherwise mix a new
+            # shell with an old handler bundle and make buttons appear dead.
+            # Static assets are small and correctness matters more than a
+            # stale-cache hit for this control panel.
+            suffix = Path(path).suffix.lower()
+            if suffix in {".html", ".js", ".css"}:
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+            return response
         except StarletteHTTPException as exc:
             if exc.status_code == 404:
                 fallback = FRONTEND_DIR / "404.html"
                 if fallback.exists():
-                    return FileResponse(fallback, status_code=404)
+                    response = FileResponse(fallback, status_code=404)
+                    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                    return response
             raise
 
 
@@ -5309,6 +5333,41 @@ def admin_set_treasury_pin_sync(actor: str, data: PlayerPinSetIn) -> dict[str, A
         )
         conn.commit()
     return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "pin": new_pin}
+
+
+def admin_reset_treasury_sync(actor: str) -> dict[str, Any]:
+    """Set the treasury account to zero without creating revenue.
+
+    This is an explicit administrative reset, not a top-up: the ledger keeps
+    the signed delta in details for audit, while the treasury is still funded
+    only by real AR shop purchases and other already-approved revenue flows.
+    """
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        treasury = ensure_treasury_bank_account(conn)
+        locked = conn.execute(
+            "SELECT balance,version FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone()
+        before = int(row_get(locked, "balance", treasury.get("balance", 0)) or 0)
+        if before == 0:
+            conn.commit()
+            return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "balanceBefore": 0, "balanceAfter": 0, "changed": False}
+        tx_id = f"admin-treasury-reset-{secrets.token_hex(12)}"
+        details = json.dumps({"source": "admin-web", "delta": -before, "reason": "explicit treasury reset"}, ensure_ascii=False)
+        conn.execute(
+            "UPDATE cmv4_bank_accounts SET balance=0,version=version+1,updated_at=%s WHERE account_id=%s",
+            (now, TREASURY_ACCOUNT_ID),
+        )
+        conn.execute(
+            "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,'','',%s,%s,%s,%s,'COMMITTED',%s,%s,%s)",
+            (tx_id, TREASURY_ACCOUNT_ID, "ADMIN_TREASURY_RESET", before, 0, tx_id, now, actor, details),
+        )
+        conn.commit()
+    audit_event(actor, "treasury.reset", target=TREASURY_ACCOUNT_ID, details={"before": before, "after": 0, "txId": tx_id})
+    append_panel_event("economy", "treasury_reset", actor=actor, target=TREASURY_ACCOUNT_ID, metadata={"before": before, "after": 0}, tags=["economy", "treasury", "admin"])
+    return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "balanceBefore": before, "balanceAfter": 0, "changed": True, "txId": tx_id}
 
 
 def public_treasury_overview_sync(limit: int = 30) -> dict[str, Any]:
@@ -9560,8 +9619,7 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
     registration_ip = get_client_ip(request)
     account_id = secrets.token_hex(16)
     now = now_ts()
-    auto_whitelist = False
-    known_minecraft_identity = False
+    whitelist_state = "NOT_REQUESTED"
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         if player_account_by_username(conn, username):
@@ -9587,24 +9645,18 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
             (username, "", now, "site registration entered staged auth flow"),
         )
         if minecraft_name:
-            known_minecraft_identity = minecraft_identity_seen_on_server(minecraft_name, minecraft_uuid) or minecraft_identity_is_bound_to_site(
-                conn, minecraft_uuid, minecraft_name
+            # Registration only creates a pending request.  Whitelist access
+            # is granted by the explicit admin approval flow, never by a
+            # public registration request.
+            whitelist_state = "PENDING"
+            conn.execute(
+                """
+                INSERT INTO whitelist_requests(id,site_account_id,minecraft_uuid,minecraft_name,request_ip,status,created_at,updated_at)
+                VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)
+                """,
+                (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now),
             )
-            if not known_minecraft_identity:
-                # A new registration may receive whitelist access immediately,
-                # but this must never claim an existing Minecraft identity or
-                # create a bank/account ownership link.
-                add_player_to_whitelist_sync(minecraft_uuid, minecraft_name)
-                auto_whitelist = True
-                conn.execute(
-                    """
-                    INSERT INTO whitelist_requests(id,site_account_id,minecraft_uuid,minecraft_name,request_ip,status,created_at,updated_at,approved_at,approved_by,note)
-                    VALUES(%s,%s,%s,%s,%s,'AUTO_APPROVED',%s,%s,%s,'automatic-registration','Automatic whitelist only')
-                    """,
-                    (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now, now),
-                )
         conn.commit()
-    whitelist_state = "AUTO_APPROVED" if auto_whitelist else ("NOT_REQUESTED" if not minecraft_name else "LINK_REQUIRED")
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
     account_payload = {
         "id": account_id,
@@ -10531,6 +10583,13 @@ async def admin_treasury_pin(data: PlayerPinSetIn, request: Request, username: s
     audit_event(username, "treasury.pin.set", target=TREASURY_ACCOUNT_ID, details={"accountId": result.get("accountId")})
     append_panel_event("donation", "treasury_pin_set", actor=username, target=TREASURY_ACCOUNT_ID, tags=["economy", "treasury", "security"])
     return result
+
+
+@app.post("/api/admin/economy/treasury/reset")
+async def admin_treasury_reset(request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "TREASURY_RESET")
+    check_rate_limit(request, "admin-treasury-reset", limit=2, window_seconds=60)
+    return await bg(admin_reset_treasury_sync, username)
 
 
 @app.get("/api/treasury/public")
@@ -12498,6 +12557,7 @@ def read_donation_balance_sync(player_uuid: str, player_name: str = "") -> dict[
             (player_uuid, player_name or "", now, now),
         )
         row = conn.execute("SELECT player_uuid,player_name,balance,created_at,updated_at FROM donation_accounts WHERE player_uuid=%s", (player_uuid,)).fetchone()
+        conn.commit()
         return normalize_donation_row_timestamps(
             dict(row or {"player_uuid": player_uuid, "player_name": player_name, "balance": 0, "created_at": now, "updated_at": now}),
             "created_at",
@@ -12871,6 +12931,10 @@ def create_donation_session_sync(player_uuid: str, player_name: str, amount: int
                 "cancelled_at": 0,
                 "updated_at": now,
             }
+        # Persist the session before calling an external payment provider.
+        # Otherwise the provider callback can arrive before PostgreSQL sees
+        # the session and the UI reports a payment that cannot be found.
+        conn.commit()
     session_id = str(session.get("id") or "")
     if str(session.get("provider") or "").upper() == "YOOKASSA" and not str(session.get("provider_payment_id") or ""):
         try:
@@ -12887,6 +12951,7 @@ def create_donation_session_sync(player_uuid: str, player_name: str, amount: int
                     "UPDATE donation_payment_sessions SET callback_payload_json=%s,updated_at=%s WHERE id=%s AND provider='YOOKASSA'",
                     (json.dumps({"provider": "YOOKASSA", "error": error.code}, ensure_ascii=False), donation_now_ms(), session_id),
                 )
+                conn.commit()
             raise yookassa_http_error(error) from error
         with auth_conn() as conn:
             row = conn.execute("SELECT * FROM donation_payment_sessions WHERE id=%s FOR UPDATE", (session_id,)).fetchone()
@@ -12914,6 +12979,7 @@ def create_donation_session_sync(player_uuid: str, player_name: str, amount: int
                 "status": "PENDING",
                 "updated_at": update_now,
             })
+            conn.commit()
         if payment.paid and payment.status == "succeeded":
             return mark_donation_session_paid_sync(
                 session_id,
@@ -12970,6 +13036,7 @@ def mark_donation_session_paid_sync(
             raise HTTPException(status_code=409, detail="Провайдер не совпадает с платёжной сессией")
         if donation_session_is_expired(data, now) and not verified_provider_payment_id:
             conn.execute("UPDATE donation_payment_sessions SET status='EXPIRED',updated_at=%s WHERE id=%s AND status IN ('CREATED','PENDING')", (now, session_id))
+            conn.commit()
             raise HTTPException(status_code=409, detail="Сессия уже истекла")
         if status == "CANCELLED":
             raise HTTPException(status_code=409, detail="Сессия уже отменена")
@@ -12992,6 +13059,7 @@ def mark_donation_session_paid_sync(
                 audit_event(actor, "donation.session.manual_review", target=player_name or player_uuid, details={"sessionId": session_id, "reason": "paid_without_ledger", "note": note})
                 raise HTTPException(status_code=409, detail="Сессия уже помечена как оплаченная, но ledger-запись отсутствует. Нужна ручная проверка.")
             after = int(ledger["balance_after"] or before)
+            conn.commit()
             return {"ok": True, "sessionId": session_id, "amount": amount, "balanceAfter": after, "status": "PAID", "paidAt": paid_at}
         if ledger:
             after = int(ledger["balance_after"] or before)
@@ -13012,6 +13080,7 @@ def mark_donation_session_paid_sync(
                 "UPDATE donation_payment_sessions SET status='PAID',paid_at=%s,callback_payload_json=%s,updated_at=%s WHERE id=%s",
                 (now, callback, now, session_id),
             )
+        conn.commit()
     audit_event(actor, "donation.session.mark_paid", target=player_name or player_uuid, details={"sessionId": session_id, "amount": amount, "note": note})
     append_panel_event("donation", "session_paid", actor=actor, target=player_name or player_uuid, metadata={"sessionId": session_id, "amount": amount}, tags=["donation", "payment"])
     return {"ok": True, "sessionId": session_id, "amount": amount, "balanceAfter": after, "status": "PAID", "paidAt": now if status != "PAID" else paid_at}
@@ -13047,6 +13116,7 @@ def confirm_yookassa_payment_sync(payment_id: str, webhook_event: str) -> dict[s
                 verified.payment_id,
             ),
         )
+        conn.commit()
     return mark_donation_session_paid_sync(
         session_id,
         "yookassa:webhook",
@@ -13070,6 +13140,7 @@ def cancel_donation_session_sync(session_id: str, actor: str, note: str = "") ->
         status = str(data.get("status") or "").upper()
         if donation_session_is_expired(data, now):
             conn.execute("UPDATE donation_payment_sessions SET status='EXPIRED',updated_at=%s WHERE id=%s AND status IN ('CREATED','PENDING')", (now, session_id))
+            conn.commit()
             raise HTTPException(status_code=409, detail="Сессия уже истекла")
         if status == "PAID":
             raise HTTPException(status_code=409, detail="Оплаченную сессию нельзя отменить")
@@ -13077,6 +13148,7 @@ def cancel_donation_session_sync(session_id: str, actor: str, note: str = "") ->
             raise HTTPException(status_code=409, detail="Сессию ЮKassa отменяй в личном кабинете провайдера")
         if status != "CANCELLED":
             conn.execute("UPDATE donation_payment_sessions SET status='CANCELLED',cancelled_at=%s,updated_at=%s WHERE id=%s", (now, now, session_id))
+        conn.commit()
     audit_event(actor, "donation.session.cancel", target=str(data.get("player_name") or data.get("player_uuid") or ""), details={"sessionId": session_id, "note": note})
     append_panel_event("donation", "session_cancel", actor=actor, target=str(data.get("player_name") or data.get("player_uuid") or ""), metadata={"sessionId": session_id}, tags=["donation", "payment"])
     return {"ok": True, "sessionId": session_id, "status": "CANCELLED"}
@@ -13157,6 +13229,10 @@ def purchase_donation_item_sync(player_uuid: str, player_name: str, item_id: str
             """,
             (claim_id, player_uuid, item["item_id"], now, now, purchase_id, actor),
         )
+        # Commit the debit, purchase and pending claim before returning.  A
+        # pooled connection otherwise rolls the transaction back and the
+        # player sees no durable donation item.
+        conn.commit()
     audit_event(actor, "donation.purchase.create", target=player_name or player_uuid, details={"purchaseId": purchase_id, "claimId": claim_id, "itemId": item["item_id"], "price": price})
     append_panel_event("donation", "purchase_create", actor=actor, target=player_name or player_uuid, metadata={"purchaseId": purchase_id, "claimId": claim_id, "itemId": item["item_id"], "price": price}, tags=["donation", "purchase"])
     return {
@@ -13674,6 +13750,77 @@ def admin_add_ar_balance_sync(player_uuid: str, player_name: str, amount: int, r
     return {"ok": True, "txId": tx_id, "balanceBefore": before, "balanceAfter": after}
 
 
+def admin_topup_balances_sync(
+    player_uuid: str,
+    player_name: str,
+    ar_amount: int,
+    donation_amount: int,
+    ar_reason: str,
+    donation_reason: str,
+    actor: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    """Atomically add AR and donation in one confirmed database transaction."""
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    safe_ar = int(ar_amount or 0)
+    safe_donation = int(donation_amount or 0)
+    if safe_ar <= 0 and safe_donation <= 0:
+        raise HTTPException(status_code=400, detail="Укажи сумму AR или donation")
+    if safe_ar > 1_000_000_000 or safe_donation > 1_000_000_000:
+        raise HTTPException(status_code=400, detail="Каждая сумма не может быть больше 1 000 000 000")
+    player_uuid, player_name = normalize_donation_player_target(player_uuid, player_name)
+    safe_key = str(idempotency_key or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,120}", safe_key):
+        raise HTTPException(status_code=400, detail="Некорректный ключ операции")
+    now = donation_now_ms()
+    result: dict[str, Any] = {"ok": True, "playerUuid": player_uuid, "playerName": player_name, "idempotent": False}
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        advisory_lock(conn, f"admin-balance-topup:{safe_key}")
+        existing_ar = conn.execute("SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=%s LIMIT 1", (f"admin-ar-combined-{safe_key}",)).fetchone()
+        existing_donation = conn.execute("SELECT id,balance_after FROM donation_balance_ledger WHERE idempotency_key=%s LIMIT 1", (f"don-combined-{safe_key}",)).fetchone()
+        if existing_ar or existing_donation:
+            if (safe_ar > 0 and not existing_ar) or (safe_donation > 0 and not existing_donation):
+                raise HTTPException(status_code=409, detail="Ключ операции уже использован неполным пополнением")
+            result.update({"idempotent": True})
+            if existing_ar:
+                result.update({"arTxId": str(existing_ar["tx_id"]), "arBalanceAfter": int(existing_ar["balance_after"] or 0)})
+            if existing_donation:
+                result.update({"donationLedgerId": str(existing_donation["id"]), "donationBalanceAfter": int(existing_donation["balance_after"] or 0)})
+            return result
+        ar_bank = None
+        if safe_ar > 0:
+            ar_bank = ensure_player_bank_account(conn, player_uuid, player_name)
+            locked = conn.execute("SELECT * FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE", (ar_bank["account_id"],)).fetchone()
+            before = int(row_get(locked, "balance", 0) or 0)
+            after = before + safe_ar
+            tx_id = f"admin-ar-combined-{secrets.token_hex(12)}"
+            note = json.dumps({"reason": sanitize_public_plain_text(ar_reason, 160), "source": "admin-web", "combinedKey": safe_key}, ensure_ascii=False)
+            conn.execute("UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s,owner_name=%s WHERE account_id=%s", (after, now, player_name, ar_bank["account_id"]))
+            conn.execute(
+                "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(%s,%s,'',%s,'ADMIN_AR_TOPUP',%s,%s,%s,'COMMITTED',%s,%s,%s)",
+                (tx_id, ar_bank["account_id"], player_uuid, safe_ar, after, f"admin-ar-combined-{safe_key}", now, actor, note),
+            )
+            result.update({"arBalanceBefore": before, "arBalanceAfter": after, "arTxId": tx_id})
+        if safe_donation > 0:
+            ensure_donation_account_row(conn, player_uuid, player_name)
+            row = conn.execute("SELECT COALESCE(balance,0) AS balance FROM donation_accounts WHERE player_uuid=%s FOR UPDATE", (player_uuid,)).fetchone()
+            before = int(row_get(row, "balance", 0) or 0)
+            after = before + safe_donation
+            ledger_id = f"web-don-combined-{secrets.token_hex(8)}"
+            conn.execute("UPDATE donation_accounts SET balance=%s,updated_at=%s,player_name=%s WHERE player_uuid=%s", (after, now, player_name, player_uuid))
+            conn.execute(
+                "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (ledger_id, player_uuid, safe_donation, after, donation_reason, actor, "admin-web", f"don-combined-{safe_key}", now),
+            )
+            result.update({"donationBalanceBefore": before, "donationBalanceAfter": after, "donationLedgerId": ledger_id})
+        conn.commit()
+    audit_event(actor, "balances.topup.combined", target=player_name, details={"uuid": player_uuid, "ar": safe_ar, "donation": safe_donation, "idempotency_key": safe_key})
+    append_panel_event("economy", "balances_topup_combined", actor=actor, target=player_name, metadata={"ar": safe_ar, "donation": safe_donation}, tags=["economy", "ar", "donation"])
+    return result
+
+
 def admin_set_ar_balance_sync(player_uuid: str, player_name: str, balance: int, reason: str, actor: str, idempotency_key: str) -> dict[str, Any]:
     if not pg_ready():
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
@@ -13788,6 +13935,7 @@ def admin_create_artifact_gift_sync(
                 "INSERT INTO donation_item_claims(id,player_uuid,item_id,amount,status,claimed_at,created_at,updated_at,purchase_id,actor) VALUES(%s,%s,%s,1,'UNCLAIMED',0,%s,%s,%s,%s)",
                 (claim_id, player_uuid, safe_item_id, now, now, purchase_id, actor),
             )
+            conn.commit()
         result = {
             "ok": True,
             "category": safe_category,
@@ -13839,6 +13987,7 @@ def admin_create_artifact_gift_sync(
                 "INSERT INTO artifact_pending_deliveries(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s)",
                 (delivery_id, purchase_id, unique_item_id, player_uuid, safe_item_id, now, now),
             )
+            conn.commit()
         result = {
             "ok": True,
             "category": safe_category,
@@ -13884,6 +14033,10 @@ def admin_create_donation_test_purchase_sync(player_uuid: str, player_name: str,
             """,
             (claim_id, player_uuid, item["item_id"], 1, now, now, purchase_id, actor),
         )
+        # Test purchases are real pending deliveries. Persist both rows
+        # before returning so the next refresh and in-game bridge can see
+        # them instead of losing the transaction on pool release.
+        conn.commit()
     return {
         "ok": True,
         "purchaseId": purchase_id,
@@ -13918,6 +14071,56 @@ def read_artifact_rows(table: str, limit: int = 100, player_uuid: str = "") -> l
     with auth_conn() as conn:
         rows = conn.execute(sql, tuple(args + [max(1, min(limit, 500))])).fetchall()
         return [dict(r) for r in rows]
+
+
+def read_artifact_shops_stats_sync(limit: int = 200) -> list[dict[str, Any]]:
+    if not pg_ready():
+        return []
+    safe_limit = max(1, min(int(limit or 200), 500))
+    with auth_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.*,
+                   COUNT(p.purchase_id) FILTER (WHERE p.status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')) AS purchase_count,
+                   COALESCE(SUM(p.price_ar) FILTER (WHERE p.status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY') AND p.bank_tx_id <> 'ADMIN_GIFT'),0) AS ar_turnover,
+                   MAX(p.created_at) AS last_purchase_at
+            FROM artifact_shops s
+            LEFT JOIN artifact_purchases p ON p.shop_id=s.shop_id
+            GROUP BY s.shop_id
+            ORDER BY s.world_name ASC,s.block_x ASC,s.block_y ASC,s.block_z ASC
+            LIMIT %s
+            """,
+            (safe_limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def rename_artifact_shop_sync(shop_id: str, title: str, actor: str) -> dict[str, Any]:
+    normalized_id = str(shop_id or "").strip()
+    normalized_title = sanitize_public_plain_text(title, 64).strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", normalized_id):
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор лавки")
+    if not normalized_title:
+        raise HTTPException(status_code=400, detail="Название лавки не может быть пустым")
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        current = conn.execute("SELECT title FROM artifact_shops WHERE shop_id=%s FOR UPDATE", (normalized_id,)).fetchone()
+        if not current:
+            raise HTTPException(status_code=404, detail="Лавка не найдена")
+        old_title = str(row_get(current, "title", "") or "")
+        conn.execute("UPDATE artifact_shops SET title=%s,updated_at=%s WHERE shop_id=%s", (normalized_title, now, normalized_id))
+        conn.commit()
+    reload_result: dict[str, Any] = {"reloaded": False, "manual": True, "message": "Название сохранено; плагин нужно перезагрузить."}
+    if RCON_PASSWORD:
+        try:
+            response = str(rcon_quick("cmartifacts reload") or "").strip()
+            reload_result = {"reloaded": True, "manual": False, "response": response[:240], "message": "Название сохранено и загружено в игре."}
+        except Exception as exc:
+            reload_result["message"] = f"Название сохранено, но плагин не перезагружен: {str(exc)[:160]}"
+    audit_event(actor, "shop.title.update", target=normalized_id, details={"before": old_title, "after": normalized_title})
+    append_panel_event("shops", "block_renamed", actor=actor, target=normalized_id, metadata={"before": old_title, "after": normalized_title}, tags=["shop", "block"])
+    return {"ok": True, "shopId": normalized_id, "oldTitle": old_title, "title": normalized_title, "reload": reload_result}
 
 
 def public_artifact_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -13963,8 +14166,15 @@ async def artifacts_catalog(_: str = Depends(require_admin), limit: int = 200) -
 
 @app.get("/api/artifacts/shops")
 async def artifacts_shops(_: str = Depends(require_admin), limit: int = 200) -> dict[str, Any]:
-    rows = await bg(read_artifact_rows, "artifact_shops", limit, "")
+    rows = await bg(read_artifact_shops_stats_sync, limit)
     return {"shops": rows, "count": len(rows), "source": "postgresql", "table": "artifact_shops"}
+
+
+@app.post("/api/admin/artifacts/shops/{shop_id}/rename")
+async def admin_artifact_shop_rename(shop_id: str, data: dict[str, Any], request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "SHOP_RENAME")
+    check_rate_limit(request, "admin-shop-rename", limit=20, window_seconds=60)
+    return await bg(rename_artifact_shop_sync, shop_id, str(data.get("title") or ""), username)
 
 
 @app.get("/api/artifacts/purchases")
@@ -14259,6 +14469,23 @@ async def admin_ar_add_balance(data: AdminArBalanceIn, request: Request, usernam
     result = await bg(admin_add_ar_balance_sync, data.minecraft_uuid, data.minecraft_name, data.amount, data.reason, username, data.idempotency_key)
     append_panel_event("economy", "ar_balance_add", actor=username, target=data.minecraft_name, metadata={"amount": data.amount, "reason": data.reason}, tags=["economy", "admin"])
     return result
+
+
+@app.post("/api/admin/economy/balances/topup")
+async def admin_balances_topup(data: AdminBalanceTopupIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "CONFIRM")
+    check_rate_limit(request, "admin-balances-topup", limit=10, window_seconds=60)
+    return await bg(
+        admin_topup_balances_sync,
+        data.minecraft_uuid,
+        data.minecraft_name,
+        data.ar_amount,
+        data.donation_amount,
+        data.ar_reason,
+        data.donation_reason,
+        username,
+        data.idempotency_key,
+    )
 
 
 @app.post("/api/admin/economy/ar/set-balance")

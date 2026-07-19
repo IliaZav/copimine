@@ -57,6 +57,7 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Listener, CommandExecutor, TabCompleter, PluginMessageListener {
+    private static final String RELEASE_VERSION = "9.2.0-postgres-v4-balance-credit";
     private String dbPath;
     private String dbLabel = "postgresql://127.0.0.1:5432/copimine?schema=copimine";
     private PgSettings pgSettings;
@@ -672,7 +673,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 if(eligible&&!placed) arEligibleBreaks.add(key);
                 arEvent(eligible&&!placed?"MINE_AR_BLOCK":"AR_CERTIFICATION_BLOCKED", e.getPlayer(), null, m.name(), 1, e.getBlock().getLocation(), eligible&&!placed?"AR_CERTIFICATION_GATE_V3: natural silk-touch ore":"AR_CERTIFICATION_GATE_V3: blocked creative/spectator/no-silk/placed");
                 Block b=e.getBlock();
-                Bukkit.getScheduler().runTaskLater(this, () -> { try { arEligibleBreaks.remove(blockKey(b)); deleteArPlacedBlock(b); } catch(Exception ex){ getLogger().warning("ar placed cleanup: "+ex); } }, 1L);
+                // BlockDropItemEvent is emitted after BlockBreakEvent on the
+                // server thread, but other plugins may defer it by a tick.
+                // Keep the eligibility marker long enough for that event and
+                // remove it afterwards so a later unrelated break cannot
+                // inherit the certification flag.
+                Bukkit.getScheduler().runTaskLater(this, () -> { try { arEligibleBreaks.remove(blockKey(b)); deleteArPlacedBlock(b); } catch(Exception ex){ getLogger().warning("ar placed cleanup: "+ex); } }, 40L);
             } catch(Exception ex){ getLogger().warning("ar mine: "+ex); }
         }
     }
@@ -919,6 +925,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&7Профили, инвентари, проверки,",
                 "&7массовые действия и приколы.",
                 "&7Инструменты для модерации игроков."),"open:players");
+        btn(m,22,Material.EMERALD,"&a&lЛавки",List.of(
+                "&7AR- и donation-каталог, цены и выдача.",
+                "&7Создание по блоку под курсором,",
+                "&7статистика и отложенные выдачи."),"open:shops");
         p.openInventory(m.inv);
     }
 

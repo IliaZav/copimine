@@ -3,7 +3,7 @@ import { buildCsvContent } from "./shared/csv.js";
 import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260719r9";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260719r10";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "./player/account-pages.js";
@@ -136,6 +136,8 @@ const state = {
   publicStatus: null,
   publicConfig: null,
   modalResolver: null,
+  pendingDangerConfirm: false,
+  legacyRuntimePromise: null,
   donationSessionId: initialRouteState.params.get("session") || getStoredUiState("copimineDonationSessionId", "") || "",
   donationFocusItemId: String(initialRouteState.params.get("item") || "").trim().toLowerCase(),
   donationBusy: false,
@@ -756,9 +758,34 @@ function wireDataClickDelegation() {
       console.warn("Unknown data-click handler", parsed.fn);
       return;
     }
-    handler(...parsed.args);
+    // Prevent a stale cached runtime from handling the same destructive click
+    // a second time through another delegated listener.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try {
+      const result = handler(...parsed.args);
+      if (result && typeof result.catch === "function") {
+        result.catch((error) => toast(error?.message || "Операция не выполнена", true));
+      }
+    } catch (error) {
+      toast(error?.message || "Операция не выполнена", true);
+    }
   });
 }
+
+// Compatibility is opt-in: normal routes stay on the release runtime, while
+// an explicitly dispatched event can still load the old integration for a
+// legacy public page without attaching duplicate handlers at startup.
+window.addEventListener("copimine:legacy-runtime-request", () => {
+  if (state.legacyRuntimePromise) return state.legacyRuntimePromise;
+  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260719r10")
+    .catch((error) => {
+      toast(error?.message || "Совместимый режим недоступен", true);
+      state.legacyRuntimePromise = null;
+      throw error;
+    });
+  return state.legacyRuntimePromise;
+});
 
 function handleDataInputEvent(event) {
   const node = event.target.closest("[data-input]");
@@ -844,7 +871,18 @@ function toast(message, bad = false) {
 function operationAlert(message, bad = false) {
   const text = String(message || (bad ? "Операция не выполнена" : "Операция выполнена"));
   toast(text, bad);
-  if (typeof window !== "undefined" && typeof window.alert === "function") window.alert(text);
+  let status = $("operationStatus");
+  if (!status) {
+    status = makeElement("div", "operation-status");
+    status.id = "operationStatus";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    const view = $("view");
+    if (view?.parentElement) view.parentElement.insertBefore(status, view);
+  }
+  status.dataset.operationState = bad ? "error" : "success";
+  status.textContent = text;
+  status.hidden = false;
 }
 
 function randomActionKey(prefix = "cm") {
@@ -867,6 +905,20 @@ function authHeaders(extra = {}) {
   const headers = { ...extra };
   if (!headers["Content-Type"] && !(extra instanceof FormData)) headers["Content-Type"] = "application/json";
   return headers;
+}
+
+function describeError(value) {
+  if (value instanceof Error) return value.message || "Операция не выполнена";
+  if (typeof value === "string") return value || "Операция не выполнена";
+  if (value && typeof value === "object") {
+    const nested = value.message || value.detail || value.error;
+    if (nested && nested !== value) return describeError(nested);
+    try {
+      const json = JSON.stringify(value);
+      if (json && json !== "{}") return json;
+    } catch { /* use the safe fallback below */ }
+  }
+  return String(value || "Операция не выполнена");
 }
 
 async function api(url, opts = {}) {
@@ -895,7 +947,7 @@ async function api(url, opts = {}) {
       if (refreshed) return api(url, { ...opts, skipAuthReset: true, retryOn401: false });
       logout(false);
     }
-    throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    throw new Error(describeError(data.detail ?? data.error ?? `HTTP ${res.status}`));
   }
   return data;
 }
@@ -912,7 +964,11 @@ window.modalConfirmCancel = () => resolveModal(false);
 window.modalConfirmAccept = () => resolveModal(true);
 
 async function dangerConfirm(message, label = "CONFIRM") {
-  if (state.modalResolver) resolveModal(false);
+  if (state.pendingDangerConfirm || state.modalResolver) {
+    toast("Подтверждение уже открыто. Заверши или отмени его.", true);
+    return null;
+  }
+  state.pendingDangerConfirm = true;
   const overlay = buildModalOverlay();
   const modal = buildModalShell("Подтверди действие", String(message || ""), { closeLabel: "Отмена" });
   modal.append(makeElement("div", "notice", "Это действие пишет запись в аудит и выполняется только после явного подтверждения."));
@@ -927,6 +983,7 @@ async function dangerConfirm(message, label = "CONFIRM") {
   const confirmed = await new Promise((resolve) => {
     state.modalResolver = resolve;
   });
+  state.pendingDangerConfirm = false;
   if (!confirmed) {
     toast("Действие отменено.", true);
     return null;
@@ -3678,6 +3735,10 @@ window.adminArAddBalance = async () => getAdminCommercePages().adminArAddBalance
 
 window.adminDonationAddBalance = async () => getAdminCommercePages().adminDonationAddBalance();
 
+window.adminApplyBalanceTopups = async () => getAdminCommercePages().adminApplyBalanceTopups();
+
+window.adminResetTreasury = async () => getAdminCommercePages().adminResetTreasury();
+
 window.adminArSetBalance = async () => getAdminCommercePages().adminArSetBalance();
 
 window.adminDonationSetBalance = async () => getAdminCommercePages().adminDonationSetBalance();
@@ -3890,6 +3951,25 @@ window.updateShopPrice = async (category, itemId) => {
   }
 };
 
+window.renameArtifactShop = async (shopId) => {
+  const input = document.getElementById(`shop-title-${shopId}`);
+  const title = input?.value?.trim() || "";
+  if (!title) return operationAlert("Укажи название блока-лавки.", true);
+  try {
+    const headers = await dangerConfirm(`Переименовать лавку ${shopId}?`, "SHOP_RENAME");
+    if (!headers) return;
+    const result = await api(`/api/admin/artifacts/shops/${encodeURIComponent(shopId)}/rename`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title }),
+    });
+    operationAlert(result?.reload?.message || `Лавка ${shopId} переименована.`);
+    await loadShops();
+  } catch (err) {
+    operationAlert(err.message, true);
+  }
+};
+
 function artifactStatusTone(status) {
   const value = String(status || "").toUpperCase();
   if (["DELIVERED", "CLAIMED", "COMPLETED", "ACTIVE", "PAID"].includes(value)) return "good";
@@ -3900,12 +3980,14 @@ function artifactStatusTone(status) {
 
 async function loadShops() {
   setLoading("\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u044e \u043b\u0430\u0432\u043a\u0438");
-  const [ar, donation] = await Promise.all([
+  const [ar, donation, shops] = await Promise.all([
     safeApi("/api/admin/shop/ar-items", { items: [] }),
-    safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0 })
+    safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0 }),
+    safeApi("/api/artifacts/shops?limit=200", { shops: [] }),
   ]);
   const arRows = asArray(ar.items);
   const donationRows = asArray(donation.items);
+  const shopRows = asArray(shops.shops);
   setView(`
     <section id="shops-overview" class="layout-grid grid-4">
       ${metric("AR-\u043a\u0430\u0442\u0430\u043b\u043e\u0433", arRows.length, "\u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432", arRows.length ? "good" : "warn")}
@@ -3925,6 +4007,19 @@ async function loadShops() {
         { key: "display_name", label: "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435" },
         { key: "price_donation", label: "Donation", render: (value, row) => `<div class="shop-price-editor"><input id="shop-price-donation-${esc(row.item_id)}" type="number" min="1" max="1000000000" step="1" value="${esc(value ?? 0)}" aria-label="Цена ${esc(row.item_id)}" /><button class="btn btn-primary btn-small" data-click="updateShopPrice('DONATION','${esc(row.item_id)}')">Сохранить</button></div>` },
         { key: "enabled", label: "\u0414\u043e\u0441\u0442\u0443\u043f", render: value => value ? pill("\u0434\u0430", "good") : pill("\u043d\u0435\u0442", "warn") }
+      ], { pageSize: 12 }))}
+    </section>
+    <section class="layout-grid grid-1" id="artifact-block-management">
+      ${panel("Управление блоками-лавками", "Создание выполняется в /adminhub на блоке под курсором. Здесь видны координаты, оборот и можно переименовать вывеску.", table("artifact-shop-blocks", shopRows, [
+        { key: "shop_id", label: "Имя", render: (value, row) => `<div class="shop-price-editor"><input id="shop-title-${esc(value)}" type="text" maxlength="64" value="${esc(row.title || value || "")}" aria-label="Название лавки ${esc(value)}" /><button class="btn btn-primary btn-small" data-click="renameArtifactShop('${esc(value)}')">Сохранить</button></div>` },
+        { key: "world_name", label: "Мир" },
+        { key: "block_x", label: "X" },
+        { key: "block_y", label: "Y" },
+        { key: "block_z", label: "Z" },
+        { key: "purchase_count", label: "Покупок" },
+        { key: "ar_turnover", label: "Оборот AR", render: value => formatAr(value || 0) },
+        { key: "last_purchase_at", label: "Последняя покупка", render: value => value ? dt(value) : "—" },
+        { key: "enabled", label: "Статус", render: value => value ? pill("active", "good") : pill("off", "warn") },
       ], { pageSize: 12 }))}
     </section>
   `);

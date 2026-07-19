@@ -323,13 +323,19 @@ export function createPlayerTreasuryPages(deps) {
 
   async function playerTransfer() {
     try {
+      const recipient = $("bankRecipient")?.value?.trim() || "";
+      const amount = number($("bankAmount")?.value || 0);
+      const pin = $("bankPinInput")?.value || "";
+      if (!recipient) return toast("Укажи получателя перевода.", true);
+      if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 1_000_000_000) return toast("Сумма перевода: от 1 до 1 000 000 000 AR.", true);
+      if (!/^\d{4,8}$/.test(pin)) return toast("PIN должен состоять из 4–8 цифр.", true);
       state.playerBankTransferKey ||= randomActionKey("bank-transfer");
       const result = await api("/api/player/bank/transfer", {
         method: "POST",
         body: JSON.stringify({
-          recipient: $("bankRecipient")?.value?.trim() || "",
-          amount: number($("bankAmount")?.value || 0),
-          pin: $("bankPinInput")?.value || "",
+          recipient,
+          amount,
+          pin,
           note: $("bankNote")?.value?.trim() || "",
           from_account: state.playerBankScope || "PERSONAL",
           idempotency_key: state.playerBankTransferKey,

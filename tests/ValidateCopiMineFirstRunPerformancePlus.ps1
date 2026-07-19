@@ -25,8 +25,8 @@ $js = Read-FrontendBundle
 $css = Read-FrontendStyles
 $props = Text $serverProperties
 
-Require "plugin version" $yml "9\.1\.0-postgres-v4"
-Require "plugin enable version" $java "9\.1\.0-postgres-v4"
+Require "plugin version" $yml "9\.2\.0-postgres-v4-balance-credit"
+Require "plugin enable version" $java "9\.2\.0-postgres-v4-balance-credit"
 Require "startup checks table" $java "cmv8_startup_checks"
 Require "startup check rows" $java "startupSelfCheckRows"
 Require "startup GUI" $java "openStartupReadiness"

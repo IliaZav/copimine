@@ -36,7 +36,36 @@ export function createAdminCommercePages(deps) {
   function operationAlert(message, bad = false) {
     const text = String(message || (bad ? "Операция не выполнена" : "Операция выполнена"));
     toast(text, bad);
-    if (typeof window !== "undefined" && typeof window.alert === "function") window.alert(text);
+    let status = document.getElementById("operationStatus");
+    if (!status) {
+      status = document.createElement("div");
+      status.id = "operationStatus";
+      status.className = "operation-status";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      const view = document.getElementById("view");
+      if (view?.parentElement) view.parentElement.insertBefore(status, view);
+    }
+    if (status) {
+      status.dataset.operationState = bad ? "error" : "success";
+      status.textContent = text;
+      status.hidden = false;
+    }
+  }
+
+  // Monetary fields are whole numbers. Reject malformed and over-sized
+  // values before opening the confirmation modal instead of silently
+  // converting them to zero.
+  function strictWholeAmount(input, { allowZero = false } = {}) {
+    const raw = String(input ?? "").trim();
+    if (!raw) return { ok: false, value: 0, reason: "Укажи целое число." };
+    if (!/^\d+$/.test(raw)) return { ok: false, value: 0, reason: "Используй только целое число без точек, пробелов и экспоненты." };
+    const value = Number(raw);
+    const min = allowZero ? 0 : 1;
+    if (!Number.isSafeInteger(value) || value < min || value > 1_000_000_000) {
+      return { ok: false, value: 0, reason: `Допустимо от ${min.toLocaleString("ru-RU")} до 1 000 000 000.` };
+    }
+    return { ok: true, value };
   }
 
   function paymentModeLabel(value) {
@@ -153,10 +182,35 @@ export function createAdminCommercePages(deps) {
       );
       applyValues(player, liveAr, liveDonation);
     };
-    select.addEventListener("change", () => {
-      void sync();
-    });
+    if (select.dataset.balanceBound !== "true") {
+      select.dataset.balanceBound = "true";
+      select.addEventListener("change", () => {
+        void sync();
+      });
+    }
     void sync();
+  }
+
+  function captureBalanceForm() {
+    const ids = [
+      "adminBalancePlayer", "adminArAddAmount", "adminArAddReason",
+      "adminDonationAddAmount", "adminDonationAddReason", "adminArBalanceValue",
+      "adminArReason", "adminDonationBalanceValue", "adminDonationReason",
+      "donationTestPlayer", "donationTestItemId",
+    ];
+    return Object.fromEntries(ids.map((id) => [id, $(id)?.value ?? null]).filter(([, value]) => value !== null));
+  }
+
+  function restoreBalanceForm(values = {}) {
+    for (const [id, value] of Object.entries(values)) {
+      const node = $(id);
+      if (node && value !== null && value !== undefined) node.value = value;
+    }
+  }
+
+  async function reloadEconomyPreservingForm(values = {}) {
+    await loadEconomy();
+    restoreBalanceForm(values);
   }
 
   async function loadEconomy() {
@@ -236,6 +290,7 @@ export function createAdminCommercePages(deps) {
           <div class="action-strip">
             <button class="btn btn-primary" data-click="createEconomySnapshot()">Снимок AR</button>
             <button class="btn btn-secondary" data-click="scanAresWorld()">Скан мира</button>
+            <button class="btn btn-danger" data-click="adminResetTreasury()">Сбросить казну в 0</button>
           </div>
           <div class="spacer-12"></div>
           ${kv([
@@ -267,6 +322,7 @@ export function createAdminCommercePages(deps) {
               <label class="field-stack"><span>Добавить donation</span><input id="adminDonationAddAmount" type="number" min="1" step="1" placeholder="Количество donation" /></label>
               <label class="field-stack"><span>Причина</span><input id="adminDonationAddReason" value="admin-topup" /></label>
               <button class="btn btn-secondary full" data-click="adminDonationAddBalance()">Зачислить donation</button>
+              <button class="btn btn-primary full" data-click="adminApplyBalanceTopups()">Зачислить заполненные AR и donation</button>
             </div>
           </div>
           <div class="form-grid compact-grid">
@@ -387,8 +443,11 @@ export function createAdminCommercePages(deps) {
 
   async function adminDonationAddBalance() {
     try {
+      const form = captureBalanceForm();
       const player = selectedPlayerBySelect("adminBalancePlayer");
-      const amount = number($("adminDonationAddAmount")?.value || 0);
+      const parsed = strictWholeAmount($("adminDonationAddAmount")?.value);
+      if (!parsed.ok) return operationAlert(`Donation: ${parsed.reason}`, true);
+      const amount = parsed.value;
       if (!player.name) return toast("Выбери игрока", true);
       if (amount <= 0) return toast("Укажи положительное количество donation", true);
       const headers = await dangerConfirm(`Пополнить donation-баланс игрока ${player.name || "без имени"}`, "DONATION_ADD_BALANCE");
@@ -406,7 +465,7 @@ export function createAdminCommercePages(deps) {
       });
       operationAlert(`Donation-баланс игрока ${player.name} пополнен: ${formatDonate(result?.balanceAfter || 0)}`);
       if ($("adminDonationAddAmount")) $("adminDonationAddAmount").value = "";
-      await loadEconomy();
+      await reloadEconomyPreservingForm(form);
     } catch (err) {
       operationAlert(err.message, true);
     }
@@ -414,8 +473,11 @@ export function createAdminCommercePages(deps) {
 
   async function adminArAddBalance() {
     try {
+      const form = captureBalanceForm();
       const player = selectedPlayerBySelect("adminBalancePlayer");
-      const amount = number($("adminArAddAmount")?.value || 0);
+      const parsed = strictWholeAmount($("adminArAddAmount")?.value);
+      if (!parsed.ok) return operationAlert(`AR: ${parsed.reason}`, true);
+      const amount = parsed.value;
       if (!player.name) return toast("Выбери игрока", true);
       if (amount <= 0) return toast("Укажи положительное количество AR", true);
       const headers = await dangerConfirm(`Пополнить AR-баланс игрока ${player.name || "без имени"}`, "AR_ADD_BALANCE");
@@ -433,6 +495,51 @@ export function createAdminCommercePages(deps) {
       });
       operationAlert(`AR-баланс игрока ${player.name} пополнен: ${formatAr(result?.balanceAfter || 0)}`);
       if ($("adminArAddAmount")) $("adminArAddAmount").value = "";
+      await reloadEconomyPreservingForm(form);
+    } catch (err) {
+      operationAlert(err.message, true);
+    }
+  }
+
+  async function adminApplyBalanceTopups() {
+    try {
+      const player = selectedPlayerBySelect("adminBalancePlayer");
+      const arParsed = strictWholeAmount($("adminArAddAmount")?.value, { allowZero: true });
+      const donationParsed = strictWholeAmount($("adminDonationAddAmount")?.value, { allowZero: true });
+      if (!arParsed.ok) return operationAlert(`AR: ${arParsed.reason}`, true);
+      if (!donationParsed.ok) return operationAlert(`Donation: ${donationParsed.reason}`, true);
+      const arAmount = arParsed.value;
+      const donationAmount = donationParsed.value;
+      if (!player.name) return operationAlert("Выбери игрока.", true);
+      if (![arAmount, donationAmount].some((value) => value > 0)) return operationAlert("Укажи сумму AR или donation.", true);
+      for (const [label, value] of [["AR", arAmount], ["donation", donationAmount]]) {
+        if (value !== 0 && (!Number.isSafeInteger(value) || value < 1 || value > 1_000_000_000)) {
+          return operationAlert(`${label}: допустимо от 1 до 1 000 000 000.`, true);
+        }
+      }
+      const headers = await dangerConfirm(
+        `Зачислить игроку ${player.name}: ${arAmount || 0} AR и ${donationAmount || 0} donation?`,
+        "CONFIRM",
+      );
+      if (!headers) return;
+      const result = await api("/api/admin/economy/balances/topup", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          minecraft_uuid: player.uuid || "",
+          minecraft_name: player.name,
+          ar_amount: arAmount,
+          donation_amount: donationAmount,
+          ar_reason: $("adminArAddReason")?.value?.trim() || "admin-ar-topup",
+          donation_reason: $("adminDonationAddReason")?.value?.trim() || "admin-topup",
+          idempotency_key: randomActionKey("admin-balances-topup"),
+        }),
+      });
+      const parts = [];
+      if (arAmount > 0) parts.push(`AR: ${formatAr(result?.arBalanceAfter || 0)}`);
+      if (donationAmount > 0) parts.push(`donation: ${formatDonate(result?.donationBalanceAfter || 0)}`);
+      operationAlert(`Зачисление выполнено для ${player.name}: ${parts.join(" · ")}.`);
+      ["adminArAddAmount", "adminDonationAddAmount"].forEach((id) => { if ($(id)) $(id).value = ""; });
       await loadEconomy();
     } catch (err) {
       operationAlert(err.message, true);
@@ -442,6 +549,9 @@ export function createAdminCommercePages(deps) {
   async function adminDonationSetBalance() {
     try {
       const player = selectedPlayerBySelect("adminBalancePlayer");
+      const parsed = strictWholeAmount($("adminDonationBalanceValue")?.value, { allowZero: true });
+      if (!parsed.ok) return operationAlert(`Donation: ${parsed.reason}`, true);
+      const balance = parsed.value;
       const headers = await dangerConfirm(`Изменить donation-баланс игрока ${player.name || "без имени"}`, "DONATION_SET_BALANCE");
       if (!headers) return;
       const result = await api("/api/admin/donation/set-balance", {
@@ -450,7 +560,7 @@ export function createAdminCommercePages(deps) {
         body: JSON.stringify({
           minecraft_uuid: player.uuid || "",
           minecraft_name: player.name || "",
-          balance: Math.max(0, number($("adminDonationBalanceValue")?.value || 0)),
+          balance,
           reason: $("adminDonationReason")?.value?.trim() || "admin-balance-edit",
           idempotency_key: randomActionKey("don-admin-set"),
         }),
@@ -465,6 +575,9 @@ export function createAdminCommercePages(deps) {
   async function adminArSetBalance() {
     try {
       const player = selectedPlayerBySelect("adminBalancePlayer");
+      const parsed = strictWholeAmount($("adminArBalanceValue")?.value, { allowZero: true });
+      if (!parsed.ok) return operationAlert(`AR: ${parsed.reason}`, true);
+      const balance = parsed.value;
       const headers = await dangerConfirm(`Изменить AR-баланс игрока ${player.name || "без имени"}`, "AR_SET_BALANCE");
       if (!headers) return;
       const result = await api("/api/admin/economy/ar/set-balance", {
@@ -473,7 +586,7 @@ export function createAdminCommercePages(deps) {
         body: JSON.stringify({
           minecraft_uuid: player.uuid || "",
           minecraft_name: player.name || "",
-          balance: Math.max(0, number($("adminArBalanceValue")?.value || 0)),
+          balance,
           reason: $("adminArReason")?.value?.trim() || "admin-balance-edit",
           idempotency_key: randomActionKey("ar-admin-set"),
         }),
@@ -500,10 +613,10 @@ export function createAdminCommercePages(deps) {
           item_id: itemId,
         }),
       });
-      toast("Тестовая покупка создана");
+      operationAlert(`Тестовая покупка создана для ${player.name || "игрока"}. Предмет добавлен в отложенную выдачу.`);
       await loadEconomy();
     } catch (err) {
-      toast(err.message, true);
+      operationAlert(err.message, true);
     }
   }
 
@@ -560,18 +673,35 @@ export function createAdminCommercePages(deps) {
     }
   }
 
+  async function adminResetTreasury() {
+    try {
+      const headers = await dangerConfirm(
+        "Обнулить казну? Это не пополнение: текущий остаток будет списан отдельной записью аудита, а новые AR попадут в казну только через реальные покупки.",
+        "TREASURY_RESET",
+      );
+      if (!headers) return;
+      const result = await api("/api/admin/economy/treasury/reset", { method: "POST", headers });
+      operationAlert(`Казна обнулена: было ${formatAr(result?.balanceBefore || 0)}, стало ${formatAr(result?.balanceAfter || 0)}.`);
+      await loadEconomy();
+    } catch (err) {
+      operationAlert(err.message, true);
+    }
+  }
+
   return {
     loadEconomy,
     createEconomySnapshot,
     scanAresWorld,
     adminArAddBalance,
     adminDonationAddBalance,
+    adminApplyBalanceTopups,
     adminArSetBalance,
     adminDonationSetBalance,
     adminDonationTestPurchase,
     adminDonationMarkPaid,
     adminDonationCancelSession,
     adminSetTreasuryPin,
+    adminResetTreasury,
   };
 }
 

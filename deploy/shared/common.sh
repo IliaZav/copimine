@@ -5,7 +5,7 @@ COPIMINE_ROOT="${COPIMINE_ROOT:-/opt/copimine}"
 # Keep upgrades on the account that owns the existing runtime.  The previous
 # copimine default could create a second user on qwerty deployments and leave
 # systemd unable to read the protected environment file.
-COPIMINE_APP_USER="${COPIMINE_APP_USER:-qwerty}"
+COPIMINE_APP_USER="${COPIMINE_APP_USER:-copimine}"
 COPIMINE_APP_GROUP="${COPIMINE_APP_GROUP:-$COPIMINE_APP_USER}"
 COPIMINE_ADMIN_DIR="${COPIMINE_ADMIN_DIR:-$COPIMINE_ROOT/admin-web}"
 COPIMINE_ENV_FILE="${COPIMINE_ENV_FILE:-$COPIMINE_ADMIN_DIR/.env}"

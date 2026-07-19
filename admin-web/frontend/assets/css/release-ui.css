@@ -697,6 +697,111 @@ input[type="range"]::-webkit-slider-thumb {
   overflow: hidden;
   color: var(--muted);
 }
+
+/* Persistent result for money, transfer, purchase and recipe actions. Native
+   alerts block the cabinet and make the next click look broken, so the result
+   remains visible without locking the page. */
+.operation-status {
+  display: block;
+  margin: 0 0 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--release-line-strong, #5a8f69);
+  border-left: 4px solid var(--release-accent, #43bd73);
+  border-radius: 10px;
+  background: var(--release-surface, rgba(18, 43, 29, .92));
+  color: var(--release-ink, #eff8f0);
+  font-weight: 700;
+}
+.toast-root {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1100;
+  display: grid;
+  gap: 10px;
+  width: min(420px, calc(100vw - 40px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  padding: 12px 15px;
+  border: 1px solid var(--release-line-strong, #5a8f69);
+  border-left: 4px solid var(--release-accent, #43bd73);
+  border-radius: 10px;
+  background: var(--release-surface, #10251a);
+  color: var(--release-ink, #eff8f0);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, .3);
+  font-weight: 700;
+  animation: ui-toast-in .18s ease-out both;
+}
+.toast.bad { border-color: #d97272; border-left-color: #e75d5d; color: #ffd9d9; }
+@keyframes ui-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+:root[data-theme="light"] .toast { background: #f8fcf8; color: #173722; }
+:root[data-theme="light"] .toast.bad { color: #8c1f2b; }
+.operation-status[data-operation-state="error"] {
+  border-color: #d97272;
+  border-left-color: #e75d5d;
+  color: #ffd9d9;
+}
+
+/* The modern cabinet does not load the retired legacy stylesheet. Keep
+   confirmations as true viewport modals instead of ordinary content appended
+   below the page. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: auto;
+  background: rgba(4, 12, 8, .72);
+  /* Keep the veil opaque enough to separate the dialog without applying a
+     glass blur to the Minecraft item surface. */
+}
+.modal {
+  width: min(560px, 100%);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--release-line-strong, #5a8f69);
+  border-radius: 16px;
+  background: var(--release-surface, #10251a);
+  color: var(--release-ink, #eff8f0);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .44);
+}
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.modal-head h2 { margin: 0; color: inherit; }
+.modal-head p { margin: 5px 0 0; color: var(--release-muted, #b9d2bf); }
+.modal .notice {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--release-line, #31583e);
+  border-radius: 10px;
+  background: rgba(61, 152, 92, .12);
+  color: inherit;
+}
+:root[data-theme="light"] .modal-overlay { background: rgba(9, 22, 14, .42); }
+:root[data-theme="light"] .modal {
+  background: #f8fcf8;
+  color: #173722;
+  border-color: #a7c9b0;
+  box-shadow: 0 28px 70px rgba(22, 59, 35, .25);
+}
+:root[data-theme="light"] .modal-head p { color: #52705b; }
+:root[data-theme="light"] .operation-status {
+  background: #f5fbf6;
+  color: #173722;
+}
+:root[data-theme="light"] .operation-status[data-operation-state="error"] {
+  color: #8c1f2b;
+}
 .loading::after {
   content: "";
   position: absolute;

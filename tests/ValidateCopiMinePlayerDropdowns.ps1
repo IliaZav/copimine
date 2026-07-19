@@ -25,8 +25,7 @@ $adminSelectIds = @(
   'repReporter',
   'repTarget',
   'invPlayer',
-  'accessPlayer',
-  'newAdminUsername'
+  'accessPlayer'
 )
 foreach ($id in $adminSelectIds) {
   if ($runtime -notmatch "<select[^>]+id=`"$id`"") {

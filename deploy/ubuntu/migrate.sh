@@ -38,7 +38,12 @@ require_identifier() {
 }
 
 cleanup() {
-  [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && rm -f -- "$PLAN_FILE"
+  if [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]]; then
+    rm -f -- "$PLAN_FILE"
+  fi
+  # An EXIT trap must not replace a successful migration with status 1 just
+  # because there was no temporary file left to remove.
+  return 0
 }
 trap cleanup EXIT
 

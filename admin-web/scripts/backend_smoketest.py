@@ -334,9 +334,12 @@ def main() -> None:
                         "minecraft_name": "ShopCartUser",
                     })
                     assert registered.status_code == 200, registered.text
-                    player_account = registered.json()["account"]
-                    player_uuid = str(player_account["minecraftUuid"])
-                    player_name = str(player_account["minecraftName"])
+                    # A fresh registration intentionally keeps ownership fields
+                    # empty until the in-game link is proven.  The shop test
+                    # still needs a concrete target, so derive it from the
+                    # nickname selected for this isolated test account.
+                    player_uuid = appmod.offline_uuid_for_name("ShopCartUser")
+                    player_name = "ShopCartUser"
 
                     admin_ar_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "AR_ADD_BALANCE"}
                     rr = c.post("/api/admin/economy/ar/add-balance", headers=admin_ar_headers, json={

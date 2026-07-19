@@ -396,6 +396,7 @@ def main() -> None:
                     duplicate_ar = player_client.post("/api/player/shop/cart/ar/checkout", headers=player_headers, json={
                         "item_ids": ["zmei_gorynych", "zmei_gorynych"],
                         "pin": "1234",
+                        "expected_total": 1000,
                         "idempotency_key": "cart-smoke-ar-duplicate-001",
                     })
                     assert duplicate_ar.status_code == 400, duplicate_ar.text

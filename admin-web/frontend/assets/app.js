@@ -1,1 +1,1 @@
-import "./js/bootstrap.js?v=20260719r6";
+import "./js/bootstrap.js?v=20260719r7";

@@ -20,9 +20,16 @@ function createSprite(path, className = "mc-sprite") {
   return img;
 }
 
+const VANILLA_ITEM_ICON_ALIASES = Object.freeze({
+  compass: "compass_00.png",
+  clock: "clock_00.png",
+  recovery_compass: "recovery_compass_00.png",
+  shield: "empty_armor_slot_shield.png",
+});
+
 function materialIconName(material) {
   const raw = String(material || "").trim().toLowerCase();
-  return raw ? `${raw}.png` : "";
+  return raw ? (VANILLA_ITEM_ICON_ALIASES[raw] || `${raw}.png`) : "";
 }
 
 function resolveCustomShopIcon(row = {}) {

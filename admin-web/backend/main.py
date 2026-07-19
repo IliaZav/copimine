@@ -9383,16 +9383,20 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
                 conn, minecraft_uuid, minecraft_name
             )
             if not known_minecraft_identity:
-                auto_whitelist = False
+                # A new registration may receive whitelist access immediately,
+                # but this must never claim an existing Minecraft identity or
+                # create a bank/account ownership link.
+                add_player_to_whitelist_sync(minecraft_uuid, minecraft_name)
+                auto_whitelist = True
                 conn.execute(
                     """
                     INSERT INTO whitelist_requests(id,site_account_id,minecraft_uuid,minecraft_name,request_ip,status,created_at,updated_at,approved_at,approved_by,note)
-                    VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s,0,'','Manual approval required; Minecraft ownership must be proven in-game')
+                    VALUES(%s,%s,%s,%s,%s,'AUTO_APPROVED',%s,%s,%s,'automatic-registration','Automatic whitelist only')
                     """,
-                    (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now),
+                    (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now, now),
                 )
         conn.commit()
-    whitelist_state = "PENDING" if minecraft_name and not known_minecraft_identity else "NOT_REQUESTED"
+    whitelist_state = "AUTO_APPROVED" if auto_whitelist else ("NOT_REQUESTED" if not minecraft_name else "LINK_REQUIRED")
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
     account_payload = {
         "id": account_id,
@@ -11580,7 +11584,9 @@ def resourcepack_status_sync() -> dict[str, Any]:
     required = props.get("require-resource-pack", "false")
     metadata = artifact_metadata("resourcepacks", "CopiMineResourcePack.zip")
     local_exists = bool(metadata.get("exists"))
-    local_path = str(metadata.get("path") or MANAGED_RESOURCEPACK_ZIP)
+    # Never return the server filesystem path to the panel or browser.  The
+    # filename and the hashes are enough for an operator to verify the asset.
+    local_path = Path(str(metadata.get("path") or MANAGED_RESOURCEPACK_ZIP)).name
     local_sha1 = str(metadata.get("recordedSha1") or metadata.get("sha1") or "")
     return {
         "url": url,

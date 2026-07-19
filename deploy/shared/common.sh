@@ -543,8 +543,12 @@ copimine_sync_server_properties() {
   local resourcepack_sha1 resourcepack_url public_panel_url
   resourcepack_sha1="$(sha1sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
   resourcepack_url="$(copimine_env_value RESOURCE_PACK_PUBLIC_URL)"
-  if [[ -z "$resourcepack_url" || "$resourcepack_url" == "CHANGE_ME" ]]; then
+  # Older .env files sometimes stored an URL escaped for server.properties
+  # (http\://...). Normalize that form before validating it.
+  resourcepack_url="${resourcepack_url//\\:/:}"
+  if [[ ! "$resourcepack_url" =~ ^https?:// ]]; then
     public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
+    public_panel_url="${public_panel_url//\\:/:}"
     resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip"
   fi
   [[ "$resourcepack_url" =~ ^https?:// ]] || copimine_fail "RESOURCE_PACK_PUBLIC_URL must use http:// or https://"

@@ -12375,7 +12375,15 @@ def _replace_catalog_price_text(text: str, item_id: str, category: str, price: i
 
 def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
     normalized_id = _normalize_shop_item_id(item_id)
-    normalized_category = str(category or "").strip().upper()
+    raw_category = str(category or "").strip().upper().replace("-", "_")
+    normalized_category = {
+        "AR_SHOP": "AR",
+        "AR_STORE": "AR",
+        "AR_MAGAZIN": "AR",
+        "DONATION_SHOP": "DONATION",
+        "DONATE": "DONATION",
+        "DONATION_STORE": "DONATION",
+    }.get(raw_category, raw_category)
     if normalized_category not in {"AR", "DONATION"}:
         raise HTTPException(status_code=400, detail="Категория должна быть AR или DONATION")
     row: dict[str, Any] = {}
@@ -12388,6 +12396,22 @@ def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
             row = next((dict(candidate) for key, candidate in rows.items() if _normalize_shop_item_id(key) == normalized_id), {})
         if row:
             break
+    # A legacy cabinet could keep the category of the old page while sending
+    # a current item id (and vice versa).  Resolve the id globally before
+    # returning 404; the canonical catalog bucket remains authoritative.
+    if not row:
+        for catalog_path in _shop_catalog_paths():
+            catalog = load_commerce_catalog(catalog_path)
+            for candidate_category, bucket_name in (("AR", "ar"), ("DONATION", "donation")):
+                rows = (catalog.get(bucket_name) or {}).get("byId") or {}
+                row = dict(rows.get(normalized_id) or {})
+                if not row:
+                    row = next((dict(candidate) for key, candidate in rows.items() if _normalize_shop_item_id(key) == normalized_id), {})
+                if row:
+                    normalized_category = candidate_category
+                    break
+            if row:
+                break
     if not row:
         raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
     if str(row.get("source") or "").upper() == "ADMIN_ONLY":

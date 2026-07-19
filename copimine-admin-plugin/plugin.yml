@@ -1,5 +1,5 @@
 name: CopiMineUltimateAdminPlus
-version: '9.1.0-postgres-v4'
+version: '9.2.0-postgres-v4-balance-credit'
 main: me.copimine.ultimateplus.CopiMineUltimateAdminPlus
 api-version: '1.21'
 author: SudoKillDash9
@@ -32,6 +32,10 @@ commands:
     description: "Открыть раздел банка"
     usage: /cmbank
     aliases: [bank, cbank, bankar]
+  cmcredit:
+    description: "Admin balance credit for AR or donation"
+    usage: /cmcredit <player> <ar|donation> <amount> [reason]
+    aliases: [balanceadd, addbalance]
   appeal:
     description: "Отправить обращение администрации"
     usage: /appeal <problem>
@@ -71,6 +75,9 @@ permissions:
     default: op
   copimine.players.admin:
     description: Управление игроками
+    default: op
+  copimine.economy.credit:
+    description: "Credit a player's AR or donation balance from the game"
     default: op
   copimine.players.check:
     description: Проверки игроков, freeze и возврат из проверки

@@ -5831,6 +5831,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @Override public boolean onCommand(CommandSender sender,Command command,String label,String[] args){
         try{
             String root=command.getName().toLowerCase(Locale.ROOT);
+            if(root.equals("cmcredit"))return handleBalanceCreditCommand(sender,args);
             if(root.equals("rpguard"))return handleRpGuardCommand(sender,args);
             if(root.equals("oldvoteoff"))return handleOldVoteOff(sender,args);
             if(root.equals("cmsealdrop"))return handleSealDropCommand(sender,args);
@@ -5843,6 +5844,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(args.length==0||args[0].equalsIgnoreCase("menu")){if(sender instanceof Player p)openMainHub(p); else help(sender); return true;}
             switch(args[0].toLowerCase(Locale.ROOT)){
                 case "bugreport" -> {return handleBugReportCommand(sender,args);}
+                case "balance","credit","addbalance" -> {if(args.length>=2&&args[1].equalsIgnoreCase("add"))return handleBalanceCreditCommand(sender,Arrays.copyOfRange(args,2,args.length)); help(sender);}
                 case "audit" -> {return handleAuditCommand(sender,args);}
                 case "election","sidebar","issueapp","issueballot","annulapp","annulballot" -> {msg(sender,"&eУправление выборами перенесено в новый GUI CopiMineElectionCore через /cadm -> Выборы. Техническая команда игрока: &f/hidelive"); return true;}
                 case "ar" -> {if(args.length>=2&&args[1].equalsIgnoreCase("sync")){if(sender instanceof Player p){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} warn(sender,"AR sync перенесён в CopiMineEconomyCore."); economy.openAdminEconomyHub(p);} else msg(sender,"AR sync перенесён в CopiMineEconomyCore.");}}
@@ -5862,6 +5864,79 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return true;
     }
     private String joinArgs(String[] args,int start){if(args==null||args.length<=start)return"emergency"; return String.join(" ",Arrays.copyOfRange(args,start,args.length)).trim();}
+    private boolean handleBalanceCreditCommand(CommandSender sender,String[] args){
+        if(!hasEconomyAdmin(sender)||sender instanceof Player p&&!p.hasPermission("copimine.economy.credit")&&!hasAdmin(p)){
+            warn(sender,"No permission to credit balances.");
+            return true;
+        }
+        if(args.length<3){
+            msg(sender,"&e/cmcredit <player> <ar|donation> <amount> [reason]");
+            return true;
+        }
+        String targetText=args[0].trim();
+        String kind=args[1].trim().toLowerCase(Locale.ROOT);
+        if(kind.equals("donate"))kind="donation";
+        if(!kind.equals("ar")&&!kind.equals("donation")){
+            msg(sender,"&cBalance type must be ar or donation.");
+            return true;
+        }
+        long amount;
+        try{amount=Long.parseLong(args[2].trim());}catch(NumberFormatException ex){amount=-1L;}
+        if(amount<=0L||amount>1_000_000_000L){
+            msg(sender,"&cAmount must be an integer from 1 to 1000000000.");
+            return true;
+        }
+        UUID targetUuid=null;
+        String targetName=targetText;
+        try{targetUuid=UUID.fromString(targetText);}catch(IllegalArgumentException ignored){}
+        if(targetUuid==null){
+            Player online=Bukkit.getPlayerExact(targetText);
+            if(online!=null){targetUuid=online.getUniqueId(); targetName=online.getName();}
+            else{
+                OfflinePlayer offline=Bukkit.getOfflinePlayer(targetText);
+                if(offline==null||(!offline.hasPlayedBefore()&&!offline.isOnline())){
+                    msg(sender,"&cPlayer not found. Use an exact online or previously seen name.");
+                    return true;
+                }
+                targetUuid=offline.getUniqueId();
+                if(offline.getName()!=null&&!offline.getName().isBlank())targetName=offline.getName();
+            }
+        }
+        if(targetUuid==null){msg(sender,"&cCould not resolve player UUID."); return true;}
+        String reason=args.length>3?clipped(String.join(" ",Arrays.copyOfRange(args,3,args.length)).trim(),160):"In-game admin credit";
+        String actor=sender.getName();
+        String key="game-admin-credit-"+UUID.randomUUID();
+        CopiMineEconomyCore economy=economyCore();
+        if(economy==null){warn(sender,"CopiMineEconomyCore is unavailable."); return true;}
+        UUID finalTargetUuid=targetUuid;
+        String finalTargetName=targetName;
+        String balanceKind=kind;
+        final long creditAmount=amount;
+        final String creditReason=reason;
+        CompletableFuture<CopiMineEconomyCore.TxnResult> future=balanceKind.equals("ar")
+                ?economy.bankService().creditAsync(finalTargetUuid,finalTargetName,creditAmount,key,"ADMIN_GAME_CREDIT",creditReason)
+                :economy.donationBalanceService().addAsync(finalTargetUuid,finalTargetName,creditAmount,creditReason,actor,"GAME_COMMAND",key);
+        msg(sender,"&7Credit queued: &f"+finalTargetName+" &7| &f"+balanceKind+" &7| &f+"+creditAmount);
+        future.whenComplete((result,error)->{
+            if(error!=null){
+                getLogger().log(java.util.logging.Level.WARNING,"Game balance credit failed",error);
+                Bukkit.getScheduler().runTask(this,()->warn(sender,"Balance credit failed; see server log."));
+                return;
+            }
+            if(result==null||!result.ok){
+                Bukkit.getScheduler().runTask(this,()->warn(sender,"Credit rejected: "+(result==null?"unknown error":result.message)));
+                return;
+            }
+            audit(actor,"ADMIN_GAME_BALANCE_CREDIT","target="+finalTargetUuid+" name="+finalTargetName+" kind="+balanceKind+" amount="+creditAmount+" balanceAfter="+result.balanceAfter+" reason="+creditReason,true);
+            pluginEvent("adminplus","ADMIN_GAME_BALANCE_CREDIT",actor,finalTargetUuid.toString(),"kind="+balanceKind+" amount="+creditAmount+" balanceAfter="+result.balanceAfter+" reason="+creditReason);
+            Bukkit.getScheduler().runTask(this,()->{
+                msg(sender,"&aBalance credited: &f"+finalTargetName+" &7received &f+"+creditAmount+" "+balanceKind+"&7. New balance: &f"+result.balanceAfter);
+                Player online=Bukkit.getPlayer(finalTargetUuid);
+                if(online!=null&&online.isOnline())msg(online,"&aAn administrator credited your balance by &f"+creditAmount+" "+balanceKind+"&a.");
+            });
+        });
+        return true;
+    }
     private boolean handleResetWorldObjectsCommand(CommandSender sender,String[] args)throws Exception{
         requireMainAdmin(sender);
         if(args.length<2||!args[1].equalsIgnoreCase("confirm")){
@@ -5938,8 +6013,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         return removed;
     }
-    private void help(CommandSender s){msg(s,"&6/cmultra &7- меню"); msg(s,"&6/cmbank &7- открыть раздел экономики"); msg(s,"&6/cmultra audit ar|elections|narcotics"); msg(s,"&6/cmultra bugreport <code>"); msg(s,"&6/cmultra ar sync"); msg(s,"&6/cmultra check start|stop|return <player>"); msg(s,"&6/cmultra resetworldobjects confirm &7- очистить лавки, участки и ATM из БД"); msg(s,"&6/cmultra clearfloatingtexts confirm &7- очистить все election TextDisplay"); msg(s,"&6/cadm &7- общий хаб, раздел &fВыборы &7открывает CopiMineElectionCore"); msg(s,"&6/hidelive &7- скрыть live-панель выборов только у себя");}
-    @Override public List<String> onTabComplete(CommandSender s,Command c,String a,String[] args){String root=c.getName().toLowerCase(Locale.ROOT); if(root.equals("cmbank"))return List.of(); if(root.equals("rpguard")&&args.length==1)return List.of("status","test").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==1)return List.of("menu","audit","bugreport","ar","check","resetworldobjects","clearfloatingtexts").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&args[0].equalsIgnoreCase("audit"))return List.of("ar","elections","narcotics").stream().filter(x->x.startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&args[0].equalsIgnoreCase("check"))return Bukkit.getOnlinePlayers().stream().map(Player::getName).filter(x->x.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&(args[0].equalsIgnoreCase("resetworldobjects")||args[0].equalsIgnoreCase("clearfloatingtexts")))return List.of("confirm").stream().filter(x->x.startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); return List.of();}
+    private void help(CommandSender s){msg(s,"&6/cmultra &7- меню"); msg(s,"&6/cmbank &7- открыть раздел экономики"); msg(s,"&6/cmcredit <player> <ar|donation> <amount> [reason] &7- пополнить баланс"); msg(s,"&6/cmultra audit ar|elections|narcotics"); msg(s,"&6/cmultra bugreport <code>"); msg(s,"&6/cmultra ar sync"); msg(s,"&6/cmultra check start|stop|return <player>"); msg(s,"&6/cmultra resetworldobjects confirm &7- очистить лавки, участки и ATM из БД"); msg(s,"&6/cmultra clearfloatingtexts confirm &7- очистить все election TextDisplay"); msg(s,"&6/cadm &7- общий хаб, раздел &fВыборы &7открывает CopiMineElectionCore"); msg(s,"&6/hidelive &7- скрыть live-панель выборов только у себя");}
+    @Override public List<String> onTabComplete(CommandSender s,Command c,String a,String[] args){String root=c.getName().toLowerCase(Locale.ROOT); if(root.equals("cmbank"))return List.of(); if(root.equals("cmcredit")){if(args.length==1)return Bukkit.getOnlinePlayers().stream().map(Player::getName).filter(x->x.toLowerCase(Locale.ROOT).startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==2)return List.of("ar","donation").stream().filter(x->x.startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); return List.of();} if(root.equals("rpguard")&&args.length==1)return List.of("status","test").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==1)return List.of("menu","audit","bugreport","ar","check","resetworldobjects","clearfloatingtexts").stream().filter(x->x.startsWith(args[0].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&args[0].equalsIgnoreCase("audit"))return List.of("ar","elections","narcotics").stream().filter(x->x.startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&args[0].equalsIgnoreCase("check"))return Bukkit.getOnlinePlayers().stream().map(Player::getName).filter(x->x.toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); if(args.length==2&&(args[0].equalsIgnoreCase("resetworldobjects")||args[0].equalsIgnoreCase("clearfloatingtexts")))return List.of("confirm").stream().filter(x->x.startsWith(args[1].toLowerCase(Locale.ROOT))).toList(); return List.of();}
 
     private record PgSettings(String host,int port,String database,String user,String password,String schema,int poolSize,int connectTimeoutMs,int statementTimeoutMs,Path envFile){
         String jdbcUrl(){return "jdbc:postgresql://"+host+":"+port+"/"+database;}

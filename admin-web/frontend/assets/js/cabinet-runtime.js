@@ -1879,6 +1879,14 @@ function buildNavButton([id, label, hint, icon]) {
   // keeps dynamically re-rendered nav buttons clickable on mobile as well as
   // desktop and gives the common error/toast handling a single entry point.
   button.dataset.click = `setTab('${id}')`;
+  // Keep a real listener on the button as well.  Some embedded browsers do
+  // not bubble synthetic clicks from a button through document delegation;
+  // without this guard those clicks silently leave the previous view visible.
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void setTab(id);
+  });
   return button;
 }
 

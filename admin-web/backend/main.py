@@ -73,7 +73,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from .commerce_catalog import admin_gift_catalog_snapshot, ar_catalog_snapshot, donation_catalog_snapshot
+from .commerce_catalog import admin_gift_catalog_snapshot, ar_catalog_snapshot, donation_catalog_snapshot, load_commerce_catalog
 from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from .envfile import load_env_file_to_os, resolve_env_file
@@ -103,6 +103,11 @@ MODPACK_SHA1_FILE = THIRDPARTY_DIR / "CopiMineMods.sha1"
 MODPACK_MANIFEST = THIRDPARTY_DIR / "modpack_manifest.json"
 THIRDPARTY_MANIFEST = THIRDPARTY_DIR / "thirdparty_manifest.json"
 ARTIFACTS_ITEMS_FILE = PROJECT_ROOT / "copimine-artifacts" / "items.yml"
+# The source catalog feeds the website, while the second copy is the live
+# Bukkit plugin data file.  Keep both in lockstep when an administrator edits
+# a price so a purchase cannot see different values in the two surfaces.
+ARTIFACTS_RUNTIME_ITEMS_FILE = PROJECT_ROOT / "minecraft" / "server" / "plugins" / "CopiMineArtifacts" / "items.yml"
+ARTIFACTS_CATALOG_LOCK = threading.RLock()
 NARCOTICS_SOURCE_CONFIG_FILE = PROJECT_ROOT / "copimine-narcotics" / "config.yml"
 DONATION_FIXED_PACKS = (50, 100, 250, 500, 1000)
 YOOKASSA_SETTINGS = YooKassaSettings.from_env()
@@ -661,6 +666,13 @@ class AdminArtifactGiftIn(BaseModel):
     item_id: str = Field(min_length=2, max_length=120)
     category: str = Field(default="AR", min_length=2, max_length=20)
     note: str = Field(default="admin-player-page", min_length=2, max_length=160)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class AdminShopPriceUpdateIn(BaseModel):
+    item_id: str = Field(min_length=2, max_length=120)
+    category: str = Field(min_length=2, max_length=16)
+    price: int = Field(gt=0, le=1_000_000_000)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
@@ -11973,6 +11985,124 @@ def admin_gift_catalog_snapshot_sync() -> dict[str, Any]:
     return admin_gift_catalog_snapshot(ARTIFACTS_ITEMS_FILE)
 
 
+def _shop_catalog_paths() -> list[Path]:
+    """Return the website and live-plugin catalog files that exist locally."""
+    paths = [ARTIFACTS_ITEMS_FILE]
+    if ARTIFACTS_RUNTIME_ITEMS_FILE.exists():
+        paths.append(ARTIFACTS_RUNTIME_ITEMS_FILE)
+    return list(dict.fromkeys(path.resolve() for path in paths if path.is_file()))
+
+
+def _catalog_price_line_pattern(category: str) -> tuple[re.Pattern[str], str, str]:
+    if category == "AR":
+        return re.compile(r"(?m)^  - id:\s*([^\s#]+).*?(?=^  - id:|^donation-catalog:|\Z)", re.S), "id", "price_ar"
+    return re.compile(r"(?m)^    - item-id:\s*([^\s#]+).*?(?=^    - item-id:|\Z)", re.S), "item-id", "price-donation"
+
+
+def _replace_catalog_price_text(text: str, item_id: str, category: str, price: int) -> str:
+    block_pattern, _, price_key = _catalog_price_line_pattern(category)
+    match = next((candidate for candidate in block_pattern.finditer(text) if candidate.group(1).strip().lower() == item_id), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
+    block = match.group(0)
+    price_pattern = re.compile(rf"(?m)^(\s+){re.escape(price_key)}:\s*[^#\r\n]*$")
+    if price_pattern.search(block):
+        updated_block = price_pattern.sub(lambda found: f"{found.group(1)}{price_key}: {price}", block, count=1)
+    else:
+        # A malformed/old catalog may omit the price key.  Add it immediately
+        # after the item id instead of rewriting the whole YAML document.
+        id_line = re.search(r"(?m)^(\s*-\s*[^\r\n]+)$", block)
+        if not id_line:
+            raise HTTPException(status_code=500, detail="Структура каталога предмета повреждена")
+        indent = re.match(r"\s*", id_line.group(1)).group(0) if re.match(r"\s*", id_line.group(1)) else ""
+        insertion = f"{id_line.group(1)}\n{indent}  {price_key}: {price}"
+        updated_block = block[: id_line.start()] + insertion + block[id_line.end() :]
+    return text[: match.start()] + updated_block + text[match.end() :]
+
+
+def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
+    normalized_id = str(item_id or "").strip().lower()
+    normalized_category = str(category or "").strip().upper()
+    if normalized_category not in {"AR", "DONATION"}:
+        raise HTTPException(status_code=400, detail="Категория должна быть AR или DONATION")
+    catalog = load_commerce_catalog(ARTIFACTS_ITEMS_FILE)
+    bucket = catalog.get("ar" if normalized_category == "AR" else "donation") or {}
+    row = dict((bucket.get("byId") or {}).get(normalized_id) or {})
+    if not row:
+        raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
+    if str(row.get("source") or "").upper() == "ADMIN_ONLY":
+        raise HTTPException(status_code=400, detail="Скрытый предмет нельзя добавить в ассортимент лавки")
+    return {"item_id": normalized_id, "category": normalized_category, "old_price": int(row.get("price_ar" if normalized_category == "AR" else "price_donation") or 0), **row}
+
+
+def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, idempotency_key: str) -> dict[str, Any]:
+    """Update both catalog copies, reload the Bukkit plugin, and expose one value."""
+    if yaml is None:
+        raise HTTPException(status_code=503, detail="Редактор цен недоступен: PyYAML не установлен")
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="Изменение цены требует настроенного RCON")
+    target = _catalog_price_target(item_id, category)
+    normalized_price = int(price)
+    if normalized_price <= 0:
+        raise HTTPException(status_code=400, detail="Цена должна быть больше нуля")
+    paths = _shop_catalog_paths()
+    if not paths:
+        raise HTTPException(status_code=404, detail="Файл каталога лавки не найден")
+
+    with ARTIFACTS_CATALOG_LOCK:
+        old_texts: dict[Path, str] = {}
+        staged: list[tuple[Path, Path]] = []
+        try:
+            for path in paths:
+                text = path.read_text(encoding="utf-8-sig")
+                # Parse before writing so a partially broken YAML cannot be
+                # made worse by an administrator action.
+                if not isinstance(yaml.safe_load(text) or {}, dict):
+                    raise HTTPException(status_code=500, detail="Файл каталога имеет неверный формат")
+                old_texts[path] = text
+                updated = _replace_catalog_price_text(text, target["item_id"], target["category"], normalized_price)
+                if target["category"] == "DONATION":
+                    updated = re.sub(r"(?m)^(  updated-at:)\s*[^#\r\n]*$", rf"\1 {now_ts()}", updated, count=1)
+                    version = re.search(r"(?m)^(  catalog-version:)\s*(\d+)", updated)
+                    if version:
+                        updated = updated[: version.start()] + f"{version.group(1)} {int(version.group(2)) + 1}" + updated[version.end() :]
+                temp = path.with_name(f".{path.name}.price-{secrets.token_hex(6)}.tmp")
+                temp.write_text(updated.rstrip() + "\n", encoding="utf-8", newline="\n")
+                temp.chmod(0o640)
+                staged.append((path, temp))
+            for path, temp in staged:
+                temp.replace(path)
+            try:
+                reload_response = rcon_sync("cmartifacts reload")
+            except Exception as exc:
+                raise HTTPException(status_code=503, detail=f"Цены сохранены не были: не удалось перезагрузить лавку ({str(exc)[:180]})") from exc
+            lowered = str(reload_response or "").lower()
+            if any(marker in lowered for marker in ("unknown command", "неизвест", "error", "ошиб", "players only", "только игрок")):
+                raise HTTPException(status_code=503, detail="Плагин не подтвердил перезагрузку каталога")
+        except Exception:
+            for path, temp in staged:
+                try:
+                    temp.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            # Restore every file if plugin reload failed after the replacement.
+            for path, old_text in old_texts.items():
+                try:
+                    path.write_text(old_text, encoding="utf-8", newline="\n")
+                except Exception:
+                    pass
+            if old_texts:
+                try:
+                    rcon_sync("cmartifacts reload")
+                except Exception:
+                    pass
+            raise
+
+    audit_event(actor, "shop.price.update", target=target["item_id"], details={"category": target["category"], "before": target["old_price"], "after": normalized_price, "idempotency_key": idempotency_key})
+    append_panel_event("shops", "price_changed", actor=actor, target=target["item_id"], metadata={"category": target["category"], "before": target["old_price"], "after": normalized_price}, tags=["shop", "price"])
+    return {"ok": True, "item_id": target["item_id"], "category": target["category"], "old_price": target["old_price"], "price": normalized_price, "reload": str(reload_response or "")[:240]}
+
+
 def plugin_registry_audit_sync(plugin_id: str, limit: int = 80) -> list[dict[str, Any]]:
     rows = read_site_audit_rows(max(1, min(limit, 200)), "plugin.registry", "")
     safe_plugin_id = str(plugin_id or "").strip()
@@ -13833,6 +13963,13 @@ async def admin_donation_shop_items(_: str = Depends(require_admin)) -> dict[str
 async def admin_ar_shop_items(_: str = Depends(require_admin)) -> dict[str, Any]:
     catalog = await bg(ar_catalog_snapshot_sync)
     return {"items": catalog.get("items", []), "count": len(catalog.get("items", []))}
+
+
+@app.post("/api/admin/shop/price")
+async def admin_shop_price_update(data: AdminShopPriceUpdateIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "SHOP_PRICE_UPDATE")
+    check_rate_limit(request, "admin-shop-price", limit=20, window_seconds=60)
+    return await bg(update_shop_price_sync, data.item_id, data.category, data.price, username, data.idempotency_key)
 
 
 @app.get("/api/admin/shop/admin-gift-items")

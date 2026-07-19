@@ -1,4 +1,4 @@
-import { initThemeToggle } from "./theme/theme-toggle.js?v=20260718r1";
+import { initThemeToggle } from "./theme/theme-toggle.js?v=20260719r1";
 import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js";
 import { initPublicNav } from "./public/public-nav.js";
 import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js";
@@ -19,7 +19,6 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["register", "register.html"],
 ]);
 
-let legacyRuntimePromise = null;
 let cabinetRuntimePromise = null;
 
 function currentHashRoute(hashValue = window.location.hash) {
@@ -48,24 +47,9 @@ function normalizeAuthHashRoute() {
   return true;
 }
 
-function loadLegacyRuntime() {
-  if (legacyRuntimePromise) return legacyRuntimePromise;
-  legacyRuntimePromise = import("./legacy/app-legacy.js")
-    .then((module) => {
-      document.documentElement.dataset.runtime = "ready";
-      return module;
-    })
-    .catch((error) => {
-      legacyRuntimePromise = null;
-      console.error("CopiMine legacy cabinet runtime failed to load", error);
-      throw error;
-    });
-  return legacyRuntimePromise;
-}
-
 function loadCabinetRuntime() {
   if (cabinetRuntimePromise) return cabinetRuntimePromise;
-  cabinetRuntimePromise = import("./cabinet-runtime.js")
+  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260719r1")
     .then((module) => {
       document.documentElement.dataset.runtime = "ready";
       document.documentElement.dataset.cabinetRuntime = "modern";
@@ -79,14 +63,8 @@ function loadCabinetRuntime() {
   return cabinetRuntimePromise;
 }
 
-function requestLegacyRuntime() {
-  void loadLegacyRuntime();
-}
-
 function requestCabinetRuntime() {
-  void loadCabinetRuntime().catch(() => {
-    requestLegacyRuntime();
-  });
+  void loadCabinetRuntime();
 }
 
 window.addEventListener("hashchange", () => {
@@ -101,9 +79,6 @@ window.addEventListener("hashchange", () => {
   }
   if (normalizeLegacyPublicHash()) return;
 });
-
-window.addEventListener("copimine:legacy-runtime-request", requestLegacyRuntime);
-window.addEventListener("copimine:cabinet-runtime-request", requestCabinetRuntime);
 
 if (pageKind() === "cabinet") {
   if (!normalizeAuthHashRoute()) {

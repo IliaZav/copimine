@@ -30,7 +30,9 @@ Assert-Contains $bootstrap 'const LEGACY_PUBLIC_REDIRECTS = new Map([' 'Legacy p
 
 Assert-Contains $bootstrap 'window.addEventListener("hashchange"' 'Hashchange route glue is missing.'
 Assert-Contains $bootstrap 'initThemeToggle();' 'Theme toggle bootstrap is missing.'
-Assert-Contains $bootstrap 'requestLegacyRuntime();' 'Legacy runtime lazy-loading hook is missing.'
+if ($bootstrap.Contains('requestLegacyRuntime') -or $bootstrap.Contains('legacy/app-legacy.js')) {
+  throw 'Retired legacy runtime is still referenced by bootstrap.js.'
+}
 
 Assert-Contains $legacy 'Object.assign(dataClickHandlers, {' 'Legacy dataClickHandlers map is missing.'
 Assert-Contains $legacy 'const adminLoaders = {' 'Admin loader map is missing.'

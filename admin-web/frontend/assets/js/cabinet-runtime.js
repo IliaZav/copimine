@@ -1036,7 +1036,7 @@ function dashboardHero(status, perf, electionOverview, economy, readyPercent) {
           <span>АР в учёте</span>
         </div>
         <div class="hero-tile">
-          <img src="/assets/mc-icons/item/chest.png" alt="" />
+          <img src="/assets/mc-icons/item/chest_minecart.png" alt="" />
           <strong>${esc(players.length)}</strong>
           <span>игроки онлайн</span>
         </div>
@@ -2487,9 +2487,14 @@ async function logout(call = true) {
 }
 
 async function resolveAuthSession() {
-  const me = await api("/api/session/me", { skipAuthReset: true });
+  // Fetch the small public config beside the session check.  The old
+  // sequential calls made every cabinet page wait for two network round
+  // trips before any navigation could be shown.
+  const [me, config] = await Promise.all([
+    api("/api/session/me", { skipAuthReset: true }),
+    safeApi("/api/config", {})
+  ]);
   if (me.kind === "panel") {
-    const config = await safeApi("/api/config", {});
     return {
       role: me.role || "admin",
       user: { username: me.username || "", role: me.role || "admin" },
@@ -2542,8 +2547,11 @@ async function bootAuthed(options = {}) {
   syncTopbarActions();
   renderPublicAuthState();
   renderNav();
-  await setTab(state.tab);
+  // Reveal the shell as soon as authentication and navigation are ready.  A
+  // slow status/RCON query must show a useful in-page loader, not keep the
+  // whole cabinet hidden behind "Подготавливаем кабинет".
   setBootState("ready");
+  await setTab(state.tab);
   clearInterval(state.refreshTimer);
   if (isPanelAdminRole()) {
     startLivePanelStream();
@@ -3815,6 +3823,30 @@ window.adminDonationCancelSession = async (sessionId) => getAdminCommercePages()
 
 window.adminSetTreasuryPin = async () => getAdminCommercePages().adminSetTreasuryPin();
 
+window.updateShopPrice = async (category, itemId) => {
+  const kind = String(category || "").toUpperCase();
+  const id = String(itemId || "").trim().toLowerCase();
+  if (!id || !["AR", "DONATION"].includes(kind)) return toast("Не удалось определить предмет лавки", true);
+  const input = document.getElementById(`shop-price-${kind.toLowerCase()}-${id}`);
+  const price = Math.trunc(Number(input?.value || 0));
+  if (!Number.isSafeInteger(price) || price <= 0 || price > 1000000000) {
+    return toast("Цена должна быть целым числом от 1 до 1 000 000 000", true);
+  }
+  const headers = await dangerConfirm(`Изменить цену ${id} в ${kind}-лавке на ${price}?`, "SHOP_PRICE_UPDATE");
+  if (!headers) return;
+  try {
+    await api("/api/admin/shop/price", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ item_id: id, category: kind, price, idempotency_key: randomActionKey("shop-price") }),
+    });
+    toast(`Цена ${id} обновлена. Игра и сайт используют новое значение.`);
+    await loadShops();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 function artifactStatusTone(status) {
   const value = String(status || "").toUpperCase();
   if (["DELIVERED", "CLAIMED", "COMPLETED", "ACTIVE", "PAID"].includes(value)) return "good";
@@ -3842,13 +3874,13 @@ async function loadShops() {
       ${panel("AR-\u043b\u0430\u0432\u043a\u0430", "\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0435 \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u044b \u0437\u0430 \u0431\u0430\u043b\u0430\u043d\u0441 AR.", table("shops-ar-catalog", arRows, [
         { key: "item_id", label: "ID" },
         { key: "name", label: "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435" },
-        { key: "price_ar", label: "AR" },
+        { key: "price_ar", label: "AR", render: (value, row) => `<div class="shop-price-editor"><input id="shop-price-ar-${esc(row.item_id)}" type="number" min="1" max="1000000000" step="1" value="${esc(value ?? 0)}" aria-label="Цена ${esc(row.item_id)}" /><button class="btn btn-primary btn-small" data-click="updateShopPrice('AR','${esc(row.item_id)}')">Сохранить</button></div>` },
         { key: "enabled", label: "\u0414\u043e\u0441\u0442\u0443\u043f", render: value => value ? pill("\u0434\u0430", "good") : pill("\u043d\u0435\u0442", "warn") }
       ], { pageSize: 12 }))}
       ${panel("Donation-\u043b\u0430\u0432\u043a\u0430", "\u041f\u043e\u043a\u0443\u043f\u043a\u0438 \u0437 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 \u0434\u043e\u043d\u0430\u0442-\u0431\u0430\u043b\u0430\u043d\u0441\u0430.", table("shops-donation-catalog", donationRows, [
         { key: "item_id", label: "ID" },
         { key: "display_name", label: "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435" },
-        { key: "price_donation", label: "Donation" },
+        { key: "price_donation", label: "Donation", render: (value, row) => `<div class="shop-price-editor"><input id="shop-price-donation-${esc(row.item_id)}" type="number" min="1" max="1000000000" step="1" value="${esc(value ?? 0)}" aria-label="Цена ${esc(row.item_id)}" /><button class="btn btn-primary btn-small" data-click="updateShopPrice('DONATION','${esc(row.item_id)}')">Сохранить</button></div>` },
         { key: "enabled", label: "\u0414\u043e\u0441\u0442\u0443\u043f", render: value => value ? pill("\u0434\u0430", "good") : pill("\u043d\u0435\u0442", "warn") }
       ], { pageSize: 12 }))}
     </section>

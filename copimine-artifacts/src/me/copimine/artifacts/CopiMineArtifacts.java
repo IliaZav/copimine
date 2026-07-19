@@ -1731,6 +1731,28 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return this.handleSetPriceCommand(var1, var4);
       }
 
+      // The admin web panel updates items.yml and asks the server console to
+      // reload the catalog.  Previously cmartifacts reload was silently
+      // ignored for console/RCON senders because all subcommands were gated
+      // behind Player, leaving the game shop on the old price until a restart.
+      if (!(var1 instanceof Player)) {
+         if (var4.length > 0 && "reload".equalsIgnoreCase(var4[0])) {
+            try {
+               this.reloadConfig();
+               this.debugGui = this.getConfig().getBoolean("debug_gui", false);
+               this.loadCatalogFromConfig();
+               this.syncCatalogToPostgres();
+               var1.sendMessage("CopiMineArtifacts catalog reloaded.");
+            } catch (Exception error) {
+               this.getLogger().log(Level.WARNING, "Artifacts console reload failed", error);
+               var1.sendMessage("CopiMineArtifacts catalog reload failed: " + this.safeErr(error));
+            }
+            return true;
+         }
+         var1.sendMessage("Use /cmartifacts reload from the server console.");
+         return true;
+      }
+
       if (var1 instanceof Player var5) {
          if (var4.length == 0) {
             if (this.isArtifactsAdmin(var5)) {

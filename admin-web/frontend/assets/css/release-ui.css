@@ -714,6 +714,111 @@ td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: left;
 th { color: var(--muted); font-size: .75rem; font-weight: 750; letter-spacing: 0; text-transform: uppercase; }
 tbody tr { transition: background-color var(--speed-fast) ease; }
 tbody tr:hover { background: var(--status-gradient); }
+.shop-price-editor { display: flex; align-items: center; gap: 6px; min-width: 180px; }
+.shop-price-editor input { width: 92px; min-width: 0; padding: 7px 8px; font-variant-numeric: tabular-nums; }
+.shop-price-editor .btn { white-space: nowrap; }
+
+/* Dashboard visuals are part of the current runtime, not the retired legacy
+   stylesheet.  Keeping them here prevents SVG areas from falling back to a
+   browser-black fill and keeps the first screen readable in both themes. */
+.dashboard-hero { min-height: 278px; display: grid; grid-template-columns: minmax(320px, .82fr) minmax(460px, 1.18fr); gap: 18px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--surface-gradient); box-shadow: var(--shadow-1); }
+.hero-copy { min-width: 0; display: grid; align-content: center; gap: 14px; padding: 28px; }
+.hero-copy h2 { margin: 0; font-size: clamp(28px, 3vw, 38px); line-height: 1.05; font-weight: 850; }
+.hero-copy p { max-width: 620px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.hero-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: stretch; padding: 18px; border-left: 1px solid var(--line); background: var(--surface-strong); }
+.hero-tile { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-content: center; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--r); padding: 12px; background: var(--surface-soft); }
+.hero-tile img { width: 34px; height: 34px; object-fit: contain; image-rendering: pixelated; }
+.hero-tile span { display: block; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.hero-tile strong { display: block; margin-top: 2px; overflow: hidden; color: var(--ink); font-size: 18px; line-height: 1.05; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-visual-grid { display: grid; grid-template-columns: minmax(360px, 1.1fr) minmax(180px, .42fr) minmax(280px, .75fr); gap: 16px; }
+.visual-card { min-height: 172px; min-width: 0; display: grid; gap: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); padding: 16px; background: var(--surface); box-shadow: var(--shadow-1); }
+.visual-card-large { grid-template-columns: minmax(220px, .7fr) minmax(240px, 1fr); align-items: center; }
+.visual-label { display: block; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.visual-card strong { display: block; margin-top: 6px; font-size: 25px; line-height: 1.08; }
+.visual-card p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.ring-card { place-items: center; }
+.readiness-ring { width: min(156px, 100%); aspect-ratio: 1; position: relative; display: grid; place-items: center; }
+.readiness-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-bg, .ring-fg { fill: none; stroke-width: 11; }
+.ring-bg { stroke: var(--line-strong); }
+.ring-fg { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 283; stroke-dashoffset: var(--ring-offset); animation: ringReveal .9s ease-out both; }
+.readiness-ring > div { width: 86px; height: 86px; display: grid; place-items: center; align-content: center; border-radius: 999px; background: var(--surface-soft); box-shadow: inset 0 0 0 1px var(--line); text-align: center; }
+.readiness-ring strong { display: block; font-size: 24px; line-height: 1; }
+.readiness-ring span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.sparkline { width: 100%; height: 132px; overflow: visible; }
+.sparkline polygon { fill: color-mix(in srgb, var(--accent) 18%, transparent); }
+.sparkline polyline { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; stroke-dasharray: 220; stroke-dashoffset: 220; animation: chartDraw 1.25s ease-out forwards; }
+.sparkline.bad polygon { fill: color-mix(in srgb, var(--red) 18%, transparent); }
+.sparkline.bad polyline { stroke: var(--red); }
+.mini-bars { display: grid; gap: 10px; }
+.mini-bar { min-height: 34px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; background: var(--surface-soft); }
+.mini-bar::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--bar); border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 24%, transparent), color-mix(in srgb, var(--teal) 20%, transparent)); animation: barGrow .8s ease-out both; }
+.mini-bar span, .mini-bar strong { position: relative; z-index: 1; }
+.mini-bar span { color: var(--muted); font-size: 12px; font-weight: 750; }
+.mini-bar strong { font-size: 14px; }
+
+/* admin-release.css was authored for the old dark-only shell.  These tokens
+   and colors make the same current admin markup legible in the light theme. */
+:root[data-theme="light"] {
+  --release-shell-bg: var(--body-gradient);
+  --release-panel-bg: var(--surface);
+  --release-panel-strong: var(--surface);
+  --release-line: var(--line);
+  --release-line-strong: var(--line-strong);
+}
+:root[data-theme="light"] body.panel-admin-mode,
+:root[data-theme="light"] body.junior-admin-mode,
+:root[data-theme="light"] body.player-mode { color: var(--ink); }
+:root[data-theme="light"] body.panel-admin-mode .sidebar,
+:root[data-theme="light"] body.junior-admin-mode .sidebar,
+:root[data-theme="light"] body.player-mode .sidebar { background: var(--surface-gradient); border-color: var(--line); }
+:root[data-theme="light"] body.panel-admin-mode .side-brand,
+:root[data-theme="light"] body.junior-admin-mode .side-brand,
+:root[data-theme="light"] body.player-mode .side-brand,
+:root[data-theme="light"] body.panel-admin-mode .nav-item,
+:root[data-theme="light"] body.junior-admin-mode .nav-item,
+:root[data-theme="light"] body.player-mode .nav-item { background: var(--surface-soft) !important; border-color: var(--line) !important; }
+:root[data-theme="light"] body.panel-admin-mode .side-brand-copy strong,
+:root[data-theme="light"] body.junior-admin-mode .side-brand-copy strong,
+:root[data-theme="light"] body.player-mode .side-brand-copy strong,
+:root[data-theme="light"] body.panel-admin-mode .nav-label,
+:root[data-theme="light"] body.junior-admin-mode .nav-label,
+:root[data-theme="light"] body.player-mode .nav-label { color: var(--ink) !important; }
+:root[data-theme="light"] body.panel-admin-mode .side-brand-copy span,
+:root[data-theme="light"] body.junior-admin-mode .side-brand-copy span,
+:root[data-theme="light"] body.player-mode .side-brand-copy span,
+:root[data-theme="light"] body.panel-admin-mode .nav-hint,
+:root[data-theme="light"] body.junior-admin-mode .nav-hint,
+:root[data-theme="light"] body.player-mode .nav-hint,
+:root[data-theme="light"] body.panel-admin-mode .nav-group-title,
+:root[data-theme="light"] body.junior-admin-mode .nav-group-title,
+:root[data-theme="light"] body.player-mode .nav-group-title { color: var(--muted) !important; }
+:root[data-theme="light"] body.panel-admin-mode .nav-icon,
+:root[data-theme="light"] body.junior-admin-mode .nav-icon,
+:root[data-theme="light"] body.player-mode .nav-icon { color: var(--accent-strong) !important; background: var(--accent-soft) !important; }
+:root[data-theme="light"] body.panel-admin-mode .topbar,
+:root[data-theme="light"] body.junior-admin-mode .topbar,
+:root[data-theme="light"] body.player-mode .topbar { background: var(--surface-gradient) !important; border-color: var(--line) !important; }
+:root[data-theme="light"] body.panel-admin-mode .page-heading h1,
+:root[data-theme="light"] body.junior-admin-mode .page-heading h1,
+:root[data-theme="light"] body.player-mode .page-heading h1 { color: var(--ink) !important; }
+:root[data-theme="light"] body.panel-admin-mode .page-heading p,
+:root[data-theme="light"] body.junior-admin-mode .page-heading p,
+:root[data-theme="light"] body.player-mode .page-heading p { color: var(--muted) !important; }
+:root[data-theme="light"] body.panel-admin-mode .mini-health,
+:root[data-theme="light"] body.junior-admin-mode .mini-health,
+:root[data-theme="light"] body.player-mode .mini-health { background: var(--surface-soft) !important; border-color: var(--line) !important; color: var(--muted) !important; }
+
+@media (max-width: 1100px) {
+  .dashboard-hero, .dashboard-visual-grid { grid-template-columns: 1fr; }
+  .hero-board { border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 680px) {
+  .hero-copy { padding: 20px; }
+  .hero-board { grid-template-columns: 1fr; padding: 14px; }
+  .visual-card-large { grid-template-columns: 1fr; }
+}
 
 /* Authenticated shells */
 body.player-mode,

@@ -173,8 +173,22 @@ PY
   echo '[preflight] Offline voice-chat exception enabled by explicit deployment request.'
 }
 
+normalize_runtime_env_owner() {
+  local env_file="$PROJECT_ROOT/admin-web/.env"
+  [[ -f "$env_file" ]] || return 0
+  local app_user app_group
+  app_user="$(systemctl show copimine-admin.service -p User --value 2>/dev/null || true)"
+  app_user="${app_user:-qwerty}"
+  id "$app_user" >/dev/null 2>&1 || { echo "[preflight] Runtime user does not exist: $app_user" >&2; return 1; }
+  app_group="$(id -gn "$app_user")"
+  chown "$app_user:$app_group" "$env_file"
+  chmod 600 "$env_file"
+  echo "[preflight] Runtime env owner: $app_user:$app_group"
+}
+
 preflight
 enable_offline_voicechat
+normalize_runtime_env_owner
 
 if [[ "$WIPE_DB" == "1" ]]; then
   [[ "${COPIMINE_ALLOW_DB_WIPE:-}" == "YES" ]] || { echo 'Refusing database wipe. Set COPIMINE_ALLOW_DB_WIPE=YES and pass --wipe-db.' >&2; exit 3; }

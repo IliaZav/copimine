@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-19T03:24:24.4006381Z",
-    "gitCommit":  "9c85672",
+    "generatedAtUtc":  "2026-07-19T03:29:19.1591383Z",
+    "gitCommit":  "4b3b26c",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,8 +10,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "be8678cb1249e5b99acbdf1419dc9b56547f732c",
-                                      "sha256":  "0824a6a3b91e9cfd15705bbe0e7bc126a026e3d986ff6b36a762a4336d23a6b4"
+                                      "sha1":  "6c15ba8eaf48a680bad259d2b33f604dcdeca023",
+                                      "sha256":  "b084c7caf74afee0b3b7fdaadcec27de033105fa48f1f50874042739de9db497"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -31,7 +31,7 @@
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
-                                                        "sha256":  "d44e2368274324a289f1bf0af3443ea74eae21746dc5483eeaec1a5d05953fef"
+                                                        "sha256":  "ad4bbcf7bd9756ddbe074668fd231c358ad293adcaf81c1f7103adafd737e07e"
                                                     },
                                    "gameRuntimeHardening":  {
                                                                 "applyScript":  {
@@ -52,7 +52,7 @@
                                                                                       },
                                                                 "systemdUnit":  {
                                                                                     "path":  "admin-web/deploy/copimine-game-hardening.service",
-                                                                                    "sha256":  "b2f3c8aee3dcd21b8dba529e9399fba39cc9bf9c813dfd3f0305ff44dc97cb2b"
+                                                                                    "sha256":  "45b23bb7bc3d7cb7a3a3d4c179bfa99fba0be257209f04a8dda90be726d4c9e3"
                                                                                 }
                                                             }
                                },
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "5aede14fc2de274195a4872e0638d2d0512e3ac1acc5d15641416776d9447959"
+                                             "sha256":  "f43f29fa6d41079674aa5d4fc2e1a0d3821e7a71f41851b729bd3292474cb224"
                                          }
                  },
     "serverProperties":  {

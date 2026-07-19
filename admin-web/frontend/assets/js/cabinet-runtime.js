@@ -3,7 +3,7 @@ import { buildCsvContent } from "./shared/csv.js";
 import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260719r8";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "./player/account-pages.js";

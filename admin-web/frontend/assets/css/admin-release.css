@@ -322,6 +322,14 @@ body.junior-admin-mode .admin-search-dock {
   border: 0;
   background: transparent;
   box-shadow: none;
+  /* Keep the invisible dock wrapper from covering the page. Only the
+     floating button and an opened panel should receive pointer input. */
+  pointer-events: none;
+}
+
+body.panel-admin-mode .admin-search-dock > *,
+body.junior-admin-mode .admin-search-dock > * {
+  pointer-events: auto;
 }
 
 .admin-search-fab {

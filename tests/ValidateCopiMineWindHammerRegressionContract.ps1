@@ -54,7 +54,8 @@ if (-not $windAbility.Success) { throw 'Wind hammer ability implementation is mi
 foreach ($marker in @(
   'getNearbyEntities(center, 10.0D, 10.0D, 10.0D)',
   'distanceSquared(center) > 100.0D',
-  'setY(Math.max(living.getVelocity().getY(), 1.0D))',
+  'entity == player',
+  'setY(Math.max(living.getVelocity().getY(), 1.15D))',
   'PotionEffectType.LEVITATION, 80, 0'
 )) {
   if ($windAbility.Value -notmatch [regex]::Escape($marker)) { throw "Wind hammer ability marker is missing: $marker" }

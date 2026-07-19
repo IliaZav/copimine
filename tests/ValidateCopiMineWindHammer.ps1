@@ -46,7 +46,8 @@ foreach ($expected in @(
     'getNearbyEntities(center, 10.0D, 10.0D, 10.0D)',
     'distanceSquared(center) > 100.0D',
     'instanceof LivingEntity',
-    'setY(Math.max(living.getVelocity().getY(), 1.0D))',
+    'entity == player',
+    'setY(Math.max(living.getVelocity().getY(), 1.15D))',
     'PotionEffectType.LEVITATION, 80, 0'
 )) {
     if ($ability.Value -notlike "*$expected*") {

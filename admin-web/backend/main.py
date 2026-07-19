@@ -12335,13 +12335,23 @@ def _shop_catalog_paths() -> list[Path]:
 
 def _catalog_price_line_pattern(category: str) -> tuple[re.Pattern[str], str, str]:
     if category == "AR":
-        return re.compile(r"(?m)^  - id:\s*([^\s#]+).*?(?=^  - id:|^donation-catalog:|\Z)", re.S), "id", "price_ar"
-    return re.compile(r"(?m)^    - item-id:\s*([^\s#]+).*?(?=^    - item-id:|\Z)", re.S), "item-id", "price-donation"
+        return re.compile(r"(?m)^\s{2}-\s+id:\s*([^\s#]+).*?(?=^\s{2}-\s+id:|^donation-catalog:|\Z)", re.S), "id", "price_ar"
+    return re.compile(r"(?m)^\s{4}-\s+item-id:\s*([^\s#]+).*?(?=^\s{4}-\s+item-id:|\Z)", re.S), "item-id", "price-donation"
+
+
+def _normalize_shop_item_id(value: Any) -> str:
+    """Normalize ids coming from old admin bundles and newer catalog rows."""
+    normalized = str(value or "").strip().lower()
+    for prefix in ("copimine:", "artifact:", "item:"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+    return normalized.replace(" ", "_")
 
 
 def _replace_catalog_price_text(text: str, item_id: str, category: str, price: int) -> str:
     block_pattern, _, price_key = _catalog_price_line_pattern(category)
-    match = next((candidate for candidate in block_pattern.finditer(text) if candidate.group(1).strip().lower() == item_id), None)
+    normalized_id = _normalize_shop_item_id(item_id)
+    match = next((candidate for candidate in block_pattern.finditer(text) if _normalize_shop_item_id(candidate.group(1)) == normalized_id), None)
     if match is None:
         raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
     block = match.group(0)
@@ -12361,13 +12371,20 @@ def _replace_catalog_price_text(text: str, item_id: str, category: str, price: i
 
 
 def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
-    normalized_id = str(item_id or "").strip().lower()
+    normalized_id = _normalize_shop_item_id(item_id)
     normalized_category = str(category or "").strip().upper()
     if normalized_category not in {"AR", "DONATION"}:
         raise HTTPException(status_code=400, detail="Категория должна быть AR или DONATION")
-    catalog = load_commerce_catalog(ARTIFACTS_ITEMS_FILE)
-    bucket = catalog.get("ar" if normalized_category == "AR" else "donation") or {}
-    row = dict((bucket.get("byId") or {}).get(normalized_id) or {})
+    row: dict[str, Any] = {}
+    for catalog_path in _shop_catalog_paths():
+        catalog = load_commerce_catalog(catalog_path)
+        bucket = catalog.get("ar" if normalized_category == "AR" else "donation") or {}
+        rows = bucket.get("byId") or {}
+        row = dict(rows.get(normalized_id) or {})
+        if not row:
+            row = next((dict(candidate) for key, candidate in rows.items() if _normalize_shop_item_id(key) == normalized_id), {})
+        if row:
+            break
     if not row:
         raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
     if str(row.get("source") or "").upper() == "ADMIN_ONLY":
@@ -12392,6 +12409,7 @@ def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, 
     with ARTIFACTS_CATALOG_LOCK:
         old_texts: dict[Path, str] = {}
         staged: list[tuple[Path, Path]] = []
+        matched_paths = 0
         try:
             for path in paths:
                 text = path.read_text(encoding="utf-8-sig")
@@ -12400,7 +12418,16 @@ def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, 
                 if not isinstance(yaml.safe_load(text) or {}, dict):
                     raise HTTPException(status_code=500, detail="Файл каталога имеет неверный формат")
                 old_texts[path] = text
-                updated = _replace_catalog_price_text(text, target["item_id"], target["category"], normalized_price)
+                try:
+                    updated = _replace_catalog_price_text(text, target["item_id"], target["category"], normalized_price)
+                except HTTPException as error:
+                    # A stale runtime copy may briefly lack a newly added
+                    # catalog row.  The canonical copy is still updated and
+                    # the plugin reload consumes it on the next request.
+                    if error.status_code != 404:
+                        raise
+                    continue
+                matched_paths += 1
                 if target["category"] == "DONATION":
                     updated = re.sub(r"(?m)^(  updated-at:)\s*[^#\r\n]*$", rf"\1 {now_ts()}", updated, count=1)
                     version = re.search(r"(?m)^(  catalog-version:)\s*(\d+)", updated)
@@ -12412,6 +12439,8 @@ def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, 
                 staged.append((path, temp))
             for path, temp in staged:
                 temp.replace(path)
+            if matched_paths == 0:
+                raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
             try:
                 reload_response = rcon_sync("cmartifacts reload")
             except Exception as exc:

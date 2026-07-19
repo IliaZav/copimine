@@ -86,6 +86,7 @@ import org.bukkit.entity.ItemDisplay.ItemDisplayTransform;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -160,6 +161,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
    private final Set<String> provisionalDonationInstanceIds = ConcurrentHashMap.newKeySet();
+   private final Set<String> bindingRefreshInFlight = ConcurrentHashMap.newKeySet();
    private final Set<String> pendingVisualRepairChunks = ConcurrentHashMap.newKeySet();
    private final Set<String> suspiciousSeen = ConcurrentHashMap.newKeySet();
    private final Set<String> chainedTreeBreaks = ConcurrentHashMap.newKeySet();
@@ -1191,7 +1193,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             continue;
          }
 
-         Block center = player.getLocation().getBlock();
+         // The player's block is the air block occupied by their feet.  Lava
+         // must be converted in the block directly below the player, not one
+         // block above/inside the player model.
+         Block center = player.getLocation().getBlock().getRelative(0, -1, 0);
          for (int dx = -POZDNYAKOV_LAVA_RADIUS; dx <= POZDNYAKOV_LAVA_RADIUS; dx++) {
             for (int dz = -POZDNYAKOV_LAVA_RADIUS; dz <= POZDNYAKOV_LAVA_RADIUS; dz++) {
                Block block = center.getRelative(dx, 0, dz);
@@ -1404,6 +1409,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler
    public void onJoin(PlayerJoinEvent var1) {
       this.recoverStrandedDeliveries(var1.getPlayer());
+      this.refreshEquippedArtifactBindingsAsync(var1.getPlayer());
       this.runAsync(
          () -> {
             int var2 = this.pendingCount(var1.getPlayer().getUniqueId().toString());
@@ -1458,10 +1464,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                 if (var5 != Action.RIGHT_CLICK_BLOCK || var1.getClickedBlock() == null || !var1.getClickedBlock().getType().isSolid()) {
                    return;
                 }
-             } else if (var5 != Action.RIGHT_CLICK_AIR) {
-                return;
+            } else if (var5 != Action.RIGHT_CLICK_AIR) {
+               return;
             }
 
+            // The ability owns the interaction.  Deny the vanilla use as well,
+            // otherwise a FIREWORK_ROCKET can be consumed by the client/server
+            // before the eternal boost finishes.
+            var1.setUseItemInHand(Event.Result.DENY);
+            var1.setUseInteractedBlock(Event.Result.DENY);
             long var6 = this.now();
             long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var3), 0L);
             if (var8 > var6) {
@@ -1508,10 +1519,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       Location center = ground.getLocation().add(0.5D, 0.5D, 0.5D);
       for (Entity entity : player.getWorld().getNearbyEntities(center, 10.0D, 10.0D, 10.0D)) {
-         if (!(entity instanceof LivingEntity living) || living.getLocation().distanceSquared(center) > 100.0D) {
+         if (entity == player || !(entity instanceof LivingEntity living) || living.getLocation().distanceSquared(center) > 100.0D) {
             continue;
          }
-         living.setVelocity(living.getVelocity().setY(Math.max(living.getVelocity().getY(), 1.0D)));
+         living.setVelocity(living.getVelocity().setY(Math.max(living.getVelocity().getY(), 1.15D)));
          living.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION, 80, 0, false, false, true));
       }
       player.getWorld().spawnParticle(Particle.CLOUD, center, 60, 3.5D, 0.3D, 3.5D, 0.08D);
@@ -1520,7 +1531,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    @EventHandler(
       priority = EventPriority.HIGHEST,
-      ignoreCancelled = true
+      ignoreCancelled = false
    )
    public void onArtifactDefend(EntityDamageEvent var1) {
       if (var1.getEntity() instanceof Player var2) {
@@ -1566,9 +1577,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             long var7 = this.now();
             long var9 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var5), 0L);
             if (var9 <= var7 && this.rollEffectChance(var5)) {
-               if (var14.getDamager() instanceof LivingEntity var11) {
-                  var11.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
-                  var11.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
+               LivingEntity attacker = this.resolveDamageAttacker(var14);
+               if (attacker != null && attacker != var2) {
+                  attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
+                  attacker.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
                }
 
                var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 0, false, false, true));
@@ -5003,6 +5015,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ItemStack var2 = var1.getInventory().getItemInMainHand();
       CopiMineArtifacts.CatalogItem var3 = this.authenticCatalogItem(var2, var1, "repair_open");
       if (var3 == null) {
+         if (this.hasArtifactIdentity(var2)) {
+            this.refreshOfficialBindingAsync(var1, var2, "repair_open");
+            return;
+         }
          var1.sendMessage(
             this.color(
                "&cВ руке должен быть официальный предмет CopiMineArtifacts."
@@ -6615,6 +6631,92 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.getLogger().log(Level.WARNING, "Artifact revenue payout reconcile failed", (Throwable)var4);
          }
       }
+   }
+
+   private boolean hasArtifactIdentity(ItemStack stack) {
+      if (stack == null || stack.getType() == Material.AIR || !stack.hasItemMeta()) {
+         return false;
+      }
+      PersistentDataContainer pdc = stack.getItemMeta().getPersistentDataContainer();
+      String itemId = this.firstNonBlank(pdc.get(this.keyItemId, PersistentDataType.STRING), "");
+      String uniqueId = this.firstNonBlank(pdc.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
+      return !itemId.isBlank() && !uniqueId.isBlank();
+   }
+
+   private void refreshEquippedArtifactBindingsAsync(Player player) {
+      if (player == null) {
+         return;
+      }
+      ItemStack[] equipped = {
+         player.getInventory().getItemInMainHand(),
+         player.getInventory().getItemInOffHand(),
+         player.getInventory().getHelmet(),
+         player.getInventory().getChestplate(),
+         player.getInventory().getLeggings(),
+         player.getInventory().getBoots()
+      };
+      for (ItemStack stack : equipped) {
+         if (this.hasArtifactIdentity(stack)) {
+            this.refreshOfficialBindingAsync(player, stack, "join");
+         }
+      }
+   }
+
+   private void refreshOfficialBindingAsync(Player player, ItemStack stack, String context) {
+      if (player == null || !player.isOnline() || !this.hasArtifactIdentity(stack)) {
+         return;
+      }
+      PersistentDataContainer pdc = stack.getItemMeta().getPersistentDataContainer();
+      String uniqueId = this.firstNonBlank(pdc.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
+      String itemId = this.firstNonBlank(pdc.get(this.keyItemId, PersistentDataType.STRING), "").toLowerCase(Locale.ROOT);
+      if (uniqueId.isBlank() || itemId.isBlank() || !this.bindingRefreshInFlight.add(uniqueId)) {
+         return;
+      }
+      UUID ownerUuid = player.getUniqueId();
+      this.runAsync(() -> {
+         boolean refreshed = false;
+         try {
+            Connection connection = this.pgPool.acquire();
+            try {
+               PreparedStatement query = connection.prepareStatement(
+                  "SELECT item_id,owner_uuid FROM artifact_item_instances WHERE unique_item_id=? AND item_id=? AND owner_uuid=? AND status IN ('DELIVERED','ACTIVE') LIMIT 1"
+               );
+               try {
+                  query.setString(1, uniqueId);
+                  query.setString(2, itemId);
+                  query.setString(3, ownerUuid.toString());
+                  ResultSet result = query.executeQuery();
+                  try {
+                     if (result.next()) {
+                        this.cacheOfficialBinding(uniqueId, result.getString(1), result.getString(2));
+                        refreshed = true;
+                     }
+                  } finally {
+                     result.close();
+                  }
+               } finally {
+                  query.close();
+               }
+            } finally {
+               this.pgPool.release(connection);
+            }
+         } catch (Exception error) {
+            this.getLogger().log(Level.FINE, "Artifact binding refresh failed for " + uniqueId, error);
+         } finally {
+            this.bindingRefreshInFlight.remove(uniqueId);
+         }
+         boolean success = refreshed;
+         this.runSync(() -> {
+            if (!player.isOnline()) {
+               return;
+            }
+            if (success && "repair_open".equals(context)) {
+               this.openRepair(player);
+            } else if (!success && "repair_open".equals(context)) {
+               player.sendMessage(this.color("&cВ руке должен быть официальный предмет CopiMineArtifacts."));
+            }
+         });
+      });
    }
 
    private void reconcileOrphanedShopTransfers() {

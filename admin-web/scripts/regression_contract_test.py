@@ -82,7 +82,8 @@ def main() -> None:
     require(interact_handler, "this.triggerWindHammer(var2, var1.getClickedBlock())", "Wind Hammer interaction")
     require(wind_hammer, "getNearbyEntities(center, 10.0D, 10.0D, 10.0D)", "Wind Hammer radius")
     require(wind_hammer, "distanceSquared(center) > 100.0D", "Wind Hammer radius")
-    require(wind_hammer, "setY(Math.max(living.getVelocity().getY(), 1.0D))", "Wind Hammer launch")
+    require(wind_hammer, "entity == player", "Wind Hammer owner exclusion")
+    require(wind_hammer, "setY(Math.max(living.getVelocity().getY(), 1.15D))", "Wind Hammer launch")
     require(wind_hammer, "PotionEffectType.LEVITATION, 80, 0", "Wind Hammer levitation")
 
     require(ace, "source: ADMIN_ONLY", "Pozdnyakov Ace source")

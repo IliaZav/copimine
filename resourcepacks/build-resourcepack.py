@@ -273,10 +273,12 @@ def build_stage() -> None:
             }
             for entry in sorted(entries, key=lambda x: x["custom_model_data"])
         ]
-        # A shield source texture is a UV atlas for Minecraft's entity renderer.
-        # Rendering it through item/generated exposes that atlas as an unfolded image.
-        parent = "minecraft:builtin/entity" if material == "shield" else "minecraft:item/generated"
-        textures = {"particle": "minecraft:block/oak_planks"} if material == "shield" else {"layer0": f"minecraft:item/{material}"}
+        # The custom shield has a compact inventory texture.  Using the
+        # builtin entity parent here makes the item render as a broken/unfolded
+        # banner in the hand and in shop previews.  Keep all custom items on a
+        # normal generated item model so the custom texture is visible.
+        parent = "minecraft:item/generated"
+        textures = {"layer0": f"minecraft:item/{material}"}
         write_json(
             STAGE / "assets" / "minecraft" / "models" / "item" / f"{material}.json",
             {

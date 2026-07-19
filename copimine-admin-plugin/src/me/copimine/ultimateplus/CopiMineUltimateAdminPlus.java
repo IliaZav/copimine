@@ -291,7 +291,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             try { repairProtectedBlockVisuals(); }
             catch (Exception e) { getLogger().warning("atm visual repair: " + e.getMessage()); }
         }, 20L);
-        getLogger().info("CopiMineUltimateAdminPlus v9.1.0-postgres-v4 ENABLED. DB="+dbLabel);
+        getLogger().info("CopiMineUltimateAdminPlus "+getDescription().getVersion()+" ENABLED. DB="+dbLabel);
     }
 
     @Override public void onDisable() {
@@ -306,7 +306,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         hideSidebarAll(false);
         dbReady = false;
         closePostgres();
-        getLogger().info("CopiMineUltimateAdminPlus v9.1.0-postgres-v4 disabled.");
+        getLogger().info("CopiMineUltimateAdminPlus "+getDescription().getVersion()+" disabled.");
     }
 
     @Override public void onPluginMessageReceived(String channel, Player player, byte[] message) {

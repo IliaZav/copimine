@@ -12345,7 +12345,10 @@ def _normalize_shop_item_id(value: Any) -> str:
     for prefix in ("copimine:", "artifact:", "item:"):
         if normalized.startswith(prefix):
             normalized = normalized[len(prefix):]
-    return normalized.replace(" ", "_")
+    # Older admin bundles used spaces, dashes and namespace prefixes while
+    # the live YAML uses snake_case.  Treat all separators alike so a stale
+    # select value still resolves to the same shop row.
+    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 
 
 def _replace_catalog_price_text(text: str, item_id: str, category: str, price: int) -> str:

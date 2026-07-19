@@ -534,7 +534,11 @@ restart_services() {
     # `systemctl list-unit-files | grep` is unreliable in non-interactive
     # sudo sessions (and can return an empty list even for installed units).
     # Ask systemd directly, then start the unit and keep its real error.
-    if systemctl cat "$service.service" >/dev/null 2>&1; then
+    # Admin and Minecraft are mandatory for a usable release.  Never let a
+    # false-negative unit lookup silently skip either one.
+    if [[ "$service" == "copimine-admin" || "$service" == "copimine-minecraft" ]] \
+      || systemctl cat "$service.service" >/dev/null 2>&1; then
+      log "Starting service: $service"
       systemctl enable "$service.service" >/dev/null 2>&1 || true
       if ! systemctl restart "$service.service"; then
         log "ERROR: failed to restart $service"
@@ -542,6 +546,8 @@ restart_services() {
         journalctl -u "$service.service" -n 160 --no-pager || true
         return 1
       fi
+    else
+      log "Optional service is not installed; skipping: $service"
     fi
   done
   if systemctl cat nginx.service >/dev/null 2>&1; then
@@ -573,7 +579,8 @@ verify_services() {
   log "[15/16] Start services"
   restart_services || die 'Service restart failed; see the journal above.'
   for service in "${SERVICES[@]}"; do
-    if systemctl cat "$service.service" >/dev/null 2>&1; then
+    if [[ "$service" == "copimine-admin" || "$service" == "copimine-minecraft" ]] \
+      || systemctl cat "$service.service" >/dev/null 2>&1; then
       if ! wait_for_service "$service" 90; then
         log "ERROR: service did not become active: $service"
         systemctl --no-pager --full status "$service" || true

@@ -697,7 +697,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         recordArTransaction("AR_PLACE_BLOCKED",e.getItemInHand(),e.getPlayer(),arString(e.getItemInHand(),"owner_uuid"),arString(e.getItemInHand(),"owner_name"),null,e.getBlockPlaced().getLocation(),"Блокировка установки сертифицированного АР");
     }
 
-    @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=true)
+    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=true)
     public void onArDrop(BlockDropItemEvent e) {
         if(!arMaterial(e.getBlockState().getType())) return;
         try {
@@ -709,8 +709,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 ItemStack st=item.getItemStack();
                 if(!arMaterial(st.getType())) continue;
                 if(placed||!eligible) { amount+=st.getAmount(); continue; }
-                tagArItem(st,e.getPlayer(),e.getBlockState().getType());
-                item.setItemStack(st);
+                CopiMineEconomyCore.OfficialArService service=officialArService();
+                ItemStack official=service==null?null:service.createStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
+                if(official!=null){
+                    item.setItemStack(official);
+                    st=official;
+                }else{
+                    tagArItem(st,e.getPlayer(),e.getBlockState().getType());
+                    item.setItemStack(st);
+                }
+                if(official!=null)tagArItem(st,e.getPlayer(),e.getBlockState().getType());
                 amount+=st.getAmount();
             }
             if(amount>0) arEvent(placed||!eligible?(placed?"AR_DROP_BLOCKED_PLACED":"AR_CERTIFICATION_BLOCKED"):"MINE_AR_DROP", e.getPlayer(), null, e.getBlockState().getType().name(), amount, e.getBlock().getLocation(), placed?"Поставленная руда не сертифицирована":(!eligible?"AR_CERTIFICATION_GATE_V3: drop was not produced by valid Silk Touch survival mining":"Сертифицированный АР создан добычей"));
@@ -928,7 +936,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             p.openInventory(m.inv);
             return;
         }
-        Menu m=new Menu("hub-clean"); create(m,27,"&2&lCopiMine &8| &fадминка");
+        Menu m=new Menu("hub-clean"); create(m,36,"&2&lCopiMine &8| &fадминка");
         btn(m,10,Material.GOLDEN_HELMET,"&6&lВыборы",List.of(
                 "&7Новый чистый модуль выборов.",
                 "&7Участки, ЦИК, заявки, президент,",
@@ -945,6 +953,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&7Профили, инвентари, проверки,",
                 "&7массовые действия и приколы.",
                 "&7Инструменты для модерации игроков."),"open:players");
+        btn(m,22,Material.EMERALD,"&a&lЛавки",List.of(
+                "&7AR- и donation-каталог, цены и выдача.",
+                "&7Создание точек на блоке, просмотр витрин",
+                "&7и обслуживание отложенных выдач."),"open:shops");
         p.openInventory(m.inv);
     }
 

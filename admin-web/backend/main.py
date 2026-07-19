@@ -266,16 +266,23 @@ AUTH_COOKIE_SECURE = (
 
 
 def resolve_http_auth_setting(raw_value: Optional[str], public_base_url: str) -> bool:
-    """Resolve HTTP login securely by default; HTTP login requires opt-in."""
+    """Resolve HTTP login from an explicit setting or the configured scheme.
+
+    The public panel is currently served over HTTP in a number of supported
+    installations.  In that mode an omitted flag must not make login
+    unusable: the URL itself is the operator's explicit transport choice.
+    Once the public URL is HTTPS, the safe default is to reject HTTP login.
+    An explicit value always wins so deployments can stage a migration.
+    """
     raw = str(raw_value or "").strip().lower()
     if raw:
         return raw in {"1", "true", "yes", "on"}
-    return False
+    return not str(public_base_url or "").strip().lower().startswith("https://")
 
 
-# Public HTTP remains available for the site, files and status endpoints. A
-# reusable login cookie is deliberately HTTPS-only unless an operator makes a
-# conscious, local-network-only opt-in for a temporary migration.
+# Public HTTP remains available for the site, files and status endpoints.  The
+# login transport follows ADMIN_PUBLIC_BASE_URL when the setting is omitted;
+# explicit ALLOW_INSECURE_HTTP_AUTH values still override it.
 ALLOW_INSECURE_HTTP_AUTH = resolve_http_auth_setting(os.getenv("ALLOW_INSECURE_HTTP_AUTH"), ADMIN_PUBLIC_BASE_URL)
 AUTH_BEARER_FALLBACK_ENABLED = os.getenv("AUTH_BEARER_FALLBACK_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")

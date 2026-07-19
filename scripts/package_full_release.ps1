@@ -425,6 +425,17 @@ foreach ($relative in ($generatedReleaseFiles + $serverReleaseJars)) {
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
+# The Windows tar implementation may materialize text blobs as CRLF while
+# staging. Ubuntu executes these files directly, so normalize every shell
+# script in the payload to LF before creating the archive.
+$shellEncoding = New-Object System.Text.UTF8Encoding($false)
+Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Filter '*.sh' | ForEach-Object {
+    $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+    $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+    $text = $text -replace "`r`n", "`n" -replace "`r", "`n"
+    [System.IO.File]::WriteAllText($_.FullName, $text, $shellEncoding)
+}
+
 # Git archives use the repository blob bytes (LF on this project), while the
 # Windows checkout may have CRLF files. Recalculate embedded deploy hashes from
 # the staged payload so the manifest validates on Ubuntu exactly as extracted.

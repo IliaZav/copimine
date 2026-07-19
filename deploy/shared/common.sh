@@ -545,10 +545,11 @@ copimine_sync_server_properties() {
   resourcepack_url="$(copimine_env_value RESOURCE_PACK_PUBLIC_URL)"
   # Older .env files sometimes stored an URL escaped for server.properties
   # (http\://...). Normalize that form before validating it.
-  resourcepack_url="${resourcepack_url//\\:/:}"
+  resourcepack_url="${resourcepack_url//\\/}"
   if [[ ! "$resourcepack_url" =~ ^https?:// ]]; then
     public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
-    public_panel_url="${public_panel_url//\\:/:}"
+    public_panel_url="${public_panel_url//\\/}"
+    [[ "$public_panel_url" =~ ^https?:// ]] || public_panel_url="http://admin.copimine.ru:18080"
     resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip"
   fi
   [[ "$resourcepack_url" =~ ^https?:// ]] || copimine_fail "RESOURCE_PACK_PUBLIC_URL must use http:// or https://"

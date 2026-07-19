@@ -108,6 +108,14 @@ ARTIFACTS_ITEMS_FILE = PROJECT_ROOT / "copimine-artifacts" / "items.yml"
 # a price so a purchase cannot see different values in the two surfaces.
 ARTIFACTS_RUNTIME_ITEMS_FILE = PROJECT_ROOT / "minecraft" / "server" / "plugins" / "CopiMineArtifacts" / "items.yml"
 ARTIFACTS_CATALOG_LOCK = threading.RLock()
+# Schema checks used to run on every authenticated request.  PostgreSQL treats
+# the ALTER/CREATE IF NOT EXISTS statements as real DDL and briefly takes an
+# exclusive lock, so concurrent cabinet requests could hit lock_timeout (most
+# visibly /api/player/bank).  Keep the one-time migration serialized and reuse
+# the result for the lifetime of this backend process.
+AUTH_SCHEMA_LOCK = threading.RLock()
+V4_SCHEMA_READY = False
+AUTH_SCHEMA_READY = False
 NARCOTICS_SOURCE_CONFIG_FILE = PROJECT_ROOT / "copimine-narcotics" / "config.yml"
 DONATION_FIXED_PACKS = (50, 100, 250, 500, 1000)
 YOOKASSA_SETTINGS = YooKassaSettings.from_env()
@@ -1860,7 +1868,7 @@ def pg_ready() -> bool:
     return psycopg is not None and bool(POSTGRES_PASSWORD)
 
 
-def ensure_v4_schema(conn: Any) -> None:
+def _ensure_v4_schema(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cmv4_schema_migrations(
@@ -3022,10 +3030,35 @@ def admin_plugin_db_location(path: str | Path) -> str:
     return safe_location(Path(path))
 
 
+def ensure_v4_schema(conn: Any) -> None:
+    """Apply the v4 schema once per backend process.
+
+    The migration is intentionally kept in the request process rather than a
+    separate deployment-only step so a fresh install still self-heals.  The
+    lock prevents two request workers from running the DDL simultaneously;
+    once the startup migration has committed, all later calls are no-ops.
+    """
+    global V4_SCHEMA_READY
+    if V4_SCHEMA_READY:
+        return
+    with AUTH_SCHEMA_LOCK:
+        if V4_SCHEMA_READY:
+            return
+        _ensure_v4_schema(conn)
+        V4_SCHEMA_READY = True
+
+
 def ensure_auth_db() -> None:
-    with auth_conn() as conn:
-        ensure_v4_schema(conn)
-        conn.execute(
+    global AUTH_SCHEMA_READY, V4_SCHEMA_READY
+    if AUTH_SCHEMA_READY:
+        return
+    with AUTH_SCHEMA_LOCK:
+        if AUTH_SCHEMA_READY:
+            return
+        try:
+            with auth_conn() as conn:
+                ensure_v4_schema(conn)
+                conn.execute(
             """
             CREATE TABLE IF NOT EXISTS cm_admin_users(
                 username TEXT PRIMARY KEY,
@@ -3040,8 +3073,8 @@ def ensure_auth_db() -> None:
                 source TEXT NOT NULL DEFAULT 'db'
             )
             """
-        )
-        conn.execute(
+                )
+                conn.execute(
             """
             CREATE TABLE IF NOT EXISTS cm_admin_sessions(
                 jti TEXT PRIMARY KEY,
@@ -3055,10 +3088,10 @@ def ensure_auth_db() -> None:
                 revoked_at INTEGER NOT NULL DEFAULT 0
             )
             """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_admin_sessions_user_exp ON cm_admin_sessions(username,expires_at,revoked_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_admin_sessions_exp ON cm_admin_sessions(expires_at,revoked_at)")
-        conn.execute(
+                )
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_admin_sessions_user_exp ON cm_admin_sessions(username,expires_at,revoked_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_admin_sessions_exp ON cm_admin_sessions(expires_at,revoked_at)")
+                conn.execute(
             """
             CREATE TABLE IF NOT EXISTS cm_refresh_sessions(
                 jti TEXT PRIMARY KEY,
@@ -3074,10 +3107,17 @@ def ensure_auth_db() -> None:
                 user_agent TEXT NOT NULL DEFAULT ''
             )
             """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_refresh_sessions_subject_exp ON cm_refresh_sessions(subject_id,expires_at,revoked_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_refresh_sessions_family_exp ON cm_refresh_sessions(family_id,expires_at,revoked_at)")
-        conn.commit()
+                )
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_refresh_sessions_subject_exp ON cm_refresh_sessions(subject_id,expires_at,revoked_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_refresh_sessions_family_exp ON cm_refresh_sessions(family_id,expires_at,revoked_at)")
+                conn.commit()
+            AUTH_SCHEMA_READY = True
+        except Exception:
+            # A failed transaction must not leave the process believing its
+            # schema is ready.  The next request can retry after rollback.
+            AUTH_SCHEMA_READY = False
+            V4_SCHEMA_READY = False
+            raise
 
 
 def auth_db_user_rows() -> dict[str, dict[str, Any]]:

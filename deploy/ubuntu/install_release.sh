@@ -136,7 +136,45 @@ verify_runtime() {
   echo '[verify] HTTP runtime endpoint OK'
 }
 
+enable_offline_voicechat() {
+  local env_file="$PROJECT_ROOT/admin-web/.env"
+  [[ -f "$env_file" ]] || return 0
+  # The server is intentionally running offline-mode. The owner explicitly
+  # accepted public voice chat, so persist the required exception before the
+  # hardening step runs.
+  python3 - "$env_file" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+updates = {
+    'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT': '1',
+    'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
+        'Offline mode is enabled; public voice chat was explicitly accepted by the server owner.',
+}
+lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
+out, seen = [], set()
+for line in lines:
+    key = line.split('=', 1)[0].strip() if '=' in line else ''
+    if key in updates:
+        out.append(f'{key}={updates[key]}')
+        seen.add(key)
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f'{key}={value}')
+tmp = path.with_name('.env.voicechat-tmp')
+tmp.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
+tmp.chmod(0o600)
+tmp.replace(path)
+PY
+  chmod 600 "$env_file"
+  echo '[preflight] Offline voice-chat exception enabled by explicit deployment request.'
+}
+
 preflight
+enable_offline_voicechat
 
 if [[ "$WIPE_DB" == "1" ]]; then
   [[ "${COPIMINE_ALLOW_DB_WIPE:-}" == "YES" ]] || { echo 'Refusing database wipe. Set COPIMINE_ALLOW_DB_WIPE=YES and pass --wipe-db.' >&2; exit 3; }

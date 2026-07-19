@@ -3,6 +3,9 @@ export const APP_ROUTE_FILES = Object.freeze({
   players: "/cabinet/players.html",
   stats: "/cabinet/stats.html",
   economy: "/cabinet/economy.html",
+  // These sections share the existing cabinet shells but still need stable
+  // route identities so a reload/back button never falls back to overview.
+  shops: "/cabinet/artifacts.html?route=shops",
   artifacts: "/cabinet/artifacts.html",
   elections: "/cabinet/elections.html",
   requests: "/cabinet/requests.html",
@@ -16,6 +19,8 @@ export const APP_ROUTE_FILES = Object.freeze({
   security: "/cabinet/security.html",
   sources: "/cabinet/sources.html",
   settings: "/cabinet/settings.html",
+  "narcotics-recipes": "/cabinet/settings.html?route=narcotics-recipes",
+  cms: "/cabinet/settings.html?route=cms",
   cabinet: "/cabinet/cabinet.html",
   balance: "/cabinet/balance.html",
   bank: "/cabinet/bank.html",

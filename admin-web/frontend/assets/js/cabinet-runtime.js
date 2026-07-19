@@ -95,8 +95,10 @@ function isRegisterPage() {
 
 function parseInitialRouteState() {
   const fromHash = parseHashRoute(location.hash);
-  const bodyRoute = normalizeAppRoute(document.body?.dataset.appRoute || routeFromHref(location.pathname), fromHash.tab || "dashboard");
   const params = new URLSearchParams(window.location.search || "");
+  const queryRoute = normalizeAppRoute(params.get("route"), "");
+  const bodyRoute = queryRoute || normalizeAppRoute(document.body?.dataset.appRoute || routeFromHref(location.pathname), fromHash.tab || "dashboard");
+  if (queryRoute && document.body) document.body.dataset.appRoute = queryRoute;
   if (!params.has("session") && fromHash.params.get("session")) {
     params.set("session", fromHash.params.get("session"));
   }
@@ -2059,8 +2061,9 @@ async function setTab(tab) {
 
 function handleCabinetHistoryChange() {
   if (!isCabinetPage()) return;
-  const route = normalizeAppRoute(routeFromHref(location.pathname), state.tab || defaultTab());
   const params = new URLSearchParams(window.location.search || "");
+  const route = normalizeAppRoute(params.get("route"), routeFromHref(location.pathname) || state.tab || defaultTab());
+  if (params.get("route") && document.body) document.body.dataset.appRoute = route;
   state.selectedPlayer = String(params.get("player") || state.selectedPlayer || "").trim();
   state.donationSessionId = String(params.get("session") || state.donationSessionId || "").trim();
   state.donationFocusItemId = String(params.get("item") || "").trim().toLowerCase();

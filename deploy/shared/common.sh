@@ -590,6 +590,39 @@ PY
 copimine_sync_runtime_urls() {
   local public_panel_url
   public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
+  public_panel_url="${public_panel_url//\\/}"
+  if [[ ! "$public_panel_url" =~ ^https?:// ]]; then
+    public_panel_url="http://admin.copimine.ru:18080"
+  fi
+  # Persist normalized URLs so the web process and later verification steps
+  # use the same value, even when an old .env contained escaped values.
+  python3 - "$COPIMINE_ENV_FILE" "$public_panel_url" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+panel = sys.argv[2].rstrip('/')
+updates = {
+    'PUBLIC_PANEL_URL': panel,
+    'RESOURCE_PACK_PUBLIC_URL': panel + '/resourcepacks/CopiMineResourcePack.zip',
+}
+lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines() if path.exists() else []
+out, seen = [], set()
+for line in lines:
+    key = line.split('=', 1)[0].strip() if '=' in line else ''
+    if key in updates:
+        out.append(f'{key}={updates[key]}')
+        seen.add(key)
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f'{key}={value}')
+tmp = path.with_name('.env.urls-tmp')
+tmp.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
+tmp.chmod(0o600)
+tmp.replace(path)
+PY
   [[ "$public_panel_url" =~ ^https?:// ]] || copimine_fail "PUBLIC_PANEL_URL must use http:// or https://"
   COPIMINE_PUBLIC_PANEL_URL="$public_panel_url" python3 - \
     "$COPIMINE_ROOT/minecraft/server/plugins/CopiMineArtifacts/config.yml" \

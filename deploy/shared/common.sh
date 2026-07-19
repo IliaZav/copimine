@@ -406,6 +406,19 @@ copimine_sync_game_runtime_hardening() {
   copimine_log "Game runtime config hardening is synchronized."
 }
 
+copimine_fix_runtime_plugin_ownership() {
+  # Runtime hardening runs as root during installation and seeds config files
+  # for plugins that must be writable by the Minecraft service user.  Without
+  # restoring ownership here, ImageFrame and voice chat start with root-owned
+  # files, log AccessDeniedException, and disable themselves on the next boot.
+  local plugin_dir
+  for plugin_dir in ImageFrame AuthMe voicechat; do
+    if [[ -e "$COPIMINE_SERVER_DIR/plugins/$plugin_dir" ]]; then
+      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR/plugins/$plugin_dir"
+    fi
+  done
+}
+
 copimine_apply_post_start_game_hardening() {
   local rcon_password admin_group
   rcon_password="$(copimine_env_value RCON_PASSWORD)"
@@ -839,6 +852,7 @@ copimine_refresh_release_artifacts() {
   copimine_sync_server_properties
   copimine_sync_runtime_urls
   copimine_sync_game_runtime_hardening
+  copimine_fix_runtime_plugin_ownership
   copimine_write_runtime_metadata
 }
 

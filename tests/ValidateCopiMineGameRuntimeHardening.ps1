@@ -20,6 +20,7 @@ foreach ($path in @($service, $applyScript, $runtimeScript, $policy, $voiceTempl
 }
 
 Require-Contains $common 'copimine_sync_game_runtime_hardening()' 'Shared deployment flow must sync tracked game hardening policies.'
+Require-Contains $common 'copimine_fix_runtime_plugin_ownership()' 'Runtime-hardening config files must be writable by the Minecraft service user.'
 Require-Contains $common 'copimine_apply_post_start_game_hardening()' 'Shared deployment flow must apply the LuckPerms ImageFrame policy after Minecraft starts.'
 Require-Contains $common 'copimine_validate_voicechat_security()' 'Shared deployment flow must gate insecure offline-mode voice chat.'
 Require-Contains $common 'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT' 'Voice chat exception must require explicit operator approval.'
@@ -27,6 +28,7 @@ Require-Contains $common 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON' 'Voice ch
 Require-Contains $runtime 'lp group default permission set imageframe.create false' 'Existing LuckPerms default permissions must be hardened after startup.'
 Require-Contains $runtime 'lp group {admin_group} permission set imageframe.create true' 'An explicit admin-only ImageFrame creation path must remain available.'
 Require-Contains $common 'copimine_sync_game_runtime_hardening' 'Managed refresh must run the runtime hardening sync on install and upgrade.'
+Require-Contains $common 'copimine_fix_runtime_plugin_ownership' 'Managed refresh must restore ownership after root-run hardening sync.'
 Require-Contains $fullReplace 'copimine-game-hardening' 'Full replacement must start and verify the post-start hardening service.'
 Require-Contains $unpack 'copimine-game-hardening' 'Unpack-and-verify must start and verify the post-start hardening service.'
 Require-Contains $envExample 'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=0' 'The insecure offline voice-chat exception must be disabled by default.'

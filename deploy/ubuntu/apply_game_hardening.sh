@@ -16,3 +16,7 @@ copimine_require_root
 copimine_sync_game_runtime_hardening
 copimine_fix_runtime_plugin_ownership
 copimine_apply_post_start_game_hardening
+# The RCON policy step may recreate plugin files as root. Restore the
+# Minecraft service ownership after every post-start hardening run so
+# voicechat and ImageFrame can persist their configuration on the next boot.
+copimine_fix_runtime_plugin_ownership

@@ -19,8 +19,10 @@ if (-not $paperApi -or -not (Test-Path $paperApi)) {
 }
 
 $cp = @($paperApi)
-$placeholder = Join-Path $serverDir 'plugins\PlaceholderAPI-2.12.2.jar'
-if (Test-Path $placeholder) { $cp += $placeholder }
+$placeholder = Get-ChildItem -Path (Join-Path $serverDir 'plugins') -Filter 'PlaceholderAPI-*.jar' -File -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1 -ExpandProperty FullName
+if ($placeholder) { $cp += $placeholder }
 if (Test-Path (Join-Path $serverDir 'libraries')) {
   $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
 }

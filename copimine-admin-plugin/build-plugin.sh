@@ -19,8 +19,9 @@ if [[ -z "$paper_api" || ! -f "$paper_api" ]]; then
 fi
 
 cp_entries=("$paper_api")
-if [[ -f "$server_dir/plugins/PlaceholderAPI-2.12.2.jar" ]]; then
-  cp_entries+=("$server_dir/plugins/PlaceholderAPI-2.12.2.jar")
+placeholder="$(find "$server_dir/plugins" -maxdepth 1 -type f -name 'PlaceholderAPI-*.jar' | sort | tail -n 1 || true)"
+if [[ -n "$placeholder" ]]; then
+  cp_entries+=("$placeholder")
 fi
 if [[ -d "$server_dir/libraries" ]]; then
   while IFS= read -r dep; do cp_entries+=("$dep"); done < <(find "$server_dir/libraries" -name '*.jar' -type f)

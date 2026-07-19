@@ -415,7 +415,7 @@ copimine_apply_post_start_game_hardening() {
   COPIMINE_RCON_PASSWORD="$rcon_password" python3 "$COPIMINE_GAME_HARDENING_SCRIPT" apply-luckperms-imageframe \
     --server-properties "$COPIMINE_SERVER_PROPERTIES" \
     --password-env COPIMINE_RCON_PASSWORD \
-    --timeout-seconds "${COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-90}" \
+    --timeout-seconds "${COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-300}" \
     --admin-group "$admin_group"
   copimine_log "ImageFrame LuckPerms hardening policy applied."
 }

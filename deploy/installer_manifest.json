@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-19T05:14:36.8555731Z",
-    "gitCommit":  "d490442",
+    "generatedAtUtc":  "2026-07-19T05:21:13.3257773Z",
+    "gitCommit":  "07477b6",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,8 +10,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "902808f4402e48a4246c4148e4a742bf298d9420",
-                                      "sha256":  "62f5d23d97e3e22f42b1de4c80d651455f93458d46dea384a4a5cddf41c8a99f"
+                                      "sha1":  "050e3174414d8dd3e01d7e86d8d09265d1921cba",
+                                      "sha256":  "1f123a72b38a09d98c5215005c13968963b54301b0920fac0bf8578c86381b7d"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -40,7 +40,7 @@
                                                                                 },
                                                                 "runtimeScript":  {
                                                                                       "path":  "deploy/shared/harden_game_runtime.py",
-                                                                                      "sha256":  "aa3446060cc2d934b90dd1a28bc9d1a6cd5c5cbd1a1efd52d23cdb3695608c34"
+                                                                                      "sha256":  "5c7ad95732ce18808b192018092b8e1be2aa7744bcba0c932145559dfebf4efb"
                                                                                   },
                                                                 "policy":  {
                                                                                "path":  "deploy/templates/game-runtime-hardening.json",
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "a0c7165ab4fc32da4663ae63be9684acb09f65998f3e69ea43479b322cd24257"
+                                             "sha256":  "a0fbfa6b23b075c053335297dd893405b7b819eba0fd685b476a28072e2f0c9e"
                                          }
                  },
     "serverProperties":  {

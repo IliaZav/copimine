@@ -317,16 +317,16 @@ import sys
 
 path = Path(sys.argv[1])
 key = sys.argv[2]
-value = None
+matched = None
 for raw in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
     line = raw.strip()
     if not line or line.startswith("#") or "=" not in line:
         continue
-    left, value = line.split("=", 1)
+    left, current = line.split("=", 1)
     if left.strip() == key:
-        value = value.strip().strip('"').strip("'")
-if value is not None:
-    print(value)
+        matched = current.strip().strip('"').strip("'")
+if matched is not None:
+    print(matched)
 PY
 }
 

@@ -1,4 +1,4 @@
-import { initThemeToggle } from "./theme/theme-toggle.js?v=20260719r4";
+import { initThemeToggle } from "./theme/theme-toggle.js?v=20260719r5";
 import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js";
 import { initPublicNav } from "./public/public-nav.js";
 import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js";
@@ -49,7 +49,7 @@ function normalizeAuthHashRoute() {
 
 function loadCabinetRuntime() {
   if (cabinetRuntimePromise) return cabinetRuntimePromise;
-  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260719r4")
+  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260719r5")
     .then((module) => {
       document.documentElement.dataset.runtime = "ready";
       document.documentElement.dataset.cabinetRuntime = "modern";

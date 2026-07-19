@@ -12045,9 +12045,9 @@ def read_player_donation_owned_sync(player_uuid: str, limit: int = 80) -> dict[s
                 (player_uuid, *donation_item_ids, safe_limit),
             ).fetchall()
     summary = {
-        "active": sum(1 for row in instances if str(row.get("status") or "").upper() == "ACTIVE"),
-        "reclaimable": sum(1 for row in instances if str(row.get("status") or "").upper() == "LOST_RECLAIMABLE"),
-        "claimPending": sum(1 for row in claims if str(row.get("status") or "").upper() in {"UNCLAIMED", "RESERVED", "DELIVERING", "DELIVERY_REVIEW"}),
+        "active": sum(1 for row in instances if str(row_get(row, "status", "") or "").upper() == "ACTIVE"),
+        "reclaimable": sum(1 for row in instances if str(row_get(row, "status", "") or "").upper() == "LOST_RECLAIMABLE"),
+        "claimPending": sum(1 for row in claims if str(row_get(row, "status", "") or "").upper() in {"UNCLAIMED", "RESERVED", "DELIVERING", "DELIVERY_REVIEW"}),
     }
     claim_rows: list[dict[str, Any]] = []
     for row in claims:

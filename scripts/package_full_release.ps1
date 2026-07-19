@@ -403,7 +403,7 @@ $serverReleaseJars = @(
     'minecraft\server\plugins\EssentialsXSpawn-2.22.0.jar',
     'minecraft\server\plugins\FarmControl-1.3.0.jar',
     'minecraft\server\plugins\GrimAC.jar',
-    'minecraft\server\plugins\GSit.jar',
+    'minecraft\server\plugins\GSit-3.5.1.jar',
     'minecraft\server\plugins\ImageFrame.jar',
     'minecraft\server\plugins\LuckPerms-Bukkit-5.5.42.jar',
     'minecraft\server\plugins\PlaceholderAPI-2.12.3.jar',

@@ -173,12 +173,34 @@ PY
   echo '[preflight] Offline voice-chat exception enabled by explicit deployment request.'
 }
 
+runtime_app_user() {
+  local candidate path
+  # The data directory is the authoritative owner for an existing install.
+  # An old systemd unit may still mention a retired account and must not win
+  # during a replacement.
+  for path in "$PROJECT_ROOT/admin-web/data" "$PROJECT_ROOT/admin-web/.env"; do
+    if [[ -e "$path" ]]; then
+      candidate="$(stat -c '%U' "$path" 2>/dev/null || true)"
+      if [[ -n "$candidate" && "$candidate" != "root" ]] && id "$candidate" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    fi
+  done
+  candidate="$(systemctl show copimine-admin.service -p User --value 2>/dev/null || true)"
+  if [[ -n "$candidate" && "$candidate" != "root" ]] && id "$candidate" >/dev/null 2>&1; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  candidate="${SUDO_USER:-qwerty}"
+  id "$candidate" >/dev/null 2>&1 && printf '%s\n' "$candidate" || printf 'qwerty\n'
+}
+
 normalize_runtime_env_owner() {
   local env_file="$PROJECT_ROOT/admin-web/.env"
   [[ -f "$env_file" ]] || return 0
   local app_user app_group
-  app_user="$(systemctl show copimine-admin.service -p User --value 2>/dev/null || true)"
-  app_user="${app_user:-qwerty}"
+  app_user="$(runtime_app_user)"
   id "$app_user" >/dev/null 2>&1 || { echo "[preflight] Runtime user does not exist: $app_user" >&2; return 1; }
   app_group="$(id -gn "$app_user")"
   chown "$app_user:$app_group" "$env_file"
@@ -202,6 +224,8 @@ if [[ "$WIPE_DB" == "1" ]]; then
 fi
 
 set +e
+RUNTIME_APP_USER="$(runtime_app_user)"
+APP_USER="$RUNTIME_APP_USER" COPIMINE_APP_USER="$RUNTIME_APP_USER" \
 WIPE_WORLDS="$WIPE_WORLDS" CLEAN_WORLD_STATE="$RESET_GAMEPLAY" \
   "$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh" "$ARCHIVE_PATH" "$ARCHIVE_SHA256" "$DB_DUMP_PATH"
 result=$?

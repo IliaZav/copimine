@@ -239,6 +239,7 @@ def seed_authme_config(path: Path, policy: dict[str, Any]) -> None:
     ]
     document.extend(render_mapping("ExternalBoardOptions", policy["ExternalBoardOptions"], 0))
     document.extend(render_mapping("settings", policy["settings"], 0))
+    document.extend(render_mapping("Protection", {"geoIpDatabase": {"enabled": False}}, 0))
     write_text(path, "\n".join(document) + "\n")
 
 
@@ -270,6 +271,10 @@ def sync_imageframe(path: Path, imageframe_jar: Path, policy: dict[str, Any]) ->
 def sync_authme(path: Path, policy: dict[str, Any]) -> None:
     lines = read_text(path).splitlines()
     security = policy["settings"]["security"]
+    # GeoIP cannot work without MaxMind credentials and causes an avoidable
+    # download/error loop on every boot. Keep the optional protection off until
+    # credentials are explicitly configured by the operator.
+    replace_scalar(lines, ["Protection", "geoIpDatabase"], "enabled", False)
     replace_scalar(lines, ["settings", "security"], "minPasswordLength", security["minPasswordLength"])
     replace_scalar(lines, ["settings", "security"], "passwordHash", security["passwordHash"])
     replace_list(lines, ["settings", "security"], "legacyHashes", security["legacyHashes"])
@@ -458,6 +463,8 @@ def self_test() -> None:
             auth_config,
             "ExternalBoardOptions:\n  bCryptLog2Round: 10\nsettings:\n    preserveMe: true\n    security:\n        minPasswordLength: 5\n        passwordHash: SHA256\n        legacyHashes: []\n",
         )
+        with auth_config.open("a", encoding="utf-8") as auth_file:
+            auth_file.write("Protection:\n    geoIpDatabase:\n        enabled: true\n")
         write_text(voice_config, "bind_address=*\n")
         sync_runtime(server, policy_path, voice_template)
         image_text = read_text(image_config)
@@ -466,7 +473,7 @@ def self_test() -> None:
             raise PolicyError("ImageFrame security policy did not replace unsafe values")
         if "UploadService:\n  Enabled: false\n  WebServer:\n    Host: \"127.0.0.1\"" not in image_text:
             raise PolicyError("ImageFrame embedded upload service was not disabled and loopback-bound")
-        if "passwordHash: \"BCRYPT\"" not in auth_text or "minPasswordLength: 12" not in auth_text or "preserveMe: true" not in auth_text:
+        if "passwordHash: \"BCRYPT\"" not in auth_text or "minPasswordLength: 12" not in auth_text or "preserveMe: true" not in auth_text or "geoIpDatabase:\n        enabled: false" not in auth_text:
             raise PolicyError("AuthMe policy did not preserve unrelated configuration while hardening passwords")
         try:
             validate_voicechat(server / "server.properties", voice_config, "0", "")

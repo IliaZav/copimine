@@ -742,10 +742,11 @@ copimine_install_system_files() {
   fi
   for unit in copimine-admin copimine-discord-bot copimine-minecraft-discord-bridge copimine-minecraft; do
     source="$COPIMINE_ADMIN_DIR/deploy/$unit.service"
-    sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" "$source" > "/etc/systemd/system/$unit.service"
+    tr -d '\r' < "$source" | sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" > "/etc/systemd/system/$unit.service"
     chmod 0644 "/etc/systemd/system/$unit.service"
   done
-  install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-game-hardening.service" /etc/systemd/system/copimine-game-hardening.service
+  tr -d '\r' < "$COPIMINE_ADMIN_DIR/deploy/copimine-game-hardening.service" > /etc/systemd/system/copimine-game-hardening.service
+  chmod 0644 /etc/systemd/system/copimine-game-hardening.service
   copimine_render_nginx_config
   ln -sfn "$COPIMINE_NGINX_AVAILABLE" "$COPIMINE_NGINX_ENABLED"
   rm -f /etc/nginx/sites-enabled/default

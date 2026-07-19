@@ -338,8 +338,20 @@ def main() -> None:
                     # empty until the in-game link is proven.  The shop test
                     # still needs a concrete target, so derive it from the
                     # nickname selected for this isolated test account.
+                    player_account = registered.json()["account"]
                     player_uuid = appmod.offline_uuid_for_name("ShopCartUser")
                     player_name = "ShopCartUser"
+                    with appmod.auth_conn() as link_conn:
+                        appmod.ensure_v4_schema(link_conn)
+                        link_conn.execute(
+                            "UPDATE site_accounts SET minecraft_uuid=%s,minecraft_name=%s WHERE id=%s",
+                            (player_uuid, player_name, str(player_account["id"])),
+                        )
+                        link_conn.execute(
+                            "INSERT INTO minecraft_account_links(minecraft_uuid,minecraft_name,site_account_id,status,linked_at,updated_at) VALUES(%s,%s,%s,'ACTIVE',%s,%s)",
+                            (player_uuid, player_name, str(player_account["id"]), appmod.now_ts(), appmod.now_ts()),
+                        )
+                        link_conn.commit()
 
                     admin_ar_headers = {**h, appmod.SENSITIVE_CONFIRM_HEADER: "AR_ADD_BALANCE"}
                     rr = c.post("/api/admin/economy/ar/add-balance", headers=admin_ar_headers, json={

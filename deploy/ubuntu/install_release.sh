@@ -153,15 +153,6 @@ updates = {
         'Offline mode is enabled; public voice chat was explicitly accepted by the server owner.',
 }
 
-remove_retired_frontend() {
-  local frontend_root="$PROJECT_ROOT/admin-web/frontend"
-  # The modern cabinet is the only supported admin surface.  These files are
-  # old previews/SPA entrypoints and must not remain reachable after a full
-  # replacement, otherwise browsers can cache or discover a second UI.
-  rm -rf -- "$frontend_root/assets/js/legacy" "$frontend_root/assets/css/legacy.css"
-  rm -f -- "$frontend_root/preview-admin.html" "$frontend_root/preview-player.html"
-  echo '[cleanup] retired preview and legacy frontend files removed'
-}
 lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
 out, seen = [], set()
 for line in lines:
@@ -186,6 +177,16 @@ tmp.replace(path)
 PY
   chmod 600 "$env_file"
   echo '[preflight] Offline voice-chat exception enabled by explicit deployment request.'
+}
+
+remove_retired_frontend() {
+  local frontend_root="$PROJECT_ROOT/admin-web/frontend"
+  # The modern cabinet is the only supported admin surface.  These files are
+  # old previews/SPA entrypoints and must not remain reachable after a full
+  # replacement, otherwise browsers can cache or discover a second UI.
+  rm -rf -- "$frontend_root/assets/js/legacy" "$frontend_root/assets/css/legacy.css"
+  rm -f -- "$frontend_root/preview-admin.html" "$frontend_root/preview-player.html"
+  echo '[cleanup] retired preview and legacy frontend files removed'
 }
 
 runtime_app_user() {

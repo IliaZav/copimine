@@ -2871,6 +2871,7 @@ async function playerDetailsHtml(player) {
     loadAdminGiftCatalog(),
   ]);
   const profile = detail.profile || {};
+  if (detail.error) toast(`Профиль ${player} загружен не полностью: ${detail.error}`, true);
   const inventory = detail.inventory?.summary || {};
   const liveInventory = { latest: detail.inventory?.live || null, onlineSnapshots: detail.inventory?.liveSnapshots || [] };
   const history = { snapshots: detail.inventory?.history || [] };
@@ -2945,6 +2946,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
     narcoticsAudit = [],
     giftCatalog = {},
   } = ctx || {};
+  const profileLoadError = cleanText(detail?.error || "");
   const site = profile.siteAccount || {};
   const bank = profile.bank || {};
   const pin = profile.pin || {};
@@ -3103,6 +3105,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
         <button class="btn btn-primary btn-small" data-click="snapshotInventory('${esc(player)}')">Снимок инвентаря</button>
       </div>
     </div>
+    ${profileLoadError ? `<div class="notice bad">Не удалось получить часть данных игрока: ${esc(profileLoadError)}. Повтори обновление профиля.</div>` : ""}
     <div class="layout-grid grid-4">
       ${metric("Здоровье", profile.health ?? "—", `Еда: ${profile.food ?? "—"}`)}
       ${metric("XP", profile.xpLevel ?? "—", cleanText(profile.dimension || "мир"))}
@@ -3164,41 +3167,39 @@ function renderPlayerFullDetails(player, detail, ctx) {
         <div class="spacer-12"></div>
         <div class="stack-list">
           <article class="stack-card admin-player-commerce-card">
-            <header class="stack-card-head"><strong>Пополнить этому игроку</strong><span>Ник уже выбран — второй список не нужен.</span></header>
+            <header class="stack-card-head"><strong>Пополнить выбранному игроку</strong><span>Игрок уже выбран в карточке — здесь нет дублирующего списка.</span></header>
             <div class="form-grid compact-grid">
-              <label class="field-stack"><span>AR</span><input id="playerAdminArAddAmount" type="number" min="1" step="1" placeholder="Сколько AR добавить" /></label>
+              <label class="field-stack"><span>AR, количество</span><input id="playerAdminArAddAmount" type="number" min="1" step="1" placeholder="Например, 100" /></label>
               <label class="field-stack"><span>Причина AR</span><input id="playerAdminArAddReason" value="admin-player-page" /></label>
+              <button class="btn btn-primary full" data-click="playerAdminArAddBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Зачислить AR</button>
             </div>
-            <button class="btn btn-primary full" data-click="playerAdminArAddBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Пополнить AR этому игроку</button>
-            <div class="spacer-12"></div>
             <div class="form-grid compact-grid">
-              <label class="field-stack"><span>Donation</span><input id="playerAdminDonationAddAmount" type="number" min="1" step="1" placeholder="Сколько donation добавить" /></label>
+              <label class="field-stack"><span>Donation, количество</span><input id="playerAdminDonationAddAmount" type="number" min="1" step="1" placeholder="Например, 100" /></label>
               <label class="field-stack"><span>Причина donation</span><input id="playerAdminDonationAddReason" value="admin-player-page" /></label>
+              <button class="btn btn-secondary full" data-click="playerAdminDonationAddBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Зачислить donation</button>
             </div>
-            <button class="btn btn-secondary full" data-click="playerAdminDonationAddBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Пополнить donation этому игроку</button>
           </article>
           <article class="stack-card admin-player-commerce-card">
-            <header class="stack-card-head"><strong>Выдать предмет в отложенную выдачу</strong><span>Деньги игрока не списываются. Предмет забирается в игре.</span></header>
+            <header class="stack-card-head"><strong>Выдать предмет без списания</strong><span>Предмет сразу попадёт в отложенную выдачу игрока.</span></header>
             <div class="form-grid compact-grid">
               <label class="field-stack"><span>Категория</span><select id="playerAdminGiftCategory" data-input="syncPlayerGiftCatalog"><option value="AR">AR</option><option value="DONATION">Donation</option><option value="HIDDEN">Скрытые</option></select></label>
               <label class="field-stack"><span>Предмет</span><select id="playerAdminGiftItem">${adminGiftItemOptions(giftCatalog, "AR")}</select></label>
             </div>
             <label class="field-stack"><span>Комментарий в аудите</span><input id="playerAdminGiftNote" value="admin-player-page" maxlength="160" /></label>
-            <button class="btn btn-primary full" data-click="playerAdminGift('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Выдать выбранному игроку</button>
+            <button class="btn btn-primary full" data-click="playerAdminGift('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Поставить в выдачу</button>
           </article>
         </div>
-        <div class="spacer-16"></div>
-        <div class="form-grid compact-grid">
-          <input id="playerAdminArBalanceValue" type="number" min="0" step="1" value="${esc(arCurrent)}" placeholder="Итоговый баланс AR" />
-          <input id="playerAdminArReason" placeholder="Причина изменения AR" value="admin-player-page" />
-        </div>
-        <button class="btn btn-primary full" data-click="playerAdminArSetBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Сохранить AR-баланс</button>
-        <div class="spacer-16"></div>
-        <div class="form-grid compact-grid">
-          <input id="playerAdminDonationBalanceValue" type="number" min="0" step="1" value="${esc(donationCurrent)}" placeholder="Итоговый баланс donation" />
-          <input id="playerAdminDonationReason" placeholder="Причина изменения donation" value="admin-player-page" />
-        </div>
-        <button class="btn btn-primary full" data-click="playerAdminDonationSetBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Сохранить donation-баланс</button>
+        <details class="admin-access-advanced">
+          <summary>Точная установка баланса (для исправления данных)</summary>
+          <div class="form-grid compact-grid">
+            <label class="field-stack"><span>Итоговый AR</span><input id="playerAdminArBalanceValue" type="number" min="0" step="1" value="${esc(arCurrent)}" /></label>
+            <label class="field-stack"><span>Причина</span><input id="playerAdminArReason" value="admin-player-page" /></label>
+            <button class="btn btn-secondary full" data-click="playerAdminArSetBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Сохранить AR</button>
+            <label class="field-stack"><span>Итоговый donation</span><input id="playerAdminDonationBalanceValue" type="number" min="0" step="1" value="${esc(donationCurrent)}" /></label>
+            <label class="field-stack"><span>Причина</span><input id="playerAdminDonationReason" value="admin-player-page" /></label>
+            <button class="btn btn-secondary full" data-click="playerAdminDonationSetBalance('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Сохранить donation</button>
+          </div>
+        </details>
       `)}
       ${panel("Жалобы и заявки", "Жалобы, баг-репорты и обращения этого игрока.", `
         ${table(`player-reports-${esc(player)}`, reportRows, [
@@ -4499,14 +4500,20 @@ async function loadAdmins() {
           `)
         : panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
             <div class="form-grid danger-zone admin-create-panel">
-              <select id="newAdminUsername" class="player-select">${playerSelectOptions(availableAdminPlayers, { placeholder: "Выберите игрока" })}</select>
-              <input id="newAdminPassword" type="password" placeholder="Временный пароль" />
-              <select id="newAdminRole">
-                <option value="admin">Полный админ</option>
-                <option value="junior_admin">Младший админ</option>
-              </select>
-              <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Сразу открыть доступ к серверу</label>
-              <label class="check-line"><input id="newAdminOp" type="checkbox" /> Сразу выдать OP, если это нужно</label>
+              <label class="field-stack"><span>Логин администратора</span><input id="newAdminUsername" list="adminPlayerNames" placeholder="Minecraft-ник" autocomplete="off" /></label>
+              <datalist id="adminPlayerNames">${availableAdminPlayers.map((row) => `<option value="${esc(row.name)}">`).join("")}</datalist>
+              <label class="field-stack"><span>Пароль</span><input id="newAdminPassword" type="password" placeholder="Минимум 8 символов" autocomplete="new-password" /></label>
+              <div class="admin-role-toggle" role="group" aria-label="Роль администратора">
+                <label><input type="radio" name="newAdminRole" value="admin" checked /> Старший админ</label>
+                <label><input type="radio" name="newAdminRole" value="junior_admin" /> Младший админ</label>
+              </div>
+              <details class="admin-access-advanced">
+                <summary>Дополнительный доступ к Minecraft</summary>
+                <div class="check-row">
+                  <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить в whitelist</label>
+                  <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP</label>
+                </div>
+              </details>
               <button class="btn btn-primary full" data-click="createAdminUser()">Создать админа</button>
             </div>
             <div class="notice">Этот экран создаёт только admin и junior_admin. Owner-аккаунты и изменение существующих учёток остаются у владельца панели.</div>
@@ -4557,7 +4564,7 @@ window.createAdminUser = async () => {
       body: JSON.stringify({
         username,
         password,
-        role: $("newAdminRole")?.value || "admin",
+        role: document.querySelector('input[name="newAdminRole"]:checked')?.value || $("newAdminRole")?.value || "admin",
         ensure_whitelist: Boolean($("newAdminWhitelist")?.checked),
         ensure_op: Boolean($("newAdminOp")?.checked)
       })
@@ -4613,8 +4620,42 @@ async function loadSettings() {
     </section>
     ${dbPolicyPanel(config.dbWritePolicy || {}, {})}
     ${panel("Разрешённые команды сайта", "Команды сервера, которые можно запускать из панели", table("rcon-allowlist", asArray(config.rconWebAllowlist).map(command => ({ command })), [{ key: "command", label: "Команда" }]))}
+    ${panel("Моя учётная запись администратора", "Сменить логин или пароль текущего входа без изменения аккаунтов игроков.", `
+      <div class="form-grid admin-account-form">
+        <label class="field-stack"><span>Текущий пароль</span><input id="adminCurrentPassword" type="password" autocomplete="current-password" placeholder="Для подтверждения изменения" /></label>
+        <label class="field-stack"><span>Новый логин (необязательно)</span><input id="adminNewUsername" autocomplete="username" placeholder="Оставь пустым, если не меняешь" /></label>
+        <label class="field-stack"><span>Новый пароль (необязательно)</span><input id="adminNewPassword" type="password" autocomplete="new-password" placeholder="Минимум 8 символов" /></label>
+        <button class="btn btn-primary full" data-click="updateAdminAccount()">Сохранить данные входа</button>
+      </div>
+      <p class="notice">После смены логина сессия обновится автоматически. Новый логин должен иметь доступ к whitelist/OP, если эти проверки включены на сервере.</p>
+    `)}
   `);
 }
+
+window.updateAdminAccount = async () => {
+  const currentPassword = $("adminCurrentPassword")?.value || "";
+  const newUsername = $("adminNewUsername")?.value?.trim() || "";
+  const newPassword = $("adminNewPassword")?.value || "";
+  if (!currentPassword) return toast("Введи текущий пароль", true);
+  if (!newUsername && !newPassword) return toast("Укажи новый логин или пароль", true);
+  const headers = await dangerConfirm("Сохранить новые данные входа администратора?", "ADMIN_ACCOUNT_UPDATE");
+  if (!headers) return;
+  try {
+    const result = await api("/api/security/admin-account", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ current_password: currentPassword, new_username: newUsername || null, new_password: newPassword || null }),
+    });
+    state.user = { ...(state.user || {}), username: result.username || newUsername || state.user?.username };
+    $("adminCurrentPassword").value = "";
+    $("adminNewUsername").value = "";
+    $("adminNewPassword").value = "";
+    toast("Данные входа администратора обновлены");
+    await loadSettings();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
 
 function playerLinkSummary(result) {
   if (!result) return empty("Нет активного запроса", "Запроси одноразовый код, пока ты онлайн на Minecraft-сервере.");
@@ -5453,6 +5494,7 @@ Object.assign(dataClickHandlers, {
   adminArSetBalance: fromWindow("adminArSetBalance"),
   adminDonationAddBalance: fromWindow("adminDonationAddBalance"),
   adminDonationSetBalance: fromWindow("adminDonationSetBalance"),
+  updateShopPrice: fromWindow("updateShopPrice"),
   adminDonationCancelSession: fromWindow("adminDonationCancelSession"),
   adminDonationMarkPaid: fromWindow("adminDonationMarkPaid"),
   adminDonationTestPurchase: fromWindow("adminDonationTestPurchase"),
@@ -5473,6 +5515,7 @@ Object.assign(dataClickHandlers, {
   changePlayerPassword: fromWindow("changePlayerPassword"),
   changePlayerUsername: fromWindow("changePlayerUsername"),
   createAdminUser: fromWindow("createAdminUser"),
+  updateAdminAccount: fromWindow("updateAdminAccount"),
   createBackup: fromWindow("createBackup"),
   createEconomySnapshot: fromWindow("createEconomySnapshot"),
   createRequestApplication: fromWindow("createRequestApplication"),
@@ -5485,6 +5528,9 @@ Object.assign(dataClickHandlers, {
   playerAction: fromWindow("playerAction"),
   playerActionFromPanel: fromWindow("playerActionFromPanel"),
   playerAdminArSetBalance: fromWindow("playerAdminArSetBalance"),
+  playerAdminArAddBalance: fromWindow("playerAdminArAddBalance"),
+  playerAdminDonationAddBalance: fromWindow("playerAdminDonationAddBalance"),
+  playerAdminGift: fromWindow("playerAdminGift"),
   playerAdminDonationSetBalance: fromWindow("playerAdminDonationSetBalance"),
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),

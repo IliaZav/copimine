@@ -247,6 +247,18 @@ export function createAdminCommercePages(deps) {
             <span class="detail-chip"><strong id="adminBalanceDonationCurrent">${formatDonate(0)}</strong><small>Donation сейчас</small></span>
             <span class="detail-chip wide"><strong id="adminBalancePlayerMeta">${esc(firstPlayer || "Игрок не выбран")}</strong><small>Текущая цель изменения</small></span>
           </div>
+          <div class="stack-list admin-player-commerce-card">
+            <div class="form-grid compact-grid">
+              <label class="field-stack"><span>Добавить AR</span><input id="adminArAddAmount" type="number" min="1" step="1" placeholder="Количество AR" /></label>
+              <label class="field-stack"><span>Причина</span><input id="adminArAddReason" value="admin-ar-topup" /></label>
+              <button class="btn btn-secondary full" data-click="adminArAddBalance()">Зачислить AR</button>
+            </div>
+            <div class="form-grid compact-grid">
+              <label class="field-stack"><span>Добавить donation</span><input id="adminDonationAddAmount" type="number" min="1" step="1" placeholder="Количество donation" /></label>
+              <label class="field-stack"><span>Причина</span><input id="adminDonationAddReason" value="admin-topup" /></label>
+              <button class="btn btn-secondary full" data-click="adminDonationAddBalance()">Зачислить donation</button>
+            </div>
+          </div>
           <div class="form-grid compact-grid">
             <input id="adminArBalanceValue" type="number" min="0" step="1" placeholder="Итоговый баланс AR" />
             <input id="adminArReason" placeholder="Причина изменения AR" />
@@ -365,7 +377,10 @@ export function createAdminCommercePages(deps) {
 
   async function adminDonationAddBalance() {
     try {
-      const player = selectedPlayerBySelect("donationAdminPlayer");
+      const player = selectedPlayerBySelect("adminBalancePlayer");
+      const amount = number($("adminDonationAddAmount")?.value || 0);
+      if (!player.name) return toast("Выбери игрока", true);
+      if (amount <= 0) return toast("Укажи положительное количество donation", true);
       const headers = await dangerConfirm(`Пополнить donation-баланс игрока ${player.name || "без имени"}`, "DONATION_ADD_BALANCE");
       if (!headers) return;
       await api("/api/admin/donation/add-balance", {
@@ -374,12 +389,13 @@ export function createAdminCommercePages(deps) {
         body: JSON.stringify({
           minecraft_uuid: player.uuid || "",
           minecraft_name: player.name || "",
-          amount: number($("donationAdminAmount")?.value || 0),
-          reason: $("donationAdminReason")?.value?.trim() || "admin-topup",
+          amount,
+          reason: $("adminDonationAddReason")?.value?.trim() || "admin-topup",
           idempotency_key: randomActionKey("don-admin-topup"),
         }),
       });
       toast("Donation-баланс пополнен");
+      if ($("adminDonationAddAmount")) $("adminDonationAddAmount").value = "";
       await loadEconomy();
     } catch (err) {
       toast(err.message, true);
@@ -388,7 +404,10 @@ export function createAdminCommercePages(deps) {
 
   async function adminArAddBalance() {
     try {
-      const player = selectedPlayerBySelect("arAdminPlayer");
+      const player = selectedPlayerBySelect("adminBalancePlayer");
+      const amount = number($("adminArAddAmount")?.value || 0);
+      if (!player.name) return toast("Выбери игрока", true);
+      if (amount <= 0) return toast("Укажи положительное количество AR", true);
       const headers = await dangerConfirm(`Пополнить AR-баланс игрока ${player.name || "без имени"}`, "AR_ADD_BALANCE");
       if (!headers) return;
       await api("/api/admin/economy/ar/add-balance", {
@@ -397,12 +416,13 @@ export function createAdminCommercePages(deps) {
         body: JSON.stringify({
           minecraft_uuid: player.uuid || "",
           minecraft_name: player.name || "",
-          amount: number($("arAdminAmount")?.value || 0),
-          reason: $("arAdminReason")?.value?.trim() || "admin-ar-topup",
+          amount,
+          reason: $("adminArAddReason")?.value?.trim() || "admin-ar-topup",
           idempotency_key: randomActionKey("ar-admin-topup"),
         }),
       });
       toast("AR-баланс пополнен");
+      if ($("adminArAddAmount")) $("adminArAddAmount").value = "";
       await loadEconomy();
     } catch (err) {
       toast(err.message, true);

@@ -728,6 +728,12 @@ class AdminUpdateIn(BaseModel):
     ensure_whitelist: bool = False
 
 
+class AdminAccountUpdateIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_username: Optional[str] = Field(default=None, min_length=3, max_length=16)
+    new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+
 class AccessListActionIn(BaseModel):
     action: str
     player: str = Field(min_length=3, max_length=16)
@@ -11494,6 +11500,62 @@ async def security_update_admin(username: str, data: AdminUpdateIn, request: Req
     audit_event(owner, "security.admin.update", target=username, details={"passwordChanged": bool(data.password), "enabled": data.enabled})
     append_panel_event("admin-panel", "admin_access_updated", actor=owner, target=username, tags=["security"])
     return {"ok": True, "admin": admin_public_row(username, meta), "minecraft": mc}
+
+
+@app.post("/api/security/admin-account")
+async def security_update_own_account(
+    data: AdminAccountUpdateIn,
+    request: Request,
+    response: Response,
+    username: str = Depends(require_panel_admin),
+) -> dict[str, Any]:
+    """Change the currently authenticated admin's login and/or password.
+
+    The current password is always required.  Renaming an admin is allowed
+    only to an unused Minecraft-style name and only when the new name already
+    satisfies the server's whitelist/OP access policy; this avoids creating a
+    login that immediately locks its owner out.
+    """
+    require_sensitive_confirm(request, "ADMIN_ACCOUNT_UPDATE")
+    current_name, current_meta = resolve_admin_user(username)
+    if not current_meta or not bool(current_meta.get("enabled", True)):
+        raise HTTPException(status_code=403, detail="Учётная запись администратора отключена")
+    if not verify_password_hash(str(current_meta.get("password_hash") or ""), data.current_password):
+        raise HTTPException(status_code=401, detail="Текущий пароль указан неверно")
+    next_name = str(data.new_username or "").strip() or current_name
+    if not valid_minecraft_name(next_name):
+        raise HTTPException(status_code=400, detail="Логин должен быть Minecraft-ником 3-16 символов: A-Z, 0-9 и _")
+    users = current_admin_users()
+    for existing_name in users:
+        if existing_name.casefold() == next_name.casefold() and existing_name.casefold() != current_name.casefold():
+            raise HTTPException(status_code=409, detail="Такой логин администратора уже занят")
+    if next_name.casefold() != current_name.casefold():
+        access_ok, access_errors = minecraft_access_ok(next_name)
+        if not access_ok:
+            raise HTTPException(status_code=400, detail="Новый логин не имеет доступа к Minecraft: " + "; ".join(access_errors))
+    next_password = data.new_password
+    if next_password:
+        ok, reason = password_policy_ok(next_password)
+        if not ok:
+            raise HTTPException(status_code=400, detail=reason)
+    updated = dict(current_meta)
+    if next_password:
+        updated["password_hash"] = make_password_hash(next_password)
+    updated["updatedAt"] = now_ts()
+    updated["updatedBy"] = current_name
+    if next_name.casefold() != current_name.casefold():
+        save_admin_user(next_name, updated)
+        with auth_conn() as conn:
+            conn.execute("DELETE FROM cm_admin_users WHERE username=%s", (current_name,))
+            conn.commit()
+    else:
+        save_admin_user(current_name, updated)
+    role = normalize_admin_role(updated.get("role"))
+    access_token, refresh_token = issue_admin_auth_pair(next_name, role, request, True)
+    set_auth_cookies_for_request(response, request, access_token, refresh_token, True)
+    audit_event(current_name, "security.admin.account_update", target=next_name, details={"usernameChanged": next_name != current_name, "passwordChanged": bool(next_password)})
+    append_panel_event("admin-panel", "admin_account_updated", actor=current_name, target=next_name, tags=["security", "admin"])
+    return {"ok": True, "username": next_name, "role": role, "fullAccess": is_full_admin_role(role), "owner": role == "owner"}
 
 
 @app.delete("/api/security/admins/{username}")

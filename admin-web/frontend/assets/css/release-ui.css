@@ -951,6 +951,76 @@ body.player-mode :where(.panel, .metric):hover { border-color: var(--line-strong
 }
 .creative-item { contain: layout paint; }
 
+/* Keep recipe labels above the Minecraft-style tape instead of clipping them
+   inside the panel. The native title attribute remains as a fallback for the
+   scrollable creative inventory. */
+body.panel-admin-mode .panel:has(.recipe-tape),
+body.junior-admin-mode .panel:has(.recipe-tape) {
+  overflow: visible !important;
+}
+body.panel-admin-mode .recipe-tape,
+body.junior-admin-mode .recipe-tape {
+  overflow: visible !important;
+  position: relative;
+  z-index: 2;
+}
+body.panel-admin-mode .recipe-slot span,
+body.panel-admin-mode .creative-item span,
+body.junior-admin-mode .recipe-slot span,
+body.junior-admin-mode .creative-item span {
+  z-index: 30;
+}
+
+/* Admin account and player-card forms stay compact at desktop and mobile
+   widths; every control gets a visible label and cannot push the panel wider. */
+.admin-create-panel,
+.admin-account-form {
+  min-width: 0;
+}
+.admin-create-panel input,
+.admin-create-panel select,
+.admin-account-form input,
+.admin-account-form select {
+  min-width: 0;
+  width: 100%;
+}
+.admin-role-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+.admin-role-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.admin-role-toggle input { width: auto; }
+.admin-role-toggle label:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.admin-access-advanced { grid-column: 1 / -1; }
+.admin-access-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: .84rem;
+  font-weight: 700;
+}
+.admin-player-commerce-card .form-grid { min-width: 0; }
+.admin-player-commerce-card .field-stack { min-width: 0; }
+.admin-player-commerce-card .field-stack input,
+.admin-player-commerce-card .field-stack select { width: 100%; min-width: 0; }
+
+
 /* Motion */
 @keyframes ui-enter {
   from { opacity: 0; transform: translateY(8px); }

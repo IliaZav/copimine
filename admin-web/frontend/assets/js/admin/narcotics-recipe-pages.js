@@ -119,11 +119,13 @@ export function createAdminNarcoticsRecipePages(deps) {
       const { kind, value } = tokenParts(token);
       const potion = kind === "POTION";
       const catalogItem = catalogItemFor(token);
+      const fallbackIcon = iconFor(value, potion);
+      const primaryIcon = catalogItem?.iconUrl || fallbackIcon;
       return `
         <button class="recipe-slot recipe-slot-removable" draggable="true" title="${esc(displayName(token))}" aria-label="Удалить ${esc(displayName(token))}"
           data-drag-token="${esc(token)}" data-index="${index}"
           data-click="adminRecipeRemove(${index})">
-          <img src="${esc(catalogItem?.iconUrl || iconFor(value, potion))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
+          <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(displayName(token))}" loading="lazy" onerror="if(this.dataset.fallbackIcon && this.src !== this.dataset.fallbackIcon){this.src=this.dataset.fallbackIcon;}else{this.style.visibility='hidden';}" />
           <b class="recipe-remove-cross" aria-hidden="true">×</b>
           <span>${esc(displayName(token))}</span>
         </button>`;
@@ -152,8 +154,10 @@ export function createAdminNarcoticsRecipePages(deps) {
       <div class="creative-inventory-grid">
         ${items.map((item) => {
           const token = String(item.token || `${active.potion ? "potion" : "material"}:${item.id || ""}`).toLowerCase();
+          const fallbackIcon = iconFor(item.id, active.potion);
+          const primaryIcon = item.iconUrl || fallbackIcon;
           return `<button class="creative-item" title="${esc(item.name || item.id || "Предмет")}" data-click="adminRecipeAdd('${esc(token)}')">
-            <img src="${esc(item.iconUrl || iconFor(item.id, active.potion))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
+            <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(item.name || item.id || "Предмет")}" loading="lazy" onerror="if(this.dataset.fallbackIcon && this.src !== this.dataset.fallbackIcon){this.src=this.dataset.fallbackIcon;}else{this.style.visibility='hidden';}" />
             <span>${esc(item.name || item.id || "Предмет")}</span>
           </button>`;
         }).join("") || `<div class="recipe-empty">Ничего не найдено.</div>`}

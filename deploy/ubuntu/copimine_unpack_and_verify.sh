@@ -581,8 +581,22 @@ verify_services() {
 
 verify_http() {
   log "[16/16] HTTP verification"
-  curl -fsS http://127.0.0.1:8090/api/health >/dev/null || die "/api/health failed"
-  curl -fsS http://127.0.0.1:8090/api/runtime >/dev/null || die "/api/runtime failed"
+  local health_ok=0 attempt
+  for attempt in $(seq 1 45); do
+    if curl -fsS --max-time 3 http://127.0.0.1:8090/api/health >/dev/null 2>&1; then
+      health_ok=1
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$health_ok" != "1" ]]; then
+    log 'ERROR: /api/health failed after 90 seconds'
+    systemctl --no-pager --full status copimine-admin || true
+    journalctl -u copimine-admin -n 160 --no-pager || true
+    ss -ltnp || true
+    die '/api/health failed'
+  fi
+  curl -fsS --max-time 10 http://127.0.0.1:8090/api/runtime >/dev/null || die "/api/runtime failed"
   curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip >/dev/null || die "Modpack download route failed"
   curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack download route failed"
   local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha

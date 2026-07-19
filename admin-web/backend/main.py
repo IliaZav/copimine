@@ -7173,18 +7173,141 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
 
 
 def economy_ledger_sync(limit: int = 500) -> dict[str, Any]:
+    safe_limit = max(1, min(int(limit or 500), 500))
     path = admin_plugin_db_path()
     if not admin_plugin_db_available(path):
-        return {"source": admin_plugin_db_location(path), "connected": False, "events": [], "balances": [], "transactions": [], "assets": [], "snapshots": []}
+        return {
+            "source": admin_plugin_db_location(path),
+            "connected": False,
+            "events": [],
+            "balances": [],
+            "transactions": [],
+            "assets": [],
+            "snapshots": [],
+            "summary": {
+                "holders": 0,
+                "totalBalance": 0,
+                "bankBalance": 0,
+                "inventoryBalance": 0,
+                "enderBalance": 0,
+                "events": 0,
+                "transactions": 0,
+                "assets": 0,
+                "activeAssets": 0,
+                "transfers": 0,
+                "smelts": 0,
+                "scans": 0,
+            },
+        }
     with open_sqlite_readonly(str(path)) as conn:
-        events = safe_sqlite_rows(conn, "cmv7_ar_events", "", [], "time desc,id desc", limit)
-        balances = safe_sqlite_rows(conn, "cmv7_ar_balances", "", [], "balance desc,name collate nocase asc", limit)
-        transactions = safe_sqlite_rows(conn, "cmv7_ar_transactions", "", [], "time desc,id desc", limit)
-        assets = safe_sqlite_rows(conn, "cmv7_ar_assets", "", [], "updated_at desc,asset_id desc", limit)
-        scans = safe_sqlite_rows(conn, "cmv7_ar_scan_reports", "", [], "time desc,id desc", limit)
-        snapshots = safe_sqlite_rows(conn, "cmv7_ar_economy_snapshots", "", [], "time desc,id desc", limit)
+        events = safe_sqlite_rows(conn, "cmv7_ar_events", "", [], "time desc,id desc", safe_limit)
+        legacy_balances = safe_sqlite_rows(conn, "cmv7_ar_balances", "", [], "balance desc,name collate nocase asc", safe_limit)
+        legacy_transactions = safe_sqlite_rows(conn, "cmv7_ar_transactions", "", [], "time desc,id desc", safe_limit)
+        assets = safe_sqlite_rows(conn, "cmv7_ar_assets", "", [], "updated_at desc,asset_id desc", safe_limit)
+        scans = safe_sqlite_rows(conn, "cmv7_ar_scan_reports", "", [], "time desc,id desc", safe_limit)
+        snapshots = safe_sqlite_rows(conn, "cmv7_ar_economy_snapshots", "", [], "time desc,id desc", safe_limit)
+
+    # The plugin keeps physical AR found in inventories in cmv7_ar_balances,
+    # while the bank, transfers and admin top-ups are authoritative in the
+    # v4 PostgreSQL ledger.  Showing only the legacy table made every admin
+    # top-up look like zero after the page was refreshed.  Merge both views by
+    # UUID/name and expose the bank balance as the row's primary balance.
+    balances = [dict(row) for row in legacy_balances]
+    bank_balances: list[dict[str, Any]] = []
+    bank_transactions: list[dict[str, Any]] = []
+    if pg_ready():
+        try:
+            with auth_conn() as pg_conn:
+                ensure_v4_schema(pg_conn)
+                bank_rows = pg_conn.execute(
+                    """
+                    SELECT owner_uuid AS uuid, owner_name AS name, balance,
+                           updated_at
+                    FROM cmv4_bank_accounts
+                    WHERE account_type='PLAYER'
+                      AND currency='AR'
+                      AND status='ACTIVE'
+                    ORDER BY balance DESC, owner_name ASC
+                    LIMIT %s
+                    """,
+                    (safe_limit,),
+                ).fetchall()
+                bank_balances = [dict(row) for row in bank_rows]
+                tx_rows = pg_conn.execute(
+                    """
+                    SELECT l.tx_id, l.player_uuid, l.tx_type, l.amount,
+                           l.balance_after, l.created_at, l.actor, l.details,
+                           a.owner_name
+                    FROM cmv4_bank_ledger l
+                    LEFT JOIN cmv4_bank_accounts a ON a.account_id=l.account_id
+                    WHERE l.status='COMMITTED'
+                    ORDER BY l.created_at DESC
+                    LIMIT %s
+                    """,
+                    (safe_limit,),
+                ).fetchall()
+                bank_transactions = [dict(row) for row in tx_rows]
+        except Exception:
+            # The legacy view remains useful during a temporary database
+            # outage; the request must still return a valid economy payload.
+            bank_balances = []
+            bank_transactions = []
+
+    by_uuid = {
+        str(row.get("uuid") or row.get("player_uuid") or "").strip().lower(): row
+        for row in balances
+        if str(row.get("uuid") or row.get("player_uuid") or "").strip()
+    }
+    by_name = {
+        str(row.get("name") or row.get("player_name") or "").strip().lower(): row
+        for row in balances
+        if str(row.get("name") or row.get("player_name") or "").strip()
+    }
+    for bank in bank_balances:
+        uuid_key = str(bank.get("uuid") or "").strip().lower()
+        name_key = str(bank.get("name") or "").strip().lower()
+        row = by_uuid.get(uuid_key) or by_name.get(name_key)
+        if row is None:
+            row = {
+                "uuid": bank.get("uuid") or "",
+                "name": bank.get("name") or bank.get("uuid") or "",
+                "inventory_balance": 0,
+                "ender_balance": 0,
+            }
+            balances.append(row)
+            if uuid_key:
+                by_uuid[uuid_key] = row
+            if name_key:
+                by_name[name_key] = row
+        row["bank_balance"] = int(bank.get("balance") or 0)
+        row["legacy_balance"] = int(row.get("balance") or 0)
+        row["balance"] = row["bank_balance"]
+        row["updated_at"] = bank.get("updated_at") or row.get("updated_at") or 0
+
+    # Keep a stable order and cap after merging rows from both stores.
+    balances.sort(key=lambda row: (-int(row.get("balance") or 0), str(row.get("name") or "").lower()))
+    balances = balances[:safe_limit]
+    transactions = [dict(row) for row in legacy_transactions]
+    transactions.extend(
+        {
+            "id": row.get("tx_id") or "",
+            "time": row.get("created_at") or 0,
+            "type": row.get("tx_type") or "BANK",
+            "from_name": row.get("actor") or "",
+            "to_name": row.get("owner_name") or row.get("player_uuid") or "",
+            "amount": int(row.get("amount") or 0),
+            "details": row.get("details") or "",
+            "source": "postgresql",
+        }
+        for row in bank_transactions
+    )
+    transactions.sort(key=lambda row: int(row.get("time") or 0), reverse=True)
+    transactions = transactions[:safe_limit]
     transfers = [x for x in transactions if "TRANSFER" in str(x.get("type") or "")]
     smelts = [x for x in transactions if "SMELT" in str(x.get("type") or "")]
+    bank_total = sum(int(x.get("bank_balance") or 0) for x in balances)
+    inventory_total = sum(int(x.get("inventory_balance") or 0) for x in balances)
+    ender_total = sum(int(x.get("ender_balance") or 0) for x in balances)
     return {
         "source": admin_plugin_db_location(path),
         "connected": True,
@@ -7196,9 +7319,10 @@ def economy_ledger_sync(limit: int = 500) -> dict[str, Any]:
         "snapshots": snapshots,
         "summary": {
             "holders": len(balances),
-            "totalBalance": sum(int(x.get("balance") or 0) for x in balances),
-            "inventoryBalance": sum(int(x.get("inventory_balance") or 0) for x in balances),
-            "enderBalance": sum(int(x.get("ender_balance") or 0) for x in balances),
+            "totalBalance": bank_total,
+            "bankBalance": bank_total,
+            "inventoryBalance": inventory_total,
+            "enderBalance": ender_total,
             "events": len(events),
             "transactions": len(transactions),
             "assets": len(assets),
@@ -12592,6 +12716,11 @@ def admin_add_donation_balance_sync(player_uuid: str, player_name: str, amount: 
             "INSERT INTO donation_balance_ledger(id,player_uuid,delta,balance_after,reason,actor,source,idempotency_key,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (ledger_id, player_uuid, int(amount), after, reason, actor, "admin-web", safe_key, now),
         )
+        # Persist the account and ledger row before returning.  Without an
+        # explicit commit this connection is returned to the pool with an
+        # open transaction, so the next page refresh read the old zero
+        # balance and the admin saw no error or confirmation.
+        conn.commit()
         return {"ok": True, "ledgerId": ledger_id, "balanceBefore": before, "balanceAfter": after}
 
 

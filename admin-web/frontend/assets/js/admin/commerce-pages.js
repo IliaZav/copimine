@@ -29,6 +29,16 @@ export function createAdminCommercePages(deps) {
   let cachedPlayers = [];
   let cachedEconomySnapshot = null;
 
+  // Keep the result visible even when the toast layer is hidden behind an
+  // old theme or a stale cabinet stylesheet.  The native alert is only used
+  // for balance mutations, where an administrator must get an unambiguous
+  // success/error acknowledgement.
+  function operationAlert(message, bad = false) {
+    const text = String(message || (bad ? "Операция не выполнена" : "Операция выполнена"));
+    toast(text, bad);
+    if (typeof window !== "undefined" && typeof window.alert === "function") window.alert(text);
+  }
+
   function paymentModeLabel(value) {
     const provider = String(value || "").toUpperCase();
     if (provider === "YOOKASSA") return "ЮKassa";
@@ -383,7 +393,7 @@ export function createAdminCommercePages(deps) {
       if (amount <= 0) return toast("Укажи положительное количество donation", true);
       const headers = await dangerConfirm(`Пополнить donation-баланс игрока ${player.name || "без имени"}`, "DONATION_ADD_BALANCE");
       if (!headers) return;
-      await api("/api/admin/donation/add-balance", {
+      const result = await api("/api/admin/donation/add-balance", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -394,11 +404,11 @@ export function createAdminCommercePages(deps) {
           idempotency_key: randomActionKey("don-admin-topup"),
         }),
       });
-      toast("Donation-баланс пополнен");
+      operationAlert(`Donation-баланс игрока ${player.name} пополнен: ${formatDonate(result?.balanceAfter || 0)}`);
       if ($("adminDonationAddAmount")) $("adminDonationAddAmount").value = "";
       await loadEconomy();
     } catch (err) {
-      toast(err.message, true);
+      operationAlert(err.message, true);
     }
   }
 
@@ -410,7 +420,7 @@ export function createAdminCommercePages(deps) {
       if (amount <= 0) return toast("Укажи положительное количество AR", true);
       const headers = await dangerConfirm(`Пополнить AR-баланс игрока ${player.name || "без имени"}`, "AR_ADD_BALANCE");
       if (!headers) return;
-      await api("/api/admin/economy/ar/add-balance", {
+      const result = await api("/api/admin/economy/ar/add-balance", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -421,11 +431,11 @@ export function createAdminCommercePages(deps) {
           idempotency_key: randomActionKey("ar-admin-topup"),
         }),
       });
-      toast("AR-баланс пополнен");
+      operationAlert(`AR-баланс игрока ${player.name} пополнен: ${formatAr(result?.balanceAfter || 0)}`);
       if ($("adminArAddAmount")) $("adminArAddAmount").value = "";
       await loadEconomy();
     } catch (err) {
-      toast(err.message, true);
+      operationAlert(err.message, true);
     }
   }
 
@@ -434,7 +444,7 @@ export function createAdminCommercePages(deps) {
       const player = selectedPlayerBySelect("adminBalancePlayer");
       const headers = await dangerConfirm(`Изменить donation-баланс игрока ${player.name || "без имени"}`, "DONATION_SET_BALANCE");
       if (!headers) return;
-      await api("/api/admin/donation/set-balance", {
+      const result = await api("/api/admin/donation/set-balance", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -445,10 +455,10 @@ export function createAdminCommercePages(deps) {
           idempotency_key: randomActionKey("don-admin-set"),
         }),
       });
-      toast("Donation-баланс сохранён");
+      operationAlert(`Donation-баланс игрока ${player.name} сохранён: ${formatDonate(result?.balanceAfter || 0)}`);
       await loadEconomy();
     } catch (err) {
-      toast(err.message, true);
+      operationAlert(err.message, true);
     }
   }
 
@@ -457,7 +467,7 @@ export function createAdminCommercePages(deps) {
       const player = selectedPlayerBySelect("adminBalancePlayer");
       const headers = await dangerConfirm(`Изменить AR-баланс игрока ${player.name || "без имени"}`, "AR_SET_BALANCE");
       if (!headers) return;
-      await api("/api/admin/economy/ar/set-balance", {
+      const result = await api("/api/admin/economy/ar/set-balance", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -468,10 +478,10 @@ export function createAdminCommercePages(deps) {
           idempotency_key: randomActionKey("ar-admin-set"),
         }),
       });
-      toast("AR-баланс сохранён");
+      operationAlert(`AR-баланс игрока ${player.name} сохранён: ${formatAr(result?.balanceAfter || 0)}`);
       await loadEconomy();
     } catch (err) {
-      toast(err.message, true);
+      operationAlert(err.message, true);
     }
   }
 

@@ -29,6 +29,7 @@ Require-Contains $runtime 'lp group default permission set imageframe.create fal
 Require-Contains $runtime 'lp group {admin_group} permission set imageframe.create true' 'An explicit admin-only ImageFrame creation path must remain available.'
 Require-Contains $common 'copimine_sync_game_runtime_hardening' 'Managed refresh must run the runtime hardening sync on install and upgrade.'
 Require-Contains $common 'copimine_fix_runtime_plugin_ownership' 'Managed refresh must restore ownership after root-run hardening sync.'
+Require-Contains (Read-Utf8 $applyScript) 'copimine_fix_runtime_plugin_ownership' 'Post-start hardening must restore plugin ownership after its root-run sync.'
 Require-Contains $fullReplace 'copimine-game-hardening' 'Full replacement must start and verify the post-start hardening service.'
 Require-Contains $unpack 'copimine-game-hardening' 'Unpack-and-verify must start and verify the post-start hardening service.'
 Require-Contains $envExample 'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=0' 'The insecure offline voice-chat exception must be disabled by default.'

@@ -14,4 +14,5 @@ source "$COMMON_SCRIPT"
 
 copimine_require_root
 copimine_sync_game_runtime_hardening
+copimine_fix_runtime_plugin_ownership
 copimine_apply_post_start_game_hardening

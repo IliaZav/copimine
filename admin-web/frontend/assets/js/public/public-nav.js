@@ -8,7 +8,10 @@ function setExpanded(button, expanded) {
 
 function createToggleButton() {
   const button = document.createElement("button");
-  button.id = "mobileNavToggle";
+  // Keep the public header toggle separate from the cabinet sidebar toggle.
+  // Reusing the same id made getElementById() bind the cabinet handler to the
+  // wrong button, so every sidebar tab appeared to do nothing on mobile.
+  button.id = "publicMobileNavToggle";
   button.type = "button";
   button.className = "btn icon-btn mobile-only hidden public-mobile-toggle";
   button.setAttribute("aria-label", OPEN_MENU_LABEL);
@@ -27,7 +30,7 @@ export function initPublicNav() {
     return;
   }
 
-  let toggle = shell.querySelector("#mobileNavToggle");
+  let toggle = shell.querySelector("#publicMobileNavToggle, .public-mobile-toggle");
   if (!(toggle instanceof HTMLButtonElement)) {
     toggle = createToggleButton();
     brand.insertAdjacentElement("afterend", toggle);

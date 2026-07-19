@@ -44,7 +44,7 @@ if ($LASTEXITCODE) { throw 'Remote directory creation failed.' }
 & scp -P $Port $archivePath $shaPath $bootstrapPath $installer $diagnostics "${remote}:$RemoteDir/"
 if ($LASTEXITCODE) { throw 'Upload failed.' }
 
-$remoteCheck = 'cd ' + "'$RemoteDir'" + ' && expected=$(tr -d ''\r\n '' < ' + "'$archiveName.sha256'" + ') && actual=$(sha256sum ' + "'$archiveName'" + ' | cut -d" " -f1) && test "$expected" = "$actual"'
+$remoteCheck = 'cd ' + "'$RemoteDir'" + ' && expected=$(tr -d ''\r\n '' < ' + "'$archiveName.sha256'" + ') && actual=$(sha256sum ' + "'$archiveName'" + ' | awk ''{print $1}'') && test "$expected" = "$actual"'
 & ssh -p $Port $remote $remoteCheck
 if ($LASTEXITCODE) { throw 'Remote checksum verification failed.' }
 

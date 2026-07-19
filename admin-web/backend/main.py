@@ -9387,7 +9387,7 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
                 conn.execute(
                     """
                     INSERT INTO whitelist_requests(id,site_account_id,minecraft_uuid,minecraft_name,request_ip,status,created_at,updated_at,approved_at,approved_by,note)
-                    VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s,NULL,NULL,'Manual approval required; Minecraft ownership must be proven in-game')
+                    VALUES(%s,%s,%s,%s,%s,'PENDING',%s,%s,0,'','Manual approval required; Minecraft ownership must be proven in-game')
                     """,
                     (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now),
                 )

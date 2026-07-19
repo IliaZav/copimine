@@ -3668,7 +3668,7 @@ window.adminArSetBalance = async () => getAdminCommercePages().adminArSetBalance
 
 window.adminDonationSetBalance = async () => getAdminCommercePages().adminDonationSetBalance();
 
-window.playerAdminArSetBalance = async (player = state.selectedPlayer, uuid = "") => {
+const playerAdminArSetBalance = async (player = state.selectedPlayer, uuid = "") => {
   if (!player) return toast("Игрок не выбран", true);
   try {
     const headers = await dangerConfirm(`Изменить AR-баланс игрока ${player}`, "AR_SET_BALANCE");
@@ -3690,8 +3690,9 @@ window.playerAdminArSetBalance = async (player = state.selectedPlayer, uuid = ""
     toast(err.message, true);
   }
 };
+window.playerAdminArSetBalance = playerAdminArSetBalance;
 
-window.playerAdminArAddBalance = async (player = state.selectedPlayer, uuid = "") => {
+const playerAdminArAddBalance = async (player = state.selectedPlayer, uuid = "") => {
   if (!player) return toast("Игрок не выбран", true);
   const amount = Math.max(0, number($("playerAdminArAddAmount")?.value || 0));
   if (amount <= 0) return toast("Укажи положительное количество AR", true);
@@ -3716,8 +3717,9 @@ window.playerAdminArAddBalance = async (player = state.selectedPlayer, uuid = ""
     toast(err.message, true);
   }
 };
+window.playerAdminArAddBalance = playerAdminArAddBalance;
 
-window.playerAdminDonationAddBalance = async (player = state.selectedPlayer, uuid = "") => {
+const playerAdminDonationAddBalance = async (player = state.selectedPlayer, uuid = "") => {
   if (!player) return toast("Игрок не выбран", true);
   const amount = Math.max(0, number($("playerAdminDonationAddAmount")?.value || 0));
   if (amount <= 0) return toast("Укажи положительное количество donation", true);
@@ -3742,6 +3744,7 @@ window.playerAdminDonationAddBalance = async (player = state.selectedPlayer, uui
     toast(err.message, true);
   }
 };
+window.playerAdminDonationAddBalance = playerAdminDonationAddBalance;
 
 window.syncPlayerGiftCatalog = (category = "AR") => {
   const select = $("playerAdminGiftItem");
@@ -3749,7 +3752,7 @@ window.syncPlayerGiftCatalog = (category = "AR") => {
   replaceChildrenSafe(select, [fragmentFromHtml(adminGiftItemOptions(state.adminGiftCatalog || {}, category))]);
 };
 
-window.playerAdminGift = async (player = state.selectedPlayer, uuid = "") => {
+const playerAdminGift = async (player = state.selectedPlayer, uuid = "") => {
   if (!player) return toast("Игрок не выбран", true);
   const category = $("playerAdminGiftCategory")?.value || "AR";
   const itemId = $("playerAdminGiftItem")?.value?.trim() || "";
@@ -3777,8 +3780,9 @@ window.playerAdminGift = async (player = state.selectedPlayer, uuid = "") => {
     toast(err.message, true);
   }
 };
+window.playerAdminGift = playerAdminGift;
 
-window.playerAdminDonationSetBalance = async (player = state.selectedPlayer, uuid = "") => {
+const playerAdminDonationSetBalance = async (player = state.selectedPlayer, uuid = "") => {
   if (!player) return toast("Игрок не выбран", true);
   try {
     const headers = await dangerConfirm(`Изменить donation-баланс игрока ${player}`, "DONATION_SET_BALANCE");
@@ -3800,6 +3804,7 @@ window.playerAdminDonationSetBalance = async (player = state.selectedPlayer, uui
     toast(err.message, true);
   }
 };
+window.playerAdminDonationSetBalance = playerAdminDonationSetBalance;
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
@@ -5528,11 +5533,11 @@ Object.assign(dataClickHandlers, {
   pageTable: fromWindow("pageTable"),
   playerAction: fromWindow("playerAction"),
   playerActionFromPanel: fromWindow("playerActionFromPanel"),
-  playerAdminArSetBalance: fromWindow("playerAdminArSetBalance"),
-  playerAdminArAddBalance: fromWindow("playerAdminArAddBalance"),
-  playerAdminDonationAddBalance: fromWindow("playerAdminDonationAddBalance"),
-  playerAdminGift: fromWindow("playerAdminGift"),
-  playerAdminDonationSetBalance: fromWindow("playerAdminDonationSetBalance"),
+  playerAdminArSetBalance: (...args) => playerAdminArSetBalance(...args),
+  playerAdminArAddBalance: (...args) => playerAdminArAddBalance(...args),
+  playerAdminDonationAddBalance: (...args) => playerAdminDonationAddBalance(...args),
+  playerAdminGift: (...args) => playerAdminGift(...args),
+  playerAdminDonationSetBalance: (...args) => playerAdminDonationSetBalance(...args),
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
   playerSelectDonationItem: fromWindow("playerSelectDonationItem"),

@@ -631,7 +631,10 @@ class AdminWhitelistApproveIn(BaseModel):
 
 
 class AdminArBalanceIn(BaseModel):
-    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    # The server can resolve an offline UUID from a valid Minecraft name.
+    # Keep UUID optional so admin actions still work when the player card has
+    # not loaded the UUID yet.
+    minecraft_uuid: str = Field(default="", max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
     amount: int = Field(gt=0, le=1000000000)
     reason: str = Field(min_length=2, max_length=160)
@@ -639,7 +642,7 @@ class AdminArBalanceIn(BaseModel):
 
 
 class AdminDonationBalanceIn(BaseModel):
-    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    minecraft_uuid: str = Field(default="", max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
     amount: int = Field(gt=0, le=1000000000)
     reason: str = Field(min_length=2, max_length=160)
@@ -647,7 +650,7 @@ class AdminDonationBalanceIn(BaseModel):
 
 
 class AdminArBalanceSetIn(BaseModel):
-    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    minecraft_uuid: str = Field(default="", max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
     balance: int = Field(ge=0, le=1000000000)
     reason: str = Field(min_length=2, max_length=160)
@@ -655,7 +658,7 @@ class AdminArBalanceSetIn(BaseModel):
 
 
 class AdminDonationBalanceSetIn(BaseModel):
-    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    minecraft_uuid: str = Field(default="", max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
     balance: int = Field(ge=0, le=1000000000)
     reason: str = Field(min_length=2, max_length=160)
@@ -663,7 +666,7 @@ class AdminDonationBalanceSetIn(BaseModel):
 
 
 class AdminDonationTestPurchaseIn(BaseModel):
-    minecraft_uuid: str = Field(min_length=32, max_length=64)
+    minecraft_uuid: str = Field(default="", max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
     item_id: str = Field(min_length=2, max_length=120)
 

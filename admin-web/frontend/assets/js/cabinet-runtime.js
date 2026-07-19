@@ -2038,8 +2038,13 @@ async function setTab(tab) {
   const routeTab = metaMap[tab] ? tab : defaultTab();
   const currentRoute = normalizeAppRoute(document.body?.dataset.appRoute || routeFromHref(location.pathname), state.tab || defaultTab());
   if (routeTab !== currentRoute) {
-    window.location.href = appRouteHref(routeTab, tabNavigationParams(routeTab));
-    return;
+    // Keep the authenticated shell alive while switching sections.  The old
+    // implementation navigated to another static HTML file on every click;
+    // a slow auth/config request could then paint the dashboard shell again
+    // and made the sidebar feel broken.  The loaders below already contain
+    // every section, so update the URL and render in place instead.
+    window.history.pushState({}, "", appRouteHref(routeTab, tabNavigationParams(routeTab)));
+    if (document.body) document.body.dataset.appRoute = routeTab;
   }
   state.tab = routeTab;
   if (state.tab !== "donation-shop") state.donationFocusItemId = "";
@@ -2050,6 +2055,20 @@ async function setTab(tab) {
   renderNav();
   renderAdminSearchDock();
   await loadCurrent().finally(applyPendingAdminSearchFocus);
+}
+
+function handleCabinetHistoryChange() {
+  if (!isCabinetPage()) return;
+  const route = normalizeAppRoute(routeFromHref(location.pathname), state.tab || defaultTab());
+  const params = new URLSearchParams(window.location.search || "");
+  state.selectedPlayer = String(params.get("player") || state.selectedPlayer || "").trim();
+  state.donationSessionId = String(params.get("session") || state.donationSessionId || "").trim();
+  state.donationFocusItemId = String(params.get("item") || "").trim().toLowerCase();
+  if (route !== state.tab) {
+    void setTab(route);
+  } else {
+    void loadCurrent(true);
+  }
 }
 
 function updateGlobalStatus(status = {}) {
@@ -5415,6 +5434,7 @@ function wire() {
       loadCurrent(true);
     }
   });
+  window.addEventListener("popstate", handleCabinetHistoryChange);
   syncAuthUi();
 }
 

@@ -34,7 +34,8 @@ body.player-mode .sidebar {
   gap: 18px;
   height: 100vh;
   padding: 22px 16px 18px;
-  overflow: auto;
+  /* Keep the footer in its own grid row; only the long menu scrolls. */
+  overflow: hidden;
   background: rgba(7, 17, 16, 0.94);
   border-right: 1px solid var(--release-line);
 }
@@ -79,6 +80,11 @@ body.player-mode .side-nav {
   display: grid;
   gap: 18px;
   align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 body.panel-admin-mode .nav-group,
@@ -168,6 +174,9 @@ body.player-mode .nav-hint {
 body.panel-admin-mode .side-footer,
 body.junior-admin-mode .side-footer,
 body.player-mode .side-footer {
+  min-height: 0;
+  position: relative;
+  z-index: 2;
   gap: 10px;
   padding-top: 16px;
   border-top: 1px solid var(--release-line);

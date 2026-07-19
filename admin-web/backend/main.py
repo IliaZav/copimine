@@ -12033,15 +12033,16 @@ def read_player_donation_owned_sync(player_uuid: str, limit: int = 80) -> dict[s
         ).fetchall()
         instances = []
         if donation_item_ids:
+            item_placeholders = ",".join("%s" for _ in donation_item_ids)
             instances = conn.execute(
-                """
+                f"""
                 SELECT unique_item_id,item_id,purchase_id,status,repaired_count,created_at,updated_at
                 FROM artifact_item_instances
-                WHERE owner_uuid=%s AND item_id = ANY(%s)
+                WHERE owner_uuid=%s AND item_id IN ({item_placeholders})
                 ORDER BY updated_at DESC
                 LIMIT %s
                 """,
-                (player_uuid, donation_item_ids, safe_limit),
+                (player_uuid, *donation_item_ids, safe_limit),
             ).fetchall()
     summary = {
         "active": sum(1 for row in instances if str(row.get("status") or "").upper() == "ACTIVE"),

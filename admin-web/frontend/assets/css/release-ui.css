@@ -1805,6 +1805,54 @@ body { font-family: var(--ui-body); }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--catalog-accent) 20%, transparent) !important;
 }
 
+/* A plain-language payment ledger for player accounts. */
+.payment-history-table {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.payment-history-head,
+.payment-history-row {
+  display: grid;
+  grid-template-columns: minmax(145px, .8fr) minmax(220px, 1.6fr) minmax(120px, .6fr);
+  gap: 18px;
+  align-items: center;
+  padding: 13px 16px;
+}
+
+.payment-history-head {
+  color: var(--muted);
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.payment-history-row {
+  min-height: 66px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.payment-history-row:last-child { border-bottom: 0; }
+.payment-history-row:hover { background: color-mix(in srgb, var(--accent-soft) 46%, var(--surface)); }
+.payment-history-row time { color: var(--muted); font-family: var(--ui-data); font-size: 12px; }
+.payment-history-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.payment-history-row > .payment-amount { justify-self: end; font-family: var(--ui-data); font-size: 17px; }
+.payment-amount.is-positive { color: var(--success, #16834b); }
+.payment-amount.is-negative { color: var(--danger, #b53b3b); }
+
+@media (max-width: 680px) {
+  .payment-history-head { display: none; }
+  .payment-history-row { grid-template-columns: 1fr auto; gap: 6px 14px; padding: 13px 14px; }
+  .payment-history-row time { grid-column: 1 / -1; grid-row: 1; font-size: 11px; }
+  .payment-history-row > div { grid-column: 1; grid-row: 2; }
+  .payment-history-row > .payment-amount { grid-column: 2; grid-row: 2; }
+}
+
 /* Compact working surfaces for player and staff panels. */
 body.player-mode .sidebar,
 body.panel-admin-mode .sidebar,

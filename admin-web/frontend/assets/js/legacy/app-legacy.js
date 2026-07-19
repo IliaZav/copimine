@@ -4069,7 +4069,8 @@ window.legacyPlayerTransferDeprecated = async () => {
         amount: number($("bankAmount")?.value || 0),
         pin: $("bankPinInput")?.value || "",
         note: $("bankNote")?.value?.trim() || "",
-        from_account: state.playerBankScope || "PERSONAL"
+        from_account: state.playerBankScope || "PERSONAL",
+        idempotency_key: randomActionKey("bank-transfer")
       })
     });
     toast(`Переведено ${result.amount} AR получателю ${result.recipient}.`);

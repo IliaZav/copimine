@@ -3,7 +3,7 @@ import { buildCsvContent } from "./shared/csv.js";
 import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260719r10";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260720r11";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "./player/account-pages.js";
@@ -778,7 +778,7 @@ function wireDataClickDelegation() {
 // legacy public page without attaching duplicate handlers at startup.
 window.addEventListener("copimine:legacy-runtime-request", () => {
   if (state.legacyRuntimePromise) return state.legacyRuntimePromise;
-  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260719r10")
+  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260720r11")
     .catch((error) => {
       toast(error?.message || "Совместимый режим недоступен", true);
       state.legacyRuntimePromise = null;
@@ -1644,6 +1644,91 @@ function humanizeBankAction(row = {}) {
     refund: "Возврат"
   };
   return map[raw] || cleanText(row.tx_type || row.type || row.action || "Операция");
+}
+
+function ledgerDetailsObject(row = {}) {
+  const raw = row.details;
+  if (raw && typeof raw === "object") return raw;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(String(raw));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function paymentRow(row = {}, currency = "AR") {
+  const type = cleanText(row.tx_type || row.type || row.action || "").toUpperCase();
+  const details = ledgerDetailsObject(row);
+  const counterparty = cleanText(
+    row.counterparty_name || details.recipient || details.sender || details.from_name || details.player_name || ""
+  );
+  const donation = currency === "DONATION";
+  const rawDelta = donation ? Number(row.delta ?? row.amount ?? 0) : Number(row.amount ?? 0);
+  const magnitude = Number.isFinite(rawDelta) ? Math.abs(Math.trunc(rawDelta)) : 0;
+  let sign = rawDelta < 0 ? "negative" : "positive";
+  let operation = donation ? "Пополнение доната" : "Пополнение AR";
+  let party = "";
+  if (!donation) {
+    if (type.includes("TRANSFER_OUT") || type === "TRANSFER") {
+      operation = "Перевод";
+      sign = "negative";
+      party = counterparty ? `→ ${counterparty}` : "→ игрок";
+    } else if (type.includes("TRANSFER_IN")) {
+      operation = "Перевод от игрока";
+      sign = "positive";
+      party = counterparty ? `← ${counterparty}` : "← игрок";
+    } else if (type.includes("SHOP_PURCHASE") || type.includes("REPAIR")) {
+      operation = type.includes("REPAIR") ? "Ремонт предмета" : "Покупка в лавке";
+      sign = "negative";
+    } else if (type.includes("TAX")) {
+      operation = "Платёж налога";
+      sign = "negative";
+    } else if (type.includes("WITHDRAW")) {
+      operation = "Снятие наличных";
+      sign = "negative";
+    } else if (type.includes("DEPOSIT")) {
+      operation = "Внесена наличка";
+      sign = "positive";
+    } else if (type.includes("TOPUP") || type.includes("SET") || type.includes("GIFT")) {
+      operation = "Пополнение AR";
+      sign = rawDelta < 0 ? "negative" : "positive";
+    }
+  } else {
+    const reason = cleanText(row.reason || row.source || details.reason || "").toLowerCase();
+    if (rawDelta < 0 || reason.includes("purchase") || reason.includes("покуп")) {
+      operation = "Покупка донат-предмета";
+      sign = "negative";
+    } else if (reason.includes("admin") || reason.includes("topup") || reason.includes("пополн")) {
+      operation = "Пополнение доната";
+      sign = "positive";
+    }
+  }
+  return {
+    operation,
+    party,
+    amount: `${sign === "negative" ? "−" : "+"}${donation ? formatDonate(magnitude) : formatAr(magnitude)}`,
+    sign,
+    time: row.created_at || row.time || row.updated_at || 0,
+  };
+}
+
+function paymentHistoryTable(rows = [], donationRows = [], limit = 24) {
+  const bank = asArray(rows).map((row) => ({ ...paymentRow(row, "AR"), currency: "AR" }));
+  const donation = asArray(donationRows).map((row) => ({ ...paymentRow(row, "DONATION"), currency: "Donation" }));
+  const all = [...bank, ...donation]
+    .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))
+    .slice(0, limit);
+  if (!all.length) return empty("История пока пустая", "Здесь появятся пополнения, переводы и покупки.");
+  return `<div class="payment-history-table" role="table" aria-label="История платежей">
+    <div class="payment-history-head" role="row"><span>Дата</span><span>Операция</span><span>Сумма</span></div>
+    ${all.map((row) => `<div class="payment-history-row" role="row">
+      <time>${esc(dt(row.time))}</time>
+      <div><strong>${esc(row.operation)}</strong>${row.party ? `<small>${esc(row.party)}</small>` : `<small>${esc(row.currency)}</small>`}</div>
+      <strong class="payment-amount ${row.sign === "negative" ? "is-negative" : "is-positive"}">${esc(row.amount)}</strong>
+    </div>`).join("")}
+  </div>`;
 }
 
 function transactionFeed(rows, limit = 12) {
@@ -3911,7 +3996,9 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
       headers,
       body: JSON.stringify({ new_pin: pin.trim() })
     });
-    toast(`PIN для ${player} обновлён: ${result.pin}`);
+    toast(result.pinVerified
+      ? `PIN для ${player} сохранён и проверен: ${result.pin}`
+      : `PIN для ${player} сохранён: ${result.pin}`);
     if ($("playerAdminPinInput")) $("playerAdminPinInput").value = "";
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
@@ -4796,22 +4883,8 @@ async function loadPlayerCabinet() {
   const balance = linked ? number(bank?.account?.balance || 0) : 0;
   const donationBalance = donation?.linked ? number(donation.balance || 0) : 0;
   const whitelistStatus = whitelisted ? "одобрен" : (whitelistRequest?.status || (linked ? "не отправлен" : "нужна привязка"));
-  const historyRows = [
-    ...asArray(bank?.ledger).map((row) => ({
-      title: humanizeBankAction(row),
-      section: "Банк AR",
-      details: cleanText(row.details || row.note || ""),
-      amount: formatAr(row.amount || 0),
-      time: row.created_at || row.time || row.updated_at || 0
-    })),
-    ...asArray(donationHistory.history).map((row) => ({
-      title: `Донат: ${cleanText(row.reason || row.source || "операция")}`,
-      section: "Донат",
-      details: cleanText(row.reason || row.source || ""),
-      amount: formatDonate(row.delta || row.amount || 0),
-      time: row.created_at || row.time || row.updated_at || 0
-    }))
-  ].sort((a, b) => Number(b.time || 0) - Number(a.time || 0)).slice(0, 14);
+  const historyBankRows = asArray(bank?.ledger);
+  const historyDonationRows = asArray(donationHistory.history);
   setMiniHealthSummary(state.user.username || "игрок", [
     `Привязка: ${linked ? "есть" : "нет"}`,
     `Банк AR: ${formatAr(balance)}`,
@@ -4821,22 +4894,7 @@ async function loadPlayerCabinet() {
       ${metric("Банк AR", linked ? formatAr(balance) : "нужна привязка", linked ? "Игровой и сайт-счёт" : "Открой вкладку Minecraft", linked ? "good" : "warn")}
       ${metric("Донат-баланс", donation?.linked ? formatDonate(donationBalance) : "нужна привязка", donation?.linked ? "Покупки и выдачи" : "Привяжи Minecraft", donation?.linked ? "good" : "warn")}
     </section>
-    ${panel("История платежей", "", historyRows.length ? `
-      <div class="transaction-feed">
-        ${historyRows.map((row) => `
-          <article class="transaction-row">
-            <div class="transaction-main">
-              <strong>${esc(row.title)}</strong>
-              <span>${esc([row.section, row.details || "без комментария"].filter(Boolean).join(" · "))}</span>
-            </div>
-            <div class="transaction-side">
-              <strong>${esc(row.amount)}</strong>
-              <span>${dt(row.time)}</span>
-            </div>
-          </article>
-        `).join("")}
-      </div>
-    ` : empty("История пока пустая", "Операции появятся после первого перевода, покупки или пополнения."))}
+    ${panel("История платежей", "Простая лента пополнений, переводов и покупок.", paymentHistoryTable(historyBankRows, historyDonationRows, 14))}
     ${panel("Действия", "", `
       <div class="action-strip account-actions">
         <button class="btn btn-primary" data-click="setTab('bank')">Открыть банк</button>
@@ -5470,7 +5528,8 @@ async function loadPlayerHistory() {
     }))
   ].sort((a, b) => String(b.time || "").localeCompare(String(a.time || "")));
   setView(`
-    ${panel("История операций", "Все движения по счёту и покупкам по времени.", rows.length ? `
+    ${panel("История платежей", "Пополнения, переводы и покупки простыми словами.", paymentHistoryTable(bank.ledger, donation.history, 24))}
+    ${panel("Предметы и выдача", "Купленные предметы и их текущий статус.", rows.length ? `
       <div class="transaction-feed">
         ${rows.map((row) => `
           <article class="transaction-row">

@@ -565,7 +565,10 @@ class PlayerBankTransferIn(BaseModel):
     pin: str = Field(min_length=4, max_length=8)
     note: Optional[str] = Field(default="", max_length=160)
     from_account: str = Field(default="PERSONAL", min_length=4, max_length=32)
-    idempotency_key: str = Field(min_length=8, max_length=120)
+    # Older cabinet bundles did not send this field.  Keep the API compatible
+    # while still assigning a fresh server-side key so the transaction path
+    # remains protected by the same idempotency check.
+    idempotency_key: str = Field(default="", max_length=120)
 
 
 class PlayerElectionTaxPayIn(BaseModel):
@@ -4795,10 +4798,12 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
         bank = ensure_player_bank_account(conn, str(account.get("minecraft_uuid") or ""), str(account.get("minecraft_name") or ""))
         ledger = conn.execute(
             """
-            SELECT tx_id,tx_type,amount,balance_after,counterparty_account_id,created_at,details
-            FROM cmv4_bank_ledger
-            WHERE account_id=%s
-            ORDER BY created_at DESC
+            SELECT l.tx_id,l.tx_type,l.amount,l.balance_after,l.counterparty_account_id,
+                   COALESCE(counterparty.owner_name,'') AS counterparty_name,l.created_at,l.details
+            FROM cmv4_bank_ledger l
+            LEFT JOIN cmv4_bank_accounts counterparty ON counterparty.account_id=l.counterparty_account_id
+            WHERE l.account_id=%s
+            ORDER BY l.created_at DESC
             LIMIT %s
             """,
             (bank["account_id"], max(1, min(limit, 200))),
@@ -4813,10 +4818,12 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
             treasury_account = ensure_treasury_bank_account(conn)
             treasury_ledger = [dict(x) for x in conn.execute(
                 """
-                SELECT tx_id,tx_type,amount,balance_after,counterparty_account_id,created_at,details
-                FROM cmv4_bank_ledger
-                WHERE account_id=%s
-                ORDER BY created_at DESC
+                SELECT l.tx_id,l.tx_type,l.amount,l.balance_after,l.counterparty_account_id,
+                       COALESCE(counterparty.owner_name,'') AS counterparty_name,l.created_at,l.details
+                FROM cmv4_bank_ledger l
+                LEFT JOIN cmv4_bank_accounts counterparty ON counterparty.account_id=l.counterparty_account_id
+                WHERE l.account_id=%s
+                ORDER BY l.created_at DESC
                 LIMIT %s
                 """,
                 (TREASURY_ACCOUNT_ID, max(1, min(limit, 200))),
@@ -5239,6 +5246,13 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
             "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PIN_ADMIN_SET',%s,'admin-web')",
             (now, actor, f"minecraft_uuid={uuid}"),
         )
+        verify_row = conn.execute(
+            "SELECT pin_hash,pin_sealed,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s",
+            (uuid,),
+        ).fetchone()
+        if not verify_row or not verify_password_hash(str(verify_row["pin_hash"] or ""), new_pin) or not str(verify_row["pin_sealed"] or ""):
+            conn.rollback()
+            raise HTTPException(status_code=500, detail="PIN не сохранился в банковском хранилище")
         conn.commit()
     return {
         "ok": True,
@@ -5247,6 +5261,7 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
         "pin": new_pin,
         "siteAccountId": str(site.get("id") or ""),
         "siteUsername": str(site.get("username") or ""),
+        "pinVerified": True,
     }
 
 
@@ -5260,10 +5275,12 @@ def treasury_bank_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         pin_set = bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone())
         ledger = [dict(x) for x in conn.execute(
             """
-            SELECT tx_id,tx_type,amount,balance_after,counterparty_account_id,created_at,details
-            FROM cmv4_bank_ledger
-            WHERE account_id=%s
-            ORDER BY created_at DESC
+            SELECT l.tx_id,l.tx_type,l.amount,l.balance_after,l.counterparty_account_id,
+                   COALESCE(counterparty.owner_name,'') AS counterparty_name,l.created_at,l.details
+            FROM cmv4_bank_ledger l
+            LEFT JOIN cmv4_bank_accounts counterparty ON counterparty.account_id=l.counterparty_account_id
+            WHERE l.account_id=%s
+            ORDER BY l.created_at DESC
             LIMIT 120
             """,
             (TREASURY_ACCOUNT_ID,),
@@ -5663,6 +5680,10 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
     if from_scope not in {"PERSONAL", "TREASURY"}:
         raise HTTPException(status_code=400, detail="Unknown bank account scope")
     safe_key = str(data.idempotency_key or "").strip()
+    generated_key = False
+    if not safe_key:
+        safe_key = f"legacy-{secrets.token_urlsafe(18)}"
+        generated_key = True
     if not re.fullmatch(r"[A-Za-z0-9-]{8,96}", safe_key):
         raise HTTPException(status_code=400, detail="Некорректный ключ операции")
     now = donation_now_ms()
@@ -5701,6 +5722,7 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
                 "fromScope": from_scope,
                 "status": str(row.get("status") or "COMMITTED"),
                 "idempotent": True,
+                "idempotencyKey": safe_key,
             }
         if from_scope != "TREASURY" and to_uuid == account.get("minecraft_uuid"):
             raise HTTPException(status_code=400, detail="Cannot transfer to yourself")
@@ -5726,7 +5748,17 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
             (tx_id + ":in", to_locked["account_id"], from_locked["account_id"], to_uuid, amount, to_after, now, account.get("username") or "", note),
         )
         conn.commit()
-    return {"ok": True, "txId": tx_id, "amount": amount, "balance": from_after, "recipient": to_name, "fromScope": from_scope, "idempotent": False}
+    return {
+        "ok": True,
+        "txId": tx_id,
+        "amount": amount,
+        "balance": from_after,
+        "recipient": to_name,
+        "fromScope": from_scope,
+        "idempotent": False,
+        "idempotencyKey": safe_key,
+        "legacyClient": generated_key,
+    }
 
 
 def active_president_term(conn: Any) -> dict[str, Any]:
@@ -10272,10 +10304,13 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
             if pg_table_exists(conn, "cmv4_bank_ledger"):
                 rows = conn.execute(
                     """
-                    SELECT tx_id,account_id,counterparty_account_id,tx_type,amount,balance_after,status,actor,details,created_at
-                    FROM cmv4_bank_ledger
-                    WHERE player_uuid=%s
-                    ORDER BY created_at DESC
+                    SELECT l.tx_id,l.account_id,l.counterparty_account_id,
+                           COALESCE(counterparty.owner_name,'') AS counterparty_name,
+                           l.tx_type,l.amount,l.balance_after,l.status,l.actor,l.details,l.created_at
+                    FROM cmv4_bank_ledger l
+                    LEFT JOIN cmv4_bank_accounts counterparty ON counterparty.account_id=l.counterparty_account_id
+                    WHERE l.player_uuid=%s
+                    ORDER BY l.created_at DESC
                     LIMIT %s
                     """,
                     (uuid, safe_limit),

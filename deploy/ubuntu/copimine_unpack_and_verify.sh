@@ -473,7 +473,12 @@ fix_permissions() {
   find "$PROJECT_ROOT" -type d -exec chmod 755 {} \;
   find "$PROJECT_ROOT" -type f -exec chmod 644 {} \;
   find "$PROJECT_ROOT" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 755 {} \; || true
-  [[ -f "$PROJECT_ROOT/admin-web/.env" ]] && chmod 600 "$PROJECT_ROOT/admin-web/.env"
+  if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
+    chown "$APP_USER:$APP_GROUP" "$PROJECT_ROOT/admin-web/.env"
+    chmod 600 "$PROJECT_ROOT/admin-web/.env"
+    [[ "$(stat -c '%U:%G' "$PROJECT_ROOT/admin-web/.env")" == "$APP_USER:$APP_GROUP" ]] \
+      || die "Runtime environment file is not readable by $APP_USER"
+  fi
   for private_dir in "$PROJECT_ROOT/admin-web/data" "$PROJECT_ROOT/admin-web/backups"; do
     [[ -d "$private_dir" ]] && chmod 700 "$private_dir"
   done

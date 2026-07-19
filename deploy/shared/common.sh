@@ -733,6 +733,13 @@ PY
 
 copimine_install_system_files() {
   local unit source
+  # The installer may rewrite .env through a root-owned temporary file during
+  # preflight.  systemd starts the backend as the application user, so make
+  # the ownership explicit immediately before installing/restarting units.
+  if [[ -f "$COPIMINE_ENV_FILE" ]]; then
+    chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_ENV_FILE"
+    chmod 600 "$COPIMINE_ENV_FILE"
+  fi
   for unit in copimine-admin copimine-discord-bot copimine-minecraft-discord-bridge copimine-minecraft; do
     source="$COPIMINE_ADMIN_DIR/deploy/$unit.service"
     sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" "$source" > "/etc/systemd/system/$unit.service"

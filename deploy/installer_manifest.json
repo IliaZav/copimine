@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-19T03:35:39.6811545Z",
-    "gitCommit":  "416a037",
+    "generatedAtUtc":  "2026-07-19T03:42:30.2197005Z",
+    "gitCommit":  "eb10a8b",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,8 +10,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "f9b0e4bec35d189973367ca0ca3bd27b23431d76",
-                                      "sha256":  "1157a5890919eb3b05d18ccdd3c15dd2c064533d58df9bc3e55af2c155059ba9"
+                                      "sha1":  "84a823fce205ab476094a13185e6b1d5d4596111",
+                                      "sha256":  "d31f28c13bc3b557f2e9079051e87959065ac95141f402ce2c9da2b32944c03a"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -23,11 +23,11 @@
                    "scripts":  {
                                    "unpackAndVerify":  {
                                                            "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
-                                                           "sha256":  "3ce29ae328977b1f1d8b73ce12919e7bda81ea7bfe993438162d8ed928b1ff16"
+                                                           "sha256":  "12b87bbfb87073596cfd5de78048b74b4c582ff33fae37711e819b1868d515a8"
                                                        },
                                    "fullReplace":  {
                                                        "path":  "deploy/ubuntu/copimine_full_replace.sh",
-                                                       "sha256":  "cbd0b87f08945eed6933a87ceefe77f966df7b3bd74845641fc1942e0742e9fe"
+                                                       "sha256":  "a11fcaf32d24159382001c6aa75f1441b8a9bb38ab6e13bc1aa6118cd2128923"
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "ea71c68c64c26b2de0434e5f420d1a52fa5adc930732fda7ab354777b43965e4"
+                                             "sha256":  "27c05aeeccfe25147007c13d2511f8f3e46e36cf2ca2291fe4c67a6af61e0d69"
                                          }
                  },
     "serverProperties":  {

@@ -34,6 +34,8 @@ Require-Contains $fullReplace 'copimine-game-hardening' 'Full replacement must s
 Require-Contains $unpack 'copimine-game-hardening' 'Unpack-and-verify must start and verify the post-start hardening service.'
 Require-Contains $envExample 'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=0' 'The insecure offline voice-chat exception must be disabled by default.'
 Require-Contains $envExample 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON=' 'The operator exception reason must be documented in the environment template.'
+$installScript = Read-Utf8 (Join-Path $root 'deploy\ubuntu\install_release.sh')
+Require-Contains $installScript 'value = ''"'' + value' 'Offline voice-chat reason must be quoted when written to shell-readable .env files.'
 Require-Regex $serverProperties '(?m)^online-mode=false$' 'This hardening must not silently change the server online-mode policy.'
 
 if (Test-Path -LiteralPath $service) {

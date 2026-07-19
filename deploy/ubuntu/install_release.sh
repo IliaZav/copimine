@@ -157,12 +157,17 @@ out, seen = [], set()
 for line in lines:
     key = line.split('=', 1)[0].strip() if '=' in line else ''
     if key in updates:
-        out.append(f'{key}={updates[key]}')
+        value = updates[key]
+        if key == 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
+            value = '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+        out.append(f'{key}={value}')
         seen.add(key)
     else:
         out.append(line)
 for key, value in updates.items():
     if key not in seen:
+        if key == 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
+            value = '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
         out.append(f'{key}={value}')
 tmp = path.with_name('.env.voicechat-tmp')
 tmp.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')

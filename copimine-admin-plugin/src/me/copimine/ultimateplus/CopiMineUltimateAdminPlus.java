@@ -5062,7 +5062,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 msg(sender,"&7Заявок: &f"+applications+" &8| &7законов на рассмотрении: &f"+laws);
             }
             case "narcotics","drugs" -> {
-                long brews=tableExists("narcotics_brewing_states")?scalarLong("SELECT COUNT(*) FROM narcotics_brewing_states WHERE COALESCE(deleted,0)=0"):0L;
+                long brews=tableExists("narcotics_brewing_states")?scalarLong("SELECT COUNT(*) FROM narcotics_brewing_states WHERE COALESCE(deleted,FALSE)=FALSE"):0L;
                 long overdose=tableExists("narcotics_player_overdose")?scalarLong("SELECT COUNT(*) FROM narcotics_player_overdose WHERE COALESCE(overdose_until,0)>?",now()):0L;
                 long usage=tableExists("narcotics_player_usage_window")?scalarLong("SELECT COUNT(*) FROM narcotics_player_usage_window"):0L;
                 long auditRows=tableExists("narcotics_admin_audit")?scalarLong("SELECT COUNT(*) FROM narcotics_admin_audit"):0L;

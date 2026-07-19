@@ -57,11 +57,14 @@ preflight() {
   fi
   if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
     local db_host db_port db_name db_user db_password
-    db_host="$(awk -F= '$1=="POSTGRES_HOST" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
-    db_port="$(awk -F= '$1=="POSTGRES_PORT" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
-    db_name="$(awk -F= '$1=="POSTGRES_DB" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
-    db_user="$(awk -F= '$1=="POSTGRES_USER" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
-    db_password="$(awk -F= '$1=="POSTGRES_PASSWORD" {v=substr($0,index($0,"=")+1)} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"\x27')"
+    # Strip only CRLF and double quotes. Do not use \x27 here: some tr
+    # implementations interpret it as the characters 2 and 7, corrupting
+    # 127.0.0.1 into 1.0.0.1 and 5432 into 543.
+    db_host="$(awk -F= '$1=="POSTGRES_HOST" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"')"
+    db_port="$(awk -F= '$1=="POSTGRES_PORT" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"')"
+    db_name="$(awk -F= '$1=="POSTGRES_DB" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"')"
+    db_user="$(awk -F= '$1=="POSTGRES_USER" {v=$2} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"')"
+    db_password="$(awk -F= '$1=="POSTGRES_PASSWORD" {v=substr($0,index($0,"=")+1)} END{print v}' "$PROJECT_ROOT/admin-web/.env" | tr -d '\r"')"
     if [[ -n "$db_user" && -n "$db_name" && -n "$db_password" ]]; then
       local configured_host="${db_host:-127.0.0.1}" configured_port="${db_port:-5432}"
       if PGPASSWORD="$db_password" psql -h "$configured_host" -p "$configured_port" -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >/dev/null 2>&1; then

@@ -531,14 +531,27 @@ validate_runtime_tree() {
 
 restart_services() {
   for service in "${SERVICES[@]}"; do
-    if systemctl list-unit-files | grep -q "^${service}\.service"; then
-      systemctl enable "$service" >/dev/null 2>&1 || true
-      systemctl restart "$service"
+    # `systemctl list-unit-files | grep` is unreliable in non-interactive
+    # sudo sessions (and can return an empty list even for installed units).
+    # Ask systemd directly, then start the unit and keep its real error.
+    if systemctl cat "$service.service" >/dev/null 2>&1; then
+      systemctl enable "$service.service" >/dev/null 2>&1 || true
+      if ! systemctl restart "$service.service"; then
+        log "ERROR: failed to restart $service"
+        systemctl --no-pager --full status "$service.service" || true
+        journalctl -u "$service.service" -n 160 --no-pager || true
+        return 1
+      fi
     fi
   done
-  if systemctl list-unit-files | grep -q '^nginx\.service'; then
-    systemctl enable nginx >/dev/null 2>&1 || true
-    systemctl restart nginx
+  if systemctl cat nginx.service >/dev/null 2>&1; then
+    systemctl enable nginx.service >/dev/null 2>&1 || true
+    if ! systemctl restart nginx.service; then
+      log 'ERROR: failed to restart nginx'
+      systemctl --no-pager --full status nginx.service || true
+      journalctl -u nginx.service -n 160 --no-pager || true
+      return 1
+    fi
   fi
 }
 
@@ -558,9 +571,9 @@ wait_for_service() {
 
 verify_services() {
   log "[15/16] Start services"
-  restart_services
+  restart_services || die 'Service restart failed; see the journal above.'
   for service in "${SERVICES[@]}"; do
-    if systemctl list-unit-files | grep -q "^${service}\.service"; then
+    if systemctl cat "$service.service" >/dev/null 2>&1; then
       if ! wait_for_service "$service" 90; then
         log "ERROR: service did not become active: $service"
         systemctl --no-pager --full status "$service" || true
@@ -569,7 +582,7 @@ verify_services() {
       fi
     fi
   done
-  if systemctl list-unit-files | grep -q '^nginx\.service'; then
+  if systemctl cat nginx.service >/dev/null 2>&1; then
     if ! wait_for_service nginx 30; then
       log 'ERROR: nginx did not become active'
       systemctl --no-pager --full status nginx || true

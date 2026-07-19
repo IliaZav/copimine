@@ -1,6 +1,8 @@
 [Unit]
 Description=CopiMine Ultimate Admin Web Panel
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -14,6 +16,9 @@ ExecStartPre=/opt/copimine/admin-web/.venv/bin/python -m backend.startup_checks 
 ExecStart=/opt/copimine/admin-web/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8090 --proxy-headers
 Restart=always
 RestartSec=3
+TimeoutStartSec=180
+TimeoutStopSec=30
+KillMode=mixed
 NoNewPrivileges=true
 PrivateTmp=true
 

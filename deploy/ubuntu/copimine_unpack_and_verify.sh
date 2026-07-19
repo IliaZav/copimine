@@ -23,9 +23,13 @@ WORLD_SEED="${WORLD_SEED:--1861153001556076901}"
 CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
 
 CURRENT_ENV_USER=""
+CURRENT_DATA_USER=""
 CURRENT_UNIT_USER=""
 if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
   CURRENT_ENV_USER="$(stat -c '%U' "$PROJECT_ROOT/admin-web/.env" 2>/dev/null || true)"
+fi
+if [[ -d "$PROJECT_ROOT/admin-web/data" ]]; then
+  CURRENT_DATA_USER="$(stat -c '%U' "$PROJECT_ROOT/admin-web/data" 2>/dev/null || true)"
 fi
 if command -v systemctl >/dev/null 2>&1; then
   CURRENT_UNIT_USER="$(systemctl show copimine-admin.service -p User --value 2>/dev/null || true)"
@@ -33,9 +37,9 @@ fi
 # Keep the account already owning the runtime configuration.  Falling back to
 # a new `copimine` account on an existing qwerty deployment makes systemd use a
 # different user and breaks access to the protected .env file.
-APP_USER="${APP_USER:-${COPIMINE_APP_USER:-${CURRENT_ENV_USER:-${CURRENT_UNIT_USER:-${SUDO_USER:-copimine}}}}}"
+APP_USER="${APP_USER:-${COPIMINE_APP_USER:-${CURRENT_DATA_USER:-${CURRENT_UNIT_USER:-${CURRENT_ENV_USER:-${SUDO_USER:-copimine}}}}}}"
 if [[ "$APP_USER" == "root" || -z "$APP_USER" ]]; then
-  APP_USER="${CURRENT_UNIT_USER:-${SUDO_USER:-copimine}}"
+  APP_USER="${CURRENT_DATA_USER:-${CURRENT_UNIT_USER:-${SUDO_USER:-copimine}}}"
 fi
 APP_GROUP="${APP_GROUP:-$APP_USER}"
 

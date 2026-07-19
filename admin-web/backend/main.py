@@ -1606,6 +1606,17 @@ def valid_minecraft_name(username: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_]{3,16}", username or ""))
 
 
+def valid_minecraft_display_name(username: str) -> bool:
+    """Validate a linked player name without rejecting legacy Unicode names.
+
+    The live player list can contain offline/legacy names written in Cyrillic
+    (for example ``НикДруга``) and names with a hyphen.  They are safe as a
+    display/DB key when they contain only letters, digits, underscore or
+    hyphen and are still bounded to the Minecraft name length.
+    """
+    return bool(re.fullmatch(r"[\w-]{3,16}", str(username or ""), flags=re.UNICODE))
+
+
 def offline_uuid_for_name(username: str) -> str:
     source = ("OfflinePlayer:" + str(username or "")).encode("utf-8")
     digest = bytearray(hashlib.md5(source).digest())
@@ -1626,7 +1637,7 @@ def resolve_minecraft_uuid(minecraft_uuid: str, minecraft_name: str) -> str:
 
 def normalize_donation_player_target(minecraft_uuid: str, minecraft_name: str) -> tuple[str, str]:
     raw_name = str(minecraft_name or "").strip()
-    if not valid_minecraft_name(raw_name):
+    if not valid_minecraft_display_name(raw_name):
         raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
     raw_uuid = str(minecraft_uuid or "").strip()
     if raw_uuid:

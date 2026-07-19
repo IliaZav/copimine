@@ -3,7 +3,7 @@ import { buildCsvContent } from "./shared/csv.js";
 import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260719r8";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260719r9";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "./player/account-pages.js";
@@ -839,6 +839,12 @@ function toast(message, bad = false) {
   el.textContent = message;
   root.appendChild(el);
   setTimeout(() => el.remove(), 5200);
+}
+
+function operationAlert(message, bad = false) {
+  const text = String(message || (bad ? "Операция не выполнена" : "Операция выполнена"));
+  toast(text, bad);
+  if (typeof window !== "undefined" && typeof window.alert === "function") window.alert(text);
 }
 
 function randomActionKey(prefix = "cm") {
@@ -3681,7 +3687,7 @@ const playerAdminArSetBalance = async (player = state.selectedPlayer, uuid = "")
   try {
     const headers = await dangerConfirm(`Изменить AR-баланс игрока ${player}`, "AR_SET_BALANCE");
     if (!headers) return;
-    await api("/api/admin/economy/ar/set-balance", {
+    const result = await api("/api/admin/economy/ar/set-balance", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -3692,10 +3698,10 @@ const playerAdminArSetBalance = async (player = state.selectedPlayer, uuid = "")
         idempotency_key: randomActionKey("player-ar-set"),
       }),
     });
-    toast("AR-баланс сохранён");
+    operationAlert(`AR-баланс игрока ${player} сохранён: ${formatAr(result?.balanceAfter || 0)}`);
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
-    toast(err.message, true);
+    operationAlert(err.message, true);
   }
 };
 window.playerAdminArSetBalance = playerAdminArSetBalance;
@@ -3707,7 +3713,7 @@ const playerAdminArAddBalance = async (player = state.selectedPlayer, uuid = "")
   try {
     const headers = await dangerConfirm(`Пополнить AR игроку ${player} на ${formatAr(amount)}?`, "AR_ADD_BALANCE");
     if (!headers) return;
-    await api("/api/admin/economy/ar/add-balance", {
+    const result = await api("/api/admin/economy/ar/add-balance", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -3718,11 +3724,11 @@ const playerAdminArAddBalance = async (player = state.selectedPlayer, uuid = "")
         idempotency_key: randomActionKey("player-ar-add"),
       }),
     });
-    toast(`AR зачислены игроку ${player}`);
+    operationAlert(`AR зачислены игроку ${player}: ${formatAr(result?.balanceAfter || 0)}`);
     if ($("playerAdminArAddAmount")) $("playerAdminArAddAmount").value = "";
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
-    toast(err.message, true);
+    operationAlert(err.message, true);
   }
 };
 window.playerAdminArAddBalance = playerAdminArAddBalance;
@@ -3734,7 +3740,7 @@ const playerAdminDonationAddBalance = async (player = state.selectedPlayer, uuid
   try {
     const headers = await dangerConfirm(`Пополнить donation игроку ${player} на ${formatDonate(amount)}?`, "DONATION_ADD_BALANCE");
     if (!headers) return;
-    await api("/api/admin/donation/add-balance", {
+    const result = await api("/api/admin/donation/add-balance", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -3745,11 +3751,11 @@ const playerAdminDonationAddBalance = async (player = state.selectedPlayer, uuid
         idempotency_key: randomActionKey("player-donation-add"),
       }),
     });
-    toast(`Donation зачислен игроку ${player}`);
+    operationAlert(`Donation зачислен игроку ${player}: ${formatDonate(result?.balanceAfter || 0)}`);
     if ($("playerAdminDonationAddAmount")) $("playerAdminDonationAddAmount").value = "";
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
-    toast(err.message, true);
+    operationAlert(err.message, true);
   }
 };
 window.playerAdminDonationAddBalance = playerAdminDonationAddBalance;
@@ -3795,7 +3801,7 @@ const playerAdminDonationSetBalance = async (player = state.selectedPlayer, uuid
   try {
     const headers = await dangerConfirm(`Изменить donation-баланс игрока ${player}`, "DONATION_SET_BALANCE");
     if (!headers) return;
-    await api("/api/admin/donation/set-balance", {
+    const result = await api("/api/admin/donation/set-balance", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -3806,10 +3812,10 @@ const playerAdminDonationSetBalance = async (player = state.selectedPlayer, uuid
         idempotency_key: randomActionKey("player-donation-set"),
       }),
     });
-    toast("Donation-баланс сохранён");
+    operationAlert(`Donation-баланс игрока ${player} сохранён: ${formatDonate(result?.balanceAfter || 0)}`);
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
-    toast(err.message, true);
+    operationAlert(err.message, true);
   }
 };
 window.playerAdminDonationSetBalance = playerAdminDonationSetBalance;

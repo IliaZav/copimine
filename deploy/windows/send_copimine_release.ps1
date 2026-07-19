@@ -44,7 +44,14 @@ if ($LASTEXITCODE) { throw 'Remote directory creation failed.' }
 & scp -P $Port $archivePath $shaPath $bootstrapPath $installer $diagnostics "${remote}:$RemoteDir/"
 if ($LASTEXITCODE) { throw 'Upload failed.' }
 
-$remoteCheck = "cd '$RemoteDir' && expected=`$(awk '{print tolower(`$1)}' '$archiveName.sha256' | head -n 1) && actual=`$(sha256sum '$archiveName' | awk '{print tolower(`$1)}') && printf 'remote checksum expected=%s actual=%s\\n' \"`$expected\" \"`$actual\" && test \"`$expected\" = \"`$actual\""
+$remoteCheck = @'
+cd '__REMOTE_DIR__' &&
+expected=$(awk '{print tolower($1)}' '__SHA_FILE__' | head -n 1 | tr -d '[:space:]') &&
+actual=$(sha256sum '__ARCHIVE__' | awk '{print tolower($1)}') &&
+printf 'remote checksum expected=%s actual=%s\n' "$expected" "$actual" &&
+test "$expected" = "$actual"
+'@
+$remoteCheck = $remoteCheck.Replace('__REMOTE_DIR__', $RemoteDir).Replace('__SHA_FILE__', "$archiveName.sha256").Replace('__ARCHIVE__', $archiveName).Replace("`r`n", ' ').Replace("`n", ' ')
 & ssh -p $Port $remote $remoteCheck
 if ($LASTEXITCODE) { throw 'Remote checksum verification failed.' }
 

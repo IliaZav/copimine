@@ -1768,6 +1768,12 @@ def auth_storage_backend() -> str:
     return "sqlite" if AUTH_STORAGE_MODE == "sqlite" else "postgresql"
 
 
+def advisory_lock(conn: Any, key: str) -> None:
+    """Serialize idempotent writes on PostgreSQL without breaking SQLite mode."""
+    if auth_storage_backend() == "postgresql":
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (str(key),))
+
+
 def auth_storage_ready() -> bool:
     return auth_storage_backend() == "sqlite" or pg_ready()
 
@@ -5529,7 +5535,7 @@ def transfer_player_bank_sync(account: dict[str, Any], data: PlayerBankTransferI
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         transfer_key = f"player-bank-transfer-{safe_key}"
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (transfer_key,))
+        advisory_lock(conn, transfer_key)
         if from_scope == "TREASURY":
             if not has_treasury_access(conn, account):
                 raise HTTPException(status_code=403, detail="Treasury account is not available")
@@ -12090,19 +12096,13 @@ def donation_entitlement_conflict_sync(conn: Any, player_uuid: str, item_id: str
 
 
 def lock_donation_entitlement_sync(conn: Any, player_uuid: str, item_id: str) -> None:
-    conn.execute(
-        "SELECT pg_advisory_xact_lock(hashtext(%s))",
-        (f"donation-entitlement:{str(player_uuid or '').strip()}:{str(item_id or '').strip().lower()}",),
-    ).fetchone()
+    advisory_lock(conn, f"donation-entitlement:{str(player_uuid or '').strip()}:{str(item_id or '').strip().lower()}")
 
 
 def lock_donation_idempotency_sync(conn: Any, scope: str, key: str) -> None:
     normalized_scope = str(scope or "").strip().lower() or "donation"
     normalized_key = str(key or "").strip()
-    conn.execute(
-        "SELECT pg_advisory_xact_lock(hashtext(%s))",
-        (f"{normalized_scope}:{normalized_key}",),
-    ).fetchone()
+    advisory_lock(conn, f"{normalized_scope}:{normalized_key}")
 
 
 def read_donation_balance_sync(player_uuid: str, player_name: str = "") -> dict[str, Any]:
@@ -12836,7 +12836,7 @@ def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentI
     purchase_key = f"web-ar-purchase-{key}"
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (purchase_key,))
+        advisory_lock(conn, purchase_key)
         existing = conn.execute(
             "SELECT purchase_id,unique_item_id,item_id,status,price_ar FROM artifact_purchases WHERE idempotency_key=%s LIMIT 1",
             (purchase_key,),
@@ -12854,8 +12854,8 @@ def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentI
             }
         verify_bank_pin(conn, account, data.pin)
         item_id = str(item.get("item_id") or "").strip()
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-supply:{item_id.lower()}",))
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-player:{player_uuid.lower()}:{item_id.lower()}",))
+        advisory_lock(conn, f"artifact-purchase-supply:{item_id.lower()}")
+        advisory_lock(conn, f"artifact-purchase-player:{player_uuid.lower()}:{item_id.lower()}")
         supply_limit = int(item.get("supply_limit") or 0)
         per_player_limit = int(item.get("per_player_limit") or 0)
         if supply_limit > 0 and artifact_purchase_count_sync(conn, item_id) >= supply_limit:
@@ -12984,7 +12984,7 @@ def checkout_ar_cart_sync(account: dict[str, Any], data: PlayerCartCheckoutIn) -
     item_purchase_keys = {item_id: f"{cart_key}:{item_id}" for item_id in item_ids}
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (cart_key,))
+        advisory_lock(conn, cart_key)
         verify_bank_pin(conn, account, data.pin)
         existing_rows = [
             dict(row)
@@ -13027,8 +13027,8 @@ def checkout_ar_cart_sync(account: dict[str, Any], data: PlayerCartCheckoutIn) -
             raise HTTPException(status_code=409, detail="Цена предметов изменилась. Обновите корзину перед оплатой")
         for item in sorted(selected_items, key=lambda row: str(row.get("item_id") or "")):
             item_id = str(item.get("item_id") or "")
-            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-supply:{item_id.lower()}",))
-            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"artifact-purchase-player:{player_uuid.lower()}:{item_id.lower()}",))
+            advisory_lock(conn, f"artifact-purchase-supply:{item_id.lower()}")
+            advisory_lock(conn, f"artifact-purchase-player:{player_uuid.lower()}:{item_id.lower()}")
             supply_limit = int(item.get("supply_limit") or 0)
             per_player_limit = int(item.get("per_player_limit") or 0)
             if supply_limit > 0 and artifact_purchase_count_sync(conn, item_id) >= supply_limit:
@@ -13272,7 +13272,7 @@ def admin_add_ar_balance_sync(player_uuid: str, player_name: str, amount: int, r
     now = donation_now_ms()
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"admin-ar-topup:{safe_key}",))
+        advisory_lock(conn, f"admin-ar-topup:{safe_key}")
         existing = conn.execute("SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=%s LIMIT 1", (f"admin-ar-topup-{safe_key}",)).fetchone()
         if existing:
             return {"ok": True, "txId": existing["tx_id"], "balanceAfter": int(existing["balance_after"] or 0), "idempotent": True}
@@ -13305,7 +13305,7 @@ def admin_set_ar_balance_sync(player_uuid: str, player_name: str, balance: int, 
     now = donation_now_ms()
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"admin-ar-set:{safe_key}",))
+        advisory_lock(conn, f"admin-ar-set:{safe_key}")
         existing = conn.execute("SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=%s LIMIT 1", (f"admin-ar-set-{safe_key}",)).fetchone()
         if existing:
             return {"ok": True, "txId": existing["tx_id"], "balanceAfter": int(existing["balance_after"] or 0), "idempotent": True}
@@ -13414,7 +13414,7 @@ def admin_create_artifact_gift_sync(
         gift_key = f"admin-artifact-gift-{safe_key}"
         with auth_conn() as conn:
             ensure_v4_schema(conn)
-            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (gift_key,))
+            advisory_lock(conn, gift_key)
             lock_donation_entitlement_sync(conn, player_uuid, safe_item_id)
             existing = conn.execute(
                 "SELECT purchase_id,unique_item_id,player_uuid,item_id,status FROM artifact_purchases WHERE idempotency_key=%s LIMIT 1",

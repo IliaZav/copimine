@@ -561,11 +561,21 @@ verify_services() {
   restart_services
   for service in "${SERVICES[@]}"; do
     if systemctl list-unit-files | grep -q "^${service}\.service"; then
-      wait_for_service "$service" 90 || die "Service did not become active: $service"
+      if ! wait_for_service "$service" 90; then
+        log "ERROR: service did not become active: $service"
+        systemctl --no-pager --full status "$service" || true
+        journalctl -u "$service" -n 120 --no-pager || true
+        die "Service did not become active: $service"
+      fi
     fi
   done
   if systemctl list-unit-files | grep -q '^nginx\.service'; then
-    wait_for_service nginx 30 || die "nginx did not become active"
+    if ! wait_for_service nginx 30; then
+      log 'ERROR: nginx did not become active'
+      systemctl --no-pager --full status nginx || true
+      journalctl -u nginx -n 120 --no-pager || true
+      die 'nginx did not become active'
+    fi
   fi
 }
 

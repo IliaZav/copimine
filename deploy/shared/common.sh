@@ -732,10 +732,12 @@ PY
 }
 
 copimine_install_system_files() {
-  install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-admin.service" /etc/systemd/system/copimine-admin.service
-  install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-discord-bot.service" /etc/systemd/system/copimine-discord-bot.service
-  install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-minecraft-discord-bridge.service" /etc/systemd/system/copimine-minecraft-discord-bridge.service
-  install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-minecraft.service" /etc/systemd/system/copimine-minecraft.service
+  local unit source
+  for unit in copimine-admin copimine-discord-bot copimine-minecraft-discord-bridge copimine-minecraft; do
+    source="$COPIMINE_ADMIN_DIR/deploy/$unit.service"
+    sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" "$source" > "/etc/systemd/system/$unit.service"
+    chmod 0644 "/etc/systemd/system/$unit.service"
+  done
   install -m 0644 "$COPIMINE_ADMIN_DIR/deploy/copimine-game-hardening.service" /etc/systemd/system/copimine-game-hardening.service
   copimine_render_nginx_config
   ln -sfn "$COPIMINE_NGINX_AVAILABLE" "$COPIMINE_NGINX_ENABLED"

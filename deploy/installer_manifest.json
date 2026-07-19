@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-19T03:18:49.5013486Z",
-    "gitCommit":  "732a0db",
+    "generatedAtUtc":  "2026-07-19T03:21:30.7064419Z",
+    "gitCommit":  "637b7f5",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,8 +10,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "a11934249df9f28c8c7bbbe4a959de3801d50882",
-                                      "sha256":  "15a5890bdd5456f3f897d829f17e7ca9ff5aa2c1f03ce407c46ca4e9f7f1f753"
+                                      "sha1":  "0579d03c701a7c8839060715c98e2a1fffd2b25b",
+                                      "sha256":  "8f2df08f66b81ea04d02c10881c159fb877dc3f8e9fd587dc0338495abe4a680"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "5ab94b447de80782542992d9c8160fde7c5e0e42c2fffd89a536938e696feef9"
+                                             "sha256":  "c497502ccf7bd03c1a54b51bc5daa30932b3b294524440941b1287719290900b"
                                          }
                  },
     "serverProperties":  {

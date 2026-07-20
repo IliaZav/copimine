@@ -3216,11 +3216,18 @@ function renderPlayerFullDetails(player, detail, ctx) {
     status: cleanText(row.status || "pending"),
     expires_at: row.expires_at || 0,
   }));
-  const artifactPurchaseRows = asArray(detail?.economy?.artifactPurchases);
-  const artifactLimitRows = asArray(giftCatalog?.AR).map((item) => {
+  const artifactPurchaseRows = [
+    ...asArray(detail?.economy?.artifactPurchases),
+    ...asArray(donationPurchases).map((row) => ({ ...row, status: row.status || row.claim_status || "CLAIM_PENDING" })),
+  ];
+  const artifactLimitRows = [
+    ...asArray(giftCatalog?.AR).map((item) => ({ ...item, limit_category: "AR", limit_value: 5 })),
+    ...asArray(giftCatalog?.DONATION).map((item) => ({ ...item, limit_category: "DONATION", limit_value: 1 })),
+  ].map((item) => {
     const itemId = cleanText(item.item_id || "");
-    const bought = artifactPurchaseRows.filter((row) => cleanText(row.item_id || "").toLowerCase() === itemId.toLowerCase() && ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY"].includes(String(row.status || "").toUpperCase())).length;
-    return { item_id: itemId, display_name: cleanText(item.display_name || itemId), bought, limit: 5 };
+    const category = cleanText(item.limit_category || "AR").toUpperCase();
+    const bought = artifactPurchaseRows.filter((row) => cleanText(row.item_id || "").toLowerCase() === itemId.toLowerCase() && ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY", "CLAIM_PENDING", "CLAIMED"].includes(String(row.status || "").toUpperCase())).length;
+    return { item_id: itemId, display_name: cleanText(item.display_name || itemId), limit_category: category, bought, limit: item.limit_value || 5 };
   });
   const coreRows = asArray(actions.rows);
   const liveSnapshots = asArray(liveInventory.onlineSnapshots);
@@ -3352,12 +3359,13 @@ function renderPlayerFullDetails(player, detail, ctx) {
             <button class="btn btn-primary full" data-click="playerAdminGift('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Поставить в выдачу</button>
           </article>
         </div>
-        ${panel("Лимиты AR-предметов", "До 5 покупок каждого предмета. Сброс возвращает игроку полный лимит выбранного предмета.", table(`player-artifact-limits-${esc(player)}`, artifactLimitRows, [
+        ${panel("Лимиты предметов", "AR — до 5 покупок, Donation — по одному активному предмету. Можно сбросить один лимит или все сразу.", `<div class="action-strip"><button class="btn btn-primary btn-small" data-click="playerResetArtifactLimit('${esc(player)}','*','ALL')">Сбросить все лимиты</button></div>${table(`player-artifact-limits-${esc(player)}`, artifactLimitRows, [
           { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(value)}</strong><br><span class="muted">${esc(row.item_id)}</span>` },
+          { key: "limit_category", label: "Магазин" },
           { key: "bought", label: "Куплено" },
           { key: "limit", label: "Лимит" },
-          { key: "item_id", label: "Действие", render: (value) => `<button class="btn btn-secondary btn-small" data-click="playerResetArtifactLimit('${esc(player)}','${esc(value)}')">Сбросить лимит</button>` },
-        ], { pageSize: 10 }))}
+          { key: "item_id", label: "Действие", render: (value, row) => `<button class="btn btn-secondary btn-small" data-click="playerResetArtifactLimit('${esc(player)}','${esc(value)}','${esc(row.limit_category)}')">Сбросить лимит</button>` },
+        ], { pageSize: 10 })))}
         <details class="admin-access-advanced">
           <summary>Точная установка баланса (для исправления данных)</summary>
           <div class="form-grid compact-grid">
@@ -3954,16 +3962,18 @@ const playerAdminGift = async (player = state.selectedPlayer, uuid = "") => {
 };
 window.playerAdminGift = playerAdminGift;
 
-window.playerResetArtifactLimit = async (player, itemId) => {
-  const headers = await dangerConfirm(`Сбросить лимит предмета ${itemId} для игрока ${player}?`, "ARTIFACT_LIMIT_RESET");
+window.playerResetArtifactLimit = async (player, itemId, category = "AR") => {
+  const all = itemId === "*";
+  const label = all ? "все лимиты" : `лимит предмета ${itemId}`;
+  const headers = await dangerConfirm(`Сбросить ${label} для игрока ${player}?`, "ARTIFACT_LIMIT_RESET");
   if (!headers) return;
   try {
     await api(`/api/players/${encodeURIComponent(player)}/artifacts/limit-reset`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ item_id: itemId, idempotency_key: randomActionKey("artifact-limit-reset") }),
+      body: JSON.stringify({ item_id: itemId, category, idempotency_key: randomActionKey("artifact-limit-reset") }),
     });
-    operationAlert(`Лимит ${itemId} для ${player} сброшен. Доступно ещё до 5 покупок.`);
+    operationAlert(all ? `Все лимиты для ${player} сброшены.` : `Лимит ${itemId} для ${player} сброшен.`);
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     operationAlert(err.message, true);

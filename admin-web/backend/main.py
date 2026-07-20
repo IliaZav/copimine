@@ -715,6 +715,7 @@ class AdminRepairPriceUpdateIn(BaseModel):
 
 class AdminArtifactLimitResetIn(BaseModel):
     item_id: str = Field(min_length=2, max_length=120)
+    category: str = Field(default="AR", min_length=2, max_length=16)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
@@ -12792,9 +12793,10 @@ def donation_entitlement_conflict_sync(conn: Any, player_uuid: str, item_id: str
         WHERE player_uuid=%s
           AND item_id=%s
           AND status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')
+          AND created_at > COALESCE((SELECT reset_at FROM artifact_purchase_limit_resets WHERE player_uuid=%s AND item_id=%s),0)
         LIMIT 1
         """,
-        (player_uuid, item_id),
+        (player_uuid, item_id, player_uuid, item_id),
     ).fetchone()
     if claim_row:
         return True
@@ -12805,9 +12807,10 @@ def donation_entitlement_conflict_sync(conn: Any, player_uuid: str, item_id: str
         WHERE owner_uuid=%s
           AND item_id=%s
           AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')
+          AND created_at > COALESCE((SELECT reset_at FROM artifact_purchase_limit_resets WHERE player_uuid=%s AND item_id=%s),0)
         LIMIT 1
         """,
-        (player_uuid, item_id),
+        (player_uuid, item_id, player_uuid, item_id),
     ).fetchone()
     return bool(instance_row)
 
@@ -13564,28 +13567,44 @@ def reset_artifact_limit_sync(player: str, actor: str, data: AdminArtifactLimitR
     uuid = find_player_uuid(player) or ""
     if not uuid:
         raise HTTPException(status_code=404, detail="Игрок не найден")
-    item_id = str(data.item_id or "").strip().lower()
-    item = dict((ar_catalog_snapshot_sync().get("byId") or {}).get(item_id) or {})
-    if not item:
-        raise HTTPException(status_code=404, detail="AR-предмет не найден")
-    if str(item.get("source") or "").upper() == "ADMIN_ONLY":
+    requested_id = str(data.item_id or "").strip().lower()
+    requested_category = str(data.category or "AR").strip().upper()
+    ar_items = dict(ar_catalog_snapshot_sync().get("byId") or {})
+    donation_items = dict(donation_catalog_snapshot_sync().get("byId") or {})
+    if requested_id in {"*", "all"}:
+        if requested_category == "DONATION":
+            item_ids = list(donation_items)
+        elif requested_category == "AR":
+            item_ids = list(ar_items)
+        elif requested_category == "ALL":
+            item_ids = list(dict.fromkeys([*ar_items, *donation_items]))
+        else:
+            raise HTTPException(status_code=400, detail="Категория должна быть AR, DONATION или ALL")
+    else:
+        item_ids = [requested_id]
+    catalog_items = {**ar_items, **donation_items}
+    missing = [item_id for item_id in item_ids if item_id not in catalog_items]
+    if missing:
+        raise HTTPException(status_code=404, detail="Предмет не найден в каталоге")
+    if any(str(catalog_items[item_id].get("source") or "").upper() == "ADMIN_ONLY" for item_id in item_ids):
         raise HTTPException(status_code=400, detail="Скрытый предмет нельзя покупать в лавке")
     key = str(data.idempotency_key or "").strip()
     now = donation_now_ms()
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        conn.execute(
-            """
-            INSERT INTO artifact_purchase_limit_resets(player_uuid,item_id,reset_at,reset_by,idempotency_key)
-            VALUES(%s,%s,%s,%s,%s)
-            ON CONFLICT(player_uuid,item_id) DO UPDATE SET reset_at=excluded.reset_at,reset_by=excluded.reset_by,idempotency_key=excluded.idempotency_key
-            """,
-            (uuid, item_id, now, actor, key),
-        )
+        for item_id in item_ids:
+            conn.execute(
+                """
+                INSERT INTO artifact_purchase_limit_resets(player_uuid,item_id,reset_at,reset_by,idempotency_key)
+                VALUES(%s,%s,%s,%s,%s)
+                ON CONFLICT(player_uuid,item_id) DO UPDATE SET reset_at=excluded.reset_at,reset_by=excluded.reset_by,idempotency_key=excluded.idempotency_key
+                """,
+                (uuid, item_id, now, actor, key),
+            )
         conn.commit()
-    audit_event(actor, "artifact.purchase_limit.reset", target=player, details={"minecraftUuid": uuid, "itemId": item_id, "resetAt": now})
-    append_panel_event("players", "artifact_limit_reset", actor=actor, target=player, metadata={"itemId": item_id, "resetAt": now}, tags=["artifacts", "limit"])
-    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemId": item_id, "resetAt": now, "limit": 5}
+    audit_event(actor, "artifact.purchase_limit.reset", target=player, details={"minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now})
+    append_panel_event("players", "artifact_limit_reset", actor=actor, target=player, metadata={"itemIds": item_ids, "resetAt": now}, tags=["artifacts", "limit"])
+    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now, "limit": 5}
 
 
 def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentIn) -> dict[str, Any]:

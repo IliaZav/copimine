@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import math
 import os
 import re
@@ -267,6 +268,8 @@ AUTH_STORAGE_MODE = (
     if AUTH_STORAGE_MODE_RAW in {"postgresql", "sqlite"}
     else ("postgresql" if POSTGRES_PASSWORD else "sqlite")
 )
+
+LOGGER = logging.getLogger("copimine.admin")
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cm_session")
 AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "cm_refresh")
 ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080").rstrip("/")
@@ -12342,7 +12345,7 @@ def _catalog_price_line_pattern(category: str) -> tuple[re.Pattern[str], str, st
 def _normalize_shop_item_id(value: Any) -> str:
     """Normalize ids coming from old admin bundles and newer catalog rows."""
     normalized = str(value or "").strip().lower()
-    for prefix in ("copimine:", "artifact:", "item:"):
+    for prefix in ("copimine:", "copimine_artifacts:", "copimine-artifacts:", "artifact:", "item:"):
         if normalized.startswith(prefix):
             normalized = normalized[len(prefix):]
     # Older admin bundles used spaces, dashes and namespace prefixes while
@@ -12351,10 +12354,45 @@ def _normalize_shop_item_id(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
 
 
+def _shop_item_matches(candidate: Mapping[str, Any], requested: str) -> bool:
+    """Match ids from current and legacy cabinet bundles to a catalog row."""
+    requested_text = str(requested or "").strip().casefold()
+    requested_id = _normalize_shop_item_id(requested)
+    for value in (candidate.get("item_id"), candidate.get("id"), candidate.get("display_name"), candidate.get("name")):
+        text = str(value or "").strip()
+        if text and (text.casefold() == requested_text or _normalize_shop_item_id(text) == requested_id):
+            return True
+    return False
+
+
 def _replace_catalog_price_text(text: str, item_id: str, category: str, price: int) -> str:
     block_pattern, _, price_key = _catalog_price_line_pattern(category)
     normalized_id = _normalize_shop_item_id(item_id)
     match = next((candidate for candidate in block_pattern.finditer(text) if _normalize_shop_item_id(candidate.group(1)) == normalized_id), None)
+    if match is None:
+        # Last-resort line scanner for catalogs produced by older YAML
+        # writers (tabs, quoted ids or slightly different indentation).
+        wanted_key = "id" if category == "AR" else "item-id"
+        lines = text.splitlines(keepends=True)
+        start = end = None
+        for index, line in enumerate(lines):
+            found = re.match(r"^(\s*)-\s+" + re.escape(wanted_key) + r"\s*:\s*[\"']?([^\"'\s#]+)", line, re.I)
+            if found and _normalize_shop_item_id(found.group(2)) == normalized_id:
+                start = index
+                indent = found.group(1)
+                for candidate_index in range(index + 1, len(lines)):
+                    if re.match(r"^" + re.escape(indent) + r"-\s+" + re.escape(wanted_key) + r"\s*:", lines[candidate_index], re.I):
+                        end = candidate_index
+                        break
+                if end is None:
+                    end = len(lines)
+                raw_block = "".join(lines[start:end])
+                price_pattern = re.compile(rf"(?m)^(\s+){re.escape(price_key)}:\s*[^#\r\n]*$")
+                if price_pattern.search(raw_block):
+                    updated_block = price_pattern.sub(lambda found: f"{found.group(1)}{price_key}: {price}", raw_block, count=1)
+                else:
+                    updated_block = raw_block.rstrip("\r\n") + f"\n{indent}  {price_key}: {price}\n"
+                return "".join(lines[:start]) + updated_block + "".join(lines[end:])
     if match is None:
         raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
     block = match.group(0)
@@ -12393,7 +12431,7 @@ def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
         rows = bucket.get("byId") or {}
         row = dict(rows.get(normalized_id) or {})
         if not row:
-            row = next((dict(candidate) for key, candidate in rows.items() if _normalize_shop_item_id(key) == normalized_id), {})
+            row = next((dict(candidate) for key, candidate in rows.items() if _shop_item_matches({**dict(candidate), "item_id": key}, item_id)), {})
         if row:
             break
     # A legacy cabinet could keep the category of the old page while sending
@@ -12406,9 +12444,28 @@ def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
                 rows = (catalog.get(bucket_name) or {}).get("byId") or {}
                 row = dict(rows.get(normalized_id) or {})
                 if not row:
-                    row = next((dict(candidate) for key, candidate in rows.items() if _normalize_shop_item_id(key) == normalized_id), {})
+                    row = next((dict(candidate) for key, candidate in rows.items() if _shop_item_matches({**dict(candidate), "item_id": key}, item_id)), {})
                 if row:
                     normalized_category = candidate_category
+                    break
+            if row:
+                break
+    if not row:
+        # Keep the editor usable even when an old admin bundle sends an item
+        # that exists in the YAML but is absent from the parsed snapshot.
+        for catalog_path in _shop_catalog_paths():
+            text = catalog_path.read_text(encoding="utf-8-sig")
+            for candidate_category, key_name in (("AR", "id"), ("DONATION", "item-id")):
+                match = re.search(r"(?m)^\s*-\s+" + re.escape(key_name) + r"\s*:\s*[\"']?([^\"'\s#]+)", text, re.I)
+                while match:
+                    if _normalize_shop_item_id(match.group(1)) == normalized_id:
+                        price_key = "price_ar" if candidate_category == "AR" else "price-donation"
+                        price_match = re.search(r"(?m)^\s+" + re.escape(price_key) + r"\s*:\s*(\d+)", text[match.start():])
+                        row = {"item_id": normalized_id, "source": "AR_SHOP", "price_ar": int(price_match.group(1)) if price_match and candidate_category == "AR" else 0, "price_donation": int(price_match.group(1)) if price_match and candidate_category == "DONATION" else 0}
+                        normalized_category = candidate_category
+                        break
+                    match = re.search(r"(?m)^\s*-\s+" + re.escape(key_name) + r"\s*:\s*[\"']?([^\"'\s#]+)", text[match.end():], re.I)
+                if row:
                     break
             if row:
                 break
@@ -12416,7 +12473,16 @@ def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
     if str(row.get("source") or "").upper() == "ADMIN_ONLY":
         raise HTTPException(status_code=400, detail="Скрытый предмет нельзя добавить в ассортимент лавки")
-    return {"item_id": normalized_id, "category": normalized_category, "old_price": int(row.get("price_ar" if normalized_category == "AR" else "price_donation") or 0), **row}
+    # Keep the shop bucket (AR/DONATION) separate from the item's gameplay
+    # category (WEAPON/TOOL/DONATION).  The old merge order let row["category"]
+    # overwrite the shop bucket, so every AR price edit was looked up as an
+    # unknown donation block and returned 404.
+    return {
+        **row,
+        "item_id": normalized_id,
+        "category": normalized_category,
+        "old_price": int(row.get("price_ar" if normalized_category == "AR" else "price_donation") or 0),
+    }
 
 
 def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, idempotency_key: str) -> dict[str, Any]:
@@ -14527,7 +14593,14 @@ async def admin_ar_shop_items(_: str = Depends(require_admin)) -> dict[str, Any]
 async def admin_shop_price_update(data: AdminShopPriceUpdateIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
     require_sensitive_confirm(request, "SHOP_PRICE_UPDATE")
     check_rate_limit(request, "admin-shop-price", limit=20, window_seconds=60)
-    return await bg(update_shop_price_sync, data.item_id, data.category, data.price, username, data.idempotency_key)
+    try:
+        return await bg(update_shop_price_sync, data.item_id, data.category, data.price, username, data.idempotency_key)
+    except HTTPException as exc:
+        LOGGER.warning(
+            "shop price update rejected item_id=%r category=%r price=%r status=%s detail=%r actor=%r",
+            data.item_id, data.category, data.price, exc.status_code, exc.detail, username,
+        )
+        raise
 
 
 @app.get("/api/admin/shop/admin-gift-items")

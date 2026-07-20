@@ -123,6 +123,7 @@ V4_SCHEMA_READY = False
 AUTH_SCHEMA_READY = False
 NARCOTICS_SOURCE_CONFIG_FILE = PROJECT_ROOT / "copimine-narcotics" / "config.yml"
 DONATION_FIXED_PACKS = (50, 100, 250, 500, 1000)
+DONATION_TOPUP_ENABLED = os.getenv("DONATION_TOPUP_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 YOOKASSA_SETTINGS = YooKassaSettings.from_env()
 DONATION_PROVIDER = "YOOKASSA" if YOOKASSA_SETTINGS.enabled else "MOCK_SBP"
 DONATION_SESSION_TTL_SECONDS = int(os.getenv("DONATION_SESSION_TTL_SECONDS", str(15 * 60)))
@@ -14654,9 +14655,9 @@ async def player_donation_balance(account: dict[str, Any] = Depends(require_play
     uuid = str(account.get("minecraft_uuid") or "")
     name = str(account.get("minecraft_name") or account.get("username") or "")
     if not uuid:
-        return {"linked": False, "balance": 0}
+        return {"linked": False, "balance": 0, "topupEnabled": DONATION_TOPUP_ENABLED}
     row = await bg(read_donation_balance_sync, uuid, name)
-    return {"linked": True, "balance": int(row.get("balance") or 0), "playerUuid": uuid}
+    return {"linked": True, "balance": int(row.get("balance") or 0), "playerUuid": uuid, "topupEnabled": DONATION_TOPUP_ENABLED}
 
 
 @app.get("/api/player/donation/history")
@@ -14683,7 +14684,8 @@ async def player_donation_packs(account: dict[str, Any] = Depends(require_player
         "linked": bool(account.get("minecraft_uuid")),
         "currency": "DONATION",
         "rubPerUnit": 1,
-        "packs": [{"amount": amount, "rub": amount, "label": f"{amount} Donation"} for amount in DONATION_FIXED_PACKS],
+        "topupEnabled": DONATION_TOPUP_ENABLED,
+        "packs": ([{"amount": amount, "rub": amount, "label": f"{amount} Donation"} for amount in DONATION_FIXED_PACKS] if DONATION_TOPUP_ENABLED else []),
         "provider": DONATION_PROVIDER,
         "providerConfigured": DONATION_PROVIDER != "YOOKASSA" or YOOKASSA_SETTINGS.configured,
     }
@@ -14691,6 +14693,8 @@ async def player_donation_packs(account: dict[str, Any] = Depends(require_player
 
 @app.post("/api/player/donation/sbp/session")
 async def player_donation_create_session(data: PlayerDonationSessionCreateIn, request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    if not DONATION_TOPUP_ENABLED:
+        raise HTTPException(status_code=410, detail="Пополнение donation временно отключено. Покупка доступна за уже имеющийся баланс.")
     uuid = str(account.get("minecraft_uuid") or "")
     name = str(account.get("minecraft_name") or account.get("username") or "")
     if not uuid:
@@ -14707,6 +14711,8 @@ async def player_donation_create_session(data: PlayerDonationSessionCreateIn, re
 
 @app.post("/api/payments/yookassa/webhook")
 async def yookassa_webhook(request: Request) -> dict[str, Any]:
+    if not DONATION_TOPUP_ENABLED:
+        return {"ok": True, "ignored": True, "reason": "donation_topup_disabled"}
     check_rate_limit(request, "yookassa-webhook", limit=120, window_seconds=60)
     try:
         payload = await request.json()
@@ -14997,6 +15003,8 @@ async def admin_donation_test_purchase(data: AdminDonationTestPurchaseIn, reques
 
 @app.post("/api/admin/donation/sbp/session/{session_id}/mark-paid")
 async def admin_donation_mark_paid(session_id: str, data: AdminDonationSessionActionIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    if not DONATION_TOPUP_ENABLED:
+        raise HTTPException(status_code=410, detail="Пополнение donation временно отключено.")
     require_sensitive_confirm(request, "DONATION_MARK_PAID")
     check_rate_limit(request, "admin-donation-mark-paid", limit=12, window_seconds=60)
     result = await bg(mark_donation_session_paid_sync, session_id, username, data.note)

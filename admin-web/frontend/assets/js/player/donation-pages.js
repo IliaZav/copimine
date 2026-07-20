@@ -32,6 +32,8 @@ export function createPlayerDonationPages(deps) {
   } = deps;
 
   let lastShopPayload = null;
+  // Keep purchases independent from the temporary public top-up switch.
+  const DONATION_TOPUP_DISABLED_MESSAGE = "Пополнение donation временно отключено. Покупать можно за уже имеющийся баланс.";
 
   function paymentModeLabel(value) {
     const provider = String(value || "").toUpperCase();
@@ -126,8 +128,8 @@ export function createPlayerDonationPages(deps) {
     }
 
     const [balance, packs, history] = await Promise.all([
-      safeApi("/api/player/donation/balance", { linked: true, balance: 0 }),
-      safeApi("/api/player/donation/packs", { packs: [], provider: "MOCK_SBP", rubPerUnit: 1 }),
+      safeApi("/api/player/donation/balance", { linked: true, balance: 0, topupEnabled: false }),
+      safeApi("/api/player/donation/packs", { packs: [], provider: "MOCK_SBP", rubPerUnit: 1, topupEnabled: false }),
       safeApi("/api/player/donation/history", { history: [] }),
     ]);
 
@@ -141,10 +143,12 @@ export function createPlayerDonationPages(deps) {
       }
     }
 
-    const packButtons = asArray(packs.packs).map((pack) => `
-      <button class="btn btn-primary" data-click="playerCreateDonationSession(${number(pack.amount || 0)})">${esc(`${pack.amount} Donation`)}</button>
-    `).join("");
-
+    const topupEnabled = packs.topupEnabled === true;
+    const packButtons = topupEnabled
+      ? asArray(packs.packs).map((pack) => `
+        <button class="btn btn-primary" data-click="playerCreateDonationSession(${number(pack.amount || 0)})">${esc(`${pack.amount} Donation`)}</button>
+      `).join("")
+      : `<div class="notice" data-message-key="DONATION_TOPUP_DISABLED_MESSAGE">${esc(DONATION_TOPUP_DISABLED_MESSAGE)}</div>`;
     const confirmationUrl = String(session?.confirmation_url || "").trim();
     const providerCheckout = confirmationUrl ? `
       <div class="payment-provider-card">
@@ -186,13 +190,13 @@ export function createPlayerDonationPages(deps) {
       ${panel("Donation-баланс", "Отдельный баланс для donation-лавки.", kv([
         ["Статус", linked ? "привязан" : "нет привязки"],
         ["Баланс", formatDonate(balance.balance || 0)],
-        ["Пополнение", "фиксированные пакеты"],
+        ["Пополнение", topupEnabled ? "фиксированные пакеты" : "временно отключено"],
         ["Выдача", "только в игре"],
       ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Мои donation-предметы</button>`)}
-      ${panel("Пополнить", "Выбери пакет и создай сессию.", `
+      ${panel(topupEnabled ? "Пополнить" : "Пополнение", topupEnabled ? "Выбери пакет и создай сессию." : "Пополнение временно недоступно.", `
         <div class="action-strip wrap">${packButtons}</div>
         <div class="spacer-12"></div>
-        <div class="notice">Пакеты: 50 / 100 / 250 / 500 / 1000. Donation не меняется на AR.</div>
+        <div class="notice">${topupEnabled ? "Пакеты: 50 / 100 / 250 / 500 / 1000. Donation не смешивается с AR." : "Покупать можно за уже имеющийся баланс."}</div>
       `)}
       ${panel("Платёжная сессия", "Ссылка ЮKassa или QR тестовой оплаты.", sessionPanel)}
       ${panel("История", "Только операции donation-баланса.", table("player-donation-history", asArray(history.history), [
@@ -262,7 +266,7 @@ export function createPlayerDonationPages(deps) {
         ${panel("Порядок", "Покупка и возврат.", safetyRail([
           ["Покупка", "Donation списывается сразу после проверки PIN.", "good"],
           ["Выдача", "Предмет выдаётся в игре через donation shop.", "warn"],
-          ["Пополнение", "Если donation не хватает, сначала пополни баланс.", "neutral"],
+          ["Баланс", "Для покупки используется уже зачисленный donation-баланс.", "neutral"],
         ]), `<button class="btn btn-secondary" data-click="setTab('donation-balance')">Открыть donation-баланс</button>`)}
       </section>
       ${panel("Donation-лавка", "Покупка на сайте. Выдача в игре.", `

@@ -3862,7 +3862,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  )
                               );
                               int[] var6 = new int[]{19, 20, 21, 22, 23};
-                              List var7 = this.donationFixedPacks();
+                              List var7 = this.donationTopupEnabled() ? this.donationFixedPacks() : List.of();
 
                               for (int var8 = 0; var8 < Math.min(var6.length, var7.size()); var8++) {
                                  long var9 = (Long)var7.get(var8);
@@ -3895,6 +3895,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     )
                                  )
                               );
+                              if (!this.donationTopupEnabled()) {
+                                 var5.setItem(
+                                    13,
+                                    this.button(
+                                       Material.BARRIER,
+                                       "&cПополнение отключено",
+                                       List.of("&7Покупки доступны за уже имеющийся Donation-баланс.")
+                                    )
+                                 );
+                              }
                               var5.setItem(
                                  31,
                                  this.button(
@@ -5169,6 +5179,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var1.sendMessage(this.color("&cЭтот donation-предмет сейчас недоступен."));
          }
       } else if (var3.startsWith("donation:topup:create:")) {
+         if (!this.donationTopupEnabled()) {
+            var1.sendMessage(this.color("&eПополнение donation временно отключено. Покупки доступны за уже имеющийся баланс на сайте."));
+            return;
+         }
          DonationPaymentService var11 = this.donationPaymentService();
          if (var11 == null) {
             var1.sendMessage(this.color("&cCopiMineEconomyCore недоступен. Payment session сейчас не создать."));
@@ -9287,6 +9301,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
 
       return packs.stream().distinct().sorted().toList();
+   }
+
+   private boolean donationTopupEnabled() {
+      return this.getConfig().getBoolean("donation.topup-enabled", false);
    }
 
    private void debugGui(String message) {

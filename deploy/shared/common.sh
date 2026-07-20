@@ -411,10 +411,21 @@ copimine_fix_runtime_plugin_ownership() {
   # for plugins that must be writable by the Minecraft service user.  Without
   # restoring ownership here, ImageFrame and voice chat start with root-owned
   # files, log AccessDeniedException, and disable themselves on the next boot.
-  local plugin_dir
+  local plugin_dir runtime_user runtime_group
+  # The Minecraft unit may use a dedicated service account different from
+  # the web application's account.  Plugin config must be writable by the
+  # account that actually starts Paper, otherwise voicechat/ImageFrame log
+  # AccessDeniedException on every boot.
+  runtime_user="$(systemctl show copimine-minecraft.service -p User --value 2>/dev/null || true)"
+  if [[ -n "$runtime_user" ]] && id "$runtime_user" >/dev/null 2>&1; then
+    runtime_group="$(id -gn "$runtime_user")"
+  else
+    runtime_user="$COPIMINE_APP_USER"
+    runtime_group="$COPIMINE_APP_GROUP"
+  fi
   for plugin_dir in ImageFrame AuthMe voicechat; do
     if [[ -e "$COPIMINE_SERVER_DIR/plugins/$plugin_dir" ]]; then
-      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR/plugins/$plugin_dir"
+      chown -R "$runtime_user:$runtime_group" "$COPIMINE_SERVER_DIR/plugins/$plugin_dir"
     fi
   done
 }

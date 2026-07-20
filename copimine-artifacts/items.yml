@@ -154,7 +154,7 @@ items:
     visual_effect_id: PIXEL_WAVE
     lore:
       - "&7Копает 3x3."
-      - "&7Откат между ударами: 1 секунда."
+      - "&7Срабатывает на каждый удар без задержки."
 
   - id: craftsman_hammer
     category: TOOL

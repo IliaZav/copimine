@@ -4769,7 +4769,16 @@ async function loadAdmins() {
         { key: "enabled", label: "Включён", render: v => v ? pill("да", "good") : pill("нет", "bad") },
         { key: "op", label: "OP", render: v => v ? pill("OP", "good") : pill("нет", "warn") },
         { key: "whitelisted", label: "Whitelist", render: v => v ? pill("есть", "good") : pill("нет", "warn") },
-        { key: "canLogin", label: "Вход", render: v => v ? pill("может", "good") : pill("нельзя", "bad") }
+        { key: "canLogin", label: "Вход", render: v => v ? pill("может", "good") : pill("нельзя", "bad") },
+        { key: "actions", label: "Действия", render: (_value, row) => {
+          const same = cleanText(row.username).toLowerCase() === cleanText(state.user?.username || state.user?.name).toLowerCase();
+          if (!state.owner || same || String(row.role || "").toLowerCase() === "owner") return "—";
+          if (!row.enabled && String(row.role || "").toLowerCase() === "player") {
+            return `<button class="btn btn-secondary btn-small" data-click="restoreAdmin('${esc(row.username)}')">Вернуть админом</button>`;
+          }
+          if (!row.enabled) return "—";
+          return `<button class="btn btn-danger btn-small" data-click="revokeAdmin('${esc(row.username)}')">Разжаловать</button>`;
+        } }
       ], { pageSize: 14 }))}
       ${isJuniorAdminRole()
         ? panel("Регистрация админов", "Для младшего админа эта вкладка только обзорная.", `
@@ -4853,6 +4862,38 @@ window.createAdminUser = async () => {
     $("newAdminPassword").value = "";
     toast("Админ создан");
     loadAdmins();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.revokeAdmin = async (username) => {
+  const target = cleanText(username);
+  if (!target || !state.owner) return toast("Только владелец может разжаловать администратора", true);
+  const headers = await dangerConfirm(`Разжаловать ${target} до игрока`, "ADMIN_DISABLE");
+  if (!headers) return;
+  try {
+    const result = await api(`/api/security/admins/${encodeURIComponent(target)}`, { method: "DELETE", headers });
+    toast(result?.demoted ? `${target} разжалован до игрока` : "Доступ администратора отозван");
+    await loadAdmins();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.restoreAdmin = async (username) => {
+  const target = cleanText(username);
+  if (!target || !state.owner) return toast("Только владелец может вернуть администратора", true);
+  const headers = await dangerConfirm(`Вернуть ${target} администратором`, "ADMIN_UPDATE");
+  if (!headers) return;
+  try {
+    await api(`/api/security/admins/${encodeURIComponent(target)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ enabled: true, role: "admin", ensure_op: true, ensure_whitelist: true })
+    });
+    toast(`${target} снова администратор`);
+    await loadAdmins();
   } catch (err) {
     toast(err.message, true);
   }

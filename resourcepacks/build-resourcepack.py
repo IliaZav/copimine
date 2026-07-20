@@ -9,6 +9,11 @@ import zlib
 from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
+try:
+    from PIL import Image
+except ModuleNotFoundError as exc:  # pragma: no cover - release environment check
+    raise RuntimeError("Pillow is required to build directional compass/clock frames") from exc
+
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
@@ -266,17 +271,27 @@ def build_stage() -> None:
                 raise ValueError(f"Animation metadata mismatch for {item['id']}")
 
     for material, entries in grouped.items():
-        overrides = [
-            {
-                "predicate": {"custom_model_data": entry["custom_model_data"]},
-                "model": entry["model"],
-            }
-            for entry in sorted(entries, key=lambda x: x["custom_model_data"])
-        ]
+        overrides = vanilla_special_overrides(material)
+        custom_overrides = []
+        for entry in sorted(entries, key=lambda x: x["custom_model_data"]):
+            model_ref = entry["model"]
+            if material in {"clock", "compass"} and entry.get("animation"):
+                model_ref = write_directional_animation_models(entry, material)
+            custom_overrides.append(
+                {
+                    "predicate": {"custom_model_data": entry["custom_model_data"]},
+                    "model": model_ref,
+                }
+            )
+        # Custom-model-data overrides come after vanilla predicates.  A normal
+        # compass/clock keeps its moving vanilla needle, while an official
+        # donation item enters its own directional model tree.
+        overrides.extend(custom_overrides)
         # Keep vanilla special-item rendering intact.  The vanilla clock and
-        # compass textures are numbered animation frames, while the shield is
-        # a builtin entity model; pointing generated models at `clock`,
-        # `compass` or `shield` creates missing-texture purple/black output.
+        # compass textures are selected by time/angle predicates, while the
+        # shield is a builtin entity model.  Replacing these roots with only a
+        # custom-model-data override makes ordinary items static or gives them
+        # a donation texture.
         if material == "clock":
             parent = "minecraft:item/generated"
             textures = {"layer0": "minecraft:item/clock_00"}
@@ -286,7 +301,6 @@ def build_stage() -> None:
         elif material == "shield":
             parent = "builtin/entity"
             textures = {"particle": "minecraft:block/dark_oak_planks"}
-            overrides.insert(0, {"predicate": {"blocking": 1}, "model": "minecraft:item/shield_blocking"})
         else:
             parent = "minecraft:item/generated"
             textures = {"layer0": f"minecraft:item/{material}"}
@@ -300,6 +314,86 @@ def build_stage() -> None:
         )
 
     normalize_stage_text_files()
+
+
+def vanilla_special_overrides(material: str) -> list[dict]:
+    """Return the vanilla 1.21.1 time/angle/blocking model predicates."""
+    if material == "compass":
+        values = [
+            0.000000, 0.015625, 0.046875, 0.078125, 0.109375, 0.140625,
+            0.171875, 0.203125, 0.234375, 0.265625, 0.296875, 0.328125,
+            0.359375, 0.390625, 0.421875, 0.453125, 0.484375, 0.515625,
+            0.546875, 0.578125, 0.609375, 0.640625, 0.671875, 0.703125,
+            0.734375, 0.765625, 0.796875, 0.828125, 0.859375, 0.890625,
+            0.921875, 0.953125, 0.984375,
+        ]
+        models = ["compass", *[f"compass_{i:02d}" for i in range(17, 32)],
+                  *[f"compass_{i:02d}" for i in range(0, 16)], "compass"]
+        return [{"predicate": {"angle": value}, "model": f"minecraft:item/{model}"}
+                for value, model in zip(values, models)]
+    if material == "clock":
+        values = [0.000000] + [round(i / 128, 7) for i in range(1, 126, 2)] + [0.9921875]
+        models = ["clock", *[f"clock_{i:02d}" for i in range(1, 64)], "clock"]
+        return [{"predicate": {"time": value}, "model": f"minecraft:item/{model}"}
+                for value, model in zip(values, models)]
+    if material == "shield":
+        return [{"predicate": {"blocking": 1}, "model": "minecraft:item/shield_blocking"}]
+    return []
+
+
+def write_directional_animation_models(entry: dict, material: str) -> str:
+    """Split a vertical custom animation into directional item-model frames.
+
+    Vanilla compass/clock movement is driven by model predicates, not by a
+    .mcmeta timer.  The supplied donation art is a vertical strip, so create
+    deterministic square PNGs and let Minecraft choose the frame from the
+    real world angle/time.
+    """
+    frame_count = int(entry["animation"]["frame_count"])
+    texture_ref = str(entry["texture"])
+    model_ref = str(entry["model"])
+    source_path = asset_path(STAGE, "textures", texture_ref, ".png")
+    with Image.open(source_path) as source:
+        image = source.convert("RGBA")
+        if image.height % frame_count != 0:
+            raise ValueError(f"{entry['id']}: animation strip height is not divisible by frame_count")
+        frame_height = image.height // frame_count
+        if frame_height != image.width:
+            raise ValueError(f"{entry['id']}: animation frames must be square")
+        for index in range(frame_count):
+            frame_name = f"{Path(texture_ref).name}_{index:02d}"
+            frame_ref = f"{texture_ref.rsplit('/', 1)[0]}/{frame_name}"
+            frame_path = asset_path(STAGE, "textures", frame_ref, ".png")
+            frame = image.crop((0, index * frame_height, image.width, (index + 1) * frame_height))
+            frame_path.parent.mkdir(parents=True, exist_ok=True)
+            frame.save(frame_path, format="PNG", optimize=False)
+            write_json(
+                asset_path(STAGE, "models", f"{model_ref}_{index:02d}", ".json"),
+                {"parent": "minecraft:item/generated", "textures": {"layer0": f"{texture_ref}_{index:02d}"}},
+            )
+
+    if material == "compass":
+        predicate_key = "angle"
+        values = [
+            0.000000, 0.015625, 0.046875, 0.078125, 0.109375, 0.140625,
+            0.171875, 0.203125, 0.234375, 0.265625, 0.296875, 0.328125,
+            0.359375, 0.390625, 0.421875, 0.453125, 0.484375, 0.515625,
+            0.546875, 0.578125, 0.609375, 0.640625, 0.671875, 0.703125,
+            0.734375, 0.765625, 0.796875, 0.828125, 0.859375, 0.890625,
+            0.921875, 0.953125, 0.984375,
+        ]
+    else:
+        predicate_key = "time"
+        values = [0.000000] + [round(i / 128, 7) for i in range(1, 126, 2)] + [0.9921875]
+    overrides = [
+        {"predicate": {predicate_key: value}, "model": f"{model_ref}_{index:02d}"}
+        for index, value in enumerate(values)
+    ]
+    write_json(
+        asset_path(STAGE, "models", f"{model_ref}_directional", ".json"),
+        {"parent": "minecraft:item/generated", "textures": {"layer0": f"{texture_ref}_00"}, "overrides": overrides},
+    )
+    return f"{model_ref}_directional"
 
 
 def pack_zip() -> tuple[Path, str]:

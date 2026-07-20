@@ -155,6 +155,10 @@ async function submitAuth(event) {
   }
 
   const role = String(data.role || "player").trim().toLowerCase() || "player";
+  if (data.demoted === true) {
+    window.location.replace("/cabinet/demoted.html");
+    return;
+  }
   redirectToRoleHome(role);
 }
 

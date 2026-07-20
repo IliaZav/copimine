@@ -3741,7 +3741,7 @@ def request_refresh_token(request: Request) -> str:
 
 def normalize_admin_role(value: Any) -> str:
     role = str(value or "admin").strip().lower()
-    if role in {"owner", "admin", "junior_admin"}:
+    if role in {"owner", "admin", "junior_admin", "player"}:
         return role
     return "admin"
 
@@ -9484,6 +9484,25 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
             "cookieAuth": True,
         }
 
+    # A revoked admin account remains usable as a normal player.  The owner
+    # keeps the audit trail, while the former admin receives a player session
+    # and a clear demotion screen instead of a confusing "wrong password".
+    if meta and not bool(meta.get("enabled", True)) and meta.get("demotedAt") and verify_password_hash(str(meta.get("password_hash", "")), data.password):
+        account = prepare_demoted_player_account(real_username, str(meta.get("password_hash") or ""))
+        clear_failed_login(request, "session:" + username)
+        account["last_login_at"] = now_ts()
+        access_token, refresh_token = issue_player_auth_pair(account, request, remember_me=data.remember_me)
+        set_auth_cookies_for_request(response, request, access_token, refresh_token, data.remember_me)
+        audit_event(real_username, "auth.demoted_player_login", status="ok", details={"ip": get_client_ip(request)})
+        return {
+            "role": "player",
+            "demoted": True,
+            "demotionMessage": str(meta.get("demotionMessage") or "Вы были разжалованы до игрока. Обратитесь к администрации."),
+            "expiresIn": ACCESS_TOKEN_TTL_SECONDS,
+            "cookieAuth": True,
+            "account": public_player_account(account),
+        }
+
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         account = player_account_by_username(conn, username)
@@ -11741,6 +11760,68 @@ def save_admin_user(username: str, meta: dict[str, Any]) -> None:
     upsert_auth_user(username, meta)
 
 
+def revoke_minecraft_admin_access(username: str) -> dict[str, Any]:
+    """Remove server operator and known admin LuckPerms groups, keep whitelist."""
+    if not RCON_PASSWORD:
+        return {"configured": False, "actions": [], "errors": ["RCON_PASSWORD не настроен"]}
+    actions: list[dict[str, str]] = []
+    # The username is validated before this helper is called.  Keep the
+    # whitelist entry so the demoted person can still join as a normal player.
+    commands = [
+        f"deop {username}",
+        f"lp user {username} parent remove admin",
+        f"lp user {username} parent remove junior_admin",
+        f"lp user {username} parent remove senior_admin",
+    ]
+    for command in commands:
+        try:
+            actions.append({"command": command, "response": rcon_sync(command)})
+        except Exception as exc:
+            actions.append({"command": command, "error": str(exc)[:240]})
+    return {"configured": True, "actions": actions, "errors": []}
+
+
+def prepare_demoted_player_account(username: str, password_hash: str) -> dict[str, Any]:
+    """Bind the former admin credentials to a normal player account."""
+    now = now_ts()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        account = player_account_by_username(conn, username) or player_account_by_minecraft_name(conn, username)
+        if account:
+            conn.execute(
+                "UPDATE site_accounts SET password_hash=%s,role='player',enabled=1,updated_at=%s WHERE id=%s",
+                (password_hash, now, account["id"]),
+            )
+            conn.commit()
+            account["password_hash"] = password_hash
+            account["role"] = "player"
+            account["enabled"] = 1
+            account["updated_at"] = now
+            return account
+        account_id = secrets.token_hex(16)
+        conn.execute(
+            """
+            INSERT INTO site_accounts(id,username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip)
+            VALUES(%s,%s,%s,%s,'player',1,%s,%s,%s,%s,%s,'')
+            """,
+            (account_id, username, username.lower(), password_hash, offline_uuid_for_name(username), username, now, now, now),
+        )
+        conn.commit()
+        return {
+            "id": account_id,
+            "username": username,
+            "username_norm": username.lower(),
+            "password_hash": password_hash,
+            "role": "player",
+            "enabled": 1,
+            "minecraft_uuid": offline_uuid_for_name(username),
+            "minecraft_name": username,
+            "created_at": now,
+            "updated_at": now,
+            "last_login_at": now,
+        }
+
+
 def remove_or_disable_admin_user(username: str, current_owner: str) -> dict[str, Any]:
     real_username, found = resolve_admin_user(username)
     if not found:
@@ -11749,10 +11830,19 @@ def remove_or_disable_admin_user(username: str, current_owner: str) -> dict[str,
         raise HTTPException(status_code=400, detail="Нельзя отозвать доступ у самого себя через текущую сессию")
     meta = dict(found)
     meta["enabled"] = False
+    meta["role"] = "player"
+    meta["demotedAt"] = int(time.time())
+    meta["demotedBy"] = current_owner
+    meta["demotionMessage"] = "Вы были разжалованы до игрока. Обратитесь к администрации."
     meta["updatedAt"] = int(time.time())
     meta["updatedBy"] = current_owner
     save_admin_user(real_username, meta)
-    return {"ok": True, "admin": admin_public_row(real_username, meta)}
+    minecraft = revoke_minecraft_admin_access(real_username)
+    try:
+        prepare_demoted_player_account(real_username, str(found.get("password_hash") or ""))
+    except Exception as exc:
+        LOGGER.warning("Could not prepare demoted player account %s: %s", real_username, exc)
+    return {"ok": True, "admin": admin_public_row(real_username, meta), "minecraft": minecraft, "demoted": True}
 
 
 @app.get("/api/security/admins")

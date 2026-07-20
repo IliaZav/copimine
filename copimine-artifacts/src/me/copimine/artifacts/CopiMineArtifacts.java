@@ -5132,11 +5132,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        )
                                     );
                                  } else {
-                                    if (var3x != null && var3x.configured()) {
-                                       this.openPin(var1, var15);
-                                    } else {
-                                       this.executePurchase(var1, this.currentShop(var5x), var15, "");
-                                    }
+                                    // Every in-game purchase must pass through
+                                    // the PIN pad.  The old fallback charged
+                                    // with an empty PIN whenever the async
+                                    // status call reported "not configured",
+                                    // which made the shop silently skip PIN.
+                                    var5x.pinBuffer = "";
+                                    this.openPin(var1, var15);
                                  }
                               }
                            }
@@ -5426,6 +5428,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private void executePurchase(Player var1, CopiMineArtifacts.Shop var2, CopiMineArtifacts.CatalogItem var3, String var4) {
       if (var1 != null && var3 != null && var2 != null && this.bridge != null) {
+         if (var4 == null || !var4.matches("\\d{4,8}")) {
+            this.session(var1).pinBuffer = "";
+            var1.sendMessage(this.color("&eСначала введи PIN банка для покупки."));
+            this.openPin(var1, var3);
+            return;
+         }
          CopiMineArtifacts.SessionState var5 = this.session(var1);
          if (!var5.purchaseInFlightId.isBlank()) {
             var1.sendMessage(

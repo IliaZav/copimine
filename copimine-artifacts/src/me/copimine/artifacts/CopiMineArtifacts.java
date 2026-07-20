@@ -5970,6 +5970,30 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          );
       } else {
          if (var4.getItemMeta() instanceof Damageable var6 && var6.getDamage() > 0) {
+            if (var2 <= 0L) {
+               this.runAsync(
+                  () -> {
+                     String var7 = UUID.randomUUID().toString();
+                     try {
+                        this.persistRepair(var1, var5, var4, var7, 0L, "free-repair-" + var7);
+                        this.runSync(
+                           () -> {
+                              Damageable var8 = (Damageable)var4.getItemMeta();
+                              var8.setDamage(0);
+                              var4.setItemMeta(var8);
+                              var1.getInventory().setItemInMainHand(var4);
+                              var1.sendMessage(this.color("&aР РµРјРѕРЅС‚ Р·Р°РІРµСЂС€С‘РЅ Р±РµСЃРїР»Р°С‚РЅРѕ."));
+                              var1.closeInventory();
+                           }
+                        );
+                     } catch (SQLException error) {
+                        this.getLogger().log(Level.WARNING, "Free artifact repair persistence failed", error);
+                        this.runSync(() -> var1.sendMessage(this.color("&cРќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЂРµРјРѕРЅС‚. РџРѕРІС‚РѕСЂРё РїРѕРїС‹С‚РєСѓ.")));
+                     }
+                  }
+               );
+               return;
+            }
             this.runAsync(
                () -> {
                   CopiMineArtifacts.BridgeTxnResult var6x = this.bridge

@@ -4069,7 +4069,7 @@ window.updateShopPrice = async (category, itemId) => {
 window.updateRepairPrice = async () => {
   const input = document.getElementById("shop-repair-price");
   const priceAr = Math.trunc(Number(input?.value || 0));
-  if (!Number.isSafeInteger(priceAr) || priceAr < 1 || priceAr > 1000000000) {
+  if (!Number.isSafeInteger(priceAr) || priceAr < 0 || priceAr > 1000000000) {
     return toast("Цена ремонта должна быть целым числом от 0 до 1 000 000 000", true);
   }
   const headers = await dangerConfirm(`Задать фиксированную цену полного ремонта: ${priceAr} AR?`, "SHOP_REPAIR_PRICE_UPDATE");
@@ -4135,7 +4135,7 @@ async function loadShops() {
     <section class="layout-grid grid-1">
       ${panel("Фиксированная починка", "Одна цена за полное восстановление любого официального кастомного предмета.", `
         <div class="shop-price-editor">
-          <input id="shop-repair-price" type="number" min="1" max="1000000000" step="1" value="${esc(repair.priceAr || 3)}" aria-label="Фиксированная цена ремонта" />
+          <input id="shop-repair-price" type="number" min="0" max="1000000000" step="1" value="${esc(repair.priceAr ?? 3)}" aria-label="Фиксированная цена ремонта" />
           <span class="muted">AR</span>
           <button class="btn btn-primary btn-small" data-click="updateRepairPrice()">Сохранить</button>
         </div>

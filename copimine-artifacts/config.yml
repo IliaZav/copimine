@@ -7,6 +7,8 @@ debug_gui: false
 
 repair:
   # Fixed AR price for a full repair of every official custom item.
+  # At 0 the repair is free and no balance/PIN operation is performed.
+  
   fixed-price-ar: 3
 
 performance:

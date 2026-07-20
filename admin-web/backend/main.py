@@ -709,7 +709,7 @@ class AdminShopPriceUpdateIn(BaseModel):
 
 
 class AdminRepairPriceUpdateIn(BaseModel):
-    price_ar: int = Field(gt=0, le=1_000_000_000)
+    price_ar: int = Field(ge=0, le=1_000_000_000)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 

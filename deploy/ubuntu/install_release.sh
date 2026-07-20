@@ -19,7 +19,7 @@ WIPE_WORLDS=0
 RESET_GAMEPLAY=0
 RESET_TREASURY=0
 
-usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n' "$0" "$0" >&2; }
+usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n' "$0" "$0" "$0" >&2; }
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
 
 cleanup_zabbix() {
@@ -73,8 +73,90 @@ cleanup_zabbix() {
   echo '[zabbix] cleanup complete'
 }
 
+cleanup_external_services() {
+  local stamp backup_root php_packages
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  backup_root="/opt/copimine-backups/external-services-$stamp"
+  mkdir -p "$backup_root"
+  chmod 700 "$backup_root"
+  echo "[cleanup] backup directory: $backup_root"
+
+  # These services are not used by CopiMine. Stop them before taking a backup
+  # so the retained copies are consistent, then remove only their packages.
+  systemctl disable --now zapret_discord_youtube.service 2>/dev/null || true
+  systemctl disable --now postfix-mta-sts-resolver.service php8.3-fpm.service 2>/dev/null || true
+  systemctl disable --now mysql.service mssql-server.service 2>/dev/null || true
+
+  if [[ -d /var/lib/mysql ]]; then
+    tar -czf "$backup_root/mysql-data.tar.gz" -C / var/lib/mysql etc/mysql 2>/dev/null || true
+  fi
+  if [[ -d /var/opt/mssql || -d /opt/mssql ]]; then
+    tar -czf "$backup_root/mssql-data.tar.gz" -C / var/opt/mssql opt/mssql etc/opt/mssql 2>/dev/null || true
+  fi
+  if [[ -d /opt/zapret-discord-youtube-linux ]]; then
+    tar -czf "$backup_root/zapret-config.tar.gz" -C / opt/zapret-discord-youtube-linux etc/systemd/system/zapret_discord_youtube.service 2>/dev/null || true
+  fi
+  systemctl list-unit-files --no-legend >"$backup_root/unit-files.txt" 2>/dev/null || true
+  dpkg-query -W -f='${binary:Package}\t${Version}\n' >"$backup_root/packages.txt" 2>/dev/null || true
+
+  export DEBIAN_FRONTEND=noninteractive
+  php_packages="$(dpkg-query -W -f='${binary:Package}\n' 2>/dev/null | grep -E '^php8\.3-|^php-mysql$|^php-common$' || true)"
+  apt-get purge -y \
+    mssql-server mssql-tools18 msodbcsql18 \
+    mysql-server mysql-server-8.0 mysql-server-core-8.0 mysql-client-8.0 mysql-client-core-8.0 mysql-common \
+    postfix-mta-sts-resolver \
+    $php_packages 2>&1 || true
+
+  rm -rf -- /opt/zapret-discord-youtube-linux
+  rm -f -- /etc/systemd/system/zapret_discord_youtube.service
+
+  # Hardware/desktop helpers are safe to disable on this headless server. They
+  # are left installed so Ubuntu can be recovered without reinstalling it.
+  for unit in ModemManager.service multipathd.service fwupd.service snapd.service \
+              smartmontools.service upower.service udisks2.service; do
+    systemctl disable --now "$unit" 2>/dev/null || true
+  done
+
+  systemctl daemon-reload
+  systemctl reset-failed 2>/dev/null || true
+  apt-get clean
+
+  # Keep Java and the web panel responsive under load without changing gameplay
+  # settings. These limits are reversible through the backup directory.
+  install -d -m 0755 /etc/systemd/system/copimine-minecraft.service.d
+  cat >/etc/systemd/system/copimine-minecraft.service.d/90-performance.conf <<'EOF'
+[Service]
+LimitNOFILE=1048576
+Nice=-2
+EOF
+  install -d -m 0755 /etc/systemd/system/copimine-admin.service.d
+  cat >/etc/systemd/system/copimine-admin.service.d/90-performance.conf <<'EOF'
+[Service]
+LimitNOFILE=65536
+EOF
+  cat >/etc/sysctl.d/99-copimine-performance.conf <<'EOF'
+vm.swappiness=10
+EOF
+  sysctl --system >/dev/null 2>&1 || true
+  systemctl daemon-reload
+
+  systemctl restart copimine-admin.service
+  systemctl restart nginx.service
+  systemctl restart copimine-minecraft.service
+  sleep 8
+  for service in copimine-admin copimine-minecraft nginx postgresql@16-main; do
+    systemctl is-active --quiet "$service" || { echo "[cleanup] service failed after optimization: $service" >&2; return 1; }
+  done
+  echo '[cleanup] external services removed and CopiMine services restarted'
+  echo "[cleanup] backups retained at $backup_root"
+}
+
 if [[ "$ARCHIVE_PATH" == "--cleanup-zabbix" ]]; then
   cleanup_zabbix
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--cleanup-external-services" ]]; then
+  cleanup_external_services
   exit $?
 fi
 [[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }

@@ -108,6 +108,10 @@ ARTIFACTS_ITEMS_FILE = PROJECT_ROOT / "copimine-artifacts" / "items.yml"
 # Bukkit plugin data file.  Keep both in lockstep when an administrator edits
 # a price so a purchase cannot see different values in the two surfaces.
 ARTIFACTS_RUNTIME_ITEMS_FILE = PROJECT_ROOT / "minecraft" / "server" / "plugins" / "CopiMineArtifacts" / "items.yml"
+ARTIFACTS_CONFIG_FILES = (
+    PROJECT_ROOT / "copimine-artifacts" / "config.yml",
+    PROJECT_ROOT / "minecraft" / "server" / "plugins" / "CopiMineArtifacts" / "config.yml",
+)
 ARTIFACTS_CATALOG_LOCK = threading.RLock()
 # Schema checks used to run on every authenticated request.  PostgreSQL treats
 # the ALTER/CREATE IF NOT EXISTS statements as real DDL and briefly takes an
@@ -701,6 +705,16 @@ class AdminShopPriceUpdateIn(BaseModel):
     item_id: str = Field(min_length=2, max_length=120)
     category: str = Field(min_length=2, max_length=16)
     price: int = Field(gt=0, le=1_000_000_000)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class AdminRepairPriceUpdateIn(BaseModel):
+    price_ar: int = Field(gt=0, le=1_000_000_000)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class AdminArtifactLimitResetIn(BaseModel):
+    item_id: str = Field(min_length=2, max_length=120)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
@@ -2817,6 +2831,19 @@ def _ensure_v4_schema(conn: Any) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS artifact_purchase_limit_resets(
+            player_uuid TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            reset_at BIGINT NOT NULL,
+            reset_by TEXT NOT NULL DEFAULT '',
+            idempotency_key TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY(player_uuid,item_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_artifact_limit_resets_player ON artifact_purchase_limit_resets(player_uuid,reset_at DESC)")
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS president_tax_exemptions(
             id TEXT PRIMARY KEY,
             tax_id TEXT NOT NULL DEFAULT '',
@@ -4369,6 +4396,20 @@ def ensure_player_bank_account(conn: Any, minecraft_uuid: str, minecraft_name: s
     return bank
 
 
+def sync_player_account_pin(conn: Any, minecraft_uuid: str, pin_hash: str, pin_sealed: str, actor: str = "") -> None:
+    """Mirror a personal PIN into the legacy account-PIN table for old clients."""
+    if not minecraft_uuid:
+        return
+    conn.execute(
+        """
+        INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by)
+        VALUES(%s,%s,%s,0,%s,%s,%s)
+        ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,pin_sealed=excluded.pin_sealed,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by
+        """,
+        (f"ar:{minecraft_uuid}", pin_hash, pin_sealed, now_ts(), now_ts(), actor),
+    )
+
+
 def current_treasury_owner(conn: Any) -> tuple[str, str]:
     return "", TREASURY_ACCOUNT_LABEL
 
@@ -4664,14 +4705,38 @@ def clear_account_pin_lockout(conn: Any, account_id: str) -> None:
 
 def verify_bank_pin(conn: Any, account: dict[str, Any], pin: str) -> None:
     pin = normalize_pin(pin)
-    enforce_bank_pin_lockout(conn, str(account.get("minecraft_uuid") or ""))
-    row = conn.execute("SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s", (account.get("minecraft_uuid"),)).fetchone()
-    if not row or not verify_password_hash(str(row["pin_hash"] or ""), pin):
+    minecraft_uuid = str(account.get("minecraft_uuid") or "")
+    enforce_bank_pin_lockout(conn, minecraft_uuid)
+    row = conn.execute("SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s", (minecraft_uuid,)).fetchone()
+    valid_row = row and verify_password_hash(str(row["pin_hash"] or ""), pin)
+    # A few older accounts were created before the personal PIN table was
+    # introduced and only have the PIN attached to their AR bank account.
+    # Accept that same-player account PIN and migrate it to the canonical
+    # personal table below, instead of reporting a misleading Invalid PIN.
+    fallback_account_id = ""
+    fallback_row = None
+    if not valid_row and minecraft_uuid:
+        fallback_account = conn.execute(
+            "SELECT account_id FROM cmv4_bank_accounts WHERE owner_uuid=%s AND account_type='PLAYER' AND currency='AR' AND status='ACTIVE' LIMIT 1",
+            (minecraft_uuid,),
+        ).fetchone()
+        fallback_account_id = str(row_get(fallback_account, "account_id", "") or "")
+        if fallback_account_id:
+            fallback_row = conn.execute("SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s", (fallback_account_id,)).fetchone()
+            valid_row = bool(fallback_row and verify_password_hash(str(fallback_row["pin_hash"] or ""), pin))
+    if not valid_row:
         record_failed_bank_pin(conn, account, "site")
         conn.commit()
         raise HTTPException(status_code=403, detail="Invalid PIN")
-    if int(row["must_change"] or 0) > 0:
+    active_row = row if row and valid_row else fallback_row
+    if int(active_row["must_change"] or 0) > 0:
         raise HTTPException(status_code=403, detail="Temporary PIN must be changed first")
+    if fallback_row and (not row or not verify_password_hash(str(row["pin_hash"] or ""), pin)):
+        now = now_ts()
+        conn.execute(
+            "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at) VALUES(%s,%s,%s,%s,0,%s,%s) ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,pin_sealed=excluded.pin_sealed,must_change=0,updated_at=excluded.updated_at",
+            (minecraft_uuid, str(account.get("id") or ""), str(fallback_row["pin_hash"] or ""), seal_persistent_pin(f"personal:{minecraft_uuid}", pin), now, now),
+        )
     clear_bank_pin_lockout(conn, str(account.get("minecraft_uuid") or ""))
 
 
@@ -4927,6 +4992,13 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
                     updated_at=excluded.updated_at
                 """,
                 (account.get("minecraft_uuid") or "", account.get("id") or "", make_password_hash(new_pin), seal_persistent_pin(f"personal:{account.get('minecraft_uuid') or ''}", new_pin), now, now),
+            )
+            sync_player_account_pin(
+                conn,
+                str(account.get("minecraft_uuid") or ""),
+                make_password_hash(new_pin),
+                seal_persistent_pin(f"personal:{account.get('minecraft_uuid') or ''}", new_pin),
+                str(account.get("username") or ""),
             )
             conn.execute(
                 "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PIN_SET','minecraft_uuid=' || %s,'site')",
@@ -5238,6 +5310,13 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
                 updated_at=excluded.updated_at
             """,
             (uuid, site.get("id") or "", make_password_hash(new_pin), seal_persistent_pin(f"personal:{uuid}", new_pin), now, now),
+        )
+        sync_player_account_pin(
+            conn,
+            uuid,
+            make_password_hash(new_pin),
+            seal_persistent_pin(f"personal:{uuid}", new_pin),
+            actor,
         )
         clear_bank_pin_lockout(conn, uuid)
         clear_temporary_pin_resets(conn, uuid, now)
@@ -10260,6 +10339,7 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
     donation_sessions: list[dict[str, Any]] = []
     donation_claims: list[dict[str, Any]] = []
     donation_purchases: list[dict[str, Any]] = []
+    artifact_purchases: list[dict[str, Any]] = []
     vote_rows: list[dict[str, Any]] = []
     ballot_rows: list[dict[str, Any]] = []
     candidate_rows: list[dict[str, Any]] = []
@@ -10319,6 +10399,12 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
                     (uuid, safe_limit),
                 ).fetchall()
                 bank_ledger = [normalize_donation_row_timestamps(dict(row), "created_at") for row in rows]
+            if pg_table_exists(conn, "artifact_purchases"):
+                rows = conn.execute(
+                    "SELECT item_id,status,price_ar,created_at,updated_at FROM artifact_purchases WHERE player_uuid=%s ORDER BY created_at DESC LIMIT %s",
+                    (uuid, safe_limit),
+                ).fetchall()
+                artifact_purchases = [normalize_donation_row_timestamps(dict(row), "created_at", "updated_at") for row in rows]
             if pg_table_exists(conn, "donation_balance_ledger"):
                 rows = conn.execute(
                     "SELECT id,delta,balance_after,reason,actor,source,created_at FROM donation_balance_ledger WHERE player_uuid=%s ORDER BY created_at DESC LIMIT %s",
@@ -10456,6 +10542,7 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
             "donationSessions": donation_sessions[:safe_limit],
             "donationClaims": donation_claims[:safe_limit],
             "donationPurchases": donation_purchases[:safe_limit],
+            "artifactPurchases": artifact_purchases[:safe_limit],
         },
         "elections": {
             "candidateApplications": candidate_rows[:safe_limit],
@@ -12565,6 +12652,43 @@ def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, 
     return {"ok": True, "item_id": target["item_id"], "category": target["category"], "old_price": target["old_price"], "price": normalized_price, "reload": str(reload_response or "")[:240]}
 
 
+def update_repair_price_sync(price_ar: int, actor: str, idempotency_key: str) -> dict[str, Any]:
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="Изменение цены ремонта требует настроенного RCON")
+    normalized = int(price_ar)
+    paths = [path for path in ARTIFACTS_CONFIG_FILES if path.is_file()]
+    if not paths:
+        raise HTTPException(status_code=404, detail="Файл настроек лавки не найден")
+    changed: list[Path] = []
+    old: dict[Path, str] = {}
+    try:
+        for path in paths:
+            text = path.read_text(encoding="utf-8-sig")
+            old[path] = text
+            if re.search(r"(?m)^\s*fixed-price-ar:\s*\d+\s*$", text):
+                updated = re.sub(r"(?m)^(\s*fixed-price-ar:)\s*\d+\s*$", rf"\1 {normalized}", text, count=1)
+            elif re.search(r"(?m)^repair:\s*$", text):
+                updated = re.sub(r"(?m)^(repair:\s*)$", rf"\1\n  fixed-price-ar: {normalized}", text, count=1)
+            else:
+                updated = text.rstrip() + f"\n\nrepair:\n  fixed-price-ar: {normalized}\n"
+            path.write_text(updated.rstrip() + "\n", encoding="utf-8", newline="\n")
+            changed.append(path)
+        response = rcon_sync("cmartifacts reload")
+        lowered = str(response or "").lower()
+        if any(marker in lowered for marker in ("unknown command", "неизвест", "error", "ошиб", "players only", "только игрок")):
+            raise HTTPException(status_code=503, detail="Плагин не подтвердил перезагрузку настроек ремонта")
+    except Exception:
+        for path, text in old.items():
+            try:
+                path.write_text(text, encoding="utf-8", newline="\n")
+            except Exception:
+                pass
+        raise
+    audit_event(actor, "shop.repair_price.update", target="fixed-price-ar", details={"priceAr": normalized, "idempotencyKey": idempotency_key})
+    append_panel_event("shops", "repair_price_changed", actor=actor, target="fixed-price-ar", metadata={"priceAr": normalized}, tags=["shop", "repair"])
+    return {"ok": True, "priceAr": normalized, "reload": str(response or "")[:240]}
+
+
 def plugin_registry_audit_sync(plugin_id: str, limit: int = 80) -> list[dict[str, Any]]:
     rows = read_site_audit_rows(max(1, min(limit, 200)), "plugin.registry", "")
     safe_plugin_id = str(plugin_id or "").strip()
@@ -13404,6 +13528,13 @@ def purchase_donation_item_sync(player_uuid: str, player_name: str, item_id: str
 
 
 def artifact_purchase_count_sync(conn: Any, item_id: str, player_uuid: str = "") -> int:
+    reset_at = 0
+    if player_uuid:
+        reset_row = conn.execute(
+            "SELECT reset_at FROM artifact_purchase_limit_resets WHERE player_uuid=%s AND item_id=%s",
+            (player_uuid, item_id),
+        ).fetchone()
+        reset_at = int(row_get(reset_row, "reset_at", 0) or 0)
     if player_uuid:
         row = conn.execute(
             """
@@ -13412,8 +13543,9 @@ def artifact_purchase_count_sync(conn: Any, item_id: str, player_uuid: str = "")
             WHERE player_uuid=%s
               AND item_id=%s
               AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')
+              AND created_at > %s
             """,
-            (player_uuid, item_id),
+            (player_uuid, item_id, reset_at),
         ).fetchone()
     else:
         row = conn.execute(
@@ -13426,6 +13558,34 @@ def artifact_purchase_count_sync(conn: Any, item_id: str, player_uuid: str = "")
             (item_id,),
         ).fetchone()
     return int(row_get(row, "c", 0) or 0)
+
+
+def reset_artifact_limit_sync(player: str, actor: str, data: AdminArtifactLimitResetIn) -> dict[str, Any]:
+    uuid = find_player_uuid(player) or ""
+    if not uuid:
+        raise HTTPException(status_code=404, detail="Игрок не найден")
+    item_id = str(data.item_id or "").strip().lower()
+    item = dict((ar_catalog_snapshot_sync().get("byId") or {}).get(item_id) or {})
+    if not item:
+        raise HTTPException(status_code=404, detail="AR-предмет не найден")
+    if str(item.get("source") or "").upper() == "ADMIN_ONLY":
+        raise HTTPException(status_code=400, detail="Скрытый предмет нельзя покупать в лавке")
+    key = str(data.idempotency_key or "").strip()
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO artifact_purchase_limit_resets(player_uuid,item_id,reset_at,reset_by,idempotency_key)
+            VALUES(%s,%s,%s,%s,%s)
+            ON CONFLICT(player_uuid,item_id) DO UPDATE SET reset_at=excluded.reset_at,reset_by=excluded.reset_by,idempotency_key=excluded.idempotency_key
+            """,
+            (uuid, item_id, now, actor, key),
+        )
+        conn.commit()
+    audit_event(actor, "artifact.purchase_limit.reset", target=player, details={"minecraftUuid": uuid, "itemId": item_id, "resetAt": now})
+    append_panel_event("players", "artifact_limit_reset", actor=actor, target=player, metadata={"itemId": item_id, "resetAt": now}, tags=["artifacts", "limit"])
+    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemId": item_id, "resetAt": now, "limit": 5}
 
 
 def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentIn) -> dict[str, Any]:
@@ -14603,6 +14763,24 @@ async def admin_shop_price_update(data: AdminShopPriceUpdateIn, request: Request
         raise
 
 
+@app.post("/api/admin/shop/repair-price")
+async def admin_shop_repair_price_update(data: AdminRepairPriceUpdateIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "SHOP_REPAIR_PRICE_UPDATE")
+    check_rate_limit(request, "admin-shop-repair-price", limit=10, window_seconds=60)
+    return await bg(update_repair_price_sync, data.price_ar, username, data.idempotency_key)
+
+
+@app.get("/api/admin/shop/repair-price")
+async def admin_shop_repair_price(_: str = Depends(require_admin)) -> dict[str, Any]:
+    for path in ARTIFACTS_CONFIG_FILES:
+        if not path.is_file():
+            continue
+        match = re.search(r"(?m)^\s*fixed-price-ar:\s*(\d+)\s*$", path.read_text(encoding="utf-8-sig"))
+        if match:
+            return {"priceAr": int(match.group(1)), "configured": True}
+    return {"priceAr": 0, "configured": False}
+
+
 @app.get("/api/admin/shop/admin-gift-items")
 async def admin_gift_shop_items(_: str = Depends(require_admin)) -> dict[str, Any]:
     catalog = await bg(admin_gift_catalog_snapshot_sync)
@@ -14624,6 +14802,13 @@ async def admin_artifact_gift(data: AdminArtifactGiftIn, request: Request, usern
         data.idempotency_key,
     )
     return result
+
+
+@app.post("/api/players/{player}/artifacts/limit-reset")
+async def player_artifact_limit_reset(player: str, data: AdminArtifactLimitResetIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "ARTIFACT_LIMIT_RESET")
+    check_rate_limit(request, "artifact-limit-reset", limit=30, window_seconds=60)
+    return await bg(reset_artifact_limit_sync, player, username, data)
 
 
 @app.post("/api/admin/economy/ar/add-balance")

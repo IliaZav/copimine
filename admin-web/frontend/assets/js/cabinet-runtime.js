@@ -3216,6 +3216,12 @@ function renderPlayerFullDetails(player, detail, ctx) {
     status: cleanText(row.status || "pending"),
     expires_at: row.expires_at || 0,
   }));
+  const artifactPurchaseRows = asArray(detail?.economy?.artifactPurchases);
+  const artifactLimitRows = asArray(giftCatalog?.categories?.AR).map((item) => {
+    const itemId = cleanText(item.item_id || "");
+    const bought = artifactPurchaseRows.filter((row) => cleanText(row.item_id || "").toLowerCase() === itemId.toLowerCase() && ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY"].includes(String(row.status || "").toUpperCase())).length;
+    return { item_id: itemId, display_name: cleanText(item.display_name || itemId), bought, limit: 5 };
+  });
   const coreRows = asArray(actions.rows);
   const liveSnapshots = asArray(liveInventory.onlineSnapshots);
   const historySnapshots = asArray(history.snapshots);
@@ -3346,6 +3352,12 @@ function renderPlayerFullDetails(player, detail, ctx) {
             <button class="btn btn-primary full" data-click="playerAdminGift('${esc(player)}','${esc(profile.uuid || detail.uuid || "")}')">Поставить в выдачу</button>
           </article>
         </div>
+        ${panel("Лимиты AR-предметов", "До 5 покупок каждого предмета. Сброс возвращает игроку полный лимит выбранного предмета.", table(`player-artifact-limits-${esc(player)}`, artifactLimitRows, [
+          { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(value)}</strong><br><span class="muted">${esc(row.item_id)}</span>` },
+          { key: "bought", label: "Куплено" },
+          { key: "limit", label: "Лимит" },
+          { key: "item_id", label: "Действие", render: (value) => `<button class="btn btn-secondary btn-small" data-click="playerResetArtifactLimit('${esc(player)}','${esc(value)}')">Сбросить лимит</button>` },
+        ], { pageSize: 10 }))}
         <details class="admin-access-advanced">
           <summary>Точная установка баланса (для исправления данных)</summary>
           <div class="form-grid compact-grid">
@@ -3942,6 +3954,22 @@ const playerAdminGift = async (player = state.selectedPlayer, uuid = "") => {
 };
 window.playerAdminGift = playerAdminGift;
 
+window.playerResetArtifactLimit = async (player, itemId) => {
+  const headers = await dangerConfirm(`Сбросить лимит предмета ${itemId} для игрока ${player}?`, "ARTIFACT_LIMIT_RESET");
+  if (!headers) return;
+  try {
+    await api(`/api/players/${encodeURIComponent(player)}/artifacts/limit-reset`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ item_id: itemId, idempotency_key: randomActionKey("artifact-limit-reset") }),
+    });
+    operationAlert(`Лимит ${itemId} для ${player} сброшен. Доступно ещё до 5 покупок.`);
+    if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    operationAlert(err.message, true);
+  }
+};
+
 const playerAdminDonationSetBalance = async (player = state.selectedPlayer, uuid = "") => {
   if (!player) return toast("Игрок не выбран", true);
   try {
@@ -4038,6 +4066,27 @@ window.updateShopPrice = async (category, itemId) => {
   }
 };
 
+window.updateRepairPrice = async () => {
+  const input = document.getElementById("shop-repair-price");
+  const priceAr = Math.trunc(Number(input?.value || 0));
+  if (!Number.isSafeInteger(priceAr) || priceAr < 1 || priceAr > 1000000000) {
+    return toast("Цена ремонта должна быть целым числом от 0 до 1 000 000 000", true);
+  }
+  const headers = await dangerConfirm(`Задать фиксированную цену полного ремонта: ${priceAr} AR?`, "SHOP_REPAIR_PRICE_UPDATE");
+  if (!headers) return;
+  try {
+    await api("/api/admin/shop/repair-price", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ price_ar: priceAr, idempotency_key: randomActionKey("shop-repair-price") }),
+    });
+    operationAlert(`Фиксированная цена ремонта сохранена: ${priceAr} AR`);
+    await loadShops();
+  } catch (err) {
+    operationAlert(err.message, true);
+  }
+};
+
 window.renameArtifactShop = async (shopId) => {
   const input = document.getElementById(`shop-title-${shopId}`);
   const title = input?.value?.trim() || "";
@@ -4067,10 +4116,11 @@ function artifactStatusTone(status) {
 
 async function loadShops() {
   setLoading("\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u044e \u043b\u0430\u0432\u043a\u0438");
-  const [ar, donation, shops] = await Promise.all([
+  const [ar, donation, shops, repair] = await Promise.all([
     safeApi("/api/admin/shop/ar-items", { items: [] }),
     safeApi("/api/admin/shop/donation-items", { items: [], catalogVersion: 0 }),
     safeApi("/api/artifacts/shops?limit=200", { shops: [] }),
+    safeApi("/api/admin/shop/repair-price", { priceAr: 0, configured: false }),
   ]);
   const arRows = asArray(ar.items);
   const donationRows = asArray(donation.items);
@@ -4082,7 +4132,15 @@ async function loadShops() {
       ${metric("AR \u0446\u0435\u043d\u044b", arRows.filter(row => Number(row.price_ar || 0) > 0).length, "\u0441 \u0446\u0435\u043d\u043e\u0439", "neutral")}
       ${metric("Donation \u0446\u0435\u043d\u044b", donationRows.filter(row => Number(row.price_donation || 0) > 0).length, "\u0441 \u0442\u0430\u0440\u0438\u0444\u043e\u043c", "neutral")}
     </section>
-    <section class="layout-grid grid-2">
+    <section class="layout-grid grid-1">
+      ${panel("Фиксированная починка", "Одна цена за полное восстановление любого официального кастомного предмета.", `
+        <div class="shop-price-editor">
+          <input id="shop-repair-price" type="number" min="1" max="1000000000" step="1" value="${esc(repair.priceAr || 3)}" aria-label="Фиксированная цена ремонта" />
+          <span class="muted">AR</span>
+          <button class="btn btn-primary btn-small" data-click="updateRepairPrice()">Сохранить</button>
+        </div>
+      `)}
+    </section>    <section class="layout-grid grid-2">
       ${panel("AR-\u043b\u0430\u0432\u043a\u0430", "\u041e\u0444\u0438\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0435 \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u044b \u0437\u0430 \u0431\u0430\u043b\u0430\u043d\u0441 AR.", table("shops-ar-catalog", arRows, [
         { key: "item_id", label: "ID" },
         { key: "name", label: "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435" },
@@ -5669,6 +5727,7 @@ Object.assign(dataClickHandlers, {
   adminDonationAddBalance: fromWindow("adminDonationAddBalance"),
   adminDonationSetBalance: fromWindow("adminDonationSetBalance"),
   updateShopPrice: fromWindow("updateShopPrice"),
+  updateRepairPrice: fromWindow("updateRepairPrice"),
   adminDonationCancelSession: fromWindow("adminDonationCancelSession"),
   adminDonationMarkPaid: fromWindow("adminDonationMarkPaid"),
   adminDonationTestPurchase: fromWindow("adminDonationTestPurchase"),
@@ -5700,6 +5759,7 @@ Object.assign(dataClickHandlers, {
   openElectionApplicationBook: fromWindow("openElectionApplicationBook"),
   pageTable: fromWindow("pageTable"),
   playerAction: fromWindow("playerAction"),
+  playerResetArtifactLimit: fromWindow("playerResetArtifactLimit"),
   playerActionFromPanel: fromWindow("playerActionFromPanel"),
   playerAdminArSetBalance: (...args) => playerAdminArSetBalance(...args),
   playerAdminArAddBalance: (...args) => playerAdminArAddBalance(...args),

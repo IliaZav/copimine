@@ -10,6 +10,8 @@ import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.item.ArmorMaterial;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
 import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -62,6 +64,14 @@ public abstract class ArmorFeatureRendererMixin {
         if (stack == null || stack.isEmpty()) return "";
         NbtComponent customData = stack.get(DataComponentTypes.CUSTOM_DATA);
         if (customData == null) return "";
-        return customData.getNbt().getString("copimine:artifact_item_id").toLowerCase(java.util.Locale.ROOT);
+        NbtCompound nbt = customData.getNbt();
+        String itemId = nbt.getString("copimine:artifact_item_id");
+        if (itemId.isBlank()) {
+            NbtElement publicValues = nbt.get("PublicBukkitValues");
+            if (publicValues instanceof NbtCompound nested) {
+                itemId = nested.getString("copimine:artifact_item_id");
+            }
+        }
+        return itemId.toLowerCase(java.util.Locale.ROOT);
     }
 }

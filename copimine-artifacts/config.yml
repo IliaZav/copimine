@@ -5,6 +5,10 @@
 
 debug_gui: false
 
+repair:
+  # Fixed AR price for a full repair of every official custom item.
+  fixed-price-ar: 3
+
 performance:
   pending-hints-seconds: 60
   session-cleanup-seconds: 60

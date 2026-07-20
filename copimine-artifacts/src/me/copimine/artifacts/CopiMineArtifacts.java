@@ -491,6 +491,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          );
          var2.execute(
             "    CREATE TABLE IF NOT EXISTS artifact_purchases(\n        purchase_id TEXT PRIMARY KEY,\n        unique_item_id TEXT NOT NULL,\n        player_uuid TEXT NOT NULL,\n        player_name TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        shop_id TEXT NOT NULL,\n        price_ar BIGINT NOT NULL,\n        bank_tx_id TEXT NOT NULL DEFAULT '',\n        idempotency_key TEXT NOT NULL,\n        status TEXT NOT NULL,\n        delivery_mode TEXT NOT NULL DEFAULT 'DIRECT',\n        created_at BIGINT NOT NULL,\n        updated_at BIGINT NOT NULL\n    )\n"
+        );
+         var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_purchase_limit_resets(\n        player_uuid TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        reset_at BIGINT NOT NULL,\n        reset_by TEXT NOT NULL DEFAULT '',\n        idempotency_key TEXT NOT NULL DEFAULT '',\n        PRIMARY KEY(player_uuid,item_id)\n    )\n"
          );
          var2.execute(
             "    CREATE TABLE IF NOT EXISTS artifact_repairs(\n        repair_id TEXT PRIMARY KEY,\n        unique_item_id TEXT NOT NULL,\n        player_uuid TEXT NOT NULL,\n        player_name TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        repair_cost_ar BIGINT NOT NULL,\n        bank_tx_id TEXT NOT NULL DEFAULT '',\n        status TEXT NOT NULL,\n        created_at BIGINT NOT NULL\n    )\n"
@@ -5038,13 +5041,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                "&cВ руке должен быть официальный предмет CopiMineArtifacts."
             )
          );
-      } else if (!this.isArCatalogItem(var3.itemId())) {
-         // player.sendMessage(color("&cDonation-
-         var1.sendMessage(
-            this.color(
-               "&cDonation-артефакты не принимаются в AR-ремонт."
-            )
-         );
       } else {
          if (var2.getItemMeta() instanceof Damageable var4 && var4.getDamage() > 0) {
             long var9 = this.repairPrice(var2, var3);
@@ -5970,14 +5966,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.sendMessage(
             this.color(
                "&cПоддельный предмет не принимается в ремонт."
-            )
-         );
-      } else if (!this.isArCatalogItem(var5.itemId())) {
-         // if (!isArCatalogItem(catalog.itemId())) {
-         // player.sendMessage(color("&cDonation-
-         var1.sendMessage(
-            this.color(
-               "&cDonation-артефакты не принимаются в AR-ремонт."
             )
          );
       } else {
@@ -7984,17 +7972,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private long repairPrice(ItemStack var1, CopiMineArtifacts.CatalogItem var2) {
-      if (var1.getItemMeta() instanceof Damageable var3) {
-         short var7 = var1.getType().getMaxDurability();
-         if (var7 <= 0) {
-            return Math.max(10L, var2.priceAr() / 10L);
-         } else {
-            double var5 = Math.max(0.1, (double)var3.getDamage() / (double)var7);
-            return Math.max(10L, Math.round((double)var2.priceAr() * 0.25 * var5));
-         }
-      } else {
-         return Math.max(10L, var2.priceAr() / 10L);
-      }
+      // Repair is deliberately predictable: the admin sets one price and it
+      // applies to every official custom item regardless of material or wear.
+      return Math.max(1L, this.getConfig().getLong("repair.fixed-price-ar", 3L));
    }
 
    private void persistRepair(Player var1, CopiMineArtifacts.CatalogItem var2, ItemStack var3, String var4, long var5, String var7) throws SQLException {
@@ -9009,10 +8989,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private int playerPurchasedCount(Connection var1, String var2, String var3) throws SQLException {
       int var6;
       try (PreparedStatement var4 = var1.prepareStatement(
-            "SELECT COUNT(*) FROM artifact_purchases WHERE player_uuid=? AND item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')"
+            "SELECT COUNT(*) FROM artifact_purchases WHERE player_uuid=? AND item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY') AND created_at > COALESCE((SELECT reset_at FROM artifact_purchase_limit_resets WHERE player_uuid=? AND item_id=?),0)"
          )) {
          var4.setString(1, var2);
          var4.setString(2, var3);
+         var4.setString(3, var2);
+         var4.setString(4, var3);
 
          try (ResultSet var5 = var4.executeQuery()) {
             var6 = var5.next() ? var5.getInt(1) : 0;

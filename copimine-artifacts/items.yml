@@ -1,4 +1,4 @@
-﻿items:
+items:
   - id: zmei_gorynych
     category: WEAPON
     material: NETHERITE_SWORD
@@ -8,7 +8,7 @@
     rarity: LEGENDARY
     price_ar: 500
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 12
     effect: ZMEI_GORYNYCH_POOP
     effect_chance_percent: 100
@@ -26,7 +26,7 @@
     rarity: EPIC
     price_ar: 2500
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 420
     effect: HASTE_BURST_LONG
     effect_chance_percent: 100
@@ -43,7 +43,7 @@
     rarity: EPIC
     price_ar: 2200
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 45
     effect: FORESTER_CHAIN
     effect_chance_percent: 18
@@ -60,7 +60,7 @@
     rarity: RARE
     price_ar: 1300
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 0
     effect: TRENCH_BONUS
     effect_chance_percent: 1
@@ -77,7 +77,7 @@
     rarity: EPIC
     price_ar: 1800
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 20
     effect: FARMER_SWEEP
     effect_chance_percent: 100
@@ -94,7 +94,7 @@
     rarity: LEGENDARY
     price_ar: 5000
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 30
     effect: DUTY_ARGUMENT
     effect_chance_percent: 20
@@ -111,7 +111,7 @@
     rarity: LEGENDARY
     price_ar: 9999
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 3
     effect: ETERNAL_BOOST
     effect_chance_percent: 100
@@ -129,7 +129,7 @@
     rarity: EPIC
     price_ar: 3600
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 28
     effect: TANK_VEST
     effect_chance_percent: 100
@@ -147,7 +147,7 @@
     rarity: EPIC
     price_ar: 2400
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 1
     effect: MINER_3X3
     effect_chance_percent: 100
@@ -165,7 +165,7 @@
     rarity: RARE
     price_ar: 1700
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 60
     effect: WIND_HAMMER
     effect_chance_percent: 100
@@ -203,7 +203,7 @@
     rarity: LEGENDARY
     price_ar: 7500
     supply_limit: 0
-    per_player_limit: 1
+    per_player_limit: 5
     cooldown_seconds: 0
     effect: INFINITE_TOTEM
     effect_chance_percent: 100

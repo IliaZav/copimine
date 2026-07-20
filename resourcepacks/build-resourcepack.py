@@ -22,7 +22,9 @@ STAGE = BUILD / "_stage"
 COMBINED_MANIFEST = ROOT / "models_manifest.json"
 TEXTURE_SOURCES = ROOT / "item_texture_sources.json"
 SERVER_PROPERTIES = ROOT.parent / "minecraft" / "server" / "server.properties"
-DEFAULT_RESOURCE_PACK_URL = r"http\://copimine.ru\:18080/resourcepacks/CopiMineResourcePack.zip"
+# The query string intentionally changes when the release pack is rebuilt so
+# Minecraft does not reuse a stale client-side copy of the old donation models.
+DEFAULT_RESOURCE_PACK_URL = r"http\://copimine.ru\:18080/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
 DEFAULT_WORLD_SEED = "-1861153001556076901"
 RESOURCE_PACK_ZIP_TIMESTAMP = (2024, 1, 1, 0, 0, 0)
 RESOURCE_PACK_TEXT_SUFFIXES = {".json", ".mcmeta"}

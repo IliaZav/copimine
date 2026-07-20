@@ -9601,7 +9601,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var2.setItemMeta(var5);
          }
 
-         var1.setCompassTarget(var3);
+         // Keep the target on this artifact only. Player#setCompassTarget is
+         // global for the player and makes every ordinary compass inherit the
+         // death location, which turns a vanilla compass into the donation one.
          var1.sendMessage(
             this.color(
                "&aКомпас обновлён на вашу последнюю точку смерти."

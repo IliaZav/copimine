@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-20T15:08:27.9767729Z",
-    "gitCommit":  "ff0a569",
+    "generatedAtUtc":  "2026-07-20T16:21:52.5597837Z",
+    "gitCommit":  "16ed944",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,8 +10,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "a7f2c085e6f50a33e3bd2f788e6313ea86647760",
-                                      "sha256":  "7c0805f552d8021d906e62a737866f65c569020d18b0e3f731f51fd9c44f1029"
+                                      "sha1":  "e8688102807b1a2c0dcb66397665014d05a7703c",
+                                      "sha256":  "fb7cf8bf97780f675f4539b5341221508ecc63d2a5f4345a99394afa8713e062"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -64,14 +64,14 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "5758575edd8fe3390c07f8fdbd4a59599dc86c202da1735ce0e8abef879fa7ce"
+                                             "sha256":  "ac98a3e4d0aa6050de9771379dc8cb1675c25fdc76a5707644815af476a8db02"
                                          }
                  },
     "serverProperties":  {
                              "path":  "minecraft/server/server.properties",
                              "required":  {
                                               "levelSeed":  "-1861153001556076901",
-                                              "resourcePack":  "http\\://copimine.ru\\:18080/resourcepacks/CopiMineResourcePack.zip",
+                                              "resourcePack":  "http\\://copimine.ru\\:18080/resourcepacks/CopiMineResourcePack.zip?v=20260720r2",
                                               "resourcePackSha1":  "f0bdac93be98aa43ea719c2f852d4dae530bda95"
                                           }
                          }

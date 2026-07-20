@@ -151,12 +151,93 @@ EOF
   echo "[cleanup] backups retained at $backup_root"
 }
 
+refresh_resource_pack_url() {
+  local env_file="$PROJECT_ROOT/admin-web/.env"
+  local properties="$PROJECT_ROOT/minecraft/server/server.properties"
+  [[ -f "$env_file" && -f "$properties" ]] || { echo '[pack] runtime files are missing' >&2; return 1; }
+  python3 - "$env_file" "$properties" <<'PY'
+from pathlib import Path
+import sys
+
+env_path, properties_path = map(Path, sys.argv[1:])
+lines = env_path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
+panel = 'http://copimine.ru:18080'
+for line in lines:
+    if line.startswith('PUBLIC_PANEL_URL='):
+        panel = line.split('=', 1)[1].strip().strip('"').strip("'").rstrip('/')
+pack_url = panel + '/resourcepacks/CopiMineResourcePack.zip?v=20260720r2'
+out, seen = [], set()
+for line in lines:
+    key = line.split('=', 1)[0] if '=' in line else ''
+    if key == 'RESOURCE_PACK_PUBLIC_URL':
+        out.append(f'{key}={pack_url}')
+        seen.add(key)
+    else:
+        out.append(line)
+if 'RESOURCE_PACK_PUBLIC_URL' not in seen:
+    out.append(f'RESOURCE_PACK_PUBLIC_URL={pack_url}')
+env_path.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
+props = properties_path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
+escaped = pack_url.replace(':', r'\:')
+out, seen = [], set()
+for line in props:
+    if line.startswith('resource-pack='):
+        out.append('resource-pack=' + escaped)
+        seen.add('resource-pack')
+    else:
+        out.append(line)
+if 'resource-pack' not in seen:
+    out.append('resource-pack=' + escaped)
+properties_path.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
+print(pack_url)
+PY
+  systemctl restart copimine-minecraft.service
+  echo '[pack] cache-busting resource-pack URL applied and Minecraft restarted'
+}
+
+restore_zapret_from_official_repo() {
+  local source_dir='/home/qwerty/zapret-discord-youtube-linux-src'
+  local target_dir='/opt/zapret-discord-youtube-linux'
+  [[ -x "$source_dir/service.sh" ]] || { echo "[zapret] source checkout is missing: $source_dir" >&2; return 1; }
+  systemctl disable --now zapret_discord_youtube.service 2>/dev/null || true
+  rm -rf -- "$target_dir"
+  cp -a "$source_dir" "$target_dir"
+  chown -R root:root "$target_dir"
+  chmod 755 "$target_dir/service.sh"
+  cd "$target_dir"
+  bash ./service.sh download-deps --default
+  local interface
+  interface="$(ip route show default 2>/dev/null | awk 'NR==1 {print $5}')"
+  interface="${interface:-any}"
+  cat >conf.env <<EOF
+interface=$interface
+gamefiltertcp=true
+gamefilterudp=true
+strategy=general.bat
+firewall_backend=auto
+EOF
+  bash ./service.sh service install
+  systemctl enable --now zapret_discord_youtube.service
+  systemctl is-active --quiet zapret_discord_youtube.service || { echo '[zapret] service failed to start' >&2; return 1; }
+  echo "[zapret] installed from Sergeydigl3/zapret-discord-youtube-linux"
+  git -C "$source_dir" rev-parse HEAD
+  systemctl --no-pager --full status zapret_discord_youtube.service | sed -n '1,24p'
+}
+
 if [[ "$ARCHIVE_PATH" == "--cleanup-zabbix" ]]; then
   cleanup_zabbix
   exit $?
 fi
 if [[ "$ARCHIVE_PATH" == "--cleanup-external-services" ]]; then
   cleanup_external_services
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--refresh-resource-pack-url" ]]; then
+  refresh_resource_pack_url
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--restore-zapret" ]]; then
+  restore_zapret_from_official_repo
   exit $?
 fi
 [[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }

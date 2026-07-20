@@ -744,6 +744,9 @@ def update_mapping(path: Path, section: str) -> None:
 for candidate in map(Path, sys.argv[1:]):
     update_mapping(candidate, "donation" if candidate.name == "config.yml" else "donation-catalog")
 PY
+  # The URL normalization above may replace an old .env value. Write the
+  # cache-busting URL to server.properties in the same pass as well.
+  copimine_sync_server_properties
 }
 
 copimine_write_modpack_hashes() {

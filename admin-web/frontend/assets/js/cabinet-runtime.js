@@ -1166,7 +1166,10 @@ function miniBarChart(items) {
   `;
 }
 
-function dashboardCharts(status, perf, electionOverview, economy, perfReady, events) {
+// Kept for the legacy compatibility renderer; the release dashboard uses the
+// data-backed implementation below.  A distinct name is required because ES
+// modules reject duplicate function declarations at parse time.
+function legacyDashboardCharts(status, perf, electionOverview, economy, perfReady, events) {
   const mspt = Number(perf.mspt || 0);
   const ready = Number(perfReady.readyPercent || 0);
   const votes = Number(electionOverview.votes || 0);
@@ -2934,7 +2937,9 @@ function stationCardsHtml(stations = [], deposits = []) {
   }).join("")}</div>`;
 }
 
-async function loadDashboard(silent = false) {
+// Legacy dashboard composition retained for compatibility tooling; the
+// release runtime uses the data-backed loader defined below.
+async function legacyLoadDashboard(silent = false) {
   if (!silent) setLoading("Обновляем сводку сервера");
   const [status, requestsStatus, elections, economy, audit, events, perfReady, insights, activity] = await Promise.all([
     safeApi("/api/status", {}),

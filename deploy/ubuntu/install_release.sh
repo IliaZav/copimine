@@ -232,6 +232,18 @@ restart_discord_services() {
   echo '[discord] bot and Minecraft bridge restarted'
 }
 
+set_zapret_strategy() {
+  local strategy="${2:-general.bat}"
+  local zapret_root='/opt/zapret-discord-youtube-linux'
+  [[ "$strategy" =~ ^[A-Za-z0-9_.-]+\.bat$ ]] || { echo '[zapret] invalid strategy name' >&2; return 1; }
+  [[ -f "$zapret_root/zapret-latest/$strategy" || -f "$zapret_root/custom-strategies/$strategy" ]] || { echo "[zapret] strategy not found: $strategy" >&2; return 1; }
+  sed -i -E "s/^strategy=.*/strategy=$strategy/" "$zapret_root/conf.env"
+  systemctl restart zapret_discord_youtube.service
+  sleep 3
+  systemctl is-active --quiet zapret_discord_youtube.service || { echo '[zapret] service failed after strategy change' >&2; return 1; }
+  echo "[zapret] active strategy: $strategy"
+}
+
 if [[ "$ARCHIVE_PATH" == "--cleanup-zabbix" ]]; then
   cleanup_zabbix
   exit $?
@@ -250,6 +262,10 @@ if [[ "$ARCHIVE_PATH" == "--restore-zapret" ]]; then
 fi
 if [[ "$ARCHIVE_PATH" == "--restart-discord" ]]; then
   restart_discord_services
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--set-zapret-strategy" ]]; then
+  set_zapret_strategy "$@"
   exit $?
 fi
 [[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }

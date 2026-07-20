@@ -203,11 +203,11 @@ $BootstrapLeaf = if ($BootstrapManifestPath) { Split-Path -Leaf $BootstrapManife
 $RenameScript = @"
 set -e
 cd '$RemoteDir'
-mv -f '$(Split-Path -Leaf $InstallerPath)' '$InstallerRemoteName'
-mv -f '$(Split-Path -Leaf $UnpackScriptPath)' '$UnpackRemoteName'
-mv -f '$(Split-Path -Leaf $CommonScriptPath)' '$CommonRemoteName'
-mv -f '$(Split-Path -Leaf $VerifyScriptPath)' '$VerifyRemoteName'
-mv -f '$(Split-Path -Leaf $ReleaseManifestPath)' '$ManifestRemoteName'
+if [ '$(Split-Path -Leaf $InstallerPath)' != '$InstallerRemoteName' ]; then mv -f '$(Split-Path -Leaf $InstallerPath)' '$InstallerRemoteName'; fi
+if [ '$(Split-Path -Leaf $UnpackScriptPath)' != '$UnpackRemoteName' ]; then mv -f '$(Split-Path -Leaf $UnpackScriptPath)' '$UnpackRemoteName'; fi
+if [ '$(Split-Path -Leaf $CommonScriptPath)' != '$CommonRemoteName' ]; then mv -f '$(Split-Path -Leaf $CommonScriptPath)' '$CommonRemoteName'; fi
+if [ '$(Split-Path -Leaf $VerifyScriptPath)' != '$VerifyRemoteName' ]; then mv -f '$(Split-Path -Leaf $VerifyScriptPath)' '$VerifyRemoteName'; fi
+if [ '$(Split-Path -Leaf $ReleaseManifestPath)' != '$ManifestRemoteName' ]; then mv -f '$(Split-Path -Leaf $ReleaseManifestPath)' '$ManifestRemoteName'; fi
 if [ -n '$BootstrapLeaf' ] && [ -f '$BootstrapLeaf' ]; then mv -f '$BootstrapLeaf' '$BootstrapRemoteName'; fi
 mv -f '$(Split-Path -Leaf $ReadmeLocal)' '$ReadmeRemoteName'
 chmod 644 '$ArchiveName' '$ArchiveName.sha256' '$ManifestRemoteName' '$ReadmeRemoteName'

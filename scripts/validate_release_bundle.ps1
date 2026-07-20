@@ -270,7 +270,14 @@ try {
         if ($commonScript -notmatch 'copimine_sync_game_runtime_hardening') {
             $errors.Add("Shared deployment helper does not synchronize managed game runtime hardening.")
         }
-        if ($gameHardeningPolicy -notmatch '"passwordHash": "BCRYPT"' -or $gameHardeningPolicy -notmatch '"Enabled": true') {
+        # The managed policy intentionally keeps ImageFrame URL restrictions
+        # disabled (players may use any HTTP(S) source) while its embedded
+        # upload service stays disabled and loopback-bound.  The old check
+        # looked for a generic `Enabled: true`, which could never be true for
+        # this safe configuration and made every release fail validation.
+        if ($gameHardeningPolicy -notmatch '"passwordHash":\s*"BCRYPT"' -or
+            $gameHardeningPolicy -notmatch '"RestrictImageUrl"\s*:\s*\{[\s\S]*?"Enabled"\s*:\s*false' -or
+            $gameHardeningPolicy -notmatch '"UploadService"\s*:\s*\{[\s\S]*?"Enabled"\s*:\s*false') {
             $errors.Add("Managed game hardening policy is missing the AuthMe or ImageFrame security baseline.")
         }
         if ($gameHardeningService -notmatch 'After=copimine-minecraft\.service') {

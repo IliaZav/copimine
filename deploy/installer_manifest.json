@@ -1,17 +1,17 @@
 {
-    "generatedAtUtc":  "2026-07-20T17:31:42.1132671Z",
-    "gitCommit":  "8bc3e82",
+    "generatedAtUtc":  "2026-07-20T22:05:09.7314364Z",
+    "gitCommit":  "55ec0bc",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
                                            "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                                           "sha1":  "f0bdac93be98aa43ea719c2f852d4dae530bda95",
-                                           "sha256":  "36850e3f943771def7e209525b494beb873d68d92c1a9a2fd8c453205d6e797f"
+                                           "sha1":  "8723cb2603021bc5a07b6276cf40928234180198",
+                                           "sha256":  "f05b551f3f6edb4807cb9eeebcef3fbaa035bc7a182ea8a4ab7e1848d466ea03"
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "0bc0041ce3f3a6020b811ebe7a49c75766717c7a",
-                                      "sha256":  "e38861b224e42fc2d220f04d3153c7e67b9eda16e810ef7ed529dde2973ba7e0"
+                                      "sha1":  "d35cf8b5b96ff5541448529b94d9a144c3dc6b0b",
+                                      "sha256":  "1a2e2d536d4e4710dd07cc9b990b69a672dd935913999245fae95ef3fc46b44c"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -40,11 +40,11 @@
                                                                                 },
                                                                 "runtimeScript":  {
                                                                                       "path":  "deploy/shared/harden_game_runtime.py",
-                                                                                      "sha256":  "5c7ad95732ce18808b192018092b8e1be2aa7744bcba0c932145559dfebf4efb"
+                                                                                      "sha256":  "73308e9b8d602370043590550bc051afaacafe11ffd7864c382603f96566e82b"
                                                                                   },
                                                                 "policy":  {
                                                                                "path":  "deploy/templates/game-runtime-hardening.json",
-                                                                               "sha256":  "9e136b32afe6176ff750908b67908fb1fdca8057ba5671b4b627ff101024ce5b"
+                                                                               "sha256":  "a78bd27a40a901441f6fa855fe78d401e5cedad67831991c1a95228c4d1dac23"
                                                                            },
                                                                 "voicechatTemplate":  {
                                                                                           "path":  "deploy/templates/voicechat-server.properties",
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "c4f0a93e4f18cf70253ad04ba759a9968c3beced73ac5db904fbf63a2c4894e0"
+                                             "sha256":  "c305b3bf712017863774b7f3edc07c7a4809b217e8bc5d3cbefeb23924396dd0"
                                          }
                  },
     "serverProperties":  {
@@ -72,7 +72,7 @@
                              "required":  {
                                               "levelSeed":  "-1861153001556076901",
                                               "resourcePack":  "http\\://copimine.ru\\:18080/resourcepacks/CopiMineResourcePack.zip?v=20260720r2",
-                                              "resourcePackSha1":  "f0bdac93be98aa43ea719c2f852d4dae530bda95"
+                                              "resourcePackSha1":  "8723cb2603021bc5a07b6276cf40928234180198"
                                           }
                          }
 }

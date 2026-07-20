@@ -261,7 +261,7 @@ else:
 if values.get("ALLOW_INSECURE_HTTP_AUTH", "") not in {"0", "1"}:
     raise SystemExit("ALLOW_INSECURE_HTTP_AUTH must be 0 or 1")
 if values.get("RESOURCE_PACK_PUBLIC_URL", "").strip() in {"", "CHANGE_ME"}:
-    values["RESOURCE_PACK_PUBLIC_URL"] = values["PUBLIC_PANEL_URL"].rstrip("/") + "/resourcepacks/CopiMineResourcePack.zip"
+    values["RESOURCE_PACK_PUBLIC_URL"] = values["PUBLIC_PANEL_URL"].rstrip("/") + "/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
 if values.get("SECRET_KEY", "CHANGE_ME") in {"", "CHANGE_ME"}:
     values["SECRET_KEY"] = secret_key
 if values.get("PLUGIN_API_KEY", "CHANGE_ME") in {"", "CHANGE_ME"}:
@@ -626,7 +626,7 @@ copimine_sync_server_properties() {
     public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
     public_panel_url="${public_panel_url//\\/}"
     [[ "$public_panel_url" =~ ^https?:// ]] || public_panel_url="http://admin.copimine.ru:18080"
-    resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip"
+    resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
   fi
   [[ "$resourcepack_url" =~ ^https?:// ]] || copimine_fail "RESOURCE_PACK_PUBLIC_URL must use http:// or https://"
   python3 - "$COPIMINE_SERVER_PROPERTIES" "$resourcepack_sha1" "$resourcepack_url" "$COPIMINE_WORLD_SEED" <<'PY'
@@ -680,7 +680,7 @@ path = Path(sys.argv[1])
 panel = sys.argv[2].rstrip('/')
 updates = {
     'PUBLIC_PANEL_URL': panel,
-    'RESOURCE_PACK_PUBLIC_URL': panel + '/resourcepacks/CopiMineResourcePack.zip',
+    'RESOURCE_PACK_PUBLIC_URL': panel + '/resourcepacks/CopiMineResourcePack.zip?v=20260720r2',
 }
 lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines() if path.exists() else []
 out, seen = [], set()

@@ -1,4 +1,4 @@
-SHA256  thirdparty/client-mods/CopiMineClient-0.1.0.jar  58b585bb162b514fa525553f335963b1bc48ec4d6f9ae5eb6c8a5856453a0d8d
+SHA256  thirdparty/client-mods/CopiMineClient-0.1.0.jar  d8421fabbb61effe9395c9234907d43e73acc5afc8714404cc13e982d410b3f1
 SHA256  thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar  633a77711f650dbf0bd071a43c086b7946d6e117b28ac1a414d038ea7b339f7c
 SHA256  thirdparty/client-mods/fabric-api-0.116.11+1.21.1.jar  b791de6f6dce9c58d4ea2af6c713bbcc6dc64d0a5995a8bad6f225ee58cf17d2
 SHA256  thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar  a58e91a12533fee9c569c890443f415dc39226893ed7b0c7b45e58ef4c21096d

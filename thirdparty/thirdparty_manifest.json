@@ -3,9 +3,9 @@
     "generatedFor":  "CopiMine release hardening",
     "clientArchive":  {
                           "path":  "thirdparty/CopiMineMods.zip",
-                          "sha1":  "1cf9b624345249b720a2bcbdbf6619056da2913c",
+                          "sha1":  "1c2bc0128a1e1adcffa870a2ac29518699ccec9d",
                           "downloadPath":  "/downloads/CopiMineMods.zip",
-                          "sha256":  "38249ea502c9517684707e919d7c1621e8e1161cc4a2bb71e90ce73454260221"
+                          "sha256":  "2344f8026a7916297825469119ce56ddeba173f16027afae6eb1a03d88e38e13"
                       },
     "requiredExternal":  [
 
@@ -16,9 +16,9 @@
                                              "name":  "CopiMineClient",
                                              "version":  "0.1.0",
                                              "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
-                                             "sha1":  "be2e32073cad6f438b74b3b096efae5d9a9fa9b3",
+                                             "sha1":  "c825c74dbc0c3995e49bfac75804e53399015c0f",
                                              "license":  "Proprietary",
-                                             "sha256":  "58b585bb162b514fa525553f335963b1bc48ec4d6f9ae5eb6c8a5856453a0d8d"
+                                             "sha256":  "d8421fabbb61effe9395c9234907d43e73acc5afc8714404cc13e982d410b3f1"
                                          },
                                          {
                                              "name":  "Emotecraft",

@@ -153,7 +153,9 @@ def update_server_properties_sha1(sha1: str) -> None:
         output.append(f"resource-pack={DEFAULT_RESOURCE_PACK_URL}")
     if "level-seed" not in seen:
         output.append(f"level-seed={DEFAULT_WORLD_SEED}")
-    SERVER_PROPERTIES.write_text("\n".join(output) + "\n", encoding="utf-8")
+    # Keep the tracked properties file LF-normalized on Windows and Linux;
+    # otherwise every pack build leaves a spurious CRLF-only worktree change.
+    write_utf8_lf(SERVER_PROPERTIES, "\n".join(output) + "\n")
 
 
 def asset_path(root: Path, kind: str, asset_ref: str, suffix: str) -> Path:

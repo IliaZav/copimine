@@ -55,6 +55,7 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -1845,12 +1846,34 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         update("UPDATE protected_block_visuals SET active=0,updated_at=? WHERE kind=? AND linked_id=? AND active=1", now(), kind, linkedId);
     }
 
+    private List<Map<String, Object>> personalPinRows(String uuid) throws Exception {
+        String playerKey = first(uuid, "").trim();
+        if (playerKey.isBlank()) {
+            return List.of();
+        }
+        return queryList(
+                "SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=? "
+                        + "UNION ALL "
+                        + "SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=?",
+                playerKey,
+                bankAccountId(playerKey));
+    }
+
     private boolean bankPinSet(String uuid) throws Exception {
-        return scalarLong("SELECT COUNT(*) FROM bank_pin_hashes WHERE minecraft_uuid=? AND COALESCE(pin_hash,'')<>''", uuid) > 0;
+        return personalPinRows(uuid).stream().anyMatch(row -> !first(string(row.get("pin_hash")), "").isBlank());
     }
 
     private boolean bankPinMustChange(String uuid) throws Exception {
-        return scalarLong("SELECT COALESCE(must_change,0) FROM bank_pin_hashes WHERE minecraft_uuid=? LIMIT 1", uuid) > 0;
+        List<Map<String, Object>> rows = personalPinRows(uuid);
+        // Keep the personal table authoritative when it exists; the account
+        // table is a compatibility fallback for accounts created by newer
+        // website flows or older plugin versions.
+        for (Map<String, Object> row : rows) {
+            if (!first(string(row.get("pin_hash")), "").isBlank()) {
+                return longValue(row.get("must_change")) > 0L;
+            }
+        }
+        return false;
     }
 
     private long bankPinLockedSeconds(String uuid) throws Exception {
@@ -1862,15 +1885,27 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (pin == null || !pin.matches("\\d{4,8}")) {
             return false;
         }
-        List<Map<String, Object>> rows = queryList("SELECT pin_hash FROM bank_pin_hashes WHERE minecraft_uuid=? LIMIT 1", uuid);
-        if (rows.isEmpty()) {
-            return false;
-        }
-        boolean ok = verifyPinHash(string(rows.getFirst().get("pin_hash")), pin);
-        if (ok) {
+        String candidate = pin.trim();
+        List<Map<String, Object>> rows = personalPinRows(uuid);
+        for (int index = 0; index < rows.size(); index++) {
+            Map<String, Object> row = rows.get(index);
+            String stored = first(string(row.get("pin_hash")), "").trim();
+            if (stored.isBlank() || !verifyPinHash(stored, candidate)) {
+                continue;
+            }
+            // If the account-level row was the one that matched, migrate it
+            // to the personal table used by legacy ATM and shop clients.  The
+            // reverse migration also keeps the two stores in sync after an
+            // old plugin wrote only bank_pin_hashes.
+            try {
+                synchronizePersonalPinHash(uuid, stored);
+            } catch (Exception migrationError) {
+                getLogger().fine("Personal PIN compatibility migration skipped: " + safeError(migrationError));
+            }
             update("DELETE FROM account_lockouts WHERE account_id=?", bankPinLockoutKey(uuid));
+            return true;
         }
-        return ok;
+        return false;
     }
 
     private boolean verifyPinHash(String stored, String pin) throws Exception {
@@ -1882,11 +1917,66 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return false;
         }
         int iterations = Integer.parseInt(parts[1]);
-        byte[] salt = parts[2].getBytes(StandardCharsets.UTF_8);
+        if (iterations < 1 || iterations > 10_000_000) {
+            return false;
+        }
+        byte[] salt = decodePinSalt(parts[2]);
         String expected = parts[3].toLowerCase(Locale.ROOT);
+        if (expected.isBlank() || (expected.length() & 1) != 0 || !expected.matches("[0-9a-f]+")) {
+            return false;
+        }
         PBEKeySpec spec = new PBEKeySpec(pin.toCharArray(), salt, iterations, Math.max(128, expected.length() * 4));
         byte[] got = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();
         return MessageDigest.isEqual(hex(got).getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private byte[] decodePinSalt(String encoded) {
+        String value = first(encoded, "");
+        if (value.startsWith("base64:")) {
+            try {
+                return Base64.getDecoder().decode(value.substring("base64:".length()));
+            } catch (IllegalArgumentException ignored) {
+                return new byte[0];
+            }
+        }
+        if (value.startsWith("hex:")) {
+            return decodeHex(value.substring("hex:".length()));
+        }
+        // The website's canonical format intentionally stores the random
+        // salt as a 32-character hex string and hashes those UTF-8 characters
+        // (rather than decoding them).  Keep that behavior as the default.
+        return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private byte[] decodeHex(String value) {
+        if (value.isBlank() || (value.length() & 1) != 0 || !value.matches("[0-9a-fA-F]+")) {
+            return new byte[0];
+        }
+        byte[] result = new byte[value.length() / 2];
+        for (int index = 0; index < result.length; index++) {
+            int high = Character.digit(value.charAt(index * 2), 16);
+            int low = Character.digit(value.charAt(index * 2 + 1), 16);
+            result[index] = (byte) ((high << 4) | low);
+        }
+        return result;
+    }
+
+    private void synchronizePersonalPinHash(String uuid, String pinHash) throws Exception {
+        String playerKey = first(uuid, "").trim();
+        if (playerKey.isBlank() || pinHash == null || pinHash.isBlank()) {
+            return;
+        }
+        long stamp = now();
+        update(
+                "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at) "
+                        + "VALUES(?,?,?,?,0,?,?) "
+                        + "ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at",
+                playerKey, "", pinHash, "", stamp, stamp);
+        update(
+                "INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by) "
+                        + "VALUES(?,?,?,0,?,?,?) "
+                        + "ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by",
+                bankAccountId(playerKey), pinHash, "", stamp, stamp, "economy-core-pin-sync");
     }
 
     private void recordFailedPinAttempt(Player player, String source) {

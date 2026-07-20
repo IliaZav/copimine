@@ -330,10 +330,6 @@ const juniorNavGroups = [
   }
 ];
 
-if (Array.isArray(juniorNavGroups?.[0]?.items) && !juniorNavGroups[0].items.some(([id]) => id === "admins")) {
-  juniorNavGroups[0].items.splice(2, 0, ["admins", "Админы", "Состав команды и ограниченный обзор", "А"]);
-}
-
 const juniorPageMeta = Object.fromEntries(
   juniorNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );

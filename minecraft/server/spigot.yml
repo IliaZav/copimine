@@ -64,19 +64,20 @@ stats:
   disable-saving: false
   forced-stats: {}
 
-# === CopiMine optimization block ===
+# Keep the normal Spigot distances and spawner behavior.  These settings are
+# required for vanilla-style natural spawning and working mob farms.
 world-settings:
   default:
     below-zero-generation-in-existing-chunks: true
     view-distance: default
     simulation-distance: default
     thunder-chance: 100000
-    mob-spawn-range: 6
+    mob-spawn-range: 8
     item-despawn-rate: 6000
     arrow-despawn-rate: 1200
     trident-despawn-rate: 1200
     zombie-aggressive-towards-villager: true
-    nerf-spawner-mobs: true
+    nerf-spawner-mobs: false
     enable-zombie-pigmen-portal-spawns: true
     wither-spawn-sound-radius: 0
     end-portal-sound-radius: 0

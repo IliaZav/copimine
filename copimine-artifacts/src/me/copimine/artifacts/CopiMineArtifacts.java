@@ -52,6 +52,7 @@ import me.copimine.economycore.CopiMineEconomyCore.DonationPaymentService;
 import me.copimine.economycore.CopiMineEconomyCore.DonationPurchaseService;
 import me.copimine.economycore.CopiMineEconomyCore.Health;
 import me.copimine.economycore.CopiMineEconomyCore.PinStatus;
+import me.copimine.economycore.CopiMineEconomyCore.OfficialArService;
 import me.copimine.economycore.CopiMineEconomyCore.TxnResult;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -64,6 +65,7 @@ import org.bukkit.Sound;
 import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Ageable;
@@ -115,6 +117,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
@@ -195,6 +198,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyLastDeathX;
    private NamespacedKey keyLastDeathY;
    private NamespacedKey keyLastDeathZ;
+   private NamespacedKey attackDamageKey;
    private NamespacedKey visualEntityTypeKey;
    private NamespacedKey visualKindKey;
    private NamespacedKey visualLinkedIdKey;
@@ -222,6 +226,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyLastDeathX = new NamespacedKey(this, "last_death_x");
       this.keyLastDeathY = new NamespacedKey(this, "last_death_y");
       this.keyLastDeathZ = new NamespacedKey(this, "last_death_z");
+      this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey(this, "visual_entity_type");
       this.visualKindKey = new NamespacedKey(this, "visual_kind");
       this.visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
@@ -1477,8 +1482,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                 if (var5 != Action.RIGHT_CLICK_BLOCK || var1.getClickedBlock() == null || !var2.isSneaking()) {
                    return;
                 }
-             } else if ("WIND_HAMMER".equals(var4)) {
-                if (var5 != Action.RIGHT_CLICK_BLOCK || var1.getClickedBlock() == null || !var1.getClickedBlock().getType().isSolid()) {
+            } else if ("WIND_HAMMER".equals(var4)) {
+                if (var5 != Action.RIGHT_CLICK_BLOCK || var1.getClickedBlock() == null
+                        || var1.getBlockFace() != BlockFace.UP
+                        || !var1.getClickedBlock().getType().isSolid()) {
                    return;
                 }
             } else if (var5 != Action.RIGHT_CLICK_AIR) {
@@ -1534,13 +1541,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (player == null || ground == null || !ground.getType().isSolid()) {
          return false;
       }
+      // The hammer launches its owner high enough to perform a falling strike.
+      // Do not apply levitation: the launch is a single impulse and the cooldown
+      // prevents repeated use.
+      player.removePotionEffect(PotionEffectType.LEVITATION);
+      player.setFallDistance(0.0F);
+      player.setVelocity(player.getVelocity().setY(1.9D));
       Location center = ground.getLocation().add(0.5D, 0.5D, 0.5D);
       for (Entity entity : player.getWorld().getNearbyEntities(center, 10.0D, 10.0D, 10.0D)) {
          if (entity == player || !(entity instanceof LivingEntity living) || living.getLocation().distanceSquared(center) > 100.0D) {
             continue;
          }
-         living.setVelocity(living.getVelocity().setY(Math.max(living.getVelocity().getY(), 1.15D)));
-         living.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION, 80, 0, false, false, true));
+         living.removePotionEffect(PotionEffectType.LEVITATION);
+         living.setFreezeTicks(Math.max(living.getFreezeTicks(), 100));
+         living.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 10, false, false, true));
       }
       player.getWorld().spawnParticle(Particle.CLOUD, center, 60, 3.5D, 0.3D, 3.5D, 0.08D);
       return true;
@@ -1643,6 +1657,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          CopiMineArtifacts.CatalogItem var15 = this.authenticCatalogItem(var14, var2, "use");
          if (var15 != null) {
             String var16 = var15.effect().toUpperCase(Locale.ROOT);
+            if ("NALOGOVAYA_KOSA".equals(var16)) {
+               LivingEntity target = var1.getEntity() instanceof LivingEntity living ? living : null;
+               this.tryRareArTheft(var2, target);
+            }
             if (this.artifactCombatEffects().contains(var16)) {
                if (this.rollEffectChance(var15)) {
                   long var19 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var15), 0L);
@@ -1722,13 +1740,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            var20.getWorld().spawnParticle(Particle.BLOCK, var20, 16, 0.3, 0.3, 0.3, Material.DEEPSLATE.createBlockData());
                            break;
                         case "NALOGOVAYA_KOSA":
-                           var1.setDamage(var1.getDamage() + 1.5);
+                           var1.setDamage(var1.getDamage() + 4.0);
                            if (var10 != null) {
                               var10.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 100, 0, false, false, true));
                               var10.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
                            }
 
-                           this.healPlayerCapped(var2, 2.0);
+                           this.healPlayerCapped(var2, 4.0);
                            var20.getWorld().spawnParticle(Particle.SCULK_SOUL, var20, 10, 0.25, 0.25, 0.25, 0.01);
                            break;
                         case "DUTY_ARGUMENT":
@@ -2970,6 +2988,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.setAction(
             var5,
             var4,
+            36,
+            this.button(
+               Material.RECOVERY_COMPASS,
+               "&dВозврат потерянного предмета",
+               List.of(
+                  "&7Бесплатно возвращаются только действительно потерянные",
+                  "&7donation-предметы со статусом LOST_RECLAIMABLE."
+               )
+            ),
+            "donation:reclaim"
+         );
+         this.setAction(
+            var5,
+            var4,
             45,
             this.button(
                Material.ARROW,
@@ -3196,18 +3228,32 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          ),
          "repair:open"
       );
-      this.setAction(
-         var5,
-         var4,
-         34,
+         this.setAction(
+            var5,
+            var4,
+            34,
          this.button(
             Material.BOOK,
             "&eПомощь",
             List.of(
                "&7Короткая инструкция по покупке, PIN и выдаче."
             )
+            ),
+            "help"
+         );
+      this.setAction(
+         var5,
+         var4,
+         36,
+         this.button(
+            Material.RECOVERY_COMPASS,
+            "&dВозврат потерянного предмета",
+            List.of(
+               "&7Бесплатно возвращаются только действительно потерянные",
+               "&7donation-предметы со статусом LOST_RECLAIMABLE."
+            )
          ),
-         "help"
+         "donation:reclaim"
       );
       this.setAction(
          var5,
@@ -6245,6 +6291,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         return;
                      }
 
+                     this.cacheOfficialBinding(var2.uniqueItemId(), var2.itemId(), var1.getUniqueId());
+                     this.removeProvisionalDonationInstances(List.of(var2.uniqueItemId()));
                      this.runAsync(() -> {
                         try {
                            this.markPendingClaimed(var2.deliveryId(), var2.purchaseId(), var2.uniqueItemId(), var2.itemId());
@@ -6351,6 +6399,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           }
                                           var9x.add(var11);
                                        }
+
+                                       for (String var11 : var9x) {
+                                          this.cacheOfficialBinding(var11, var5.itemId(), var1.getUniqueId());
+                                       }
+                                       this.removeProvisionalDonationInstances(var8);
 
                                        this.finalizeDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var7, var5.itemId(), var8)
                                           .whenComplete(
@@ -6528,6 +6581,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      return;
                   }
 
+                  this.cacheOfficialBinding(var6.newUniqueItemId(), var6.itemId(), var1.getUniqueId());
+                  this.removeProvisionalDonationInstances(List.of(var6.newUniqueItemId()));
                   this.finalizeDonationReclaimAsync(var1.getUniqueId(), var6)
                      .whenComplete(
                         (var7, var8) -> this.runSync(
@@ -7929,6 +7984,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
             // instanceToItem.containsKey(uniqueItemId)
             if (var8 != null && this.instanceToItem.containsKey(var7) && !var15 && !var10 && !varStackOrMaterialMismatch && !var14 && !var18 && !var19) {
+               this.ensureAttackDamageAttribute(var1, var8);
                return var8;
             } else {
                String var20 = var2.getUniqueId() + ":" + var7 + ":" + var3;
@@ -7989,9 +8045,62 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "AR_SHOP");
          }
 
+         this.ensureAttackDamageAttribute(var5, var1);
          var5.setItemMeta(var6);
          return var5;
       }
+   }
+
+   private void ensureAttackDamageAttribute(ItemStack stack, CopiMineArtifacts.CatalogItem item) {
+      if (stack == null || item == null || !this.isDamageMaterial(item.material()) || this.attackDamageKey == null) {
+         return;
+      }
+      ItemMeta meta = stack.getItemMeta();
+      if (meta == null) {
+         return;
+      }
+      Collection<AttributeModifier> modifiers = meta.getAttributeModifiers(Attribute.GENERIC_ATTACK_DAMAGE);
+      if (modifiers != null) {
+         for (AttributeModifier modifier : modifiers) {
+            if (this.attackDamageKey.equals(modifier.getKey())) {
+               return;
+            }
+         }
+      }
+      double target = "NALOGOVAYA_KOSA".equalsIgnoreCase(item.effect()) ? 12.0 : 10.0;
+      double delta = target - vanillaAttackDamage(item.material());
+      if (delta > 0.0) {
+         meta.addAttributeModifier(
+            Attribute.GENERIC_ATTACK_DAMAGE,
+            new AttributeModifier(this.attackDamageKey, delta, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.MAINHAND)
+         );
+         stack.setItemMeta(meta);
+      }
+   }
+
+   private double vanillaAttackDamage(Material material) {
+      if (material == null) {
+         return 0.0;
+      }
+      return switch (material) {
+         case WOODEN_SWORD, GOLDEN_SWORD, STONE_SWORD, IRON_SWORD, DIAMOND_SWORD, NETHERITE_SWORD ->
+            material == Material.NETHERITE_SWORD ? 8.0 : material == Material.DIAMOND_SWORD ? 7.0 : material == Material.IRON_SWORD ? 6.0 : material == Material.STONE_SWORD ? 5.0 : 4.0;
+         case WOODEN_AXE, GOLDEN_AXE, STONE_AXE, IRON_AXE, DIAMOND_AXE, NETHERITE_AXE ->
+            material == Material.NETHERITE_AXE ? 10.0 : material == Material.DIAMOND_AXE ? 9.0 : material == Material.IRON_AXE ? 9.0 : material == Material.STONE_AXE ? 9.0 : 7.0;
+         case WOODEN_PICKAXE, GOLDEN_PICKAXE, STONE_PICKAXE, IRON_PICKAXE, DIAMOND_PICKAXE, NETHERITE_PICKAXE ->
+            material == Material.NETHERITE_PICKAXE ? 6.0 : material == Material.DIAMOND_PICKAXE ? 5.0 : material == Material.IRON_PICKAXE ? 4.0 : 3.0;
+         case WOODEN_SHOVEL, GOLDEN_SHOVEL, STONE_SHOVEL, IRON_SHOVEL, DIAMOND_SHOVEL, NETHERITE_SHOVEL ->
+            material == Material.NETHERITE_SHOVEL ? 6.0 : material == Material.DIAMOND_SHOVEL ? 5.0 : material == Material.IRON_SHOVEL ? 4.5 : 2.5;
+         case WOODEN_HOE, GOLDEN_HOE, STONE_HOE, IRON_HOE, DIAMOND_HOE, NETHERITE_HOE ->
+            material == Material.NETHERITE_HOE ? 1.0 : material == Material.DIAMOND_HOE ? 1.0 : material == Material.IRON_HOE ? 1.0 : 1.0;
+         case TRIDENT -> 9.0;
+         case MACE -> 6.0;
+         default -> 0.0;
+      };
+   }
+
+   private boolean isDamageMaterial(Material material) {
+      return this.vanillaAttackDamage(material) > 0.0;
    }
 
    private long repairPrice(ItemStack var1, CopiMineArtifacts.CatalogItem var2) {
@@ -9313,24 +9422,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   private boolean tryFarmerSweep(Player var1, Block var2, ItemStack var3) {
-      if (var2 != null && var2.getType() != Material.AIR) {
-         Block var4 = this.isHarvestableCrop(var2) ? var2 : var2.getRelative(BlockFace.UP);
-         if (!this.isHarvestableCrop(var4)) {
-            return false;
-         } else {
-            for (int var5 = -2; var5 <= 2; var5++) {
-               for (int var6 = -2; var6 <= 2; var6++) {
-                  this.harvestAndReplantCrop(var4.getRelative(var5, 0, var6), var1, var3);
-               }
-            }
+   private static final int FARMER_SWEEP_RADIUS = 2;
 
-            var1.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, var4.getLocation().add(0.5, 0.8, 0.5), 18, 1.2, 0.2, 1.2, 0.02);
-            return true;
-         }
-      } else {
+   private boolean tryFarmerSweep(Player var1, Block var2, ItemStack var3) {
+      if (var2 == null || var2.getType() == Material.AIR) {
          return false;
       }
+
+      // The clicked block may be the farmland below the crop.  Do not require
+      // the centre crop to be mature: a player can click the edge of a field
+      // or an immature plant while the rest of the 5x5 is ready.  We still
+      // reject unrelated blocks, so sneaking with the hoe cannot harvest an
+      // arbitrary area of the world.
+      Block var4 = this.isSupportedCrop(var2) ? var2 : var2.getRelative(BlockFace.UP);
+      if (!this.isSupportedCrop(var4)) {
+         return false;
+      }
+
+      int harvested = 0;
+      for (int var5 = -FARMER_SWEEP_RADIUS; var5 <= FARMER_SWEEP_RADIUS; var5++) {
+         for (int var6 = -FARMER_SWEEP_RADIUS; var6 <= FARMER_SWEEP_RADIUS; var6++) {
+            if (this.harvestAndReplantCrop(var4.getRelative(var5, 0, var6), var1, var3)) {
+               harvested++;
+            }
+         }
+      }
+
+      if (harvested <= 0) {
+         return false;
+      }
+      var1.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, var4.getLocation().add(0.5, 0.8, 0.5), 18, 1.2, 0.2, 1.2, 0.02);
+      return true;
+   }
+
+   private boolean isSupportedCrop(Block var1) {
+      if (var1 == null || !(var1.getBlockData() instanceof Ageable)) {
+         return false;
+      }
+      return switch (var1.getType()) {
+         case WHEAT, CARROTS, POTATOES, BEETROOTS, NETHER_WART -> true;
+         default -> false;
+      };
    }
 
    private boolean isHarvestableCrop(Block var1) {
@@ -9347,12 +9479,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   private void harvestAndReplantCrop(Block var1, Player var2, ItemStack var3) {
+   private boolean harvestAndReplantCrop(Block var1, Player var2, ItemStack var3) {
       if (this.isHarvestableCrop(var1)) {
          BlockBreakEvent var4 = new BlockBreakEvent(var1, var2);
          Bukkit.getPluginManager().callEvent(var4);
          if (var4.isCancelled()) {
-            return;
+            return false;
          }
          ArrayList<ItemStack> var5 = var4.isDropItems() ? new ArrayList<>(var1.getDrops(var3, var2)) : new ArrayList<>();
 
@@ -9382,7 +9514,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var10.dropItemNaturally(var11, var9);
             }
          }
+         return true;
       }
+      return false;
    }
 
    private void removeOneFromDrops(List<ItemStack> var1, Material var2) {
@@ -9694,6 +9828,83 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void healPlayerCapped(Player var1, double var2) {
       if (var1 != null && !(var2 <= 0.0)) {
          var1.setHealth(Math.min(var1.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue(), var1.getHealth() + var2));
+      }
+   }
+
+   private OfficialArService officialArService() {
+      Plugin plugin = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
+      if (plugin instanceof CopiMineEconomyCore economy && plugin.isEnabled()) {
+         try {
+            return economy.officialArService();
+         } catch (Exception ignored) {
+         }
+      }
+      return null;
+   }
+
+   private void tryRareArTheft(Player attacker, LivingEntity target) {
+      if (!(target instanceof Player victim) || attacker == null || this.bridge == null || random.nextDouble() >= 0.001D) {
+         return;
+      }
+      String idempotencyKey = "kosa-ar-steal-" + UUID.randomUUID();
+      this.runAsync(() -> {
+         CopiMineArtifacts.BridgeTxnResult accountResult = this.bridge.stealFromPlayerAccount(
+            victim.getUniqueId(), victim.getName(), attacker.getUniqueId(), attacker.getName(), 1L,
+            idempotencyKey, "AR_STEAL", "Kosa rare 0.1% proc"
+         );
+         if (accountResult.ok()) {
+            this.runSync(() -> this.sendArTheftMessages(attacker, victim, false));
+            return;
+         }
+         if (!"NO_BANK_ACCOUNT".equalsIgnoreCase(accountResult.code())) {
+            if ("INSUFFICIENT_AR".equalsIgnoreCase(accountResult.code())) {
+               this.runSync(() -> {
+                  if (attacker.isOnline()) {
+                     attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
+                  }
+               });
+            }
+            return;
+         }
+
+         this.runSync(() -> {
+            if (!victim.isOnline() || !attacker.isOnline()) {
+               return;
+            }
+            OfficialArService ar = this.officialArService();
+            if (ar == null || !ar.removeAmount(victim.getInventory(), 1)) {
+               attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
+               return;
+            }
+            this.runAsync(() -> {
+               CopiMineArtifacts.BridgeTxnResult credit = this.bridge.credit(
+                  attacker.getUniqueId(), attacker.getName(), 1L, "kosa-ar-credit-" + idempotencyKey,
+                  "AR_STEAL", "AR stolen from inventory by Kosa"
+               );
+               this.runSync(() -> {
+                  if (credit.ok()) {
+                     this.sendArTheftMessages(attacker, victim, true);
+                  } else {
+                     ItemStack restored = ar.createStack(Material.DIAMOND_ORE, 1);
+                     Map<Integer, ItemStack> leftovers = victim.getInventory().addItem(restored);
+                     leftovers.values().forEach(item -> victim.getWorld().dropItemNaturally(victim.getLocation(), item));
+                     if (attacker.isOnline()) {
+                        attacker.sendMessage(this.color("&cКража AR отменена: банк временно недоступен."));
+                     }
+                  }
+               });
+            });
+         });
+      });
+   }
+
+   private void sendArTheftMessages(Player attacker, Player victim, boolean fromInventory) {
+      String source = fromInventory ? "из инвентаря" : "со счёта";
+      if (attacker.isOnline()) {
+         attacker.sendMessage(this.color("&aВы украли 1 AR у &f" + victim.getName() + " &a" + source + "."));
+      }
+      if (victim.isOnline()) {
+         victim.sendMessage(this.color("&cУ вас украли 1 AR. Нападающий: &f" + attacker.getName() + "&c."));
       }
    }
 
@@ -10746,6 +10957,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             } catch (Exception var13) {
                return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(var13), 0L, "");
             }
+         }
+      }
+
+      CopiMineArtifacts.BridgeTxnResult stealFromPlayerAccount(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
+         ArtifactsBridge bridge = this.resolveBridge();
+         if (bridge == null) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_UNAVAILABLE", "BankService bridge is unavailable.", 0L, "");
+         }
+         try {
+            TxnResult result = bridge.stealFromPlayerAccount(fromUuid, fromName, toUuid, toName, amount, idempotencyKey, action, details);
+            return new CopiMineArtifacts.BridgeTxnResult(result.ok, result.code, result.message, result.balanceAfter, result.txId);
+         } catch (Exception error) {
+            return new CopiMineArtifacts.BridgeTxnResult(false, "BRIDGE_ERROR", CopiMineArtifacts.this.safeErr(error), 0L, "");
          }
       }
 

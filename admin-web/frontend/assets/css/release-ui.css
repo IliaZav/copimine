@@ -863,6 +863,42 @@ tbody tr:hover { background: var(--status-gradient); }
 .mini-bar span { color: var(--muted); font-size: 12px; font-weight: 750; }
 .mini-bar strong { font-size: 14px; }
 
+/* Dashboard observatory: compact real-data charts, no decorative rings. */
+.dashboard-visual-grid-data { grid-template-columns: minmax(320px, 1.1fr) repeat(2, minmax(230px, .8fr)); }
+.data-chart-card { align-content: start; }
+.dashboard-week-chart { min-height: 112px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 7px; align-items: end; padding-top: 8px; border-bottom: 1px solid var(--line); }
+.week-column { min-width: 0; display: grid; justify-items: center; gap: 4px; }
+.week-bars { width: 100%; height: 68px; display: flex; justify-content: center; align-items: end; gap: 3px; }
+.week-bar { display: block; width: min(13px, 42%); height: var(--height); min-height: 3px; border-radius: 3px 3px 0 0; background: var(--accent); animation: barGrow .65s ease-out both; }
+.week-bar.secondary { background: var(--teal); opacity: .78; animation-delay: 80ms; }
+.week-column strong { font-size: 12px; line-height: 1; }
+.week-column span { color: var(--muted); font-size: 10px; }
+.chart-legend { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; }
+.chart-legend i, .chart-legend em { width: 8px; height: 8px; display: inline-block; border-radius: 2px; background: var(--accent); }
+.chart-legend em { background: var(--teal); opacity: .78; }
+.dashboard-online-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.dashboard-online-row { min-width: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-soft); }
+.dashboard-online-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.online-dot { color: var(--green, #42c98a); font-size: 11px; font-weight: 800; }
+.dashboard-check-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.dashboard-check { display: grid; gap: 4px; padding: 11px 12px; border-left: 3px solid var(--line-strong); background: var(--surface-soft); }
+.dashboard-check.good { border-color: var(--green, #42c98a); }
+.dashboard-check.warn { border-color: var(--amber, #e6ae55); }
+.dashboard-check.bad { border-color: var(--red, #e86767); }
+.dashboard-check span { color: var(--muted); font-size: 11px; font-weight: 750; }
+.dashboard-check strong { font-size: 16px; }
+
+@media (max-width: 1100px) {
+  .dashboard-visual-grid-data { grid-template-columns: 1fr 1fr; }
+  .dashboard-visual-grid-data .visual-card-large { grid-column: 1 / -1; }
+  .dashboard-check-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .dashboard-visual-grid-data { grid-template-columns: 1fr; }
+  .dashboard-visual-grid-data .visual-card-large { grid-column: auto; }
+  .dashboard-check-grid { grid-template-columns: 1fr 1fr; }
+}
+
 /* admin-release.css was authored for the old dark-only shell.  These tokens
    and colors make the same current admin markup legible in the light theme. */
 :root[data-theme="light"] {
@@ -1508,7 +1544,8 @@ body.junior-admin-mode .creative-item span {
   background: var(--surface-soft);
 }
 
-.admin-player-credentials {
+.admin-player-credentials,
+.admin-player-credentials-card {
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -1517,13 +1554,17 @@ body.junior-admin-mode .creative-item span {
   background: var(--surface-soft);
 }
 
-.admin-player-credentials .credential-actions {
+.admin-player-credentials .credential-actions,
+.admin-player-credentials-card .credential-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.admin-player-credentials .credential-hint {
+.admin-player-credentials .credential-hint,
+.admin-player-credentials-card .credential-note {
+  display: grid;
+  gap: 4px;
   color: var(--muted);
   font-size: .82rem;
 }

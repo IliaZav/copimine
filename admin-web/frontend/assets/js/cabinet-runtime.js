@@ -3,7 +3,7 @@ import { buildCsvContent } from "./shared/csv.js";
 import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260720r11";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260720r12";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "./player/account-pages.js";
@@ -407,10 +407,6 @@ const juniorNavGroups = [
   }
 ];
 
-if (Array.isArray(juniorNavGroups?.[0]?.items) && !juniorNavGroups[0].items.some(([id]) => id === "admins")) {
-  juniorNavGroups[0].items.splice(2, 0, ["admins", "Админы", "Состав команды и ограниченный обзор", "А"]);
-}
-
 const juniorPageMeta = Object.fromEntries(
   juniorNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );
@@ -778,7 +774,7 @@ function wireDataClickDelegation() {
 // legacy public page without attaching duplicate handlers at startup.
 window.addEventListener("copimine:legacy-runtime-request", () => {
   if (state.legacyRuntimePromise) return state.legacyRuntimePromise;
-  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260720r11")
+  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260720r12")
     .catch((error) => {
       toast(error?.message || "Совместимый режим недоступен", true);
       state.legacyRuntimePromise = null;
@@ -1201,6 +1197,58 @@ function dashboardCharts(status, perf, electionOverview, economy, perfReady, eve
       </article>
     </section>
   `;
+}
+
+function dashboardWeekColumns(rows, kind = "purchases") {
+  const values = asArray(rows).map((row) => ({
+    date: cleanText(row.date || ""),
+    primary: number(kind === "purchases" ? row.total : row.joins),
+    secondary: number(kind === "purchases" ? row.donation : row.quits),
+    label: cleanText(row.date || "").slice(5).replace("-", ".")
+  }));
+  const max = Math.max(1, ...values.map((row) => Math.max(row.primary, row.secondary)));
+  return `<div class="dashboard-week-chart" role="img" aria-label="${kind === "purchases" ? "Покупки за последнюю неделю" : "Заходы и выходы за последнюю неделю"}">
+    ${values.map((row) => `
+      <div class="week-column" title="${esc(row.date)}: ${row.primary} / ${row.secondary}">
+        <div class="week-bars"><i class="week-bar primary" style="--height:${Math.max(4, Math.round(row.primary / max * 100))}%"></i><i class="week-bar secondary" style="--height:${Math.max(4, Math.round(row.secondary / max * 100))}%"></i></div>
+        <strong>${esc(row.primary)}</strong><span>${esc(row.label)}</span>
+      </div>`).join("")}
+  </div>`;
+}
+
+function dashboardOnlineList(players) {
+  const names = asArray(players).map(cleanText).filter(isMinecraftName);
+  if (!names.length) return empty("Никого нет онлайн", "Список обновится после следующего ответа сервера.");
+  return `<div class="dashboard-online-list">${names.map((name) => `<div class="dashboard-online-row">${avatarBadge(name, "sm")}<strong>${esc(name)}</strong><span class="online-dot">онлайн</span></div>`).join("")}</div>`;
+}
+
+function dashboardPresenceTable(rows) {
+  const normalized = asArray(rows).map((row) => ({
+    player: cleanText(row.player || "—"),
+    action: String(row.type || "").toUpperCase() === "JOIN" ? "Зашёл" : "Вышел",
+    time: dt(row.time),
+  }));
+  return normalized.length ? table("dashboard-presence", normalized, [
+    { key: "player", label: "Игрок" },
+    { key: "action", label: "Событие" },
+    { key: "time", label: "Время" },
+  ], { pageSize: 12 }) : empty("История входов пока пуста", "События появятся после входа или выхода игрока.");
+}
+
+// Data-backed replacement for the old readiness-ring dashboard cards.
+function dashboardCharts(status, perf, electionOverview, economy, perfReady, events, insights = {}) {
+  const mspt = Number(perf.mspt || 0);
+  const purchases = asArray(insights.purchasesByDay);
+  const sessions = asArray(insights.sessionActivityByDay);
+  return `
+    <section class="dashboard-visual-grid dashboard-visual-grid-data">
+      <article class="visual-card visual-card-large">
+        <div><span class="visual-label">Пульс MSPT</span><strong>${mspt ? `${mspt} ms` : "нет live-данных"}</strong><p>Текущая нагрузка игровых тиков.</p></div>
+        ${sparklineChart([12, 15, 14, mspt || 18, 17, 16, 19, mspt || 15], mspt > 50 ? "bad" : "good")}
+      </article>
+      <article class="visual-card data-chart-card"><span class="visual-label">Покупки за 7 дней</span><strong>${esc(purchases.reduce((sum, row) => sum + number(row.total), 0))}</strong>${dashboardWeekColumns(purchases, "purchases")}<small class="chart-legend"><i></i>все покупки&nbsp;&nbsp;<em></em>donation</small></article>
+      <article class="visual-card data-chart-card"><span class="visual-label">Заходы и выходы</span><strong>${esc(sessions.reduce((sum, row) => sum + number(row.total), 0))}</strong>${dashboardWeekColumns(sessions, "sessions")}<small class="chart-legend"><i></i>зашли&nbsp;&nbsp;<em></em>вышли</small></article>
+    </section>`;
 }
 
 function panel(title, subtitle, body, actions = "") {
@@ -2888,14 +2936,16 @@ function stationCardsHtml(stations = [], deposits = []) {
 
 async function loadDashboard(silent = false) {
   if (!silent) setLoading("Обновляем сводку сервера");
-  const [status, requestsStatus, elections, economy, audit, events, perfReady] = await Promise.all([
+  const [status, requestsStatus, elections, economy, audit, events, perfReady, insights, activity] = await Promise.all([
     safeApi("/api/status", {}),
     safeApi("/api/" + String.fromCharCode(100,105,115,99,111,114,100) + "/status", {}),
     safeApi("/api/elections/overview", {}),
     safeApi("/api/economy/ares/overview", {}),
     safeApi("/api/audit?limit=8", { rows: [] }),
     safeApi("/api/plugin/events?limit=8", { rows: [] }),
-    safeApi("/api/performance/readiness", { checks: [], optimizationStack: [], readyPercent: 0 })
+    safeApi("/api/performance/readiness", { checks: [], optimizationStack: [], readyPercent: 0 }),
+    safeApi("/api/dashboard/insights", { purchasesByDay: [], sessionActivityByDay: [] }),
+    safeApi("/api/dashboard/activity?limit=80", { rows: [] })
   ]);
   updateGlobalStatus(status);
   const perf = parsePerformance(status);
@@ -2906,7 +2956,7 @@ async function loadDashboard(silent = false) {
   const eventRows = [...asArray(events.rows), ...asArray(audit.rows)].slice(0, 10);
   setView(`
     ${dashboardHero(status, perf, electionOverview, economy, perfReady.readyPercent)}
-    ${dashboardCharts(status, perf, electionOverview, economy, perfReady, eventRows)}
+    ${dashboardCharts(status, perf, electionOverview, economy, perfReady, eventRows, insights)}
 
     <section class="layout-grid grid-4">
       ${metric("Minecraft", status.minecraftOnline ? "" : "", `ping ${status.latencyMs ?? ""} ms`, status.minecraftOnline ? "good" : "bad")}
@@ -2937,6 +2987,64 @@ async function loadDashboard(silent = false) {
         ["plugins", perfReady.sources?.plugins || "—"],
         ["База панели", perfReady.sources?.adminDb || "—"],
         ["подсказка ресурспака", perfReady.resourcePackPromptReadable ? "нормальная" : "проверить"]
+      ]))}
+    </section>
+  `);
+}
+
+function dashboardReadinessSummary(status, perf, requestsReady, requestsTotal, perfReady) {
+  const checks = [
+    ["Сервер", status.minecraftOnline ? "онлайн" : "проверить", status.minecraftOnline ? "good" : "bad"],
+    ["MSPT", perf.mspt ? `${perf.mspt} ms` : "нет данных", perf.mspt && perf.mspt > 50 ? "bad" : "good"],
+    ["RCON", status.rconOk ? "подключён" : "не подключён", status.rconOk ? "good" : "warn"],
+    ["Настройки", `${requestsReady}/${requestsTotal}`, requestsReady === requestsTotal ? "good" : "warn"],
+    ["Проверки запуска", `${number(perfReady.readyPercent)}%`, number(perfReady.readyPercent) >= 90 ? "good" : "warn"]
+  ];
+  return `<section class="panel dashboard-readiness-summary"><div class="panel-header"><div><h2 class="panel-title">Состояние сервера</h2><p class="panel-subtitle">Только текущие проверки, без декоративных процентов.</p></div></div><div class="dashboard-check-grid">${checks.map(([name, value, tone]) => `<div class="dashboard-check ${tone}"><span>${esc(name)}</span><strong>${esc(value)}</strong></div>`).join("")}</div></section>`;
+}
+
+// Current dashboard composition. Kept as one data-loading pass to avoid the
+// old ring widgets and the duplicate request waterfall.
+async function loadDashboard(silent = false) {
+  if (!silent) setLoading("Обновляем сводку сервера");
+  const [status, requestsStatus, elections, economy, audit, events, perfReady, insights, activity] = await Promise.all([
+    safeApi("/api/status", {}),
+    safeApi("/api/" + String.fromCharCode(100,105,115,99,111,114,100) + "/status", {}),
+    safeApi("/api/elections/overview", {}),
+    safeApi("/api/economy/ares/overview", {}),
+    safeApi("/api/audit?limit=8", { rows: [] }),
+    safeApi("/api/plugin/events?limit=8", { rows: [] }),
+    safeApi("/api/performance/readiness", { checks: [], optimizationStack: [], readyPercent: 0 }),
+    safeApi("/api/dashboard/insights", { purchasesByDay: [], sessionActivityByDay: [] }),
+    safeApi("/api/dashboard/activity?limit=80", { rows: [] })
+  ]);
+  updateGlobalStatus(status);
+  const perf = parsePerformance(status);
+  const players = asArray(status.playersOnline).map(cleanText).filter(isMinecraftName);
+  const electionOverview = elections.pluginWeb?.overview || {};
+  const requestsReady = Object.values(requestsStatus.configured || {}).filter(Boolean).length;
+  const requestsTotal = Object.keys(requestsStatus.configured || {}).length || 1;
+  const eventRows = [...asArray(events.rows), ...asArray(audit.rows)].slice(0, 10);
+  setView(`
+    ${dashboardHero(status, perf, electionOverview, economy, perfReady.readyPercent)}
+    ${dashboardCharts(status, perf, electionOverview, economy, perfReady, eventRows, insights)}
+    <section class="layout-grid grid-4">
+      ${metric("Minecraft", status.minecraftOnline ? "онлайн" : "оффлайн", `ping ${status.latencyMs ?? "—"} ms`, status.minecraftOnline ? "good" : "bad")}
+      ${metric("Игроки онлайн", players.length, players.length ? "список ниже" : "сейчас никого нет", players.length ? "good" : "neutral")}
+      ${metric("TPS / MSPT", `${perf.tps ?? "—"} / ${perf.mspt ?? "—"}`, short(`${perf.tpsText || ""} ${perf.msptText || ""}`, 80), perf.mspt && perf.mspt > 50 ? "bad" : "good")}
+      ${metric("Заявки", `${requestsReady}/${requestsTotal}`, "настроенные параметры", requestsReady === requestsTotal ? "good" : "warn")}
+    </section>
+    ${dashboardReadinessSummary(status, perf, requestsReady, requestsTotal, perfReady)}
+    <section class="layout-grid grid-2">
+      ${panel("Сейчас онлайн", "Список игроков, полученный от сервера.", dashboardOnlineList(players))}
+      ${panel("Входы и выходы", "Кто и когда заходил играть.", dashboardPresenceTable(activity.rows))}
+    </section>
+    <section class="layout-grid grid-2">
+      ${panel("Последние действия", "События панели и плагинов.", timeline(eventRows))}
+      ${panel("Источники", "Сводка служб и файлов панели.", kv([
+        ["Плагины", perfReady.sources?.plugins || "—"],
+        ["Сервер", perfReady.sources?.serverProperties || "—"],
+        ["Ресурспак", perfReady.resourcePackPromptReadable ? "готов" : "проверить"]
       ]))}
     </section>
   `);
@@ -3259,6 +3367,23 @@ function renderPlayerFullDetails(player, detail, ctx) {
       </div>
     `
     : "";
+  const credentialControls = site.id && canManagePins
+    ? `
+      <article class="stack-card admin-player-credentials-card">
+        <header class="stack-card-head"><strong>Доступы игрока</strong><span>Пароли не читаются из хэшей. Здесь можно безопасно задать новые.</span></header>
+        <div class="form-grid compact-grid">
+          <label class="field-stack"><span>Логин сайта</span><input id="playerAdminSiteUsername" value="${esc(site.username || "")}" autocomplete="off" /></label>
+          <label class="field-stack"><span>Новый пароль сайта</span><input id="playerAdminSitePassword" type="password" placeholder="Оставь пустым, если менять не нужно" autocomplete="new-password" /></label>
+        </div>
+        <button class="btn btn-primary full" data-click="playerUpdateSiteAccount('${esc(player)}')">Сохранить доступ сайта</button>
+        <div class="credential-note"><strong>AuthMe</strong><span>Текущий пароль хранится только как хэш и не показывается. Можно задать новый пароль через сервер.</span></div>
+        <div class="form-grid compact-grid">
+          <label class="field-stack"><span>Новый пароль AuthMe</span><input id="playerAdminAuthMePassword" type="password" placeholder="8-64 символа без пробелов" autocomplete="new-password" /></label>
+          <button class="btn btn-secondary full" data-click="playerResetAuthMePassword('${esc(player)}')">Задать пароль AuthMe</button>
+        </div>
+      </article>
+    `
+    : "";
   const snapshotRows = liveSnapshots.map((row) => ({
     createdAt: row.createdAt || 0,
     source: cleanText(row.source || "live"),
@@ -3273,6 +3398,18 @@ function renderPlayerFullDetails(player, detail, ctx) {
     enderChest: asArray(row.enderChest).length,
     ar: number(row.arInInventory || 0) + number(row.arInEnderChest || 0),
   }));
+  const voiceMuteControls = hasFullAdminAccess()
+    ? `<article class="stack-card admin-player-voice-card">
+        <header class="stack-card-head"><strong>Голосовой чат</strong><span>Мут действует на сервере и блокирует передачу микрофона.</span></header>
+        <div class="action-strip wrap">
+          <button class="btn btn-secondary btn-small" data-click="mutePlayer('${esc(player)}',5)">Мут 5 мин</button>
+          <button class="btn btn-secondary btn-small" data-click="mutePlayer('${esc(player)}',10)">Мут 10 мин</button>
+          <button class="btn btn-secondary btn-small" data-click="mutePlayer('${esc(player)}',30)">Мут 30 мин</button>
+          <button class="btn btn-secondary btn-small" data-click="mutePlayer('${esc(player)}',60)">Мут 1 час</button>
+          <button class="btn btn-primary btn-small" data-click="mutePlayer('${esc(player)}',0)">Снять мут</button>
+        </div>
+      </article>`
+    : "";
 
   return `
     <div class="panel-header">
@@ -3304,7 +3441,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
         ["Состояние PIN", pinState],
         ["PIN", canManagePins ? (pin.visiblePin || "скрыт / не задан") : "скрыт"],
         ["Блокировка PIN", pin.locked ? dt(pin.lockedUntil) : "нет"],
-      ]), pinControls)}
+      ]), `${pinControls}${credentialControls}`)}
       ${panel("Действия и приколы", "Все действия пишутся в аудит. Опасные операции требуют подтверждения.", `
         <div class="field-grid compact admin-player-action-form">
           <label class="field-stack" for="playerActionSelect">
@@ -3326,6 +3463,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
         </div>
         <div class="spacer-12"></div>
         <div class="stack-list">
+          ${voiceMuteControls}
           <article class="stack-card">
             <header class="stack-card-head"><strong>Основные действия</strong><span>Бан, разбан, режимы, помощь</span></header>
             <div class="action-strip wrap">${groupButtons(playerActionGroups.main)}</div>
@@ -3538,6 +3676,69 @@ function renderPlayerFullDetails(player, detail, ctx) {
     </section>
   `;
 }
+
+window.mutePlayer = async (player, minutes) => {
+  const duration = Number(minutes);
+  if (![0, 5, 10, 30, 60].includes(duration)) return toast("Недопустимый срок мута.", true);
+  const label = duration === 0 ? "снять мут" : `отключить микрофон на ${duration === 60 ? "1 час" : `${duration} мин.`}`;
+  const headers = await dangerConfirm(`Подтвердить: ${label} для ${player}?`, duration === 0 ? "PLAYER_VOICE_UNMUTE" : "PLAYER_VOICE_MUTE");
+  if (!headers) return;
+  try {
+    const result = await api(`/api/players/${encodeURIComponent(player)}/mute`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ minutes: duration }),
+    });
+    toast(duration === 0 ? `Мут снят с ${player}.` : `Микрофон ${player} отключён на ${duration === 60 ? "1 час" : `${duration} мин.`}.`);
+    if (state.tab === "players" && state.selectedPlayer === player) {
+      replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+    }
+    return result;
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerUpdateSiteAccount = async (player) => {
+  const username = String($("playerAdminSiteUsername")?.value || "").trim();
+  const newPassword = String($("playerAdminSitePassword")?.value || "");
+  if (!username && !newPassword) return toast("Укажи новый логин или пароль сайта.", true);
+  if (newPassword && newPassword.length < 8) return toast("Пароль сайта должен быть минимум 8 символов.", true);
+  const headers = await dangerConfirm(`Сохранить доступ сайта игрока ${player}?`, "PLAYER_SITE_ACCOUNT_UPDATE");
+  if (!headers) return;
+  try {
+    await api(`/api/players/${encodeURIComponent(player)}/site-account`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ username: username || null, new_password: newPassword || null }),
+    });
+    toast("Доступ сайта обновлён.");
+    if ($("playerAdminSitePassword")) $("playerAdminSitePassword").value = "";
+    if (state.tab === "players" && state.selectedPlayer === player) {
+      replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+    }
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerResetAuthMePassword = async (player) => {
+  const newPassword = String($("playerAdminAuthMePassword")?.value || "");
+  if (newPassword.length < 8) return toast("Пароль AuthMe должен быть минимум 8 символов.", true);
+  const headers = await dangerConfirm(`Задать новый пароль AuthMe игроку ${player}? Старый пароль не показывается и не восстанавливается.`, "PLAYER_AUTHME_PASSWORD_RESET");
+  if (!headers) return;
+  try {
+    await api(`/api/players/${encodeURIComponent(player)}/authme-password/reset`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ new_password: newPassword }),
+    });
+    toast("Пароль AuthMe изменён.");
+    if ($("playerAdminAuthMePassword")) $("playerAdminAuthMePassword").value = "";
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
 
 window.playerAction = async (player, action) => {
   const reason = $("playerActionReason")?.value?.trim() || "CopiMine";
@@ -4763,7 +4964,11 @@ async function loadAdmins() {
       ["Подтверждение", `Создание требует код ${CONFIRM_HEADER}.`, "warn"]
     ])}
     <section class="layout-grid grid-2">
-      ${panel("Администрация", "Кто уже имеет доступ к рабочему кабинету.", table("admins", rows, [
+      ${panel("Администрация", admins.credentialsVisible ? "Логины и состояние паролей видит только владелец панели." : "Состав команды без секретных данных.", table("admins", rows, [
+        ...(admins.credentialsVisible ? [
+          { key: "login", label: "Логин" },
+          { key: "passwordSet", label: "Пароль", render: v => v ? pill("задан · сменить", "good") : pill("не задан", "warn") }
+        ] : []),
         { key: "username", label: "Ник" },
         { key: "role", label: "Роль", render: value => pill(value === "junior_admin" ? "младший админ" : (value || "admin"), value === "junior_admin" ? "neutral" : "good") },
         { key: "enabled", label: "Включён", render: v => v ? pill("да", "good") : pill("нет", "bad") },
@@ -4777,7 +4982,8 @@ async function loadAdmins() {
             return `<button class="btn btn-secondary btn-small" data-click="restoreAdmin('${esc(row.username)}')">Вернуть админом</button>`;
           }
           if (!row.enabled) return "—";
-          return `<button class="btn btn-danger btn-small" data-click="revokeAdmin('${esc(row.username)}')">Разжаловать</button>`;
+          const reset = admins.credentialsVisible ? `<button class="btn btn-secondary btn-small" data-click="resetAdminPassword('${esc(row.username)}')">Сменить пароль</button>` : "";
+          return `${reset}<button class="btn btn-danger btn-small" data-click="revokeAdmin('${esc(row.username)}')">Разжаловать</button>`;
         } }
       ], { pageSize: 14 }))}
       ${isJuniorAdminRole()
@@ -4862,6 +5068,26 @@ window.createAdminUser = async () => {
     $("newAdminPassword").value = "";
     toast("Админ создан");
     loadAdmins();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.resetAdminPassword = async (username) => {
+  const target = cleanText(username);
+  if (!target || !state.owner) return toast("Только владелец может менять пароли администраторов", true);
+  const nextPassword = window.prompt(`Новый пароль для ${target} (минимум 8 символов):`, "") || "";
+  if (nextPassword.length < 8) return toast("Пароль должен быть не короче 8 символов", true);
+  const headers = await dangerConfirm(`Задать новый пароль администратору ${target}?`, "ADMIN_UPDATE");
+  if (!headers) return;
+  try {
+    await api(`/api/security/admins/${encodeURIComponent(target)}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ password: nextPassword })
+    });
+    toast(`Пароль для ${target} изменён`);
+    await loadAdmins();
   } catch (err) {
     toast(err.message, true);
   }

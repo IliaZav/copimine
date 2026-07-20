@@ -488,6 +488,10 @@ class PlayerActionIn(BaseModel):
     z: Optional[float] = None
 
 
+class PlayerMuteIn(BaseModel):
+    minutes: int = Field(ge=0, le=60)
+
+
 class ResolveTicketIn(BaseModel):
     status: str = "closed"
     admin_note: str = ""
@@ -634,6 +638,10 @@ class PlayerPasswordChangeIn(BaseModel):
 class AdminPlayerAccountUpdateIn(BaseModel):
     username: Optional[str] = Field(default=None, min_length=3, max_length=32)
     new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+
+class AdminAuthMePasswordResetIn(BaseModel):
+    new_password: str = Field(min_length=8, max_length=64)
 
 
 class AdminWhitelistApproveIn(BaseModel):
@@ -3408,7 +3416,14 @@ def verify_password_hash(stored: str, raw: str) -> bool:
 
 
 def resolve_admin_user(username: str) -> tuple[str, dict[str, Any]]:
-    users = current_admin_users()
+    try:
+        users = current_admin_users()
+    except Exception as exc:
+        # A database outage must become a normal API response.  Letting the
+        # connection exception escape from the login handler made the worker
+        # fail while nginx reported a misleading 502 to the browser.
+        LOGGER.exception("Admin auth store unavailable while resolving login")
+        raise HTTPException(status_code=503, detail="Сервис авторизации временно недоступен") from exc
     meta = users.get(username)
     if meta is not None:
         return username, meta
@@ -4091,8 +4106,10 @@ def read_player_whitelist_state_sync(site_account_id: str, minecraft_uuid: str, 
         ).fetchone()
         conn.commit()
     latest = dict(request) if request else {}
+    state_name = str(minecraft_name or latest.get("minecraft_name") or "")
+    state_uuid = str(effective_uuid or latest.get("minecraft_uuid") or "")
     automatic_registration = str(latest.get("status") or "").upper() == "AUTO_APPROVED"
-    if automatic_registration:
+    if automatic_registration or minecraft_identity_in_whitelist_file(state_name, state_uuid):
         whitelisted = True
     return {
         "whitelisted": whitelisted,
@@ -4105,8 +4122,8 @@ def read_player_whitelist_state_sync(site_account_id: str, minecraft_uuid: str, 
             "approvedBy": str(latest.get("approved_by") or ""),
             "note": str(latest.get("note") or ""),
         } if latest else None,
-        "minecraftName": minecraft_name or str(latest.get("minecraft_name") or ""),
-        "minecraftUuid": effective_uuid or str(latest.get("minecraft_uuid") or ""),
+        "minecraftName": state_name,
+        "minecraftUuid": state_uuid,
     }
 
 
@@ -4130,6 +4147,23 @@ def minecraft_identity_seen_on_server(minecraft_name: str, minecraft_uuid: str) 
             if (directory / f"{resolved_uuid}{suffix}").exists():
                 return True
     return False
+
+
+def minecraft_identity_in_whitelist_file(minecraft_name: str, minecraft_uuid: str) -> bool:
+    """Check the live whitelist file without claiming ownership in the DB."""
+    name = str(minecraft_name or "").strip().lower()
+    uuid_value = str(minecraft_uuid or "").strip().lower()
+    rows = read_json(MC_SERVER_DIR / "whitelist.json", [])
+    if not isinstance(rows, list):
+        return False
+    return any(
+        isinstance(row, dict)
+        and (
+            bool(name) and str(row.get("name") or "").strip().lower() == name
+            or bool(uuid_value) and str(row.get("uuid") or "").strip().lower() == uuid_value
+        )
+        for row in rows
+    )
 
 
 def minecraft_identity_is_bound_to_site(conn: Any, minecraft_uuid: str, minecraft_name: str) -> bool:
@@ -4183,7 +4217,7 @@ def create_whitelist_request_sync(account: dict[str, Any], request_ip: str) -> d
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         row = conn.execute("SELECT whitelisted FROM whitelist_account_links WHERE minecraft_uuid=%s LIMIT 1", (minecraft_uuid,)).fetchone()
-        if row and int(row["whitelisted"] or 0) > 0:
+        if (row and int(row["whitelisted"] or 0) > 0) or minecraft_identity_in_whitelist_file(minecraft_name, minecraft_uuid):
             raise HTTPException(status_code=409, detail="Игрок уже находится в whitelist")
         active = conn.execute(
             """
@@ -7151,6 +7185,120 @@ def plugin_player_activity_sync(player: str, limit: int = 220) -> dict[str, Any]
     return {"player": player, "source": admin_plugin_db_location(path), "rows": rows[: max(1, min(limit, 500))]}
 
 
+def dashboard_insights_sync(days: int = 7) -> dict[str, Any]:
+    """Return small, bounded aggregates for the admin dashboard.
+
+    The dashboard used to show readiness rings that looked informative but
+    contained no operational data.  Keep this query deliberately narrow: one
+    week of purchase rows and join/quit events, aggregated in Python so the
+    same response works with PostgreSQL and the legacy SQLite reader.
+    """
+    safe_days = max(3, min(int(days or 7), 14))
+    now = now_ts()
+    start = now - safe_days * 86400
+    day_keys = [datetime.fromtimestamp(start + offset * 86400, timezone.utc).strftime("%Y-%m-%d") for offset in range(safe_days)]
+    purchase_map = {key: {"date": key, "ar": 0, "donation": 0, "total": 0} for key in day_keys}
+    session_map = {key: {"date": key, "joins": 0, "quits": 0, "total": 0} for key in day_keys}
+
+    def add_purchase(raw: Any, kind: str) -> None:
+        try:
+            stamp = int(raw or 0)
+        except (TypeError, ValueError):
+            return
+        if stamp > 100_000_000_000:
+            stamp //= 1000
+        if stamp < start:
+            return
+        key = datetime.fromtimestamp(stamp, timezone.utc).strftime("%Y-%m-%d")
+        row = purchase_map.get(key)
+        if row is None:
+            return
+        row[kind] += 1
+        row["total"] += 1
+
+    def add_session(raw: Any, event_type: Any) -> None:
+        try:
+            stamp = int(raw or 0)
+        except (TypeError, ValueError):
+            return
+        if stamp > 100_000_000_000:
+            stamp //= 1000
+        if stamp < start:
+            return
+        key = datetime.fromtimestamp(stamp, timezone.utc).strftime("%Y-%m-%d")
+        row = session_map.get(key)
+        if row is None:
+            return
+        event = str(event_type or "").upper()
+        if event == "JOIN":
+            row["joins"] += 1
+        elif event == "QUIT":
+            row["quits"] += 1
+        else:
+            return
+        row["total"] += 1
+
+    if pg_ready():
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            if pg_table_exists(conn, "artifact_purchases"):
+                for row in conn.execute("SELECT created_at FROM artifact_purchases WHERE created_at >= %s ORDER BY created_at DESC LIMIT 5000", (start,)).fetchall():
+                    add_purchase(row.get("created_at"), "ar")
+            if pg_table_exists(conn, "donation_purchases"):
+                for row in conn.execute("SELECT created_at FROM donation_purchases WHERE created_at >= %s ORDER BY created_at DESC LIMIT 5000", (start * 1000,)).fetchall():
+                    add_purchase(row.get("created_at"), "donation")
+            if pg_table_exists(conn, "cmv7_player_activity"):
+                for row in conn.execute("SELECT time,type FROM cmv7_player_activity WHERE time >= %s AND type IN ('JOIN','QUIT') ORDER BY time DESC LIMIT 5000", (start,)).fetchall():
+                    add_session(row.get("time"), row.get("type"))
+    else:
+        path = admin_plugin_db_path()
+        if path.exists():
+            with open_sqlite_readonly(str(path)) as conn:
+                for table, kind in (("artifact_purchases", "ar"), ("donation_purchases", "donation")):
+                    if sqlite_has_table(conn, table):
+                        for row in safe_sqlite_rows(conn, table, order="created_at desc", limit=5000):
+                            add_purchase(row.get("created_at"), kind)
+                if sqlite_has_table(conn, "cmv7_player_activity"):
+                    for row in safe_sqlite_rows(conn, "cmv7_player_activity", order="time desc", limit=5000):
+                        add_session(row.get("time"), row.get("type"))
+
+    return {
+        "days": safe_days,
+        "purchasesByDay": list(purchase_map.values()),
+        "sessionActivityByDay": list(session_map.values()),
+        "generatedAt": now,
+    }
+
+
+def dashboard_activity_sync(limit: int = 80) -> dict[str, Any]:
+    safe_limit = max(1, min(int(limit or 80), 200))
+    rows: list[dict[str, Any]] = []
+    if pg_ready():
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            if pg_table_exists(conn, "cmv7_player_activity"):
+                source = conn.execute(
+                    "SELECT time,player_name,type,details FROM cmv7_player_activity WHERE type IN ('JOIN','QUIT') ORDER BY time DESC LIMIT %s",
+                    (safe_limit,),
+                ).fetchall()
+                rows = [
+                    {"time": int(row.get("time") or 0), "player": str(row.get("player_name") or ""), "type": str(row.get("type") or ""), "details": str(row.get("details") or "")}
+                    for row in source
+                ]
+    else:
+        path = admin_plugin_db_path()
+        if path.exists():
+            with open_sqlite_readonly(str(path)) as conn:
+                if sqlite_has_table(conn, "cmv7_player_activity"):
+                    source = safe_sqlite_rows(conn, "cmv7_player_activity", order="time desc,id desc", limit=safe_limit)
+                    rows = [
+                        {"time": int(row.get("time") or 0), "player": str(row.get("player_name") or ""), "type": str(row.get("type") or ""), "details": str(row.get("details") or "")}
+                        for row in source
+                        if str(row.get("type") or "").upper() in {"JOIN", "QUIT"}
+                    ]
+    return {"rows": rows, "count": len(rows), "generatedAt": now_ts()}
+
+
 def sanitize_election_row_public_admin(row: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
     source = dict(row or {})
     return {
@@ -9755,6 +9903,10 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
     account_id = secrets.token_hex(16)
     now = now_ts()
     whitelist_state = "NOT_REQUESTED"
+    # A brand-new Minecraft identity may be added to the server whitelist
+    # immediately.  Existing identities still require the normal recovery /
+    # admin approval flow and are never claimed by public registration.
+    auto_whitelist_fresh_identity = bool(minecraft_name) and not minecraft_identity_seen_on_server(minecraft_name, minecraft_uuid)
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         if player_account_by_username(conn, username):
@@ -9792,6 +9944,23 @@ async def player_register(data: PlayerRegisterIn, request: Request, response: Re
                 (f"wl-{secrets.token_hex(10)}", account_id, minecraft_uuid, minecraft_name, registration_ip, now, now),
             )
         conn.commit()
+    if auto_whitelist_fresh_identity:
+        try:
+            add_player_to_whitelist_sync(minecraft_uuid, minecraft_name)
+            whitelist_state = "AUTO_WHITELISTED"
+            append_panel_event(
+                "whitelist",
+                "registration_auto_added",
+                actor=username,
+                target=minecraft_name,
+                metadata={"accountId": account_id},
+                tags=["whitelist", "registration"],
+            )
+        except Exception as exc:
+            # The account is already valid even if RCON or the server file is
+            # temporarily unavailable.  Keep the pending request so an admin
+            # can approve it later and do not expose internal details.
+            LOGGER.warning("Automatic whitelist add failed for registration %s: %s", minecraft_name, exc)
     pg_record_auth_state("player_auth_runtime", {"mode": "postgresql-primary", "checkedAt": now, "latestRegisteredUser": username})
     account_payload = {
         "id": account_id,
@@ -10115,6 +10284,16 @@ async def status(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
         },
         "time": int(time.time()),
     }
+
+
+@app.get("/api/dashboard/insights")
+async def dashboard_insights(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
+    return await bg(dashboard_insights_sync, 7)
+
+
+@app.get("/api/dashboard/activity")
+async def dashboard_activity(limit: int = 80, _: str = Depends(require_panel_admin)) -> dict[str, Any]:
+    return await bg(dashboard_activity_sync, limit)
 
 
 @app.get("/api/server/files")
@@ -10658,6 +10837,64 @@ async def player_site_account_update(
         tags=["player", "security", "account"],
     )
     return result
+
+
+@app.post("/api/players/{player}/authme-password/reset")
+async def player_authme_password_reset(
+    player: str,
+    data: AdminAuthMePasswordResetIn,
+    request: Request,
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    """Set an AuthMe password without ever reading or returning its hash."""
+    player = clean_mc_player(player)
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="RCON_PASSWORD не настроен: AuthMe недоступен")
+    if any(char.isspace() or ord(char) < 0x20 for char in data.new_password) or not re.fullmatch(
+        r"[A-Za-z0-9!@#$%^&*()_+=\-\[\]{}:;,.?/]{8,64}", data.new_password
+    ):
+        raise HTTPException(status_code=400, detail="Пароль AuthMe должен содержать 8-64 безопасных символа без пробелов")
+    require_sensitive_confirm(request, "PLAYER_AUTHME_PASSWORD_RESET")
+    response = await rcon(f"authme changepassword {player} {data.new_password}")
+    lowered = str(response or "").lower()
+    if any(marker in lowered for marker in ("unknown command", "not registered", "player not found", "error")):
+        raise HTTPException(status_code=502, detail="AuthMe не подтвердил смену пароля")
+    audit_event(username, "player.authme_password_reset", target=player, details={"changed": True})
+    append_panel_event(
+        "admin-panel",
+        "player_authme_password_reset",
+        actor=username,
+        target=player,
+        metadata={"changed": True},
+        tags=["player", "security", "authme"],
+    )
+    return {"ok": True, "player": player, "passwordChanged": True}
+
+
+@app.post("/api/players/{player}/mute")
+async def player_voice_mute(
+    player: str,
+    data: PlayerMuteIn,
+    request: Request,
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    player = clean_mc_player(player)
+    if data.minutes not in {0, 5, 10, 30, 60}:
+        raise HTTPException(status_code=400, detail="Срок мута: 5, 10, 30 или 60 минут; 0 снимает мут")
+    require_sensitive_confirm(request, "PLAYER_VOICE_MUTE" if data.minutes else "PLAYER_VOICE_UNMUTE")
+    duration = "off" if data.minutes == 0 else str(data.minutes)
+    command = f"cmultra mute {player} {duration}"
+    response = await rcon(command)
+    audit_event(username, "player.voice_mute", target=player, details={"minutes": data.minutes, "command": command, "response": response[:400]})
+    append_panel_event(
+        "admin-panel",
+        "player_voice_mute",
+        actor=username,
+        target=player,
+        metadata={"minutes": data.minutes, "command": command},
+        tags=["player", "voice", "moderation"],
+    )
+    return {"ok": True, "player": player, "minutes": data.minutes, "command": command, "response": response}
 
 
 @app.post("/api/players/{player}/bank-pin/reset")
@@ -11707,7 +11944,7 @@ async def admin_db_delete(table: str, data: DbDeleteIn, request: Request, userna
 
 
 
-def admin_public_row(username: str, meta: dict[str, Any]) -> dict[str, Any]:
+def admin_public_row(username: str, meta: dict[str, Any], *, credentials_visible: bool = False) -> dict[str, Any]:
     lists = minecraft_access_lists()
     username_l = username.lower()
     uuid = name_to_uuid().get(username_l, "").lower()
@@ -11716,6 +11953,11 @@ def admin_public_row(username: str, meta: dict[str, Any]) -> dict[str, Any]:
     can_login = bool(meta.get("enabled", True)) and (is_op or not REQUIRE_OP_FOR_LOGIN) and (is_whitelisted or not REQUIRE_WHITELIST_FOR_LOGIN)
     return {
         "username": username,
+        # Never return a password or password hash.  The owner sees the
+        # login and whether a password exists, then uses a reset action.
+        "credentialsVisible": bool(credentials_visible),
+        "login": username if credentials_visible else "",
+        "passwordSet": bool(credentials_visible and str(meta.get("password_hash") or "")),
         "role": normalize_admin_role(meta.get("role")),
         "enabled": bool(meta.get("enabled", True)),
         "op": bool(is_op),
@@ -11847,9 +12089,11 @@ def remove_or_disable_admin_user(username: str, current_owner: str) -> dict[str,
 
 
 @app.get("/api/security/admins")
-async def security_admins(_: str = Depends(require_admin)) -> dict[str, Any]:
+async def security_admins(username: str = Depends(require_admin)) -> dict[str, Any]:
     users = current_admin_users()
-    rows = [admin_public_row(name, meta) for name, meta in users.items()]
+    requester = next((meta for name, meta in users.items() if str(name).casefold() == str(username).casefold()), {})
+    credentials_visible = normalize_admin_role(requester.get("role")) == "owner"
+    rows = [admin_public_row(name, meta, credentials_visible=credentials_visible) for name, meta in users.items()]
     rows.sort(key=lambda r: (not r["enabled"], r["username"].lower()))
     lists = minecraft_access_lists()
     whitelist_names = sorted(lists["whitelistNames"])
@@ -11858,7 +12102,7 @@ async def security_admins(_: str = Depends(require_admin)) -> dict[str, Any]:
     for name_l in whitelist_names:
         name = next((x.get("name") for x in lists["whitelist"] if isinstance(x, dict) and str(x.get("name", "")).lower() == name_l), name_l)
         candidates.append({"username": name, "alreadyAdmin": name_l in admin_names, "op": name_l in lists["opNames"]})
-    return {"admins": rows, "whitelistCandidates": candidates, "requireOp": REQUIRE_OP_FOR_LOGIN, "requireWhitelist": REQUIRE_WHITELIST_FOR_LOGIN}
+    return {"admins": rows, "whitelistCandidates": candidates, "requireOp": REQUIRE_OP_FOR_LOGIN, "requireWhitelist": REQUIRE_WHITELIST_FOR_LOGIN, "credentialsVisible": credentials_visible}
 
 
 @app.post("/api/security/admins")

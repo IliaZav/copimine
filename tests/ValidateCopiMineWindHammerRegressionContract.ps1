@@ -19,10 +19,12 @@ $staleCooldownLore = [string][char]0x041F + [char]0x0435 + [char]0x0440 + [char]
 foreach ($marker in @(
   ('name: "' + $windHammerName + '"'),
   'effect: WIND_HAMMER',
-  'cooldown_seconds: 60',
+  'cooldown_seconds: 300',
   $windHammerLore,
   'getNearbyEntities(center, 10.0D, 10.0D, 10.0D)',
-  'PotionEffectType.LEVITATION, 80, 0',
+  'setVelocity(player.getVelocity().setY(1.9D)',
+  'setFreezeTicks(Math.max(living.getFreezeTicks(), 100))',
+  'PotionEffectType.SLOWNESS, 100, 10',
   'source: ADMIN_ONLY',
   $aceLore,
   'adminOnlyCatalogItems'
@@ -45,7 +47,7 @@ foreach ($staleMarker in @(
 
 $hammer = [regex]::Match($items, '(?ms)^  - id: craftsman_hammer\r?\n.*?(?=^  - id:|\z)')
 if (-not $hammer.Success) { throw 'Wind hammer catalog entry is missing.' }
-foreach ($marker in @('material: MACE', 'custom_model_data: 10012', 'effect: WIND_HAMMER', 'cooldown_seconds: 60')) {
+foreach ($marker in @('material: MACE', 'custom_model_data: 10012', 'effect: WIND_HAMMER', 'cooldown_seconds: 300')) {
   if ($hammer.Value -notmatch [regex]::Escape($marker)) { throw "Wind hammer catalog marker is missing: $marker" }
 }
 
@@ -55,8 +57,9 @@ foreach ($marker in @(
   'getNearbyEntities(center, 10.0D, 10.0D, 10.0D)',
   'distanceSquared(center) > 100.0D',
   'entity == player',
-  'setY(Math.max(living.getVelocity().getY(), 1.15D))',
-  'PotionEffectType.LEVITATION, 80, 0'
+  'setVelocity(player.getVelocity().setY(1.9D)',
+  'setFreezeTicks(Math.max(living.getFreezeTicks(), 100))',
+  'PotionEffectType.SLOWNESS, 100, 10'
 )) {
   if ($windAbility.Value -notmatch [regex]::Escape($marker)) { throw "Wind hammer ability marker is missing: $marker" }
 }

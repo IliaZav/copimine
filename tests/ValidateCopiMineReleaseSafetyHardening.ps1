@@ -86,12 +86,12 @@ Require-Contains $prepareEmotecraftSh 'fabric-api-0.116.11+1.21.1.jar' 'Shell Fa
 Require-Contains $prepareEmotecraftPs1 'fabric-api-0.116.11+1.21.1.jar' 'PowerShell Fabric API preparer must use the packaged Fabric API version.'
 Require-NotContains $prepareEmotecraftSh '0.116.12' 'Shell Fabric API preparer must not stage a different version.'
 Require-NotContains $prepareEmotecraftPs1 '0.116.12' 'PowerShell Fabric API preparer must not stage a different version.'
-Require-Contains $imageFrameConfig 'Enabled: true' 'ImageFrame must restrict remote image sources.'
+Require-Contains $imageFrameConfig 'Enabled: false' 'ImageFrame must accept image URLs from any HTTP(S) source.'
 Require-Contains $imageFrameConfig 'MaxImageFileSize: 8388608' 'ImageFrame must cap downloaded image sizes.'
 Require-Contains $imageFrameConfig 'MapPacketSendingRateLimit: 64' 'ImageFrame must keep map packet sending rate-limited.'
 Require-Contains $imageFrameConfig 'Host: 127.0.0.1' 'Disabled ImageFrame upload service must remain bound to loopback.'
-if ($imageFrameConfig -notmatch '(?ms)^  RestrictImageUrl:\s*\r?\n^    Enabled: true\s*$') {
-    $errors.Add('ImageFrame remote image URL restriction must be enabled in the actual RestrictImageUrl section.')
+if ($imageFrameConfig -notmatch '(?ms)^  RestrictImageUrl:\s*\r?\n^    Enabled: false\s*$') {
+    $errors.Add('ImageFrame remote image URL restriction must be disabled for the requested any-source behavior.')
 }
 
 # Release-overhaul hardening checks.

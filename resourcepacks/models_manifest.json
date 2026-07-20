@@ -88,21 +88,21 @@
       "id": "batin_remen_sudnogo_dnya",
       "custom_model_data": 20001,
       "base_material": "netherite_axe",
-      "model": "copimine:item/artifacts/batin_remen_sudnogo_dnya",
+      "model": "minecraft:item/batin_remen_supnogo_dny_sword",
       "texture": "copimine:item/artifacts/batin_remen_sudnogo_dnya"
     },
     {
       "id": "nu_ty_i_nakopal_blyat_pickaxe",
       "custom_model_data": 20002,
       "base_material": "netherite_pickaxe",
-      "model": "copimine:item/artifacts/nu_ty_i_nakopal_blyat_pickaxe",
+      "model": "minecraft:item/nu_ti_i_nakopal_blyat_pickaxe",
       "texture": "copimine:item/artifacts/nu_ty_i_nakopal_blyat_pickaxe"
     },
     {
       "id": "kosa_nalogovoy_inspekcii",
       "custom_model_data": 20003,
       "base_material": "netherite_hoe",
-      "model": "copimine:item/artifacts/kosa_nalogovoy_inspekcii",
+      "model": "minecraft:item/kosa_nalogovoi_inspekcii_hoe",
       "texture": "copimine:item/artifacts/kosa_nalogovoy_inspekcii"
     },
     {
@@ -123,28 +123,28 @@
       "id": "ne_segodnya_suka_shield",
       "custom_model_data": 20006,
       "base_material": "shield",
-      "model": "copimine:item/artifacts/ne_segodnya_suka_shield",
+      "model": "minecraft:item/ne_segodny_suki_shield",
       "texture": "copimine:item/artifacts/ne_segodnya_suka_shield"
     },
     {
       "id": "ya_esche_ne_vse_isportil_totem",
       "custom_model_data": 20007,
       "base_material": "totem_of_undying",
-      "model": "copimine:item/artifacts/ya_esche_ne_vse_isportil_totem",
+      "model": "minecraft:item/ya_eche_ne_vse_isportil_totem_of_undying",
       "texture": "copimine:item/artifacts/ya_esche_ne_vse_isportil_totem"
     },
     {
       "id": "pohuy_na_debaffy_amulet",
       "custom_model_data": 20008,
       "base_material": "heart_of_the_sea",
-      "model": "copimine:item/artifacts/pohuy_na_debaffy_amulet",
+      "model": "minecraft:item/amulet_pohuy_na_debaffi_totem_of_undying",
       "texture": "copimine:item/artifacts/pohuy_na_debaffy_amulet"
     },
     {
       "id": "vremya_platit_nalogi_clock",
       "custom_model_data": 20009,
       "base_material": "clock",
-      "model": "copimine:item/artifacts/vremya_platit_nalogi_clock",
+      "model": "minecraft:item/time_to_pay_suchki_clock",
       "texture": "copimine:item/artifacts/vremya_platit_nalogi_clock",
       "animation": {"frame_count": 64, "frametime": 1, "interpolate": false}
     },
@@ -152,7 +152,7 @@
       "id": "gde_moy_lut_blyat_compass",
       "custom_model_data": 20010,
       "base_material": "compass",
-      "model": "copimine:item/artifacts/gde_moy_lut_blyat_compass",
+      "model": "minecraft:item/gde_moy_lut_blyt_compass",
       "texture": "copimine:item/artifacts/gde_moy_lut_blyat_compass",
       "animation": {"frame_count": 32, "frametime": 1, "interpolate": false}
     },

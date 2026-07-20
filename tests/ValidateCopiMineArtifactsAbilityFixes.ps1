@@ -17,8 +17,8 @@ foreach ($marker in @(
 }
 
 $miner = [regex]::Match($items, '(?ms)^  - id: copimine_miner_pickaxe\r?\n.*?(?=^  - id:|^donation-catalog:|\z)')
-if (-not $miner.Success -or $miner.Value -notmatch 'cooldown_seconds:\s*1') {
-  throw 'The 3x3 miner must not be locked for several minutes after one use.'
+if (-not $miner.Success -or $miner.Value -notmatch 'cooldown_seconds:\s*0') {
+  throw 'The 3x3 miner must remain available for each valid block break.'
 }
 $zmei = [regex]::Match($items, '(?ms)^  - id: zmei_gorynych\r?\n.*?(?=^  - id:|^donation-catalog:|\z)')
 if (-not $zmei.Success -or $zmei.Value -notmatch 'effect_chance_percent:\s*100') {

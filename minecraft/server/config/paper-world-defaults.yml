@@ -179,7 +179,8 @@ entities:
     iron-golems-can-spawn-in-air: false
     monster-spawn-max-light-level: default
     non-player-arrow-despawn-rate: default
-    per-player-mob-spawns: true
+    # Use the vanilla global mob cap instead of splitting it per player.
+    per-player-mob-spawns: false
     scan-for-legacy-ender-dragon: true
     skeleton-horse-thunder-spawn-chance: default
     slime-spawn-height:

@@ -1,5 +1,5 @@
 name: CopiMineElectionCore
-version: '1.0.0-election-rebuild'
+version: '9.2.0-postgres-v4-balance-credit'
 main: me.copimine.electioncore.CopiMineElectionCore
 api-version: '1.21'
 author: CopiMine

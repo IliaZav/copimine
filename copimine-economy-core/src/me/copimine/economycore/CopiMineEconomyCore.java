@@ -210,6 +210,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         TxnResult creditAccount(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details);
         TxnResult transferToAccount(UUID playerUuid, String playerName, String pin, String toAccountId, String toOwnerUuid, String toOwnerName, long amount, String idempotencyKey, String action, String details);
         TxnResult transferFromAccount(String fromAccountId, String fromOwnerUuid, String fromOwnerName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details);
+        TxnResult stealFromPlayerAccount(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details);
         /**
          * Returns charged shop transfers that have no matching artifact row.
          * The economy plugin owns this recovery query so feature plugins never
@@ -2303,6 +2304,56 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
     }
 
+    private TxnResult stealFromPlayerAccount(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
+        requireAsyncBankContext("ArtifactsBridge.stealFromPlayerAccount");
+        if (fromUuid == null || toUuid == null || fromUuid.equals(toUuid) || amount <= 0L) {
+            return new TxnResult(false, "INVALID_REQUEST", "Invalid AR theft request.", 0L, "");
+        }
+        String fromId = bankAccountId(fromUuid.toString());
+        String toId = bankAccountId(toUuid.toString());
+        try {
+            return tx(connection -> {
+                Map<String, Object> fromAccount = queryOne(connection,
+                    "SELECT * FROM cmv4_bank_accounts WHERE account_id=? AND status='ACTIVE' LIMIT 1", fromId);
+                if (fromAccount == null || fromAccount.isEmpty()) {
+                    return new TxnResult(false, "NO_BANK_ACCOUNT", "Victim has no bank account.", 0L, "");
+                }
+                Map<String, Object> toAccount = ensureBankAccount(connection, toUuid.toString(), first(toName, ""));
+                String txKey = first(idempotencyKey, "kosa-ar-steal-" + UUID.randomUUID());
+                TxnResult replay = replayTransferIfCommitted(connection, txKey, fromId, toId, amount);
+                if (replay != null) {
+                    return replay;
+                }
+                long fromBefore;
+                long toBefore;
+                if (fromId.compareTo(toId) <= 0) {
+                    fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                } else {
+                    toBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", toId);
+                    fromBefore = scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", fromId);
+                }
+                if (fromBefore < amount) {
+                    return new TxnResult(false, "INSUFFICIENT_AR", "Victim has no AR to take.", fromBefore, "");
+                }
+                long when = now();
+                long fromAfter = fromBefore - amount;
+                long toAfter = toBefore + amount;
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", fromAfter, when, fromId);
+                update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", toAfter, when, toId);
+                update(connection, "INSERT INTO cmv4_bank_transfers(tx_id,from_account_id,to_account_id,amount,currency,status,idempotency_key,created_at,actor,details) VALUES(?,?,?,?,'AR','COMMITTED',?,?,?,?)",
+                    txKey, fromId, toId, amount, txKey, when, "CopiMine Kosa", first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    txKey + ":out", fromId, toId, fromUuid.toString(), first(action, "AR_STEAL_OUT"), amount, fromAfter, txKey + ":out", "COMMITTED", when, first(fromName, ""), first(details, ""));
+                update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    txKey + ":in", toId, fromId, toUuid.toString(), first(action, "AR_STEAL_IN"), amount, toAfter, txKey + ":in", "COMMITTED", when, "CopiMine Kosa", first(details, ""));
+                return new TxnResult(true, "OK", "AR stolen.", toAfter, txKey);
+            });
+        } catch (Exception error) {
+            return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
+        }
+    }
+
     private CompletableFuture<TxnResult> chargeTreasuryWithPinAsync(Player actor, long amount, String pin, String idempotencyKey, String action, String details) {
         return dbFuture("treasury charge", () -> {
             if (actor == null || amount <= 0L) {
@@ -3548,6 +3599,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                         );
                     }
                 }
+                Map<String, Object> linkedBank = queryOne(connection,
+                    "SELECT account_id FROM cmv4_bank_accounts WHERE account_id=? AND owner_uuid=? AND status='ACTIVE' LIMIT 1",
+                    bankAccountId(playerUuid.toString()), playerUuid.toString());
+                if (linkedBank == null || linkedBank.isEmpty()) {
+                    throw new IllegalStateException("Donation purchase requires a linked active AR bank account.");
+                }
                 lockDonationEntitlement(connection, playerUuid.toString(), normalized);
                 if (hasOpenDonationEntitlement(connection, playerUuid.toString(), normalized)) {
                     throw new IllegalStateException("Player already has an active or unfinished donation entitlement for this item.");
@@ -3854,6 +3911,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         @Override
         public TxnResult transferFromAccount(String fromAccountId, String fromOwnerUuid, String fromOwnerName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
             return CopiMineEconomyCore.this.transferFromAccount(fromAccountId, fromOwnerUuid, fromOwnerName, toUuid, toName, amount, idempotencyKey, action, details);
+        }
+
+        @Override
+        public TxnResult stealFromPlayerAccount(UUID fromUuid, String fromName, UUID toUuid, String toName, long amount, String idempotencyKey, String action, String details) {
+            return CopiMineEconomyCore.this.stealFromPlayerAccount(fromUuid, fromName, toUuid, toName, amount, idempotencyKey, action, details);
         }
 
         @Override

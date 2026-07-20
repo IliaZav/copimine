@@ -12,7 +12,7 @@ if (-not $item.Success) {
 foreach ($expected in @(
     'material: MACE',
     'custom_model_data: 10012',
-    'cooldown_seconds: 60',
+    'cooldown_seconds: 300',
     'effect: WIND_HAMMER'
 )) {
     if ($item.Value -notlike "*$expected*") {
@@ -47,8 +47,9 @@ foreach ($expected in @(
     'distanceSquared(center) > 100.0D',
     'instanceof LivingEntity',
     'entity == player',
-    'setY(Math.max(living.getVelocity().getY(), 1.15D))',
-    'PotionEffectType.LEVITATION, 80, 0'
+    'setVelocity(player.getVelocity().setY(1.9D))',
+    'setFreezeTicks(Math.max(living.getFreezeTicks(), 100))',
+    'PotionEffectType.SLOWNESS, 100, 10'
 )) {
     if ($ability.Value -notlike "*$expected*") {
         throw "Wind hammer ability contract is missing: $expected"

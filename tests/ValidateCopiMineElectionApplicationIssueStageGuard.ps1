@@ -2,8 +2,7 @@
 $errors = New-ErrorList
 $body = Method-Body (Read-Utf8 $Paths.Election) 'private void issueApplicationBook'
 
-Require-Contains $body 'ElectionStage.PREPARATION' 'issueApplicationBook() must allow PREPARATION when configured by workflow.'
-Require-Contains $body 'ElectionStage.APPLICATIONS' 'issueApplicationBook() must allow APPLICATIONS.'
-Require-NotContains $body 'ElectionStage.REVIEW' 'issueApplicationBook() must not allow REVIEW anymore.'
+Require-Contains $body 'STAGE_INDEPENDENT_ISSUE' 'issueApplicationBook() must document stage-independent issuance.'
+Require-NotRegex $body 'context\.stage\(\)\s*!=\s*ElectionStage\.(PREPARATION|APPLICATIONS|REVIEW)' 'Issuing an application book must not be blocked by the current stage.'
 
 Throw-IfErrors 'ValidateCopiMineElectionApplicationIssueStageGuard'

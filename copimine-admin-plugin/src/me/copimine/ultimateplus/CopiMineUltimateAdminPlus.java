@@ -23,6 +23,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.PluginMessageListener;
+import org.bukkit.permissions.PermissionAttachment;
 import org.bukkit.potion.*;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.*;
@@ -55,9 +56,14 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
+import de.maxhenkel.voicechat.api.BukkitVoicechatService;
+import de.maxhenkel.voicechat.api.VoicechatPlugin;
+import de.maxhenkel.voicechat.api.VoicechatConnection;
+import de.maxhenkel.voicechat.api.events.EventRegistration;
+import de.maxhenkel.voicechat.api.events.MicrophonePacketEvent;
 
-public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Listener, CommandExecutor, TabCompleter, PluginMessageListener {
-    private static final String RELEASE_VERSION = "9.2.0-postgres-v4-balance-credit";
+public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Listener, CommandExecutor, TabCompleter, PluginMessageListener, VoicechatPlugin {
+    private static final String RELEASE_VERSION = "9.2.1-voice-mute";
     private String dbPath;
     private String dbLabel = "postgresql://127.0.0.1:5432/copimine?schema=copimine";
     private PgSettings pgSettings;
@@ -69,6 +75,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private final Map<UUID, UUID> checkMode = new ConcurrentHashMap<>();
     private final Map<UUID, Location> checkReturn = new ConcurrentHashMap<>();
     private final Map<UUID, Long> inventoryLocks = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> voiceMutes = new ConcurrentHashMap<>();
+    private final Map<UUID, PermissionAttachment> imageFramePermissionAttachments = new ConcurrentHashMap<>();
     private final Map<UUID, AtmPinSession> atmPinSessions = new ConcurrentHashMap<>();
     private final Map<UUID, List<ItemStack>> pendingOfficialReturns = new ConcurrentHashMap<>();
     private final Set<UUID> sidebarHidden = ConcurrentHashMap.newKeySet();
@@ -80,6 +88,15 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private static final String SIDEBAR_OBJECTIVE = "cmulive";
     private final Random rnd = new Random();
     private final Set<String> arPlacedBreaks = ConcurrentHashMap.newKeySet();
+    /**
+     * Fast, main-thread placement marker.  The database record is written
+     * asynchronously, so a player can place an official AR block and break it
+     * again before the INSERT has completed.  Keep the marker in memory for
+     * the lifetime of the loaded block as well as the original item so the
+     * certification survives that immediate round trip.
+     */
+    private final Set<String> arPlacedBlockKeys = ConcurrentHashMap.newKeySet();
+    private final Map<String, ItemStack> arPlacedStacks = new ConcurrentHashMap<>();
     private final Set<UUID> processedSealDrops = ConcurrentHashMap.newKeySet();
     private final Set<String> rpBlocked = new HashSet<>();
     private final Set<String> reportAllowed = new HashSet<>();
@@ -96,6 +113,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private CopiMineExpansionShim papi;
     private BukkitTask inventorySnapshotTask;
     private BukkitTask nameplateTask;
+    private BukkitTask voiceMuteCleanupTask;
     private final HttpClient backendHttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(4)).build();
     private NamespacedKey visualEntityTypeKey;
     private NamespacedKey visualKindKey;
@@ -239,6 +257,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @Override public void onEnable() {
         saveDefaultConfig();
+        loadVoiceMutes();
         dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors())), r -> {
             Thread t = new Thread(r, "copimine-postgres-worker");
             t.setDaemon(true);
@@ -270,6 +289,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(pc!=null){pc.setExecutor(this); pc.setTabCompleter(this);}
         }
         Bukkit.getPluginManager().registerEvents(this, this);
+        registerVoiceChat();
         getServer().getMessenger().registerIncomingPluginChannel(this, "minecraft:brand", this);
         for(Player online : Bukkit.getOnlinePlayers()) refreshElectionRoleStateAsync(online);
         if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
@@ -280,6 +300,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             for (Player p : Bukkit.getOnlinePlayers()) snapshotOnlineInventory(p, "periodic");
         }, 20L * 90L, 20L * 90L);
         nameplateTask = Bukkit.getScheduler().runTaskTimer(this, this::updateRoleNameplates, 80L, 20L * 300L);
+        voiceMuteCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupVoiceMutes, 20L * 30L, 20L * 30L);
         Bukkit.getScheduler().runTaskLater(this, () -> {
             try { persistStartupSelfCheck("SERVER"); }
             catch (Exception e) { getLogger().warning("startup self-check: "+e.getMessage()); }
@@ -299,6 +320,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if (sidebarTask != null) sidebarTask.cancel();
         if (inventorySnapshotTask != null) inventorySnapshotTask.cancel();
         if (nameplateTask != null) nameplateTask.cancel();
+        if (voiceMuteCleanupTask != null) voiceMuteCleanupTask.cancel();
+        imageFramePermissionAttachments.values().forEach(attachment -> {
+            try { attachment.remove(); } catch (Throwable ignored) {}
+        });
+        imageFramePermissionAttachments.clear();
+        saveVoiceMutes();
         getServer().getMessenger().unregisterIncomingPluginChannel(this, "minecraft:brand", this);
         if (papi != null) {
             try { papi.unregister(); }
@@ -308,6 +335,122 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         dbReady = false;
         closePostgres();
         getLogger().info("CopiMineUltimateAdminPlus "+getDescription().getVersion()+" disabled.");
+    }
+
+    private void registerVoiceChat() {
+        try {
+            BukkitVoicechatService service = getServer().getServicesManager().load(BukkitVoicechatService.class);
+            if (service == null) {
+                getLogger().warning("Simple Voice Chat service is not available; voice mute will be stored and enforced when voicechat loads.");
+                Bukkit.getScheduler().runTaskLater(this, this::registerVoiceChat, 40L);
+                return;
+            }
+            service.registerPlugin(this);
+            getLogger().info("Simple Voice Chat mute enforcement registered.");
+        } catch (Throwable error) {
+            getLogger().warning("Simple Voice Chat registration failed: " + safeErr(error));
+        }
+    }
+
+    @Override public String getPluginId() { return "copimine-admin-voice-mute"; }
+
+    @Override public void registerEvents(EventRegistration registration) {
+        registration.registerEvent(MicrophonePacketEvent.class, this::onVoiceMicrophonePacket);
+    }
+
+    private void onVoiceMicrophonePacket(MicrophonePacketEvent event) {
+        try {
+            VoicechatConnection connection = event.getSenderConnection();
+            if (connection == null || connection.getPlayer() == null) return;
+            Object raw = connection.getPlayer().getPlayer();
+            if (!(raw instanceof Player player)) return;
+            if (isVoiceMuted(player.getUniqueId())) event.cancel();
+        } catch (Throwable error) {
+            getLogger().warning("voice mute packet check failed: " + safeErr(error));
+        }
+    }
+
+    private void loadVoiceMutes() {
+        voiceMutes.clear();
+        if (!getConfig().isConfigurationSection("voice-mutes")) return;
+        for (String key : Objects.requireNonNull(getConfig().getConfigurationSection("voice-mutes")).getKeys(false)) {
+            try {
+                UUID id = UUID.fromString(key);
+                long expiresAt = getConfig().getLong("voice-mutes." + key, 0L);
+                if (expiresAt > System.currentTimeMillis()) voiceMutes.put(id, expiresAt);
+            } catch (IllegalArgumentException ignored) { }
+        }
+    }
+
+    private void saveVoiceMutes() {
+        try {
+            getConfig().set("voice-mutes", null);
+            for (Map.Entry<UUID, Long> entry : voiceMutes.entrySet()) {
+                if (entry.getValue() > System.currentTimeMillis()) getConfig().set("voice-mutes." + entry.getKey(), entry.getValue());
+            }
+            saveConfig();
+        } catch (Throwable error) {
+            getLogger().warning("voice mute state save failed: " + safeErr(error));
+        }
+    }
+
+    private void cleanupVoiceMutes() {
+        long now = System.currentTimeMillis();
+        boolean changed = voiceMutes.entrySet().removeIf(entry -> entry.getValue() <= now);
+        if (changed) saveVoiceMutes();
+    }
+
+    private boolean isVoiceMuted(UUID uuid) {
+        if (uuid == null) return false;
+        Long expiresAt = voiceMutes.get(uuid);
+        if (expiresAt == null) return false;
+        if (expiresAt <= System.currentTimeMillis()) {
+            voiceMutes.remove(uuid, expiresAt);
+            return false;
+        }
+        return true;
+    }
+
+    private long voiceMute(Player target, int minutes) {
+        long expiresAt = minutes <= 0 ? 0L : System.currentTimeMillis() + minutes * 60_000L;
+        if (expiresAt == 0L) voiceMutes.remove(target.getUniqueId());
+        else voiceMutes.put(target.getUniqueId(), expiresAt);
+        saveVoiceMutes();
+        return expiresAt;
+    }
+
+    private boolean handleVoiceMuteCommand(CommandSender sender, String[] args) {
+        if (!hasPlayerAdmin(sender)) { warn(sender, "Нет прав на управление игроками."); return true; }
+        if (args.length < 3) { msg(sender, "&e/cmultra mute <player> <5|10|30|60|off>"); return true; }
+        String name = args[1].trim();
+        if (!name.matches("[A-Za-z0-9_]{1,32}")) { warn(sender, "Некорректный ник игрока."); return true; }
+        String value = args[2].trim().toLowerCase(Locale.ROOT);
+        int minutes;
+        if (value.equals("off") || value.equals("0")) minutes = 0;
+        else {
+            try { minutes = Integer.parseInt(value); }
+            catch (NumberFormatException error) { warn(sender, "Срок: 5, 10, 30, 60 минут или off."); return true; }
+            if (!Set.of(5, 10, 30, 60).contains(minutes)) { warn(sender, "Срок: 5, 10, 30 или 60 минут."); return true; }
+        }
+        OfflinePlayer offline = Bukkit.getOfflinePlayer(name);
+        UUID uuid = offline.getUniqueId();
+        Player target = offline.getPlayer();
+        long expiresAt = target == null ? 0L : voiceMute(target, minutes);
+        if (target == null) {
+            if (minutes == 0) voiceMutes.remove(uuid); else voiceMutes.put(uuid, System.currentTimeMillis() + minutes * 60_000L);
+            saveVoiceMutes();
+            expiresAt = voiceMutes.getOrDefault(uuid, 0L);
+        }
+        String actor = sender.getName();
+        if (minutes == 0) {
+            msg(sender, "&aМут снят с &f" + name + "&a.");
+            if (target != null) msg(target, "&aАдминистрация сняла с вас мут голосового чата.");
+        } else {
+            msg(sender, "&eМикрофон игрока &f" + name + " &eотключён на &f" + minutes + " мин.");
+            if (target != null) msg(target, "&cВаш микрофон отключён администрацией на &f" + minutes + " мин.");
+        }
+        audit(actor, "ULTRA7_VOICE_MUTE", name + " minutes=" + minutes + " expiresAt=" + expiresAt, true);
+        return true;
     }
 
     @Override public void onPluginMessageReceived(String channel, Player player, byte[] message) {
@@ -382,6 +525,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler public void onJoin(PlayerJoinEvent e) {
         purgeTemporaryApplicationBooks(e.getPlayer());
         normalizeArInventoryState(e.getPlayer());
+        refreshImageFramePermissions(e.getPlayer());
         updatePlayerProfile(e.getPlayer(), true, clientBrands.getOrDefault(e.getPlayer().getUniqueId(),""));
         refreshElectionRoleStateAsync(e.getPlayer());
         recordPlayerActivity(e.getPlayer(), "JOIN", e.getPlayer().getLocation(), "online="+Bukkit.getOnlinePlayers().size(), false);
@@ -392,6 +536,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler public void onQuit(PlayerQuitEvent e) {
         purgeTemporaryApplicationBooks(e.getPlayer());
+        PermissionAttachment imageFrameAttachment = imageFramePermissionAttachments.remove(e.getPlayer().getUniqueId());
+        if (imageFrameAttachment != null) try { imageFrameAttachment.remove(); } catch (Throwable ignored) {}
         inventoryLocks.remove(e.getPlayer().getUniqueId());
         electionRoleCache.remove(e.getPlayer().getUniqueId());
         electionRoleRefreshInFlight.remove(e.getPlayer().getUniqueId());
@@ -667,7 +813,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if (m==Material.DIAMOND_ORE || m==Material.DEEPSLATE_DIAMOND_ORE) {
             try {
                 String key=blockKey(e.getBlock());
-                boolean placed=arPlacedBlockExists(e.getBlock());
+                boolean placed=arPlacedBlockKeys.contains(key) || arPlacedBlockExists(e.getBlock());
                 if(placed) arPlacedBreaks.add(key);
                 boolean eligible=isValidArCertificationBreak(e);
                 if(eligible&&!placed) arEligibleBreaks.add(key);
@@ -678,7 +824,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 // Keep the eligibility marker long enough for that event and
                 // remove it afterwards so a later unrelated break cannot
                 // inherit the certification flag.
-                Bukkit.getScheduler().runTaskLater(this, () -> { try { arEligibleBreaks.remove(blockKey(b)); deleteArPlacedBlock(b); } catch(Exception ex){ getLogger().warning("ar placed cleanup: "+ex); } }, 40L);
+                Bukkit.getScheduler().runTaskLater(this, () -> { try {
+                    String cleanupKey=blockKey(b);
+                    arEligibleBreaks.remove(cleanupKey);
+                    arPlacedBreaks.remove(cleanupKey);
+                    arPlacedBlockKeys.remove(cleanupKey);
+                    arPlacedStacks.remove(cleanupKey);
+                    deleteArPlacedBlock(b);
+                } catch(Exception ex){ getLogger().warning("ar placed cleanup: "+ex); } }, 40L);
             } catch(Exception ex){ getLogger().warning("ar mine: "+ex); }
         }
     }
@@ -686,6 +839,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=true)
     public void onArPlace(BlockPlaceEvent e) {
         if(!arMaterial(e.getBlockPlaced().getType())||!isOfficialArItem(e.getItemInHand())) return;
+        String key=blockKey(e.getBlockPlaced());
+        // Mark the block synchronously before the asynchronous database write.
+        // Store the original official stack so a Silk Touch break can return
+        // the same certified item instead of a vanilla ore block.
+        arPlacedBlockKeys.add(key);
+        arPlacedStacks.put(key,e.getItemInHand().clone());
         markOneArAssetPlaced(e.getPlayer(),e.getBlockPlaced().getLocation(),e.getBlockPlaced().getType());
         try { recordArPlacedBlock(e); } catch(Exception ex) { getLogger().warning("ar place: "+ex); }
     }
@@ -708,27 +867,49 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!arMaterial(e.getBlockState().getType())) return;
         try {
             String key=blockKey(e.getBlock());
-            boolean placed=arPlacedBreaks.remove(key) || arPlacedBlockExists(e.getBlock());
+            boolean placed=arPlacedBreaks.remove(key) || arPlacedBlockKeys.contains(key) || arPlacedBlockExists(e.getBlock());
             boolean eligible=arEligibleBreaks.remove(key) && isValidArCertificationDrop(e.getPlayer());
+            boolean reissuePlaced=placed && isValidArCertificationDrop(e.getPlayer());
+            ItemStack placedStack=arPlacedStacks.remove(key);
             int amount=0;
             for(Item item:e.getItems()){
                 ItemStack st=item.getItemStack();
                 if(!arMaterial(st.getType())) continue;
-                if(placed||!eligible) { amount+=st.getAmount(); continue; }
+                if(!reissuePlaced&&!eligible) { amount+=st.getAmount(); continue; }
                 CopiMineEconomyCore.OfficialArService service=officialArService();
-                ItemStack official=service==null?null:service.createStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
+                ItemStack official;
+                if(reissuePlaced) {
+                    // Reuse the placed stack when possible.  Do not call
+                    // ensureArAsset/tagArItem here: the original asset is
+                    // already tracked as PLACED and is removed by
+                    // deleteArPlacedBlock below.  Creating a second DB asset
+                    // would make a fast place->break look like duplication.
+                    official=placedStack!=null?placedStack.clone():createOfficialArStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
+                } else {
+                    official=service==null?null:service.createStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
+                }
                 if(official!=null){
+                    official.setAmount(Math.max(1,st.getAmount()));
                     item.setItemStack(official);
                     st=official;
                 }else{
                     tagArItem(st,e.getPlayer(),e.getBlockState().getType());
                     item.setItemStack(st);
                 }
-                if(official!=null)tagArItem(st,e.getPlayer(),e.getBlockState().getType());
+                if(official!=null) {
+                    if(reissuePlaced) {
+                        recordArTransaction("AR_PLACED_REISSUE",st,e.getPlayer(),"","",null,e.getBlock().getLocation(),"Официальный АР возвращён после установки и добычи шёлковым касанием");
+                    } else {
+                        tagArItem(st,e.getPlayer(),e.getBlockState().getType());
+                    }
+                }
                 amount+=st.getAmount();
             }
-            if(amount>0) arEvent(placed||!eligible?(placed?"AR_DROP_BLOCKED_PLACED":"AR_CERTIFICATION_BLOCKED"):"MINE_AR_DROP", e.getPlayer(), null, e.getBlockState().getType().name(), amount, e.getBlock().getLocation(), placed?"Поставленная руда не сертифицирована":(!eligible?"AR_CERTIFICATION_GATE_V3: drop was not produced by valid Silk Touch survival mining":"Сертифицированный АР создан добычей"));
-            if(placed) deleteArPlacedBlock(e.getBlock());
+            if(amount>0) arEvent(reissuePlaced||eligible?"MINE_AR_DROP":placed?"AR_DROP_BLOCKED_PLACED":"AR_CERTIFICATION_BLOCKED", e.getPlayer(), null, e.getBlockState().getType().name(), amount, e.getBlock().getLocation(), reissuePlaced?"Официальный АР восстановлен после установки и добыт шёлковым касанием":placed?"Поставленная руда добыта без шёлкового касания":!eligible?"AR_CERTIFICATION_GATE_V3: drop was not produced by valid Silk Touch survival mining":"Сертифицированный АР создан добычей");
+            if(placed) {
+                arPlacedBlockKeys.remove(key);
+                deleteArPlacedBlock(e.getBlock());
+            }
         } catch(Exception ex) { getLogger().warning("ar drop: "+ex); }
     }
 
@@ -2471,6 +2652,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         btn(m,13,Material.POTION,"&8Тьма",List.of(),"p:dark:"+n); btn(m,14,Material.MILK_BUCKET,"&fСнять наркотические эффекты",List.of("&7Снимает обычные эффекты, овердоз", "&7и просит CopiMineNarcotics очистить визуалы."),"p:cleanse:"+n); btn(m,15,Material.TOTEM_OF_UNDYING,"&aGod-like 10с",List.of(),"p:god10:"+n);
         btn(m,16,Material.NAME_TAG,"&6Fake OP",List.of(),"p:fakeop:"+n); btn(m,17,Material.SPYGLASS,"&bКто рядом",List.of(),"p:nearby:"+n); btn(m,18,Material.SCULK_SHRIEKER,"&cPanic",List.of("&7Срочный title и звук без урона."),"p:panic:"+n);
         btn(m,19,Material.SPIDER_EYE,"&dConfuse",List.of("&7Короткая дезориентация."),"p:confuse:"+n); btn(m,20,Material.IRON_DOOR,"&7Lock inventory",List.of("&7Блокирует клики в инвентаре на 5 секунд."),"p:inventory-lock:"+n); btn(m,23,Material.SPYGLASS,"&6Вызвать на проверку",List.of(),"p:check-start:"+n);
+        btn(m,24,Material.NOTE_BLOCK,"&eМут 5 минут",List.of("&7Отключить микрофон игрока на 5 минут."),"p:mute5:"+n);
+        btn(m,25,Material.NOTE_BLOCK,"&eМут 10 минут",List.of("&7Отключить микрофон игрока на 10 минут."),"p:mute10:"+n);
+        btn(m,26,Material.NOTE_BLOCK,"&eМут 30 минут",List.of("&7Отключить микрофон игрока на 30 минут."),"p:mute30:"+n);
+        btn(m,27,Material.NOTE_BLOCK,"&eМут 1 час",List.of("&7Отключить микрофон игрока на 1 час."),"p:mute60:"+n);
+        btn(m,28,Material.LIME_DYE,"&aСнять мут",List.of("&7Снова разрешить микрофон игрока."),"p:mute0:"+n);
         nav(m,"player:"+n,"open:p-actions:"+n); a.openInventory(m.inv); }
     private void openPPranks(Player a,String n){ Menu m=new Menu("ppranks"); create(m,54,"&c&lПриколы &8| &f"+n);
         Object[][] buttons={{10,Material.CARVED_PUMPKIN,"&6Тыква","pumpkin"},{11,Material.BELL,"&cИспугать","scare"},{12,Material.LIGHTNING_ROD,"&eМолния","lightning"},{13,Material.TNT,"&cФейк взрыв","explosion"},{14,Material.FEATHER,"&eПодбросить","launch"},{15,Material.POTION,"&8Тьма","dark"},{16,Material.GLOWSTONE_DUST,"&eGlow","glow"},{19,Material.COMPASS,"&bЗакрутить","spin"},{20,Material.BEACON,"&dЛевитация","levitate"},{21,Material.EGG,"&fКуриный дождь","chickens"},{22,Material.HOPPER,"&dХотбар","shufflehotbar"},{23,Material.NAME_TAG,"&6Fake OP","fakeop"},{24,Material.ANVIL,"&7Наковальня","anvil"},{25,Material.PAPER,"&fНалоговая","taxpaper"},{28,Material.HONEYCOMB,"&eЗлой улей","bee"},{29,Material.SCULK_SHRIEKER,"&9Варден","warden"},{30,Material.SPIDER_EYE,"&dТошнота","nausea"},{31,Material.FIREWORK_ROCKET,"&aФейерверк","fireworkfake"},{32,Material.POTATO,"&6Картошка","potato"},{33,Material.ENDER_PEARL,"&5Swap","swap"},{34,Material.BARRIER,"&4Fake ban","fakeban"},{35,Material.GOAT_HORN,"&fГорн","horn"}};
@@ -2786,6 +2972,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             openElections(admin);
             return;
         }
+        if (act.equals("mute5") || act.equals("mute10") || act.equals("mute30") || act.equals("mute60") || act.equals("mute0")) {
+            int minutes = act.equals("mute5") ? 5 : act.equals("mute10") ? 10 : act.equals("mute30") ? 30 : act.equals("mute60") ? 60 : 0;
+            applyVoiceMute(admin, t, minutes);
+            return;
+        }
         switch(act){
             case "inv" -> admin.openInventory(t.getInventory()); case "ender" -> admin.openInventory(t.getEnderChest()); case "tpto" -> {admin.teleport(t.getLocation()); msg(admin,"&aТП к игроку.");} case "tphere" -> {t.teleport(admin.getLocation()); msg(admin,"&aИгрок телепортирован.");}
             case "freeze" -> toggleFreeze(admin,t); case "heal" -> {t.setHealth(Math.min(t.getMaxHealth(),20.0)); t.setFoodLevel(20); t.setSaturation(20f); t.setFireTicks(0); msg(admin,"&aВылечен.");} case "feed" -> {t.setFoodLevel(20); t.setSaturation(20f);}
@@ -2805,6 +2996,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         audit(admin.getName(),"ULTRA7_PLAYER_"+act.toUpperCase(Locale.ROOT),t.getName(),true);
         snapshotOnlineInventory(t,"admin_"+act);
+    }
+
+    private void applyVoiceMute(Player admin, Player target, int minutes) {
+        if (!hasPlayerAdmin(admin)) { warn(admin, "Нет прав на управление игроками."); return; }
+        long expiresAt = voiceMute(target, minutes);
+        if (minutes == 0) {
+            msg(admin, "&aМут снят с &f" + target.getName() + "&a.");
+            msg(target, "&aАдминистрация сняла с вас мут голосового чата.");
+        } else {
+            msg(admin, "&eМикрофон &f" + target.getName() + " &eотключён на &f" + minutes + " мин.");
+            msg(target, "&cВаш микрофон отключён администрацией на &f" + minutes + " мин.");
+        }
+        audit(admin.getName(), "ULTRA7_VOICE_MUTE", target.getName() + " minutes=" + minutes + " expiresAt=" + expiresAt, true);
     }
 
     private void reopenPlayerContext(Player admin,String menuId,String action){
@@ -4363,7 +4567,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return meta!=null&&meta.hasCustomModelData()&&meta.getCustomModelData()==customModelData;
     }
     private boolean arPlacedBlockExists(Block b)throws SQLException{return scalarLong("SELECT COUNT(*) FROM cmv7_ar_placed_blocks WHERE world=? AND x=? AND y=? AND z=?",b.getWorld().getName(),b.getX(),b.getY(),b.getZ())>0;}
-    private void recordArPlacedBlock(BlockPlaceEvent e){Block b=e.getBlockPlaced(); long t=now(); String world=b.getWorld().getName(), mat=b.getType().name(), uuid=e.getPlayer().getUniqueId().toString(), name=e.getPlayer().getName(); int x=b.getX(),y=b.getY(),z=b.getZ(); dbAsync("AR placed block record",()->tx(c->{exec(c,"INSERT INTO cmv7_ar_placed_blocks(world,x,y,z,material,placed_by_uuid,placed_by_name,placed_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(world,x,y,z) DO UPDATE SET material=excluded.material,placed_by_uuid=excluded.placed_by_uuid,placed_by_name=excluded.placed_by_name,placed_at=excluded.placed_at",world,x,y,z,mat,uuid,name,t); exec(c,"INSERT INTO cmv7_ar_events(time,type,actor_uuid,actor_name,target_uuid,target_name,world,x,y,z,material,amount,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",t,"AR_BLOCK_PLACED",uuid,name,"","",world,x,y,z,mat,1,"Поставленная алмазная руда не будет сертифицирована при добыче"); return null;}));}
+    private void recordArPlacedBlock(BlockPlaceEvent e){Block b=e.getBlockPlaced(); long t=now(); String world=b.getWorld().getName(), mat=b.getType().name(), uuid=e.getPlayer().getUniqueId().toString(), name=e.getPlayer().getName(); int x=b.getX(),y=b.getY(),z=b.getZ(); dbAsync("AR placed block record",()->tx(c->{exec(c,"INSERT INTO cmv7_ar_placed_blocks(world,x,y,z,material,placed_by_uuid,placed_by_name,placed_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(world,x,y,z) DO UPDATE SET material=excluded.material,placed_by_uuid=excluded.placed_by_uuid,placed_by_name=excluded.placed_by_name,placed_at=excluded.placed_at",world,x,y,z,mat,uuid,name,t); exec(c,"INSERT INTO cmv7_ar_events(time,type,actor_uuid,actor_name,target_uuid,target_name,world,x,y,z,material,amount,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",t,"AR_BLOCK_PLACED",uuid,name,"","",world,x,y,z,mat,1,"Поставленная руда возвращается официальным АР при добыче шёлковым касанием; без него остаётся обычной рудой"); return null;}));}
     private void deleteArPlacedBlock(Block b){
         String world=b.getWorld().getName();
         int x=b.getX(),y=b.getY(),z=b.getZ();
@@ -5225,11 +5429,37 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void updateRoleNameplates(){for(Player p:Bukkit.getOnlinePlayers())updateRoleNameplate(p); ScoreboardManager sm=Bukkit.getScoreboardManager(); if(sm!=null)applyAllRoleScoreboardTeams(sm.getMainScoreboard());}
     private void updateRoleNameplate(Player p){
         if(p==null||!p.isOnline())return;
+        refreshImageFramePermissions(p);
         String prefix=rolePrefix(p);
         String label=c(prefix+p.getName());
         try{p.setPlayerListName(label);}catch(Throwable ex){try{p.setPlayerListName(c(p.getName()));}catch(Throwable ignored){}}
         try{p.setDisplayName(label);}catch(Throwable ignored){}
         applyRoleScoreboardTeam(p,null);
+    }
+    private boolean hasImageFrameAdminRole(Player p){
+        return p != null && (hasAdmin(p) || hasJuniorAdmin(p)
+                || p.hasPermission("copimine.players.admin")
+                || p.hasPermission("copimine.economy.admin")
+                || p.hasPermission("copimine.bank.admin")
+                || p.hasPermission("copimine.election.admin")
+                || p.hasPermission("copimine.election.cik"));
+    }
+    private void refreshImageFramePermissions(Player p){
+        if(p==null)return;
+        UUID uuid=p.getUniqueId();
+        PermissionAttachment previous=imageFramePermissionAttachments.remove(uuid);
+        if(previous!=null)try{previous.remove();}catch(Throwable ignored){}
+        PermissionAttachment attachment=null;
+        if(hasImageFrameAdminRole(p)){
+            attachment=p.addAttachment(this);
+            attachment.setPermission("imageframe.create",true);
+            attachment.setPermission("imageframe.createlimit.unlimited",true);
+        }else if(isPresident(p)){
+            attachment=p.addAttachment(this);
+            attachment.setPermission("imageframe.create",true);
+            attachment.setPermission("imageframe.createlimit.president",true);
+        }
+        if(attachment!=null)imageFramePermissionAttachments.put(uuid,attachment);
     }
     private String rolePrefix(Player p){
         // ROLE_LABELS_TAB_CHAT_NAMEPLATE_V3
@@ -5465,7 +5695,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!electionRoleRefreshInFlight.add(playerUuid))return;
         boolean permissionPresident=p.hasPermission("copimine.election.president");
         dbAsyncLoad("refreshElectionRoleState",()->loadElectionRoleState(playerUuid,permissionPresident),state->{
-            electionRoleCache.put(playerUuid,state);
+        electionRoleCache.put(playerUuid,state);
+            refreshImageFramePermissions(p);
             electionRoleRefreshInFlight.remove(playerUuid);
         },error->electionRoleRefreshInFlight.remove(playerUuid));
     }
@@ -5862,6 +6093,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(root.equals("cmsealdrop"))return handleSealDropCommand(sender,args);
             if(root.equals("report")||root.equals("appeal")){handleReport(sender,args);return true;}
             if(root.equals("reporta"))return handleReportaCommand(sender,args);
+            if(root.equals("cmultra")&&args.length>0&&args[0].equalsIgnoreCase("mute"))return handleVoiceMuteCommand(sender,args);
             if(root.equals("cadm")){if(sender instanceof Player p&&hasAnyAdmin(p))openMainHub(p);else warn(sender,"Нет прав."); return true;}
             if(root.equals("ar")||root.equals("cmbank")){if(sender instanceof Player p&&hasEconomyAdmin(p)){CopiMineEconomyCore economy=economyCore(); if(economy==null){warn(sender,"CopiMineEconomyCore недоступен."); return true;} economy.openAdminEconomyHub(p);}else msg(sender,"Банк и AR управляются через /cmultra."); return true;}
             if(root.equals("cmultra")&&args.length>0&&args[0].equalsIgnoreCase("bugreport"))return handleBugReportCommand(sender,args);

@@ -23,6 +23,10 @@ $placeholder = Get-ChildItem -Path (Join-Path $serverDir 'plugins') -Filter 'Pla
   Sort-Object LastWriteTime -Descending |
   Select-Object -First 1 -ExpandProperty FullName
 if ($placeholder) { $cp += $placeholder }
+$voicechat = Get-ChildItem -Path (Join-Path $serverDir 'plugins') -Filter 'voicechat-*.jar' -File -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1 -ExpandProperty FullName
+if ($voicechat) { $cp += $voicechat }
 if (Test-Path (Join-Path $serverDir 'libraries')) {
   $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
 }

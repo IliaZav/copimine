@@ -111,6 +111,9 @@ export function createPlayerDonationPages(deps) {
           <span>Выдача</span>
           <code>только в игре через donation shop</code>
         </div>
+        <div class="action-strip artifact-buy-reclaim">
+          <button class="btn btn-secondary" data-click="setTab('donation-items')">Вернуть потерянный предмет</button>
+        </div>
       </article>
     `;
   }

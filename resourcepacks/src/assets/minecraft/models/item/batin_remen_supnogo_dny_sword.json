@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/handheld",
+  "textures": {
+    "layer0": "copimine:item/artifacts/batin_remen_sudnogo_dnya"
+  }
+}

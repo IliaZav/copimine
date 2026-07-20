@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "copimine:item/artifacts/gde_moy_lut_blyat_compass_23"
+  }
+}

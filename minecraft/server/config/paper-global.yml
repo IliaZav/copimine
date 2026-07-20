@@ -45,7 +45,9 @@ console:
   has-all-permissions: false
 entities:
   spawning:
-    per-player-mob-spawns: true
+    # Match vanilla global mob-cap behavior so farms are not silently split
+    # into per-player quotas.
+    per-player-mob-spawns: false
 environment:
   optimize-explosions: true
 item-validation:

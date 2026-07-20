@@ -2,20 +2,16 @@
   "imageframe": {
     "Settings": {
       "RestrictImageUrl": {
-        "Enabled": true,
-        "Whitelist": [
-          "https://i.imgur.com",
-          "https://cdn.discordapp.com",
-          "https://media.discordapp.net",
-          "https://textures.minecraft.net"
-        ]
+        "Enabled": false,
+        "Whitelist": []
       },
       "MaxSize": 32,
       "MaxImageFileSize": 8388608,
       "MaxProcessingTime": 15,
       "ParallelProcessingLimit": 1,
       "PlayerCreationLimit": {
-        "default": 0,
+        "default": 10,
+        "president": 50,
         "admin": -1
       },
       "MapMarkerLimit": 10,

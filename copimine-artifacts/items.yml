@@ -166,15 +166,15 @@ items:
     price_ar: 1700
     supply_limit: 0
     per_player_limit: 5
-    cooldown_seconds: 60
+    cooldown_seconds: 300
     effect: WIND_HAMMER
     effect_chance_percent: 100
     visual_effect_id: STATIC_NOISE
     lore:
       - "&7ПКМ по земле: удар ветра."
-      - "&7Все существа в радиусе 10 блоков взлетают на 5 блоков."
-      - "&7Левитация: 4 секунды."
-      - "&7Перезарядка: 1 минута."
+      - "&7Подбрасывает владельца примерно на 20 блоков."
+      - "&7Враги в радиусе 10 блоков замерзают на 5 секунд."
+      - "&7Перезарядка: 5 минут."
       - "&7Не чинится на наковальне и не уходит в автокрафт."
 
   - id: kozyrny_tuz_pozdnyakova
@@ -273,7 +273,7 @@ donation-catalog:
       effect-profile-id: NALOGOVAYA_KOSA
       effect-description: "Бонусный урон, голод для цели и ограниченный вампиризм владельца."
       cooldown-seconds: 18
-      proc-chance: 0.18
+      proc-chance: 0.30
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true

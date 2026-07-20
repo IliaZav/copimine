@@ -14,23 +14,24 @@ chunk-gc:
   period-in-ticks: 600
 aliases: now-in-commands.yml
 
-# === CopiMine optimization block ===
+# Keep Bukkit's normal spawn limits and tick cadence.  Farms and mob
+# grinders rely on the vanilla values; throttling these values makes a player
+# standing still appear to have no natural spawns.
 spawn-limits:
-  monsters: 35
-  animals: 6
-  water-animals: 3
-  water-ambient: 3
-  water-underground-creature: 3
-  axolotls: 3
-  ambient: 1
+  monsters: 70
+  animals: 10
+  water-animals: 5
+  water-ambient: 20
+  water-underground-creature: 5
+  axolotls: 5
+  ambient: 15
 
 ticks-per:
   autosave: 6000
   animal-spawns: 400
-  monster-spawns: 5
-  water-spawns: 200
-  water-ambient-spawns: 200
-  water-underground-creature-spawns: 200
-  axolotl-spawns: 200
-  ambient-spawns: 400
-# === End CopiMine optimization block ===
+  monster-spawns: 1
+  water-spawns: 1
+  water-ambient-spawns: 1
+  water-underground-creature-spawns: 1
+  axolotl-spawns: 1
+  ambient-spawns: 1

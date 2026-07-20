@@ -2,9 +2,9 @@
 $errors = New-ErrorList
 $body = Method-Body (Read-Utf8 $Paths.Election) 'private void issueBallot'
 
-Require-Contains $body 'ElectionStage.DEBATES' 'issueBallot() must allow DEBATES.'
-Require-Contains $body 'ElectionStage.VOTING' 'issueBallot() must allow VOTING.'
-Require-Contains $body 'hasApplicationInElection' 'issueBallot() must still block players who received application books.'
-Require-Contains $body 'hasActiveBallot' 'issueBallot() must still block duplicate active ballots.'
+Require-Contains $body 'STAGE_INDEPENDENT_ISSUE' 'issueBallot() must document stage-independent issuance.'
+Require-NotRegex $body 'context\.stage\(\)\s*!=\s*ElectionStage\.(DEBATES|VOTING|SECOND_ROUND)' 'Issuing a ballot must not be blocked by the current stage.'
+$activeStatus = "status IN ('ISSUED','CONFIRMED','DEPOSITED')"
+Require-Contains $body $activeStatus 'issueBallot() must still block duplicate active ballots.'
 
 Throw-IfErrors 'ValidateCopiMineElectionBallotIssueStageGuard'

@@ -42,6 +42,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
@@ -349,7 +350,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             sendStationInfoToPlayer(player, station, protectedInfo.linkedId());
         } catch (Exception error) {
-            player.sendMessage(color("&cНе удалось обработать участок. Подробности в логе."));
+            sendUserError(player, error, "&cНе удалось обработать участок.");
             getLogger().warning("station interact: " + safeError(error));
         }
     }
@@ -381,7 +382,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             openSealTargetMenu(player, target, seal);
         } catch (Exception error) {
-            player.sendMessage(color("&cНе удалось проверить печать ЦИК."));
+            sendUserError(player, error, "&cНе удалось проверить печать ЦИК.");
             getLogger().warning("seal interact: " + safeError(error));
         }
     }
@@ -410,7 +411,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             try {
                 handleMenuAction(player, action, event.getClick(), holder);
             } catch (Exception error) {
-                sendUserError(player, error, "&cНе удалось выполнить действие. Подробности в логе.");
+                sendUserError(player, error, "&cНе удалось выполнить действие.");
                 getLogger().warning("menu action " + action + ": " + safeError(error));
             }
             return;
@@ -440,6 +441,27 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onCreativeInventoryAction(InventoryCreativeEvent event) {
+        ItemStack current = event.getCurrentItem();
+        if (isCikSeal(current)) {
+            event.setCancelled(true);
+            if (event.getWhoClicked() instanceof Player player) {
+                destroyOneCikSeal(player, readString(current, sealIdKey));
+                player.sendMessage(color("&eПечать ЦИК уничтожена."));
+                Bukkit.getScheduler().runTask(this, player::updateInventory);
+            }
+            return;
+        }
+        if (!isProtectedOfficialItem(current) && !isProtectedOfficialItem(event.getCursor())) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getWhoClicked() instanceof Player player) {
+            Bukkit.getScheduler().runTask(this, player::updateInventory);
+        }
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onMenuClose(InventoryCloseEvent event) {
         if (event.getInventory().getHolder() instanceof MenuHolder) {
@@ -455,6 +477,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             event.getItemDrop().remove();
             destroyOneCikSeal(event.getPlayer(), readString(dropped, sealIdKey));
             event.getPlayer().sendMessage(color("&eПечать ЦИК уничтожена."));
+            Bukkit.getScheduler().runTask(this, event.getPlayer()::updateInventory);
             return;
         }
         if (isProtectedOfficialItem(dropped)) {
@@ -827,7 +850,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("apply:stage:")) {
             String raw = action.substring("apply:stage:".length());
-            setStage(requireActiveElectionId(), ElectionStage.valueOf(raw), player.getName(), "Перевод через GUI");
+            ElectionStage requestedStage = ElectionStage.safeValue(raw);
+            if (requestedStage == ElectionStage.NONE) {
+                throw new IllegalStateException("Неизвестный этап выборов.");
+            }
+            setStage(requireActiveElectionId(), requestedStage, player.getName(), "Перевод через GUI");
             refreshSnapshotAndPush();
             openManagementMenu(player);
             return;
@@ -1006,10 +1033,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (action.startsWith("stage:")) {
             String raw = action.substring("stage:".length());
+            ElectionStage requestedStage = ElectionStage.safeValue(raw);
+            if (requestedStage == ElectionStage.NONE) {
+                player.sendMessage(color("&cНеизвестный этап выборов."));
+                return;
+            }
             openConfirmationMenu(player, "&6Подтвердить этап", List.of(
-                    "&7Новый этап: &f" + ElectionStage.safeValue(raw).title(),
+                    "&7Новый этап: &f" + requestedStage.title(),
                     "&7Изменение сразу применится ко всему выборному циклу."
-            ), "apply:stage:" + raw, "open:manage");
+            ), "apply:stage:" + requestedStage.name(), "open:manage");
             return;
         }
         if (action.startsWith("manage:limit:")) {
@@ -1533,7 +1565,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 }
             }
         } catch (Exception error) {
-            player.sendMessage(color("&cНе удалось завершить действие. Подробности в логе."));
+            sendUserError(player, error, "&cНе удалось завершить действие.");
             getLogger().warning("prompt " + prompt.kind() + ": " + safeError(error));
         }
     }
@@ -1579,14 +1611,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         )));
         setButton(holder, 10, Material.LIME_WOOL, "&aНачать выборы", List.of("&7Создать новый цикл и перевести его в подготовку."), "manage:start");
         setButton(holder, 11, Material.RED_WOOL, "&cОстановить выборы", List.of("&7Остановить только выборный цикл без касания других систем."), "manage:stop");
-        setButton(holder, 13, Material.CHEST, "&eПодготовка", List.of("&7Этап подготовки участков и лимитов."), "stage:PREPARATION");
-        setButton(holder, 14, Material.WRITABLE_BOOK, "&eПриём заявок", List.of("&7Открыть выдачу и сдачу заявок."), "stage:APPLICATIONS");
-        setButton(holder, 15, Material.BOOKSHELF, "&eПроверка заявок", List.of("&7Проверка ЦИК и администрацией."), "stage:REVIEW");
-        setButton(holder, 16, Material.JUKEBOX, "&eДебаты", List.of("&7Публичный этап перед бюллетенями."), "stage:DEBATES");
-        setButton(holder, 19, Material.FEATHER, "&eГолосование", List.of("&7Активировать бюллетени для игроков."), "stage:VOTING");
-        setButton(holder, 20, Material.CALCITE, "&eПодсчёт", List.of("&7Подсчитать подтверждённые и сданные бюллетени."), "stage:COUNTING");
-        setButton(holder, 21, Material.COMPARATOR, "&eВторой тур", List.of("&7Перейти ко второму туру при ничьей."), "stage:SECOND_ROUND");
-        setButton(holder, 22, Material.BEACON, "&eЗавершить", List.of("&7Завершить выборы и открыть президентский срок."), "stage:FINISHED");
+        setButton(holder, 13, Material.CHEST, "&eПодготовка", stageLore(ElectionStage.PREPARATION), "stage:PREPARATION");
+        setButton(holder, 14, Material.WRITABLE_BOOK, "&eПриём заявок", stageLore(ElectionStage.APPLICATIONS), "stage:APPLICATIONS");
+        setButton(holder, 15, Material.BOOKSHELF, "&eПроверка заявок", stageLore(ElectionStage.REVIEW), "stage:REVIEW");
+        setButton(holder, 16, Material.JUKEBOX, "&eДебаты (по желанию)", stageLore(ElectionStage.DEBATES), "stage:DEBATES");
+        setButton(holder, 19, Material.FEATHER, "&eГолосование", stageLore(ElectionStage.VOTING), "stage:VOTING");
+        setButton(holder, 20, Material.CALCITE, "&eПодсчёт", stageLore(ElectionStage.COUNTING), "stage:COUNTING");
+        setButton(holder, 21, Material.COMPARATOR, "&eВторой тур", stageLore(ElectionStage.SECOND_ROUND), "stage:SECOND_ROUND");
+        setButton(holder, 22, Material.BEACON, "&eЗавершить", stageLore(ElectionStage.FINISHED), "stage:FINISHED");
         setButton(holder, 24, Material.HOPPER, "&bЛимит кандидатов", buildLimitLore(snap.candidateLimit()), "none");
         int slot = 25;
         for (int value : CANDIDATE_LIMITS) {
@@ -3115,6 +3147,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void assignChairToStation(String stationId, String playerUuid, String playerName, String actor) throws Exception {
         long t = now();
         tx(connection -> {
+            Map<String, Object> station = queryOne(connection,
+                    "SELECT active,chair_uuid FROM polling_stations WHERE id=? FOR UPDATE", stationId);
+            if (station == null) {
+                throw new IllegalStateException("Участок не найден в базе. Обнови список участков и попробуй ещё раз.");
+            }
+            if (intValue(station.get("active")) <= 0) {
+                throw new IllegalStateException("Участок больше не активен.");
+            }
+            if (!string(station.get("chair_uuid")).isBlank()) {
+                throw new IllegalStateException("У участка уже есть председатель ЦИК.");
+            }
             update(connection, "UPDATE polling_stations SET chair_uuid=?,chair_name=?,updated_at=? WHERE id=?", playerUuid, playerName, t, stationId);
             update(connection, "UPDATE cik_chairs SET active=0 WHERE station_id=?", stationId);
             update(connection, "INSERT INTO cik_chairs(station_id,player_uuid,player_name,assigned_at,assigned_by,active) VALUES(?,?,?,?,?,1)", stationId, playerUuid, playerName, t, actor);
@@ -3131,14 +3174,31 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (player == null) {
             return;
         }
-        Map<String, Object> station = stationById(stationId);
-        if (station == null || intValue(station.get("active")) <= 0) {
+        stationByIdForOperation(stationId);
+        assignChairToStation(stationId, player.getUniqueId().toString(), player.getName(), player.getName());
+    }
+
+    private Map<String, Object> stationByIdForOperation(String stationId) throws Exception {
+        if (stationId == null || stationId.isBlank()) {
+            throw new IllegalStateException("Не указан участок.");
+        }
+        Map<String, Object> station = queryOne(
+                "SELECT * FROM polling_stations WHERE id=? LIMIT 1", stationId);
+        if (station == null) {
+            throw new IllegalStateException("Участок не найден в базе. Обнови список участков и попробуй ещё раз.");
+        }
+        if (intValue(station.get("active")) <= 0) {
             throw new IllegalStateException("Участок больше не активен.");
         }
-        if (!string(station.get("chair_uuid")).isBlank()) {
-            throw new IllegalStateException("У участка уже есть председатель ЦИК.");
+        return station;
+    }
+
+    private void requireStationForElection(String stationId, String electionId) throws Exception {
+        Map<String, Object> station = stationByIdForOperation(stationId);
+        if (electionId == null || electionId.isBlank()
+                || !electionId.equals(string(station.get("election_id")))) {
+            throw new IllegalStateException("Участок относится к другим выборам. Обнови список участков.");
         }
-        assignChairToStation(stationId, player.getUniqueId().toString(), player.getName(), player.getName());
     }
 
     private void removeChairFromStation(String stationId, String actor) throws Exception {
@@ -3337,9 +3397,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (!context.electionId().equals(sealContext.electionId())) {
                 throw new IllegalStateException("Эта печать ЦИК больше недействительна.");
             }
-            if (context.stage() != ElectionStage.PREPARATION && context.stage() != ElectionStage.APPLICATIONS) {
-                throw new IllegalStateException("Заявки сейчас не выдаются.");
-            }
+            // STAGE_INDEPENDENT_ISSUE: администратор/председатель может
+            // восстановить потерянный бланк в любой момент активных выборов.
             Map<String, Object> sealRow = queryOne(connection,
                     "SELECT id FROM cik_seals WHERE id=? AND election_id=? AND station_id=? AND player_uuid=? AND status='ACTIVE' LIMIT 1",
                     sealContext.sealId(), sealContext.electionId(), sealContext.stationId(), sealContext.playerUuid());
@@ -3365,6 +3424,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void issueApplicationBook(Player target, Player issuer) throws Exception {
+        // STAGE_INDEPENDENT_ISSUE: выдача без печати ЦИК запрещена.
         requireActiveElectionId();
         throw new IllegalStateException("Выдача заявки без проверенной печати ЦИК отключена.");
     }
@@ -3375,13 +3435,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         ensureCanReceiveIssuedElectionItem(target, "книгу заявки");
         String electionId = requireActiveElectionId();
+        requireStationForElection(stationId, electionId);
         String applicationId = "application_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
-            if (context.stage() != ElectionStage.PREPARATION && context.stage() != ElectionStage.APPLICATIONS) {
-                throw new IllegalStateException("Заявки сейчас не выдаются.");
-            }
+            // Выдача книги не зависит от этапа. Ограничение остаётся только на
+            // сдачу заполненной заявки (см. submitApplicationBook).
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
                 throw new IllegalStateException("Игрок уже связан с заявкой на этих выборах.");
@@ -3430,8 +3490,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         try (Connection connection = openConnection()) {
             ElectionContext context = requireActiveElectionContext(connection);
             if (!electionId.equals(context.electionId())
-                    || context.stage() != ElectionStage.APPLICATIONS) {
-                player.sendMessage(color("&eПриём заявок сейчас закрыт."));
+                    || (context.stage() != ElectionStage.APPLICATIONS && context.stage() != ElectionStage.REVIEW)) {
+                player.sendMessage(color("&eПриём заявок закрыт: положить книгу можно на этапе «Приём заявок» или «Проверка заявок»."));
                 return;
             }
         }
@@ -3477,9 +3537,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (!context.electionId().equals(sealContext.electionId())) {
                 throw new IllegalStateException("Эта печать ЦИК больше недействительна.");
             }
-            if (context.stage() != ElectionStage.DEBATES && context.stage() != ElectionStage.VOTING && context.stage() != ElectionStage.SECOND_ROUND) {
-                throw new IllegalStateException("Бюллетени сейчас не выдаются.");
-            }
+            // STAGE_INDEPENDENT_ISSUE: бюллетень можно выдать заранее на любом этапе.
+            // Положить его в урну всё равно получится только во время голосования.
             Map<String, Object> sealRow = queryOne(connection,
                     "SELECT id FROM cik_seals WHERE id=? AND election_id=? AND station_id=? AND player_uuid=? AND status='ACTIVE' LIMIT 1",
                     sealContext.sealId(), sealContext.electionId(), sealContext.stationId(), sealContext.playerUuid());
@@ -3488,15 +3547,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             int round = currentRoundFromDb(connection, context.electionId());
             roundRef.set(round);
-            long roundCandidates = scalarLong(connection,
-                    "SELECT COUNT(*) FROM round_candidates WHERE election_id=? AND round_no=? AND active=1",
-                    context.electionId(), round);
-            if (roundCandidates < 2) {
-                throw new IllegalStateException("Текущий тур ещё не подготовлен для выдачи бюллетеней.");
-            }
-            if (context.stage() == ElectionStage.SECOND_ROUND && round < 2) {
-                throw new IllegalStateException("Второй тур ещё не подготовлен.");
-            }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
                 // hasApplicationInElection guard stays mandatory for the current election.
@@ -3527,6 +3577,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void issueBallot(Player target, Player issuer) throws Exception {
+        // STAGE_INDEPENDENT_ISSUE: только через печать ЦИК.
         requireActiveElectionId();
         throw new IllegalStateException("Выдача бюллетеня без проверенной печати ЦИК отключена.");
     }
@@ -3537,25 +3588,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         ensureCanReceiveIssuedElectionItem(target, "бюллетень");
         String electionId = requireActiveElectionId();
+        requireStationForElection(stationId, electionId);
         String ballotId = "ballot_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         AtomicInteger roundRef = new AtomicInteger(1);
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
-            if (context.stage() != ElectionStage.DEBATES && context.stage() != ElectionStage.VOTING && context.stage() != ElectionStage.SECOND_ROUND) {
-                throw new IllegalStateException("Бюллетени сейчас не выдаются.");
-            }
+            // Администратор также может выдать бюллетень заранее. Проверка
+            // этапа выполняется только при подтверждении и сдаче голоса.
             int round = currentRoundFromDb(connection, context.electionId());
             roundRef.set(round);
-            long roundCandidates = scalarLong(connection,
-                    "SELECT COUNT(*) FROM round_candidates WHERE election_id=? AND round_no=? AND active=1",
-                    context.electionId(), round);
-            if (roundCandidates < 2) {
-                throw new IllegalStateException("Текущий тур ещё не подготовлен для выдачи бюллетеней.");
-            }
-            if (context.stage() == ElectionStage.SECOND_ROUND && round < 2) {
-                throw new IllegalStateException("Второй тур ещё не подготовлен.");
-            }
             if (scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND player_uuid=?",
                     context.electionId(), target.getUniqueId().toString()) > 0) {
                 throw new IllegalStateException("Игрок уже получал заявку на этих выборах. Бюллетень выдавать нельзя.");
@@ -4781,7 +4823,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (player == null) {
             return;
         }
+        String code = "ELECTION-" + Long.toString(System.currentTimeMillis(), 36).toUpperCase(Locale.ROOT);
+        String detail = publicOperationDetail(error);
         player.sendMessage(color(fallback));
+        player.sendMessage(color("&7Причина: &f" + (detail.isBlank() ? "неизвестна" : detail)));
+        player.sendMessage(color("&7Нашли ошибку? Напишите администратору: &e/reporta " + code + " &7и кратко опишите, что произошло."));
+    }
+
+    private String publicOperationDetail(Throwable error) {
+        if (!(error instanceof IllegalStateException) || error.getMessage() == null) {
+            return "Техническая ошибка сервера";
+        }
+        return shortText(error.getMessage(), 180);
     }
 
     private boolean hasActiveSeal(Player player, String stationId) throws Exception {
@@ -4890,6 +4943,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private boolean requiresElectionAdminAction(String action) {
         if (action == null || action.isBlank()) {
+            return false;
+        }
+        // Самоназначение председателя доступно обычному игроку на свободном
+        // участке; остальные действия с участком по-прежнему требуют админа.
+        if (action.startsWith("apply:station:self-chair:")) {
             return false;
         }
         return action.equals("open:manage")
@@ -6005,6 +6063,41 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return List.of("&7Текущий срок: &f" + current + " дн.", "&7Выбери длительность ниже.");
     }
 
+    private List<String> stageLore(ElectionStage stage) {
+        return switch (stage) {
+            case PREPARATION -> List.of(
+                    "&7Шаг 1: создай участки и назначь председателей.",
+                    "&7После этого выбери «Приём заявок».");
+            case APPLICATIONS -> List.of(
+                    "&7Шаг 2: игроки заполняют и сдают заявки.",
+                    "&7Сдать заявку можно здесь или на этапе проверки.");
+            case REVIEW -> List.of(
+                    "&7Шаг 3: одобри или отклони все сданные заявки.",
+                    // REVIEW_CAN_SKIP_DEBATES
+                    "&7После проверки можно сразу открыть голосование.");
+            case DEBATES -> List.of(
+                    "&7Необязательный этап: проведи дебаты кандидатов.",
+                    // OPTIONAL_DEBATES_STAGE
+                    "&7Этот этап можно пропустить и открыть голосование.");
+            case VOTING -> List.of(
+                    "&7Шаг 4: игрок выбирает кандидата и подтверждает бюллетень.",
+                    "&7Сдать подтверждённый бюллетень в урну можно только здесь.");
+            case COUNTING -> List.of(
+                    "&7Шаг 5: голосование закрыто, ЦИК считает голоса.",
+                    "&7Новые бюллетени уже не принимаются.");
+            case SECOND_ROUND -> List.of(
+                    "&7Только при равенстве лидеров после подсчёта.",
+                    "&7Проведи второй тур и снова открой голосование.");
+            case FINISHED -> List.of(
+                    "&7Выборы завершены, победитель утверждён.",
+                    "&7Дальше система создаст президентский срок.");
+            case PRESIDENT_TERM -> List.of(
+                    "&7Президентский срок уже идёт.",
+                    "&7Нажимай этот этап только для завершения срока.");
+            default -> List.of("&7Выбери этап по подсказке.");
+        };
+    }
+
     private String humanRecommendation(String value) {
         return switch (value == null ? "" : value.toUpperCase(Locale.ROOT)) {
             case "RECOMMEND" -> "рекомендовать";
@@ -6178,6 +6271,22 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 inventory.setItem(slot, stack);
             }
             player.updateInventory();
+            officialRestore.computeIfPresent(player.getUniqueId(), (uuid, queued) -> {
+                queued.removeIf(item -> sealId.equals(readString(item, sealIdKey)));
+                return queued.isEmpty() ? null : queued;
+            });
+            Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+                try {
+                    tx(connection -> {
+                        update(connection, "UPDATE cik_seals SET status='REVOKED',revoked_at=?,revoked_by=? WHERE id=? AND status='ACTIVE'",
+                                now(), player.getName(), sealId);
+                        logPluginEvent(connection, "election_core", "seal_destroyed", player.getName(), sealId, "player_action");
+                        return null;
+                    });
+                } catch (Exception error) {
+                    getLogger().warning("seal destroy persistence: " + safeError(error));
+                }
+            });
             return;
         }
     }
@@ -7155,7 +7264,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     if (to == ElectionStage.DEBATES) {
                         yield StageTransitionResult.allow();
                     }
-                    yield StageTransitionResult.deny("После проверки заявок можно перейти только к дебатам.");
+                    if (to == ElectionStage.VOTING) {
+                        if (activeCandidates < 2) {
+                            yield StageTransitionResult.deny("Для голосования нужно минимум 2 одобренных кандидата.");
+                        }
+                        if (stations < 1) {
+                            yield StageTransitionResult.deny("Сначала нужно создать хотя бы один участок.");
+                        }
+                        yield StageTransitionResult.allow();
+                    }
+                    yield StageTransitionResult.deny("После проверки выбери дебаты или сразу голосование.");
                 }
                 case DEBATES -> {
                     if (to != ElectionStage.VOTING) {

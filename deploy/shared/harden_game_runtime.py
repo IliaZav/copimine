@@ -40,10 +40,11 @@ def load_policy(path: Path) -> dict[str, Any]:
     imageframe = policy.get("imageframe", {})
     imageframe_settings = imageframe.get("Settings", {})
     authme = policy.get("authme", {})
-    if imageframe_settings.get("RestrictImageUrl", {}).get("Enabled") is not True:
-        raise PolicyError("Managed ImageFrame policy must enable RestrictImageUrl")
-    if not imageframe_settings.get("RestrictImageUrl", {}).get("Whitelist"):
-        raise PolicyError("Managed ImageFrame policy must have an approved URL whitelist")
+    image_url_policy = imageframe_settings.get("RestrictImageUrl", {})
+    if image_url_policy.get("Enabled") is not False:
+        raise PolicyError("Managed ImageFrame policy must allow URLs from any HTTP(S) source")
+    if image_url_policy.get("Whitelist") != []:
+        raise PolicyError("Managed ImageFrame URL whitelist must be empty when unrestricted sources are enabled")
     if imageframe_settings.get("MaxSize") != 32:
         raise PolicyError("Managed ImageFrame policy must cap map size at 32")
     if imageframe_settings.get("MaxImageFileSize") != 8 * 1024 * 1024:
@@ -52,8 +53,8 @@ def load_policy(path: Path) -> dict[str, Any]:
         raise PolicyError("Managed ImageFrame policy must cap processing time at 15 seconds")
     if imageframe_settings.get("ParallelProcessingLimit") != 1:
         raise PolicyError("Managed ImageFrame policy must allow only one parallel processor")
-    if imageframe_settings.get("PlayerCreationLimit") != {"default": 0, "admin": -1}:
-        raise PolicyError("Managed ImageFrame policy must reserve map creation for the admin group")
+    if imageframe_settings.get("PlayerCreationLimit") != {"default": 10, "president": 50, "admin": -1}:
+        raise PolicyError("Managed ImageFrame policy must set player=10, president=50 and admin=unlimited")
     if imageframe_settings.get("MapPacketSendingRateLimit") != 20:
         raise PolicyError("Managed ImageFrame policy must set a finite map packet rate limit")
     if imageframe_settings.get("CacheControlMode") != "DYNAMIC":
@@ -390,11 +391,15 @@ def apply_luckperms_imageframe(server_properties: Path, password: str, timeout_s
                 if request_id == -1:
                     raise PolicyError("RCON authentication failed")
                 commands = [
-                    "lp group default permission set imageframe.create false",
-                    "lp group default permission set imageframe.createlimit.default false",
+                    "lp group default permission set imageframe.create true",
+                    "lp group default permission set imageframe.createlimit.default true",
+                    "lp creategroup president",
+                    "lp group president permission set imageframe.create true",
+                    "lp group president permission set imageframe.createlimit.president true",
                     f"lp creategroup {admin_group}",
                     f"lp group {admin_group} permission set imageframe.create true",
                     f"lp group {admin_group} permission set imageframe.createlimit.admin true",
+                    f"lp group {admin_group} permission set imageframe.createlimit.unlimited true",
                 ]
                 for request_id, command in enumerate(commands, start=10):
                     send_rcon(sock, request_id, 2, command)
@@ -430,7 +435,7 @@ def self_test() -> None:
         bundled_imageframe_config = (
             "Settings:\n"
             "  RestrictImageUrl:\n"
-            "    Enabled: false\n"
+            "    Enabled: true\n"
             "    Whitelist:\n"
             "      - http://unsafe.example\n"
             "  MaxSize: 100\n"
@@ -469,7 +474,12 @@ def self_test() -> None:
         sync_runtime(server, policy_path, voice_template)
         image_text = read_text(image_config)
         auth_text = read_text(auth_config)
-        if "Enabled: true" not in image_text or "MaxImageFileSize: 8388608" not in image_text or "MapPacketSendingRateLimit: 20" not in image_text:
+        if (
+            "Enabled: false" not in image_text
+            or "MaxImageFileSize: 8388608" not in image_text
+            or "MapPacketSendingRateLimit: 20" not in image_text
+            or "PlayerCreationLimit:\n    default: 10\n    president: 50\n    admin: -1" not in image_text
+        ):
             raise PolicyError("ImageFrame security policy did not replace unsafe values")
         if "UploadService:\n  Enabled: false\n  WebServer:\n    Host: \"127.0.0.1\"" not in image_text:
             raise PolicyError("ImageFrame embedded upload service was not disabled and loopback-bound")

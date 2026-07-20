@@ -929,6 +929,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "&7AR- и donation-каталог, цены и выдача.",
                 "&7Создание по блоку под курсором,",
                 "&7статистика и отложенные выдачи."),"open:shops");
+        btn(m,24,Material.GOLD_BLOCK,"&e&lБанкоматы",List.of(
+                "&7Создание и удаление банкоматов по блоку.",
+                "&7Активные точки, координаты и журнал операций."),"open:bank-atms");
         p.openInventory(m.inv);
     }
 

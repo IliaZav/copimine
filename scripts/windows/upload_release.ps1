@@ -224,7 +224,7 @@ if (-not $RemoteSize) {
 if ([int64]$RemoteSize -ne [int64]$ArchiveSize) {
     Fail "Remote archive size mismatch. Local: $ArchiveSize Remote: $RemoteSize"
 }
-$RemoteShaValue = (& ssh $SshTarget "sha256sum '$RemoteArchive' | awk '{print \$1}'").Trim().ToLowerInvariant()
+$RemoteShaValue = (& ssh $SshTarget "sha256sum '$RemoteArchive' | cut -d' ' -f1").Trim().ToLowerInvariant()
 if ($RemoteShaValue -ne $ArchiveSha256) {
     Fail "Remote archive SHA256 mismatch. Local: $ArchiveSha256 Remote: $RemoteShaValue"
 }

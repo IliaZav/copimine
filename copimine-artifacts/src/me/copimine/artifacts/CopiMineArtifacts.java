@@ -135,7 +135,6 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 public final class CopiMineArtifacts extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
-   private static final long DONATION_RECLAIM_COST_AR = 3L;
    private static final String PRESIDENT_BUDGET_ACCOUNT_ID = "PRESIDENT_BUDGET";
    private static final String TREASURY_LABEL = "Казна CopiMine";
    private static final UUID EMPTY_UUID = new UUID(0L, 0L);
@@ -3587,24 +3586,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   private void openReclaimPin(Player player, String uniqueItemId) {
-      CopiMineArtifacts.SessionState state = this.session(player);
-      state.viewType = CopiMineArtifacts.ViewType.PIN;
-      state.reclaimUniqueItemId = this.firstNonBlank(uniqueItemId, "");
-      state.currentItemId = "";
-      Inventory menu = this.createMenu(player, state, CopiMineArtifacts.ViewType.PIN, 54, "&8PIN для возврата");
-      int[] slots = {20, 21, 22, 29, 30, 31, 38, 39, 40, 48};
-      for (int digit = 1; digit <= 9; digit++) {
-         this.setAction(menu, state, slots[digit - 1], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f" + digit, List.of()), "digit:" + digit);
-      }
-      this.setAction(menu, state, slots[9], this.button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "&f0", List.of()), "digit:0");
-      menu.setItem(13, this.button(Material.PAPER, "&bPIN для возврата", List.of("&7Стоимость: &f" + DONATION_RECLAIM_COST_AR + " AR", "&7" + this.maskedPin(state.pinBuffer))));
-      this.setAction(menu, state, 23, this.button(Material.BARRIER, "&cОтмена", List.of("&7Вернуться к списку потерь.")), "pin:cancel");
-      this.setAction(menu, state, 32, this.button(Material.YELLOW_WOOL, "&eОчистить", List.of()), "pin:clear");
-      this.setAction(menu, state, 41, this.button(Material.LIME_WOOL, "&aВернуть за " + DONATION_RECLAIM_COST_AR + " AR", List.of("&7Подтвердить списание и возврат.")), "pin:submit");
-      player.openInventory(menu);
-   }
-
    private void openPurchases(Player var1) {
       CopiMineArtifacts.SessionState var2 = this.session(var1);
       var2.viewType = CopiMineArtifacts.ViewType.PURCHASES;
@@ -4459,7 +4440,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            "&dВернуть утерянные предметы",
                            List.of(
                               "&7Здесь показываются только LOST_RECLAIMABLE предметы.",
-                              "&7Возврат одного предмета стоит &f" + DONATION_RECLAIM_COST_AR + " AR&7."
+                              "&7Возврат идёт по одному предмету за раз."
                            )
                         )
                      );
@@ -5177,25 +5158,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2.pinBuffer = "";
          this.refreshPin(var1);
       } else if ("pin:cancel".equals(var3)) {
-         if (!var2.reclaimUniqueItemId.isBlank()) {
-            var2.reclaimUniqueItemId = "";
-            var2.pinBuffer = "";
-            this.openDonationReclaim(var1);
-            return;
-         }
          CopiMineArtifacts.CatalogItem var14 = this.catalogById.get(var2.currentItemId);
          if (var14 != null) {
             this.openConfirm(var1, var14);
          }
       } else if ("pin:submit".equals(var3)) {
-         if (!var2.reclaimUniqueItemId.isBlank()) {
-            String uniqueItemId = var2.reclaimUniqueItemId;
-            String pin = var2.pinBuffer;
-            var2.reclaimUniqueItemId = "";
-            var2.pinBuffer = "";
-            this.reclaimDonationItemSafe(var1, uniqueItemId, pin);
-            return;
-         }
          CopiMineArtifacts.CatalogItem var13 = this.catalogById.get(var2.currentItemId);
          if (var13 != null) {
             this.executePurchase(var1, this.currentShop(var2), var13, var2.pinBuffer);
@@ -5266,9 +5233,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
          }
       } else if (var3.startsWith("donation:reclaim:item:")) {
-         CopiMineArtifacts.SessionState state = this.session(var1);
-         state.pinBuffer = "";
-         this.openReclaimPin(var1, var3.substring("donation:reclaim:item:".length()));
+         this.reclaimDonationItemSafe(var1, var3.substring("donation:reclaim:item:".length()));
       } else if ("refresh".equals(var3)) {
          // "refresh".equals(action)
          this.refreshCurrentMenu(var1, var2);
@@ -6462,7 +6427,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return null;
    }
 
-   private void reclaimDonationItemSafe(Player var1, String var2, String pin) {
+   private void reclaimDonationItemSafe(Player var1, String var2) {
       if (this.freeStorageSlots(var1.getInventory()) < 1) {
          var1.sendMessage(this.color("&eОсвободи хотя бы один слот в инвентаре, чтобы вернуть предмет."));
          return;
@@ -6512,36 +6477,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                return;
             }
 
-            CopiMineArtifacts.BridgeTxnResult charge = this.bridge.charge(
-               var1,
-               DONATION_RECLAIM_COST_AR,
-               this.firstNonBlank(pin, ""),
-               "donation-reclaim-" + var1.getUniqueId() + "-" + var3.uniqueItemId(),
-               "DONATION_RECLAIM",
-               "item=" + var3.itemId() + " old=" + var3.uniqueItemId()
-            );
-            if (!charge.ok()) {
-               try {
-                  this.rollbackDonationReclaim(var1.getUniqueId(), var6);
-               } catch (SQLException rollbackError) {
-                  this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after AR charge rejection", rollbackError);
-               }
-               this.runSync(() -> {
-                  if (var1.isOnline()) {
-                     String code = this.safeBridgeCode(charge.code());
-                     var1.sendMessage(this.color("&cВозврат не выполнен. Нужно " + DONATION_RECLAIM_COST_AR + " AR и верный PIN. Код: " + code));
-                  }
-               });
-               return;
-            }
-
             this.runSync(
                () -> {
                   if (!var1.isOnline()) {
                      this.runAsync(() -> {
                         try {
                            this.rollbackDonationReclaim(var1.getUniqueId(), var6);
-                           this.bridge.refund(var1, DONATION_RECLAIM_COST_AR, "donation-reclaim-refund-" + var6.newUniqueItemId(), "DONATION_RECLAIM_REFUND", "offline-before-delivery");
                         } catch (SQLException var4x) {
                            this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after quit", var4x);
                         }
@@ -6552,7 +6493,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      this.runAsync(() -> {
                         try {
                            this.rollbackDonationReclaim(var1.getUniqueId(), var6);
-                           this.bridge.refund(var1, DONATION_RECLAIM_COST_AR, "donation-reclaim-refund-" + var6.newUniqueItemId(), "DONATION_RECLAIM_REFUND", "inventory-full");
                         } catch (SQLException var4x) {
                            this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after inventory change", var4x);
                         }
@@ -6569,7 +6509,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      this.runAsync(() -> {
                         try {
                            this.rollbackDonationReclaim(var1.getUniqueId(), var6);
-                           this.bridge.refund(var1, DONATION_RECLAIM_COST_AR, "donation-reclaim-refund-" + var6.newUniqueItemId(), "DONATION_RECLAIM_REFUND", "add-item-leftover");
                         } catch (SQLException var4xx) {
                            this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after addItem leftovers", var4xx);
                         }
@@ -11108,7 +11047,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       String currentItemId = "";
       int page = 0;
       String pinBuffer = "";
-      String reclaimUniqueItemId = "";
       String purchaseInFlightId = "";
       UUID giftTargetUuid;
       String giftTargetName = "";

@@ -3217,7 +3217,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
     expires_at: row.expires_at || 0,
   }));
   const artifactPurchaseRows = asArray(detail?.economy?.artifactPurchases);
-  const artifactLimitRows = asArray(giftCatalog?.categories?.AR).map((item) => {
+  const artifactLimitRows = asArray(giftCatalog?.AR).map((item) => {
     const itemId = cleanText(item.item_id || "");
     const bought = artifactPurchaseRows.filter((row) => cleanText(row.item_id || "").toLowerCase() === itemId.toLowerCase() && ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY"].includes(String(row.status || "").toUpperCase())).length;
     return { item_id: itemId, display_name: cleanText(item.display_name || itemId), bought, limit: 5 };

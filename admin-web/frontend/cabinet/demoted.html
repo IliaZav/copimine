@@ -13,38 +13,8 @@
   <link rel="stylesheet" href="/assets/css/release-ui.css" />
 </head>
 <body class="auth-screen">
-  <main class="public-site public-site-compact auth-public-site">
-    <header class="public-nav public-nav-auth">
-      <a class="public-brand" href="/index.html" aria-label="CopiMine">
-        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
-        <span class="public-brand-copy"><strong>CopiMine</strong><small>Личный кабинет</small></span>
-      </a>
-      <nav aria-label="Разделы сайта">
-        <a href="/index.html">Главная</a>
-        <a href="/shops.html">Лавки</a>
-        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" type="button">Тема</button>
-      </nav>
-    </header>
-    <div class="public-page-shell">
-      <section class="auth-card" style="max-width: 720px; margin: 3rem auto; text-align: center;">
-        <div class="auth-card-head" style="justify-content: center;">
-          <img class="auth-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
-        </div>
-        <span class="auth-kicker">Статус доступа</span>
-        <h1>Вы были разжалованы до игрока</h1>
-        <p>Обратитесь к администрации.</p>
-        <div class="action-strip" style="justify-content: center; margin-top: 1.5rem;">
-          <a class="btn btn-primary" href="/cabinet/dashboard.html">Личный кабинет</a>
-          <button class="btn btn-ghost" id="logout" type="button">Выйти</button>
-        </div>
-      </section>
-    </div>
+  <main style="min-height:100vh;display:grid;place-items:center;padding:2rem;text-align:center;">
+    <h1 style="margin:0;max-width:100%;font-size:clamp(2rem,6vw,5rem);">Вы были разжалованы до игрока.<br />Обратитесь к администрации.</h1>
   </main>
-  <script type="module">
-    document.getElementById("logout")?.addEventListener("click", async () => {
-      try { await fetch("/api/auth/logout", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch (_) {}
-      window.location.replace("/signin.html");
-    });
-  </script>
 </body>
 </html>

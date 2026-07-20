@@ -49,7 +49,12 @@ function Read-Size([string]$PathValue) {
 }
 
 function Invoke-Ssh([string]$Target, [string]$CommandText) {
-    & ssh $Target $CommandText
+    # PowerShell here-strings use the Windows CRLF convention.  Bash on the
+    # Ubuntu host treats the trailing carriage return as part of each token
+    # (for example `/home/qwerty/copimine-upload\r`), so normalize every
+    # remote command to LF before handing it to SSH.
+    $normalized = $CommandText -replace "`r`n", "`n" -replace "`r", "`n"
+    & ssh $Target $normalized
     if ($LASTEXITCODE -ne 0) {
         Fail "SSH command failed: $CommandText"
     }

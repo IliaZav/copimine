@@ -812,12 +812,22 @@ function wireDataInputDelegation() {
 
 async function refreshCsrfCookie() {
   try {
-    await fetch(`/api/auth/csrf?_fresh=${Date.now()}`, {
+    await fetchWithTimeout(`/api/auth/csrf?_fresh=${Date.now()}`, {
       method: "GET",
       cache: "no-store",
       credentials: "include"
-    });
+    }, 8000);
   } catch {}
+}
+
+// A stalled proxy or a sleeping upstream must never leave the cabinet behind
+// the boot screen forever.  All bootstrap and API calls use a bounded wait;
+// the caller can then show the normal error/retry path.
+function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  if (typeof AbortController === "undefined") return fetch(url, options);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 async function tryRefreshSession() {
@@ -831,13 +841,13 @@ async function tryRefreshSession() {
       try {
         const headers = { "Content-Type": "application/json" };
         if (csrf) headers[CSRF_HEADER] = csrf;
-        const res = await fetch(`${endpoint}?_fresh=${Date.now()}`, {
+        const res = await fetchWithTimeout(`${endpoint}?_fresh=${Date.now()}`, {
           method: "POST",
           cache: "no-store",
           credentials: "include",
           headers,
           body: "{}"
-        });
+        }, 12000);
         if (!res.ok) continue;
         const data = await res.json();
         state.cookieAuth = data.cookieAuth === true;
@@ -931,13 +941,13 @@ async function api(url, opts = {}) {
     if (csrf) headers[CSRF_HEADER] = csrf;
   }
   const finalUrl = url.startsWith("/api/") ? `${url}${url.includes("?") ? "&" : "?"}_fresh=${Date.now()}` : url;
-  const res = await fetch(finalUrl, {
+  const res = await fetchWithTimeout(finalUrl, {
     ...fetchOpts,
     method,
     cache: "no-store",
     credentials: "include",
     headers
-  });
+  }, 15000);
   const text = await res.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { detail: text }; }
@@ -3365,7 +3375,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
           { key: "bought", label: "Куплено" },
           { key: "limit", label: "Лимит" },
           { key: "item_id", label: "Действие", render: (value, row) => `<button class="btn btn-secondary btn-small" data-click="playerResetArtifactLimit('${esc(player)}','${esc(value)}','${esc(row.limit_category)}')">Сбросить лимит</button>` },
-        ], { pageSize: 10 })))}
+        ], { pageSize: 10 })}`)}
         <details class="admin-access-advanced">
           <summary>Точная установка баланса (для исправления данных)</summary>
           <div class="form-grid compact-grid">

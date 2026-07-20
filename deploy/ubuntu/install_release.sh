@@ -19,9 +19,65 @@ WIPE_WORLDS=0
 RESET_GAMEPLAY=0
 RESET_TREASURY=0
 
-usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n' "$0" >&2; }
-[[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }
+usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n' "$0" "$0" >&2; }
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
+
+cleanup_zabbix() {
+  echo '[zabbix] stopping services'
+  systemctl disable --now zabbix-agent.service zabbix-server.service 2>/dev/null || true
+
+  echo '[zabbix] removing packages and unused dependencies'
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get purge -y zabbix-agent zabbix-frontend-php zabbix-nginx-conf zabbix-release \
+    zabbix-server-mysql zabbix-sql-scripts 2>&1 || true
+  apt-get autoremove -y 2>&1 || true
+
+  echo '[zabbix] removing configuration, logs and web pool'
+  rm -rf -- /etc/zabbix /var/lib/zabbix /var/log/zabbix /var/cache/zabbix \
+    /usr/share/zabbix /usr/share/zabbix-sql-scripts
+  rm -f -- /etc/php/*/fpm/pool.d/zabbix-php-fpm.conf \
+    /etc/nginx/disabled-duplicates-*/zabbix.conf.disabled \
+    /etc/apt/sources.list.d/zabbix.list /etc/apt/sources.list.d/zabbix-tools.list \
+    /etc/apt/trusted.gpg.d/zabbix-official-repo.gpg \
+    /etc/apt/trusted.gpg.d/zabbix-official-repo-apr2024.gpg \
+    /etc/apt/trusted.gpg.d/zabbix-tools.gpg
+  rm -f -- /home/qwerty/zabbix-release*.deb
+  rm -f -- /var/lib/apt/lists/repo.zabbix.com_*
+  find /etc/systemd/system -path '*zabbix*' -type l -delete 2>/dev/null || true
+  systemctl daemon-reload
+  systemctl restart php8.3-fpm.service 2>/dev/null || true
+  systemctl reload nginx.service 2>/dev/null || true
+
+  if command -v mysql >/dev/null 2>&1; then
+    echo '[zabbix] checking MySQL schema'
+    mapfile -t zabbix_dbs < <(mysql --protocol=socket --batch --skip-column-names \
+      -e "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME IN ('zabbix','zabbix_proxy');" 2>/dev/null || true)
+    for db in "${zabbix_dbs[@]}"; do
+      [[ "$db" =~ ^zabbix(_proxy)?$ ]] || continue
+      mysql --protocol=socket --batch --skip-column-names -e "DROP DATABASE IF EXISTS \`$db\`;" \
+        && echo "[zabbix] dropped MySQL database: $db" || echo "[zabbix] could not drop MySQL database: $db" >&2
+    done
+    mysql --protocol=socket --batch --skip-column-names -e \
+      "DROP USER IF EXISTS 'zabbix'@'localhost','zabbix'@'127.0.0.1','zabbix'@'%'; FLUSH PRIVILEGES;" 2>/dev/null || true
+  fi
+  if getent passwd zabbix >/dev/null 2>&1; then userdel --remove zabbix 2>/dev/null || true; fi
+  if getent group zabbix >/dev/null 2>&1; then groupdel zabbix 2>/dev/null || true; fi
+
+  local remaining_zabbix
+  remaining_zabbix="$(ps -eo pid=,args= | awk '$0 ~ /[z]abbix/ && $0 !~ /install_release\.sh --cleanup-zabbix/ && $0 !~ /awk.*zabbix/ {print}')"
+  if [[ -n "$remaining_zabbix" ]]; then
+    echo '[zabbix] WARNING: a Zabbix process is still present' >&2
+    printf '%s\n' "$remaining_zabbix" >&2
+    return 1
+  fi
+  echo '[zabbix] cleanup complete'
+}
+
+if [[ "$ARCHIVE_PATH" == "--cleanup-zabbix" ]]; then
+  cleanup_zabbix
+  exit $?
+fi
+[[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }
 shift
 if [[ "${1:-}" != --* && -n "${1:-}" ]]; then ARCHIVE_SHA256="$1"; shift; fi
 while [[ $# -gt 0 ]]; do

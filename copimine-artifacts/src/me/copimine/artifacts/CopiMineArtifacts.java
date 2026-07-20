@@ -5116,34 +5116,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   )
                );
             } else {
-               var2.purchaseInFlightId = "pin-status:" + var15.itemId();
-               this.bridge
-                  .pinStatusAsync(var1.getUniqueId())
-                  .whenComplete(
-                     (var3x, var4x) -> this.runSync(
-                           () -> {
-                              CopiMineArtifacts.SessionState var5x = this.session(var1);
-                              if (var1.isOnline() && var5x.purchaseInFlightId.equals("pin-status:" + var15.itemId())) {
-                                 var5x.purchaseInFlightId = "";
-                                 if (var4x != null) {
-                                    var1.sendMessage(
-                                       this.color(
-                                          "&cНе удалось проверить PIN-статус. Попробуйте ещё раз."
-                                       )
-                                    );
-                                 } else {
-                                    // Every in-game purchase must pass through
-                                    // the PIN pad.  The old fallback charged
-                                    // with an empty PIN whenever the async
-                                    // status call reported "not configured",
-                                    // which made the shop silently skip PIN.
-                                    var5x.pinBuffer = "";
-                                    this.openPin(var1, var15);
-                                 }
-                              }
-                           }
-                        )
-                  );
+               // Open the PIN pad synchronously. A status probe could fail or
+               // report “not configured”; purchases must never bypass PIN entry.
+               CopiMineArtifacts.SessionState var5x = var2;
+               var5x.pinBuffer = "";
+               this.openPin(var1, var15);
             }
          }
       } else if (var3.startsWith("digit:")) {

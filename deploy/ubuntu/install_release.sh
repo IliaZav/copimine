@@ -224,6 +224,14 @@ EOF
   systemctl --no-pager --full status zapret_discord_youtube.service | sed -n '1,24p'
 }
 
+restart_discord_services() {
+  systemctl restart copimine-discord-bot.service copimine-minecraft-discord-bridge.service
+  sleep 8
+  systemctl is-active --quiet copimine-discord-bot.service || { echo '[discord] bot failed to start' >&2; return 1; }
+  systemctl is-active --quiet copimine-minecraft-discord-bridge.service || { echo '[discord] bridge failed to start' >&2; return 1; }
+  echo '[discord] bot and Minecraft bridge restarted'
+}
+
 if [[ "$ARCHIVE_PATH" == "--cleanup-zabbix" ]]; then
   cleanup_zabbix
   exit $?
@@ -238,6 +246,10 @@ if [[ "$ARCHIVE_PATH" == "--refresh-resource-pack-url" ]]; then
 fi
 if [[ "$ARCHIVE_PATH" == "--restore-zapret" ]]; then
   restore_zapret_from_official_repo
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--restart-discord" ]]; then
+  restart_discord_services
   exit $?
 fi
 [[ -n "$ARCHIVE_PATH" ]] || { usage; exit 2; }

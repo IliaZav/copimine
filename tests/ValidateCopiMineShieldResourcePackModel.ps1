@@ -6,11 +6,11 @@ $model = Get-Content -LiteralPath $modelPath -Raw -Encoding UTF8 | ConvertFrom-J
 $builder = Get-Content -LiteralPath $builderPath -Raw -Encoding UTF8
 
 if ($model.parent -ne 'minecraft:item/generated') {
-    throw 'The custom shield model must use a normal generated item icon so its texture is not shown as an unfolded UV layout.'
+    throw 'The custom shield icon model must use a generated model.'
 }
 
-if ($builder -notmatch 'parent\s*=\s*["'']minecraft:item/generated["'']' -or $builder -match 'minecraft:builtin/entity') {
-    throw 'The resource-pack builder must keep custom shield overrides on a generated item model.'
+if ($builder -notmatch 'material\s*==\s*["'']shield["'']' -or $builder -notmatch 'builtin/entity' -or $builder -notmatch 'shield_blocking') {
+    throw 'The resource-pack builder must preserve vanilla shield entity and blocking rendering.'
 }
 
 Write-Host 'Shield resource-pack model contract OK'

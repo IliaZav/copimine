@@ -148,7 +148,7 @@ items:
     price_ar: 2400
     supply_limit: 0
     per_player_limit: 5
-    cooldown_seconds: 1
+    cooldown_seconds: 0
     effect: MINER_3X3
     effect_chance_percent: 100
     visual_effect_id: PIXEL_WAVE

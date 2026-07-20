@@ -273,12 +273,23 @@ def build_stage() -> None:
             }
             for entry in sorted(entries, key=lambda x: x["custom_model_data"])
         ]
-        # The custom shield has a compact inventory texture.  Using the
-        # builtin entity parent here makes the item render as a broken/unfolded
-        # banner in the hand and in shop previews.  Keep all custom items on a
-        # normal generated item model so the custom texture is visible.
-        parent = "minecraft:item/generated"
-        textures = {"layer0": f"minecraft:item/{material}"}
+        # Keep vanilla special-item rendering intact.  The vanilla clock and
+        # compass textures are numbered animation frames, while the shield is
+        # a builtin entity model; pointing generated models at `clock`,
+        # `compass` or `shield` creates missing-texture purple/black output.
+        if material == "clock":
+            parent = "minecraft:item/generated"
+            textures = {"layer0": "minecraft:item/clock_00"}
+        elif material == "compass":
+            parent = "minecraft:item/generated"
+            textures = {"layer0": "minecraft:item/compass_16"}
+        elif material == "shield":
+            parent = "builtin/entity"
+            textures = {"particle": "minecraft:block/dark_oak_planks"}
+            overrides.insert(0, {"predicate": {"blocking": 1}, "model": "minecraft:item/shield_blocking"})
+        else:
+            parent = "minecraft:item/generated"
+            textures = {"layer0": f"minecraft:item/{material}"}
         write_json(
             STAGE / "assets" / "minecraft" / "models" / "item" / f"{material}.json",
             {

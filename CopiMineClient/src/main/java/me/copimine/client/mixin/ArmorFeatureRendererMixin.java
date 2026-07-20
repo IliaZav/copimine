@@ -65,13 +65,24 @@ public abstract class ArmorFeatureRendererMixin {
         NbtComponent customData = stack.get(DataComponentTypes.CUSTOM_DATA);
         if (customData == null) return "";
         NbtCompound nbt = customData.getNbt();
-        String itemId = nbt.getString("copimine:artifact_item_id");
-        if (itemId.isBlank()) {
-            NbtElement publicValues = nbt.get("PublicBukkitValues");
-            if (publicValues instanceof NbtCompound nested) {
-                itemId = nested.getString("copimine:artifact_item_id");
+        String itemId = copimine$readItemId(nbt);
+        return itemId.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    @Unique
+    private static String copimine$readItemId(NbtCompound nbt) {
+        String[] keys = {"copimineartifacts:artifact_item_id", "copimine-artifacts:artifact_item_id", "copimine:artifact_item_id"};
+        for (String key : keys) {
+            String value = nbt.getString(key);
+            if (!value.isBlank()) return value;
+        }
+        NbtElement publicValues = nbt.get("PublicBukkitValues");
+        if (publicValues instanceof NbtCompound nested) {
+            for (String key : keys) {
+                String value = nested.getString(key);
+                if (!value.isBlank()) return value;
             }
         }
-        return itemId.toLowerCase(java.util.Locale.ROOT);
+        return "";
     }
 }

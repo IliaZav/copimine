@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $source = Get-Content -LiteralPath (Join-Path $root 'copimine-election-core\src\me\copimine\electioncore\CopiMineElectionCore.java') -Raw -Encoding UTF8
 $migrationPath = Join-Path $root 'db\migrations\20260718_012_election_visual_cleanup_queue.sql'
-$reset = [regex]::Match($source, '(?s)private void resetElections\(String actor\) throws Exception \{.*?(?=\r?\n\s*private void expirePresidentTermsSafe)')
+$reset = [regex]::Match($source, '(?s)private void resetElections\(String actor\)( throws Exception)? \{.*?(?=\r?\n\s*private void expirePresidentTermsSafe)')
 $chunk = [regex]::Match($source, '(?s)public void onChunkLoad\(ChunkLoadEvent event\) \{.*?(?=\r?\n\s*@EventHandler)').Value
 
 if (-not $reset.Success -or $reset.Value -notmatch 'queueElectionVisualCleanup\(connection\);') {

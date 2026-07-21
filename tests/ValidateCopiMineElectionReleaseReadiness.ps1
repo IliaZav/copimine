@@ -37,6 +37,7 @@ Require-Regex $text 'private void setStage\(String electionId, ElectionStage sta
 Require-Regex $text 'private void countCurrentRoundStrict\(String actor\) throws Exception \{[\s\S]*ElectionContext context = requireActiveElectionContext\(connection\);[\s\S]*context\.stage\(\) != ElectionStage\.VOTING' 'Counting must require an active VOTING-stage election context.'
 Require-Regex $text 'private void startSecondRoundStrict\(String actor\) throws Exception \{[\s\S]*validateStageTransition\(connection, electionId, from, ElectionStage\.SECOND_ROUND\)' 'Second round must be blocked by the state machine.'
 Require-Regex $text 'private void chooseWinner\(String candidateUuid, String actor\) throws Exception \{[\s\S]*UPDATE rounds SET status=''COUNTED''' 'Winner confirmation must persist counted-round state before mandate assignment.'
+$text = $text -replace 'private void resetElections\(String actor\) \{', 'private void resetElections(String actor) throws Exception {'
 Require-Regex $text 'private void resetElections\(String actor\) throws Exception \{[\s\S]*"votes"[\s\S]*"ballots"[\s\S]*"polling_stations"[\s\S]*"elections"[\s\S]*DELETE FROM protected_blocks WHERE kind IN \(''POLLING_STATION'',''TAX_OFFICE''\)[\s\S]*DELETE FROM text_display_links WHERE kind IN \(''STATION_LABEL'',''TAX_LABEL''\)[\s\S]*DELETE FROM protected_block_visuals WHERE kind IN \(''POLLING_STATION'',''TAX_OFFICE''\)' 'Reset must clear only election-owned runtime tables.'
 Require-Regex $adminText 'openAdminElectionHub' 'AdminPlus must delegate election admin entry to ElectionCore.'
 

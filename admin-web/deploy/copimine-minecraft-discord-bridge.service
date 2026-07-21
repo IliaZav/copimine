@@ -2,6 +2,8 @@
 Description=CopiMine Minecraft to Discord Bridge
 After=network.target copimine-admin.service copimine-minecraft.service
 Wants=copimine-admin.service copimine-minecraft.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -14,8 +16,6 @@ Environment=PYTHONPATH=/opt/copimine/admin-web/backend:/opt/copimine/admin-web
 ExecStart=/opt/copimine/admin-web/.venv/bin/python -m backend.minecraft_discord_bridge
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=300
-StartLimitBurst=5
 NoNewPrivileges=true
 PrivateTmp=true
 

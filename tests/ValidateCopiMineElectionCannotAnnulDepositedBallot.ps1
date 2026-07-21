@@ -1,7 +1,7 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
 $text = Read-Utf8 $Paths.Election
-$ballotsBody = Method-Body $text 'private void openChairBallotsMenu'
+$ballotsBody = Method-Body $text 'private void renderChairBallotsMenu'
 $annulBody = Method-Body $text 'private void annulBallot'
 
 Require-Contains $annulBody "FOR UPDATE" 'annulBallot() must lock the ballot row before changing status.'

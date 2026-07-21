@@ -1007,7 +1007,11 @@ class Bot(discord.Client):
         intents.guilds = True
         intents.guild_messages = True
         intents.guild_reactions = True
-        intents.members = True
+        # Member lookup is performed explicitly through ``guild.fetch_member``
+        # when a reaction/button is handled.  Requesting the members gateway
+        # intent here makes the bot fail at login unless the privileged intent
+        # is enabled in Discord Developer Portal, even though the bot does not
+        # consume the member cache.  Keep the gateway contract minimal.
         super().__init__(intents=intents)
         self.state: dict[str, Any] = load_runtime_state()
         self._last_status_online: bool | None = None

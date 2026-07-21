@@ -4036,8 +4036,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            Material.NETHER_STAR,
                            "&dКаталог",
                            List.of(
-                              "&7Покупка идёт только на сайте.",
-                              "&7После оплаты предмет нужно забрать в игре."
+                              "&7Покупка списывает средства с Donation-баланса.",
+                              "&7После оплаты предмет появится в отложенной выдаче.",
+                              "&7Нужен привязанный активный AR-банк."
                            )
                         )
                      );
@@ -5098,6 +5099,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             )
          );
       } else {
+         if (!this.isArCatalogItem(var3.itemId())) {
+            var1.sendMessage(this.color("&cРемонт за AR доступен только для AR-предметов лавки."));
+            return;
+         }
          if (var2.getItemMeta() instanceof Damageable var4 && var4.getDamage() > 0) {
             long var9 = this.repairPrice(var2, var3);
             CopiMineArtifacts.SessionState var7 = this.session(var1);
@@ -5147,6 +5152,58 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             )
          );
       }
+   }
+
+   private void purchaseDonationFromBalance(Player player, CopiMineArtifacts.DonationCatalogItem item) {
+      if (player == null || item == null) {
+         return;
+      }
+      CopiMineArtifacts.SessionState state = this.session(player);
+      if (!state.purchaseInFlightId.isBlank()) {
+         player.sendMessage(this.color("&eПокупка уже обрабатывается."));
+         return;
+      }
+      DonationPurchaseService service = this.donationPurchaseService();
+      if (service == null) {
+         player.sendMessage(this.color("&cСервис Donation-баланса сейчас недоступен."));
+         return;
+      }
+      String idempotencyKey = "donation-game-purchase:" + player.getUniqueId() + ":" + item.itemId() + ":" + UUID.randomUUID();
+      state.purchaseInFlightId = idempotencyKey;
+      player.sendMessage(this.color("&7Проверяю Donation-баланс и привязку банка..."));
+      service.purchaseIntentAsync(
+            player.getUniqueId(),
+            player.getName(),
+            item.itemId(),
+            item.priceDonation(),
+            player.getName(),
+            "artifact_shop_gui",
+            idempotencyKey
+      ).whenComplete((result, error) -> this.runSync(() -> {
+         state.purchaseInFlightId = "";
+         if (!player.isOnline()) {
+            return;
+         }
+         if (error != null || result == null) {
+            Throwable cause = error;
+            while (cause instanceof CompletionException && cause.getCause() != null) {
+               cause = cause.getCause();
+            }
+            String detail = cause == null ? "Покупка не выполнена." : this.firstNonBlank(cause.getMessage(), "Покупка не выполнена.");
+            if (detail.toLowerCase(Locale.ROOT).contains("linked active ar bank")) {
+               detail = "Сначала привяжи активный AR-банк.";
+            } else if (detail.toLowerCase(Locale.ROOT).contains("insufficient") || detail.toLowerCase(Locale.ROOT).contains("balance")) {
+               detail = "Недостаточно Donation-баланса.";
+            }
+            player.sendMessage(this.color("&c" + detail));
+            this.openDonationCatalog(player);
+            return;
+         }
+         long balanceAfter = this.parseLong(this.str(result.get("balance_after")), -1L);
+         String balanceText = balanceAfter >= 0L ? " Остаток: " + balanceAfter + " Donation." : "";
+         player.sendMessage(this.color("&aПокупка оформлена. Предмет добавлен в отложенную выдачу." + balanceText));
+         this.openDonationOwned(player);
+      }));
    }
 
    private void handleMenuAction(Player var1, CopiMineArtifacts.SessionState var2, String var3) {
@@ -5219,8 +5276,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          String var12 = var3.substring("donation:catalog:item:".length()).toLowerCase(Locale.ROOT);
          CopiMineArtifacts.DonationCatalogItem var19 = this.donationCatalogItem(var12);
          if (var19 != null && var19.enabled()) {
-            var1.sendMessage(this.color("&bПокупка donation-предметов выполняется на сайте: &f" + this.donationPurchaseUrl(var12)));
-            var1.sendMessage(this.color("&7После оплаты предмет появится в claim, и его можно будет забрать в игре."));
+            this.purchaseDonationFromBalance(var1, var19);
          } else {
             var1.sendMessage(this.color("&cЭтот donation-предмет сейчас недоступен."));
          }
@@ -6014,6 +6070,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             )
          );
       } else {
+         if (!this.isArCatalogItem(var5.itemId())) {
+            var1.sendMessage(this.color("&cРемонт за AR доступен только для AR-предметов лавки."));
+            return;
+         }
          if (var4.getItemMeta() instanceof Damageable var6 && var6.getDamage() > 0) {
             if (var2 <= 0L) {
                this.runAsync(
@@ -8125,7 +8185,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private long repairPrice(ItemStack var1, CopiMineArtifacts.CatalogItem var2) {
       // Repair is deliberately predictable: the admin sets one price and it
       // applies to every official custom item regardless of material or wear.
-      return Math.max(1L, this.getConfig().getLong("repair.fixed-price-ar", 3L));
+      return Math.max(0L, Math.min(1_000_000_000L, this.getConfig().getLong("repair.fixed-price-ar", 3L)));
    }
 
    private void persistRepair(Player var1, CopiMineArtifacts.CatalogItem var2, ItemStack var3, String var4, long var5, String var7) throws SQLException {

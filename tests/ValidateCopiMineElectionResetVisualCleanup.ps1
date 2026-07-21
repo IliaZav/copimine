@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $sourcePath = Join-Path $PSScriptRoot '..\copimine-election-core\src\me\copimine\electioncore\CopiMineElectionCore.java'
 $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$reset = [regex]::Match($source, '(?s)private void resetElections\(String actor\) throws Exception \{.*?(?=\r?\n\s*private void expirePresidentTermsSafe)')
+$reset = [regex]::Match($source, '(?s)private void resetElections\(String actor\)( throws Exception)? \{.*?(?=\r?\n\s*private void expirePresidentTermsSafe)')
 $cleanup = [regex]::Match($source, '(?s)private void removeElectionManagedVisuals\(\) \{.*?(?=\r?\n\s*private )')
 
 if (-not $reset.Success -or $reset.Value -notmatch 'removeElectionManagedVisuals\(\)') {

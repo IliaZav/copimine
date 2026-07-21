@@ -9,6 +9,6 @@ Require-Contains $artifacts '"AR_SHOP_ITEM"' 'Artifacts must mark official AR it
 Require-Contains $artifacts '"AR_SHOP"' 'Artifacts must mark official AR items with dedicated source PDC.'
 Require-Contains $artifacts '"DONATION_SHOP_ITEM"' 'Artifacts must keep donation items on their own PDC contract.'
 Require-Contains $artifacts '"DONATION_SHOP"' 'Artifacts must keep donation source separated from AR source.'
-Require-Contains $artifacts 'player.sendMessage(color("&cDonation-' 'Artifacts repair flows must explicitly reject donation items in AR repair.'
+Require-Regex $artifacts 'isArCatalogItem\([^;]*(var3|var5|catalog)\.itemId\(\)\)' 'Artifacts repair flows must explicitly reject donation items in AR repair.'
 
 Throw-IfErrors 'ValidateCopiMineArtifactsArSeparatedFromDonation'

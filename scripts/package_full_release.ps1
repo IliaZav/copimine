@@ -101,6 +101,17 @@ function Write-Utf8NoBomFile {
     [System.IO.File]::WriteAllText($LiteralPath, $Content + [Environment]::NewLine, $utf8NoBom)
 }
 
+function Copy-LfShellFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+    $text = [System.IO.File]::ReadAllText($Source)
+    $text = $text -replace "`r`n", "`n" -replace "`r", "`n"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Destination, $text, $utf8NoBom)
+}
+
 function Update-ServerProperties {
     param(
         [Parameter(Mandatory = $true)][string]$LiteralPath,
@@ -495,12 +506,12 @@ $deployUnpackCopy = Join-Path $ReleaseDir "copimine_unpack_and_verify.sh"
 $deployReplaceCopy = Join-Path $ReleaseDir "copimine_full_replace.sh"
 $deployCommonCopy = Join-Path $ReleaseDir "copimine_common.sh"
 $uploadScriptCopy = Join-Path $ReleaseDir "upload_release.ps1"
-Copy-Item -LiteralPath $deployInstall -Destination $deployInstallCopy -Force
-Copy-Item -LiteralPath $deployUpdate -Destination $deployUpdateCopy -Force
-Copy-Item -LiteralPath $deployVerify -Destination $deployVerifyCopy -Force
-Copy-Item -LiteralPath $deployUnpack -Destination $deployUnpackCopy -Force
-Copy-Item -LiteralPath $deployReplace -Destination $deployReplaceCopy -Force
-Copy-Item -LiteralPath $deployCommon -Destination $deployCommonCopy -Force
+Copy-LfShellFile -Source $deployInstall -Destination $deployInstallCopy
+Copy-LfShellFile -Source $deployUpdate -Destination $deployUpdateCopy
+Copy-LfShellFile -Source $deployVerify -Destination $deployVerifyCopy
+Copy-LfShellFile -Source $deployUnpack -Destination $deployUnpackCopy
+Copy-LfShellFile -Source $deployReplace -Destination $deployReplaceCopy
+Copy-LfShellFile -Source $deployCommon -Destination $deployCommonCopy
 Copy-Item -LiteralPath $uploadScript -Destination $uploadScriptCopy -Force
 
 $archiveSha256 = Get-Sha256Lower -LiteralPath $archivePath

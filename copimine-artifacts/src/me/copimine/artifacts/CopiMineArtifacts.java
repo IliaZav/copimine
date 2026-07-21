@@ -960,6 +960,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                       if (activated && var4.cooldownSeconds() > 0) {
                          this.actionCooldowns.put(this.actionCooldownKey(var3, var4), var8 + (long)var4.cooldownSeconds());
                       }
+                   } else {
+                      this.sendCooldownMessage(var3, var4, var6, var8);
                    }
                }
             }
@@ -1501,6 +1503,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             long var6 = this.now();
             long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var3), 0L);
             if (var8 > var6) {
+               this.sendCooldownMessage(var2, var3, var8, var6);
                var2.sendMessage(
                   this.color(
                      "&eАртефакт ещё на откате."
@@ -10614,6 +10617,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return "";
       }
       return player.getUniqueId() + ":" + item.itemId();
+   }
+
+   private void sendCooldownMessage(Player player, CopiMineArtifacts.CatalogItem item, long cooldownUntil, long current) {
+      long remaining = Math.max(1L, cooldownUntil - current);
+      String itemName = this.firstNonBlank(item == null ? "" : item.name(), "Предмет");
+      player.sendMessage(this.color("&e" + itemName + " ещё на перезарядке (&f" + remaining + " сек.&e)."));
    }
 
    private long now() {

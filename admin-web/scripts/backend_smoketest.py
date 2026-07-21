@@ -198,8 +198,8 @@ def main() -> None:
         appmod.rcon_quick = fake_rcon
         systemctl_commands: list[str] = []
 
-        def fake_systemctl(action: str) -> dict[str, object]:
-            systemctl_commands.append(action)
+        def fake_systemctl(action: str, no_block: bool = False) -> dict[str, object]:
+            systemctl_commands.append((action, no_block))
             return {
                 "returncode": 0,
                 "stdout": "",
@@ -258,7 +258,7 @@ def main() -> None:
             assert saved_payload["reload"]["reloaded"] is True, saved_payload
             assert saved_payload["reload"]["manual"] is False, saved_payload
             assert rcon_commands == [], rcon_commands
-            assert systemctl_commands == ["restart"], systemctl_commands
+            assert systemctl_commands == [("restart", True)], systemctl_commands
             assert saved_payload["reload"]["applyMode"] == "server-restart", saved_payload
             assert "material:glowstone_dust" in narcotics_config.read_text(encoding="utf-8")
             assert list(narcotics_dir.glob("config.yml.bak-*")), "Recipe save did not create a backup"

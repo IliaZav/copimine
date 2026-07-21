@@ -8266,11 +8266,14 @@ def write_server_properties(values: dict[str, str]) -> dict[str, Any]:
     return {"ok": True, "updated": sorted(values.keys()), "backup": safe_location(backup)}
 
 
-def run_systemctl(action: str) -> dict[str, Any]:
+def run_systemctl(action: str, no_block: bool = False) -> dict[str, Any]:
     allowed = {"start", "stop", "restart", "status"}
     if action not in allowed:
         raise HTTPException(status_code=400, detail="Недоступное действие")
-    cmd = ["sudo", "systemctl", action, MINECRAFT_SERVICE]
+    cmd = ["sudo", "systemctl"]
+    if no_block:
+        cmd.append("--no-block")
+    cmd.extend([action, MINECRAFT_SERVICE])
     if action == "status":
         cmd = ["systemctl", "status", MINECRAFT_SERVICE, "--no-pager", "-l"]
     proc = subprocess.run(cmd, text=True, capture_output=True, timeout=25)
@@ -15534,9 +15537,9 @@ def _minecraft_recipe_potion_catalog() -> list[dict[str, Any]]:
 
 
 def _restart_minecraft_for_narcotics() -> dict[str, Any]:
-    """Attempt the explicit fallback restart without hiding a saved config."""
+    """Start a non-blocking Minecraft restart so the web panel stays responsive."""
     try:
-        return run_systemctl("restart")
+        return run_systemctl("restart", no_block=True)
     except Exception as exc:
         return {"returncode": -1, "stdout": "", "stderr": str(exc)[:400], "command": "systemctl restart"}
 
@@ -15613,7 +15616,7 @@ def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str, apply
             "applyMode": "server-restart",
             "reloadCommand": f"systemctl restart {MINECRAFT_SERVICE}",
             "restart": restart,
-            "message": "Конфиг сохранён и Minecraft перезапущен для применения рецептов." if restart.get("returncode") == 0 else "Конфиг сохранён, но Minecraft не перезапущен. Проверь права systemctl и журнал сервиса.",
+            "message": "Конфиг сохранён, перезапуск Minecraft запущен. Сайт продолжает работать." if restart.get("returncode") == 0 else "Конфиг сохранён, но перезапуск Minecraft не запущен. Проверь права systemctl и журнал сервиса.",
         }
     append_panel_event("narcotics", "recipes_saved", actor=actor, target="CopiMineNarcotics", metadata={"updated": updated, "backup": str(backup), "applyMode": normalized_apply_mode}, tags=["narcotics", "config"])
     append_panel_event("narcotics", "recipes_reloaded" if reload_result["reloaded"] else "recipes_reload_pending", actor=actor, target="CopiMineNarcotics", metadata={"command": reload_result.get("reloadCommand"), "reloaded": reload_result["reloaded"], "applyMode": reload_result.get("applyMode")}, tags=["narcotics", "config", "server"])

@@ -19,7 +19,9 @@ RestartSec=3
 TimeoutStartSec=180
 TimeoutStopSec=30
 KillMode=mixed
-NoNewPrivileges=true
+# The panel has a tightly scoped sudoers rule for Minecraft start/stop/restart
+# actions used by the admin controls and recipe apply flow.
+NoNewPrivileges=false
 PrivateTmp=true
 
 [Install]

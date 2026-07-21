@@ -10586,10 +10586,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void runAsync(Runnable var1) {
+      if (!this.isEnabled()) {
+         return;
+      }
       this.dbExecutor.submit(var1);
    }
 
    private void runSync(Runnable var1) {
+      if (!this.isEnabled()) {
+         return;
+      }
       Bukkit.getScheduler().runTask(this, var1);
    }
 

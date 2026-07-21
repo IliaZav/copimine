@@ -831,7 +831,7 @@ copimine_install_system_files() {
   # never grant a shell or unrestricted systemctl access.
   install -d -m 0755 /etc/sudoers.d
   cat > /etc/sudoers.d/copimine-admin-minecraft <<EOF
-$COPIMINE_APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start copimine-minecraft, /usr/bin/systemctl stop copimine-minecraft, /usr/bin/systemctl restart copimine-minecraft
+$COPIMINE_APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start copimine-minecraft, /usr/bin/systemctl stop copimine-minecraft, /usr/bin/systemctl restart copimine-minecraft, /usr/bin/systemctl --no-block restart copimine-minecraft
 EOF
   chmod 0440 /etc/sudoers.d/copimine-admin-minecraft
   visudo -cf /etc/sudoers.d/copimine-admin-minecraft >/dev/null

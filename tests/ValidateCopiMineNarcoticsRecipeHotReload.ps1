@@ -21,7 +21,7 @@ foreach ($wrapper in @($runtime, $legacy)) {
   }
 }
 
-if ($backend -notmatch 'reloadCommand": f"systemctl restart \{MINECRAFT_SERVICE\}"' -or
+if ($backend -notmatch 'reloadCommand": f"systemctl --no-block restart \{MINECRAFT_SERVICE\}"' -or
     $backend -match 'rcon_quick\("cmnarcotics reload"\)' -or
     $backend -match 'applyMode": "plugin-reload"') {
   throw 'Applying recipes must restart the Minecraft service instead of only reloading through RCON.'

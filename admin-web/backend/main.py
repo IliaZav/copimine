@@ -15614,7 +15614,7 @@ def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str, apply
             "reloaded": restart.get("returncode") == 0,
             "manual": restart.get("returncode") != 0,
             "applyMode": "server-restart",
-            "reloadCommand": f"systemctl restart {MINECRAFT_SERVICE}",
+            "reloadCommand": f"systemctl --no-block restart {MINECRAFT_SERVICE}",
             "restart": restart,
             "message": "Конфиг сохранён, перезапуск Minecraft запущен. Сайт продолжает работать." if restart.get("returncode") == 0 else "Конфиг сохранён, но перезапуск Minecraft не запущен. Проверь права systemctl и журнал сервиса.",
         }

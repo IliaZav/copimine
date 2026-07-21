@@ -129,6 +129,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -10596,7 +10597,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!this.isEnabled()) {
          return;
       }
-      Bukkit.getScheduler().runTask(this, var1);
+      try {
+         Bukkit.getScheduler().runTask(this, var1);
+      } catch (IllegalPluginAccessException ignored) {
+         // A database callback can finish while Bukkit is disabling this plugin.
+         // Do not turn a normal shutdown race into a warning or failed reload.
+      }
    }
 
    private String blockKey(Location var1) {

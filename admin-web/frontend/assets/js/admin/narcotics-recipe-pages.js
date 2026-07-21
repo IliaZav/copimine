@@ -187,7 +187,7 @@ export function createAdminNarcoticsRecipePages(deps) {
           <button class="btn btn-secondary" data-click="adminRecipeSave('save')">Сохранить</button>
           <button class="btn btn-primary" data-click="adminRecipeSave('apply')">Сохранить и применить</button>
         </div>
-        <p class="recipe-apply-hint">«Сохранить» меняет конфиг без перезагрузки. «Сохранить и применить» сначала делает reload плагина, а если RCON недоступен — перезапускает Minecraft.</p>
+        <p class="recipe-apply-hint">«Сохранить» меняет конфиг без перезагрузки. «Сохранить и применить» перезапускает только Minecraft, сайт при этом продолжает работать.</p>
         <div class="recipe-tape" id="recipeTape">${renderTape(recipe)}</div>
         <div class="recipe-trash" id="recipeTrash">Отпустите ингредиент здесь, чтобы удалить.</div>
       `)}
@@ -330,7 +330,7 @@ export function createAdminNarcoticsRecipePages(deps) {
     }
     const mode = String(applyMode || "save").toLowerCase() === "apply" ? "apply" : "save";
     const headers = await dangerConfirm(
-      mode === "apply" ? "Сохранить рецепты и применить их через reload или перезапуск сервера?" : "Сохранить рецепты без перезагрузки сервера?",
+      mode === "apply" ? "Сохранить рецепты и перезапустить Minecraft, чтобы изменения вступили в силу?" : "Сохранить рецепты без перезагрузки сервера?",
       mode === "apply" ? "NARCOTICS_RECIPES_APPLY" : "NARCOTICS_RECIPES_SAVE",
     );
     if (!headers) return;

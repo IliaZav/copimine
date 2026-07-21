@@ -4609,7 +4609,7 @@ Object.assign(dataClickHandlers, {
   adminRecipeAdd: (...args) => getAdminNarcoticsRecipePages().adminRecipeAdd(...args),
   adminRecipeClear: () => getAdminNarcoticsRecipePages().adminRecipeClear(),
   adminRecipeRemove: (...args) => getAdminNarcoticsRecipePages().adminRecipeRemove(...args),
-  adminRecipeSave: () => getAdminNarcoticsRecipePages().adminRecipeSave(),
+  adminRecipeSave: (...args) => getAdminNarcoticsRecipePages().adminRecipeSave(...args),
   adminRecipeTab: (...args) => getAdminNarcoticsRecipePages().adminRecipeTab(...args),
   adminRecipeTogglePicker: () => getAdminNarcoticsRecipePages().adminRecipeTogglePicker(),
   adminSetTreasuryPin: fromWindow("adminSetTreasuryPin"),

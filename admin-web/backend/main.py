@@ -15605,39 +15605,18 @@ def save_narcotics_recipes_sync(payload: dict[str, list[str]], actor: str, apply
     }
     if normalized_apply_mode == "save":
         reload_result["message"] = "Конфиг сохранён без перезагрузки. Примени рецепты отдельной кнопкой, когда будешь готов."
-    elif RCON_PASSWORD:
-        try:
-            response = str(rcon_quick("cmnarcotics reload") or "").strip()
-            reload_result = {
-                "reloaded": True,
-                "manual": False,
-                "applyMode": "plugin-reload",
-                "reloadCommand": "cmnarcotics reload",
-                "response": response[:400],
-                "message": "Конфиг сохранён, CopiMineNarcotics перечитал его без перезапуска сервера.",
-            }
-        except Exception as exc:
-            restart = _restart_minecraft_for_narcotics()
-            reload_result = {
-                "reloaded": restart.get("returncode") == 0,
-                "manual": restart.get("returncode") != 0,
-                "applyMode": "server-restart",
-                "reloadCommand": "cmnarcotics reload",
-                "restart": restart,
-                "message": "RCON reload не выполнен, поэтому запущен перезапуск сервера." if restart.get("returncode") == 0 else f"RCON reload и перезапуск не выполнены: {str(exc)[:180]}",
-            }
     else:
         restart = _restart_minecraft_for_narcotics()
         reload_result = {
             "reloaded": restart.get("returncode") == 0,
             "manual": restart.get("returncode") != 0,
             "applyMode": "server-restart",
-            "reloadCommand": "cmnarcotics reload",
+            "reloadCommand": f"systemctl restart {MINECRAFT_SERVICE}",
             "restart": restart,
-            "message": "Конфиг сохранён и сервер перезапущен для применения рецептов." if restart.get("returncode") == 0 else "Конфиг сохранён, но перезапуск сервера не выполнен. Проверь права systemctl.",
+            "message": "Конфиг сохранён и Minecraft перезапущен для применения рецептов." if restart.get("returncode") == 0 else "Конфиг сохранён, но Minecraft не перезапущен. Проверь права systemctl и журнал сервиса.",
         }
     append_panel_event("narcotics", "recipes_saved", actor=actor, target="CopiMineNarcotics", metadata={"updated": updated, "backup": str(backup), "applyMode": normalized_apply_mode}, tags=["narcotics", "config"])
-    append_panel_event("narcotics", "recipes_reloaded" if reload_result["reloaded"] else "recipes_reload_pending", actor=actor, target="CopiMineNarcotics", metadata={"command": reload_result.get("reloadCommand"), "reloaded": reload_result["reloaded"], "applyMode": reload_result.get("applyMode")}, tags=["narcotics", "config", "rcon"])
+    append_panel_event("narcotics", "recipes_reloaded" if reload_result["reloaded"] else "recipes_reload_pending", actor=actor, target="CopiMineNarcotics", metadata={"command": reload_result.get("reloadCommand"), "reloaded": reload_result["reloaded"], "applyMode": reload_result.get("applyMode")}, tags=["narcotics", "config", "server"])
     return {"ok": True, "updated": updated, "backup": safe_location(backup), "configPath": safe_location(path), "reload": reload_result}
 
 

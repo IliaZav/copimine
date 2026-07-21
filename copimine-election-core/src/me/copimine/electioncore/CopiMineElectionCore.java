@@ -67,6 +67,7 @@ import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
@@ -162,6 +163,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private NamespacedKey visualModelIdKey;
     private DbSettings db;
     private Path webDataFile;
+    private final CopiMineEconomyCore.TaxService taxService = new TaxServiceImpl();
 
     @Override
     public void onEnable() {
@@ -194,6 +196,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Objects.requireNonNull(getCommand("hidelive"), "hidelive command").setExecutor(this);
         Objects.requireNonNull(getCommand("presidentsay"), "presidentsay command").setExecutor(this);
         Bukkit.getPluginManager().registerEvents(this, this);
+        Bukkit.getServicesManager().register(CopiMineEconomyCore.TaxService.class, taxService, this, ServicePriority.Normal);
         try {
             repairProtectedBlockVisuals();
          } catch (Exception error) {
@@ -5162,6 +5165,58 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 playerUuid.toString()
         ) <= 0) {
             throw new IllegalStateException("У тебя нет доступа к этому участку.");
+        }
+    }
+
+    private final class TaxServiceImpl implements CopiMineEconomyCore.TaxService {
+        @Override
+        public CopiMineEconomyCore.TaxStatus status(UUID playerUuid) {
+            if (playerUuid == null) {
+                return CopiMineEconomyCore.TaxStatus.inactive();
+            }
+            try {
+                Map<String, Object> tax = activeTax();
+                if (tax == null) {
+                    return CopiMineEconomyCore.TaxStatus.inactive();
+                }
+                long nowMillis = now();
+                Map<String, Object> exemption = activeTaxClockExemption(playerUuid.toString());
+                if (exemption != null) {
+                    return new CopiMineEconomyCore.TaxStatus(
+                            true,
+                            true,
+                            true,
+                            longValue(exemption.get("expires_at")),
+                            taxPeriodHours(tax),
+                            longValue(tax.get("amount"))
+                    );
+                }
+                String taxId = string(tax.get("id"));
+                long paid = paidTaxAmount(playerUuid.toString(), taxId);
+                long period = taxPeriodMs(tax);
+                long until = taxWindowStart(longValue(tax.get("created_at")), period, nowMillis) + period;
+                return new CopiMineEconomyCore.TaxStatus(
+                        true,
+                        paid >= longValue(tax.get("amount")),
+                        false,
+                        until,
+                        taxPeriodHours(tax),
+                        longValue(tax.get("amount"))
+                );
+            } catch (Exception error) {
+                getLogger().warning("ATM tax status: " + safeError(error));
+                return CopiMineEconomyCore.TaxStatus.inactive();
+            }
+        }
+
+        @Override
+        public CompletableFuture<CopiMineEconomyCore.TaxStatus> statusAsync(UUID playerUuid) {
+            return CompletableFuture.supplyAsync(() -> status(playerUuid));
+        }
+
+        @Override
+        public void openPayment(Player player) {
+            openTaxOfficeMenu(player, "", "", null);
         }
     }
 

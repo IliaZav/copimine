@@ -98,6 +98,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private DbSettings db;
     private ExecutorService dbExecutor;
     private final Map<UUID, AtmPinSession> atmPinSessions = new ConcurrentHashMap<>();
+    private final Map<UUID, TaxStatusCache> taxStatusCache = new ConcurrentHashMap<>();
     private final Set<UUID> atmPinRefreshBypass = ConcurrentHashMap.newKeySet();
     private final Set<BlockKey> activeAtmBlocks = ConcurrentHashMap.newKeySet();
     private final Map<BlockKey, String> atmIdsByBlock = new ConcurrentHashMap<>();
@@ -185,6 +186,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         CompletableFuture<Map<String, Object>> sessionAsync(UUID playerUuid, String sessionId);
         CompletableFuture<Map<String, Object>> markPaidAsync(String sessionId, String actor, String idempotencyKey);
         CompletableFuture<Map<String, Object>> cancelAsync(String sessionId, String actor);
+    }
+
+    public interface TaxService {
+        TaxStatus status(UUID playerUuid);
+        CompletableFuture<TaxStatus> statusAsync(UUID playerUuid);
+        void openPayment(Player player);
+    }
+
+    public record TaxStatus(boolean active, boolean paid, boolean subscription, long validUntilMillis, long periodHours, long amount) {
+        public static TaxStatus inactive() {
+            return new TaxStatus(false, false, false, 0L, 0L, 0L);
+        }
     }
 
     public interface DonationPurchaseService {
@@ -313,6 +326,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
         }, 20L);
         Bukkit.getScheduler().runTaskLater(this, () -> Bukkit.getOnlinePlayers().forEach(player -> processPendingArSettlements(player, false)), 40L);
+        Bukkit.getScheduler().runTaskTimer(this, this::refreshOpenTaxButtons, 20L, 20L);
     }
 
     @Override
@@ -321,6 +335,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (dbExecutor != null) {
             dbExecutor.shutdownNow();
         }
+        taxStatusCache.clear();
     }
 
     public EconomyService economyService() {
@@ -616,6 +631,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (action.startsWith("atm:balance:")) {
             String[] parts = action.split(":");
             openAtmBalancePreview(player, parts[2], parts.length > 3 ? parts[3] : "PERSONAL");
+            return;
+        }
+        if (action.startsWith("atm:tax:")) {
+            TaxService taxService = Bukkit.getServicesManager().load(TaxService.class);
+            if (taxService == null) {
+                player.sendMessage(color("&cНалоговый сервис сейчас недоступен."));
+                return;
+            }
+            taxService.openPayment(player);
             return;
         }
         if (action.startsWith("atm:withdraw:")) {
@@ -991,8 +1015,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             button(holder, inventory, 28, Material.EMERALD, "&eСнять 1 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":1");
             button(holder, inventory, 30, Material.EMERALD_BLOCK, "&eСнять 16 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":16");
             button(holder, inventory, 32, Material.DIAMOND_ORE, "&eСнять 64 AR", List.of("&7Потребуется PIN банка."), "atm:withdraw:" + atmId + ":64");
+            button(holder, inventory, 20, Material.GOLD_INGOT, "&6Налог: проверка...", List.of("&7Проверяю статус налога."), "atm:tax:" + atmId);
             button(holder, inventory, 49, Material.BARRIER, "&7Закрыть", List.of(), "atm:close");
             player.openInventory(inventory);
+            refreshTaxButton(player, holder, atmId);
         }));
     }
 
@@ -3007,6 +3033,96 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return builder.toString();
     }
 
+    private void refreshOpenTaxButtons() {
+        long now = System.currentTimeMillis();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            Inventory top = player.getOpenInventory().getTopInventory();
+            if (!(top.getHolder() instanceof MenuHolder holder) || !"economy:atm".equals(holder.id())) {
+                continue;
+            }
+            String scope = holder.data.getOrDefault("scope", "PERSONAL");
+            if (!"PERSONAL".equalsIgnoreCase(scope)) {
+                continue;
+            }
+            TaxStatusCache cache = taxStatusCache.get(player.getUniqueId());
+            if (cache == null || now - cache.fetchedAtMillis() >= 30_000L) {
+                refreshTaxButton(player, holder, holder.contextId());
+            } else {
+                renderTaxButton(holder, top, cache.status());
+            }
+        }
+    }
+
+    private void refreshTaxButton(Player player, MenuHolder holder, String atmId) {
+        taxStatusCache.put(player.getUniqueId(), new TaxStatusCache(TaxStatus.inactive(), System.currentTimeMillis()));
+        TaxService service = Bukkit.getServicesManager().load(TaxService.class);
+        if (service == null) {
+            renderTaxButton(holder, holder.getInventory(), TaxStatus.inactive());
+            return;
+        }
+        CompletableFuture<TaxStatus> future;
+        try {
+            future = service.statusAsync(player.getUniqueId());
+        } catch (Exception error) {
+            getLogger().warning("ATM tax status: " + safeError(error));
+            renderTaxButton(holder, holder.getInventory(), TaxStatus.inactive());
+            return;
+        }
+        if (future == null) {
+            renderTaxButton(holder, holder.getInventory(), TaxStatus.inactive());
+            return;
+        }
+        future.exceptionally(error -> TaxStatus.inactive()).thenAccept(status -> Bukkit.getScheduler().runTask(this, () -> {
+            if (!player.isOnline() || player.getOpenInventory().getTopInventory() != holder.getInventory()) {
+                return;
+            }
+            taxStatusCache.put(player.getUniqueId(), new TaxStatusCache(status == null ? TaxStatus.inactive() : status, System.currentTimeMillis()));
+            renderTaxButton(holder, holder.getInventory(), status == null ? TaxStatus.inactive() : status);
+        }));
+    }
+
+    private void renderTaxButton(MenuHolder holder, Inventory inventory, TaxStatus status) {
+        if (holder == null || inventory == null) {
+            return;
+        }
+        holder.actions.remove(20);
+        holder.rightActions.remove(20);
+        TaxStatus value = status == null ? TaxStatus.inactive() : status;
+        if (!value.active()) {
+            button(holder, inventory, 20, Material.GRAY_WOOL, "&7Налог не назначен", List.of("&7Президент пока не установил налог."), "");
+        } else if (value.subscription()) {
+            button(holder, inventory, 20, Material.YELLOW_WOOL, "&eНалог оплачен", List.of(
+                    "&7Подписка освобождает от налога на 3 месяца.",
+                    "&7Осталось: &f" + formatTaxRemaining(value.validUntilMillis())
+            ), "");
+        } else if (value.paid()) {
+            button(holder, inventory, 20, Material.LIME_WOOL, "&aНалог оплачен", List.of(
+                    "&7Текущий период уже закрыт.",
+                    "&7Оплачено на: &f" + value.periodHours() + " ч.",
+                    "&7Осталось: &f" + formatTaxRemaining(value.validUntilMillis())
+            ), "");
+        } else {
+            button(holder, inventory, 20, Material.EMERALD, "&aОплатить налог", List.of(
+                    "&7Сумма: &f" + value.amount() + " AR",
+                    "&7Платёж добровольный, потребуется PIN банка."
+            ), "atm:tax:" + holder.contextId());
+        }
+    }
+
+    private String formatTaxRemaining(long validUntilMillis) {
+        long seconds = Math.max(0L, (validUntilMillis - System.currentTimeMillis()) / 1000L);
+        long days = seconds / 86400L;
+        long hours = (seconds % 86400L) / 3600L;
+        long minutes = (seconds % 3600L) / 60L;
+        if (days > 0L) {
+            return days + " д. " + hours + " ч.";
+        }
+        if (hours > 0L) {
+            return hours + " ч. " + minutes + " мин.";
+        }
+        return Math.max(1L, seconds / 60L) + " мин.";
+    }
+
     private void button(MenuHolder holder, Inventory inventory, int slot, Material material, String title, List<String> lore, String action) {
         button(holder, inventory, slot, material, title, lore, action, null);
     }
@@ -3059,6 +3175,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private record AtmPinSession(String atmId, String accountScope, String action, int amount, String pin, String targetUuid, String targetName) {}
 
+    private record TaxStatusCache(TaxStatus status, long fetchedAtMillis) {}
+
     private static final class MenuHolder implements InventoryHolder {
         private final String id;
         private final String contextId;
@@ -3079,6 +3197,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         String id() {
             return id;
+        }
+
+        String contextId() {
+            return contextId;
         }
 
         @Override

@@ -4823,11 +4823,44 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (player == null) {
             return;
         }
+        if (forwardBugToAdminPlus(player, error)) {
+            return;
+        }
         String code = "ELECTION-" + Long.toString(System.currentTimeMillis(), 36).toUpperCase(Locale.ROOT);
         String detail = publicOperationDetail(error);
         player.sendMessage(color(fallback));
         player.sendMessage(color("&7Причина: &f" + (detail.isBlank() ? "неизвестна" : detail)));
         player.sendMessage(color("&7Нашли ошибку? Напишите администратору: &e/reporta " + code + " &7и кратко опишите, что произошло."));
+    }
+
+    private boolean forwardBugToAdminPlus(Player player, Exception error) {
+        Plugin admin = Bukkit.getPluginManager().getPlugin("CopiMineUltimateAdminPlus");
+        if (admin == null || !admin.isEnabled()) {
+            return false;
+        }
+        try {
+            admin.getClass().getMethod(
+                    "capturePluginError",
+                    Player.class,
+                    String.class,
+                    String.class,
+                    Throwable.class,
+                    ItemStack.class,
+                    Location.class
+            ).invoke(
+                    admin,
+                    player,
+                    "elections",
+                    "election-interaction",
+                    error,
+                    player.getInventory().getItemInMainHand(),
+                    player.getLocation()
+            );
+            return true;
+        } catch (Exception bridgeError) {
+            getLogger().warning("reporta bridge unavailable: " + safeError(bridgeError));
+            return false;
+        }
     }
 
     private String publicOperationDetail(Throwable error) {
@@ -7309,6 +7342,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 case SECOND_ROUND -> {
                     if (tiedLeaders < 2) {
                         yield StageTransitionResult.deny("Второй тур доступен только для кандидатов с равным максимумом голосов.");
+                    }
+                    if (to == ElectionStage.VOTING) {
+                        if (activeCandidates < 2) {
+                            yield StageTransitionResult.deny("Для второго тура нужно минимум 2 активных кандидата.");
+                        }
+                        if (stations < 1) {
+                            yield StageTransitionResult.deny("Для второго тура нужен хотя бы один активный участок.");
+                        }
                     }
                     if (to == ElectionStage.DEBATES || to == ElectionStage.VOTING || to == ElectionStage.COUNTING) {
                         yield StageTransitionResult.allow();

@@ -5902,6 +5902,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 .create();
         player.spigot().sendMessage(button);
     }
+
+    /**
+     * Receives handled errors from companion plugins so /reporta can attach the
+     * same server-side context as errors raised inside AdminPlus itself.
+     * Kept public and deliberately narrow to avoid exposing the report store.
+     */
+    public void capturePluginError(Player player,String source,String action,Throwable error,ItemStack item,Location location){
+        notifyPlayerBug(player,source,action,error,item,location);
+    }
+
     private PgSettings loadPgSettings()throws IOException,SQLException{
         Map<String,String> values=new LinkedHashMap<>();
         Path envFile=resolveEnvFile();

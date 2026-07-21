@@ -6564,6 +6564,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      var1.sendMessage(this.color("&cИнвентарь изменился во время возврата. Освободи место и попробуй ещё раз."));
                      return;
                   }
+                  if (this.playerHasOfficialInstance(var1, var6.oldUniqueItemId(), var6.itemId(), var1.getUniqueId())) {
+                     this.runAsync(() -> {
+                        try {
+                           this.rollbackDonationReclaim(var1.getUniqueId(), var6);
+                        } catch (SQLException var4x) {
+                           this.getLogger().log(Level.WARNING, "Donation reclaim rollback failed after original item reappeared", var4x);
+                        }
+                     });
+                     var1.sendMessage(this.color("&cСтарый экземпляр предмета снова найден в инвентаре. Возврат отменён, повторный предмет не выдан."));
+                     return;
+                  }
 
                   ItemStack var4x = this.createOfficialItem(var5, var6.newUniqueItemId(), var1.getUniqueId(), var6.purchaseId());
                   this.cacheProvisionalDonationInstances(var5.itemId(), var1.getUniqueId(), List.of(var6.newUniqueItemId()));
@@ -7330,7 +7341,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
          }
 
-         return this.officialItemMatches(var1.getInventory().getItemInOffHand(), var2, var3, var4);
+         if (this.officialItemMatches(var1.getInventory().getItemInOffHand(), var2, var3, var4)) {
+            return true;
+         }
+         for (ItemStack var9 : var1.getInventory().getArmorContents()) {
+            if (this.officialItemMatches(var9, var2, var3, var4)) {
+               return true;
+            }
+         }
+         return false;
       } else {
          return false;
       }
@@ -8753,7 +8772,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var7.setString(1, var12);
                var7.setString(2, var9);
                var7.setString(3, ownerUuid.toString());
-               var7.setString(4, var8);
+               // A reclaim replacement is not a new shop delivery. Keeping
+               // purchase_id empty lets stranded-delivery recovery roll it
+               // back to LOST_RECLAIMABLE instead of treating it as a sale.
+               var7.setString(4, "");
                var7.setLong(5, var49);
                var7.setLong(6, var49);
                var7.executeUpdate();

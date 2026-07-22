@@ -10216,14 +10216,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.runSync(() -> this.sendArTheftMessages(attacker, victim, false));
             return;
          }
-         if (!"NO_BANK_ACCOUNT".equalsIgnoreCase(accountResult.code())) {
-            if ("INSUFFICIENT_AR".equalsIgnoreCase(accountResult.code())) {
-               this.runSync(() -> {
-                  if (attacker.isOnline()) {
-                     attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
-                  }
-               });
-            }
+         String accountCode = accountResult.code() == null ? "" : accountResult.code().trim().toUpperCase(Locale.ROOT);
+         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT", "INSUFFICIENT_AR").contains(accountCode))) {
             return;
          }
 
@@ -10233,7 +10227,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
             OfficialArService ar = this.officialArService();
             if (ar == null || !ar.removeAmount(victim.getInventory(), 1)) {
-               attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
+               this.sendArTheftFailureMessages(attacker, victim);
                return;
             }
             this.runAsync(() -> {
@@ -10271,23 +10265,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             return;
          }
          String accountCode = account.code() == null ? "" : account.code().trim().toUpperCase(Locale.ROOT);
-         // An existing bank account with a zero balance is not the same as a
-         // missing bank account.  In the former case the player is simply
-         // poor and we must not silently take an AR item from their inventory.
-         if ("INSUFFICIENT_AR".equals(accountCode)) {
-            this.runSync(() -> {
-               if (attacker.isOnline()) {
-                  attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
-               }
-            });
-            return;
-         }
-         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT").contains(accountCode))) return;
+         // A zero bank balance follows the same inventory fallback as a
+         // missing account.  Only a single AR is removed from a stack.
+         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT", "INSUFFICIENT_AR").contains(accountCode))) return;
          this.runSync(() -> {
             if (!victim.isOnline() || !attacker.isOnline()) return;
             OfficialArService ar = this.officialArService();
             if (ar == null || !ar.removeAmount(victim.getInventory(), 1)) {
-               attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
+               this.sendArTheftFailureMessages(attacker, victim);
                return;
             }
             this.runAsync(() -> {
@@ -10317,6 +10302,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       if (victim.isOnline()) {
          victim.sendMessage(this.color("&cУ вас украли 1 AR. Нападающий: &f" + attacker.getName() + "&c."));
+      }
+   }
+
+   private void sendArTheftFailureMessages(Player attacker, Player victim) {
+      if (attacker != null && attacker.isOnline()) {
+         attacker.sendMessage(this.color("&cНеудачная кража: у игрока &f" + victim.getName() + " &cнет AR."));
+      }
+      if (victim != null && victim.isOnline()) {
+         victim.sendMessage(this.color("&eВы слишком бедны: с вас нечего брать."));
       }
    }
 

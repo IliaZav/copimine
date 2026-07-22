@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-22T11:59:35.7942221Z",
-    "gitCommit":  "a8547d9",
+    "generatedAtUtc":  "2026-07-22T12:19:57.4613525Z",
+    "gitCommit":  "23b8a23",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,8 +10,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "373ead5fe1471b2cad23eb6f3948a09225dfa208",
-                                      "sha256":  "4f629aa0750d943ae570a0766e5a9a3626baf3ced663a84c1a0e7d22b84d19d9"
+                                      "sha1":  "114e208f5d0eb3a42f436b3cb7a367efcadb3fe7",
+                                      "sha256":  "a7fa7bba91e6fe37a1a222825cc7ffe2c6bc14a8adc3f2a6cf603b25948340e0"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -23,7 +23,7 @@
                    "scripts":  {
                                    "unpackAndVerify":  {
                                                            "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
-                                                           "sha256":  "12b87bbfb87073596cfd5de78048b74b4c582ff33fae37711e819b1868d515a8"
+                                                           "sha256":  "63cb37ed3e5ef66f3daa71948310366cb4029a756c93bb17a28262d0f75f9e32"
                                                        },
                                    "fullReplace":  {
                                                        "path":  "deploy/ubuntu/copimine_full_replace.sh",
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "87abb115866f4893535984cf2272e76beaf812bdbd068e925b87e8d22b6678d1"
+                                             "sha256":  "d3d4f8c0b58969ab2a289f442b760779497a9972e95e5c5ddbb0497dced2e401"
                                          }
                  },
     "serverProperties":  {

@@ -352,10 +352,10 @@ optimizations:
     action: "CONVERT_TO_ITEMS"
     # How long (in ticks) the "LIMIT" or "CONVERT_TO_ITEMS" action should last.
     limit-duration-ticks: 60 # Default: 3 seconds
-    
+
   # --- Item Merge Optimization ---
   # Actively merges dropped items to reduce entity count.
-  item-merge-optimization:    
+  item-merge-optimization:
     # Merge only normal dropped stacks. Smart over-stacking and non-stackable
     # item merging remain disabled, so custom artifacts keep their identity.
     enabled: true
@@ -397,7 +397,7 @@ optimizations:
       - FISHING_HOOK
       # - TRIDENT
 
-  # Sends a message to server staff when performance drops below a certain threshold  
+  # Sends a message to server staff when performance drops below a certain threshold
 performance-warnings:
     enabled: false
     # At which TPS value should a warning be sent?
@@ -491,7 +491,7 @@ command-blocking:
   blacklisted-commands:
     - "examplecommand"
     - "anotherblockedcommand"
-  
+
 # --- InstaLeafDecay ---
 # Enables the instant leaf decay feature when logs are broken or leaves decay.
 # Code from Mobilestars' InstaLeafDecay plugin.
@@ -777,4 +777,3 @@ dispenser-limiter:
   # How long (in ticks) to block the dispenser/dropper after it exceeds the limit.
   # 20 ticks = 1 second. Default: 40 ticks = 2 seconds.
   block-duration-ticks: 40
-

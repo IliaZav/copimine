@@ -65,10 +65,10 @@ commands:
     - "&e/clearlag timerules <status/on/off/eventon/eventoff> &7- status shows current mode, on/off enables day-night rules, eventon/eventoff toggles event mode override."
     - "&e/clearlag worldprofiles <status/on/off> &7- Enables or disables world-specific auto-clear settings globally."
     - "&e/clearlag worldprofiles world <world> <status/on/off> &7- Checks or toggles the profile for one specific world."
-  
+
   clear:
     success: "&aRemoved {count} entities of type {type}."
-  
+
   info:
     header: "&6--- ClearLag Info ---"
     version: "&eVersion: &a{version}"
@@ -95,7 +95,7 @@ commands:
     header: "&6--- CPU Usage (System-wide) ---"
     no-data: "&cCPU history is not yet available. Please wait a moment."
     line: "&eLast {time}: &a{value}%"
-  
+
   ram:
     header: "&6--- RAM Usage (JVM) ---"
     no-data: "&cRAM history is not yet available. Please wait a moment."
@@ -126,7 +126,7 @@ commands:
     header: "&6--- Top {count} Laggiest Chunks (by Entity Count) ---"
     no-chunks: "&7No loaded chunks found."
     line: "&e{rank}. World: &a{world}&e, Chunk: [&a{x}, {z}&e] - Entities: &c{count}"
-  
+
   unloadchunk:
     already-unloaded: "&eChunk at [&a{x}, {z}&e] in {world} is already unloaded."
     success: "&aSuccessfully unloaded chunk at [&a{x}, {z}&e] in {world}."
@@ -134,11 +134,11 @@ commands:
 
   nuke:
     success: "&c&lNUKE! &aRemoved {count} entities within a radius of {radius} blocks."
-  
+
   bossbar:
     enabled: "&aBossBar performance meter &lENABLED&a."
     disabled: "&aBossBar performance meter &lDISABLED&a."
-  
+
   snapshot:
     success: "&aPerformance snapshot created and logged!"
 
@@ -146,7 +146,7 @@ commands:
     ok: "&aConfig validation passed. No problems found."
     found: "&eConfig validation found &c{count} &eissue(s)."
     console: "&7Full details were also written to the server console/log."
-  
+
 
 autoclear:
   countdown: "&6Items and entities will be cleared in &c{time}&6!"

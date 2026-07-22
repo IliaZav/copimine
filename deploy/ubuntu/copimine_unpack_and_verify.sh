@@ -413,6 +413,45 @@ restore_preserved_state() {
   fi
 }
 
+normalize_vanilla_mob_gameplay() {
+  local properties="$PROJECT_ROOT/minecraft/server/server.properties"
+  [[ -f "$properties" ]] || die "Missing server.properties while restoring vanilla mob gameplay."
+  python3 - "$properties" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+updates = {
+    # Keep the normal Minecraft simulation radius.  The old deployment
+    # preserved 6/8 here, which made natural spawning and farms look broken
+    # even though the plugin configs were already vanilla.
+    "view-distance": "10",
+    "simulation-distance": "10",
+    "spawn-animals": "true",
+    "spawn-monsters": "true",
+    "spawn-npcs": "true",
+}
+lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+seen = set()
+output = []
+for line in lines:
+    if "=" not in line or line.startswith("#"):
+        output.append(line)
+        continue
+    key = line.split("=", 1)[0]
+    if key in updates:
+        output.append(f"{key}={updates[key]}")
+        seen.add(key)
+    else:
+        output.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        output.append(f"{key}={value}")
+path.write_text("\n".join(output) + "\n", encoding="utf-8")
+PY
+  log "Vanilla mob gameplay restored: view/simulation distance 10 and natural mob spawning enabled."
+}
+
 wipe_worlds_if_requested() {
   log "[9/16] Handle worlds"
   if [[ "$WIPE_WORLDS" != "1" ]]; then
@@ -693,6 +732,7 @@ main() {
   backup_current_release
   stop_services
   install_payload
+  normalize_vanilla_mob_gameplay
   bootstrap_runtime_environment
   wipe_worlds_if_requested
   restore_database_if_requested

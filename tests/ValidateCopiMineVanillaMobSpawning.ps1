@@ -5,6 +5,7 @@ $entityClearer = Read-Utf8 (Join-Path $root 'minecraft\server\plugins\EntityClea
 $farmControl = Read-Utf8 (Join-Path $root 'minecraft\server\plugins\FarmControl\config.yml')
 $pufferfish = Read-Utf8 (Join-Path $root 'minecraft\server\pufferfish.yml')
 $packaging = Read-Utf8 (Join-Path $root 'scripts\package_full_release.ps1')
+$installer = Read-Utf8 (Join-Path $root 'deploy\ubuntu\copimine_unpack_and_verify.sh')
 
 Require-Regex $entityClearer '(?m)^global-interval:\s*0\s*$' 'EntityClearer must be disabled so natural and farm mobs are never periodically removed.'
 Require-Regex $entityClearer '(?ms)^low-tps:\s*\r?\n(?:\s*#.*\r?\n)*\s+enabled:\s*false\b' 'EntityClearer low-TPS cleanup must be disabled for vanilla mob spawning.'
@@ -13,5 +14,7 @@ Require-Regex $farmControl '(?ms)^\s+reactive:\s*\[\s*\]\s*$' 'FarmControl react
 Require-Regex $pufferfish '(?m)^enable-async-mob-spawning:\s*false\s*$' 'Async mob spawning must be disabled so the vanilla spawn path is used.'
 Require-Contains $packaging 'minecraft\server\plugins\EntityClearer\config.yml' 'The vanilla EntityClearer config must be included in release archives.'
 Require-Contains $packaging 'minecraft\server\plugins\FarmControl\config.yml' 'The vanilla FarmControl config must be included in release archives.'
+Require-Contains $installer 'normalize_vanilla_mob_gameplay()' 'Deployment must restore vanilla mob gameplay after preserving the old server.properties.'
+Require-Contains $installer 'normalize_vanilla_mob_gameplay' 'Deployment must call the vanilla mob gameplay restore step.'
 
 Throw-IfErrors 'ValidateCopiMineVanillaMobSpawning'

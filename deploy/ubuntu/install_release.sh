@@ -474,6 +474,44 @@ remove_retired_frontend() {
   echo '[cleanup] retired preview and legacy frontend files removed'
 }
 
+normalize_vanilla_mob_gameplay() {
+  local properties="$PROJECT_ROOT/minecraft/server/server.properties"
+  [[ -f "$properties" ]] || { echo "[gameplay] missing $properties" >&2; return 1; }
+  python3 - "$properties" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+updates = {
+    'view-distance': '10',
+    'simulation-distance': '10',
+    'spawn-animals': 'true',
+    'spawn-monsters': 'true',
+    'spawn-npcs': 'true',
+}
+lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
+out, seen = [], set()
+for line in lines:
+    if '=' in line and not line.startswith('#'):
+        key = line.split('=', 1)[0]
+        if key in updates:
+            out.append(f'{key}={updates[key]}')
+            seen.add(key)
+            continue
+    out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f'{key}={value}')
+path.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
+PY
+  grep -q '^view-distance=10$' "$properties" || { echo '[gameplay] view-distance was not normalized' >&2; return 1; }
+  grep -q '^simulation-distance=10$' "$properties" || { echo '[gameplay] simulation-distance was not normalized' >&2; return 1; }
+  grep -q '^spawn-animals=true$' "$properties" || { echo '[gameplay] spawn-animals is disabled' >&2; return 1; }
+  grep -q '^spawn-monsters=true$' "$properties" || { echo '[gameplay] spawn-monsters is disabled' >&2; return 1; }
+  grep -q '^spawn-npcs=true$' "$properties" || { echo '[gameplay] spawn-npcs is disabled' >&2; return 1; }
+  echo '[gameplay] vanilla mob spawning and view distances verified'
+}
+
 runtime_app_user() {
   local candidate path
   # The data directory is the authoritative owner for an existing install.
@@ -536,6 +574,7 @@ if [[ "$result" -ne 0 ]]; then
   systemctl --no-pager --plain --full status copimine-admin copimine-minecraft nginx || true
   exit "$result"
 fi
+normalize_vanilla_mob_gameplay
 remove_retired_frontend
 verify_runtime
 if [[ "$RESET_TREASURY" == "1" ]]; then

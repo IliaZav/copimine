@@ -10,7 +10,6 @@
     {"id":"fermer_bez_sna_hoe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/fermer_bez_sna_hoe.png","base_material":"NETHERITE_HOE","custom_model_data":10005},
     {"id":"dezhurniy_argument_sword","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/dezhurny_argument_sword.png","base_material":"NETHERITE_SWORD","custom_model_data":10006},
     {"id":"vechniy_razgon_firework","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/vechny_razgon_firework_rocket.png","base_material":"FIREWORK_ROCKET","custom_model_data":10007},
-    {"id":"eternal_totem","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/totem_of_undying.png","base_material":"TOTEM_OF_UNDYING","custom_model_data":10008},
     {"id":"treasurer_chestplate","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/kaznacheyskiy_chestplate.png","base_material":"NETHERITE_CHESTPLATE","custom_model_data":10010},
     {"id":"copimine_miner_pickaxe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/copiminer_pickaxe.png","base_material":"NETHERITE_PICKAXE","custom_model_data":10011},
     {"id":"craftsman_hammer","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/remeslenick_mace.png","base_material":"MACE","custom_model_data":10012},

@@ -3168,6 +3168,7 @@ async function playerDetailsHtml(player) {
   const extraDonationSessions = asArray(detail.economy?.donationSessions);
   const extraDonationClaims = asArray(detail.economy?.donationClaims);
   const extraDonationPurchases = asArray(detail.economy?.donationPurchases);
+  const extraArtifactLimitResets = asArray(detail.economy?.artifactLimitResets);
   const extraVotes = asArray(detail.elections?.votes);
   const extraBallots = asArray(detail.elections?.ballots);
   const extraCandidateApplications = asArray(detail.elections?.candidateApplications);
@@ -3191,6 +3192,7 @@ async function playerDetailsHtml(player) {
     donationSessions: extraDonationSessions,
     donationClaims: extraDonationClaims,
     donationPurchases: extraDonationPurchases,
+    artifactLimitResets: extraArtifactLimitResets,
     votes: extraVotes,
     ballots: extraBallots,
     candidateApplications: extraCandidateApplications,
@@ -3219,6 +3221,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
     donationSessions = [],
     donationClaims = [],
     donationPurchases = [],
+    artifactLimitResets = [],
     votes = [],
     ballots = [],
     candidateApplications = [],
@@ -3343,13 +3346,15 @@ function renderPlayerFullDetails(player, detail, ctx) {
     ...asArray(detail?.economy?.artifactPurchases),
     ...asArray(donationPurchases).map((row) => ({ ...row, status: row.status || row.claim_status || "CLAIM_PENDING" })),
   ];
+  const artifactResetAt = Object.fromEntries(asArray(artifactLimitResets).map((row) => [cleanText(row.item_id || "").toLowerCase(), number(row.reset_at || row.resetAt || 0)]));
   const artifactLimitRows = [
     ...asArray(giftCatalog?.AR).map((item) => ({ ...item, limit_category: "AR", limit_value: 5 })),
     ...asArray(giftCatalog?.DONATION).map((item) => ({ ...item, limit_category: "DONATION", limit_value: 1 })),
   ].map((item) => {
     const itemId = cleanText(item.item_id || "");
     const category = cleanText(item.limit_category || "AR").toUpperCase();
-    const bought = artifactPurchaseRows.filter((row) => cleanText(row.item_id || "").toLowerCase() === itemId.toLowerCase() && ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY", "CLAIM_PENDING", "CLAIMED"].includes(String(row.status || "").toUpperCase())).length;
+    const resetAt = artifactResetAt[itemId.toLowerCase()] || 0;
+    const bought = artifactPurchaseRows.filter((row) => cleanText(row.item_id || "").toLowerCase() === itemId.toLowerCase() && number(row.created_at || row.createdAt || 0) > resetAt && ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY", "CLAIM_PENDING", "CLAIMED"].includes(String(row.status || "").toUpperCase())).length;
     return { item_id: itemId, display_name: cleanText(item.display_name || itemId), limit_category: category, bought, limit: item.limit_value || 5 };
   });
   const coreRows = asArray(actions.rows);

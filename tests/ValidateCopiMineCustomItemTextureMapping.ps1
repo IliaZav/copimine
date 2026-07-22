@@ -9,7 +9,7 @@ $catalog = Get-Content -Raw -Encoding UTF8 $catalogPath
 $required = @(
   'zmei_gorynych','smena_bez_perekura_pickaxe','lesnoy_bespredel_axe','kopatel_transhey_shovel','fermer_bez_sna_hoe',
   'dezhurniy_argument_sword','vechniy_razgon_firework','treasurer_chestplate','copimine_miner_pickaxe','craftsman_hammer',
-  'eternal_totem','kozyrny_tuz_pozdnyakova',
+  'kozyrny_tuz_pozdnyakova',
   'batin_remen_sudnogo_dnya','nu_ty_i_nakopal_blyat_pickaxe','kosa_nalogovoy_inspekcii','kaska_prorab_huev',
   'mne_pohuy_ya_v_tanke_vest','ne_segodnya_suka_shield','pohuy_na_debaffy_amulet',
   'vremya_platit_nalogi_clock','gde_moy_lut_blyat_compass'

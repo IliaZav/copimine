@@ -3,7 +3,7 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $sources = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'resourcepacks\item_texture_sources.json') | ConvertFrom-Json
 $errors = [System.Collections.Generic.List[string]]::new()
 $ids = @($sources.items | ForEach-Object { [string]$_.id })
-if ($ids.Count -ne 22 -or @($ids | Select-Object -Unique).Count -ne 22) { $errors.Add('Texture source mapping must contain 22 unique catalog ids.') }
+if ($ids.Count -ne 20 -or @($ids | Select-Object -Unique).Count -ne 20) { $errors.Add('Texture source mapping must contain 20 unique catalog ids after the donation totem retirement.') }
 foreach ($row in @($sources.items)) {
   if ([string]$row.source_path -match '\*' -and -not $row.frame_count) { $errors.Add("Wildcard source without frame_count: $($row.id)") }
   if ($row.frame_count -and [int]$row.frame_count -notin @(32,64)) { $errors.Add("Unexpected frame count for $($row.id)") }

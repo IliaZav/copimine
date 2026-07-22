@@ -10553,6 +10553,7 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
     donation_claims: list[dict[str, Any]] = []
     donation_purchases: list[dict[str, Any]] = []
     artifact_purchases: list[dict[str, Any]] = []
+    artifact_limit_resets: list[dict[str, Any]] = []
     vote_rows: list[dict[str, Any]] = []
     ballot_rows: list[dict[str, Any]] = []
     candidate_rows: list[dict[str, Any]] = []
@@ -10618,6 +10619,12 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
                     (uuid, safe_limit),
                 ).fetchall()
                 artifact_purchases = [normalize_donation_row_timestamps(dict(row), "created_at", "updated_at") for row in rows]
+            if pg_table_exists(conn, "artifact_purchase_limit_resets"):
+                rows = conn.execute(
+                    "SELECT item_id,reset_at,reset_by,idempotency_key FROM artifact_purchase_limit_resets WHERE player_uuid=%s ORDER BY reset_at DESC LIMIT %s",
+                    (uuid, safe_limit),
+                ).fetchall()
+                artifact_limit_resets = [normalize_donation_row_timestamps(dict(row), "reset_at") for row in rows]
             if pg_table_exists(conn, "donation_balance_ledger"):
                 rows = conn.execute(
                     "SELECT id,delta,balance_after,reason,actor,source,created_at FROM donation_balance_ledger WHERE player_uuid=%s ORDER BY created_at DESC LIMIT %s",
@@ -10756,6 +10763,7 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
             "donationClaims": donation_claims[:safe_limit],
             "donationPurchases": donation_purchases[:safe_limit],
             "artifactPurchases": artifact_purchases[:safe_limit],
+            "artifactLimitResets": artifact_limit_resets[:safe_limit],
         },
         "elections": {
             "candidateApplications": candidate_rows[:safe_limit],
@@ -13941,6 +13949,28 @@ def reset_artifact_limit_sync(player: str, actor: str, data: AdminArtifactLimitR
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         for item_id in item_ids:
+            advisory_lock(conn, f"donation-entitlement:{uuid}:{item_id}")
+            if item_id in donation_items:
+                # A reset must also release the old live entitlement.  Merely
+                # writing reset_at leaves the database unique live-instance
+                # index occupied, so the next legitimate purchase still
+                # fails with "active or unfinished donation entitlement".
+                conn.execute(
+                    "UPDATE donation_item_claims SET status='RESET_RETIRED',updated_at=%s WHERE player_uuid=%s AND item_id=%s AND status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')",
+                    (now, uuid, item_id),
+                )
+                conn.execute(
+                    "UPDATE donation_purchases SET status='RESET_RETIRED',updated_at=%s WHERE player_uuid=%s AND item_id=%s AND status IN ('PAID','CLAIM_PENDING','CLAIMED','DELIVERY_REVIEW')",
+                    (now, uuid, item_id),
+                )
+                conn.execute(
+                    "UPDATE artifact_pending_deliveries SET status='RESET_RETIRED',updated_at=%s WHERE player_uuid=%s AND item_id=%s AND status IN ('PENDING','DELIVERING')",
+                    (now, uuid, item_id),
+                )
+                conn.execute(
+                    "UPDATE artifact_item_instances SET status='RESET_RETIRED',updated_at=%s WHERE owner_uuid=%s AND item_id=%s AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')",
+                    (now, uuid, item_id),
+                )
             conn.execute(
                 """
                 INSERT INTO artifact_purchase_limit_resets(player_uuid,item_id,reset_at,reset_by,idempotency_key)
@@ -13952,7 +13982,7 @@ def reset_artifact_limit_sync(player: str, actor: str, data: AdminArtifactLimitR
         conn.commit()
     audit_event(actor, "artifact.purchase_limit.reset", target=player, details={"minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now})
     append_panel_event("players", "artifact_limit_reset", actor=actor, target=player, metadata={"itemIds": item_ids, "resetAt": now}, tags=["artifacts", "limit"])
-    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now, "limit": 5}
+    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now, "limit": 5, "donationEntitlementsRetired": [item_id for item_id in item_ids if item_id in donation_items]}
 
 
 def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentIn) -> dict[str, Any]:

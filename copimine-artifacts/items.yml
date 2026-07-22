@@ -194,24 +194,6 @@ items:
     lore:
       - "&7за помощь в развитии проекта CopiMine"
 
-  - id: eternal_totem
-    category: TOOL
-    material: TOTEM_OF_UNDYING
-    source: AR_SHOP
-    custom_model_data: 10008
-    name: "&6Тотем бессмертия — бесконечный"
-    rarity: LEGENDARY
-    price_ar: 7500
-    supply_limit: 0
-    per_player_limit: 5
-    cooldown_seconds: 0
-    effect: INFINITE_TOTEM
-    effect_chance_percent: 100
-    visual_effect_id: CHROMATIC_SHIFT
-    lore:
-      - "&7Срабатывает без расхода предмета."
-      - "&7Доступен только как AR-предмет."
-
 donation-catalog:
   catalog-version: 1
   updated-at: 1782345600
@@ -227,9 +209,9 @@ donation-catalog:
       reclaim-policy: LOSS_ONLY
       consume-policy: BREAKABLE
       effect-profile-id: BATIN_REMEN
-      effect-description: "Шанс замедлить цель, сбить темп боя и кратко усилить владельца."
+      effect-description: "При ударе вызывает настоящую молнию, даёт владельцу скорость на 30 секунд, замедляет цель на 30 секунд и с шансом 20% опутывает её на 10 секунд."
       cooldown-seconds: 25
-      proc-chance: 0.15
+      proc-chance: 1.0
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
@@ -237,7 +219,8 @@ donation-catalog:
       visual-effect-id: DARK_PULSE
       lore:
         - "&7Тяжёлый PvP-предмет контроля."
-        - "&7Молния только визуальная и без грифа."
+        - "&7При успешном ударе вызывает настоящую молнию без разрушений."
+        - "&7Опутывание: 20% на 10 секунд."
 
     - item-id: nu_ty_i_nakopal_blyat_pickaxe
       display-name: "&6Кирка \"Ну ты и накопал, блять\""

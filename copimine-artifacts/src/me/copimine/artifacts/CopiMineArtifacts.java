@@ -95,7 +95,6 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
@@ -144,6 +143,7 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 public final class CopiMineArtifacts extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+   private static final double AR_THEFT_PROC_CHANCE = 0.001D;
    private static final String PRESIDENT_BUDGET_ACCOUNT_ID = "PRESIDENT_BUDGET";
    private static final String TREASURY_LABEL = "Казна CopiMine";
    private static final UUID EMPTY_UUID = new UUID(0L, 0L);
@@ -746,6 +746,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             retired.setLong(1, this.now());
             retired.setString(2, "ya_esche_ne_vse_isportil_totem");
             retired.executeUpdate();
+            retired.setLong(1, this.now());
+            retired.setString(2, "eternal_totem");
+            retired.executeUpdate();
          }
 
          var1.commit();
@@ -1251,40 +1254,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          CatalogItem chestplate = this.authenticCatalogItem(player.getInventory().getChestplate(), player, "armor_tick");
          if (chestplate != null && "TANK_VEST".equalsIgnoreCase(chestplate.effect())) {
             player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 0, false, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 60, 0, false, false, true));
          }
       }
-   }
-
-   private void restoreInfiniteTotem(Player player, ItemStack snapshot) {
-      if (player == null || !player.isOnline() || snapshot == null || !snapshot.hasItemMeta()) {
-         return;
-      }
-      String uniqueId = snapshot.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
-      if (uniqueId == null || uniqueId.isBlank()) {
-         return;
-      }
-      PlayerInventory inventory = player.getInventory();
-      ItemStack[] hands = {inventory.getItemInMainHand(), inventory.getItemInOffHand()};
-      for (int index = 0; index < hands.length; index++) {
-         ItemStack current = hands[index];
-         if (current == null || !current.hasItemMeta()) {
-            continue;
-         }
-         String currentId = current.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
-         if (!uniqueId.equals(currentId)) {
-            continue;
-         }
-         if (current.getAmount() < snapshot.getAmount()) {
-            current.setAmount(current.getAmount() + 1);
-            if (index == 0) {
-               inventory.setItemInMainHand(current);
-            } else {
-               inventory.setItemInOffHand(current);
-            }
-         }
-         return;
-      }
-      inventory.addItem(snapshot);
    }
 
    private LivingEntity resolveDamageAttacker(EntityDamageByEntityEvent event) {
@@ -1347,32 +1319,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var2 != null && var1.getPlayer().getUniqueId().equals(var2.ownerUuid())) {
          this.runAsync(() -> {
             try {
-               // updateDonationInstanceStatus(ref.ownerUuid(), ref.uniqueItemId(), ref.itemId(), "BROKEN"
-               if (this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "BROKEN", Set.of("ACTIVE", "DELIVERING"), true)) {
+               CopiMineArtifacts.DonationCatalogItem catalog = this.donationCatalogById.get(var2.itemId());
+               boolean consumed = catalog != null && "CONSUME".equalsIgnoreCase(catalog.consumePolicy());
+               boolean marked = consumed
+                  ? this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "CONSUMED", Set.of("ACTIVE", "DELIVERING"), true)
+                  : this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "BROKEN", Set.of("ACTIVE", "DELIVERING"), true);
+               // A consumable that reaches zero durability is terminally
+               // consumed; a breakable item remains explicitly BROKEN.
+               if (marked) {
                   this.audit(var1.getPlayer().getName(), "donation_item_broken", var2.uniqueItemId(), var2.itemId());
                }
             } catch (SQLException var4) {
                this.getLogger().log(Level.WARNING, "Donation item break status update failed", (Throwable)var4);
             }
          });
-      }
-   }
-
-   @EventHandler(
-      ignoreCancelled = true
-   )
-   public void onEntityResurrect(EntityResurrectEvent var1) {
-         if (var1.getEntity() instanceof Player var2) {
-         ItemStack[] var10 = new ItemStack[]{var2.getInventory().getItemInMainHand(), var2.getInventory().getItemInOffHand()};
-
-         for (ItemStack var7 : var10) {
-            CopiMineArtifacts.CatalogItem infiniteTotem = this.authenticCatalogItem(var7, var2, "resurrect_infinite_totem");
-            if (infiniteTotem != null && var7.getType() == Material.TOTEM_OF_UNDYING && "INFINITE_TOTEM".equalsIgnoreCase(infiniteTotem.effect())) {
-               ItemStack snapshot = var7.clone();
-               Bukkit.getScheduler().runTask(this, () -> this.restoreInfiniteTotem(var2, snapshot));
-               break;
-            }
-         }
       }
    }
 
@@ -1401,7 +1361,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                case FIRE:
                case FIRE_TICK:
                case LAVA:
-               case VOID:
                case BLOCK_EXPLOSION:
                case ENTITY_EXPLOSION:
                case CONTACT:
@@ -1410,13 +1369,51 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      var4.ownerUuid(), Map.of(var4.uniqueItemId(), var4.itemId()), var1.getCause().name().toLowerCase(Locale.ROOT)
                   )) {
                      return;
-                  } else {
-                     var2.remove();
-                     this.flushPendingDonationLossJournalAsync();
+                   } else {
+                      var2.remove();
+                      this.flushPendingDonationLossJournalAsync();
+                   }
+                   break;
+               case VOID:
+                  // A void throw is recoverable in-place: move the official
+                  // item to its owner's safe position (or world spawn) instead
+                  // of deleting it and relying on a delayed reclaim journal.
+                  var1.setCancelled(true);
+                  if (this.preserveDonationItemFromVoid(var2, var4.ownerUuid())) {
+                     return;
                   }
+                  if (!this.recordDonationLossJournal(var4.ownerUuid(), Map.of(var4.uniqueItemId(), var4.itemId()), "void")) {
+                     return;
+                  }
+                  var2.remove();
+                  this.flushPendingDonationLossJournalAsync();
             }
          }
       }
+   }
+
+   private boolean preserveDonationItemFromVoid(Item item, UUID ownerUuid) {
+      if (item == null || item.getWorld() == null) {
+         return false;
+      }
+      Player owner = ownerUuid == null ? null : Bukkit.getPlayer(ownerUuid);
+      Location destination;
+      if (owner != null && owner.isOnline() && owner.getWorld() != null) {
+         destination = owner.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+      } else {
+         World world = item.getWorld();
+         Location spawn = world.getSpawnLocation();
+         int surfaceY = world.getHighestBlockYAt(spawn.getBlockX(), spawn.getBlockZ());
+         destination = new Location(world, spawn.getBlockX() + 0.5D, surfaceY + 1.0D, spawn.getBlockZ() + 0.5D);
+      }
+      if (destination.getWorld() == null || !item.teleport(destination)) {
+         return false;
+      }
+      item.setVelocity(new Vector());
+      item.setFireTicks(0);
+      item.setPickupDelay(10);
+      item.setTicksLived(0);
+      return true;
    }
 
    private void cleanupExpiredSessions() {
@@ -10077,27 +10074,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void applyTemporaryCobwebSnare(Player var1, LivingEntity var2, long durationTicks) {
-      if (var1 != null && var2 != null) {
-         Block var3 = var2.getLocation().getBlock();
-         if (var3.getType() == Material.AIR && !this.shopsByLocation.containsKey(this.blockKey(var3.getLocation()))) {
-            BlockPlaceEvent var4 = new BlockPlaceEvent(
-               var3,
-               var3.getState(),
-               var3.getRelative(BlockFace.DOWN),
-               new ItemStack(Material.COBWEB),
-               var1,
-               true
-            );
-            Bukkit.getPluginManager().callEvent(var4);
-            if (!var4.isCancelled() && var4.canBuild()) {
-               var3.setType(Material.COBWEB, false);
-               Bukkit.getScheduler().runTaskLater(this, () -> {
-                  if (var3.getType() == Material.COBWEB) {
-                     var3.setType(Material.AIR, false);
-                  }
-               }, Math.max(1L, durationTicks));
+      if (var1 == null || var2 == null || var2.getWorld() == null) {
+         return;
+      }
+      Block origin = var2.getLocation().getBlock();
+      List<Block> placedBlocks = new ArrayList<>();
+      // A single cobweb at the feet is easy to walk out of and was the reason
+      // the donation pickaxe looked like it did nothing.  Build a reversible
+      // two-block-high 3x3 web cage instead.  Only empty, unprotected blocks
+      // are touched, and every block is remembered for precise cleanup.
+      for (int y = 0; y <= 1; y++) {
+         for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+               Block block = origin.getRelative(dx, y, dz);
+               if (!block.isPassable() || block.isLiquid() || this.shopsByLocation.containsKey(this.blockKey(block.getLocation()))) {
+                  continue;
+               }
+               BlockPlaceEvent place = new BlockPlaceEvent(
+                  block,
+                  block.getState(),
+                  block.getRelative(BlockFace.DOWN),
+                  new ItemStack(Material.COBWEB),
+                  var1,
+                  true
+               );
+               Bukkit.getPluginManager().callEvent(place);
+               if (place.isCancelled() || !place.canBuild()) {
+                  continue;
+               }
+               block.setType(Material.COBWEB, false);
+               placedBlocks.add(block);
             }
          }
+      }
+      if (!placedBlocks.isEmpty()) {
+         Bukkit.getScheduler().runTaskLater(this, () -> {
+            for (Block block : placedBlocks) {
+               if (block.getType() == Material.COBWEB) {
+                  block.setType(Material.AIR, false);
+               }
+            }
+         }, Math.max(1L, durationTicks));
       }
    }
 
@@ -10175,7 +10192,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void tryRareArTheft(Player attacker, LivingEntity target) {
-      if (!(target instanceof Player victim) || attacker == null || this.bridge == null || random.nextDouble() >= 0.001D) return;
+      if (!(target instanceof Player victim) || attacker == null || this.bridge == null || random.nextDouble() >= AR_THEFT_PROC_CHANCE) return;
       String idempotencyKey = "kosa-ar-steal-" + UUID.randomUUID();
       this.runAsync(() -> {
          CopiMineArtifacts.BridgeTxnResult account = this.bridge.stealFromPlayerAccount(
@@ -10186,7 +10203,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.runSync(() -> this.sendArTheftMessages(attacker, victim, false));
             return;
          }
-         if (!"NO_BANK_ACCOUNT".equalsIgnoreCase(account.code()) && !"INSUFFICIENT_AR".equalsIgnoreCase(account.code())) return;
+         String accountCode = account.code() == null ? "" : account.code().trim().toUpperCase(Locale.ROOT);
+         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT", "INSUFFICIENT_AR").contains(accountCode))) return;
          this.runSync(() -> {
             if (!victim.isOnline() || !attacker.isOnline()) return;
             OfficialArService ar = this.officialArService();
@@ -10253,7 +10271,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private Set<String> artifactDefenseEffects() {
-      return Set.of("PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD", "POZDNYAKOV_ACE", "INFINITE_TOTEM");
+      return Set.of("PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD", "POZDNYAKOV_ACE");
    }
 
    private String categoryTitle(CopiMineArtifacts.Category var1) {

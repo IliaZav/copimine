@@ -723,7 +723,11 @@ class AdminRepairPriceUpdateIn(BaseModel):
 
 
 class AdminArtifactLimitResetIn(BaseModel):
-    item_id: str = Field(min_length=2, max_length=120)
+    # `*` is the documented wildcard used by the admin UI to reset every
+    # catalogue limit.  Keep the lower bound at one character so the request
+    # reaches the service-level validation, which distinguishes `*`/`all`
+    # from a real item id and returns a useful 4xx response for invalid ids.
+    item_id: str = Field(min_length=1, max_length=120)
     category: str = Field(default="AR", min_length=2, max_length=16)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
@@ -7383,12 +7387,14 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 applications = [dict(r) for r in conn.execute("SELECT * FROM candidate_applications WHERE election_id=%s ORDER BY submitted_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "candidate_applications") else ([dict(r) for r in conn.execute("SELECT * FROM election_applications WHERE election_id=%s ORDER BY submitted_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "election_applications") else [])
                 curators = [dict(r) for r in conn.execute("SELECT * FROM cik_chairs WHERE active=1 ORDER BY assigned_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "cik_chairs") else []
                 polling_stations = [dict(r) for r in conn.execute("SELECT * FROM polling_stations WHERE election_id=%s AND active=1 ORDER BY created_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "polling_stations") else ([dict(r) for r in conn.execute("SELECT * FROM election_stations WHERE election_id=%s ORDER BY active DESC,id DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "election_stations") else [])
-                president_rows = [dict(r) for r in conn.execute("SELECT * FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1").fetchall()] if pg_table_exists(conn, "president_terms") else [dict(r) for r in conn.execute("SELECT * FROM election_presidents ORDER BY active DESC,assigned_at DESC,id DESC LIMIT 1").fetchall()]
+                president_rows = [dict(r) for r in conn.execute("SELECT * FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1").fetchall()] if pg_table_exists(conn, "president_terms") else ([dict(r) for r in conn.execute("SELECT * FROM election_presidents ORDER BY active DESC,assigned_at DESC,id DESC LIMIT 1").fetchall()] if pg_table_exists(conn, "election_presidents") else [])
                 active_term_id = str((president_rows[0] or {}).get("id") or "") if president_rows else ""
                 laws = [dict(r) for r in conn.execute("SELECT * FROM president_laws WHERE term_id=%s AND status='PUBLISHED' ORDER BY slot_no ASC,published_at DESC LIMIT %s", (active_term_id, limit)).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
                 pending_laws = [dict(r) for r in conn.execute("SELECT * FROM president_laws WHERE term_id=%s AND status='PENDING' ORDER BY created_at DESC LIMIT %s", (active_term_id, limit)).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
-                decrees = [dict(r) for r in conn.execute("SELECT * FROM election_decrees ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()]
-                petitions = [dict(r) for r in conn.execute("SELECT * FROM election_petitions ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()]
+                # These documents are optional in older installs.  A missing
+                # table must not invalidate the whole election response.
+                decrees = [dict(r) for r in conn.execute("SELECT * FROM election_decrees ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "election_decrees") else []
+                petitions = [dict(r) for r in conn.execute("SELECT * FROM election_petitions ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "election_petitions") else []
                 audit = [dict(r) for r in conn.execute("SELECT actor,action,created_at,details FROM admin_actions WHERE action ILIKE 'election.%' ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "admin_actions") else []
                 safe_election = sanitize_election_row_public_admin(election)
                 safe_president = sanitize_election_row_public_admin(president_rows[0]) if president_rows else {}
@@ -7456,6 +7462,7 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 },
             }
         except Exception:
+            LOGGER.exception("Election detail query failed")
             pass
     return {
         "source": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallbackDisabled": True},
@@ -11186,7 +11193,7 @@ async def elections_overview(_: str = Depends(require_panel_admin)) -> dict[str,
 
 
 @app.get("/api/elections/detail")
-async def elections_detail(limit: int = 500, _: str = Depends(require_admin)) -> dict[str, Any]:
+async def elections_detail(limit: int = 500, _: str = Depends(require_panel_admin)) -> dict[str, Any]:
     return await bg(election_detail_sync, limit)
 
 
@@ -15776,6 +15783,9 @@ async def runtime(request: Request, authorization: str = Header(default="")) -> 
 
 @app.get("/favicon.ico")
 async def favicon() -> Response:
+    path = FRONTEND_DIR / "assets" / "favicon.png"
+    if path.exists():
+        return FileResponse(path, media_type="image/png")
     path = FRONTEND_DIR / "assets" / "favicon.svg"
     if path.exists():
         return FileResponse(path, media_type="image/svg+xml")

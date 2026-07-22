@@ -1,0 +1,3 @@
+{"candidate_id":"CAND-W05-006","phase":"discovery","status":"discovered","worker":"round-02/worker-05","evidence":"Independent source-control-sink tuple recorded in raw_candidates.jsonl and finding_discovery_report.md.","deferred_reason":null}
+{"candidate_id":"CAND-W05-006","phase":"validation","status":"deferred","worker":"round-02/worker-05","evidence":null,"deferred_reason":"Validation is coordinator-owned after discovery; no exploit execution or deployment testing was authorized for this worker."}
+{"candidate_id":"CAND-W05-006","phase":"attack_path","status":"deferred","worker":"round-02/worker-05","evidence":null,"deferred_reason":"Attack-path analysis is coordinator-owned and prohibited in this discovery worker assignment."}

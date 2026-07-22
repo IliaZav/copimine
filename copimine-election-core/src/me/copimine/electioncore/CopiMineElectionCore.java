@@ -475,12 +475,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent event) {
         ItemStack dropped = event.getItemDrop().getItemStack();
         if (isCikSeal(dropped)) {
-            event.setCancelled(true);
-            event.getItemDrop().remove();
+            // Do not cancel Q: Bukkit has already removed the stack from the
+            // inventory, and cancelling makes the client put it back.  Let
+            // the drop complete, then remove only the spawned entity.
+            event.setCancelled(false);
+            Bukkit.getScheduler().runTask(this, () -> event.getItemDrop().remove());
             destroyOneCikSeal(event.getPlayer(), readString(dropped, sealIdKey));
             event.getPlayer().sendMessage(color("&eПечать ЦИК уничтожена."));
             Bukkit.getScheduler().runTask(this, event.getPlayer()::updateInventory);
@@ -1844,8 +1847,28 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         player.openInventory(inv);
     }
 
-    private void openCikMenu(Player player, int page) throws Exception {
-        List<Map<String, Object>> chairs = queryList("SELECT station_id,player_uuid,player_name,assigned_at,active FROM cik_chairs WHERE active=1 ORDER BY assigned_at DESC");
+    private void openCikMenu(Player player, int page) {
+        player.sendActionBar(color("&7Загружаю список ЦИК..."));
+        runAsync(() -> {
+            try {
+                List<Map<String, Object>> chairs = queryList("SELECT station_id,player_uuid,player_name,assigned_at,active FROM cik_chairs WHERE active=1 ORDER BY assigned_at DESC LIMIT 500");
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        renderCikMenu(player, page, chairs);
+                    }
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "cik menu load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(color("&cНе удалось загрузить список ЦИК."));
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderCikMenu(Player player, int page, List<Map<String, Object>> chairs) {
         MenuHolder holder = new MenuHolder("cik", "");
         Inventory inv = holder.create(54, color("&bЦИК"));
         setButton(holder, 10, Material.NAME_TAG, "&eПредседатели участков", List.of("&7Назначение председателей делается из карточки участка."), "none");
@@ -1870,10 +1893,30 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         player.openInventory(inv);
     }
 
-    private void openCikChairManagementMenu(Player player, int page) throws Exception {
-        List<Map<String, Object>> stations = queryList(
-                "SELECT id,world,x,y,z,chair_uuid,chair_name,active FROM polling_stations WHERE active=1 ORDER BY created_at DESC"
-        );
+    private void openCikChairManagementMenu(Player player, int page) {
+        player.sendActionBar(color("&7Загружаю участки..."));
+        runAsync(() -> {
+            try {
+                List<Map<String, Object>> stations = queryList(
+                        "SELECT id,world,x,y,z,chair_uuid,chair_name,active FROM polling_stations WHERE active=1 ORDER BY created_at DESC LIMIT 500"
+                );
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        renderCikChairManagementMenu(player, page, stations);
+                    }
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "cik chair management menu load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(color("&cНе удалось загрузить участки."));
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderCikChairManagementMenu(Player player, int page, List<Map<String, Object>> stations) {
         MenuHolder holder = new MenuHolder("cik-chair-management", "");
         Inventory inv = holder.create(54, color("&bПредседатели ЦИК"));
         setStatic(inv, 4, infoItem(Material.NAME_TAG, "&fУправление председателями", List.of(
@@ -1897,13 +1940,34 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         player.openInventory(inv);
     }
 
-    private void openChairRemovalRequestsMenu(Player player, int page) throws Exception {
+    private void openChairRemovalRequestsMenu(Player player, int page) {
         if (!hasElectionAdmin(player)) {
-            throw new IllegalStateException("Нет доступа к заявкам председателей.");
+            player.sendMessage(color("&cНет доступа к заявкам председателей."));
+            return;
         }
-        List<Map<String, Object>> requests = queryList(
-                "SELECT id,station_id,chair_uuid,chair_name,status,requested_at,reviewed_at,reviewed_by FROM cik_chair_removal_requests ORDER BY requested_at DESC, id DESC"
-        );
+        player.sendActionBar(color("&7Загружаю заявки председателей..."));
+        runAsync(() -> {
+            try {
+                List<Map<String, Object>> requests = queryList(
+                        "SELECT id,station_id,chair_uuid,chair_name,status,requested_at,reviewed_at,reviewed_by FROM cik_chair_removal_requests ORDER BY requested_at DESC, id DESC LIMIT 500"
+                );
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        renderChairRemovalRequestsMenu(player, page, requests);
+                    }
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "chair removal requests menu load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(color("&cНе удалось загрузить заявки председателей."));
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderChairRemovalRequestsMenu(Player player, int page, List<Map<String, Object>> requests) {
         MenuHolder holder = new MenuHolder("cik-chair-requests", "");
         Inventory inv = holder.create(54, color("&6Заявки на снятие председателей"));
         setStatic(inv, 4, infoItem(Material.WRITABLE_BOOK, "&fОчередь заявок", List.of(
@@ -2451,12 +2515,36 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         player.openInventory(inv);
     }
 
-    private void openChairApplicationsMenu(Player player, String stationId, int page) throws Exception {
-        requireChairAccess(player, stationId);
-        List<Map<String, Object>> rows = queryList(
-                "SELECT id,player_name,submitted_at,chair_recommendation,admin_status FROM candidate_applications WHERE station_id=? ORDER BY submitted_at DESC,issued_at DESC",
-                stationId
-        );
+    private void openChairApplicationsMenu(Player player, String stationId, int page) {
+        UUID playerUuid = player.getUniqueId();
+        boolean elevated = player.isOp()
+                || player.hasPermission("copimine.election.admin")
+                || player.hasPermission("copimine.admin");
+        player.sendActionBar(color("&7Загружаю заявки участка..."));
+        runAsync(() -> {
+            try {
+                requireChairAccess(playerUuid, elevated, stationId);
+                List<Map<String, Object>> rows = queryList(
+                        "SELECT id,player_name,submitted_at,chair_recommendation,admin_status FROM candidate_applications WHERE station_id=? ORDER BY submitted_at DESC,issued_at DESC LIMIT 500",
+                        stationId
+                );
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        renderChairApplicationsMenu(player, stationId, page, rows);
+                    }
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "chair applications menu load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(color("&cНе удалось загрузить заявки участка."));
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderChairApplicationsMenu(Player player, String stationId, int page, List<Map<String, Object>> rows) {
         MenuHolder holder = new MenuHolder("chair-applications", stationId);
         Inventory inv = holder.create(54, color("&bЗаявки участка"));
         int start = Math.max(0, page) * 21;
@@ -3232,7 +3320,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (player == null) {
             return;
         }
-        stationByIdForOperation(stationId);
+        // A free block is not enough: stale GUI actions must not assign a
+        // chairman to a station from an archived election.
+        requireStationForElection(stationId, requireActiveElectionId());
         assignChairToStation(stationId, player.getUniqueId().toString(), player.getName(), player.getName());
     }
 
@@ -6445,6 +6535,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         PlayerInventory inventory = player.getInventory();
+        boolean removedFromInventory = false;
         for (int slot = 0; slot < inventory.getSize(); slot++) {
             ItemStack stack = inventory.getItem(slot);
             if (!isCikSeal(stack) || !sealId.equals(readString(stack, sealIdKey))) {
@@ -6456,25 +6547,39 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 stack.setAmount(stack.getAmount() - 1);
                 inventory.setItem(slot, stack);
             }
-            player.updateInventory();
-            officialRestore.computeIfPresent(player.getUniqueId(), (uuid, queued) -> {
-                queued.removeIf(item -> sealId.equals(readString(item, sealIdKey)));
-                return queued.isEmpty() ? null : queued;
-            });
-            Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
-                try {
-                    tx(connection -> {
-                        update(connection, "UPDATE cik_seals SET status='REVOKED',revoked_at=?,revoked_by=? WHERE id=? AND status='ACTIVE'",
-                                now(), player.getName(), sealId);
-                        logPluginEvent(connection, "election_core", "seal_destroyed", player.getName(), sealId, "player_action");
-                        return null;
-                    });
-                } catch (Exception error) {
-                    getLogger().warning("seal destroy persistence: " + safeError(error));
-                }
-            });
-            return;
+            removedFromInventory = true;
+            break;
         }
+        if (removedFromInventory) {
+            player.updateInventory();
+        }
+        // PlayerDropEvent fires after Bukkit has removed the dropped stack
+        // from the inventory, so persistence must run even when no slot was
+        // found.  This also clears a queued offline restoration.
+        officialRestore.computeIfPresent(player.getUniqueId(), (uuid, queued) -> {
+            queued.removeIf(item -> sealId.equals(readString(item, sealIdKey)));
+            return queued.isEmpty() ? null : queued;
+        });
+        String ownerUuid = player.getUniqueId().toString();
+        String ownerName = player.getName();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            try {
+                tx(connection -> {
+                    Map<String, Object> active = queryOne(connection,
+                            "SELECT id FROM cik_seals WHERE id=? AND player_uuid=? AND status='ACTIVE' FOR UPDATE",
+                            sealId, ownerUuid);
+                    if (active == null) {
+                        return null;
+                    }
+                    update(connection, "UPDATE cik_seals SET status='REVOKED',revoked_at=?,revoked_by=? WHERE id=? AND player_uuid=? AND status='ACTIVE'",
+                            now(), ownerName, sealId, ownerUuid);
+                    logPluginEvent(connection, "election_core", "seal_destroyed", ownerName, sealId, "player_action");
+                    return null;
+                });
+            } catch (Exception error) {
+                getLogger().warning("seal destroy persistence: " + safeError(error));
+            }
+        });
     }
 
     private boolean isConfirmedBallot(ItemStack stack) {

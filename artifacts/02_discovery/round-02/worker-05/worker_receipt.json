@@ -1,0 +1,46 @@
+{
+  "worker_id": "round-02/worker-05",
+  "round": "round-02",
+  "scan_id": "da082051-8f29-4d90-b4ba-ff54097b59ac",
+  "status": "completed_with_deferred_closures",
+  "repository": "D:/Desktop/Copimine/opt/copimine",
+  "target_id": "target_sha256_850966f902d9016af18b00a3cb5dc36970fd95ed0f51dedec2e3208bf4c4c113",
+  "snapshot": "codex-security-snapshot/v1:sha256:ee4f16137fa3ca57c0d7c29a1cfd0dfc4a224fa5048cbfa01581805d654ff39d2",
+  "worklists": {
+    "rank_input": "artifacts/02_discovery/rank_input.jsonl",
+    "deep_review_input": "artifacts/02_discovery/deep_review_input.jsonl",
+    "rows_total": 2233,
+    "unique_paths": 2233,
+    "missing_files": 0,
+    "bytes_read": 31273709,
+    "lines_read": 815217,
+    "rows_with_candidate_links": 6,
+    "rows_closed_without_candidate": 2227
+  },
+  "candidate_count": 10,
+  "out_of_worklist_candidates": ["CAND-W05-009"],
+  "candidate_ids": [
+    "CAND-W05-001",
+    "CAND-W05-002",
+    "CAND-W05-003",
+    "CAND-W05-004",
+    "CAND-W05-005",
+    "CAND-W05-006",
+    "CAND-W05-007",
+    "CAND-W05-008",
+    "CAND-W05-009",
+    "CAND-W05-010"
+  ],
+  "artifacts": [
+    "artifacts/01_context/worker-05-threat_model.md",
+    "artifacts/02_discovery/round-02/worker-05/finding_discovery_report.md",
+    "artifacts/02_discovery/round-02/worker-05/raw_candidates.jsonl",
+    "artifacts/02_discovery/round-02/worker-05/work_ledger.jsonl",
+    "artifacts/05_findings/round-02/worker-05/<candidate-id>/candidate_ledger.jsonl"
+  ],
+  "deferred_closures": [
+    "Candidate validation is coordinator-owned and deferred for all 10 candidates.",
+    "Attack-path analysis is coordinator-owned and deferred for all 10 candidates.",
+    "No repository files were modified by this worker."
+  ]
+}

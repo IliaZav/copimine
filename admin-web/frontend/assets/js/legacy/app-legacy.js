@@ -2676,13 +2676,18 @@ async function playerDetailsHtml(player) {
             <input id="playerSitePasswordInput" type="password" autocomplete="new-password" placeholder="Оставь пустым, если не меняешь" maxlength="128" />
           </label>
         </div>
-        <div class="credential-actions">
-          <button class="btn btn-secondary btn-small" data-click="generatePlayerPassword('${esc(player)}')">Сгенерировать</button>
-          <button class="btn btn-secondary btn-small" data-click="copyPlayerPassword()">Скопировать</button>
-          <button class="btn btn-primary btn-small" data-click="updatePlayerSiteAccount('${esc(player)}')">Сохранить</button>
-        </div>
-        <span class="credential-hint">Текущий пароль не показывается. Сгенерированный пароль можно скопировать до сохранения.</span>
-      </div>
+		<div class="credential-actions">
+		  <button class="btn btn-secondary btn-small" data-click="generatePlayerPassword('${esc(player)}')">Сгенерировать</button>
+		  <button class="btn btn-secondary btn-small" data-click="copyPlayerPassword()">Скопировать</button>
+		  <button class="btn btn-primary btn-small" data-click="updatePlayerSiteAccount('${esc(player)}')">Сбросить/сохранить</button>
+		</div>
+		<span class="credential-hint">Текущий пароль не показывается. Сгенерированный пароль можно скопировать до сохранения.</span>
+		<div class="credential-note"><strong>AuthMe</strong><span>Текущий пароль не показывается. Здесь можно задать новый пароль так же, как в основной карточке.</span></div>
+		<div class="field-grid compact">
+		  <label class="field-stack" for="playerAdminAuthMePassword"><span>Новый пароль AuthMe</span><input id="playerAdminAuthMePassword" type="password" autocomplete="new-password" placeholder="8-64 символа без пробелов" /></label>
+		  <button class="btn btn-secondary btn-small" data-click="playerResetAuthMePassword('${esc(player)}')">Сбросить пароль AuthMe</button>
+		</div>
+	  </div>
     `
     : (site.id ? `<div class="notice">Только полный админ может менять данные входа.</div>` : `<div class="notice">У игрока нет привязанного аккаунта сайта.</div>`);
   return `
@@ -2701,7 +2706,7 @@ async function playerDetailsHtml(player) {
       ${metric("", number(profile.ar?.inventory) + number(profile.ar?.enderChest), ` ${profile.ar?.inventory ?? 0}   ${profile.ar?.enderChest ?? 0}`, "good")}
     </div>
     <div class="spacer-12"></div>
-    ${panel("Кабинет и банк", "Привязка, баланс и PIN.", kv([
+    ${panel("Профиль и банк", "Основные данные аккаунта, связь с сайтом и состояние PIN.", kv([
       ["Аккаунт сайта", site.username || "Не привязан"],
       ["Кабинет привязан", Boolean(site.id)],
       ["Последний вход на сайт", dt(site.lastLoginAt)],
@@ -2712,7 +2717,7 @@ async function playerDetailsHtml(player) {
       ["PIN заблокирован", Boolean(pin.locked)],
       ["Временный PIN истекает", pin.temporaryExpiresAt ? dt(pin.temporaryExpiresAt) : "--"]
     ]), pinButtons)}
-    ${panel("Данные входа сайта", "Логин виден, текущий пароль не раскрывается.", credentialControls)}
+    ${panel("Доступы игрока", "Логин виден, текущие пароли не раскрываются; новые можно задать здесь.", credentialControls)}
     ${panel("Быстрые действия", "Все действия записываются в журнал и требуют серверные права.", quickActions)}
     ${panel("Текущий инвентарь", "Если игрок онлайн, первым берётся свежий игровой снимок.", `
       ${inventorySummary(live)}
@@ -3110,6 +3115,27 @@ window.updatePlayerSiteAccount = async (player = state.selectedPlayer) => {
       $("playerSitePasswordInput").type = "password";
     }
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerResetAuthMePassword = async (player = state.selectedPlayer) => {
+  if (!player) return toast("Игрок не выбран", true);
+  const newPassword = String($("playerAdminAuthMePassword")?.value || "");
+  if (newPassword.length < 8 || newPassword.length > 64 || /\s/.test(newPassword)) {
+    return toast("Пароль AuthMe должен содержать 8-64 символа без пробелов.", true);
+  }
+  const headers = await dangerConfirm(`Задать новый пароль AuthMe игроку ${player}?`, "PLAYER_AUTHME_PASSWORD_RESET");
+  if (!headers) return;
+  try {
+    await api(`/api/players/${encodeURIComponent(player)}/authme-password/reset`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ new_password: newPassword }),
+    });
+    toast("Пароль AuthMe изменён.");
+    if ($("playerAdminAuthMePassword")) $("playerAdminAuthMePassword").value = "";
   } catch (err) {
     toast(err.message, true);
   }

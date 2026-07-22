@@ -774,7 +774,7 @@ function wireDataClickDelegation() {
 // legacy public page without attaching duplicate handlers at startup.
 window.addEventListener("copimine:legacy-runtime-request", () => {
   if (state.legacyRuntimePromise) return state.legacyRuntimePromise;
-  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260720r12")
+  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260721r1")
     .catch((error) => {
       toast(error?.message || "Совместимый режим недоступен", true);
       state.legacyRuntimePromise = null;
@@ -3380,11 +3380,11 @@ function renderPlayerFullDetails(player, detail, ctx) {
           <label class="field-stack"><span>Логин сайта</span><input id="playerAdminSiteUsername" value="${esc(site.username || "")}" autocomplete="off" /></label>
           <label class="field-stack"><span>Новый пароль сайта</span><input id="playerAdminSitePassword" type="password" placeholder="Оставь пустым, если менять не нужно" autocomplete="new-password" /></label>
         </div>
-        <button class="btn btn-primary full" data-click="playerUpdateSiteAccount('${esc(player)}')">Сохранить доступ сайта</button>
+        <button class="btn btn-primary full" data-click="playerUpdateSiteAccount('${esc(player)}')">Сбросить/сохранить доступ сайта</button>
         <div class="credential-note"><strong>AuthMe</strong><span>Текущий пароль хранится только как хэш и не показывается. Можно задать новый пароль через сервер.</span></div>
         <div class="form-grid compact-grid">
           <label class="field-stack"><span>Новый пароль AuthMe</span><input id="playerAdminAuthMePassword" type="password" placeholder="8-64 символа без пробелов" autocomplete="new-password" /></label>
-          <button class="btn btn-secondary full" data-click="playerResetAuthMePassword('${esc(player)}')">Задать пароль AuthMe</button>
+          <button class="btn btn-secondary full" data-click="playerResetAuthMePassword('${esc(player)}')">Сбросить пароль AuthMe</button>
         </div>
       </article>
     `
@@ -3925,8 +3925,10 @@ async function loadElections() {
   const voteDeposits = asArray(detail.voteDeposits);
   const auditRows = asArray(detail.audit);
   const treasuryBudget = Number(detail.treasury?.balance || detail.presidentBudget?.balance_ar || 0);
+  const electionLoadErrors = [data.error, detail.error].filter(Boolean).map((value) => cleanText(value));
   state.electionApplications = Object.fromEntries(applicationRows.map((row) => [row.id, row]));
   setView(`
+    ${electionLoadErrors.length ? `<div class="notice bad">Не удалось обновить часть данных выборов: ${esc(electionLoadErrors.join("; "))}. Повтори обновление позже.</div>` : ""}
     <section class="dashboard-hero election-hero">
       <div class="hero-copy">
         <span class="hero-kicker">Выборы CopiMine</span>
@@ -4351,7 +4353,14 @@ async function loadShops() {
   const arRows = asArray(ar.items);
   const donationRows = asArray(donation.items);
   const shopRows = asArray(shops.shops);
+  const shopLoadErrors = [
+    ["AR-каталог", ar.error],
+    ["Donation-каталог", donation.error],
+    ["Блоки-лавки", shops.error],
+    ["Цена ремонта", repair.error],
+  ].filter(([, error]) => error).map(([label, error]) => `${label}: ${cleanText(error)}`);
   setView(`
+    ${shopLoadErrors.length ? `<div class="notice bad">Часть данных лавки не загрузилась: ${esc(shopLoadErrors.join("; "))}. Нажми «Обновить» и проверь соединение.</div>` : ""}
     <section id="shops-overview" class="layout-grid grid-4">
       ${metric("AR-\u043a\u0430\u0442\u0430\u043b\u043e\u0433", arRows.length, "\u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432", arRows.length ? "good" : "warn")}
       ${metric("Donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433", donationRows.length, "\u043f\u043e\u0437\u0438\u0446\u0438\u0439", donationRows.length ? "good" : "warn")}

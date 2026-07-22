@@ -89,6 +89,20 @@ function formatMegabytes(bytes) {
   return `${(value / (1024 * 1024)).toFixed(2)} МБ`;
 }
 
+function customerFacingItemDescription(row = {}) {
+  const raw = String(row.description || "").trim();
+  if (!raw) return "Игровой предмет с выдачей после оплаты.";
+
+  // Catalog imports may include a Minecraft material/model id in the copy.
+  // It is useful to the plugin, but not to a player choosing a purchase.
+  const cleaned = raw
+    .replace(/\b(?:minecraft:)?[a-z0-9]+(?:_[a-z0-9]+){2,}\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s:|,.;-]+|[\s:|,.;-]+$/g, "")
+    .trim();
+  return cleaned || "Игровой предмет с выдачей после оплаты.";
+}
+
 function shortSha(value) {
   const sha = String(value || "").trim();
   if (!sha) return "нет";
@@ -298,7 +312,7 @@ function buildShopProductItem(row, mode = "ar", purchaseReady = false, needsLink
   body.append(
     makeElement("span", "shop-product-category", shopCategoryLabel(row.category, mode)),
     makeElement("h3", "", String(row.display_name || itemId || "Товар")),
-    makeElement("p", "", String(row.description || "Описание предмета появится в игре.")),
+    makeElement("p", "", customerFacingItemDescription(row)),
   );
 
   const footer = makeElement("div", "shop-product-footer");

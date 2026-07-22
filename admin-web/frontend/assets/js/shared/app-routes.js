@@ -59,7 +59,9 @@ export function appRouteHref(route, params = {}) {
     search.set(String(key), String(value));
   });
   const query = search.toString();
-  return query ? `${href}?${query}` : href;
+  if (!query) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}${query}`;
 }
 
 export function authLandingHref(flow = "signin") {

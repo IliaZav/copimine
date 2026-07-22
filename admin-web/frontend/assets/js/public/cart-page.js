@@ -168,8 +168,9 @@ function catalogRows(currency) {
 }
 
 function itemForCartRow(currency, row) {
-  const itemId = String(row?.itemId || "");
-  return catalogRows(currency).find((item) => String(item?.item_id || "") === itemId) || null;
+  const itemId = String(row?.itemId || "").trim().toLowerCase();
+  if (!itemId) return null;
+  return catalogRows(currency).find((item) => String(item?.item_id || "").trim().toLowerCase() === itemId) || null;
 }
 
 function cartItemAvailability(currency, item) {

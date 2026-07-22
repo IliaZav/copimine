@@ -484,7 +484,9 @@ import sys
 path = Path(sys.argv[1])
 updates = {
     'view-distance': '10',
-    'simulation-distance': '10',
+    'simulation-distance': '5',
+    'entity-broadcast-range-percentage': '100',
+    'difficulty': 'hard',
     'spawn-animals': 'true',
     'spawn-monsters': 'true',
     'spawn-npcs': 'true',
@@ -505,7 +507,8 @@ for key, value in updates.items():
 path.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
 PY
   grep -q '^view-distance=10$' "$properties" || { echo '[gameplay] view-distance was not normalized' >&2; return 1; }
-  grep -q '^simulation-distance=10$' "$properties" || { echo '[gameplay] simulation-distance was not normalized' >&2; return 1; }
+  grep -q '^simulation-distance=5$' "$properties" || { echo '[gameplay] simulation-distance was not normalized' >&2; return 1; }
+  grep -q '^difficulty=hard$' "$properties" || { echo '[gameplay] difficulty was not normalized to hard' >&2; return 1; }
   grep -q '^spawn-animals=true$' "$properties" || { echo '[gameplay] spawn-animals is disabled' >&2; return 1; }
   grep -q '^spawn-monsters=true$' "$properties" || { echo '[gameplay] spawn-monsters is disabled' >&2; return 1; }
   grep -q '^spawn-npcs=true$' "$properties" || { echo '[gameplay] spawn-npcs is disabled' >&2; return 1; }

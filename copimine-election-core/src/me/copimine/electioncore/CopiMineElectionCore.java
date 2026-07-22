@@ -2908,7 +2908,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.sendMessage(color("&eЭтот блок уже защищён."));
             return;
         }
-        String electionId = requireActiveElectionId();
+        // Station setup is the first step of an election workflow.  Treating a
+        // missing/finished cycle as a SQL error sent the player into the generic
+        // bug-report flow (for example error code 9248E179).  Reuse the guarded
+        // lifecycle helper so a draft cycle is created atomically when needed.
+        String electionId = ensureElectionExists(player.getName());
         String stationId = "station_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         tx(connection -> {

@@ -19,7 +19,7 @@ Require-Contains $installer 'normalize_vanilla_mob_gameplay()' 'Deployment must 
 Require-Contains $installer 'normalize_vanilla_mob_gameplay' 'Deployment must call the vanilla mob gameplay restore step.'
 Require-Contains $releaseInstaller 'normalize_vanilla_mob_gameplay()' 'The release entrypoint must normalize preserved server.properties after replacement.'
 Require-Contains $releaseInstaller "view-distance': '10'" 'The release entrypoint must restore the normal view distance.'
-Require-Contains $releaseInstaller "simulation-distance': '10'" 'The release entrypoint must restore the normal simulation distance.'
+Require-Contains $releaseInstaller "simulation-distance': '5'" 'The release entrypoint must restore the release simulation distance.'
 Require-Contains $releaseInstaller 'normalize_vanilla_mob_gameplay' 'The release entrypoint must verify vanilla mob gameplay before completing.'
 
 Throw-IfErrors 'ValidateCopiMineVanillaMobSpawning'

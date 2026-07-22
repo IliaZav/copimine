@@ -27,7 +27,7 @@ $clearLag = Read-Text 'plugins\ClearLag\config.yml'
 
 Require-Regex $serverProperties '(?m)^max-players=50$' 'Server max-players should be raised to 50 for the release target.'
 Require-Regex $serverProperties '(?m)^view-distance=10$' 'Server view-distance must remain at the vanilla value of 10.'
-Require-Regex $serverProperties '(?m)^simulation-distance=10$' 'Server simulation-distance must remain at the vanilla value of 10.'
+Require-Regex $serverProperties '(?m)^simulation-distance=5$' 'Server simulation-distance must remain at the release value of 5.'
 Require-Regex $serverProperties '(?m)^sync-chunk-writes=false$' 'sync-chunk-writes must stay disabled.'
 Require-Regex $serverProperties '(?m)^network-compression-threshold=512$' 'Network compression threshold should be tuned to reduce CPU spikes.'
 

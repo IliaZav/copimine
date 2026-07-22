@@ -510,6 +510,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         String msg=e.getMessage().trim();
         if (!msg.startsWith("/")) return;
+        String normalizedImageFrameCommand=normalizeImageFrameCreateCommand(msg);
+        if(normalizedImageFrameCommand!=null&&!normalizedImageFrameCommand.equals(msg)){
+            e.setCancelled(true);
+            Bukkit.getScheduler().runTask(this,()->{
+                if(p.isOnline())Bukkit.dispatchCommand(p,normalizedImageFrameCommand.substring(1));
+            });
+            return;
+        }
         String cmd=msg.substring(1).split("\\s+")[0].toLowerCase(Locale.ROOT);
         if(!hasAnyAdmin(p)&&!p.hasPermission("copimine.rpguard.bypass")&&isBlockedRpCommand(msg)){
             denyRpCommand(e,p);
@@ -521,6 +529,69 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             e.setCancelled(true);
             Bukkit.getScheduler().runTaskLater(this, () -> { if (p.isOnline()) openMainHub(p); }, 2L);
         }
+    }
+
+    /**
+     * ImageFrame requires width and height for a manually sized image, while
+     * the short command players naturally use only supplies a name and URL.
+     * Add a safe 1x1 default before ImageFrame sees that command.  A URL-only
+     * form is also accepted and receives a unique local name.  Fully specified
+     * commands (selection/combined/separated, dimensions and dithering) are
+     * returned unchanged so the plugin keeps its native behaviour.
+     */
+    private String normalizeImageFrameCreateCommand(String raw){
+        if(raw==null||raw.isBlank()||!raw.startsWith("/"))return null;
+        String[] parts=raw.substring(1).trim().split("\\s+");
+        if(parts.length<2)return null;
+        String root=parts[0].toLowerCase(Locale.ROOT);
+        if(!Set.of("imageframe","iframe","if","frame").contains(root))return null;
+        if(!parts[1].equalsIgnoreCase("create"))return null;
+        // ImageFrame's args array excludes the command name.  It accepts
+        // 4..7 args, so these two short forms were previously rejected as
+        // imageframe.messages.invalid_usage.
+        // URL-only form: /imageframe create <url>.
+        if(parts.length==3&&isImageFrameUrl(parts[2])){
+            return "/imageframe create "+imageFrameGeneratedName()+" "+parts[2]+" 1 1";
+        }
+        // Name/URL form: /imageframe create <name> <url>.
+        if(parts.length==4&&isImageFrameUrl(parts[3])){
+            return "/imageframe create "+parts[2]+" "+parts[3]+" 1 1";
+        }
+        // URL-first forms are convenient for admins copying a link.  The
+        // native ImageFrame parser requires a name before the URL and always
+        // requires both dimensions, so fill the missing pieces safely.
+        if(parts.length==4&&isImageFrameUrl(parts[2])
+                &&isPositiveImageFrameDimension(parts[3])){
+            return "/imageframe create "+imageFrameGeneratedName()+" "+parts[2]+" "+parts[3]+" 1";
+        }
+        // /imageframe create <url> <width> <height>
+        if(parts.length==5&&isImageFrameUrl(parts[2])
+                &&isPositiveImageFrameDimension(parts[3])
+                &&isPositiveImageFrameDimension(parts[4])){
+            return "/imageframe create "+imageFrameGeneratedName()+" "+parts[2]+" "+parts[3]+" "+parts[4];
+        }
+        // /imageframe create <name> <url> <width> (height defaults to one).
+        if(parts.length==5&&isImageFrameUrl(parts[3])
+                &&isPositiveImageFrameDimension(parts[4])){
+            return "/imageframe create "+parts[2]+" "+parts[3]+" "+parts[4]+" 1";
+        }
+        return null;
+    }
+
+    private String imageFrameGeneratedName(){
+        return "photo_"+UUID.randomUUID().toString().replace("-","").substring(0,12);
+    }
+
+    private boolean isImageFrameUrl(String value){
+        try{
+            URI uri=URI.create(value);
+            String scheme=uri.getScheme();
+            return uri.getHost()!=null&&("http".equalsIgnoreCase(scheme)||"https".equalsIgnoreCase(scheme));
+        }catch(IllegalArgumentException ignored){return false;}
+    }
+
+    private boolean isPositiveImageFrameDimension(String value){
+        try{return Integer.parseInt(value)>0;}catch(NumberFormatException ignored){return false;}
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
@@ -1604,7 +1675,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String createPollingStationFromTarget(Player p)throws Exception{
         if(!hasElectionAdmin(p))throw new Exception("Нет прав на создание участков ЦИК.");
         String eid=issuableElectionId();
-        if(eid==null)throw new SQLException("Нет текущих выборов для выдачи бюллетеня");
+        if(eid==null){
+            // A station belongs to an election cycle.  Previously this expected
+            // state was thrown as SQLException, which routed the player through
+            // the generic bug-report path (for example error code 9248E179).
+            // Start a fresh draft cycle so station setup can be the first step
+            // after an old cycle was finished or cancelled.
+            eid=startElection(p.getName(),168);
+            if(eid==null||eid.isBlank())return"&cНе удалось создать новый цикл выборов.";
+            msg(p,"&eАктивного цикла не было — создан новый черновой цикл выборов.");
+        }
         Block b=targetPollingStationBlock(p);
         if(b==null)throw new SQLException("Наведи взгляд на твёрдый блок участка на расстоянии до 8 блоков.");
         if(scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE world=? AND x=? AND y=? AND z=? AND active=1 AND COALESCE(archived_at,0)=0",b.getWorld().getName(),b.getX(),b.getY(),b.getZ())>0)return"&eНа этом блоке уже есть активный участок ЦИК.";

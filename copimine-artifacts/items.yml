@@ -251,7 +251,7 @@ donation-catalog:
       effect-profile-id: NAKOPAL_PICKAXE
       effect-description: "Безопасный контролирующий бур: временно закапывает цель и даёт бонус владельцу."
       cooldown-seconds: 40
-      proc-chance: 0.12
+      proc-chance: 1.0
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true

@@ -17,6 +17,6 @@ if ($artifacts -notmatch 'var5 <= FARMER_SWEEP_RADIUS' -or $artifacts -notmatch 
 if ($bukkit -notmatch '(?m)^\s*monsters:\s*70\s*$' -or $bukkit -notmatch '(?m)^\s*monster-spawns:\s*1\s*$') { throw 'Bukkit monster spawning is still throttled.' }
 if ($spigot -notmatch '(?m)^\s*mob-spawn-range:\s*8\s*$' -or $spigot -notmatch '(?m)^\s*nerf-spawner-mobs:\s*false\s*$') { throw 'Spigot mob spawning is not vanilla-like.' }
 if ($paperWorld -notmatch '(?m)^\s*per-player-mob-spawns:\s*false\s*$' -or $paperGlobal -notmatch '(?m)^\s*per-player-mob-spawns:\s*false\s*$') { throw 'Paper still splits mob caps per player.' }
-if ($properties -notmatch '(?m)^simulation-distance=10\s*$' -or $properties -notmatch '(?m)^view-distance=10\s*$') { throw 'Server distances are still reduced.' }
+if ($properties -notmatch '(?m)^simulation-distance=5\s*$' -or $properties -notmatch '(?m)^view-distance=10\s*$') { throw 'Server distances are not configured for the release target.' }
 
 Write-Host 'ValidateCopiMineGameplayFixes: PASS'

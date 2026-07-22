@@ -57,6 +57,7 @@ import me.copimine.economycore.CopiMineEconomyCore.TxnResult;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -135,6 +136,8 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
+import org.bukkit.util.RayTraceResult;
+import org.bukkit.util.Vector;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
@@ -1583,6 +1586,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             long cooldownUntil = this.pozdnyakovNauseaCooldowns.getOrDefault(var2.getUniqueId(), 0L);
             if (attacker != null && attacker != var2 && cooldownUntil <= current) {
                attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 100, 2, false, false, true));
+               attacker.getWorld().strikeLightning(attacker.getLocation());
                this.pozdnyakovNauseaCooldowns.put(var2.getUniqueId(), current + 30L);
             }
          }
@@ -1600,11 +1604,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (var4 != null && "TANK_VEST".equalsIgnoreCase(var4.effect())) {
             long var6 = this.now();
             long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var4), 0L);
-            if (var8 <= var6 && var1.getDamage() >= 4.0 && this.rollEffectChance(var4)) {
+            if (var1.getDamage() > 0.0) {
                var1.setDamage(var1.getDamage() * 0.8);
-               var2.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 100, 0, false, false, true));
-               var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 0, false, false, true));
-               this.actionCooldowns.put(this.actionCooldownKey(var2, var4), var6 + (long)Math.max(8, var4.cooldownSeconds()));
+               var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 600, 0, false, false, true));
+               if (var8 <= var6 && this.rollEffectChance(var4)) {
+                  var2.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 200, 0, false, false, true));
+                  this.actionCooldowns.put(this.actionCooldownKey(var2, var4), var6 + (long)Math.max(8, var4.cooldownSeconds()));
+               }
             }
          }
 
@@ -1675,6 +1681,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      Location var20 = var1.getEntity().getLocation().add(0.0, 1.0, 0.0);
                      switch (var16) {
                         case "LIGHTNING":
+                           var20.getWorld().strikeLightning(var1.getEntity().getLocation());
                            var20.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, var20, 10, 0.3, 0.3, 0.3, 0.01);
                            var20.getWorld().playSound(var20, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 0.5F, 1.8F);
                            var1.setDamage(var1.getDamage() + 2.0);
@@ -1724,12 +1731,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            break;
                         case "BATIN_REMEN":
                            var1.setDamage(var1.getDamage() + 2.5);
-                           var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 0, false, false, true));
+                           var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 600, 0, false, false, true));
                            if (var10 != null) {
-                              var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 1, false, false, true));
-                              var10.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 80, 0, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 600, 1, false, false, true));
+                              var10.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 600, 0, false, false, true));
+                              if (random.nextDouble() < 0.20D) {
+                                 this.applyTemporaryCobwebSnare(var2, var10, 200L);
+                              }
                            }
-
+                           var20.getWorld().strikeLightning(var1.getEntity().getLocation());
                            var20.getWorld().spawnParticle(Particle.CRIT, var20, 18, 0.35, 0.35, 0.35, 0.03);
                            break;
                         case "NAKOPAL_PICKAXE":
@@ -1737,7 +1747,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            if (var10 != null) {
                               var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 2, false, false, true));
                               var10.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0, false, false, true));
-                              this.applyTemporaryCobwebSnare(var2, var10);
+                              this.applyTemporaryCobwebSnare(var2, var10, 100L);
                            }
 
                            var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
@@ -5206,7 +5216,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
          long balanceAfter = this.parseLong(this.str(result.get("balance_after")), -1L);
          String balanceText = balanceAfter >= 0L ? " Остаток: " + balanceAfter + " Donation." : "";
-         player.sendMessage(this.color("&aПокупка оформлена. Предмет добавлен в отложенную выдачу." + balanceText));
+         CatalogItem purchasedRuntime = this.runtimeCatalogItem(item.itemId());
+         if (purchasedRuntime != null && "TAX_CLOCK".equalsIgnoreCase(purchasedRuntime.effect())) {
+            String claimId = this.firstNonBlank(this.str(result.get("claim_id")), "");
+            String purchaseId = this.firstNonBlank(this.str(result.get("purchase_id")), "");
+            if (!claimId.isBlank()) {
+               this.deliverDonationClaimRowV2(player, new DonationClaimRow(claimId, purchaseId, item.itemId(), 1L, "UNCLAIMED"));
+               return;
+            }
+         }
+         player.sendMessage(this.color("&aРџРѕРєСѓРїРєР° РѕС„РѕСЂРјР»РµРЅР°. РџСЂРµРґРјРµС‚ РґРѕР±Р°РІР»РµРЅ РІ РѕС‚Р»РѕР¶РµРЅРЅСѓСЋ РІС‹РґР°С‡Сѓ." + balanceText));
          this.openDonationOwned(player);
       }));
    }
@@ -6418,6 +6437,31 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         return;
                      }
 
+                     if ("TAX_CLOCK".equalsIgnoreCase(var5.effect())) {
+                        this.markDonationClaimDeliveringAsync(var1.getUniqueId(), var2.claimId()).whenComplete((marked, markError) -> {
+                           if (markError != null || !Boolean.TRUE.equals(marked)) {
+                              this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                              return;
+                           }
+                           String instanceId = var2.purchaseId() == null || var2.purchaseId().isBlank() ? "tax-subscription-" + var2.claimId() : var2.purchaseId();
+                           this.grantTaxClockExemptionAsync(var1.getUniqueId(), var1.getName(), instanceId).whenComplete((expiresAt, grantError) -> this.runSync(() -> {
+                              if (grantError != null || expiresAt == null || expiresAt <= 0L) {
+                                 this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                 var1.sendMessage(this.color("&cНе удалось активировать подписку. Обратись к администрации."));
+                                 return;
+                              }
+                              this.completeDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((completed, completeError) -> this.runSync(() -> {
+                                 if (completeError != null || !Boolean.TRUE.equals(completed)) {
+                                    this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                    return;
+                                 }
+                                 var1.sendMessage(this.color("&6Ты теперь супергражданин! &7Налоговая подписка активна до: &f" + Instant.ofEpochMilli(expiresAt)));
+                              }));
+                           }));
+                        });
+                        return;
+                     }
+
                      int var6 = this.requiredDonationSlots(var2.amount());
                      if (var6 < 0) {
                         this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
@@ -6565,6 +6609,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.runAsync(
          () -> {
             CopiMineArtifacts.ReclaimableDonationRow var3 = this.findReclaimableDonationRow(var1.getUniqueId().toString(), var2);
+            if (var3 == null) {
+               try {
+                  this.reconcileDonationLossJournal();
+                  var3 = this.findReclaimableDonationRow(var1.getUniqueId().toString(), var2);
+               } catch (Exception reconcileError) {
+                  this.getLogger().log(Level.WARNING, "Donation loss journal reconcile before reclaim failed", reconcileError);
+               }
+            }
             if (var3 == null) {
                this.runSync(() -> {
                   if (var1.isOnline()) {
@@ -9208,7 +9260,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private int playerPurchasedCount(Connection var1, String var2, String var3) throws SQLException {
       int var6;
       try (PreparedStatement var4 = var1.prepareStatement(
-            "SELECT COUNT(*) FROM artifact_purchases WHERE player_uuid=? AND item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY') AND created_at > COALESCE((SELECT reset_at FROM artifact_purchase_limit_resets WHERE player_uuid=? AND item_id=?),0)"
+            "SELECT COUNT(*) FROM artifact_purchases WHERE player_uuid=? AND item_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY') AND (CASE WHEN created_at > 100000000000 THEN created_at / 1000 ELSE created_at END) > COALESCE((SELECT CASE WHEN reset_at > 100000000000 THEN reset_at / 1000 ELSE reset_at END FROM artifact_purchase_limit_resets WHERE player_uuid=? AND item_id=?),0)"
          )) {
          var4.setString(1, var2);
          var4.setString(2, var3);
@@ -9683,17 +9735,28 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private boolean cleanseAllowedDebuff(Player var1) {
-      for (PotionEffectType var4 : List.of(
-         PotionEffectType.POISON, PotionEffectType.WEAKNESS, PotionEffectType.SLOWNESS, PotionEffectType.GLOWING, PotionEffectType.HUNGER
-      )) {
-         if (var1.hasPotionEffect(var4)) {
-            var1.removePotionEffect(var4);
-            var1.getWorld().spawnParticle(Particle.WAX_OFF, var1.getLocation().add(0.0, 1.0, 0.0), 10, 0.25, 0.4, 0.25, 0.02);
-            return true;
+      Map<PotionEffectType, PotionEffectType> conversions = Map.of(
+         PotionEffectType.POISON, PotionEffectType.REGENERATION,
+         PotionEffectType.WEAKNESS, PotionEffectType.STRENGTH,
+         PotionEffectType.SLOWNESS, PotionEffectType.SPEED,
+         PotionEffectType.GLOWING, PotionEffectType.INVISIBILITY,
+         PotionEffectType.HUNGER, PotionEffectType.SATURATION
+      );
+      boolean converted = false;
+      for (Map.Entry<PotionEffectType, PotionEffectType> entry : conversions.entrySet()) {
+         PotionEffect current = var1.getPotionEffect(entry.getKey());
+         if (current == null) {
+            continue;
          }
+         var1.removePotionEffect(entry.getKey());
+         int amplifier = Math.min(1, Math.max(0, current.getAmplifier()));
+         var1.addPotionEffect(new PotionEffect(entry.getValue(), Math.max(600, current.getDuration()), amplifier, false, false, true));
+         converted = true;
       }
-
-      return false;
+      if (converted) {
+         var1.getWorld().spawnParticle(Particle.WAX_OFF, var1.getLocation().add(0.0, 1.0, 0.0), 18, 0.25, 0.4, 0.25, 0.02);
+      }
+      return converted;
    }
 
    private void activateTaxClock(Player var1, ItemStack var2) {
@@ -9738,6 +9801,24 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } catch (Exception var12) {
          this.getLogger().warning("Tax clock bridge call failed player=" + var1.getUniqueId());
          var1.sendMessage(this.color("&cTax clock could not be activated. Try again later."));
+      }
+   }
+
+   private CompletableFuture<Long> grantTaxClockExemptionAsync(UUID playerUuid, String playerName, String instanceId) {
+      Plugin plugin = Bukkit.getPluginManager().getPlugin("CopiMineElectionCore");
+      if (plugin == null || !plugin.isEnabled()) return CompletableFuture.failedFuture(new IllegalStateException("tax_service_unavailable"));
+      try {
+         Object raw = plugin.getClass().getMethod("grantTaxClockExemption", UUID.class, String.class, String.class)
+            .invoke(plugin, playerUuid, playerName, instanceId);
+         if (!(raw instanceof CompletableFuture<?> future)) return CompletableFuture.failedFuture(new IllegalStateException("tax_clock_bridge_invalid"));
+         return future.thenApply(result -> {
+            if (!(result instanceof Map<?, ?> map)) throw new IllegalStateException("tax_clock_result_invalid");
+            long expires = this.parseLong(String.valueOf(map.get("expires_at")), 0L);
+            if (expires <= 0L) throw new IllegalStateException("tax_clock_expiration_invalid");
+            return expires;
+         });
+      } catch (Exception error) {
+         return CompletableFuture.failedFuture(error);
       }
    }
 
@@ -9828,7 +9909,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       );
    }
 
-   private boolean pointCompassToLastDeath(Player var1, ItemStack var2) {
+   private boolean legacyPointCompassToLastDeath(Player var1, ItemStack var2) {
       Location var3 = this.lastDeathLocations.get(var1.getUniqueId());
       if (var3 == null) {
          var3 = this.persistedLastDeathLocation(var1);
@@ -9859,6 +9940,57 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   private boolean pointCompassToLastDeath(Player player, ItemStack ignored) {
+      Location origin = player.getLocation().clone();
+      Location eye = player.getEyeLocation();
+      Vector direction = eye.getDirection().normalize();
+      RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, 100.0D, FluidCollisionMode.NEVER, true);
+      Location requested = hit == null
+         ? eye.clone().add(direction.clone().multiply(100.0D))
+         : hit.getHitPosition().toLocation(player.getWorld()).subtract(direction.clone().multiply(1.75D));
+      Location safe = this.findSafeCompassLocation(origin, requested);
+      if (safe == null) {
+         player.sendMessage(this.color("&eРќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё Р±РµР·РѕРїР°СЃРЅСѓСЋ С‚РѕС‡РєСѓ РІ РЅР°РїСЂР°РІР»РµРЅРёРё РІР·РіР»СЏРґР°."));
+         return false;
+      }
+      if (!player.teleport(safe)) {
+         return false;
+      }
+      player.sendMessage(this.color("&aРљРѕРјРїР°СЃ РїРµСЂРµРЅС‘СЃ РІР°СЃ РІРїРµСЂС‘Рґ РїРѕ РЅР°РїСЂР°РІР»РµРЅРёСЋ РІР·РіР»СЏРґР°. &7РњР°РєСЃРёРјСѓРј 100 Р±Р»РѕРєРѕРІ."));
+      return true;
+   }
+
+   private Location findSafeCompassLocation(Location origin, Location requested) {
+      if (origin == null || requested == null || origin.getWorld() == null || requested.getWorld() != origin.getWorld()) return null;
+      Vector offset = requested.toVector().subtract(origin.toVector());
+      if (offset.lengthSquared() > 100.0D * 100.0D) requested = origin.clone().add(offset.normalize().multiply(100.0D));
+      World world = origin.getWorld();
+      int baseX = requested.getBlockX();
+      int baseY = Math.max(world.getMinHeight() + 1, requested.getBlockY());
+      int baseZ = requested.getBlockZ();
+      for (int radius = 0; radius <= 2; radius++) {
+         for (int dy = -4; dy <= 4; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+               for (int dz = -radius; dz <= radius; dz++) {
+                  Location candidate = new Location(world, baseX + dx + 0.5D, baseY + dy, baseZ + dz + 0.5D);
+                  if (candidate.distanceSquared(origin) <= 100.0D * 100.0D && this.isSafeCompassLocation(candidate)) return candidate;
+               }
+            }
+         }
+      }
+      return null;
+   }
+
+   private boolean isSafeCompassLocation(Location location) {
+      World world = location.getWorld();
+      if (world == null) return false;
+      Block feet = world.getBlockAt(location);
+      Block head = feet.getRelative(BlockFace.UP);
+      Block floor = feet.getRelative(BlockFace.DOWN);
+      return feet.isPassable() && head.isPassable() && floor.getType().isSolid()
+         && !feet.isLiquid() && !head.isLiquid() && !floor.isLiquid();
+   }
+
    private Location persistedLastDeathLocation(Player player) {
       PersistentDataContainer pdc = player.getPersistentDataContainer();
       String worldName = pdc.get(this.keyLastDeathWorld, PersistentDataType.STRING);
@@ -9887,10 +10019,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   private void applyTemporaryCobwebSnare(Player var1, LivingEntity var2) {
+   private void applyTemporaryCobwebSnare(Player var1, LivingEntity var2, long durationTicks) {
       if (var1 != null && var2 != null) {
          Block var3 = var2.getLocation().getBlock();
-         if (var3.getType() == Material.AIR) {
+         if (var3.getType() == Material.AIR && !this.shopsByLocation.containsKey(this.blockKey(var3.getLocation()))) {
             BlockPlaceEvent var4 = new BlockPlaceEvent(
                var3,
                var3.getState(),
@@ -9906,7 +10038,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   if (var3.getType() == Material.COBWEB) {
                      var3.setType(Material.AIR, false);
                   }
-               }, 40L);
+               }, Math.max(1L, durationTicks));
             }
          }
       }
@@ -9929,7 +10061,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return null;
    }
 
-   private void tryRareArTheft(Player attacker, LivingEntity target) {
+   private void legacyTryRareArTheft(Player attacker, LivingEntity target) {
       if (!(target instanceof Player victim) || attacker == null || this.bridge == null || random.nextDouble() >= 0.001D) {
          return;
       }
@@ -9979,6 +10111,46 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         attacker.sendMessage(this.color("&cКража AR отменена: банк временно недоступен."));
                      }
                   }
+               });
+            });
+         });
+      });
+   }
+
+   private void tryRareArTheft(Player attacker, LivingEntity target) {
+      if (!(target instanceof Player victim) || attacker == null || this.bridge == null || random.nextDouble() >= 0.001D) return;
+      String idempotencyKey = "kosa-ar-steal-" + UUID.randomUUID();
+      this.runAsync(() -> {
+         CopiMineArtifacts.BridgeTxnResult account = this.bridge.stealFromPlayerAccount(
+            victim.getUniqueId(), victim.getName(), attacker.getUniqueId(), attacker.getName(), 1L,
+            idempotencyKey, "AR_STEAL", "Kosa rare 0.1% proc"
+         );
+         if (account.ok()) {
+            this.runSync(() -> this.sendArTheftMessages(attacker, victim, false));
+            return;
+         }
+         if (!"NO_BANK_ACCOUNT".equalsIgnoreCase(account.code()) && !"INSUFFICIENT_AR".equalsIgnoreCase(account.code())) return;
+         this.runSync(() -> {
+            if (!victim.isOnline() || !attacker.isOnline()) return;
+            OfficialArService ar = this.officialArService();
+            if (ar == null || !ar.removeAmount(victim.getInventory(), 1)) {
+               attacker.sendMessage(this.color("&eРЈ РёРіСЂРѕРєР° &f" + victim.getName() + " &eРЅРµС‚ AR: РёРіСЂРѕРє Р±РµРґРµРЅ, Р±СЂР°С‚СЊ РЅРµС‡РµРіРѕ."));
+               return;
+            }
+            this.runAsync(() -> {
+               CopiMineArtifacts.BridgeTxnResult credit = this.bridge.credit(
+                  attacker.getUniqueId(), attacker.getName(), 1L, "kosa-ar-credit-" + idempotencyKey,
+                  "AR_STEAL", "AR stolen from inventory by Kosa"
+               );
+               this.runSync(() -> {
+                  if (credit.ok()) {
+                     this.sendArTheftMessages(attacker, victim, true);
+                     return;
+                  }
+                  ItemStack restored = ar.createStack(Material.DIAMOND_ORE, 1);
+                  Map<Integer, ItemStack> leftovers = victim.getInventory().addItem(restored);
+                  leftovers.values().forEach(item -> victim.getWorld().dropItemNaturally(victim.getLocation(), item));
+                  attacker.sendMessage(this.color("&cРљСЂР°Р¶Р° AR РѕС‚РјРµРЅРµРЅР°: Р±Р°РЅРє РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРµРЅ."));
                });
             });
          });

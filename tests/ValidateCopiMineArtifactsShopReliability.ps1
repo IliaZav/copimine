@@ -33,7 +33,7 @@ if (-not $snare.Success) {
         }
     }
 }
-if ($source -notmatch [regex]::Escape('this.applyTemporaryCobwebSnare(var2, var10);')) {
+if ($source -notmatch [regex]::Escape('this.applyTemporaryCobwebSnare(var2, var10, 100L);')) {
     $errors.Add('The combat handler must pass the attacking player to the cobweb protection check.')
 }
 

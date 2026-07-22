@@ -425,8 +425,13 @@ updates = {
     # Keep the normal Minecraft simulation radius.  The old deployment
     # preserved 6/8 here, which made natural spawning and farms look broken
     # even though the plugin configs were already vanilla.
+    # Keep entity tracking at the full configured range as well.  A value of
+    # 50 made mobs stop rendering at roughly half of Spigot's tracking range,
+    # so players interpreted normal packet culling as mobs disappearing.
     "view-distance": "10",
-    "simulation-distance": "10",
+    "simulation-distance": "5",
+    "entity-broadcast-range-percentage": "100",
+    "difficulty": "hard",
     "spawn-animals": "true",
     "spawn-monsters": "true",
     "spawn-npcs": "true",
@@ -449,7 +454,7 @@ for key, value in updates.items():
         output.append(f"{key}={value}")
 path.write_text("\n".join(output) + "\n", encoding="utf-8")
 PY
-  log "Vanilla mob gameplay restored: view/simulation distance 10 and natural mob spawning enabled."
+  log "Mob gameplay restored: view distance 10, simulation distance 5, hard difficulty and natural mob spawning enabled."
 }
 
 wipe_worlds_if_requested() {

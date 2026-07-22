@@ -73,8 +73,8 @@ if (($punishments + "`n" + $punishmentsRu) -match '\[alert\]|\[webhook\]|\[proxy
 
 Require-Regex $serverProperties '(?m)^max-players=50$' 'max-players must be raised to 50 for the release target.'
 Require-Regex $serverProperties '(?m)^view-distance=10$' 'view-distance must remain at the vanilla value of 10.'
-Require-Regex $serverProperties '(?m)^simulation-distance=10$' 'simulation-distance must remain at the vanilla value of 10.'
-Require-Regex $serverProperties '(?m)^entity-broadcast-range-percentage=50$' 'entity broadcast range should stay reduced for FPS/network load.'
+Require-Regex $serverProperties '(?m)^simulation-distance=5$' 'simulation-distance must remain at the release value of 5.'
+Require-Regex $serverProperties '(?m)^entity-broadcast-range-percentage=100$' 'entity broadcast range must stay at the full tracking range so mobs do not appear to disappear.'
 Require-Regex $serverProperties '(?m)^network-compression-threshold=512$' 'network compression threshold should remain CPU-friendly.'
 Require-Regex $serverProperties '(?m)^sync-chunk-writes=false$' 'sync chunk writes must be disabled.'
 

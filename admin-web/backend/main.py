@@ -8459,7 +8459,10 @@ def performance_readiness_sync() -> dict[str, Any]:
     property_checks = [
         {"name": "view-distance", "ok": prop_int("view-distance", 99) <= 6, "value": props.get("view-distance", "")},
         {"name": "simulation-distance", "ok": prop_int("simulation-distance", 99) <= 4, "value": props.get("simulation-distance", "")},
-        {"name": "entity-broadcast-range-percentage", "ok": prop_int("entity-broadcast-range-percentage", 100) <= 60, "value": props.get("entity-broadcast-range-percentage", "")},
+        # Full entity tracking is required for gameplay: lower values make
+        # mobs stop rendering long before the configured view distance and
+        # look like they vanished.  Treat 100 as the healthy release value.
+        {"name": "entity-broadcast-range-percentage", "ok": prop_int("entity-broadcast-range-percentage", 100) >= 100, "value": props.get("entity-broadcast-range-percentage", "")},
         {"name": "sync-chunk-writes", "ok": props.get("sync-chunk-writes") == "false", "value": props.get("sync-chunk-writes", "")},
         {"name": "network-compression-threshold", "ok": props.get("network-compression-threshold") == "512", "value": props.get("network-compression-threshold", "")},
         {"name": "max-chained-neighbor-updates", "ok": props.get("max-chained-neighbor-updates") == "100000", "value": props.get("max-chained-neighbor-updates", "")},
@@ -13138,7 +13141,7 @@ def donation_entitlement_conflict_sync(conn: Any, player_uuid: str, item_id: str
         WHERE player_uuid=%s
           AND item_id=%s
           AND status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')
-          AND created_at > COALESCE((SELECT reset_at FROM artifact_purchase_limit_resets WHERE player_uuid=%s AND item_id=%s),0)
+          AND (CASE WHEN created_at > 100000000000 THEN created_at / 1000 ELSE created_at END) > COALESCE((SELECT CASE WHEN reset_at > 100000000000 THEN reset_at / 1000 ELSE reset_at END FROM artifact_purchase_limit_resets WHERE player_uuid=%s AND item_id=%s),0)
         LIMIT 1
         """,
         (player_uuid, item_id, player_uuid, item_id),
@@ -13152,7 +13155,7 @@ def donation_entitlement_conflict_sync(conn: Any, player_uuid: str, item_id: str
         WHERE owner_uuid=%s
           AND item_id=%s
           AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')
-          AND created_at > COALESCE((SELECT reset_at FROM artifact_purchase_limit_resets WHERE player_uuid=%s AND item_id=%s),0)
+          AND (CASE WHEN created_at > 100000000000 THEN created_at / 1000 ELSE created_at END) > COALESCE((SELECT CASE WHEN reset_at > 100000000000 THEN reset_at / 1000 ELSE reset_at END FROM artifact_purchase_limit_resets WHERE player_uuid=%s AND item_id=%s),0)
         LIMIT 1
         """,
         (player_uuid, item_id, player_uuid, item_id),
@@ -13891,9 +13894,9 @@ def artifact_purchase_count_sync(conn: Any, item_id: str, player_uuid: str = "")
             WHERE player_uuid=%s
               AND item_id=%s
               AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY')
-              AND created_at > %s
+              AND (CASE WHEN created_at > 100000000000 THEN created_at / 1000 ELSE created_at END) > (CASE WHEN %s > 100000000000 THEN %s / 1000 ELSE %s END)
             """,
-            (player_uuid, item_id, reset_at),
+            (player_uuid, item_id, reset_at, reset_at, reset_at),
         ).fetchone()
     else:
         row = conn.execute(

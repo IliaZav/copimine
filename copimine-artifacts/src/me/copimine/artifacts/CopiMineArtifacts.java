@@ -1629,6 +1629,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                if (attacker != null && attacker != var2) {
                   attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
                   attacker.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, false, true));
+                  // Keep the configured lightning cue visible without adding
+                  // a second damage event on top of the blocked hit.
+                  attacker.getWorld().strikeLightningEffect(attacker.getLocation());
                }
 
                var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 0, false, false, true));

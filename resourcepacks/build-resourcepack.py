@@ -288,10 +288,15 @@ def build_stage() -> None:
                     "model": model_ref,
                 }
             )
-        # Custom-model-data overrides come after vanilla predicates.  A normal
-        # compass/clock keeps its moving vanilla needle, while an official
-        # donation item enters its own directional model tree.
-        overrides.extend(custom_overrides)
+        # A custom shield must be listed before the vanilla blocking predicate:
+        # Minecraft uses the last matching override, so blocking has to win and
+        # keep the builtin entity renderer instead of falling back to the tiny
+        # inventory icon.  Compass/clock custom frames intentionally remain
+        # after their vanilla predicates so donation items use their own art.
+        if material == "shield":
+            overrides = custom_overrides + overrides
+        else:
+            overrides.extend(custom_overrides)
         # Keep vanilla special-item rendering intact.  The vanilla clock and
         # compass textures are selected by time/angle predicates, while the
         # shield is a builtin entity model.  Replacing these roots with only a

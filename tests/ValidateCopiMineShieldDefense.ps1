@@ -17,7 +17,13 @@ if ($method.Value -notmatch 'getItemInOffHand\(\), var2, "defend_offhand"') {
 }
 
 if ($method.Value -notmatch 'Particle\.ELECTRIC_SPARK') {
-    throw 'A successful shield defence must have a visible in-world effect.'
+  throw 'A successful shield defence must have a visible in-world effect.'
+}
+if ($method.Value -notmatch 'strikeLightningEffect\(') {
+  throw 'A successful shield defence must show the configured lightning effect to the attacker.'
+}
+if ($method.Value -notmatch 'PotionEffectType\.NAUSEA' -or $method.Value -notmatch 'PotionEffectType\.WEAKNESS') {
+  throw 'A successful shield defence must apply the configured attacker debuffs.'
 }
 
 Write-Host 'Shield defence contract OK'

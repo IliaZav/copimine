@@ -49,7 +49,9 @@ if (Test-Path -LiteralPath $service) {
 
 if (Test-Path -LiteralPath $policy) {
     $policyText = Read-Utf8 $policy
-    Require-Contains $policyText '"Enabled": false' 'ImageFrame must accept image URLs from any HTTP(S) source.'
+    Require-Contains $policyText '"Enabled": true' 'ImageFrame URL filtering must be enabled.'
+    Require-Contains $policyText '"https://avatars.mds.yandex.net/"' 'ImageFrame must retain the approved Yandex image host.'
+    Require-Contains $policyText '"https://photos.anysex.com/"' 'ImageFrame must retain the approved photos host.'
     Require-Contains $policyText '"MaxImageFileSize": 8388608' 'ImageFrame file-size limit must be reduced to 8 MiB.'
     Require-Contains $policyText '"MaxProcessingTime": 15' 'ImageFrame processing time must be bounded to 15 seconds.'
     Require-Contains $policyText '"MaxSize": 32' 'ImageFrame map size must be reduced to a bounded value.'

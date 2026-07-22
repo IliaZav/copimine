@@ -2,8 +2,11 @@
   "imageframe": {
     "Settings": {
       "RestrictImageUrl": {
-        "Enabled": false,
-        "Whitelist": []
+        "Enabled": true,
+        "Whitelist": [
+          "https://avatars.mds.yandex.net/",
+          "https://photos.anysex.com/"
+        ]
       },
       "MaxSize": 32,
       "MaxImageFileSize": 8388608,

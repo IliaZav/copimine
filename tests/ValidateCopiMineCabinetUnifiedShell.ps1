@@ -22,6 +22,12 @@ function Require-Contains {
 foreach ($page in $pages) {
   $content = Get-Content -Raw -Encoding UTF8 $page.FullName
   $label = $page.Name
+  if ($page.Name -eq 'demoted.html') {
+    Require-Contains $content '<body class="auth-screen">' $label
+    Require-Contains $content 'Вы были разжалованы до игрока.' $label
+    Require-Contains $content 'Обратитесь к администрации.' $label
+    continue
+  }
   Require-Contains $content 'data-page-kind="cabinet"' $label
   Require-Contains $content 'data-boot-state="loading"' $label
   Require-Contains $content '<header class="public-nav public-nav-auth">' $label

@@ -25,8 +25,8 @@ $tab = Read-Text 'plugins\TAB\config.yml'
 $entityClearer = Read-Text 'plugins\EntityClearer\config.yml'
 
 Require-Regex $serverProperties '(?m)^max-players=50$' 'Server max-players should be raised to 50 for the release target.'
-Require-Regex $serverProperties '(?m)^view-distance=8$' 'Server view-distance should be raised to 8 for the release target.'
-Require-Regex $serverProperties '(?m)^simulation-distance=6$' 'Server simulation-distance should start at 6 before any live upgrade to 8.'
+Require-Regex $serverProperties '(?m)^view-distance=10$' 'Server view-distance must remain at the vanilla value of 10.'
+Require-Regex $serverProperties '(?m)^simulation-distance=10$' 'Server simulation-distance must remain at the vanilla value of 10.'
 Require-Regex $serverProperties '(?m)^sync-chunk-writes=false$' 'sync-chunk-writes must stay disabled.'
 Require-Regex $serverProperties '(?m)^network-compression-threshold=512$' 'Network compression threshold should be tuned to reduce CPU spikes.'
 
@@ -47,7 +47,7 @@ Require-Regex $pufferfish '(?m)^tps-catchup:\s*false$' 'TPS catchup should be di
 Require-Regex $pufferfish '(?m)^\s*max-loads-per-tick:\s*4$' 'Projectile chunk loads per tick should be low.'
 
 Require-Regex $spigot '(?m)^\s*tick-inactive-villagers:\s*false$' 'Inactive villager ticking should be disabled.'
-Require-Regex $spigot '(?m)^\s*nerf-spawner-mobs:\s*true$' 'Spawner mobs should be nerfed for MSPT.'
+Require-Regex $spigot '(?m)^\s*nerf-spawner-mobs:\s*false$' 'Spawner mobs must keep vanilla behavior.'
 
 Require-Regex $coreprotect '(?m)^check-updates:\s*false$' 'CoreProtect update checks should be disabled.'
 Require-Regex $coreprotect '(?m)^verbose:\s*false$' 'CoreProtect verbose rollback logging should be disabled.'
@@ -59,7 +59,8 @@ Require-Regex $tab '(?m)^\s*default-refresh-interval:\s*2000$' 'TAB default plac
 Require-Regex $tab '(?m)^permission-refresh-interval:\s*3000$' 'TAB permission refresh should be relaxed.'
 Require-Regex $purpur '(?m)^\s*tick-interval:\s*40$' 'Purpur TPS/RAM bar intervals should be relaxed.'
 
-Require-Regex $entityClearer '(?m)^\s*enabled:\s*true$' 'EntityClearer low TPS mode should be enabled.'
+Require-Regex $entityClearer '(?m)^global-interval:\s*0$' 'EntityClearer periodic cleanup must be disabled for vanilla mob spawning.'
+Require-Regex $entityClearer '(?ms)^low-tps:\s*\r?\n(?:\s*#.*\r?\n)*\s+enabled:\s*false\b' 'EntityClearer low TPS cleanup must be disabled for vanilla mob spawning.'
 Require-Regex $entityClearer '(?m)^\s*threshold:\s*18$' 'EntityClearer low TPS threshold should protect MSPT before severe lag.'
 Require-Regex $entityClearer '(?m)^\s*count:\s*8$' 'EntityClearer nearby cluster threshold should be tightened.'
 
@@ -67,4 +68,4 @@ if ($errors.Count -gt 0) {
   throw ("MSPT tuning validation failed:`n - " + ($errors -join "`n - "))
 }
 
-Write-Host 'MSPT tuning validation passed: server, Paper/Pufferfish/Spigot, CoreProtect, TAB, and EntityClearer configs are tuned for the 50-player target.'
+Write-Host 'MSPT and gameplay validation passed: server optimizations remain enabled while mob spawning and farms keep vanilla behavior.'

@@ -5103,7 +5103,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             )
          );
       } else {
-         if (!this.isArCatalogItem(var3.itemId())) {
+         CopiMineArtifacts.CatalogItem catalog = var3;
+         if (!isArCatalogItem(catalog.itemId())) {
             var1.sendMessage(this.color("&cРемонт за AR доступен только для AR-предметов лавки."));
             return;
          }
@@ -6091,13 +6092,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                               var8.setDamage(0);
                               var4.setItemMeta(var8);
                               var1.getInventory().setItemInMainHand(var4);
-                              var1.sendMessage(this.color("&aР РµРјРѕРЅС‚ Р·Р°РІРµСЂС€С‘РЅ Р±РµСЃРїР»Р°С‚РЅРѕ."));
+                              var1.sendMessage(this.color("&aРемонт завершён бесплатно."));
                               var1.closeInventory();
                            }
                         );
                      } catch (SQLException error) {
                         this.getLogger().log(Level.WARNING, "Free artifact repair persistence failed", error);
-                        this.runSync(() -> var1.sendMessage(this.color("&cРќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЂРµРјРѕРЅС‚. РџРѕРІС‚РѕСЂРё РїРѕРїС‹С‚РєСѓ.")));
+                        this.runSync(() -> var1.sendMessage(this.color("&cНе удалось сохранить ремонт. Повтори попытку.")));
                      }
                   }
                );

@@ -1,0 +1,133 @@
+# CopiMine EntityClearer config
+# Safe mode: does NOT remove items, item frames, armor stands, villagers, boats or minecarts.
+# Goal: reduce ping/MSPT spikes from large hostile/passive mob clusters.
+
+# Disabled: mob cleanup changes vanilla spawning and breaks farms.
+global-interval: 0
+
+sound: 'ui.button.click'
+countdown-pitch: 0.9
+cleared-pitch: 1.0
+
+warning-messages:
+  - 30
+  - 10
+  - 5
+  - 4
+  - 3
+  - 2
+  - 1
+
+worlds:
+  ALL:
+    interval: -1
+    min-players: 1
+    entities:
+      - BAT
+      - BEE
+      - CAVE_SPIDER
+      - CHICKEN
+      - COD
+      - CREEPER
+      - DROWNED
+      - ENDERMAN
+      - HUSK
+      - MAGMA_CUBE
+      - PHANTOM
+      - PUFFERFISH
+      - SALMON
+      - SHEEP
+      - SILVERFISH
+      - SKELETON
+      - SLIME
+      - SPIDER
+      - SQUID
+      - STRAY
+      - TROPICAL_FISH
+      - WITCH
+      - ZOMBIE
+      - ZOMBIFIED_PIGLIN
+    spawn-reason:
+      enabled: false
+      reasons:
+        - NATURAL
+        - SPAWNER
+        - SPAWNER_EGG
+
+global-min-players: 1
+
+nearby-entities:
+  enabled: true
+  only-count-from-list: true
+  x: 5
+  y: 4
+  z: 5
+  count: 8
+
+commands:
+# - 'minecraft:say EntityClearer finished'
+
+messages:
+  timeleft-minute: "минута"
+  timeleft-second: "секунда"
+  append-s-text: ""
+
+  actionbar-message: ""
+  chat-message: ""
+  log-message: "<yellow>EntityClearer: очистка через <gold><timeleft></gold> <time>"
+  title-message: ""
+  subtitle-message: ""
+
+  actionbar-completed-message: ""
+  actionbar-completed-low-tps-message: ""
+  chat-completed-message: ""
+  chat-completed-low-tps-message: ""
+  log-completed-message: "<green>EntityClearer: удалено сущностей: <yellow><entities></yellow>"
+  log-completed-low-tps-message: "<red>EntityClearer LOW TPS: удалено сущностей: <yellow><entities></yellow>"
+  title-completed-message: ""
+  subtitle-completed-message: ""
+  title-completed-low-tps-message: ""
+  subtitle-completed-low-tps-message: ""
+
+low-tps:
+  # Disabled: low-TPS cleanup must never remove naturally spawned mobs.
+  enabled: false
+  threshold: 18
+  chat: false
+  chat-message: ""
+  separate-entity-list: false
+  worlds:
+    ALL:
+      entities:
+        - BAT
+        - BEE
+        - CAVE_SPIDER
+        - CHICKEN
+        - COD
+        - CREEPER
+        - DROWNED
+        - ENDERMAN
+        - HUSK
+        - MAGMA_CUBE
+        - PHANTOM
+        - PUFFERFISH
+        - SALMON
+        - SHEEP
+        - SILVERFISH
+        - SKELETON
+        - SLIME
+        - SPIDER
+        - SQUID
+        - STRAY
+        - TROPICAL_FISH
+        - WITCH
+        - ZOMBIE
+        - ZOMBIFIED_PIGLIN
+      spawn-reason:
+        enabled: false
+        reasons:
+          - NATURAL
+          - SPAWNER
+          - SPAWNER_EGG
+
+disable-paste-upload: true

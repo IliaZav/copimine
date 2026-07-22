@@ -7535,7 +7535,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private final class ElectionStateMachine {
         private StageTransitionResult validateStageTransition(Connection connection, String electionId, ElectionStage from, ElectionStage to) throws Exception {
             int round = currentRoundFromDb(connection, electionId);
-            long pendingApplications = scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND admin_status='PENDING'", electionId);
+            long pendingApplications = scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND status='SUBMITTED' AND admin_status='PENDING'", electionId);
             long activeCandidates = countActiveRoundCandidates(connection, electionId, round);
             long stations = countActiveStations(connection, electionId);
             long tiedLeaders = countTiedLeaders(connection, electionId, round);

@@ -2583,8 +2583,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String bankTargetName(String targetUuid) {
-        Player player = Bukkit.getPlayer(UUID.fromString(targetUuid));
-        return player != null ? player.getName() : targetUuid;
+        String fallback = first(targetUuid, "Игрок");
+        if (targetUuid == null || targetUuid.isBlank()) {
+            return fallback;
+        }
+        try {
+            Player player = Bukkit.getPlayer(UUID.fromString(targetUuid));
+            return player != null ? player.getName() : fallback;
+        } catch (IllegalArgumentException ignored) {
+            // A stale or malformed database row must not crash the inventory
+            // click handler. Keep the UUID/text as a safe display fallback.
+            return fallback;
+        }
     }
 
     private boolean hasEconomyAdmin(CommandSender sender) {

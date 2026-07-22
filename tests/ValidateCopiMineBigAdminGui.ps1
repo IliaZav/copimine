@@ -18,9 +18,9 @@ function Require-Regex([string]$pattern, [string]$message) {
   }
 }
 
-Require-Contains '9.1.0-postgres-v4' 'AdminPlus version must be bumped for the PostgreSQL V4 release.'
-if (-not $plugin.Contains("9.1.0-postgres-v4")) {
-  $errors.Add('plugin.yml must advertise 9.1.0-postgres-v4.')
+Require-Contains '9.2.0-postgres-v4-balance-credit' 'AdminPlus version must match the current PostgreSQL V4 balance-credit release.'
+if (-not $plugin.Contains("9.2.0-postgres-v4-balance-credit")) {
+  $errors.Add('plugin.yml must advertise 9.2.0-postgres-v4-balance-credit.')
 }
 
 Require-Regex 'private void openMainHub\(Player p\)(?:(?!private boolean openElectionCoreHub)[\s\S])*create\(m,27,"&2&lCopiMine' 'Main admin hub must be a compact 27-slot entry screen.'

@@ -63,7 +63,8 @@ import de.maxhenkel.voicechat.api.events.EventRegistration;
 import de.maxhenkel.voicechat.api.events.MicrophonePacketEvent;
 
 public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Listener, CommandExecutor, TabCompleter, PluginMessageListener, VoicechatPlugin {
-    private static final String RELEASE_VERSION = "9.2.1-voice-mute";
+    // Keep the runtime banner, plugin.yml and compiled metadata on one release id.
+    private static final String RELEASE_VERSION = "9.2.0-postgres-v4-balance-credit";
     private String dbPath;
     private String dbLabel = "postgresql://127.0.0.1:5432/copimine?schema=copimine";
     private PgSettings pgSettings;
@@ -3898,8 +3899,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             List<Map<String,Object>> rows=query("SELECT name FROM cmv4_players WHERE uuid=? LIMIT 1",targetUuid);
             if(!rows.isEmpty())return first(s(rows.get(0).get("name")),targetUuid);
         }catch(Exception ignored){}
-        Player online=Bukkit.getPlayer(UUID.fromString(targetUuid));
-        return online==null?targetUuid:online.getName();
+        String fallback=first(targetUuid,"Игрок");
+        if(targetUuid==null||targetUuid.isBlank())return fallback;
+        try{
+            Player online=Bukkit.getPlayer(UUID.fromString(targetUuid));
+            return online==null?fallback:online.getName();
+        }catch(IllegalArgumentException ignored){
+            // Do not let a stale/malformed player UUID from the database take
+            // down the admin GUI while it renders a transfer target.
+            return fallback;
+        }
     }
 
     private String legacyDepositArFromHandDisabled(Player p,String atmId)throws Exception{
@@ -6417,7 +6426,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         public CopiMineExpansionShim(CopiMineUltimateAdminPlus plugin){this.plugin=plugin;}
         @Override public String getIdentifier(){return "copimine";}
         @Override public String getAuthor(){return "SudoKillDash9";}
-        @Override public String getVersion(){return "9.1.0-postgres-v4";}
+        @Override public String getVersion(){return RELEASE_VERSION;}
         @Override public boolean persist(){return true;}
         @Override public String onRequest(OfflinePlayer player,String params){
             if(params==null)return "";

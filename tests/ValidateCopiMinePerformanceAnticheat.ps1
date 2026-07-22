@@ -72,8 +72,8 @@ if (($punishments + "`n" + $punishmentsRu) -match '\[alert\]|\[webhook\]|\[proxy
 }
 
 Require-Regex $serverProperties '(?m)^max-players=50$' 'max-players must be raised to 50 for the release target.'
-Require-Regex $serverProperties '(?m)^view-distance=8$' 'view-distance must be raised to 8 for the release target.'
-Require-Regex $serverProperties '(?m)^simulation-distance=6$' 'simulation-distance should start at 6 before any live upgrade to 8.'
+Require-Regex $serverProperties '(?m)^view-distance=10$' 'view-distance must remain at the vanilla value of 10.'
+Require-Regex $serverProperties '(?m)^simulation-distance=10$' 'simulation-distance must remain at the vanilla value of 10.'
 Require-Regex $serverProperties '(?m)^entity-broadcast-range-percentage=50$' 'entity broadcast range should stay reduced for FPS/network load.'
 Require-Regex $serverProperties '(?m)^network-compression-threshold=512$' 'network compression threshold should remain CPU-friendly.'
 Require-Regex $serverProperties '(?m)^sync-chunk-writes=false$' 'sync chunk writes must be disabled.'
@@ -85,11 +85,11 @@ Require-Regex $paperWorld '(?m)^\s*redstone-implementation:\s*ALTERNATE_CURRENT$
 Require-Regex $paperWorld '(?m)^\s*armor-stands:\s*\n\s*do-collision-entity-lookups:\s*false\s*\n\s*tick:\s*false' 'Armor stand ticking/collision lookups should be disabled by default.'
 Require-Regex $paperWorld '(?m)^\s*delay-chunk-unloads-by:\s*15s$' 'Chunk unload delay should avoid unload/load jitter.'
 Require-Regex $paperWorld '(?m)^\s*max-auto-save-chunks-per-tick:\s*3$' 'World autosave chunks per tick should be tightened.'
-Require-Regex $spigot '(?m)^\s*mob-spawn-range:\s*6$' 'Mob spawn range should be reduced from vanilla-heavy radius.'
+Require-Regex $spigot '(?m)^\s*mob-spawn-range:\s*8$' 'Mob spawn range must remain at the vanilla value of 8.'
 Require-Regex $spigot '(?m)^\s*hopper-transfer:\s*16$' 'Hopper transfer interval should be relaxed.'
 Require-Regex $spigot '(?m)^\s*hopper-check:\s*16$' 'Hopper check interval should be relaxed.'
-Require-Regex $bukkit '(?m)^\s*monsters:\s*35$' 'Monster spawn limit should be tightened.'
-Require-Regex $bukkit '(?m)^\s*animals:\s*6$' 'Animal spawn limit should be tightened.'
+Require-Regex $bukkit '(?m)^\s*monsters:\s*70$' 'Monster spawn limit must remain at the vanilla value of 70.'
+Require-Regex $bukkit '(?m)^\s*animals:\s*10$' 'Animal spawn limit must remain at the vanilla value of 10.'
 Require-Regex $purpur '(?m)^\s*tps-catchup:\s*false$' 'Purpur TPS catchup should be disabled.'
 Require-Regex $entityClearer '(?m)^\s*actionbar-message:\s*""$' 'EntityClearer warnings must not appear in actionbar.'
 Require-Regex $entityClearer '(?m)^\s*actionbar-completed-message:\s*""$' 'EntityClearer completion must not appear in actionbar.'
@@ -108,4 +108,4 @@ if ($errors.Count -gt 0) {
   throw ("Performance/anticheat validation failed:`n - " + ($errors -join "`n - "))
 }
 
-Write-Host 'Performance/anticheat validation passed: GrimAC is installed silently, MSPT settings are tightened, and the web anticheat panel is wired.'
+Write-Host 'Performance/anticheat validation passed: GrimAC is installed silently, safe performance limits remain, and vanilla mob spawning is preserved.'

@@ -210,6 +210,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private BukkitTask deliveryTask;
    private BukkitTask sessionCleanupTask;
    private BukkitTask artifactEffectTask;
+   private BukkitTask armorEffectTask;
 
    public void onEnable() {
       this.saveDefaultConfig();
@@ -291,6 +292,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
             this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
             this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
+            this.armorEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickEquippedArmor, 20L, 40L);
             this.getLogger().info("CopiMineArtifacts enabled with " + this.catalogById.size() + " active catalog items.");
          }
       } else {
@@ -356,6 +358,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       if (this.artifactEffectTask != null) {
          this.artifactEffectTask.cancel();
+      }
+
+      if (this.armorEffectTask != null) {
+         this.armorEffectTask.cancel();
       }
 
       if (this.dbExecutor != null) {
@@ -1223,6 +1229,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   );
                }
             }
+         }
+      }
+   }
+
+   /** Refreshes passive armor effects without waiting for a damage event. */
+   private void tickEquippedArmor() {
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         CatalogItem chestplate = this.authenticCatalogItem(player.getInventory().getChestplate(), player, "armor_tick");
+         if (chestplate != null && "TANK_VEST".equalsIgnoreCase(chestplate.effect())) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 0, false, false, true));
          }
       }
    }
@@ -7919,7 +7935,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                return true;
             }
          } else {
-            return true;
+            // Keep the journal entry until the instance row becomes visible.
+            // A transient DB race must never turn a real loss into an
+            // unrecoverable item.
+            return false;
          }
       } else {
          return true;
@@ -9966,8 +9985,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (offset.lengthSquared() > 100.0D * 100.0D) requested = origin.clone().add(offset.normalize().multiply(100.0D));
       World world = origin.getWorld();
       int baseX = requested.getBlockX();
-      int baseY = Math.max(world.getMinHeight() + 1, requested.getBlockY());
       int baseZ = requested.getBlockZ();
+      // A downward ray can hit the side of a cave or a deep underground
+      // block.  Never use that Y directly: resolve the target column to its
+      // highest safe surface first, then search only around that surface.
+      int surfaceY = world.getHighestBlockYAt(baseX, baseZ);
+      int baseY = Math.max(world.getMinHeight() + 1, surfaceY + 1);
       for (int radius = 0; radius <= 2; radius++) {
          for (int dy = -4; dy <= 4; dy++) {
             for (int dx = -radius; dx <= radius; dx++) {
@@ -11641,7 +11664,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      var6.spawnParticle(Particle.WAX_ON, var5, 24, 0.45, 0.45, 0.45, 0.02);
                      break;
                   case "COLD_FOG":
-                     var1.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, var4, 0, false, false, true));
                      var1.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, var4, 0, false, false, true));
                      var6.spawnParticle(Particle.CLOUD, var5, 26, 0.55, 0.35, 0.55, 0.02);
                      break;

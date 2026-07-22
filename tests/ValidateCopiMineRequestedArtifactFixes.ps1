@@ -22,9 +22,14 @@ Require $artifact 'REGENERATION' 'Debuff amulet must convert a negative effect i
 Require $artifact 'STRENGTH' 'Debuff amulet must convert weakness into strength.'
 Require $artifact 'SPEED' 'Debuff amulet must convert slowness into speed.'
 Require $artifact 'SATURATION' 'Debuff amulet must convert hunger into saturation.'
+if ($artifact -match '(?s)case "COLD_FOG":(?:(?!case ").)*?addPotionEffect\(new PotionEffect\(PotionEffectType\.SLOWNESS') {
+    $errors.Add('Amulet visual feedback must not add a slowness debuff to its owner.')
+}
+Require $artifact 'PotionEffectType.NIGHT_VISION' 'Amulet visual feedback must remain a positive/non-debuff effect.'
 Require $artifact 'rayTraceBlocks' 'Donation compass must trace the look direction before teleporting.'
 Require $artifact '100.0D' 'Donation compass must cap teleport distance at 100 blocks.'
 Require $artifact 'teleport(' 'Donation compass must teleport the player, not modify the global vanilla compass target.'
+Require $artifact 'getHighestBlockYAt' 'Donation compass must place the player on the surface instead of underground.'
 Require $items 'effect-profile-id: NAKOPAL_PICKAXE' 'The NAKOPAL_PICKAXE donation item must remain configured.'
 Require $items 'proc-chance: 1.0' 'The NAKOPAL_PICKAXE ability must proc reliably.'
 Require $artifact '200L' 'The belt cobweb effect must last ten seconds when it procs.'
@@ -36,6 +41,8 @@ Require $backend 'class AdminArtifactLimitResetIn' 'The reset endpoint must acce
 Require $backend 'requested_id in {"*", "all"}' 'The reset endpoint must handle reset-all explicitly.'
 Require $artifact 'reconcileDonationLossJournal' 'Void/loss handling must reconcile the journal before reclaiming.'
 Require $artifact 'Instant.ofEpochMilli(expiresAt)' 'Tax subscription delivery must show the super-citizen message.'
+Require $artifact 'tickEquippedArmor' 'Treasurer chestplate must refresh its armor effect while equipped.'
+Require $artifact 'PotionEffectType.RESISTANCE, 60' 'Treasurer chestplate must provide a visible resistance effect while equipped.'
 
 if ($errors.Count -gt 0) {
     throw ('ValidateCopiMineRequestedArtifactFixes failed:' + "`n - " + ($errors -join "`n - "))

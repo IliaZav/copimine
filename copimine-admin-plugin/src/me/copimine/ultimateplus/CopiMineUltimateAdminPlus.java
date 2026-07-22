@@ -544,36 +544,56 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String[] parts=raw.substring(1).trim().split("\\s+");
         if(parts.length<2)return null;
         String root=parts[0].toLowerCase(Locale.ROOT);
+        // Bukkit may expose a namespaced label (imageframe:imageframe) when
+        // another plugin registers the short alias.  ImageFrame itself only
+        // sees the command arguments, so normalize both labels identically.
+        int namespaceSeparator=root.indexOf(':');
+        if(namespaceSeparator>=0&&namespaceSeparator+1<root.length()){
+            root=root.substring(namespaceSeparator+1);
+        }
         if(!Set.of("imageframe","iframe","if","frame").contains(root))return null;
-        if(!parts[1].equalsIgnoreCase("create"))return null;
+        String subcommand=imageFrameToken(parts[1]);
+        if(!subcommand.equalsIgnoreCase("create"))return null;
+        String arg2=parts.length>2?imageFrameToken(parts[2]):"";
+        String arg3=parts.length>3?imageFrameToken(parts[3]):"";
+        String arg4=parts.length>4?imageFrameToken(parts[4]):"";
+        String arg5=parts.length>5?imageFrameToken(parts[5]):"";
         // ImageFrame's args array excludes the command name.  It accepts
         // 4..7 args, so these two short forms were previously rejected as
         // imageframe.messages.invalid_usage.
         // URL-only form: /imageframe create <url>.
-        if(parts.length==3&&isImageFrameUrl(parts[2])){
-            return "/imageframe create "+imageFrameGeneratedName()+" "+parts[2]+" 1 1";
+        if(parts.length==3&&isImageFrameUrl(arg2)){
+            return "/imageframe create "+imageFrameGeneratedName()+" "+arg2+" 1 1";
         }
         // Name/URL form: /imageframe create <name> <url>.
-        if(parts.length==4&&isImageFrameUrl(parts[3])){
-            return "/imageframe create "+parts[2]+" "+parts[3]+" 1 1";
+        if(parts.length==4&&isImageFrameUrl(arg3)){
+            return "/imageframe create "+arg2+" "+arg3+" 1 1";
         }
         // URL-first forms are convenient for admins copying a link.  The
         // native ImageFrame parser requires a name before the URL and always
         // requires both dimensions, so fill the missing pieces safely.
-        if(parts.length==4&&isImageFrameUrl(parts[2])
-                &&isPositiveImageFrameDimension(parts[3])){
-            return "/imageframe create "+imageFrameGeneratedName()+" "+parts[2]+" "+parts[3]+" 1";
+        if(parts.length==4&&isImageFrameUrl(arg2)
+                &&isPositiveImageFrameDimension(arg3)){
+            return "/imageframe create "+imageFrameGeneratedName()+" "+arg2+" "+arg3+" 1";
         }
         // /imageframe create <url> <width> <height>
-        if(parts.length==5&&isImageFrameUrl(parts[2])
-                &&isPositiveImageFrameDimension(parts[3])
-                &&isPositiveImageFrameDimension(parts[4])){
-            return "/imageframe create "+imageFrameGeneratedName()+" "+parts[2]+" "+parts[3]+" "+parts[4];
+        if(parts.length==5&&isImageFrameUrl(arg2)
+                &&isPositiveImageFrameDimension(arg3)
+                &&isPositiveImageFrameDimension(arg4)){
+            return "/imageframe create "+imageFrameGeneratedName()+" "+arg2+" "+arg3+" "+arg4;
         }
         // /imageframe create <name> <url> <width> (height defaults to one).
-        if(parts.length==5&&isImageFrameUrl(parts[3])
-                &&isPositiveImageFrameDimension(parts[4])){
-            return "/imageframe create "+parts[2]+" "+parts[3]+" "+parts[4]+" 1";
+        if(parts.length==5&&isImageFrameUrl(arg3)
+                &&isPositiveImageFrameDimension(arg4)){
+            return "/imageframe create "+arg2+" "+arg3+" "+arg4+" 1";
+        }
+        // URL-first form with an explicit dithering mode:
+        // /imageframe create <url> <width> <height> <dithering>.
+        if(parts.length==6&&isImageFrameUrl(arg2)
+                &&isPositiveImageFrameDimension(arg3)
+                &&isPositiveImageFrameDimension(arg4)
+                &&isImageFrameDithering(arg5)){
+            return "/imageframe create "+imageFrameGeneratedName()+" "+arg2+" "+arg3+" "+arg4+" "+arg5;
         }
         return null;
     }
@@ -582,9 +602,20 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         return "photo_"+UUID.randomUUID().toString().replace("-","").substring(0,12);
     }
 
+    private String imageFrameToken(String value){
+        String token=value==null?"":value.trim();
+        if(token.length()>=2&&((token.startsWith("\"")&&token.endsWith("\""))||(token.startsWith("'")&&token.endsWith("'")))){
+            token=token.substring(1,token.length()-1).trim();
+        }
+        if(token.length()>=2&&token.startsWith("<")&&token.endsWith(">")){
+            token=token.substring(1,token.length()-1).trim();
+        }
+        return token;
+    }
+
     private boolean isImageFrameUrl(String value){
         try{
-            URI uri=URI.create(value);
+            URI uri=URI.create(imageFrameToken(value));
             String scheme=uri.getScheme();
             return uri.getHost()!=null&&("http".equalsIgnoreCase(scheme)||"https".equalsIgnoreCase(scheme));
         }catch(IllegalArgumentException ignored){return false;}
@@ -592,6 +623,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private boolean isPositiveImageFrameDimension(String value){
         try{return Integer.parseInt(value)>0;}catch(NumberFormatException ignored){return false;}
+    }
+
+    private boolean isImageFrameDithering(String value){
+        if(value==null||value.isBlank())return false;
+        return Set.of("none","nearest","nearest_color","nearest-color","floyd_steinberg","floyd-steinberg","floydsteinberg","atkinson","burkes","sierra","sierra2","sierra-lite","stucki","jarvis","false").contains(value.toLowerCase(Locale.ROOT));
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {

@@ -3613,6 +3613,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 WHERE player_uuid=?
                   AND item_id=?
                   AND status IN ('UNCLAIMED','RESERVED','DELIVERING','DELIVERY_REVIEW')
+                  AND (CASE WHEN created_at > 100000000000 THEN created_at ELSE created_at * 1000 END) >
+                      COALESCE((SELECT CASE WHEN reset_at > 100000000000 THEN reset_at ELSE reset_at * 1000 END
+                                FROM artifact_purchase_limit_resets
+                                WHERE player_uuid=? AND item_id=?),0)
                 LIMIT 1
                 """);
              PreparedStatement instances = connection.prepareStatement("""
@@ -3621,10 +3625,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 WHERE owner_uuid=?
                   AND item_id=?
                   AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')
+                  AND (CASE WHEN created_at > 100000000000 THEN created_at ELSE created_at * 1000 END) >
+                      COALESCE((SELECT CASE WHEN reset_at > 100000000000 THEN reset_at ELSE reset_at * 1000 END
+                                FROM artifact_purchase_limit_resets
+                                WHERE player_uuid=? AND item_id=?),0)
                 LIMIT 1
                 """)) {
             claims.setString(1, playerUuid);
             claims.setString(2, itemId);
+            claims.setString(3, playerUuid);
+            claims.setString(4, itemId);
             try (ResultSet rs = claims.executeQuery()) {
                 if (rs.next()) {
                     return true;
@@ -3632,6 +3642,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
             instances.setString(1, playerUuid);
             instances.setString(2, itemId);
+            instances.setString(3, playerUuid);
+            instances.setString(4, itemId);
             try (ResultSet rs = instances.executeQuery()) {
                 return rs.next();
             }

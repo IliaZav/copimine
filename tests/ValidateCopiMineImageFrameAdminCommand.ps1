@@ -13,6 +13,9 @@ foreach ($needle in @(
     'imageFrameGeneratedName',
     'URL-first forms',
     'Name/URL form',
+    'namespaced label',
+    'imageFrameToken',
+    'isImageFrameDithering',
     'PlayerCommandPreprocessEvent'
 )) {
     if (-not $source.Contains($needle)) { $errors.Add("ImageFrame admin command compatibility is missing: $needle") }

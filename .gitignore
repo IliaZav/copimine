@@ -99,6 +99,10 @@ minecraft/server/**
 !minecraft/server/plugins/TAB/
 !minecraft/server/plugins/TAB/config.yml
 !minecraft/server/plugins/TAB/groups.yml
+!minecraft/server/plugins/ClearLag.jar
+!minecraft/server/plugins/ClearLag/
+!minecraft/server/plugins/ClearLag/config.yml
+!minecraft/server/plugins/ClearLag/messages.yml
 !minecraft/server/plugins/EntityClearer/
 !minecraft/server/plugins/EntityClearer/config.yml
 !minecraft/server/plugins/FarmControl/

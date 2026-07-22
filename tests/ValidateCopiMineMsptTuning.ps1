@@ -23,6 +23,7 @@ $purpur = Read-Text 'purpur.yml'
 $coreprotect = Read-Text 'plugins\CoreProtect\config.yml'
 $tab = Read-Text 'plugins\TAB\config.yml'
 $entityClearer = Read-Text 'plugins\EntityClearer\config.yml'
+$clearLag = Read-Text 'plugins\ClearLag\config.yml'
 
 Require-Regex $serverProperties '(?m)^max-players=50$' 'Server max-players should be raised to 50 for the release target.'
 Require-Regex $serverProperties '(?m)^view-distance=10$' 'Server view-distance must remain at the vanilla value of 10.'
@@ -63,6 +64,14 @@ Require-Regex $entityClearer '(?m)^global-interval:\s*0$' 'EntityClearer periodi
 Require-Regex $entityClearer '(?ms)^low-tps:\s*\r?\n(?:\s*#.*\r?\n)*\s+enabled:\s*false\b' 'EntityClearer low TPS cleanup must be disabled for vanilla mob spawning.'
 Require-Regex $entityClearer '(?m)^\s*threshold:\s*18$' 'EntityClearer low TPS threshold should protect MSPT before severe lag.'
 Require-Regex $entityClearer '(?m)^\s*count:\s*8$' 'EntityClearer nearby cluster threshold should be tightened.'
+
+Require-Regex $clearLag '(?ms)^auto-updater:\s*\r?\n\s+#.*\r?\n\s+enabled:\s*false$' 'ClearLag updates must be controlled by release packaging, not downloaded live.'
+Require-Regex $clearLag '(?ms)^auto-clear:\s*\r?\n\s+enabled:\s*true\b.*?\r?\n\s+interval-seconds:\s*300\b.*?\r?\n\s+clear-items:\s*true\b.*?\r?\n\s+clear-entities:\s*false\b' 'ClearLag must clear only dropped items on a five-minute interval.'
+Require-Regex $clearLag '(?ms)^\s+recent-activity-protection:\s*\r?\n\s+enabled:\s*true\b.*?\r?\n\s+window-seconds:\s*30\b.*?\r?\n\s+player-radius-blocks:\s*16\.0\b' 'ClearLag must protect recent drops near active players.'
+Require-Regex $clearLag '(?ms)^\s+mob-spawn-limiter:\s*\r?\n\s+# Natural, spawner and breeding mob spawning stays vanilla\..*?\r?\n\s+enabled:\s*false\b' 'ClearLag must not cap natural, spawner or breeding mob spawning.'
+Require-Regex $clearLag '(?ms)^\s+ai-optimization:\s*\r?\n\s+# Do not despawn distant mobs.*?\r?\n\s+enabled:\s*false\b' 'ClearLag must not despawn distant mobs.'
+Require-Regex $clearLag '(?ms)^\s+item-merge-optimization:\s*.*?\r?\n\s+# Merge only normal dropped stacks\..*?\r?\n\s+enabled:\s*true\b' 'ClearLag may merge normal dropped stacks to reduce item entity count.'
+Require-Regex $clearLag '(?ms)^\s*dynamic-view-distance:.*?enabled:\s*false\b' 'ClearLag must not dynamically lower the configured view distance.'
 
 if ($errors.Count -gt 0) {
   throw ("MSPT tuning validation failed:`n - " + ($errors -join "`n - "))

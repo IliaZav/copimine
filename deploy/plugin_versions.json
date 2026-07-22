@@ -4,6 +4,7 @@
   "plugins": {
     "AuthEffects.jar": "1.0.0",
     "AuthMe-5.6.0.jar": "5.6.0-bCUSTOM",
+    "ClearLag.jar": "1.12.1",
     "Chunky-Bukkit-1.4.40.jar": "1.4.40",
     "CopiMineArtifacts.jar": "1.0.0-autocashier",
     "CopiMineEconomyCore.jar": "1.0.0",

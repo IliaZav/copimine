@@ -11,7 +11,7 @@ $required = @(
   'dezhurniy_argument_sword','vechniy_razgon_firework','treasurer_chestplate','copimine_miner_pickaxe','craftsman_hammer',
   'eternal_totem','kozyrny_tuz_pozdnyakova',
   'batin_remen_sudnogo_dnya','nu_ty_i_nakopal_blyat_pickaxe','kosa_nalogovoy_inspekcii','kaska_prorab_huev',
-  'mne_pohuy_ya_v_tanke_vest','ne_segodnya_suka_shield','ya_esche_ne_vse_isportil_totem','pohuy_na_debaffy_amulet',
+  'mne_pohuy_ya_v_tanke_vest','ne_segodnya_suka_shield','pohuy_na_debaffy_amulet',
   'vremya_platit_nalogi_clock','gde_moy_lut_blyat_compass'
 )
 $errors = [System.Collections.Generic.List[string]]::new()

@@ -123,15 +123,8 @@
       "id": "ne_segodnya_suka_shield",
       "custom_model_data": 20006,
       "base_material": "shield",
-      "model": "minecraft:item/ne_segodny_suki_shield",
+      "model": "copimine:item/artifacts/ne_segodnya_suka_shield",
       "texture": "copimine:item/artifacts/ne_segodnya_suka_shield"
-    },
-    {
-      "id": "ya_esche_ne_vse_isportil_totem",
-      "custom_model_data": 20007,
-      "base_material": "totem_of_undying",
-      "model": "minecraft:item/ya_eche_ne_vse_isportil_totem_of_undying",
-      "texture": "copimine:item/artifacts/ya_esche_ne_vse_isportil_totem"
     },
     {
       "id": "pohuy_na_debaffy_amulet",

@@ -349,28 +349,6 @@ donation-catalog:
         - "&7Щит для жёсткого ответа в ближнем бою."
         - "&7Молния только декоративная."
 
-    - item-id: ya_esche_ne_vse_isportil_totem
-      display-name: "&6Тотем \"Я ещё не всё испортил\""
-      base-material: TOTEM_OF_UNDYING
-      price-donation: 500
-      enabled: true
-      source: DONATION_SHOP
-      owner-bound: true
-      reclaim-policy: LOSS_ONLY
-      consume-policy: CONSUME_ON_TRIGGER
-      effect-profile-id: BROKEN_TOTEM
-      effect-description: "Аварийный relic с длинным кулдауном и без права на бесплатные дубликаты."
-      cooldown-seconds: 300
-      proc-chance: 1.0
-      max-stack: 1
-      repairable: false
-      custom-texture-mode-allowed: true
-      custom-model-data: 20007
-      visual-effect-id: MOON_GLOW
-      lore:
-        - "&7Срабатывает как контролируемый emergency relic."
-        - "&7После расхода покупается заново."
-
     - item-id: pohuy_na_debaffy_amulet
       display-name: "&6Амулет \"Похуй на дебаффы\""
       base-material: HEART_OF_THE_SEA

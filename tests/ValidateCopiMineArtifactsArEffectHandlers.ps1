@@ -16,7 +16,6 @@ $requiredEffectIds = @(
   "PRORAB_HELMET",
   "TANK_VEST",
   "NOT_TODAY_SHIELD",
-  "BROKEN_TOTEM",
   "DEBUFF_AMULET",
   "TAX_CLOCK",
   "LOOT_COMPASS"
@@ -32,8 +31,8 @@ if ($content -notmatch "tryFarmerSweep") { throw "Missing farmer sweep helper." 
 if ($content -notmatch "tryForesterChain") { throw "Missing forester chain helper." }
 if ($content -notmatch "grantTrenchBonus") { throw "Missing trench bonus helper." }
 if ($content -notmatch "pointCompassToLastDeath") { throw "Missing loot compass helper." }
-if ($content -notmatch "EntityResurrectEvent") { throw "Missing donation totem resurrect hook." }
-if ($content -notmatch "TOTEM_OF_UNDYING") { throw "Missing donation totem runtime guard." }
+if ($content -notmatch "EntityResurrectEvent") { throw "Missing eternal totem resurrect hook." }
+if ($content -notmatch "INFINITE_TOTEM") { throw "Missing eternal totem runtime guard." }
 
 $items = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot '..\copimine-artifacts\items.yml')
 $smena = [regex]::Match($items, '(?ms)^  - id: smena_bez_perekura_pickaxe\r?\n.*?(?=^  - id:|\z)')

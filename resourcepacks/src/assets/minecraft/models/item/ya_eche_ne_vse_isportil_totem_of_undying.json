@@ -1,6 +1,0 @@
-{
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "copimine:item/artifacts/ya_esche_ne_vse_isportil_totem"
-  }
-}

@@ -10,7 +10,7 @@ from pathlib import Path
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageChops, ImageDraw
 except ModuleNotFoundError as exc:  # pragma: no cover - release environment check
     raise RuntimeError("Pillow is required to build directional compass/clock frames") from exc
 
@@ -250,6 +250,7 @@ def build_stage() -> None:
     if STAGE.exists():
         shutil.rmtree(STAGE)
     shutil.copytree(SRC, STAGE)
+    write_shield_icon()
 
     pack_png = STAGE / "pack.png"
     if not pack_png.exists():
@@ -318,6 +319,31 @@ def build_stage() -> None:
         )
 
     normalize_stage_text_files()
+
+
+def write_shield_icon() -> None:
+    """Create a compact icon from the shield entity UV texture.
+
+    The supplied shield PNG is an entity UV sheet. Using it directly as an
+    item/generated layer renders the unfolded sheet in inventories. The game
+    model therefore receives a deterministic cropped front panel instead.
+    """
+    source = STAGE / "assets" / "copimine" / "textures" / "item" / "artifacts" / "ne_segodnya_suka_shield.png"
+    destination = source.with_name("ne_segodnya_suka_shield_icon.png")
+    with Image.open(source) as image:
+        source_image = image.convert("RGBA")
+        if source_image.width < 17 or source_image.height < 23:
+            raise ValueError(f"Unexpected shield texture size: {source_image.size}")
+        front = source_image.crop((3, 0, 15, 23)).resize((20, 27), Image.Resampling.NEAREST)
+        preview = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+        preview.paste(front, (6, 2))
+        mask = Image.new("L", preview.size, 0)
+        ImageDraw.Draw(mask).polygon(
+            [(7, 2), (24, 2), (24, 20), (22, 25), (19, 28), (16, 30), (13, 28), (9, 25), (7, 20)],
+            fill=255,
+        )
+        preview.putalpha(ImageChops.multiply(preview.getchannel("A"), mask))
+        preview.save(destination, format="PNG", optimize=True)
 
 
 def vanilla_special_overrides(material: str) -> list[dict]:

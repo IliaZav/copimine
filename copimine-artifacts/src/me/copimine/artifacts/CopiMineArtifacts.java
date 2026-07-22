@@ -113,9 +113,11 @@ import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemBreakEvent;
+import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import io.papermc.paper.event.player.PlayerShieldDisableEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -736,6 +738,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var2.executeBatch();
          }
 
+         // Keep retired items in purchase history, but prevent an old database
+         // row from putting them back into the shop after a config upgrade.
+         try (PreparedStatement retired = var1.prepareStatement(
+               "UPDATE artifact_items_catalog SET enabled=FALSE,updated_at=? WHERE item_id=?"
+            )) {
+            retired.setLong(1, this.now());
+            retired.setString(2, "ya_esche_ne_vse_isportil_totem");
+            retired.executeUpdate();
+         }
+
          var1.commit();
       } catch (SQLException var19) {
          var1.rollback();
@@ -776,7 +788,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       try (
          PreparedStatement var2 = var1.prepareStatement(
-            "SELECT unique_item_id,item_id,owner_uuid FROM artifact_item_instances WHERE status IN ('DELIVERED','ACTIVE')"
+            "SELECT unique_item_id,item_id,owner_uuid FROM artifact_item_instances WHERE status IN ('DELIVERED','ACTIVE','DELIVERING','PENDING_DELIVERY')"
          );
          ResultSet var3 = var2.executeQuery();
       ) {
@@ -1360,27 +1372,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                Bukkit.getScheduler().runTask(this, () -> this.restoreInfiniteTotem(var2, snapshot));
                break;
             }
-            CopiMineArtifacts.OfficialDonationRef var8 = this.officialDonationRef(var7);
-            if (var8 != null && var7.getType() == Material.TOTEM_OF_UNDYING && var2.getUniqueId().equals(var8.ownerUuid())) {
-               CopiMineArtifacts.CatalogItem var9 = this.authenticCatalogItem(var7, var2, "resurrect");
-               if (var9 != null && "BROKEN_TOTEM".equalsIgnoreCase(var9.effect())) {
-                  this.runAsync(
-                     () -> {
-                        try {
-                           // updateDonationInstanceStatus(ref.ownerUuid(), ref.uniqueItemId(), ref.itemId(), "CONSUMED"
-                           if (this.updateDonationInstanceStatus(
-                              var8.ownerUuid(), var8.uniqueItemId(), var8.itemId(), "CONSUMED", Set.of("ACTIVE", "DELIVERING"), true
-                           )) {
-                              this.audit(var2.getName(), "donation_item_consumed", var8.uniqueItemId(), var8.itemId());
-                           }
-                        } catch (SQLException var4) {
-                           this.getLogger().log(Level.WARNING, "Donation totem consume update failed", (Throwable)var4);
-                        }
-                     }
-                  );
-                  break;
-               }
-            }
          }
       }
    }
@@ -1645,6 +1636,41 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.actionCooldowns.put(this.actionCooldownKey(var2, var5), var7 + (long)Math.max(6, var5.cooldownSeconds()));
             }
          }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = false
+   )
+   public void onCustomShieldDisable(PlayerShieldDisableEvent event) {
+      Player player = event.getPlayer();
+      CatalogItem shield = this.authenticCatalogItem(player.getInventory().getItemInOffHand(), player, "shield_disable_offhand");
+      if (shield == null || !"NOT_TODAY_SHIELD".equalsIgnoreCase(shield.effect())) {
+         shield = this.authenticCatalogItem(player.getInventory().getItemInMainHand(), player, "shield_disable_mainhand");
+      }
+      if (shield != null && "NOT_TODAY_SHIELD".equalsIgnoreCase(shield.effect())) {
+         // Paper exposes the vanilla axe-disable mechanic as a cancellable event.
+         // Do not let an axe bypass this artifact's own ability cooldown.
+         event.setCancelled(true);
+         event.setCooldown(0);
+         player.setCooldown(Material.SHIELD, 0);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onCustomShieldDamage(PlayerItemDamageEvent event) {
+      if (event.getItem() == null || event.getItem().getType() != Material.SHIELD) {
+         return;
+      }
+      CatalogItem shield = this.authenticCatalogItem(event.getItem(), event.getPlayer(), "shield_durability");
+      if (shield != null && "NOT_TODAY_SHIELD".equalsIgnoreCase(shield.effect())) {
+         // Keep damage predictable; Unbreaking III is applied when the official
+         // item is created, and a single blocked hit consumes at most one point.
+         event.setDamage(Math.min(1, Math.max(0, event.getDamage())));
       }
    }
 
@@ -6903,7 +6929,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Connection connection = this.pgPool.acquire();
             try {
                PreparedStatement query = connection.prepareStatement(
-                  "SELECT item_id,owner_uuid FROM artifact_item_instances WHERE unique_item_id=? AND item_id=? AND owner_uuid=? AND status IN ('DELIVERED','ACTIVE') LIMIT 1"
+                  "SELECT item_id,owner_uuid FROM artifact_item_instances WHERE unique_item_id=? AND item_id=? AND owner_uuid=? AND status IN ('DELIVERED','ACTIVE','DELIVERING','PENDING_DELIVERY') LIMIT 1"
                );
                try {
                   query.setString(1, uniqueId);
@@ -8173,6 +8199,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
          for (String var9 : var1.lore()) {
             var7.add(this.color(var9));
+         }
+
+         if ("NOT_TODAY_SHIELD".equalsIgnoreCase(var1.effect())) {
+            var6.addEnchant(Enchantment.UNBREAKING, 3, true);
+            var7.add(this.color("&bПрочность III: щит выдерживает больше ударов."));
          }
 
          if (var1.customModelData() > 0) {

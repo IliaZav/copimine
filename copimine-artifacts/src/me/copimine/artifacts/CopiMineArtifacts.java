@@ -294,7 +294,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
             this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
             this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
-            this.armorEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickEquippedArmor, 20L, 40L);
+            this.armorEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickEquippedArmor, 1L, 20L);
             this.getLogger().info("CopiMineArtifacts enabled with " + this.catalogById.size() + " active catalog items.");
          }
       } else {
@@ -791,7 +791,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       try (
          PreparedStatement var2 = var1.prepareStatement(
-            "SELECT unique_item_id,item_id,owner_uuid FROM artifact_item_instances WHERE status IN ('DELIVERED','ACTIVE','DELIVERING','PENDING_DELIVERY')"
+            // Only physically delivered instances are trusted by gameplay.
+            // Delivering/pending rows are still transactional and must not be
+            // usable until their inventory write is finalized.
+            "SELECT unique_item_id,item_id,owner_uuid FROM artifact_item_instances WHERE status IN ('DELIVERED','ACTIVE')"
          );
          ResultSet var3 = var2.executeQuery();
       ) {
@@ -1253,8 +1256,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       for (Player player : Bukkit.getOnlinePlayers()) {
          CatalogItem chestplate = this.authenticCatalogItem(player.getInventory().getChestplate(), player, "armor_tick");
          if (chestplate != null && "TANK_VEST".equalsIgnoreCase(chestplate.effect())) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 0, false, false, true));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 60, 0, false, false, true));
+            // Refresh every second so equipping the chestplate immediately
+            // grants its protection and there is no visible gap between ticks.
+            player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 80, 0, false, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 80, 0, false, false, true));
          }
       }
    }
@@ -1790,6 +1795,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                               var10.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 2, false, false, true));
                               var10.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0, false, false, true));
                               this.applyTemporaryCobwebSnare(var2, var10, 100L);
+                              this.applyTemporaryBurial(var2, var10, 100L);
                            }
 
                            var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
@@ -5267,7 +5273,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                return;
             }
          }
-         player.sendMessage(this.color("&aРџРѕРєСѓРїРєР° РѕС„РѕСЂРјР»РµРЅР°. РџСЂРµРґРјРµС‚ РґРѕР±Р°РІР»РµРЅ РІ РѕС‚Р»РѕР¶РµРЅРЅСѓСЋ РІС‹РґР°С‡Сѓ." + balanceText));
+         player.sendMessage(this.color("&aПокупка оформлена. Предмет добавлен в отложенную выдачу." + balanceText));
          this.openDonationOwned(player);
       }));
    }
@@ -5296,7 +5302,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                );
             } else {
                // Open the PIN pad synchronously. A status probe could fail or
-               // report “not configured”; purchases must never bypass PIN entry.
+               // report "not configured"; purchases must never bypass PIN entry.
                CopiMineArtifacts.SessionState var5x = var2;
                var5x.pinBuffer = "";
                this.openPin(var1, var15);
@@ -6929,7 +6935,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Connection connection = this.pgPool.acquire();
             try {
                PreparedStatement query = connection.prepareStatement(
-                  "SELECT item_id,owner_uuid FROM artifact_item_instances WHERE unique_item_id=? AND item_id=? AND owner_uuid=? AND status IN ('DELIVERED','ACTIVE','DELIVERING','PENDING_DELIVERY') LIMIT 1"
+                  // Shield/item refreshes also inspect in-flight rows so a
+                  // delivery cannot be mistaken for a missing binding.  Only
+                  // DELIVERED/ACTIVE rows are admitted to the gameplay cache
+                  // below; the in-flight states are deliberately fail-closed.
+                  "SELECT item_id,owner_uuid,status FROM artifact_item_instances WHERE unique_item_id=? AND item_id=? AND owner_uuid=? AND status IN ('DELIVERED','ACTIVE','DELIVERING','PENDING_DELIVERY') LIMIT 1"
                );
                try {
                   query.setString(1, uniqueId);
@@ -6938,8 +6948,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   ResultSet result = query.executeQuery();
                   try {
                      if (result.next()) {
-                        this.cacheOfficialBinding(uniqueId, result.getString(1), result.getString(2));
-                        refreshed = true;
+                        String status = this.firstNonBlank(result.getString(3), "");
+                        if ("DELIVERED".equalsIgnoreCase(status) || "ACTIVE".equalsIgnoreCase(status)) {
+                           this.cacheOfficialBinding(uniqueId, result.getString(1), result.getString(2));
+                           refreshed = true;
+                        }
                      }
                   } finally {
                      result.close();
@@ -9785,13 +9798,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private boolean cleanseAllowedDebuff(Player var1) {
-      Map<PotionEffectType, PotionEffectType> conversions = Map.of(
-         PotionEffectType.POISON, PotionEffectType.REGENERATION,
-         PotionEffectType.WEAKNESS, PotionEffectType.STRENGTH,
-         PotionEffectType.SLOWNESS, PotionEffectType.SPEED,
-         PotionEffectType.GLOWING, PotionEffectType.INVISIBILITY,
-         PotionEffectType.HUNGER, PotionEffectType.SATURATION
-      );
+      Map<PotionEffectType, PotionEffectType> conversions = new LinkedHashMap<>();
+      this.addDebuffConversion(conversions, "POISON", "REGENERATION");
+      this.addDebuffConversion(conversions, "WEAKNESS", "STRENGTH");
+      this.addDebuffConversion(conversions, "SLOWNESS", "SPEED");
+      this.addDebuffConversion(conversions, "GLOWING", "INVISIBILITY");
+      this.addDebuffConversion(conversions, "HUNGER", "SATURATION");
+      this.addDebuffConversion(conversions, "MINING_FATIGUE", "HASTE");
+      this.addDebuffConversion(conversions, "BLINDNESS", "NIGHT_VISION");
+      this.addDebuffConversion(conversions, "WITHER", "REGENERATION");
+      this.addDebuffConversion(conversions, "LEVITATION", "SLOW_FALLING");
+      this.addDebuffConversion(conversions, "DARKNESS", "NIGHT_VISION");
+      this.addDebuffConversion(conversions, "NAUSEA", "ABSORPTION");
+      this.addDebuffConversion(conversions, "BAD_OMEN", "HERO_OF_THE_VILLAGE");
+      this.addDebuffConversion(conversions, "TRIAL_OMEN", "HERO_OF_THE_VILLAGE");
       boolean converted = false;
       for (Map.Entry<PotionEffectType, PotionEffectType> entry : conversions.entrySet()) {
          PotionEffect current = var1.getPotionEffect(entry.getKey());
@@ -9807,6 +9827,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.getWorld().spawnParticle(Particle.WAX_OFF, var1.getLocation().add(0.0, 1.0, 0.0), 18, 0.25, 0.4, 0.25, 0.02);
       }
       return converted;
+   }
+
+   private void addDebuffConversion(Map<PotionEffectType, PotionEffectType> conversions, String negative, String positive) {
+      PotionEffectType from = PotionEffectType.getByName(negative);
+      PotionEffectType to = PotionEffectType.getByName(positive);
+      if (from != null && to != null) conversions.put(from, to);
    }
 
    private void activateTaxClock(Player var1, ItemStack var2) {
@@ -10000,13 +10026,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          : hit.getHitPosition().toLocation(player.getWorld()).subtract(direction.clone().multiply(1.75D));
       Location safe = this.findSafeCompassLocation(origin, requested);
       if (safe == null) {
-         player.sendMessage(this.color("&eРќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё Р±РµР·РѕРїР°СЃРЅСѓСЋ С‚РѕС‡РєСѓ РІ РЅР°РїСЂР°РІР»РµРЅРёРё РІР·РіР»СЏРґР°."));
+         player.sendMessage(this.color("&eНе удалось найти безопасную точку в направлении взгляда."));
          return false;
       }
       if (!player.teleport(safe)) {
          return false;
       }
-      player.sendMessage(this.color("&aРљРѕРјРїР°СЃ РїРµСЂРµРЅС‘СЃ РІР°СЃ РІРїРµСЂС‘Рґ РїРѕ РЅР°РїСЂР°РІР»РµРЅРёСЋ РІР·РіР»СЏРґР°. &7РњР°РєСЃРёРјСѓРј 100 Р±Р»РѕРєРѕРІ."));
+      player.sendMessage(this.color("&aКомпас перенёс вас вперёд по направлению взгляда. &7Максимум 100 блоков."));
       return true;
    }
 
@@ -10070,6 +10096,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.setVelocity(var1.getLocation().getDirection().normalize().multiply(1.35).add(var1.getVelocity().multiply(0.35)));
          var1.getWorld().spawnParticle(Particle.FIREWORK, var1.getLocation().add(0.0, 0.5, 0.0), 12, 0.25, 0.25, 0.25, 0.02);
          return true;
+      }
+   }
+
+   /**
+    * Trap the victim in a reversible 3x3x3 cage.  A cobweb-only trap was
+    * rejected by some protection plugins and made the pickaxe look inert, so
+    * the pickaxe now uses a visible sand shell while retaining the short
+    * crowd-control effects even when a block placement is denied.
+    */
+   private void applyTemporaryBurial(Player attacker, LivingEntity target, long durationTicks) {
+      if (attacker == null || target == null || target.getWorld() == null) return;
+      target.setFreezeTicks(Math.max(target.getFreezeTicks(), Math.min(140, (int) durationTicks)));
+      Block origin = target.getLocation().getBlock();
+      List<Block> placed = new ArrayList<>();
+      for (int y = 0; y <= 2; y++) {
+         for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+               boolean shell = Math.abs(dx) == 1 || Math.abs(dz) == 1 || y == 2;
+               if (!shell) continue;
+               Block block = origin.getRelative(dx, y, dz);
+               if (!block.isPassable() || block.isLiquid()
+                     || this.shopsByLocation.containsKey(this.blockKey(block.getLocation()))) continue;
+               Material cageMaterial = y == 2 ? Material.SAND : Material.COBWEB;
+               BlockPlaceEvent place = new BlockPlaceEvent(
+                     block, block.getState(), block.getRelative(BlockFace.DOWN),
+                     new ItemStack(cageMaterial), attacker, true);
+               Bukkit.getPluginManager().callEvent(place);
+               if (place.isCancelled() || !place.canBuild()) continue;
+               block.setType(cageMaterial, false);
+               placed.add(block);
+            }
+         }
+      }
+      if (!placed.isEmpty()) {
+         Bukkit.getScheduler().runTaskLater(this, () -> {
+            for (Block block : placed) {
+               if (block.getType() == Material.COBWEB || block.getType() == Material.SAND) {
+                  block.setType(Material.AIR, false);
+               }
+            }
+         }, Math.max(1L, durationTicks));
       }
    }
 
@@ -10204,12 +10271,23 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             return;
          }
          String accountCode = account.code() == null ? "" : account.code().trim().toUpperCase(Locale.ROOT);
-         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT", "INSUFFICIENT_AR").contains(accountCode))) return;
+         // An existing bank account with a zero balance is not the same as a
+         // missing bank account.  In the former case the player is simply
+         // poor and we must not silently take an AR item from their inventory.
+         if ("INSUFFICIENT_AR".equals(accountCode)) {
+            this.runSync(() -> {
+               if (attacker.isOnline()) {
+                  attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
+               }
+            });
+            return;
+         }
+         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT").contains(accountCode))) return;
          this.runSync(() -> {
             if (!victim.isOnline() || !attacker.isOnline()) return;
             OfficialArService ar = this.officialArService();
             if (ar == null || !ar.removeAmount(victim.getInventory(), 1)) {
-               attacker.sendMessage(this.color("&eРЈ РёРіСЂРѕРєР° &f" + victim.getName() + " &eРЅРµС‚ AR: РёРіСЂРѕРє Р±РµРґРµРЅ, Р±СЂР°С‚СЊ РЅРµС‡РµРіРѕ."));
+               attacker.sendMessage(this.color("&eУ игрока &f" + victim.getName() + " &eнет AR: игрок беден, брать нечего."));
                return;
             }
             this.runAsync(() -> {
@@ -10225,7 +10303,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   ItemStack restored = ar.createStack(Material.DIAMOND_ORE, 1);
                   Map<Integer, ItemStack> leftovers = victim.getInventory().addItem(restored);
                   leftovers.values().forEach(item -> victim.getWorld().dropItemNaturally(victim.getLocation(), item));
-                  attacker.sendMessage(this.color("&cРљСЂР°Р¶Р° AR РѕС‚РјРµРЅРµРЅР°: Р±Р°РЅРє РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРµРЅ."));
+                  attacker.sendMessage(this.color("&cКража AR отменена: банк временно недоступен."));
                });
             });
          });

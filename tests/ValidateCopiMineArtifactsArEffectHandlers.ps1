@@ -31,8 +31,9 @@ if ($content -notmatch "tryFarmerSweep") { throw "Missing farmer sweep helper." 
 if ($content -notmatch "tryForesterChain") { throw "Missing forester chain helper." }
 if ($content -notmatch "grantTrenchBonus") { throw "Missing trench bonus helper." }
 if ($content -notmatch "pointCompassToLastDeath") { throw "Missing loot compass helper." }
-if ($content -notmatch "EntityResurrectEvent") { throw "Missing eternal totem resurrect hook." }
-if ($content -notmatch "INFINITE_TOTEM") { throw "Missing eternal totem runtime guard." }
+# The infinite donation totem was retired from the release catalog.  Keep the
+# check explicit so a stale resurrect hook cannot silently bring it back.
+if ($content -match "EntityResurrectEvent|INFINITE_TOTEM|restoreInfiniteTotem") { throw "Retired eternal totem runtime hook must stay absent." }
 
 $items = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot '..\copimine-artifacts\items.yml')
 $smena = [regex]::Match($items, '(?ms)^  - id: smena_bez_perekura_pickaxe\r?\n.*?(?=^  - id:|\z)')

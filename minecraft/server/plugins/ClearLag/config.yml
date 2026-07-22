@@ -398,7 +398,7 @@ optimizations:
       # - TRIDENT
 
   # Sends a message to server staff when performance drops below a certain threshold
-performance-warnings:
+  performance-warnings:
     enabled: false
     # At which TPS value should a warning be sent?
     tps-threshold: 18.0

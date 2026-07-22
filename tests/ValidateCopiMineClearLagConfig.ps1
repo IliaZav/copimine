@@ -36,6 +36,7 @@ if (Test-Path -LiteralPath $config) {
     @{ Pattern = '(?ms)^\s+redstone:\s*.*?enabled:\s*false'; Message = 'ClearLag must not alter redstone timing.' },
     @{ Pattern = '(?m)^\s+tnt-no-drops:\s*false\s*$'; Message = 'ClearLag must not remove TNT drops.' },
     @{ Pattern = '(?ms)^\s+item-merge-optimization:.*?enabled:\s*true'; Message = 'ClearLag item merge optimization must be enabled.' },
+    @{ Pattern = '(?ms)^\s{2}performance-warnings:.*?enabled:\s*false'; Message = 'ClearLag performance warnings must stay disabled to avoid chat noise.' },
     @{ Pattern = '(?ms)^\s+excluded-items:.*?NETHERITE_SWORD.*?TOTEM_OF_UNDYING.*?COMPASS'; Message = 'ClearLag must protect CopiMine artifact base materials from item cleanup.' },
     @{ Pattern = '(?ms)^dynamic-view-distance:.*?enabled:\s*false'; Message = 'ClearLag must not change the server view distance.' },
     @{ Pattern = '(?ms)^\s+mob-spawn-limiter:.*?enabled:\s*false'; Message = 'ClearLag must not limit mob spawning.' },

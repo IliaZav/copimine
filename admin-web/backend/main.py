@@ -5509,6 +5509,56 @@ def admin_reset_treasury_sync(actor: str) -> dict[str, Any]:
     return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "balanceBefore": before, "balanceAfter": 0, "changed": True, "txId": tx_id}
 
 
+TREASURY_PUBLIC_OUTGOING_TYPES = {"PRESIDENT_PAYOUT", "TREASURY_TRANSFER_OUT", "TREASURY_WITHDRAW"}
+TREASURY_PUBLIC_PLAYER_TRANSFER_TYPES = {"PRESIDENT_PAYOUT", "TREASURY_TRANSFER_OUT"}
+
+
+def treasury_public_recipient(row: Any) -> str:
+    """Return only a safe recipient name for a public treasury transfer.
+
+    Ledger details can contain internal item/shop identifiers. They must never
+    be sent to the public site. For a transfer from the treasury we expose
+    only the player's display name, resolved from the counterparty account.
+    Older rows may not have that account name, so read only the historical
+    recipient field as a compatibility fallback.
+    """
+    recipient = str(row.get("counterparty_name") or "").strip() if hasattr(row, "get") else ""
+    if recipient:
+        return sanitize_public_plain_text(recipient, 64)
+    raw_details = row.get("details") if hasattr(row, "get") else ""
+    try:
+        parsed = json.loads(str(raw_details or ""))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        parsed = {}
+    if isinstance(parsed, dict):
+        return sanitize_public_plain_text(parsed.get("recipient") or parsed.get("targetName") or "", 64)
+    return ""
+
+
+def treasury_public_history_row(row: Any) -> dict[str, Any]:
+    tx_type = str(row.get("tx_type") or "").upper() if hasattr(row, "get") else ""
+    outgoing = tx_type in TREASURY_PUBLIC_OUTGOING_TYPES
+    player_transfer = tx_type in TREASURY_PUBLIC_PLAYER_TRANSFER_TYPES
+    amount = abs(int(row.get("amount") or 0)) if hasattr(row, "get") else 0
+    recipient = treasury_public_recipient(row) if player_transfer else ""
+    label = {
+        "PRESIDENT_PAYOUT": "Перевод игроку",
+        "TREASURY_TRANSFER_OUT": "Перевод игроку",
+        "TREASURY_WITHDRAW": "Снятие из казны",
+    }.get(tx_type, "Поступление" if not outgoing else (tx_type or "Операция казны"))
+    return {
+        "txId": str(row.get("tx_id") or "") if hasattr(row, "get") else "",
+        "type": tx_type or "TREASURY_EVENT",
+        "label": label,
+        "amount": -amount if outgoing else amount,
+        "createdAt": int(row.get("created_at") or 0) if hasattr(row, "get") else 0,
+        "recipientName": recipient,
+        # Kept for existing frontend consumers; it is deliberately empty for
+        # deposits so player names and shop/item metadata stay private.
+        "actor": recipient if player_transfer else "",
+    }
+
+
 def public_treasury_overview_sync(limit: int = 30) -> dict[str, Any]:
     safe_limit = max(1, min(100, int(limit or 30)))
     with auth_conn() as conn:
@@ -5517,33 +5567,18 @@ def public_treasury_overview_sync(limit: int = 30) -> dict[str, Any]:
         owner_uuid, owner_name = current_treasury_owner(conn)
         rows = conn.execute(
             """
-            SELECT tx_id,tx_type,amount,created_at,actor,details
+            SELECT l.tx_id,l.tx_type,l.amount,l.created_at,l.actor,l.details,
+                   cp.owner_name AS counterparty_name
             FROM cmv4_bank_ledger
-            WHERE account_id=%s
-            ORDER BY created_at DESC
+            l LEFT JOIN cmv4_bank_accounts cp ON cp.account_id=l.counterparty_account_id
+            WHERE l.account_id=%s
+            ORDER BY l.created_at DESC
             LIMIT %s
             """,
             (TREASURY_ACCOUNT_ID, safe_limit),
         ).fetchall()
         conn.commit()
-    history: list[dict[str, Any]] = []
-    for row in rows:
-        tx_type = str(row["tx_type"] or "").upper()
-        label = {
-            "AR_SHOP_PURCHASE": "Доход лавки",
-            "AR_ITEM_REPAIR": "Ремонт AR-предмета",
-            "PRESIDENT_PAYOUT": "Выплата из казны",
-            "TREASURY_WITHDRAW": "Снятие AR из казны",
-            "TREASURY_TRANSFER_OUT": "Перевод из казны",
-        }.get(tx_type, tx_type or "TREASURY_EVENT")
-        history.append({
-            "txId": str(row["tx_id"] or ""),
-            "type": tx_type,
-            "label": label,
-            "amount": int(row["amount"] or 0),
-            "createdAt": int(row["created_at"] or 0),
-            "actor": str(row["actor"] or ""),
-        })
+    history = [treasury_public_history_row(row) for row in rows]
     return {
         "accountId": str(treasury.get("account_id") or TREASURY_ACCOUNT_ID),
         "balance": int(treasury.get("balance") or 0),
@@ -5750,10 +5785,12 @@ def public_president_budget_history_sync(limit: int = 20, offset: int = 0) -> di
         ensure_v4_schema(conn)
         rows = conn.execute(
             """
-            SELECT tx_id,tx_type,amount,created_at,actor,details,counterparty_account_id
-            FROM cmv4_bank_ledger
-            WHERE account_id=%s
-            ORDER BY created_at DESC
+            SELECT l.tx_id,l.tx_type,l.amount,l.created_at,l.actor,l.details,
+                   l.counterparty_account_id,cp.owner_name AS counterparty_name
+            FROM cmv4_bank_ledger l
+            LEFT JOIN cmv4_bank_accounts cp ON cp.account_id=l.counterparty_account_id
+            WHERE l.account_id=%s
+            ORDER BY l.created_at DESC
             LIMIT %s OFFSET %s
             """,
             (TREASURY_ACCOUNT_ID, safe_limit, safe_offset),
@@ -5761,25 +5798,17 @@ def public_president_budget_history_sync(limit: int = 20, offset: int = 0) -> di
         conn.commit()
     items: list[dict[str, Any]] = []
     for row in rows:
-        tx_type = str(row["tx_type"] or "").upper()
-        label = {
-            "AR_SHOP_PURCHASE": "Доход AR-лавки",
-            "AR_ITEM_REPAIR": "Ремонт AR-предмета",
-            "PRESIDENT_PAYOUT": "Выплата из казны",
-            "TREASURY_WITHDRAW": "Снятие из казны",
-            "TREASURY_TRANSFER_OUT": "Перевод из казны",
-        }.get(tx_type, tx_type or "TREASURY_EVENT")
-        details = sanitize_public_plain_text(row["details"] or "")
-        actor_name = sanitize_public_plain_text(row["actor"] or "")
+        public_row = treasury_public_history_row(row)
         items.append({
-            "type": tx_type or "TREASURY_EVENT",
-            "label": label,
-            "amount_ar": int(row["amount"] or 0),
-            "public_actor_name": actor_name,
+            "type": public_row["type"],
+            "label": public_row["label"],
+            "amount_ar": public_row["amount"],
+            "public_actor_name": public_row["recipientName"],
             "public_target_name": TREASURY_ACCOUNT_LABEL,
-            "item_name": details if tx_type in {"AR_SHOP_PURCHASE", "AR_ITEM_REPAIR"} else "",
-            "comment": details if tx_type not in {"AR_SHOP_PURCHASE", "AR_ITEM_REPAIR"} else "",
-            "created_at": int(row["created_at"] or 0),
+            "recipient_name": public_row["recipientName"],
+            "item_name": "",
+            "comment": "",
+            "created_at": public_row["createdAt"],
         })
     return {"items": items, "limit": safe_limit, "offset": safe_offset}
 
@@ -15923,12 +15952,12 @@ async def runtime(request: Request, authorization: str = Header(default="")) -> 
 
 @app.get("/favicon.ico")
 async def favicon() -> Response:
-    path = FRONTEND_DIR / "assets" / "favicon.png"
-    if path.exists():
-        return FileResponse(path, media_type="image/png")
     path = FRONTEND_DIR / "assets" / "favicon.svg"
     if path.exists():
         return FileResponse(path, media_type="image/svg+xml")
+    path = FRONTEND_DIR / "assets" / "favicon.png"
+    if path.exists():
+        return FileResponse(path, media_type="image/png")
     return Response(status_code=404)
 
 

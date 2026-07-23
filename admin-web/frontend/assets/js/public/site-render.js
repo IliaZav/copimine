@@ -728,24 +728,19 @@ export function createHomepageRenderer() {
         const amount = Number(row.amount ?? row.amount_ar ?? 0);
         const positive = Number.isFinite(amount) && amount > 0;
         const negative = Number.isFinite(amount) && amount < 0;
+        const recipient = String(row.recipientName || row.recipient_name || row.public_actor_name || "").trim();
         const card = makeElement("article", `treasury-history-card ${positive ? "is-inflow" : negative ? "is-outflow" : "is-neutral"}`);
         const head = makeElement("div", "treasury-history-row");
         head.append(
           makeElement("span", "treasury-history-type", String(row.label || row.type || "Операция")),
           makeElement("strong", "treasury-history-amount", `${positive ? "+" : negative ? "−" : ""}${formatAr(Math.abs(Number.isFinite(amount) ? amount : 0))}`),
         );
-        card.append(
-          head,
-          makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || row.actor || "Публичная операция казны")),
-          (() => {
-            const meta = makeElement("div", "treasury-history-meta");
-            meta.append(
-              makeElement("span", "treasury-history-actor", String(row.public_actor_name || row.actor || row.player_name || "Казна сервера")),
-              makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)),
-            );
-            return meta;
-          })(),
-        );
+        const meta = makeElement("div", "treasury-history-meta");
+        if (recipient) meta.append(makeElement("span", "treasury-history-actor", recipient));
+        meta.append(makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)));
+        card.append(head);
+        if (recipient) card.append(makeElement("p", "", `Игрок: ${recipient}`));
+        card.append(meta);
         return card;
       }),
     );
@@ -905,7 +900,7 @@ export function createHomepageRenderer() {
     });
     renderHistory((treasury.history || []).map((row) => ({
       ...row,
-      public_actor_name: row.actor || "",
+      public_actor_name: row.recipientName || row.recipient_name || "",
       created_at: row.createdAt || row.created_at || 0,
     })));
   }

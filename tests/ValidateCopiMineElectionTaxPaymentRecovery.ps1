@@ -16,4 +16,9 @@ if (-not $reconcile.Success -or
     throw 'Startup reconciliation must inspect every non-final tax payment status.'
 }
 
+$completed = [regex]::Match($source, '(?s)private boolean isTaxPaymentOperationCompleted\(String operationId\) throws Exception \{.*?(?=\r?\n\s*private )')
+if (-not $completed.Success -or $completed.Value -notmatch 'row != null' -or $completed.Value -notmatch 'row\.get\("status"\)') {
+    throw 'A missing tax operation must be treated as incomplete instead of causing a null dereference.'
+}
+
 Write-Host 'Election tax payment recovery contract OK'

@@ -3243,7 +3243,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             "&dДонатная лавка",
             List.of(
                "&7Пополнение, donation-баланс, claim и reclaim.",
-               "&7Покупка донат-предметов идёт через сайт."
+               "&7Покупка донат-предметов списывается с Donation-баланса прямо в игре."
             )
          ),
          "donation:root"
@@ -4135,7 +4135,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        + Math.max(0, var8.cooldownSeconds())
                                        + " сек.",
                                     "&7Статус: " + var10,
-                                    "&8Нажми, чтобы получить ссылку на сайт."
+                                    "&8Нажми, чтобы купить за Donation-баланс."
                                  )
                               ),
                               "donation:catalog:item:" + var8.itemId()
@@ -5325,7 +5325,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else if ("pin:submit".equals(var3)) {
          CopiMineArtifacts.CatalogItem var13 = this.catalogById.get(var2.currentItemId);
          if (var13 != null) {
-            this.executePurchase(var1, this.currentShop(var2), var13, var2.pinBuffer);
+            CopiMineArtifacts.Shop current = this.currentShop(var2);
+            if (current == null) {
+               var2.purchaseInFlightId = "";
+               var1.sendMessage(this.color("&cЛавка больше не существует. Откройте актуальную лавку заново."));
+               var1.closeInventory();
+               return;
+            }
+            this.executePurchase(var1, current, var13, var2.pinBuffer);
          }
       } else if ("purchases".equals(var3)) {
          this.openPurchases(var1);
@@ -9471,12 +9478,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private CopiMineArtifacts.Shop currentShop(CopiMineArtifacts.SessionState var1) {
       if (var1.shopId != null && !var1.shopId.isBlank()) {
          for (CopiMineArtifacts.Shop var3 : this.shopsByLocation.values()) {
-            if (var3.shopId().equals(var1.shopId)) {
+            if (var3.shopId().equalsIgnoreCase(var1.shopId)) {
                return var3;
             }
          }
-
-         return this.shopsByLocation.values().stream().findFirst().orElse(null);
+         // Never silently switch a stale session to another shop. This could
+         // charge a purchase from a deleted shop against an unrelated one.
+         return null;
       } else {
          return this.shopsByLocation.values().stream().findFirst().orElse(null);
       }

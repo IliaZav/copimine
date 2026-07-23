@@ -144,6 +144,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private final Map<UUID, List<ItemStack>> officialRestore = new ConcurrentHashMap<>();
     private final AtomicReference<LiveSnapshot> snapshot = new AtomicReference<>(LiveSnapshot.empty());
     private final Set<BlockKey> protectedBlocks = ConcurrentHashMap.newKeySet();
+    private final Map<BlockKey, ProtectedBlockInfo> protectedBlockInfoCache = new ConcurrentHashMap<>();
     private final AtomicBoolean electionResetInFlight = new AtomicBoolean(false);
     private final ElectionStateMachine electionStateMachine = new ElectionStateMachine();
 
@@ -980,7 +981,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("apply:tax:create-office")) {
-            createTaxOfficeFromTarget(player);
+            player.sendMessage(color("&eСоздание налоговой точки президентом отключено. Используйте существующий банкомат."));
             openPresidentAdminMenu(player);
             return;
         }
@@ -1355,10 +1356,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("tax:create-office")) {
-            openConfirmationMenu(player, "&6Создать налоговую", List.of(
-                    "&7Подтверждение использует блок, на который ты сейчас смотришь.",
-                    "&7После создания игроки смогут платить налог через терминал."
-            ), "apply:tax:create-office", "open:president");
+            player.sendMessage(color("&eСоздание налоговой точки президентом отключено. Используйте существующий банкомат."));
+            openPresidentAdminMenu(player);
             return;
         }
         if (action.startsWith("legacy-disabled:tax:set:")) {
@@ -2202,9 +2201,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         setButton(holder, 34, Material.LECTERN, "&6Создать налоговую точку", List.of(
                 "&7Создать отдельную кнопку оплаты",
                 "&7для добровольного платежа игроков."
-        ), "tax:create-office");
+        ), "close");
         setButton(holder, 40, Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Открыть последние начисления и налоги."), "mandate:payments");
 
+        setStatic(inv, 34, infoItem(Material.BARRIER, "&cНалоговая точка создаётся администрацией", List.of("&7Президент не размещает блоки для сбора налога.")));
         int lawSlot = 45;
         for (Map<String, Object> law : pendingLaws()) {
             if (lawSlot > 48) {
@@ -2347,8 +2347,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 String uuid = string(row.get("owner_uuid"));
                 String name = first(string(row.get("owner_name")), shortId(uuid));
                 String action = paid ? "none" : "president:mark-paid:" + uuid + ":" + Math.max(0, page);
-                setButton(holder, slots[i], paid ? Material.LIME_DYE : Material.GRAY_DYE, "&f" + name,
-                        List.of(paid ? "&7Налог за текущий период оплачен." : "&7Нажми, если деньги переданы президенту лично."), action);
+                long subscriptionExpiresAt = longValue(row.get("exemption_expires_at"));
+                List<String> lore = new ArrayList<>();
+                if (paid) {
+                    lore.add("&7Налог за текущий период оплачен.");
+                    if (subscriptionExpiresAt > now()) {
+                        lore.add("&eПодписка: &fдо " + formatTs(subscriptionExpiresAt));
+                    }
+                } else {
+                    lore.add("&7Нажми, если деньги переданы президенту лично.");
+                }
+                setButton(holder, slots[i], paid ? Material.LIME_DYE : Material.GRAY_DYE, "&f" + name, lore, action);
             }
             if (roster.rows().isEmpty()) {
                 setStatic(inv, 22, infoItem(paid ? Material.LIME_DYE : Material.GRAY_DYE, paid ? "&aСписок пуст" : "&cСписок пуст", List.of("&7Для текущего периода игроков нет.")));
@@ -2372,16 +2381,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         long taxAmount = Math.max(0L, Math.min(5L, longValue(tax.get("amount"))));
         long windowStart = taxWindowStart(longValue(tax.get("created_at")), taxPeriodMs(tax), currentTime);
         long windowEnd = windowStart + taxPeriodMs(tax);
-        String rosterQuery = "SELECT accounts.owner_uuid,accounts.owner_name,CASE WHEN exemptions.player_uuid IS NOT NULL OR COALESCE(payments.paid_amount,0)>=? THEN 1 ELSE 0 END AS paid_state " +
+        String rosterQuery = "SELECT accounts.owner_uuid,accounts.owner_name,exemptions.expires_at AS exemption_expires_at,CASE WHEN exemptions.player_uuid IS NOT NULL OR COALESCE(payments.paid_amount,0)>=? THEN 1 ELSE 0 END AS paid_state " +
                 "FROM cmv4_bank_accounts accounts " +
-                "LEFT JOIN (SELECT player_uuid FROM president_tax_exemptions WHERE status='ACTIVE' AND expires_at>? GROUP BY player_uuid) exemptions ON exemptions.player_uuid=accounts.owner_uuid " +
+                "LEFT JOIN (SELECT player_uuid FROM president_tax_exemptions WHERE status='ACTIVE' AND source=? AND expires_at>? GROUP BY player_uuid) exemptions ON exemptions.player_uuid=accounts.owner_uuid " +
                 "LEFT JOIN (SELECT player_uuid,COALESCE(SUM(amount),0) AS paid_amount FROM president_tax_payments WHERE tax_id=? AND created_at>=? AND created_at<? GROUP BY player_uuid) payments ON payments.player_uuid=accounts.owner_uuid " +
                 "WHERE accounts.account_type='PLAYER' AND accounts.status='ACTIVE' AND accounts.owner_uuid<>''";
         int paidState = paid ? 1 : 0;
         long total = scalarLong("SELECT COUNT(*) FROM (" + rosterQuery + ") roster WHERE paid_state=?",
-                taxAmount, currentTime, string(tax.get("id")), windowStart, windowEnd, paidState);
-        List<Map<String, Object>> rows = queryList("SELECT owner_uuid,owner_name FROM (" + rosterQuery + ") roster WHERE paid_state=? ORDER BY lower(owner_name),owner_uuid LIMIT ? OFFSET ?",
-                taxAmount, currentTime, string(tax.get("id")), windowStart, windowEnd, paidState, 21, safePage * 21);
+                taxAmount, TAX_CLOCK_EXEMPTION_SOURCE, currentTime, string(tax.get("id")), windowStart, windowEnd, paidState);
+        List<Map<String, Object>> rows = queryList("SELECT owner_uuid,owner_name,exemption_expires_at FROM (" + rosterQuery + ") roster WHERE paid_state=? ORDER BY lower(owner_name),owner_uuid LIMIT ? OFFSET ?",
+                taxAmount, TAX_CLOCK_EXEMPTION_SOURCE, currentTime, string(tax.get("id")), windowStart, windowEnd, paidState, 21, safePage * 21);
         return new PresidentTaxRoster(rows, (int) Math.min(Integer.MAX_VALUE, Math.max(0L, total)));
     }
 
@@ -4660,7 +4669,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private boolean isTaxPaymentOperationCompleted(String operationId) throws Exception {
-        return "COMPLETED".equalsIgnoreCase(string(queryOne("SELECT status FROM president_tax_payment_ops WHERE id=? LIMIT 1", operationId).get("status")));
+        Map<String, Object> row = queryOne("SELECT status FROM president_tax_payment_ops WHERE id=? LIMIT 1", operationId);
+        return row != null && "COMPLETED".equalsIgnoreCase(string(row.get("status")));
     }
 
     private void reconcilePendingTaxPaymentsSafe() {
@@ -4824,16 +4834,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (snap.candidates().isEmpty()) {
             lines.add("&7Пока нет кандидатов");
         } else {
-            for (CandidateResult row : snap.candidates().stream().limit(5).toList()) {
+            for (CandidateResult row : snap.candidates().stream().limit(2).toList()) {
                 lines.add("&f" + shortText(row.name(), 10) + " &7" + row.bar() + " &f" + row.votes());
             }
         }
         lines.add("&fПрезидент");
         lines.add("&7" + first(snap.presidentName(), "не выбран"));
+        lines.add("&f\u041d\u0430\u043b\u043e\u0433");
+        lines.add(snap.taxAmount() > 0
+                ? "&7\u0421\u0442\u0430\u0432\u043a\u0430: &f" + snap.taxAmount() + " AR"
+                : "&7\u041d\u0435\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0433\u043e \u043d\u0430\u043b\u043e\u0433\u0430");
         if (!snap.laws().isEmpty()) {
             lines.add("&fЗаконы");
             int index = 1;
-            for (String law : snap.laws()) {
+            for (String law : snap.laws().stream().limit(3).toList()) {
                 lines.add("&7" + index++ + ". " + shortText(law, 20));
             }
         }
@@ -4874,46 +4888,62 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (player == null || !player.isOnline()) {
             return;
         }
-        if (isPresident(player) && !hasMandate(player)) {
+        UUID playerUuid = player.getUniqueId();
+        String playerName = player.getName();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            boolean president = false;
+            String presidentElectionId = "";
+            List<Map<String, Object>> seals = List.of();
             try {
-                Map<String, Object> term = activeTerm();
-                if (term != null && Objects.equals(string(term.get("president_uuid")), player.getUniqueId().toString())) {
-                    addOrQueueOfficialItem(player, createPresidentMandate(currentElectionId(), player.getUniqueId().toString(), player.getName()));
+                Map<String, Object> term = queryOne(
+                        "SELECT election_id FROM president_terms WHERE president_uuid=? AND status='ACTIVE' AND (ends_at=0 OR ends_at>?) ORDER BY started_at DESC LIMIT 1",
+                        playerUuid.toString(), now()
+                );
+                if (term != null) {
+                    president = true;
+                    presidentElectionId = string(term.get("election_id"));
                 }
+                seals = queryList(
+                        "SELECT id,election_id,station_id,player_name FROM cik_seals WHERE player_uuid=? AND status='ACTIVE' ORDER BY issued_at DESC",
+                        playerUuid.toString()
+                );
             } catch (Exception error) {
-                getLogger().warning("restore mandate: " + safeError(error));
+                getLogger().warning("restore official items lookup: " + safeError(error));
             }
-        }
-        List<ItemStack> queued = officialRestore.remove(player.getUniqueId());
-        if (queued != null) {
-            for (ItemStack stack : queued) {
-                if (stack != null && "CIK_SEAL".equals(readString(stack, itemTypeKey))
-                        && hasOfficialItem(player, "CIK_SEAL", readString(stack, sealIdKey))) {
-                    continue;
+            boolean presidentResult = president;
+            String presidentElectionIdResult = presidentElectionId;
+            List<Map<String, Object>> sealsResult = seals;
+            Bukkit.getScheduler().runTask(this, () -> {
+                if (!player.isOnline()) {
+                    return;
                 }
-                addOrQueueOfficialItem(player, stack);
-            }
-        }
-        try {
-            List<Map<String, Object>> seals = queryList(
-                    "SELECT id,election_id,station_id,player_name FROM cik_seals WHERE player_uuid=? AND status='ACTIVE' ORDER BY issued_at DESC",
-                    player.getUniqueId().toString()
-            );
-            for (Map<String, Object> seal : seals) {
-                String sealId = string(seal.get("id"));
-                if (!hasOfficialItem(player, "CIK_SEAL", sealId)) {
-                    addOrQueueOfficialItem(player, createSealItem(
-                            sealId,
-                            string(seal.get("election_id")),
-                            string(seal.get("station_id")),
-                            player.getUniqueId().toString(),
-                            first(string(seal.get("player_name")), player.getName())
-                    ));
+                if (presidentResult && !presidentElectionIdResult.isBlank() && !hasMandate(player)) {
+                    addOrQueueOfficialItem(player, createPresidentMandate(presidentElectionIdResult, playerUuid.toString(), playerName));
                 }
-            }
-        } catch (Exception error) {
-            getLogger().warning("restore seals: " + safeError(error));
-        }
+                List<ItemStack> queued = officialRestore.remove(playerUuid);
+                if (queued != null) {
+                    for (ItemStack stack : queued) {
+                        if (stack != null && "CIK_SEAL".equals(readString(stack, itemTypeKey))
+                                && hasOfficialItem(player, "CIK_SEAL", readString(stack, sealIdKey))) {
+                            continue;
+                        }
+                        addOrQueueOfficialItem(player, stack);
+                    }
+                }
+                for (Map<String, Object> seal : sealsResult) {
+                    String sealId = string(seal.get("id"));
+                    if (!hasOfficialItem(player, "CIK_SEAL", sealId)) {
+                        addOrQueueOfficialItem(player, createSealItem(
+                                sealId,
+                                string(seal.get("election_id")),
+                                string(seal.get("station_id")),
+                                playerUuid.toString(),
+                                first(string(seal.get("player_name")), playerName)
+                        ));
+                    }
+                }
+            });
+        });
     }
 
     private void removeOfficialItemsFromPlayer(Player player, String type) {
@@ -5453,6 +5483,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 });
                 runSync(() -> {
                     protectedBlocks.clear();
+                    protectedBlockInfoCache.clear();
                     officialRestore.clear();
                     for (Player online : Bukkit.getOnlinePlayers()) {
                         removeOfficialItemsFromPlayer(online, "CIK_SEAL");
@@ -5749,11 +5780,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return tx(connection -> {
             Map<String, Object> existing = queryOne(
                     connection,
-                    "SELECT * FROM president_tax_exemptions WHERE player_uuid=? FOR UPDATE",
-                    playerUuid.toString()
+                    "SELECT * FROM president_tax_exemptions WHERE player_uuid=? AND source=? ORDER BY expires_at DESC LIMIT 1 FOR UPDATE",
+                    playerUuid.toString(),
+                    TAX_CLOCK_EXEMPTION_SOURCE
             );
-            if (existing != null && "ACTIVE".equalsIgnoreCase(first(string(existing.get("status")), "ACTIVE"))
-                    && longValue(existing.get("expires_at")) > issuedAt) {
+            boolean existingActive = existing != null
+                    && "ACTIVE".equalsIgnoreCase(first(string(existing.get("status")), "ACTIVE"))
+                    && TAX_CLOCK_EXEMPTION_SOURCE.equalsIgnoreCase(first(string(existing.get("source")), ""))
+                    && longValue(existing.get("expires_at")) > issuedAt;
+            // Retries of the same claim remain idempotent. A new purchase,
+            // however, must extend the current subscription instead of
+            // charging Donation while returning the old expiration unchanged.
+            if (existingActive && artifactInstanceId.equals(string(existing.get("artifact_instance_id")))) {
                 Map<String, Object> payload = new LinkedHashMap<>(existing);
                 payload.put("reused", true);
                 payload.put("source", TAX_CLOCK_EXEMPTION_SOURCE);
@@ -5766,7 +5804,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     ? null
                     : queryOne(connection, "SELECT id FROM president_taxes WHERE term_id=? AND status='ACTIVE' ORDER BY created_at DESC LIMIT 1", termId);
             String taxId = tax == null ? "" : string(tax.get("id"));
-            long expiresAt = Instant.ofEpochMilli(issuedAt)
+            long subscriptionBase = existingActive
+                    ? Math.max(issuedAt, longValue(existing.get("expires_at")))
+                    : issuedAt;
+            long expiresAt = Instant.ofEpochMilli(subscriptionBase)
                     .atZone(ZoneOffset.UTC)
                     .plusMonths(TAX_CLOCK_EXEMPTION_MONTHS)
                     .toInstant()
@@ -5815,15 +5856,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Map<String, Object> row = queryOne(
                 connection,
                 "SELECT pt.president_uuid,pt.president_name FROM president_taxes t " +
-                        "JOIN president_terms pt ON pt.id=t.term_id WHERE t.id=? LIMIT 1",
-                taxId
+                        "JOIN president_terms pt ON pt.id=t.term_id " +
+                        "WHERE t.id=? AND t.status='ACTIVE' AND pt.status='ACTIVE' AND (pt.ends_at=0 OR pt.ends_at>?) LIMIT 1",
+                taxId,
+                now()
         );
         if (row == null) {
-            Map<String, Object> term = activeTerm();
-            return new TaxRecipient(
-                    term == null ? "" : string(term.get("president_uuid")),
-                    first(term == null ? "" : string(term.get("president_name")), "Казна CopiMine")
-            );
+            // Never redirect a stale or deleted tax payment to the current
+            // president.  The operation must fail closed and be retried with
+            // a fresh active tax id from the ATM menu.
+            throw new IllegalStateException("Налоговый период больше не активен.");
         }
         return new TaxRecipient(string(row.get("president_uuid")), first(string(row.get("president_name")), "Казна CopiMine"));
     }
@@ -5884,8 +5926,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return null;
         }
         return queryOne(
-                "SELECT * FROM president_tax_exemptions WHERE player_uuid=? AND status='ACTIVE' AND expires_at>? ORDER BY expires_at DESC LIMIT 1",
+                "SELECT * FROM president_tax_exemptions WHERE player_uuid=? AND status='ACTIVE' AND source=? AND expires_at>? ORDER BY expires_at DESC LIMIT 1",
                 playerUuid,
+                TAX_CLOCK_EXEMPTION_SOURCE,
                 now()
         );
     }
@@ -6179,16 +6222,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private ProtectedBlockInfo protectedBlockInfo(Block block) {
         BlockKey key = BlockKey.from(block.getLocation());
-        if (!protectedBlocks.contains(key)) {
-            return null;
-        }
-        try {
-            Map<String, Object> row = queryOne("SELECT kind,linked_id FROM protected_blocks WHERE world=? AND x=? AND y=? AND z=? AND active=1",
-                    block.getWorld().getName(), block.getX(), block.getY(), block.getZ());
-            return row == null ? null : new ProtectedBlockInfo(string(row.get("kind")), string(row.get("linked_id")));
-        } catch (Exception error) {
-            return null;
-        }
+        return protectedBlocks.contains(key) ? protectedBlockInfoCache.get(key) : null;
     }
 
     private boolean handleProtectedVisualInteract(Player player, Entity entity, PlayerInteractEntityEvent event) {
@@ -6942,8 +6976,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void reloadProtectedBlocks() throws Exception {
         protectedBlocks.clear();
-        for (Map<String, Object> row : queryList("SELECT world,x,y,z FROM protected_blocks WHERE active=1")) {
-            protectedBlocks.add(new BlockKey(string(row.get("world")), intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z"))));
+        protectedBlockInfoCache.clear();
+        for (Map<String, Object> row : queryList("SELECT kind,linked_id,world,x,y,z FROM protected_blocks WHERE active=1")) {
+            BlockKey key = new BlockKey(string(row.get("world")), intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z")));
+            protectedBlocks.add(key);
+            protectedBlockInfoCache.put(key, new ProtectedBlockInfo(string(row.get("kind")), string(row.get("linked_id"))));
         }
     }
 

@@ -12,4 +12,9 @@ if ($method.Value -notmatch 'created_at>=\?') {
     throw 'Shop revenue shown to a president must start at the current term, not include previous terms.'
 }
 
+$recipient = [regex]::Match($source, '(?s)private TaxRecipient taxRecipient\(Connection connection, String taxId\) throws Exception \{.*?(?=\r?\n\s*private )')
+if (-not $recipient.Success -or $recipient.Value -notmatch "t\.status='ACTIVE'" -or $recipient.Value -notmatch "pt\.status='ACTIVE'" -or $recipient.Value -notmatch 'throw new IllegalStateException') {
+    throw 'Tax payments must fail closed when a stale tax id no longer belongs to the active presidential term.'
+}
+
 Write-Host 'Election current-term payments contract OK'

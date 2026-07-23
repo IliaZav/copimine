@@ -1,9 +1,13 @@
-. "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
-$errors = New-ErrorList
-$body = Method-Body (Read-Utf8 $Paths.Election) 'private void handleMenuAction'
+$ErrorActionPreference = 'Stop'
+$sourcePath = Join-Path $PSScriptRoot '..\copimine-election-core\src\me\copimine\electioncore\CopiMineElectionCore.java'
+$source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
 
-Require-Contains $body 'action.equals("tax:create-office")' 'Missing tax:create-office action.'
-Require-Contains $body 'apply:tax:create-office' 'Tax office creation must use an apply action.'
-Require-Contains $body 'openConfirmationMenu(player' 'Tax office creation must go through a confirmation menu.'
+if ($source -notmatch '(?s)action\.equals\("apply:tax:create-office"\).*?player\.sendMessage') {
+    throw 'President tax-office creation must be explicitly disabled.'
+}
+$adminMenu = [regex]::Match($source, '(?s)private void openPresidentAdminMenu\(Player player, int selectedPeriodHours\) \{.*?(?=\r?\n\s*private void openPresidentMandateMenu)')
+if (-not $adminMenu.Success -or $adminMenu.Value -match '"tax:create-office"\);') {
+    throw 'President admin GUI must not expose a tax-office creation action.'
+}
 
-Throw-IfErrors 'ValidateCopiMineElectionTaxOfficeCreationRequiresConfirm'
+Write-Host 'President tax-office creation disabled contract OK'

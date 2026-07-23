@@ -5720,6 +5720,25 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 electionId, round);
     }
 
+    /**
+     * Keep the current round in sync with approved candidates before a stage
+     * guard evaluates it. Older elections could have candidates in
+     * {@code candidates} but no corresponding row in {@code round_candidates};
+     * after entering debates that made the VOTING transition look impossible.
+     */
+    private void ensureRoundCandidates(Connection connection, String electionId, int round) throws Exception {
+        if (connection == null || electionId == null || electionId.isBlank()) {
+            return;
+        }
+        long timestamp = now();
+        update(connection,
+                "INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) " +
+                        "SELECT c.election_id,?,?,c.player_uuid,c.player_name,1,?,? FROM candidates c " +
+                        "WHERE c.election_id=? AND c.active=1 " +
+                        "AND NOT EXISTS (SELECT 1 FROM round_candidates rc WHERE rc.election_id=c.election_id AND rc.round_no=? AND rc.candidate_uuid=c.player_uuid)",
+                round, timestamp, "stage-transition-repair", electionId, round);
+    }
+
     private int countActiveStations(Connection connection, String electionId) throws Exception {
         return (int) scalarLong(connection,
                 "SELECT COUNT(*) FROM polling_stations WHERE election_id=? AND active=1",
@@ -7591,6 +7610,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private final class ElectionStateMachine {
         private StageTransitionResult validateStageTransition(Connection connection, String electionId, ElectionStage from, ElectionStage to) throws Exception {
             int round = currentRoundFromDb(connection, electionId);
+            ensureRoundCandidates(connection, electionId, round);
             long pendingApplications = scalarLong(connection, "SELECT COUNT(*) FROM candidate_applications WHERE election_id=? AND status='SUBMITTED' AND admin_status='PENDING'", electionId);
             long activeCandidates = countActiveRoundCandidates(connection, electionId, round);
             long stations = countActiveStations(connection, electionId);

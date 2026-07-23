@@ -50,6 +50,13 @@
       "texture": "copimine:item/artifacts/vechniy_razgon_firework"
     },
     {
+      "id": "eternal_totem",
+      "custom_model_data": 10008,
+      "base_material": "totem_of_undying",
+      "model": "copimine:item/artifacts/eternal_totem",
+      "texture": "copimine:item/artifacts/eternal_totem"
+    },
+    {
       "id": "treasurer_chestplate",
       "custom_model_data": 10010,
       "base_material": "netherite_chestplate",

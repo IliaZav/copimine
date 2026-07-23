@@ -8,7 +8,7 @@ $manifest = Get-Content -Raw -Encoding UTF8 $manifestPath | ConvertFrom-Json
 $catalog = Get-Content -Raw -Encoding UTF8 $catalogPath
 $required = @(
   'zmei_gorynych','smena_bez_perekura_pickaxe','lesnoy_bespredel_axe','kopatel_transhey_shovel','fermer_bez_sna_hoe',
-  'dezhurniy_argument_sword','vechniy_razgon_firework','treasurer_chestplate','copimine_miner_pickaxe','craftsman_hammer',
+  'dezhurniy_argument_sword','vechniy_razgon_firework','eternal_totem','treasurer_chestplate','copimine_miner_pickaxe','craftsman_hammer',
   'kozyrny_tuz_pozdnyakova',
   'batin_remen_sudnogo_dnya','nu_ty_i_nakopal_blyat_pickaxe','kosa_nalogovoy_inspekcii','kaska_prorab_huev',
   'mne_pohuy_ya_v_tanke_vest','ne_segodnya_suka_shield','pohuy_na_debaffy_amulet',

@@ -120,6 +120,24 @@ items:
       - "&7Элитровый буст без расхода и без взрыва."
       - "&7Нельзя заряжать в арбалет и нельзя чинить."
 
+  - id: eternal_totem
+    category: TOOL
+    material: TOTEM_OF_UNDYING
+    source: AR_SHOP
+    custom_model_data: 10008
+    name: "&6Тотем бессмертия — бесконечный"
+    rarity: LEGENDARY
+    price_ar: 7500
+    supply_limit: 0
+    per_player_limit: 5
+    cooldown_seconds: 0
+    effect: INFINITE_TOTEM
+    effect_chance_percent: 100
+    visual_effect_id: CHROMATIC_SHIFT
+    lore:
+      - "&7Тотем за AR сохраняет подлинный экземпляр после срабатывания."
+      - "&7Не расходуется и остаётся в руке."
+
   - id: treasurer_chestplate
     category: ARMOR
     material: NETHERITE_CHESTPLATE

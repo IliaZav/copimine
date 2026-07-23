@@ -95,6 +95,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
@@ -746,9 +747,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             retired.setLong(1, this.now());
             retired.setString(2, "ya_esche_ne_vse_isportil_totem");
             retired.executeUpdate();
-            retired.setLong(1, this.now());
-            retired.setString(2, "eternal_totem");
-            retired.executeUpdate();
+            // eternal_totem is the AR infinite totem and remains enabled by
+            // the catalog above. Only the retired donation totem is disabled.
          }
 
          var1.commit();
@@ -1264,6 +1264,55 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   /** Restores the same official AR totem after the vanilla resurrection event. */
+   private void restoreInfiniteTotem(Player player, ItemStack snapshot) {
+      if (player == null || !player.isOnline() || snapshot == null || !snapshot.hasItemMeta()) {
+         return;
+      }
+      String uniqueId = snapshot.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
+      if (uniqueId == null || uniqueId.isBlank()) {
+         return;
+      }
+      PlayerInventory inventory = player.getInventory();
+      ItemStack[] hands = {inventory.getItemInMainHand(), inventory.getItemInOffHand()};
+      for (int index = 0; index < hands.length; index++) {
+         ItemStack current = hands[index];
+         if (current == null || !current.hasItemMeta()) {
+            continue;
+         }
+         String currentId = current.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
+         if (!uniqueId.equals(currentId)) {
+            continue;
+         }
+         if (current.getAmount() < snapshot.getAmount()) {
+            current.setAmount(current.getAmount() + 1);
+            if (index == 0) {
+               inventory.setItemInMainHand(current);
+            } else {
+               inventory.setItemInOffHand(current);
+            }
+         }
+         return;
+      }
+      inventory.addItem(snapshot);
+   }
+
+   @EventHandler(ignoreCancelled = true)
+   public void onEntityResurrect(EntityResurrectEvent event) {
+      if (!(event.getEntity() instanceof Player player)) {
+         return;
+      }
+      ItemStack[] hands = {player.getInventory().getItemInMainHand(), player.getInventory().getItemInOffHand()};
+      for (ItemStack hand : hands) {
+         CatalogItem totem = this.authenticCatalogItem(hand, player, "resurrect_infinite_totem");
+         if (totem != null && hand.getType() == Material.TOTEM_OF_UNDYING && "INFINITE_TOTEM".equalsIgnoreCase(totem.effect())) {
+            ItemStack snapshot = hand.clone();
+            Bukkit.getScheduler().runTask(this, () -> this.restoreInfiniteTotem(player, snapshot));
+            return;
+         }
+      }
+   }
+
    private LivingEntity resolveDamageAttacker(EntityDamageByEntityEvent event) {
       if (event == null) {
          return null;
@@ -1328,9 +1377,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                boolean consumed = catalog != null && "CONSUME".equalsIgnoreCase(catalog.consumePolicy());
                boolean marked = consumed
                   ? this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "CONSUMED", Set.of("ACTIVE", "DELIVERING"), true)
-                  : this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "BROKEN", Set.of("ACTIVE", "DELIVERING"), true);
+                  : this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "LOST_RECLAIMABLE", Set.of("ACTIVE", "DELIVERING"), true);
                // A consumable that reaches zero durability is terminally
-               // consumed; a breakable item remains explicitly BROKEN.
+               // consumed. A breakable donation item is treated as lost so
+               // the owner can use the shop reclaim flow instead of being
+               // blocked by an unfinished entitlement.
                if (marked) {
                   this.audit(var1.getPlayer().getName(), "donation_item_broken", var2.uniqueItemId(), var2.itemId());
                }
@@ -5253,7 +5304,29 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                cause = cause.getCause();
             }
             String detail = cause == null ? "Покупка не выполнена." : this.firstNonBlank(cause.getMessage(), "Покупка не выполнена.");
-            if (detail.toLowerCase(Locale.ROOT).contains("linked active ar bank")) {
+            String normalizedDetail = detail.toLowerCase(Locale.ROOT);
+            if (normalizedDetail.contains("active or unfinished donation entitlement")) {
+               // A previous click may have charged the balance but stopped
+               // before the item reached the player. Reuse that claim instead
+               // of charging again after reconnecting or an interrupted delivery.
+               this.readDonationClaimsAsync(player.getUniqueId()).whenComplete((claims, lookupError) -> this.runSync(() -> {
+                  if (!player.isOnline()) {
+                     return;
+                  }
+                  CopiMineArtifacts.DonationClaimRow existing = claims == null ? null : claims.stream()
+                     .filter(claim -> item.itemId().equalsIgnoreCase(claim.itemId()))
+                     .findFirst().orElse(null);
+                  if (lookupError == null && existing != null) {
+                     player.sendMessage(this.color("&eЭта покупка уже была оформлена. Проверяю отложенную выдачу..."));
+                     this.deliverDonationClaimRowV2(player, existing);
+                     return;
+                  }
+                  player.sendMessage(this.color("&eЭтот донат-предмет уже выдан или ожидает выдачи. Повторная покупка пока недоступна."));
+                  this.openDonationCatalog(player);
+               }));
+               return;
+            }
+            if (normalizedDetail.contains("linked active ar bank")) {
                detail = "Сначала привяжи активный AR-банк.";
             } else if (detail.toLowerCase(Locale.ROOT).contains("insufficient") || detail.toLowerCase(Locale.ROOT).contains("balance")) {
                detail = "Недостаточно Donation-баланса.";

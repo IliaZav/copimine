@@ -10,3 +10,17 @@
 .safety-rail { position: relative; overflow: hidden; }
 .safety-rail::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--accent); }
 .login-copy { color: var(--ink); }
+/* RP election workflow */
+.candidate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.candidate-card{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center;padding:14px;border:1px solid var(--line);background:var(--surface);border-radius:12px;box-shadow:var(--shadow-soft)}
+.candidate-card .avatar-badge{grid-row:span 2}
+.candidate-card small{color:var(--muted);font-size:.78rem}
+.candidate-result-row{display:flex;justify-content:space-between;gap:16px;padding:11px 13px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface) 92%,var(--accent) 8%)}
+.candidate-result-row:last-child{border-bottom:0}
+.check-list{display:grid;gap:8px;margin-top:12px}
+.check-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer}
+.check-row:hover{border-color:var(--accent);background:color-mix(in srgb,var(--surface) 88%,var(--accent) 12%)}
+.check-row input{accent-color:var(--accent);width:18px;height:18px}
+.check-row span{display:grid;gap:2px}
+.check-row small{color:var(--muted);line-height:1.35}
+.election-hero{overflow:hidden}

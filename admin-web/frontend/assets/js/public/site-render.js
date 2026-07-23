@@ -739,7 +739,7 @@ export function createHomepageRenderer() {
         if (recipient) meta.append(makeElement("span", "treasury-history-actor", recipient));
         meta.append(makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)));
         card.append(head);
-        if (recipient) card.append(makeElement("p", "", `Игрок: ${recipient}`));
+        card.append(makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || row.actor || "Операция")));
         card.append(meta);
         return card;
       }),

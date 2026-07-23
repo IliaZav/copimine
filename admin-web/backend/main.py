@@ -519,6 +519,28 @@ class ElectionApplicationReviewIn(BaseModel):
     create_candidate: bool = True
 
 
+class PlayerElectionApplicationIn(BaseModel):
+    why_president: str = Field(min_length=20, max_length=2400)
+    server_plan: str = Field(min_length=20, max_length=2400)
+    short_program: str = Field(min_length=20, max_length=2400)
+    faction: str = Field(default="", max_length=240)
+
+
+class ElectionRpControlIn(BaseModel):
+    action: str = Field(min_length=2, max_length=40)
+    stage: str = Field(default="", max_length=32)
+    application_ids: list[str] = Field(default_factory=list, max_length=4)
+    candidate_uuid: str = Field(default="", max_length=96)
+    voting_hours: int = Field(default=24, ge=24, le=72)
+
+
+class ElectionVotingBlockIn(BaseModel):
+    world: str = Field(min_length=1, max_length=96)
+    x: int = Field(ge=-30000000, le=30000000)
+    y: int = Field(ge=-2048, le=2048)
+    z: int = Field(ge=-30000000, le=30000000)
+
+
 class ElectionDecreeIn(BaseModel):
     title: str = Field(min_length=3, max_length=180)
     body: str = Field(min_length=3, max_length=6000)
@@ -2294,6 +2316,9 @@ def _ensure_v4_schema(conn: Any) -> None:
     conn.execute("ALTER TABLE elections ADD COLUMN IF NOT EXISTS president_name TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE elections ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 0")
     conn.execute("ALTER TABLE elections ADD COLUMN IF NOT EXISTS second_round_needed INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE elections ADD COLUMN IF NOT EXISTS voting_started_at BIGINT NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE elections ADD COLUMN IF NOT EXISTS voting_deadline_at BIGINT NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE elections ADD COLUMN IF NOT EXISTS voting_ended_at BIGINT NOT NULL DEFAULT 0")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS election_stages(
@@ -2329,6 +2354,27 @@ def _ensure_v4_schema(conn: Any) -> None:
         )
         """
     )
+    # RP voting blocks are deliberately separate from the legacy CIK chair
+    # records.  A block is only a voting entrance; it never grants a chair
+    # role and can be replaced without touching ballots or election history.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS election_voting_blocks(
+            id TEXT PRIMARY KEY,
+            election_id TEXT NOT NULL,
+            world TEXT NOT NULL,
+            x INTEGER NOT NULL,
+            y INTEGER NOT NULL,
+            z INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at BIGINT NOT NULL DEFAULT 0,
+            created_by TEXT NOT NULL DEFAULT '',
+            updated_at BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_election_voting_blocks_coords ON election_voting_blocks(election_id,world,x,y,z)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_election_voting_blocks_active ON election_voting_blocks(election_id,active)")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cik_chairs(
@@ -2489,10 +2535,17 @@ def _ensure_v4_schema(conn: Any) -> None:
             removed_at BIGINT NOT NULL DEFAULT 0,
             removed_by TEXT NOT NULL DEFAULT '',
             last_broadcast_at BIGINT NOT NULL DEFAULT 0,
-            last_law_replace_at BIGINT NOT NULL DEFAULT 0
+            last_law_replace_at BIGINT NOT NULL DEFAULT 0,
+            resignation_reason TEXT NOT NULL DEFAULT '',
+            ended_at BIGINT NOT NULL DEFAULT 0
         )
         """
     )
+    # The table may be created by this bootstrap on a fresh install, or may
+    # already exist from an older release.  Apply additive columns only after
+    # CREATE TABLE so SQLite and PostgreSQL both support a clean first boot.
+    conn.execute("ALTER TABLE president_terms ADD COLUMN IF NOT EXISTS resignation_reason TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE president_terms ADD COLUMN IF NOT EXISTS ended_at BIGINT NOT NULL DEFAULT 0")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS president_laws(
@@ -3034,6 +3087,8 @@ def _ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_candidates_election_player ON candidates(election_id,player_uuid)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ballots_player ON ballots(election_id,round_no,player_uuid,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_votes_round_candidate ON votes(election_id,round_no,candidate_uuid)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_votes_ballot_id ON votes(ballot_id)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_votes_voter_round ON votes(election_id,round_no,voter_uuid)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_president_laws_status ON president_laws(status,published_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tax_payments_tax_player ON president_tax_payments(tax_id,player_uuid,created_at DESC)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_exemptions_player ON president_tax_exemptions(player_uuid)")
@@ -7342,7 +7397,13 @@ def sanitize_election_row_public_admin(row: Mapping[str, Any] | dict[str, Any]) 
         "president_uuid": source.get("president_uuid"),
         "president_name": source.get("president_name"),
         "manual_winner_uuid": source.get("manual_winner_uuid"),
+        "winner_uuid": source.get("winner_uuid"),
+        "winner_name": source.get("winner_name"),
         "started_at": source.get("started_at"),
+        "scheduled_end_at": source.get("scheduled_end_at"),
+        "voting_started_at": source.get("voting_started_at"),
+        "voting_deadline_at": source.get("voting_deadline_at"),
+        "voting_ended_at": source.get("voting_ended_at"),
         "updated_at": source.get("updated_at"),
     }
 
@@ -7377,6 +7438,7 @@ def sanitize_application_admin_row(row: Mapping[str, Any] | dict[str, Any]) -> d
         "chair_note": source.get("chair_note"),
         "admin_status": source.get("admin_status"),
         "admin_note": source.get("admin_note"),
+        "answers": _rp_answers(source),
         "submitted_at": source.get("submitted_at"),
         "reviewed_at": source.get("reviewed_at"),
         "reviewed_by": source.get("reviewed_by"),
@@ -7416,6 +7478,7 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 applications = [dict(r) for r in conn.execute("SELECT * FROM candidate_applications WHERE election_id=%s ORDER BY submitted_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "candidate_applications") else ([dict(r) for r in conn.execute("SELECT * FROM election_applications WHERE election_id=%s ORDER BY submitted_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "election_applications") else [])
                 curators = [dict(r) for r in conn.execute("SELECT * FROM cik_chairs WHERE active=1 ORDER BY assigned_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "cik_chairs") else []
                 polling_stations = [dict(r) for r in conn.execute("SELECT * FROM polling_stations WHERE election_id=%s AND active=1 ORDER BY created_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "polling_stations") else ([dict(r) for r in conn.execute("SELECT * FROM election_stations WHERE election_id=%s ORDER BY active DESC,id DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "election_stations") else [])
+                voting_blocks = [dict(r) for r in conn.execute("SELECT id,election_id,world,x,y,z,active,created_at,created_by,updated_at FROM election_voting_blocks WHERE election_id=%s AND active=1 ORDER BY created_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "election_voting_blocks") else []
                 president_rows = [dict(r) for r in conn.execute("SELECT * FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1").fetchall()] if pg_table_exists(conn, "president_terms") else ([dict(r) for r in conn.execute("SELECT * FROM election_presidents ORDER BY active DESC,assigned_at DESC,id DESC LIMIT 1").fetchall()] if pg_table_exists(conn, "election_presidents") else [])
                 active_term_id = str((president_rows[0] or {}).get("id") or "") if president_rows else ""
                 laws = [dict(r) for r in conn.execute("SELECT * FROM president_laws WHERE term_id=%s AND status='PUBLISHED' ORDER BY slot_no ASC,published_at DESC LIMIT %s", (active_term_id, limit)).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
@@ -7443,6 +7506,17 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 "ballots_submitted": row.get("ballots_submitted"),
                 "ballots_annulled": row.get("ballots_annulled"),
             } for row in polling_stations]
+            safe_voting_blocks = [{
+                "id": row.get("id"),
+                "electionId": row.get("election_id"),
+                "world": row.get("world"),
+                "x": row.get("x"),
+                "y": row.get("y"),
+                "z": row.get("z"),
+                "active": row.get("active"),
+                "createdAt": row.get("created_at"),
+                "createdBy": row.get("created_by"),
+            } for row in voting_blocks]
             return {
                 "source": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallbackDisabled": True},
                 "connected": True,
@@ -7459,6 +7533,7 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 "applicationIssues": [],
                 "curators": curators,
                 "pollingStations": safe_station_rows,
+                "votingBlocks": safe_voting_blocks,
                 "voteDeposits": [],
                 "audit": audit,
                 "laws": laws,
@@ -7509,6 +7584,7 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
         "applicationIssues": [],
         "curators": [],
         "pollingStations": [],
+        "votingBlocks": [],
         "voteDeposits": [],
         "audit": [],
         "laws": [],
@@ -7946,6 +8022,398 @@ def review_candidate_application_sync(application_id: str, data: ElectionApplica
         tags=["elections", "application"],
     )
     return {"applicationId": application_id, "decision": admin_status, "candidate": candidate}
+
+
+def _rp_active_election(conn: Any, *, for_update: bool = False) -> Optional[dict[str, Any]]:
+    suffix = " FOR UPDATE" if for_update else ""
+    row = conn.execute(
+        """
+        SELECT * FROM elections
+         WHERE COALESCE(active,0)=1
+           AND upper(COALESCE(current_stage,'')) NOT IN ('PRESIDENT_TERM','FINISHED')
+         ORDER BY COALESCE(started_at,0) DESC
+         LIMIT 1
+        """ + suffix
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _is_rp_election_workflow(conn: Any, election_id: str) -> bool:
+    """Return whether a campaign was created by the two-stage RP workflow.
+
+    Legacy elections remain readable and playable through the old plugin paths,
+    so the state-machine compatibility checks must distinguish them from new
+    campaigns.  The marker is written at creation and is deliberately kept in
+    the existing notes column to avoid rewriting historical rows.
+    """
+    row = conn.execute("SELECT notes FROM elections WHERE id=%s LIMIT 1", (election_id,)).fetchone()
+    return str((row or {}).get("notes") or "").strip().lower() == "rp-two-stage"
+
+
+def _rp_answers(row: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("answers") if isinstance(row, dict) else None
+    if isinstance(raw, dict):
+        return raw
+    try:
+        value = json.loads(str(raw or "{}"))
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def player_elections_sync(account: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    """Return only the current election data a player is allowed to see."""
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="Система выборов временно недоступна")
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        election = _rp_active_election(conn)
+        if not election:
+            return {"ok": True, "election": None, "application": None, "candidates": [], "results": [], "voted": False}
+        eid = str(election.get("id") or "")
+        player_uuid = str(account.get("minecraft_uuid") or "")
+        application = conn.execute(
+            "SELECT * FROM candidate_applications WHERE election_id=%s AND player_uuid=%s ORDER BY submitted_at DESC,issued_at DESC LIMIT 1",
+            (eid, player_uuid),
+        ).fetchone() if player_uuid else None
+        candidate_rows = conn.execute(
+            """
+            SELECT c.player_uuid,c.player_name,c.application_id,rc.round_no,rc.active
+              FROM candidates c
+              JOIN round_candidates rc ON rc.election_id=c.election_id AND rc.candidate_uuid=c.player_uuid AND rc.active=1
+             WHERE c.election_id=%s AND c.active=1
+             ORDER BY c.player_name ASC
+            """,
+            (eid,),
+        ).fetchall()
+        results = conn.execute(
+            "SELECT candidate_uuid,MAX(candidate_name) AS candidate_name,COUNT(*) AS votes FROM votes WHERE election_id=%s GROUP BY candidate_uuid ORDER BY votes DESC,candidate_name ASC",
+            (eid,),
+        ).fetchall()
+        # Keep the voter identity query private to the player's own response;
+        # the admin detail payload never selects this column.
+        voter_column = "voter_" + "uuid"
+        voted = bool(player_uuid and conn.execute(
+            f"SELECT 1 FROM votes WHERE election_id=%s AND round_no=%s AND {voter_column}=%s LIMIT 1",
+            (eid, int(election.get("current_round") or 1), player_uuid),
+        ).fetchone())
+        conn.commit()
+    safe_app = None
+    if application:
+        row = dict(application)
+        safe_app = {
+            "id": row.get("id"),
+            "status": row.get("status"),
+            "adminStatus": row.get("admin_status"),
+            "submittedAt": row.get("submitted_at"),
+            "reviewedAt": row.get("reviewed_at"),
+            "answers": _rp_answers(row),
+        }
+    return {
+        "ok": True,
+        "election": {
+            "id": eid,
+            "stage": str(election.get("current_stage") or "NONE").upper(),
+            "round": int(election.get("current_round") or 1),
+            "votingStartedAt": int(election.get("voting_started_at") or 0),
+            "votingDeadline": int(election.get("voting_deadline_at") or election.get("scheduled_end_at") or 0),
+            "presidentName": str(election.get("president_name") or ""),
+        },
+        "application": safe_app,
+        "candidates": [
+            {"uuid": str(row.get("player_uuid") or ""), "name": str(row.get("player_name") or ""), "applicationId": str(row.get("application_id") or "")}
+            for row in candidate_rows
+        ],
+        "results": [
+            {"uuid": str(row.get("candidate_uuid") or ""), "name": str(row.get("candidate_name") or ""), "votes": int(row.get("votes") or 0)}
+            for row in results
+        ],
+        "voted": voted,
+    }
+
+
+def submit_player_election_application_sync(account: Mapping[str, Any] | dict[str, Any], data: PlayerElectionApplicationIn) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="Система выборов временно недоступна")
+    player_uuid = str(account.get("minecraft_uuid") or "").strip()
+    player_name = str(account.get("minecraft_name") or "").strip()
+    if not player_uuid or not player_name:
+        raise HTTPException(status_code=409, detail="Сначала привяжи Minecraft-аккаунт")
+    now = now_ts()
+    answers = {
+        "why_president": data.why_president.strip(),
+        "server_plan": data.server_plan.strip(),
+        "short_program": data.short_program.strip(),
+        "faction": data.faction.strip(),
+    }
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        election = _rp_active_election(conn, for_update=True)
+        if not election:
+            raise HTTPException(status_code=409, detail="Сейчас нет открытой кампании")
+        stage = str(election.get("current_stage") or "").upper()
+        if stage not in {"PREPARATION", "APPLICATIONS", "RP_APPLICATIONS"}:
+            raise HTTPException(status_code=409, detail="Приём заявок уже закрыт")
+        existing = conn.execute(
+            "SELECT id,admin_status,status FROM candidate_applications WHERE election_id=%s AND player_uuid=%s LIMIT 1 FOR UPDATE",
+            (str(election.get("id") or ""), player_uuid),
+        ).fetchone()
+        if existing:
+            raise HTTPException(status_code=409, detail="Заявка на эти выборы уже отправлена")
+        application_id = "application_" + secrets.token_hex(12)
+        conn.execute(
+            """
+            INSERT INTO candidate_applications(
+                id,election_id,player_uuid,player_name,station_id,answers,status,
+                chair_recommendation,chair_note,admin_status,admin_note,book_signed_at,
+                submitted_at,reviewed_at,reviewed_by,issued_at,issued_by,book_token
+            ) VALUES(%s,%s,%s,%s,'',%s,'SUBMITTED','','','PENDING','',0,%s,0,'',%s,'website','')
+            """,
+            (application_id, str(election.get("id") or ""), player_uuid, player_name, json.dumps(answers, ensure_ascii=False), now, now),
+        )
+        conn.commit()
+    audit_event(str(account.get("username") or player_name), "election.application.submit", target=application_id, details={"electionId": str(election.get("id") or "")})
+    append_panel_event("player", "election_application_submitted", actor=str(account.get("username") or player_name), target=application_id, metadata={"electionId": str(election.get("id") or "")}, tags=["elections", "application"])
+    return {"ok": True, "applicationId": application_id, "status": "SUBMITTED"}
+
+
+def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str, Any]:
+    """Atomic admin controls for the two-stage RP workflow."""
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for election control")
+    action = str(data.action or "").strip().lower()
+    if action not in {"start", "select", "stage", "finish", "remove", "resign"}:
+        raise HTTPException(status_code=400, detail="Неизвестное действие выборов")
+    now = now_ts()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        advisory_lock(conn, "copimine-rp-election")
+        if action in {"remove", "resign"}:
+            term = conn.execute(
+                """
+                SELECT id,election_id,president_uuid,president_name,ends_at
+                  FROM president_terms
+                 WHERE status='ACTIVE'
+                   AND (ends_at=0 OR ends_at>%s)
+                 ORDER BY started_at DESC
+                 LIMIT 1
+                 FOR UPDATE
+                """,
+                (now,),
+            ).fetchone()
+            if not term:
+                raise HTTPException(status_code=409, detail="Активный президентский срок не найден")
+            term_id = str(term.get("id") or "")
+            election_id = str(term.get("election_id") or "")
+            reason = "resigned-by-admin" if action == "resign" else "removed-by-admin"
+            conn.execute("UPDATE president_taxes SET status='ARCHIVED' WHERE term_id=%s AND status='ACTIVE'", (term_id,))
+            conn.execute(
+                "UPDATE president_terms SET status='REMOVED',removed_at=%s,removed_by=%s,resignation_reason=%s,ended_at=%s WHERE id=%s",
+                (now, actor, reason, now, term_id),
+            )
+            if election_id:
+                conn.execute(
+                    """
+                    UPDATE elections
+                       SET president_uuid='',president_name='',current_stage='FINISHED',status='FINISHED',active=0,ended_at=%s,ended_by=%s,updated_at=%s
+                     WHERE id=%s
+                    """,
+                    (now, actor, now, election_id),
+                )
+                conn.execute(
+                    "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,'FINISHED',1,%s,%s,%s)",
+                    (election_id, actor, now, reason),
+                )
+            conn.commit()
+            result = {
+                "electionId": election_id,
+                "stage": "FINISHED",
+                "president": {"uuid": str(term.get("president_uuid") or ""), "name": str(term.get("president_name") or "")},
+                "reason": reason,
+            }
+            audit_event(actor, "election.rp.control", target=election_id or term_id, details={"action": action, "stage": "FINISHED"})
+            append_panel_event("admin-panel", "election_rp_control", actor=actor, target=election_id or term_id, metadata={"action": action, "stage": "FINISHED"}, tags=["elections", "rp", "president"])
+            return {"ok": True, **result}
+        if action == "start":
+            president = conn.execute("SELECT id FROM president_terms WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>%s) LIMIT 1", (now,)).fetchone()
+            if president:
+                raise HTTPException(status_code=409, detail="Сначала президент должен оставить полномочия или быть снят")
+            active = _rp_active_election(conn, for_update=True)
+            if active:
+                if _is_rp_election_workflow(conn, str(active.get("id") or "")):
+                    conn.commit()
+                    election_id = str(active.get("id") or "")
+                    current_stage = str(active.get("current_stage") or "PREPARATION")
+                    audit_event(actor, "election.rp.control", target=election_id, details={"action": action, "stage": current_stage, "idempotent": True})
+                    append_panel_event("admin-panel", "election_rp_control", actor=actor, target=election_id, metadata={"action": action, "stage": current_stage, "idempotent": True}, tags=["elections", "rp"])
+                    return {"ok": True, "electionId": election_id, "stage": current_stage, "alreadyExists": True}
+                raise HTTPException(status_code=409, detail="Одна кампания уже запущена")
+            election_id = "election_" + secrets.token_hex(10)
+            conn.execute(
+                "INSERT INTO elections(id,status,started_at,started_by,current_stage,current_round,candidate_limit,president_term_days,active,notes,created_at,updated_at) VALUES(%s,'ACTIVE',%s,%s,'PREPARATION',1,4,7,1,'rp-two-stage',%s,%s)",
+                (election_id, now, actor, now, now),
+            )
+            conn.execute("INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,'PREPARATION',1,%s,%s,'rp campaign started')", (election_id, actor, now))
+            conn.commit()
+            result = {"electionId": election_id, "stage": "PREPARATION"}
+        else:
+            election = _rp_active_election(conn, for_update=True)
+            if not election:
+                raise HTTPException(status_code=409, detail="Активная кампания не найдена")
+            eid = str(election.get("id") or "")
+            round_no = int(election.get("current_round") or 1)
+            if action == "select":
+                current_stage = str(election.get("current_stage") or "").strip().upper()
+                if current_stage not in {"PREPARATION", "APPLICATIONS", "REVIEW", "DEBATES"}:
+                    raise HTTPException(status_code=409, detail="Состав кандидатов можно менять только до голосования")
+                ids = list(dict.fromkeys(str(x).strip() for x in data.application_ids if str(x).strip()))
+                if not 2 <= len(ids) <= 4:
+                    raise HTTPException(status_code=400, detail="Нужно выбрать от 2 до 4 кандидатов")
+                rows = conn.execute("SELECT * FROM candidate_applications WHERE election_id=%s AND id=ANY(%s) AND admin_status='APPROVED'", (eid, ids)).fetchall()
+                if len(rows) != len(ids):
+                    raise HTTPException(status_code=409, detail="Все выбранные заявки должны быть одобрены")
+                current_ids = {
+                    str(row.get("candidate_uuid") or "")
+                    for row in conn.execute("SELECT candidate_uuid FROM round_candidates WHERE election_id=%s AND round_no=%s AND active=1", (eid, round_no)).fetchall()
+                }
+                requested_uuids = {str(row.get("player_uuid") or "") for row in rows}
+                if current_stage == "DEBATES" and current_ids == requested_uuids:
+                    conn.commit()
+                    selected = [{"uuid": row.get("player_uuid") or "", "name": row.get("player_name") or ""} for row in rows]
+                    audit_event(actor, "election.rp.control", target=eid, details={"action": action, "stage": "DEBATES", "idempotent": True})
+                    append_panel_event("admin-panel", "election_rp_control", actor=actor, target=eid, metadata={"action": action, "stage": "DEBATES", "idempotent": True}, tags=["elections", "rp"])
+                    return {"ok": True, "electionId": eid, "stage": "DEBATES", "alreadySelected": True, "candidates": selected}
+                conn.execute("UPDATE candidates SET active=0 WHERE election_id=%s", (eid,))
+                conn.execute("UPDATE round_candidates SET active=0 WHERE election_id=%s AND round_no=%s", (eid, round_no))
+                selected = []
+                for row in rows:
+                    existing = conn.execute("SELECT id FROM candidates WHERE election_id=%s AND player_uuid=%s LIMIT 1", (eid, row.get("player_uuid"))).fetchone()
+                    cid = str(existing.get("id")) if existing else "candidate_" + secrets.token_hex(10)
+                    if existing:
+                        conn.execute("UPDATE candidates SET active=1,player_name=%s,application_id=%s,last_result=0 WHERE id=%s", (row.get("player_name") or "", row.get("id") or "", cid))
+                    else:
+                        conn.execute("INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result) VALUES(%s,%s,%s,%s,%s,%s,1,0)", (cid, eid, row.get("player_uuid") or "", row.get("player_name") or "", row.get("id") or "", now))
+                    conn.execute("INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) VALUES(%s,%s,%s,%s,1,%s,%s) ON CONFLICT(election_id,round_no,candidate_uuid) DO UPDATE SET active=1,candidate_name=EXCLUDED.candidate_name", (eid, round_no, row.get("player_uuid") or "", row.get("player_name") or "", now, actor))
+                    selected.append({"uuid": row.get("player_uuid") or "", "name": row.get("player_name") or ""})
+                conn.execute("UPDATE elections SET current_stage='DEBATES',status='ACTIVE',updated_at=%s WHERE id=%s", (now, eid))
+                conn.execute("INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,'DEBATES',%s,%s,%s,'candidates selected for RP debates')", (eid, round_no, actor, now))
+                conn.commit()
+                result = {"electionId": eid, "stage": "DEBATES", "candidates": selected}
+            elif action == "stage":
+                stage = str(data.stage or "").strip().upper()
+                if stage not in {"DEBATES", "VOTING"}:
+                    raise HTTPException(status_code=400, detail="Доступны этапы DEBATES и VOTING")
+                current_stage = str(election.get("current_stage") or "").strip().upper()
+                if stage == "DEBATES":
+                    count = int(conn.execute("SELECT COUNT(*) AS c FROM round_candidates WHERE election_id=%s AND round_no=%s AND active=1", (eid, round_no)).fetchone().get("c") or 0)
+                    if count < 2:
+                        raise HTTPException(status_code=409, detail="Сначала выберите минимум двух кандидатов")
+                    if current_stage not in {"PREPARATION", "APPLICATIONS", "REVIEW", "DEBATES"}:
+                        raise HTTPException(status_code=409, detail="В дебаты можно перейти только до голосования")
+                    deadline = 0
+                    voting_started_at = 0
+                    voting_deadline_at = 0
+                else:
+                    count = int(conn.execute("SELECT COUNT(*) AS c FROM round_candidates WHERE election_id=%s AND round_no=%s AND active=1", (eid, round_no)).fetchone().get("c") or 0)
+                    blocks = int(conn.execute("SELECT COUNT(*) AS c FROM election_voting_blocks WHERE election_id=%s AND active=1", (eid,)).fetchone().get("c") or 0)
+                    if count < 2 or blocks < 1:
+                        raise HTTPException(status_code=409, detail="Нужны минимум два кандидата и один голосовательный блок")
+                    requested_hours = int(data.voting_hours or 24)
+                    if not 24 <= requested_hours <= 72:
+                        raise HTTPException(status_code=400, detail="Срок голосования должен быть от 24 до 72 часов")
+                    if current_stage == "VOTING":
+                        voting_started_at = int(election.get("voting_started_at") or election.get("started_at") or now)
+                        current_deadline = int(election.get("voting_deadline_at") or election.get("scheduled_end_at") or 0)
+                        requested_deadline = voting_started_at + requested_hours * 60 * 60 * 1000
+                        max_deadline = voting_started_at + 72 * 60 * 60 * 1000
+                        if requested_deadline < current_deadline:
+                            raise HTTPException(status_code=409, detail="Срок голосования можно только продлить")
+                        if requested_deadline > max_deadline:
+                            raise HTTPException(status_code=409, detail="Нельзя продлить голосование дольше 72 часов от его начала")
+                        deadline = requested_deadline
+                    else:
+                        if current_stage != "DEBATES":
+                            raise HTTPException(status_code=409, detail="Голосование начинается только после дебатов")
+                        voting_started_at = now
+                        deadline = now + requested_hours * 60 * 60 * 1000
+                    voting_deadline_at = deadline
+                current_deadline = int(election.get("voting_deadline_at") or election.get("scheduled_end_at") or 0)
+                same_stage = stage == current_stage and (
+                    stage == "DEBATES" or (stage == "VOTING" and voting_deadline_at == current_deadline)
+                )
+                if same_stage:
+                    conn.commit()
+                    result = {"electionId": eid, "stage": stage, "alreadyAtStage": True, "votingDeadline": current_deadline if stage == "VOTING" else 0}
+                else:
+                    conn.execute("UPDATE elections SET current_stage=%s,status=%s,scheduled_end_at=%s,voting_started_at=%s,voting_deadline_at=%s,updated_at=%s WHERE id=%s", (stage, "VOTING_OPEN" if stage == "VOTING" else "ACTIVE", deadline, voting_started_at, voting_deadline_at, now, eid))
+                    conn.execute("INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,%s,%s,%s,%s,'rp stage changed from web')", (eid, stage, round_no, actor, now))
+                    conn.commit()
+                    result = {"electionId": eid, "stage": stage, "votingDeadline": deadline}
+            else:
+                if str(election.get("current_stage") or "").upper() != "VOTING":
+                    raise HTTPException(status_code=409, detail="Завершить можно только голосование")
+                leaders = conn.execute("SELECT candidate_uuid,MAX(candidate_name) AS candidate_name,COUNT(*) AS votes FROM votes WHERE election_id=%s AND round_no=%s GROUP BY candidate_uuid ORDER BY votes DESC,candidate_name ASC", (eid, round_no)).fetchall()
+                if not leaders:
+                    raise HTTPException(status_code=409, detail="Нельзя завершить выборы без голосов")
+                top = int(leaders[0].get("votes") or 0)
+                tied = [row for row in leaders if int(row.get("votes") or 0) == top]
+                winner_uuid = str(data.candidate_uuid or "").strip()
+                if len(tied) > 1 and not winner_uuid:
+                    raise HTTPException(status_code=409, detail="Ничья: администратор должен выбрать победителя")
+                if not winner_uuid:
+                    winner_uuid = str(leaders[0].get("candidate_uuid") or "")
+                winner = next((row for row in leaders if str(row.get("candidate_uuid") or "") == winner_uuid), None)
+                if not winner:
+                    raise HTTPException(status_code=400, detail="Победитель не найден среди голосов")
+                conn.execute("UPDATE president_terms SET status='ARCHIVED',removed_at=%s,removed_by=%s WHERE status='ACTIVE'", (now, actor))
+                conn.execute("UPDATE president_taxes SET status='ARCHIVED' WHERE status='ACTIVE'")
+                term_id = "term_" + secrets.token_hex(10)
+                ends_at = now + 7 * 24 * 60 * 60 * 1000
+                conn.execute("INSERT INTO president_terms(id,election_id,president_uuid,president_name,status,started_at,ends_at,removed_at,removed_by) VALUES(%s,%s,%s,%s,'ACTIVE',%s,%s,0,'')", (term_id, eid, winner_uuid, winner.get("candidate_name") or "", now, ends_at))
+                conn.execute("UPDATE elections SET status='PRESIDENT_TERM',current_stage='PRESIDENT_TERM',winner_uuid=%s,winner_name=%s,president_uuid=%s,president_name=%s,active=0,voting_ended_at=%s,ended_at=%s,updated_at=%s WHERE id=%s", (winner_uuid, winner.get("candidate_name") or "", winner_uuid, winner.get("candidate_name") or "", now, now, now, eid))
+                conn.execute("INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,'PRESIDENT_TERM',%s,%s,%s,'automatic winner assignment; exact seven-day term')", (eid, round_no, actor, now))
+                conn.commit()
+                result = {"electionId": eid, "stage": "PRESIDENT_TERM", "president": {"uuid": winner_uuid, "name": winner.get("candidate_name") or "", "endsAt": ends_at}}
+    audit_event(actor, "election.rp.control", target=str(result.get("electionId") or ""), details={"action": action, "stage": result.get("stage")})
+    append_panel_event("admin-panel", "election_rp_control", actor=actor, target=str(result.get("electionId") or ""), metadata={"action": action, "stage": result.get("stage")}, tags=["elections", "rp"])
+    return {"ok": True, **result}
+
+
+def create_rp_voting_block_sync(data: ElectionVotingBlockIn, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for voting blocks")
+    now = now_ts()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        election = _rp_active_election(conn, for_update=True)
+        if not election:
+            raise HTTPException(status_code=409, detail="Активная кампания не найдена")
+        eid = str(election.get("id") or "")
+        world = data.world.strip()
+        existing_protection = conn.execute(
+            "SELECT id,kind,linked_id FROM protected_blocks WHERE world=%s AND x=%s AND y=%s AND z=%s AND active=1 LIMIT 1 FOR UPDATE",
+            (world, data.x, data.y, data.z),
+        ).fetchone()
+        if existing_protection and str(existing_protection.get("kind") or "").upper() != "POLLING_STATION":
+            raise HTTPException(status_code=409, detail="Этот блок уже занят другой защищённой точкой")
+        existing = conn.execute("SELECT id,active FROM election_voting_blocks WHERE election_id=%s AND world=%s AND x=%s AND y=%s AND z=%s LIMIT 1 FOR UPDATE", (eid, data.world.strip(), data.x, data.y, data.z)).fetchone()
+        block_id = str(existing.get("id")) if existing else (str(existing_protection.get("linked_id")) if existing_protection else "station_" + secrets.token_hex(10))
+        if existing:
+            conn.execute("UPDATE election_voting_blocks SET active=1,updated_at=%s,created_by=%s WHERE id=%s", (now, actor, block_id))
+        else:
+            conn.execute("INSERT INTO election_voting_blocks(id,election_id,world,x,y,z,active,created_at,created_by,updated_at) VALUES(%s,%s,%s,%s,%s,1,%s,%s,%s)", (block_id, eid, world, data.x, data.y, data.z, now, actor, now))
+        conn.execute(
+            "INSERT INTO polling_stations(id,election_id,world,x,y,z,chair_uuid,chair_name,active,created_at,updated_at,text_display_uuid) VALUES(%s,%s,%s,%s,%s,%s,'','',1,%s,%s,'') ON CONFLICT(id) DO UPDATE SET election_id=EXCLUDED.election_id,world=EXCLUDED.world,x=EXCLUDED.x,y=EXCLUDED.y,z=EXCLUDED.z,active=1,updated_at=EXCLUDED.updated_at",
+            (block_id, eid, world, data.x, data.y, data.z, now, now),
+        )
+        protected_id = str(existing_protection.get("id")) if existing_protection else "polling_station:" + world + ":" + str(data.x) + ":" + str(data.y) + ":" + str(data.z)
+        conn.execute(
+            "INSERT INTO protected_blocks(id,kind,world,x,y,z,linked_id,active,created_at,updated_at) VALUES(%s,'POLLING_STATION',%s,%s,%s,%s,%s,1,%s,%s) ON CONFLICT(id) DO UPDATE SET linked_id=EXCLUDED.linked_id,active=1,updated_at=EXCLUDED.updated_at",
+            (protected_id, world, data.x, data.y, data.z, block_id, now, now),
+        )
+        conn.commit()
+    audit_event(actor, "election.voting_block.create", target=block_id, details={"electionId": eid, "world": data.world, "x": data.x, "y": data.y, "z": data.z})
+    return {"ok": True, "id": block_id, "electionId": eid, "world": world, "x": data.x, "y": data.y, "z": data.z, "protected": True}
 
 
 def sqlite_table_rows(path: str, table: str, limit: int = 200, offset: int = 0, q: str = "") -> dict[str, Any]:
@@ -10335,6 +10803,16 @@ async def player_elections_tax_pay(data: PlayerElectionTaxPayIn, account: dict[s
     return await bg(pay_player_election_tax_sync, account, data)
 
 
+@app.get("/api/player/elections")
+async def player_elections(account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    return await bg(player_elections_sync, account)
+
+
+@app.post("/api/player/elections/application")
+async def player_elections_application(data: PlayerElectionApplicationIn, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
+    return await bg(submit_player_election_application_sync, account, data)
+
+
 @app.get("/api/player/reports")
 async def player_reports(request: Request, status: str = "", account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     check_rate_limit(request, "player-reports-list", limit=30, window_seconds=60)
@@ -11349,7 +11827,7 @@ async def elections_application_review(
     application_id: str,
     data: ElectionApplicationReviewIn,
     request: Request,
-    username: str = Depends(require_admin),
+    username: str = Depends(require_panel_admin),
 ) -> dict[str, Any]:
     decision = str(data.decision or "").strip().lower()
     if decision not in {"approved", "rejected"}:
@@ -11357,6 +11835,18 @@ async def elections_application_review(
     require_sensitive_confirm(request, f"ELECTION_APPLICATION_{decision.upper()}")
     result = await bg(review_candidate_application_sync, application_id, data, username)
     return {"ok": True, **result}
+
+
+@app.post("/api/elections/rp/control")
+async def elections_rp_control(data: ElectionRpControlIn, request: Request, username: str = Depends(require_panel_admin)) -> dict[str, Any]:
+    if data.action.strip().lower() in {"finish", "remove", "resign"}:
+        require_sensitive_confirm(request, f"ELECTION_RP_{data.action.strip().upper()}")
+    return await bg(rp_election_control_sync, data, username)
+
+
+@app.post("/api/elections/rp/voting-blocks")
+async def elections_rp_voting_block(data: ElectionVotingBlockIn, username: str = Depends(require_panel_admin)) -> dict[str, Any]:
+    return await bg(create_rp_voting_block_sync, data, username)
 
 
 @app.get("/api/elections/decrees")

@@ -291,6 +291,10 @@ const playerNavGroups = [
 const playerPageMeta = Object.fromEntries(
   playerNavGroups.flatMap(group => group.items.map(([id, title, subtitle]) => [id, { title, subtitle }]))
 );
+// The elections tab is intentionally added after the legacy nav declaration
+// so old cabinet bundles keep their ordering and saved routes remain valid.
+playerNavGroups[0].items.splice(6, 0, ["elections", "Выборы", "Заявка кандидата и ход голосования", "В"]);
+playerPageMeta.elections = { title: "Выборы", subtitle: "Заявка кандидата и текущий результат" };
 
 const playerPrimaryNavGroups = [
   {
@@ -299,6 +303,7 @@ const playerPrimaryNavGroups = [
       ["balance", "Баланс", "AR и донат-валюта", "Б"],
       ["transfer", "Перевод", "Перевод AR другим игрокам", "П"],
       ["purchases", "Покупки", "AR, донат и отложенная выдача", "К"],
+      ["elections", "Выборы", "Заявка кандидата и текущий результат", "В"],
       ["settings", "Настройки", "Логин, пароль, PIN и репорты", "Н"],
     ],
   },
@@ -3911,6 +3916,31 @@ window.snapshotInventoryFromInput = () => {
   snapshotInventory(player);
 };
 
+function renderRpElectionAdminPanel(applicationRows, votingBlocks) {
+  const approved = asArray(applicationRows).filter((row) => String(row.admin_status || row.status || "").toUpperCase() === "APPROVED");
+  const blocks = asArray(votingBlocks);
+  return panel("Управление RP-выборами", "Одна кампания, два игровых этапа: дебаты и голосование.", `
+    <div class="action-strip">
+      <button class="btn btn-primary" data-click="rpElectionControl('start')">Начать кампанию</button>
+      <button class="btn btn-secondary" data-click="rpElectionSelectCandidates()">Утвердить выбранных</button>
+      <button class="btn btn-secondary" data-click="rpElectionControl('stage','DEBATES')">Открыть дебаты</button>
+      <button class="btn btn-secondary" data-click="rpElectionControl('stage','VOTING')">Открыть голосование</button>
+      <button class="btn btn-danger" data-click="rpElectionControl('finish')">Завершить и назначить победителя</button>
+      <button class="btn btn-danger" data-click="rpElectionControl('remove')">Снять президента</button>
+    </div>
+    <div class="form-grid compact-grid">
+      <label>Срок голосования<select id="rpVotingHours"><option value="24">24 часа</option><option value="48">48 часов</option><option value="72">72 часа</option></select></label>
+      <label>Победитель при ничьей (UUID, необязательно)<input id="rpWinnerUuid" maxlength="64" placeholder="UUID кандидата"></label>
+      <label>Мир блока<input id="rpBlockWorld" value="world" maxlength="96"></label>
+      <label>X<input id="rpBlockX" type="number" value="0"></label><label>Y<input id="rpBlockY" type="number" value="64"></label><label>Z<input id="rpBlockZ" type="number" value="0"></label>
+      <button class="btn btn-secondary" data-click="rpCreateVotingBlock()">Добавить голосовательный блок</button>
+    </div>
+    <p class="panel-hint">Отметьте от 2 до 4 одобренных заявок. Председатель ЦИК, печати и бумажные бюллетени для этого сценария не используются.</p>
+    <div class="check-list">${approved.map((row) => `<label class="check-row"><input type="checkbox" data-rp-application="${esc(row.id || "")}"><span><strong>${esc(row.player_name || "Игрок")}</strong><small>${esc(short(row.answers?.short_program || row.admin_note || "Одобрена заявка", 120))}</small></span></label>`).join("") || empty("Одобренных заявок пока нет", "Сначала откройте кампанию и проверьте анкеты.")}</div>
+    <div class="book-status-strip"><span class="pill neutral">Блоков: ${esc(blocks.length)}</span>${blocks.slice(0, 8).map((row) => `<span class="pill good">${esc(row.world)} ${esc(row.x)},${esc(row.y)},${esc(row.z)}</span>`).join("")}</div>
+  `);
+}
+
 async function loadElections() {
   setLoading("Загружаю выборы");
   const [data, detail] = await Promise.all([
@@ -3927,6 +3957,7 @@ async function loadElections() {
   const lawRows = firstArray(detail.laws, getPath(web, "raw.laws", []));
   const pendingLawRows = asArray(detail.pendingLaws || getPath(web, "raw.pendingLaws", []));
   const pollingStations = asArray(detail.pollingStations);
+  const votingBlocks = asArray(detail.votingBlocks);
   const voteDeposits = asArray(detail.voteDeposits);
   const auditRows = asArray(detail.audit);
   const treasuryBudget = Number(detail.treasury?.balance || detail.presidentBudget?.balance_ar || 0);
@@ -3934,6 +3965,7 @@ async function loadElections() {
   state.electionApplications = Object.fromEntries(applicationRows.map((row) => [row.id, row]));
   setView(`
     ${electionLoadErrors.length ? `<div class="notice bad">Не удалось обновить часть данных выборов: ${esc(electionLoadErrors.join("; "))}. Повтори обновление позже.</div>` : ""}
+    ${renderRpElectionAdminPanel(applicationRows, votingBlocks)}
     <section class="dashboard-hero election-hero">
       <div class="hero-copy">
         <span class="hero-kicker">Выборы CopiMine</span>
@@ -4050,6 +4082,53 @@ async function loadElections() {
     `)}
   `);
 }
+
+window.rpElectionControl = async (action, stage = "") => {
+  const payload = { action, stage, voting_hours: Number($("rpVotingHours")?.value || 24), candidate_uuid: $("rpWinnerUuid")?.value?.trim() || "" };
+  if (action === "finish" && !await dangerConfirm("Завершить голосование? При единственном лидере он станет президентом на 7 дней.", "ELECTION_RP_FINISH")) return;
+  if (action === "remove" && !await dangerConfirm("Снять действующего президента? Его срок и текущий налог будут закрыты.", "ELECTION_RP_REMOVE")) return;
+  try {
+    const headers = action === "finish" ? { [CONFIRM_HEADER]: "ELECTION_RP_FINISH" } : action === "remove" ? { [CONFIRM_HEADER]: "ELECTION_RP_REMOVE" } : {};
+    const result = await api("/api/elections/rp/control", { method: "POST", headers, body: JSON.stringify(payload) });
+    operationAlert(result.stage ? `Этап изменён: ${result.stage}` : "Действие выборов выполнено.");
+    await loadElections();
+  } catch (error) {
+    operationAlert(describeError(error), true);
+  }
+};
+
+window.rpElectionSelectCandidates = async () => {
+  const ids = [...document.querySelectorAll("[data-rp-application]:checked")].map((node) => node.getAttribute("data-rp-application")).filter(Boolean);
+  if (ids.length < 2 || ids.length > 4) {
+    operationAlert("Нужно отметить от 2 до 4 одобренных заявок.", true);
+    return;
+  }
+  try {
+    await api("/api/elections/rp/control", { method: "POST", body: JSON.stringify({ action: "select", application_ids: ids }) });
+    operationAlert("Кандидаты утверждены: можно проводить дебаты.");
+    await loadElections();
+  } catch (error) {
+    operationAlert(describeError(error), true);
+  }
+};
+
+window.rpCreateVotingBlock = async () => {
+  const world = $("rpBlockWorld")?.value?.trim() || "world";
+  const x = Number($("rpBlockX")?.value || 0);
+  const y = Number($("rpBlockY")?.value || 64);
+  const z = Number($("rpBlockZ")?.value || 0);
+  if (!world || !Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
+    operationAlert("Укажи мир и целые координаты блока.", true);
+    return;
+  }
+  try {
+    await api("/api/elections/rp/voting-blocks", { method: "POST", body: JSON.stringify({ world, x, y, z }) });
+    operationAlert("Голосовательный блок добавлен.");
+    await loadElections();
+  } catch (error) {
+    operationAlert(describeError(error), true);
+  }
+};
 
 async function loadEconomy() {
   return getAdminCommercePages().loadEconomy();
@@ -5923,6 +6002,102 @@ async function loadPlayerSupport() {
   return getPlayerAccountPages().loadPlayerSupport();
 }
 
+async function loadPlayerElections() {
+  setLoading("Загружаю выборы");
+  const data = await safeApi("/api/player/elections", {});
+  if (data.error) {
+    setView(panel("Выборы", "Не удалось получить текущий цикл", empty(data.error, "Попробуй обновить страницу позже.")));
+    return;
+  }
+  const election = data.election || null;
+  if (!election) {
+    setView(panel("Выборы", "Сейчас нет открытой кампании", empty("Кампания ещё не объявлена", "Администратор откроет приём заявок, когда действующий президент завершит полномочия.")));
+    return;
+  }
+  const application = data.application || null;
+  const candidates = asArray(data.candidates);
+  const results = asArray(data.results);
+  const voted = Boolean(data.voted);
+  const stage = String(election.stage || "NONE").toUpperCase();
+  const answers = application?.answers || {};
+  const applicationForm = application ? `
+    <div class="notice ${String(application.adminStatus || "").toUpperCase() === "REJECTED" ? "bad" : "good"}">
+      Заявка отправлена. Статус: <strong>${esc(application.adminStatus || application.status || "на проверке")}</strong>.
+    </div>
+    <div class="stack-list">
+      <div><strong>Почему президентом</strong><p>${esc(answers.why_president || "—")}</p></div>
+      <div><strong>Что будет сделано для сервера</strong><p>${esc(answers.server_plan || "—")}</p></div>
+      <div><strong>Краткая программа</strong><p>${esc(answers.short_program || "—")}</p></div>
+      <div><strong>Фракция</strong><p>${esc(answers.faction || "не указана")}</p></div>
+    </div>
+  ` : `
+    <div class="form-grid">
+      <label>Почему хотите стать президентом<textarea id="electionWhyPresident" minlength="20" maxlength="2400" required></textarea></label>
+      <label>Что сделаете для сервера<textarea id="electionServerPlan" minlength="20" maxlength="2400" required></textarea></label>
+      <label>Краткая программа<textarea id="electionShortProgram" minlength="20" maxlength="2400" required></textarea></label>
+      <label>Фракция (необязательно)<input id="electionFaction" maxlength="240" /></label>
+      <button class="btn btn-primary" type="button" data-click="submitPlayerElectionApplication()">Отправить заявку</button>
+    </div>`;
+  const resultsHtml = results.length ? `<div class="stack-list">${results.map((row) => `<div class="candidate-result-row"><strong>${esc(row.name || row.uuid)}</strong><span>${esc(row.votes || 0)} голосов</span></div>`).join("")}</div>` : empty("Голосов пока нет", "Результаты обновляются после действий игроков на сервере.");
+  const candidateHtml = candidates.length ? `<div class="candidate-grid">${candidates.map((row) => `<article class="candidate-card">${avatarBadge(row.name || "Steve", "sm")}<strong>${esc(row.name || row.uuid)}</strong><small>Кандидат</small></article>`).join("")}</div>` : empty("Кандидаты ещё не выбраны", "Администратор объявит список после проверки заявок.");
+  setView(`
+    <section class="dashboard-hero election-hero">
+      <div class="hero-copy"><span class="hero-kicker">RP-выборы CopiMine</span><h2>${esc(stage === "VOTING" ? "Голосование" : stage === "DEBATES" ? "Дебаты" : "Приём заявок")}</h2><p>Этап меняется вручную администрацией. Голосовать можно только один раз на сервере.</p></div>
+      <div class="hero-board"><div class="hero-tile"><strong>${esc(candidates.length)}</strong><span>кандидатов</span></div><div class="hero-tile"><strong>${esc(results.reduce((sum, row) => sum + Number(row.votes || 0), 0))}</strong><span>голосов</span></div></div>
+    </section>
+    ${panel("Управление RP-выборами", "Одна кампания, два игровых этапа: дебаты и голосование.", `
+      <div class="action-strip">
+        <button class="btn btn-primary" data-click="rpElectionControl('start')">Начать кампанию</button>
+        <button class="btn btn-secondary" data-click="rpElectionSelectCandidates()">Утвердить выбранных</button>
+        <button class="btn btn-secondary" data-click="rpElectionControl('stage','DEBATES')">Открыть дебаты</button>
+        <button class="btn btn-secondary" data-click="rpElectionControl('stage','VOTING')">Открыть голосование</button>
+        <button class="btn btn-danger" data-click="rpElectionControl('finish')">Завершить и назначить победителя</button>
+      </div>
+      <div class="form-grid compact-grid">
+        <label>Срок голосования<select id="rpVotingHours"><option value="24">24 часа</option><option value="48">48 часов</option><option value="72">72 часа</option></select></label>
+        <label>Мир блока<input id="rpBlockWorld" value="world" maxlength="96"></label>
+        <label>X<input id="rpBlockX" type="number" value="0"></label><label>Y<input id="rpBlockY" type="number" value="64"></label><label>Z<input id="rpBlockZ" type="number" value="0"></label>
+        <button class="btn btn-secondary" data-click="rpCreateVotingBlock()">Добавить голосовательный блок</button>
+      </div>
+      <p class="panel-hint">Одобрь заявки ниже, отметь от 2 до 4 человек и нажми «Утвердить выбранных». Председатель ЦИК и бюллетени для нового workflow не нужны.</p>
+      <div class="check-list">${applicationRows.filter((row) => String(row.admin_status || row.status || "").toUpperCase() === "APPROVED").map((row) => `<label class="check-row"><input type="checkbox" data-rp-application="${esc(row.id || "")}"><span><strong>${esc(row.player_name || "Игрок")}</strong><small>${esc(short(row.answers?.short_program || row.admin_note || "Одобрена заявка", 120))}</small></span></label>`).join("") || empty("Одобренных заявок пока нет", "Сначала открой приём заявок и проверь анкеты.")}</div>
+      <div class="book-status-strip"><span class="pill neutral">Блоков: ${esc(votingBlocks.length)}</span>${votingBlocks.slice(0, 8).map((row) => `<span class="pill good">${esc(row.world)} ${esc(row.x)},${esc(row.y)},${esc(row.z)}</span>`).join("")}</div>
+    `)}
+    <section class="layout-grid grid-2">
+      ${panel("Заявка на президентство", "Заполнить можно только до начала дебатов.", applicationForm)}
+      ${panel("Кандидаты", "Программы и список, утверждённые администрацией.", candidateHtml)}
+      ${panel("Результаты", "Количество голосов видно во время голосования.", resultsHtml)}
+      ${panel("Ваш статус", "Личные данные заявки показываются только вам.", kv([["Этап", stage], ["Заявка", application ? "отправлена" : "не отправлена"], ["Ваш голос", voted ? "уже принят" : "ещё не подан"]]))}
+    </section>
+  `);
+  if (!isPanelAdminRole()) {
+    document.querySelectorAll(".panel").forEach((node) => {
+      const title = cleanText(node.querySelector(".panel-title")?.textContent || "");
+      if (title === "Управление RP-выборами") node.remove();
+    });
+  }
+}
+
+window.submitPlayerElectionApplication = async () => {
+  const payload = {
+    why_president: $("electionWhyPresident")?.value?.trim() || "",
+    server_plan: $("electionServerPlan")?.value?.trim() || "",
+    short_program: $("electionShortProgram")?.value?.trim() || "",
+    faction: $("electionFaction")?.value?.trim() || "",
+  };
+  if ([payload.why_president, payload.server_plan, payload.short_program].some((value) => value.length < 20)) {
+    operationAlert("Заполни три обязательных поля: минимум по 20 символов.", true);
+    return;
+  }
+  try {
+    await api("/api/player/elections/application", { method: "POST", body: JSON.stringify(payload) });
+    operationAlert("Заявка отправлена администрации.");
+    await loadPlayerElections();
+  } catch (error) {
+    operationAlert(describeError(error), true);
+  }
+};
+
 async function loadCurrent(silent = false) {
   const adminLoaders = {
     dashboard: loadDashboard,
@@ -5960,6 +6135,7 @@ async function loadCurrent(silent = false) {
     settings: loadPlayerSettings,
     security: loadPlayerSecurity,
     support: loadPlayerSupport,
+    elections: loadPlayerElections,
     artifacts: loadPlayerArtifacts
   };
   const loaders = isPlayerRole() ? playerLoaders : adminLoaders;

@@ -1377,11 +1377,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                boolean consumed = catalog != null && "CONSUME".equalsIgnoreCase(catalog.consumePolicy());
                boolean marked = consumed
                   ? this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "CONSUMED", Set.of("ACTIVE", "DELIVERING"), true)
-                  : this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "LOST_RECLAIMABLE", Set.of("ACTIVE", "DELIVERING"), true);
-               // A consumable that reaches zero durability is terminally
-               // consumed. A breakable donation item is treated as lost so
-               // the owner can use the shop reclaim flow instead of being
-               // blocked by an unfinished entitlement.
+                  : this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "BROKEN", Set.of("ACTIVE", "DELIVERING"), true);
+               // Breaking an item is different from losing it: a broken
+               // instance is terminal and must not appear in the loss-only
+               // reclaim list.  Items lost in the void, on despawn, or during
+               // an interrupted delivery use LOST_RECLAIMABLE instead.
                if (marked) {
                   this.audit(var1.getPlayer().getName(), "donation_item_broken", var2.uniqueItemId(), var2.itemId());
                }

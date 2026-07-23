@@ -419,6 +419,12 @@ export function createHomepageRenderer() {
   const donationShopMount = document.getElementById("publicDonationShopPreview");
   const openArShopBtn = document.getElementById("openArShopBtn");
   const openDonationShopBtn = document.getElementById("openDonationShopBtn");
+  const electionStage = document.getElementById("publicElectionStage");
+  const electionMeta = document.getElementById("publicElectionMeta");
+  const electionStats = document.getElementById("publicElectionStats");
+  const electionCandidates = document.getElementById("publicElectionCandidates");
+  const electionLaws = document.getElementById("publicElectionLaws");
+  const electionUpdated = document.getElementById("publicElectionUpdated");
 
   let currentBudgetValue = 0;
   let currentAuth = { role: "", cookieAuth: false };
@@ -529,7 +535,7 @@ export function createHomepageRenderer() {
 
   function renderCms(payload = {}, pageKind = "") {
     const home = cmsEntry(payload, "home_status");
-    if (home) {
+    if (home && pageKind === "public-home") {
       setCmsText(".public-hero-copy h1", home.title);
       setCmsText(".public-hero-copy p", home.body);
       if (home.imagePath || home.image_path) {
@@ -719,20 +725,129 @@ export function createHomepageRenderer() {
     replaceChildrenSafe(
       historyMount,
       rows.slice(0, 6).map((row) => {
-        const card = makeElement("article", "treasury-history-card");
+        const amount = Number(row.amount ?? row.amount_ar ?? 0);
+        const positive = Number.isFinite(amount) && amount > 0;
+        const negative = Number.isFinite(amount) && amount < 0;
+        const card = makeElement("article", `treasury-history-card ${positive ? "is-inflow" : negative ? "is-outflow" : "is-neutral"}`);
         const head = makeElement("div", "treasury-history-row");
         head.append(
           makeElement("span", "treasury-history-type", String(row.label || row.type || "Операция")),
-          makeElement("strong", "", formatAr(row.amount || row.amount_ar || 0)),
+          makeElement("strong", "treasury-history-amount", `${positive ? "+" : negative ? "−" : ""}${formatAr(Math.abs(Number.isFinite(amount) ? amount : 0))}`),
         );
         card.append(
           head,
           makeElement("p", "", String(row.comment || row.item_name || row.public_actor_name || row.actor || "Публичная операция казны")),
-          makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)),
+          (() => {
+            const meta = makeElement("div", "treasury-history-meta");
+            meta.append(
+              makeElement("span", "treasury-history-actor", String(row.public_actor_name || row.actor || row.player_name || "Казна сервера")),
+              makeElement("span", "treasury-history-date", formatDate(row.createdAt || row.created_at)),
+            );
+            return meta;
+          })(),
         );
         return card;
       }),
     );
+  }
+
+  function electionStageLabel(stage) {
+    const labels = {
+      DRAFT: "Подготовка",
+      APPLICATIONS_OPEN: "Приём заявок",
+      APPLICATIONS_REVIEW: "Проверка заявок",
+      VOTING_OPEN: "Голосование",
+      COUNTING: "Подсчёт голосов",
+      COMPLETED: "Завершены",
+      PAUSED: "Пауза",
+      ACTIVE: "Идут",
+    };
+    const normalized = String(stage || "").trim().toUpperCase();
+    return labels[normalized] || (normalized ? normalized.replaceAll("_", " ") : "Этап не задан");
+  }
+
+  function renderElections(payload = {}) {
+    if (!electionStage && !electionCandidates) return;
+    const election = payload && typeof payload.election === "object" ? payload.election : {};
+    const summary = payload && typeof payload.summary === "object" ? payload.summary : {};
+    const candidates = Array.isArray(payload.candidates)
+      ? payload.candidates.filter((row) => row && row.approved !== false && String(row.name || "").trim())
+      : [];
+    const laws = Array.isArray(payload.laws) ? payload.laws : [];
+    const totalVotes = Math.max(0, Number(summary.totalVotes || candidates.reduce((sum, row) => sum + Math.max(0, Number(row.votes || 0)), 0)) || 0);
+    const maxVotes = Math.max(1, ...candidates.map((row) => Math.max(0, Number(row.votes || 0) || 0)));
+    const stage = electionStageLabel(election.stage || election.status);
+    const round = Math.max(1, Number(election.round || 1) || 1);
+
+    if (electionStage) electionStage.textContent = stage;
+    if (electionMeta) electionMeta.textContent = `Тур ${round} · ${candidates.length} одобренных кандидатов · только просмотр`;
+    if (electionUpdated) electionUpdated.textContent = payload.generatedAt ? `Обновлено ${formatDate(payload.generatedAt)}` : "Данные обновляются автоматически";
+
+    if (electionStats) {
+      const stat = (label, value, note) => {
+        const card = makeElement("article", "election-stat-card");
+        card.append(makeElement("span", "election-stat-label", label), makeElement("strong", "", value), makeElement("small", "", note));
+        return card;
+      };
+      replaceChildrenSafe(electionStats, [
+        stat("Этап", stage, "текущий статус процесса"),
+        stat("Кандидаты", String(candidates.length), "заявки одобрены"),
+        stat("Учтено голосов", totalVotes.toLocaleString("ru-RU"), "агрегированный результат"),
+        stat("Участки", String(Number(summary.activePollingStations || summary.pollingStations || 0)), "активные участки"),
+      ]);
+    }
+
+    if (electionCandidates) {
+      if (!candidates.length) {
+        replaceChildrenSafe(electionCandidates, [cardStrong("Одобренных кандидатов пока нет", "Когда ЦИК одобрит заявки, они появятся здесь.", "", mcIcon("written_book.png"))]);
+      } else {
+        replaceChildrenSafe(electionCandidates, candidates.map((row, index) => {
+          const name = String(row.name || "Кандидат").trim();
+          const votes = Math.max(0, Number(row.votes || 0) || 0);
+          const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+          const width = Math.max(0, Math.min(100, Math.round((votes / maxVotes) * 100)));
+          const card = makeElement("article", "public-candidate-card");
+          const identity = makeElement("div", "public-candidate-identity");
+          const avatar = makeElement("img", "public-candidate-avatar");
+          const uuid = String(row.uuid || "").trim().toLowerCase();
+          avatar.src = /^[0-9a-f-]{32,36}$/.test(uuid)
+            ? `https://mc-heads.net/avatar/${encodeURIComponent(uuid)}/64`
+            : "/assets/brand/copimine-logo.png";
+          avatar.alt = `Голова игрока ${name}`;
+          avatar.loading = "lazy";
+          avatar.addEventListener("error", () => { avatar.src = "/assets/brand/copimine-logo.png"; }, { once: true });
+          const copy = makeElement("div", "public-candidate-copy");
+          copy.append(makeElement("span", "candidate-rank", `№${index + 1}`), makeElement("strong", "", name), makeElement("small", "", "Одобренный кандидат"));
+          identity.append(avatar, copy);
+
+          const barRow = makeElement("div", "candidate-vote-row");
+          const track = makeElement("div", "candidate-vote-track");
+          const fill = makeElement("span", "candidate-vote-fill");
+          fill.style.width = `${width}%`;
+          track.append(fill);
+          barRow.append(track, makeElement("strong", "candidate-vote-count", votes.toLocaleString("ru-RU")));
+          const foot = makeElement("div", "candidate-vote-foot");
+          foot.append(makeElement("span", "", `${percent}% от учтённых голосов`), makeElement("span", "candidate-readonly", "Только просмотр"));
+          const voteBlock = makeElement("div", "candidate-vote-block");
+          voteBlock.append(barRow, foot);
+          card.append(identity, voteBlock);
+          return card;
+        }));
+      }
+    }
+
+    if (electionLaws) {
+      if (!laws.length) {
+        replaceChildrenSafe(electionLaws, [makeElement("p", "election-empty-note", "Опубликованных законов для этого срока пока нет.")]);
+      } else {
+        replaceChildrenSafe(electionLaws, laws.slice(0, 12).map((row) => {
+          const card = makeElement("article", "election-law-card");
+          card.append(makeElement("strong", "", String(row.title || "Опубликованный закон")), makeElement("p", "", String(row.body || "Текст закона опубликован в игре.")));
+          if (row.publishedAt) card.append(makeElement("small", "", formatDate(row.publishedAt)));
+          return card;
+        }));
+      }
+    }
   }
 
   function renderPresidentCard(president = {}) {
@@ -864,6 +979,7 @@ export function createHomepageRenderer() {
   return {
     renderBudget,
     renderCommerce,
+    renderElections,
     renderHistory,
     renderStatus,
     renderOnline,

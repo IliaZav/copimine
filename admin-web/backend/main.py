@@ -7513,6 +7513,108 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
     }
 
 
+def public_elections_payload_sync() -> dict[str, Any]:
+    """Return a read-only, privacy-safe election snapshot for the public site.
+
+    The admin response contains ballots, applications and audit rows.  Those
+    records must never be exposed to an unauthenticated visitor, so this
+    adapter keeps only the current stage, approved candidates, aggregate vote
+    counts and published laws.
+    """
+    detail = election_detail_sync(500)
+    election = detail.get("election") if isinstance(detail, dict) else {}
+    election = election if isinstance(election, dict) else {}
+    summary = detail.get("summary") if isinstance(detail, dict) else {}
+    summary = summary if isinstance(summary, dict) else {}
+    results = detail.get("results") if isinstance(detail, dict) else []
+    results = results if isinstance(results, list) else []
+
+    def as_int(value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    vote_by_uuid: dict[str, int] = {}
+    vote_by_name: dict[str, int] = {}
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        votes = as_int(row.get("votes"))
+        uuid = str(row.get("candidate_uuid") or row.get("player_uuid") or "").strip().lower()
+        name = str(row.get("name") or row.get("candidate_name") or "").strip().casefold()
+        if uuid:
+            vote_by_uuid[uuid] = votes
+        if name:
+            vote_by_name[name] = votes
+
+    candidates: list[dict[str, Any]] = []
+    source_candidates = detail.get("candidates") if isinstance(detail, dict) else []
+    for row in source_candidates if isinstance(source_candidates, list) else []:
+        if not isinstance(row, dict):
+            continue
+        active = row.get("active", True)
+        if active is False or str(active).strip().lower() in {"0", "false", "no"}:
+            continue
+        name = str(row.get("player_name") or row.get("candidate_name") or row.get("name") or "").strip()
+        if not name:
+            continue
+        uuid = str(row.get("player_uuid") or row.get("candidate_uuid") or row.get("uuid") or "").strip().lower()
+        votes = vote_by_uuid.get(uuid)
+        if votes is None:
+            votes = vote_by_name.get(name.casefold(), as_int(row.get("last_result")))
+        candidates.append({
+            "name": name,
+            "uuid": uuid,
+            "votes": max(0, int(votes or 0)),
+            "approved": True,
+            "updatedAt": row.get("created_at") or row.get("updated_at"),
+        })
+    candidates.sort(key=lambda row: (-as_int(row.get("votes")), str(row.get("name") or "").casefold()))
+
+    laws: list[dict[str, Any]] = []
+    source_laws = detail.get("laws") if isinstance(detail, dict) else []
+    for row in source_laws if isinstance(source_laws, list) else []:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or row.get("name") or row.get("law_title") or "").strip()
+        body = str(row.get("body") or row.get("text") or row.get("description") or "").strip()
+        if not title and not body:
+            continue
+        laws.append({
+            "title": title or "Опубликованный закон",
+            "body": body,
+            "publishedAt": row.get("published_at") or row.get("created_at") or row.get("updated_at"),
+        })
+
+    turnout = detail.get("turnout") if isinstance(detail, dict) else {}
+    turnout = turnout if isinstance(turnout, dict) else {}
+    total_votes = sum(as_int(row.get("votes")) for row in candidates)
+    deposited = as_int(turnout.get("deposited_ballots"))
+    stage = str(election.get("current_stage") or election.get("status") or "").strip().upper()
+    return {
+        "readOnly": True,
+        "generatedAt": now_ts(),
+        "election": {
+            "id": str(election.get("id") or ""),
+            "status": str(election.get("status") or "").strip().upper(),
+            "stage": stage,
+            "round": as_int(election.get("current_round")) or 1,
+            "updatedAt": election.get("updated_at") or election.get("started_at"),
+        },
+        "summary": {
+            "candidateCount": len(candidates),
+            "totalVotes": total_votes,
+            "depositedBallots": deposited,
+            "pollingStations": as_int(summary.get("pollingStations")),
+            "activePollingStations": as_int(summary.get("activePollingStations")),
+            "laws": len(laws),
+        },
+        "candidates": candidates,
+        "laws": laws,
+    }
+
+
 def economy_ledger_sync(limit: int = 500) -> dict[str, Any]:
     safe_limit = max(1, min(int(limit or 500), 500))
     path = admin_plugin_db_path()
@@ -9811,6 +9913,11 @@ async def public_cms() -> dict[str, Any]:
 @app.get("/api/public/status")
 async def public_status() -> dict[str, Any]:
     return {"ok": True, "data": await bg(public_site_status_sync)}
+
+
+@app.get("/api/public/elections")
+async def public_elections() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(public_elections_payload_sync)}
 
 
 @app.get("/api/public/president-budget")

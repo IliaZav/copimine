@@ -12,6 +12,7 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["presidentbudgetshowcase", "server.html"],
   ["treasuryhistorysection", "server.html"],
   ["tops", "server.html"],
+  ["elections", "elections.html"],
   ["shops", "shops.html"],
   ["mods", "mods.html"],
   ["join", "mods.html"],

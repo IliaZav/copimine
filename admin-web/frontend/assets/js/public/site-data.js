@@ -31,6 +31,10 @@ async function fetchStatusPayload() {
   return fetchJson("/api/public/status", { ok: false, data: {} });
 }
 
+async function fetchElectionsPayload() {
+  return fetchJson("/api/public/elections", { ok: false, data: {} });
+}
+
 async function fetchModpackPayload() {
   return fetchJson("/api/public/modpack", { ok: false, data: {} });
 }
@@ -108,6 +112,21 @@ export async function loadPublicServerPageData() {
     budget: budgetPayload?.data || {},
     history: historyPayload?.data || {},
     president: presidentPayload?.data || {},
+    cms: cmsPayload || { items: [], sections: [] },
+  };
+}
+
+export async function loadPublicElectionsPageData() {
+  const [electionsPayload, statusPayload, configPayload, cmsPayload] = await Promise.all([
+    fetchElectionsPayload(),
+    fetchStatusPayload(),
+    fetchConfigPayload(),
+    fetchCmsPayload(),
+  ]);
+  return {
+    elections: electionsPayload?.data || {},
+    status: statusPayload?.data || {},
+    config: configPayload?.data || {},
     cms: cmsPayload || { items: [], sections: [] },
   };
 }

@@ -1,5 +1,6 @@
 import {
   loadPublicAuthState,
+  loadPublicElectionsPageData,
   loadPublicHomepageData,
   loadPublicModsPageData,
   loadPublicServerPageData,
@@ -45,6 +46,14 @@ function resolvePublicPageKind() {
 
 async function loadPublicPageByKind(kind, authState) {
   switch (kind) {
+    case "public-elections": {
+      const payload = await loadPublicElectionsPageData();
+      renderer.renderElections(payload.elections || {});
+      renderer.renderStatus(payload.status || {}, payload.config || {});
+      renderer.renderAuthState(authState);
+      renderer.renderCms(payload.cms || {}, kind);
+      return;
+    }
     case "public-server": {
       const payload = await loadPublicServerPageData();
       renderer.renderServerHero(payload.config, payload.status, {});

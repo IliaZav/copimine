@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>CopiMine — Выборы</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/themes.css" />
+  <link rel="stylesheet" href="/assets/css/release-ui.css" />
+  <link rel="stylesheet" href="/assets/css/public-elections.css" />
+</head>
+<body data-page-kind="public-elections" class="elections-page">
+  <main class="public-site public-site-compact">
+    <header class="public-nav">
+      <a class="public-brand" href="/index.html" aria-label="CopiMine">
+        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
+        <span class="public-brand-copy">
+          <strong>CopiMine</strong>
+          <small>Открытые данные сервера</small>
+        </span>
+      </a>
+      <button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">☰</button>
+      <nav aria-label="Разделы сайта">
+        <a href="/index.html">Главная</a>
+        <a href="/server.html">Сервер</a>
+        <a href="/elections.html" aria-current="page">Выборы</a>
+        <a href="/shops.html">Лавки</a>
+        <a href="/mods.html">Модпак</a>
+        <a id="publicSigninLink" href="/signin.html">Войти</a>
+        <a id="publicRegisterLink" href="/register.html">Регистрация</a>
+        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button>
+        <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выйти</button>
+        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
+      </nav>
+    </header>
+
+    <div class="public-page-shell">
+      <section class="public-hero public-hero-slim elections-hero">
+        <div class="public-hero-copy">
+          <div class="page-kicker-row">
+            <span class="hero-kicker">Выборы CopiMine</span>
+            <span class="route-chip" id="publicElectionStage">Получаем этап</span>
+          </div>
+          <h1>Кто ведёт сервер дальше.</h1>
+          <p>Здесь собраны одобренные кандидаты и открытый результат текущего тура. Голосование проходит только в игре — сайт остаётся спокойной витриной результатов.</p>
+          <span class="election-readonly-note">Только просмотр · без голосования на сайте</span>
+        </div>
+      </section>
+
+      <section class="public-section">
+        <div class="election-summary-bar">
+          <div>
+            <span class="hero-kicker">Текущий тур</span>
+            <h2>Панель выборов</h2>
+            <p id="publicElectionMeta" class="section-head-note">Получаем список одобренных кандидатов…</p>
+          </div>
+          <span id="publicElectionUpdated" class="election-updated">Данные обновляются автоматически</span>
+        </div>
+        <div id="publicElectionStats" class="election-stats-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="public-panel">
+        <div class="public-panel-head">
+          <div>
+            <span class="hero-kicker">Одобренные кандидаты</span>
+            <h3>Результат по кандидатам</h3>
+          </div>
+          <span class="route-chip">Голоса</span>
+        </div>
+        <div id="publicElectionCandidates" class="election-candidate-board" aria-live="polite">
+          <article class="showcase-card"><strong>Получаем данные</strong><p>Список кандидатов появится после ответа сервера.</p></article>
+        </div>
+      </section>
+
+      <section class="public-panel">
+        <div class="public-panel-head">
+          <div>
+            <span class="hero-kicker">Открытые решения</span>
+            <h3>Законы действующего срока</h3>
+          </div>
+        </div>
+        <div id="publicElectionLaws" class="election-laws-grid">
+          <p class="election-empty-note">Получаем опубликованные законы…</p>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="/assets/js/public/public-page.js?v=20260723elections1"></script>
+</body>
+</html>

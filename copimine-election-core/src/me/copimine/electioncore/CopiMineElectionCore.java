@@ -4830,25 +4830,40 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         lines.add("&fВыборы");
         lines.add("&7Этап: &f" + snap.stageTitle());
         lines.add("&7Тур: &f" + snap.round());
-        lines.add("&fКандидаты");
-        if (snap.candidates().isEmpty()) {
-            lines.add("&7Пока нет кандидатов");
+        List<String> candidateLines = snap.candidates().stream()
+                .map(row -> "&f" + shortText(row.name(), 10) + " &7" + row.bar() + " &f" + row.votes())
+                .toList();
+        int candidatePageSize = 6;
+        int candidatePageCount = Math.max(1, (candidateLines.size() + candidatePageSize - 1) / candidatePageSize);
+        int cyclePage = candidateLines.isEmpty()
+                ? 0
+                : (int) ((System.currentTimeMillis() / 5000L) % (candidatePageCount + 1));
+        boolean showCandidatePage = !candidateLines.isEmpty() && cyclePage > 0;
+        if (showCandidatePage) {
+            int page = cyclePage - 1;
+            lines.add("&fКандидаты " + cyclePage + "/" + candidatePageCount);
+            int from = page * candidatePageSize;
+            int to = Math.min(candidateLines.size(), from + candidatePageSize);
+            lines.addAll(candidateLines.subList(from, to));
         } else {
-            for (CandidateResult row : snap.candidates().stream().limit(2).toList()) {
-                lines.add("&f" + shortText(row.name(), 10) + " &7" + row.bar() + " &f" + row.votes());
+            lines.add("&fПрезидент");
+            lines.add("&7" + first(snap.presidentName(), "не выбран"));
+            lines.add("&f\u041d\u0430\u043b\u043e\u0433");
+            lines.add(snap.taxAmount() > 0
+                    ? "&7\u0421\u0442\u0430\u0432\u043a\u0430: &f" + snap.taxAmount() + " AR"
+                    : "&7\u041d\u0435\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0433\u043e \u043d\u0430\u043b\u043e\u0433\u0430");
+            if (!snap.laws().isEmpty()) {
+                lines.add("&fЗаконы");
+                int index = 1;
+                for (String law : snap.laws().stream().limit(3).toList()) {
+                    lines.add("&7" + index++ + ". " + shortText(law, 20));
+                }
+                if (snap.laws().size() > 3) {
+                    lines.add("&8+" + (snap.laws().size() - 3) + " ещё");
+                }
             }
-        }
-        lines.add("&fПрезидент");
-        lines.add("&7" + first(snap.presidentName(), "не выбран"));
-        lines.add("&f\u041d\u0430\u043b\u043e\u0433");
-        lines.add(snap.taxAmount() > 0
-                ? "&7\u0421\u0442\u0430\u0432\u043a\u0430: &f" + snap.taxAmount() + " AR"
-                : "&7\u041d\u0435\u0442 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0433\u043e \u043d\u0430\u043b\u043e\u0433\u0430");
-        if (!snap.laws().isEmpty()) {
-            lines.add("&fЗаконы");
-            int index = 1;
-            for (String law : snap.laws().stream().limit(3).toList()) {
-                lines.add("&7" + index++ + ". " + shortText(law, 20));
+            if (!candidateLines.isEmpty()) {
+                lines.add("&8Кандидаты: стр. 1/" + candidatePageCount);
             }
         }
         lines.add("&f/hidelive");

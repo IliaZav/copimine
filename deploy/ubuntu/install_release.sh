@@ -155,17 +155,25 @@ refresh_resource_pack_url() {
   local env_file="$PROJECT_ROOT/admin-web/.env"
   local properties="$PROJECT_ROOT/minecraft/server/server.properties"
   [[ -f "$env_file" && -f "$properties" ]] || { echo '[pack] runtime files are missing' >&2; return 1; }
-  python3 - "$env_file" "$properties" <<'PY'
+  local resourcepack_sha1 resourcepack_version
+  resourcepack_sha1="$(sha1sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" 2>/dev/null | awk '{print $1}' || true)"
+  if [[ "$resourcepack_sha1" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    resourcepack_version="${resourcepack_sha1:0:12}"
+  else
+    resourcepack_version="runtime"
+  fi
+  python3 - "$env_file" "$properties" "$resourcepack_version" <<'PY'
 from pathlib import Path
 import sys
 
-env_path, properties_path = map(Path, sys.argv[1:])
+env_path, properties_path = map(Path, sys.argv[1:3])
+resourcepack_version = sys.argv[3]
 lines = env_path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
 panel = 'http://copimine.ru:18080'
 for line in lines:
     if line.startswith('PUBLIC_PANEL_URL='):
         panel = line.split('=', 1)[1].strip().strip('"').strip("'").rstrip('/')
-pack_url = panel + '/resourcepacks/CopiMineResourcePack.zip?v=20260720r2'
+pack_url = panel + '/resourcepacks/CopiMineResourcePack.zip?v=' + resourcepack_version
 out, seen = [], set()
 for line in lines:
     key = line.split('=', 1)[0] if '=' in line else ''

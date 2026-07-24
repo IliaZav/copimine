@@ -266,7 +266,7 @@ else:
 if values.get("ALLOW_INSECURE_HTTP_AUTH", "") not in {"0", "1"}:
     raise SystemExit("ALLOW_INSECURE_HTTP_AUTH must be 0 or 1")
 if values.get("RESOURCE_PACK_PUBLIC_URL", "").strip() in {"", "CHANGE_ME"}:
-    values["RESOURCE_PACK_PUBLIC_URL"] = values["PUBLIC_PANEL_URL"].rstrip("/") + "/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
+    values["RESOURCE_PACK_PUBLIC_URL"] = values["PUBLIC_PANEL_URL"].rstrip("/") + "/resourcepacks/CopiMineResourcePack.zip?v=runtime"
 if values.get("SECRET_KEY", "CHANGE_ME") in {"", "CHANGE_ME"}:
     values["SECRET_KEY"] = secret_key
 if values.get("PLUGIN_API_KEY", "CHANGE_ME") in {"", "CHANGE_ME"}:
@@ -631,7 +631,7 @@ copimine_sync_server_properties() {
     public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
     public_panel_url="${public_panel_url//\\/}"
     [[ "$public_panel_url" =~ ^https?:// ]] || public_panel_url="http://admin.copimine.ru:18080"
-    resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
+    resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip?v=${resourcepack_sha1:0:12}"
   fi
   [[ "$resourcepack_url" =~ ^https?:// ]] || copimine_fail "RESOURCE_PACK_PUBLIC_URL must use http:// or https://"
   python3 - "$COPIMINE_SERVER_PROPERTIES" "$resourcepack_sha1" "$resourcepack_url" "$COPIMINE_WORLD_SEED" <<'PY'
@@ -669,23 +669,30 @@ PY
 }
 
 copimine_sync_runtime_urls() {
-  local public_panel_url
+  local public_panel_url resourcepack_sha1 resourcepack_version
   public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
   public_panel_url="${public_panel_url//\\/}"
   if [[ ! "$public_panel_url" =~ ^https?:// ]]; then
     public_panel_url="http://admin.copimine.ru:18080"
   fi
+  resourcepack_sha1="$(sha1sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" 2>/dev/null | awk '{print $1}' || true)"
+  if [[ "$resourcepack_sha1" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    resourcepack_version="${resourcepack_sha1:0:12}"
+  else
+    resourcepack_version="runtime"
+  fi
   # Persist normalized URLs so the web process and later verification steps
   # use the same value, even when an old .env contained escaped values.
-  python3 - "$COPIMINE_ENV_FILE" "$public_panel_url" <<'PY'
+  python3 - "$COPIMINE_ENV_FILE" "$public_panel_url" "$resourcepack_version" <<'PY'
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
 panel = sys.argv[2].rstrip('/')
+version = sys.argv[3]
 updates = {
     'PUBLIC_PANEL_URL': panel,
-    'RESOURCE_PACK_PUBLIC_URL': panel + '/resourcepacks/CopiMineResourcePack.zip?v=20260720r2',
+    'RESOURCE_PACK_PUBLIC_URL': panel + '/resourcepacks/CopiMineResourcePack.zip?v=' + version,
 }
 lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines() if path.exists() else []
 out, seen = [], set()

@@ -417,12 +417,21 @@ def write_directional_animation_models(entry: dict, material: str) -> str:
             0.734375, 0.765625, 0.796875, 0.828125, 0.859375, 0.890625,
             0.921875, 0.953125, 0.984375,
         ]
+        # Vanilla's compass model starts at frame 16, wraps through frame 0,
+        # and repeats frame 16 at the final threshold.  Keep the same 33
+        # predicate entries while only generating the 32 real strip frames.
+        frame_indices = list(range(frame_count // 2, frame_count)) + list(range(0, frame_count // 2)) + [frame_count // 2]
     else:
         predicate_key = "time"
         values = [0.000000] + [round(i / 128, 7) for i in range(1, 126, 2)] + [0.9921875]
+        # The final threshold closes the clock cycle and points back to frame
+        # zero; there is no separate frame 64 in a 64-frame strip.
+        frame_indices = list(range(frame_count)) + [0]
+    if len(values) != len(frame_indices):
+        raise ValueError(f"{entry['id']}: predicate/frame sequence length mismatch")
     overrides = [
         {"predicate": {predicate_key: value}, "model": f"{model_ref}_{index:02d}"}
-        for index, value in enumerate(values)
+        for value, index in zip(values, frame_indices)
     ]
     write_json(
         asset_path(STAGE, "models", f"{model_ref}_directional", ".json"),

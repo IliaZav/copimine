@@ -1,7 +1,7 @@
 {
     "parent": "minecraft:item/generated",
     "textures": {
-        "layer0": "item/time_to_pay_suchki_clock_16"
+        "layer0": "copimine:item/artifacts/gde_moy_lut_blyat_compass_00"
     },
     "overrides": [
         { "predicate": { "angle": 0.000000 }, "model": "minecraft:item/gde_moy_lut_blyt_compass" },

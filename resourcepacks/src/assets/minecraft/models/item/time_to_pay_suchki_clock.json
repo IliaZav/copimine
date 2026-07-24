@@ -1,7 +1,7 @@
 {
     "parent": "minecraft:item/generated",
     "textures": {
-        "layer0": "item/time_to_pay_suchki_clock_00"
+        "layer0": "copimine:item/artifacts/vremya_platit_nalogi_clock_00"
     },
     "overrides": [
         { "predicate": { "time": 0.0000000 }, "model": "minecraft:item/time_to_pay_suchki_clock" },

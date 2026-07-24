@@ -10,7 +10,7 @@ $plugin = Get-Content -LiteralPath $pluginPath -Raw -Encoding UTF8
 $preload = [regex]::Match($service, '(?s)public void preloadCacheIfEnabled\(\) \{.*?(?=\r?\n\s*public void runIntegritySweep)')
 if (-not $preload.Success -or
     $preload.Value -match 'clearBrewingStates\(' -or
-    $preload.Value -notmatch 'database\.loadBrewingStates\(\)' -or
+    $preload.Value -notmatch 'database\.loadBrewingStates\(MAX_CACHED_STATES\)' -or
     $preload.Value -notmatch 'cache\.merge\(' -or
     $preload.Value -notmatch 'Bukkit\.getScheduler\(\)\.runTask\(plugin') {
     throw 'Brewing states must be restored into the main-thread cache rather than cleared at startup.'

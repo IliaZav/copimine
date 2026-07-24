@@ -9,6 +9,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Quote-Bash([string]$Value) {
+    if ($null -eq $Value -or $Value -match '[\x00-\x1F\x7F]') { throw 'Remote command value contains control characters.' }
+    $escaped = $Value.Replace("'", "'\''")
+    return "'" + $escaped + "'"
+}
+if ($RemoteDir -notmatch '^/[A-Za-z0-9._/-]+$' -or $RemoteDir.Contains('..')) { throw 'RemoteDir must be a simple absolute Unix path.' }
 foreach ($command in @('ssh', 'scp')) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "OpenSSH command not found: $command" }
 }
@@ -23,6 +29,7 @@ if (-not $Archive) {
 }
 $archivePath = (Resolve-Path -LiteralPath $Archive).Path
 $archiveName = Split-Path -Leaf $archivePath
+if ($archiveName -notmatch '^[A-Za-z0-9._-]+$') { throw 'Archive filename contains unsafe shell characters.' }
 $archiveDir = Split-Path -Parent $archivePath
 $shaPath = "$archivePath.sha256"
 $bootstrapPath = Join-Path $archiveDir ($archiveName -replace '\.gz$', '.bootstrap.json')
@@ -39,7 +46,7 @@ $remote = "$Username@$ServerIp"
 Write-Host "Server: $ServerName (${remote}:$Port)"
 Write-Host "Archive: $archiveName"
 Write-Host "SHA256: $actual"
-& ssh -p $Port $remote "mkdir -p '$RemoteDir'"
+& ssh -p $Port $remote ("mkdir -p -- " + (Quote-Bash $RemoteDir))
 if ($LASTEXITCODE) { throw 'Remote directory creation failed.' }
 & scp -P $Port $archivePath $shaPath $bootstrapPath $installer $diagnostics "${remote}:$RemoteDir/"
 if ($LASTEXITCODE) { throw 'Upload failed.' }
@@ -51,7 +58,7 @@ actual=$(sha256sum '__ARCHIVE__' | awk '{print tolower($1)}') &&
 printf 'remote checksum expected=%s actual=%s\n' "$expected" "$actual" &&
 test "$expected" = "$actual"
 '@
-$remoteCheck = $remoteCheck.Replace('__REMOTE_DIR__', $RemoteDir).Replace('__SHA_FILE__', "$archiveName.sha256").Replace('__ARCHIVE__', $archiveName).Replace("`r`n", ' ').Replace("`n", ' ')
+$remoteCheck = $remoteCheck.Replace('__REMOTE_DIR__', (Quote-Bash $RemoteDir)).Replace('__SHA_FILE__', (Quote-Bash "$archiveName.sha256")).Replace('__ARCHIVE__', (Quote-Bash $archiveName)).Replace("`r`n", ' ').Replace("`n", ' ')
 & ssh -p $Port $remote $remoteCheck
 if ($LASTEXITCODE) { throw 'Remote checksum verification failed.' }
 

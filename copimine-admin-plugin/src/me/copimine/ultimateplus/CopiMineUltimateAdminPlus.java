@@ -1204,8 +1204,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Menu m=new Menu("hub"); create(m,27,"&2&lCopiMine &8| &fадминка");
         btn(m,11,Material.GOLDEN_HELMET,"&6&lВыборы",List.of(
                 "&7Новый чистый модуль выборов.",
-                "&7Участки, ЦИК, заявки, президент,",
-                "&7законы, live-панель и налоговая."),"open:elections");
+                "&7Заявки, дебаты, голосование и",
+                "&7назначение президента на 7 дней."),"open:elections");
         btn(m,13,Material.DIAMOND_ORE,"&b&lЭкономика",List.of(
                 "&7AR, банк, банкоматы, ledger,",
                 "&7сканы и защита экономики.",
@@ -1229,20 +1229,25 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             Menu m=new Menu("hub-junior"); create(m,27,"&2&lCopiMine &8| &fМладший админ");
             btn(m,11,Material.PLAYER_HEAD,"&e&lИгроки",List.of(
                     "&7Профили, инвентари и проверки.",
-                    "&7Опасные действия, экономика, выборы и миры",
+                    "&7Опасные действия, экономика и миры",
                     "&7для младшего админа заблокированы."),"open:players");
+            btn(m,13,Material.GOLDEN_HELMET,"&6&lВыборы (RP)",List.of(
+                    "&7Полный доступ к новому RP-сценарию выборов.",
+                    "&7Заявки с сайта, отбор 2–4 кандидатов,",
+                    "&7дебаты, голосование и срок президента 7 дней."),"open:elections");
             btn(m,15,Material.PAPER,"&bОграничения роли",List.of(
                     "&7Роль ограничена безопасными действиями.",
                     "&7Опасные команды, экономика, миры,",
-                    "&7выборные и world-control действия отключены."),"none");
+                    "&7и world-control действия отключены.",
+                    "&7Выборы (RP) доступны полностью отдельной кнопкой."),"none");
             p.openInventory(m.inv);
             return;
         }
         Menu m=new Menu("hub-clean"); create(m,36,"&2&lCopiMine &8| &fадминка");
         btn(m,10,Material.GOLDEN_HELMET,"&6&lВыборы",List.of(
                 "&7Новый чистый модуль выборов.",
-                "&7Участки, ЦИК, заявки, президент,",
-                "&7законы, live-панель и налоговая."),"open:elections");
+                "&7Заявки, дебаты, голосование и",
+                "&7назначение президента на 7 дней."),"open:elections");
         btn(m,12,Material.DIAMOND_ORE,"&b&lЭкономика",List.of(
                 "&7AR, банк, банкоматы, ledger,",
                 "&7сканы и защита экономики.",
@@ -1344,7 +1349,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void openAdminMap(Player p)throws Exception{
         if(!hasAnyAdmin(p)){warn(p,"Доступ к этой панели закрыт."); return;}
         Menu m=new Menu("admin-map"); create(m,54,"&2&lКарта админки");
-        btn(m,10,Material.GOLDEN_HELMET,"&6Выборы",List.of("&8GUI_SECTION_ELECTIONS","&7ЦИК, участки, президент, законы","&7и безопасный election workflow."),"open:elections");
+        btn(m,10,Material.GOLDEN_HELMET,"&6Выборы",List.of("&8GUI_SECTION_ELECTIONS","&7Заявки, дебаты, голосование","&7и президентский срок 7 дней."),"open:elections");
         btn(m,12,Material.DIAMOND_ORE,"&bЭкономика",List.of("&8GUI_SECTION_ECONOMY","&7AR, банк, банкоматы, ledger,","&7сканы и guard-инциденты."),"open:economy");
         btn(m,14,Material.PLAYER_HEAD,"&eИгроки",List.of("&8GUI_SECTION_PLAYERS","&7Профили, инвентари, проверки,","&7модерация и безопасные действия."),"open:players");
         btn(m,16,Material.GRASS_BLOCK,"&aМиры",List.of("&8GUI_SECTION_WORLDS","&7Открытие Nether/End, границы","&7и безопасный возврат игроков."),"open:worlds");
@@ -1710,28 +1715,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private String createPollingStationFromTarget(Player p)throws Exception{
         if(!hasElectionAdmin(p))throw new Exception("Нет прав на создание участков ЦИК.");
-        String eid=issuableElectionId();
-        if(eid==null){
-            // A station belongs to an election cycle.  Previously this expected
-            // state was thrown as SQLException, which routed the player through
-            // the generic bug-report path (for example error code 9248E179).
-            // Start a fresh draft cycle so station setup can be the first step
-            // after an old cycle was finished or cancelled.
-            eid=startElection(p.getName(),168);
-            if(eid==null||eid.isBlank())return"&cНе удалось создать новый цикл выборов.";
-            msg(p,"&eАктивного цикла не было — создан новый черновой цикл выборов.");
-        }
-        Block b=targetPollingStationBlock(p);
-        if(b==null)throw new SQLException("Наведи взгляд на твёрдый блок участка на расстоянии до 8 блоков.");
-        if(scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE world=? AND x=? AND y=? AND z=? AND active=1 AND COALESCE(archived_at,0)=0",b.getWorld().getName(),b.getX(),b.getY(),b.getZ())>0)return"&eНа этом блоке уже есть активный участок ЦИК.";
-        long index=scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE election_id=?",eid)+1;
-        String name="Участок ЦИК #"+index;
-        exec("INSERT INTO cmv7_polling_stations(election_id,world,x,y,z,name,active,created_by,created_at) VALUES(?,?,?,?,?,?,1,?,?)",eid,b.getWorld().getName(),b.getX(),b.getY(),b.getZ(),name,p.getName(),now());
-        audit(p.getName(),"ULTRA7_POLLING_STATION_CREATE_TARGET","election="+eid+" block="+b.getType()+" "+b.getWorld().getName()+" "+b.getX()+" "+b.getY()+" "+b.getZ(),true);
-        staffNotify("&bУчасток ЦИК создан по взгляду: &f"+b.getWorld().getName()+" "+b.getX()+" "+b.getY()+" "+b.getZ());
-        p.sendTitle(c("&b&lУчасток создан"),c("&f"+b.getWorld().getName()+" "+b.getX()+" "+b.getY()+" "+b.getZ()),5,45,10);
-        sound(p,"BLOCK_NOTE_BLOCK_CHIME",.8f,1.35f);
-        return"&aСоздан участок по блоку в прицеле: &f"+b.getType()+" &7("+b.getX()+" "+b.getY()+" "+b.getZ()+")";
+        // AdminPlus no longer owns election state.  Keeping a second creator
+        // here caused the retired SQLite cycle to diverge from the RP campaign
+        // in CopiMineElectionCore.  The AdminHub action is redirected to the
+        // RP block menu, where the core validates the active campaign and
+        // persists the protected block atomically.
+        return "&eУправление участками перенесено в новый раздел RP-выборов.";
     }
 
     private String archivePollingStation(Player p,String stationId)throws Exception{
@@ -5533,14 +5522,15 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean hasDatabaseMaintenancePermission(CommandSender s){if(hasAdmin(s))return true; return s instanceof Player p&&p.hasPermission("copimine.database.maintenance");}
     private boolean hasPlayerCheckPermission(CommandSender s){if(hasAdmin(s))return true; return s instanceof Player p&&p.hasPermission("copimine.players.check");}
     private boolean hasNarcoticsClearPermission(CommandSender s){return !(s instanceof Player p)||p.hasPermission("copimine.narcotics.clearoverdose");}
-    private boolean hasElectionAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
-    private boolean hasElectionRecoveryAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(hasAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
+    private boolean hasElectionAdmin(CommandSender s){if(hasAdmin(s)||hasJuniorAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
+    private boolean hasElectionRecoveryAdmin(CommandSender s){if(hasAdmin(s)||hasJuniorAdmin(s))return true; if(!(s instanceof Player p))return true; return p.hasPermission("copimine.election.admin")||p.hasPermission("copimine.election.cik")||isChair(p);}
     private boolean hasEconomyAdmin(CommandSender s){if(isRestrictedJuniorAdmin(s))return false; if(!(s instanceof Player p))return true; return hasAdmin(s)||p.hasPermission("copimine.economy.admin")||p.hasPermission("copimine.bank.admin");}
     private boolean hasPlayerAdmin(CommandSender s){if(!(s instanceof Player p))return true; return hasAdmin(s)||hasJuniorAdmin(s)||p.hasPermission("copimine.players.admin");}
     private boolean isBlockedJuniorAdminAction(String action){
         if(action==null||action.isBlank())return true;
         return !(action.equals("open:hub")
                 || action.equals("open:admin-map")
+                || action.equals("open:elections")
                 || action.equals("open:players")
                 || action.startsWith("player:")
                 || action.startsWith("open:p-inv:")

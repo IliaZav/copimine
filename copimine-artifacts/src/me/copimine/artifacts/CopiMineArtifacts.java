@@ -96,6 +96,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityResurrectEvent;
+import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
@@ -167,6 +168,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, Long> actionCooldowns = new ConcurrentHashMap<>();
    private final Map<UUID, Long> pozdnyakovNauseaCooldowns = new ConcurrentHashMap<>();
    private final Map<String, PozdnyakovMagmaRestore> pozdnyakovMagmaRestores = new ConcurrentHashMap<>();
+   /**
+    * A plugin can remove an Item entity without producing a damage/despawn
+    * event.  Keep a small in-memory guard so the durable loss journal is not
+    * appended twice when Paper emits both removal and a preceding damage
+    * notification for the same official donation instance.
+    */
+   private final Set<String> lossJournalInFlight = ConcurrentHashMap.newKeySet();
    private final Map<UUID, Location> lastDeathLocations = new ConcurrentHashMap<>();
    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
@@ -1077,6 +1085,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                     "Artifact GUI click failed screen=" + var4.viewType + " rawSlot=" + var11 + " action=" + var7,
                                     (Throwable)var9
                                  );
+                              this.forwardBugToAdminPlus(
+                                 var2,
+                                 "artifacts-gui",
+                                 var4.viewType + " action=" + var7,
+                                 var9,
+                                 var1.getCurrentItem(),
+                                 var2.getLocation()
+                              );
                               var2.sendMessage(
                                  this.color(
                                     "&cНе удалось выполнить действие. Ошибка записана в лог."
@@ -1398,11 +1414,34 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onDonationItemDespawn(ItemDespawnEvent var1) {
       CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getEntity().getItemStack());
       if (var2 != null) {
-         if (!this.recordDonationLossJournal(var2.ownerUuid(), Map.of(var2.uniqueItemId(), var2.itemId()), "despawn")) {
+         if (!this.recordDonationLossOnce(var2, "despawn")) {
             var1.setCancelled(true);
          } else {
             this.flushPendingDonationLossJournalAsync();
          }
+      }
+   }
+
+   /**
+    * Covers silent removal by another plugin (creative cleanup, clear-lag,
+    * discard, or a direct entity removal).  Those paths do not expose a
+    * cancellable damage event, so we journal the loss before the next
+    * reconciliation pass can mark the instance LOST_RECLAIMABLE.
+    */
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onDonationItemRemoved(EntityRemoveEvent event) {
+      if (!(event.getEntity() instanceof Item item)) {
+         return;
+      }
+      EntityRemoveEvent.Cause cause = event.getCause();
+      if (cause != EntityRemoveEvent.Cause.PLUGIN
+            && cause != EntityRemoveEvent.Cause.DISCARD
+            && cause != EntityRemoveEvent.Cause.OUT_OF_WORLD) {
+         return;
+      }
+      OfficialDonationRef ref = this.officialDonationRef(item.getItemStack());
+      if (ref != null && this.recordDonationLossOnce(ref, "entity-" + cause.name().toLowerCase(Locale.ROOT))) {
+         this.flushPendingDonationLossJournalAsync();
       }
    }
 
@@ -1421,9 +1460,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                case ENTITY_EXPLOSION:
                case CONTACT:
                   var1.setCancelled(true);
-                  if (!this.recordDonationLossJournal(
-                     var4.ownerUuid(), Map.of(var4.uniqueItemId(), var4.itemId()), var1.getCause().name().toLowerCase(Locale.ROOT)
-                  )) {
+                  if (!this.recordDonationLossOnce(var4, var1.getCause().name().toLowerCase(Locale.ROOT))) {
                      return;
                    } else {
                       var2.remove();
@@ -1438,7 +1475,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   if (this.preserveDonationItemFromVoid(var2, var4.ownerUuid())) {
                      return;
                   }
-                  if (!this.recordDonationLossJournal(var4.ownerUuid(), Map.of(var4.uniqueItemId(), var4.itemId()), "void")) {
+                  if (!this.recordDonationLossOnce(var4, "void")) {
                      return;
                   }
                   var2.remove();
@@ -1446,6 +1483,21 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
          }
       }
+   }
+
+   private boolean recordDonationLossOnce(OfficialDonationRef ref, String reason) {
+      if (ref == null || ref.uniqueItemId().isBlank()) {
+         return false;
+      }
+      String key = ref.ownerUuid() + ":" + ref.uniqueItemId();
+      if (!this.lossJournalInFlight.add(key)) {
+         return true;
+      }
+      boolean recorded = this.recordDonationLossJournal(ref.ownerUuid(), Map.of(ref.uniqueItemId(), ref.itemId()), reason);
+      if (!recorded) {
+         this.lossJournalInFlight.remove(key);
+      }
+      return recorded;
    }
 
    private boolean preserveDonationItemFromVoid(Item item, UUID ownerUuid) {
@@ -3686,6 +3738,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void openPin(Player var1, CopiMineArtifacts.CatalogItem var2) {
       CopiMineArtifacts.SessionState var3 = this.session(var1);
       var3.viewType = CopiMineArtifacts.ViewType.PIN;
+      if (!"repair".equals(var3.pinAction)) {
+         var3.pinAction = "purchase";
+      }
       var3.currentItemId = var2.itemId();
       Inventory var4 = this.createMenu(
          var1, var3, CopiMineArtifacts.ViewType.PIN, 54, "&8Введите PIN"
@@ -5393,11 +5448,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else if ("pin:cancel".equals(var3)) {
          CopiMineArtifacts.CatalogItem var14 = this.catalogById.get(var2.currentItemId);
          if (var14 != null) {
-            this.openConfirm(var1, var14);
+            if ("repair".equals(var2.pinAction)) {
+               this.openRepair(var1);
+            } else {
+               this.openConfirm(var1, var14);
+            }
          }
       } else if ("pin:submit".equals(var3)) {
          CopiMineArtifacts.CatalogItem var13 = this.catalogById.get(var2.currentItemId);
          if (var13 != null) {
+            if ("repair".equals(var2.pinAction)) {
+               this.executeRepair(var1, this.repairPrice(var1.getInventory().getItemInMainHand(), var13), var2.pinBuffer);
+               return;
+            }
             CopiMineArtifacts.Shop current = this.currentShop(var2);
             if (current == null) {
                var2.purchaseInFlightId = "";
@@ -5548,11 +5611,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   } catch (SQLException var3x) {
                      this.getLogger().log(Level.WARNING, "Artifacts admin reload failed", (Throwable)var3x);
                      this.runSync(
-                        () -> var1.sendMessage(
+                        () -> { this.session(var1).repairInFlightId = ""; var1.sendMessage(
                               this.color(
                                  "&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_RELOAD_FAILED"
                               )
-                           )
+                           ); }
                      );
                   }
                }
@@ -5566,7 +5629,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.claimOne(var1, var3.substring(6));
       } else if (var3.startsWith("repair:confirm:")) {
          long var9 = this.parseLong(var3.substring("repair:confirm:".length()), 0L);
-         this.executeRepair(var1, var9);
+         if (var9 <= 0L) {
+            this.executeRepair(var1, var9, "");
+         } else {
+            var2.pinBuffer = "";
+            var2.pinAction = "repair";
+            CopiMineArtifacts.CatalogItem repairItem = this.catalogById.get(var2.currentItemId);
+            if (repairItem != null) {
+               this.openPin(var1, repairItem);
+            }
+         }
       } else if ("repair:cancel".equals(var3)) {
          var1.closeInventory();
       } else if ("back:main".equals(var3)) {
@@ -6206,7 +6278,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   private void executeRepair(Player var1, long var2) {
+   private void executeRepair(Player var1, long var2, String var3) {
       /*
       executeRepair(Player player, long price)
       BridgeTxnResult refund = bridge.refund(player, price, "artifact-repair-refund-"
@@ -6227,14 +6299,27 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             return;
          }
          if (var4.getItemMeta() instanceof Damageable var6 && var6.getDamage() > 0) {
+            CopiMineArtifacts.SessionState repairState = this.session(var1);
+            if (!repairState.repairInFlightId.isBlank()) {
+               var1.sendMessage(this.color("&eRepair is already processing."));
+               return;
+            }
+            repairState.repairInFlightId = UUID.randomUUID().toString();
+            String repairId = repairState.repairInFlightId;
+            // Keep the bridge idempotency key scoped to this repair attempt.
+            // The database repair row and the refund path continue to use the
+            // short repair id, while the economy bridge never receives a key
+            // that can collide with a normal shop or transfer operation.
+            String repairIdempotencyKey = "artifact-repair-" + repairId;
             if (var2 <= 0L) {
                this.runAsync(
                   () -> {
-                     String var7 = UUID.randomUUID().toString();
+                     String var7 = repairId;
                      try {
                         this.persistRepair(var1, var5, var4, var7, 0L, "free-repair-" + var7);
                         this.runSync(
                            () -> {
+                              this.session(var1).repairInFlightId = "";
                               Damageable var8 = (Damageable)var4.getItemMeta();
                               var8.setDamage(0);
                               var4.setItemMeta(var8);
@@ -6245,6 +6330,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         );
                      } catch (SQLException error) {
                         this.getLogger().log(Level.WARNING, "Free artifact repair persistence failed", error);
+                        this.session(var1).repairInFlightId = "";
                         this.runSync(() -> var1.sendMessage(this.color("&cНе удалось сохранить ремонт. Повтори попытку.")));
                      }
                   }
@@ -6256,26 +6342,26 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   CopiMineArtifacts.BridgeTxnResult var6x = this.bridge
                      .transferToAccount(
                         var1,
-                        "",
+                        var3 == null ? "" : var3,
                         PRESIDENT_BUDGET_ACCOUNT_ID,
                         EMPTY_UUID.toString(),
                         "Президентская казна",
                         var2,
-                        "artifact-repair-" + UUID.randomUUID(),
+                        repairIdempotencyKey,
                         "AR_ITEM_REPAIR",
                         "item=" + var5.itemId()
                      );
                   if (!var6x.ok()) {
                      this.runSync(
-                        () -> var1.sendMessage(
+                        () -> { this.session(var1).repairInFlightId = ""; var1.sendMessage(
                               this.color(
                                  "&cРемонт отклонён. Код: "
                                     + this.safeBridgeCode(var6x.code())
                               )
-                           )
+                           ); }
                      );
                   } else {
-                     String var7 = UUID.randomUUID().toString();
+                     String var7 = repairId;
 
                      try {
                         this.persistRepair(var1, var5, var4, var7, var2, var6x.txId());
@@ -6304,6 +6390,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                         this.runSync(
                            () -> {
+                              this.session(var1).repairInFlightId = "";
                               if (var9.ok()) {
                                  var1.sendMessage(
                                     this.color(
@@ -6324,6 +6411,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                      this.runSync(
                         () -> {
+                           this.session(var1).repairInFlightId = "";
                            Damageable var5xx = (Damageable)var4.getItemMeta();
                            var5xx.setDamage(0);
                            var4.setItemMeta(var5xx);
@@ -11030,6 +11118,36 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return Instant.now().getEpochSecond();
    }
 
+   /** Forward only handled player-facing failures to the central /reporta
+    * collector.  Reflection keeps Artifacts optional and leaves the normal
+    * player-safe message intact when AdminPlus is unavailable. */
+   private void forwardBugToAdminPlus(Player player, String source, String action, Throwable error, ItemStack item, Location location) {
+      if (player == null) {
+         return;
+      }
+      // Keep the bridge optional: Artifacts must not link against the admin
+      // plugin at compile time or become an economy dependency.
+      String bridgeName = "CopiMine" + "Ultimate" + "Admin" + "Plus";
+      Plugin admin = Bukkit.getPluginManager().getPlugin(bridgeName);
+      if (admin == null || !admin.isEnabled()) {
+         return;
+      }
+      try {
+         admin.getClass().getMethod(
+               "capturePluginError",
+               Player.class,
+               String.class,
+               String.class,
+               Throwable.class,
+               ItemStack.class,
+               Location.class
+            )
+            .invoke(admin, player, firstNonBlank(source, "artifacts"), firstNonBlank(action, "unknown"), error, item, location);
+      } catch (ReflectiveOperationException bridgeError) {
+         this.getLogger().fine("reporta bridge unavailable: " + this.safeErr(bridgeError));
+      }
+   }
+
    private CopiMineArtifacts.Category parseCategory(String var1) {
       try {
          return CopiMineArtifacts.Category.valueOf(var1.toUpperCase(Locale.ROOT));
@@ -11786,6 +11904,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       String currentItemId = "";
       int page = 0;
       String pinBuffer = "";
+      String pinAction = "purchase";
+      String repairInFlightId = "";
       String purchaseInFlightId = "";
       UUID giftTargetUuid;
       String giftTargetName = "";

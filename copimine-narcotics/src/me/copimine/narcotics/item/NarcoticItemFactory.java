@@ -14,6 +14,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
+import java.util.Map;
 
 public final class NarcoticItemFactory {
     private final CopiMineNarcotics plugin;
@@ -106,6 +107,18 @@ public final class NarcoticItemFactory {
             stack.setAmount(stack.getAmount() - 1);
             player.getInventory().setItemInMainHand(stack);
         }
+        player.updateInventory();
+    }
+
+    /** Restore exactly one ingredient after a failed asynchronous state write. */
+    public void restoreOne(Player player, ItemStack template) {
+        if (player == null || template == null || template.getType() == Material.AIR) {
+            return;
+        }
+        ItemStack restored = template.clone();
+        restored.setAmount(1);
+        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(restored);
+        leftovers.values().forEach(item -> player.getWorld().dropItemNaturally(player.getLocation(), item));
         player.updateInventory();
     }
 

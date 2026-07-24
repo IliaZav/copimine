@@ -20,6 +20,12 @@ if [[ ! -f "$ARCHIVE_PATH" ]]; then
   exit 1
 fi
 
+VALIDATE_ARCHIVE="$PROJECT_ROOT/deploy/shared/validate_archive.py"
+if [[ ! -r "$VALIDATE_ARCHIVE" ]]; then
+  echo "Shared archive validator not found: $VALIDATE_ARCHIVE" >&2
+  exit 1
+fi
+
 SHA256_PATH="${ARCHIVE_PATH}.sha256"
 if [[ ! -f "$SHA256_PATH" ]]; then
   echo "Missing required SHA256 sidecar: $SHA256_PATH"
@@ -40,9 +46,16 @@ fi
 WORK_ROOT="$(mktemp -d)"
 BACKUP_ROOT="$PROJECT_ROOT/backups/auth-patch-$(date +%Y%m%d-%H%M%S)"
 PAYLOAD_ROOT=""
+SERVICE_WAS_ACTIVE=0
 
 cleanup() {
-  rm -rf "$WORK_ROOT"
+  local code=$?
+  if [[ "$code" -ne 0 && "$SERVICE_WAS_ACTIVE" -eq 1 ]]; then
+    echo "Patch failed; restarting the previously active Minecraft service." >&2
+    systemctl start "$SERVICE_NAME" || echo "WARNING: could not restart $SERVICE_NAME" >&2
+  fi
+  rm -rf -- "$WORK_ROOT"
+  exit "$code"
 }
 trap cleanup EXIT
 
@@ -64,17 +77,20 @@ detect_payload_root() {
 echo "[1/8] Preparing backup"
 mkdir -p "$BACKUP_ROOT"
 chmod 700 "$BACKUP_ROOT"
-cp -a "$PROJECT_ROOT/minecraft/server/plugins/." "$BACKUP_ROOT/plugins-before/" >/dev/null 2>&1 || true
+cp -a "$PROJECT_ROOT/minecraft/server/plugins/." "$BACKUP_ROOT/plugins-before/"
 
 echo "[2/8] Stopping minecraft service"
 if systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
+  if systemctl is-active --quiet "$SERVICE_NAME"; then SERVICE_WAS_ACTIVE=1; fi
   systemctl stop "$SERVICE_NAME"
+  systemctl is-active --quiet "$SERVICE_NAME" && { echo "Service remained active after stop." >&2; exit 1; }
 else
   echo "Service $SERVICE_NAME not found, continuing without stop."
 fi
 
 echo "[3/8] Extracting patch archive"
-tar -xzf "$ARCHIVE_PATH" -C "$WORK_ROOT"
+python3 "$VALIDATE_ARCHIVE" "$ARCHIVE_PATH"
+tar -xzf "$ARCHIVE_PATH" -C "$WORK_ROOT" --no-same-owner --no-same-permissions
 
 echo "[4/8] Detecting payload root"
 PAYLOAD_ROOT="$(detect_payload_root "$WORK_ROOT")"
@@ -85,6 +101,8 @@ fi
 
 PLUGIN_DIR="$PROJECT_ROOT/minecraft/server/plugins"
 PAYLOAD_PLUGIN_DIR="$PAYLOAD_ROOT/minecraft/server/plugins"
+[[ -f "$PAYLOAD_PLUGIN_DIR/AuthMe-5.6.0.jar" ]] || { echo 'AuthMe payload jar is missing.' >&2; exit 1; }
+[[ -f "$PAYLOAD_PLUGIN_DIR/AuthEffects.jar" ]] || { echo 'AuthEffects payload jar is missing.' >&2; exit 1; }
 
 echo "[5/8] Removing nLogin"
 rm -f "$PLUGIN_DIR/nLogin.jar"

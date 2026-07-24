@@ -16,7 +16,9 @@ $preload = [regex]::Match($service, '(?s)public void preloadState\(UUID playerUu
 if (-not $preload.Success -or
     $preload.Value -notmatch 'Bukkit\.getScheduler\(\)\.runTask\(plugin' -or
     $preload.Value -notmatch 'restoreActiveOverdose\(' -or
-    $preload.Value -notmatch 'runTaskLater\(plugin, \(\) -> preloadState\(playerUuid\), 100L\)') {
+    $preload.Value -notmatch 'runTaskLater\(plugin, \(\) -> preloadState\(playerUuid\), delay\)' -or
+    $preload.Value -match 'states\.put\(playerUuid, PlayerState\.empty' -or
+    $preload.Value -match 'readyStates\.add\(playerUuid\).*MAX_PRELOAD_RETRIES') {
     throw 'Loaded overdose state must restore remaining penalties on the main thread and retry safely after a database failure.'
 }
 

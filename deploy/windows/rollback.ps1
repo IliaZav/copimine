@@ -19,8 +19,45 @@ $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("copimine-windows-rollback-" +
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupPath = "$targetPath.pre-rollback-$timestamp"
 $movedCurrent = $false
+$services = @('copimine-admin','copimine-minecraft','copimine-discord-bot','copimine-minecraft-discord-bridge')
+$startedServices = @()
+
+function Stop-CopiMineServices {
+    foreach ($name in $services) {
+        $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'Running') {
+            Stop-Service -Name $name -Force -ErrorAction Stop
+            (Get-Service -Name $name).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+            $script:startedServices += $name
+        }
+    }
+}
+
+function Start-CopiMineServices {
+    foreach ($name in $startedServices) {
+        Start-Service -Name $name -ErrorAction Stop
+    }
+}
+
+function Assert-SafeZip {
+    param([string]$Path)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $zip.Entries) {
+            $name = $entry.FullName.Replace('\','/')
+            if (-not $name -or $name.StartsWith('/') -or $name.Split('/') -contains '..' -or $name -match '^[A-Za-z]:') { throw "Unsafe rollback archive path: $name" }
+            if (-not $seen.Add($name)) { throw "Duplicate rollback archive path: $name" }
+            $unixType = ($entry.ExternalAttributes -shr 16) -band 0xF000
+            if ($unixType -and $unixType -notin @(0x8000,0x4000)) { throw "Special rollback archive entry: $name" }
+        }
+    }
+    finally { $zip.Dispose() }
+}
 
 try {
+    Assert-SafeZip $archivePath
     Expand-Archive -LiteralPath $archivePath -DestinationPath $tempRoot -Force
     $payloadRoot = Join-Path $tempRoot 'copimine'
     if (-not (Test-Path -LiteralPath $payloadRoot -PathType Container)) {
@@ -31,20 +68,32 @@ try {
             throw "Rollback archive is incomplete: missing $required"
         }
     }
+    Stop-CopiMineServices
     Move-Item -LiteralPath $targetPath -Destination $backupPath
     $movedCurrent = $true
     Move-Item -LiteralPath $payloadRoot -Destination $targetPath
+    if (-not (Test-Path -LiteralPath (Join-Path $targetPath 'admin-web\backend\main.py')) -or
+        -not (Test-Path -LiteralPath (Join-Path $targetPath 'minecraft\server\server.properties'))) {
+        throw 'Restored runtime failed post-swap validation.'
+    }
     $movedCurrent = $false
     Write-Host "Rollback restored into $targetPath"
     Write-Host "Previous files are retained at $backupPath"
     Write-Host 'PostgreSQL is intentionally not changed by the Windows file rollback.'
 }
 catch {
-    if ($movedCurrent -and -not (Test-Path -LiteralPath $targetPath) -and (Test-Path -LiteralPath $backupPath)) {
-        Move-Item -LiteralPath $backupPath -Destination $targetPath -ErrorAction SilentlyContinue
+    if ($movedCurrent) {
+        $failedPath = "$targetPath.failed-rollback-$timestamp"
+        if (Test-Path -LiteralPath $targetPath) {
+            Move-Item -LiteralPath $targetPath -Destination $failedPath -ErrorAction SilentlyContinue
+        }
+        if (-not (Test-Path -LiteralPath $targetPath) -and (Test-Path -LiteralPath $backupPath)) {
+            Move-Item -LiteralPath $backupPath -Destination $targetPath -ErrorAction SilentlyContinue
+        }
     }
     throw
 }
 finally {
+    try { Start-CopiMineServices } catch { Write-Warning "Could not restart services: $($_.Exception.Message)" }
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

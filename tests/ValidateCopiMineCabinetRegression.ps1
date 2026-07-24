@@ -9,11 +9,11 @@ $favicon = Join-Path $root 'admin-web\frontend\assets\favicon.png'
 if ($backend -notmatch '(?s)class AdminArtifactLimitResetIn\(BaseModel\):.*?item_id: str = Field\(min_length=1,') {
   throw 'The all-limit reset request must accept the wildcard item id.'
 }
-if ($backend -notmatch 'decrees = .*pg_table_exists\(conn, "election_decrees"\)') {
-  throw 'Election decrees query must be guarded when the optional table is absent.'
+if ($backend -notmatch 'decrees, petitions = \[\], \[\]') {
+  throw 'The live cabinet must not read retired election decree/petition tables.'
 }
-if ($backend -notmatch 'petitions = .*pg_table_exists\(conn, "election_petitions"\)') {
-  throw 'Election petitions query must be guarded when the optional table is absent.'
+if ($backend -match 'SELECT \* FROM election_(decrees|petitions)' -and $backend -notmatch 'list_election_documents_sync') {
+  throw 'Retired election documents must only be exposed through their explicit historical endpoints.'
 }
 if ($runtime -notmatch 'playerResetAuthMePassword') {
   throw 'Modern player card must expose AuthMe password reset.'

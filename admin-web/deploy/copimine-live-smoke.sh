@@ -21,6 +21,11 @@ need curl
 need python3
 need psql
 
+if [[ ! "$POSTGRES_SCHEMA" =~ ^[A-Za-z_][A-Za-z0-9_]{0,48}$ ]]; then
+  echo "Invalid POSTGRES_SCHEMA; expected a simple PostgreSQL identifier." >&2
+  exit 1
+fi
+
 echo "[2/6] systemd units"
 systemctl is-active --quiet copimine-admin
 systemctl is-active --quiet copimine-discord-bot

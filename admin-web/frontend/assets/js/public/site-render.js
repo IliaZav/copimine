@@ -749,10 +749,17 @@ export function createHomepageRenderer() {
   function electionStageLabel(stage) {
     const labels = {
       DRAFT: "Подготовка",
+      PREPARATION: "Подготовка",
+      APPLICATIONS: "Приём заявок",
       APPLICATIONS_OPEN: "Приём заявок",
+      REVIEW: "Проверка заявок",
       APPLICATIONS_REVIEW: "Проверка заявок",
+      DEBATES: "Дебаты",
+      VOTING: "Голосование",
       VOTING_OPEN: "Голосование",
       COUNTING: "Подсчёт голосов",
+      PRESIDENT_TERM: "Президентский срок",
+      FINISHED: "Завершены",
       COMPLETED: "Завершены",
       PAUSED: "Пауза",
       ACTIVE: "Идут",
@@ -768,7 +775,6 @@ export function createHomepageRenderer() {
     const candidates = Array.isArray(payload.candidates)
       ? payload.candidates.filter((row) => row && row.approved !== false && String(row.name || "").trim())
       : [];
-    const laws = Array.isArray(payload.laws) ? payload.laws : [];
     const totalVotes = Math.max(0, Number(summary.totalVotes || candidates.reduce((sum, row) => sum + Math.max(0, Number(row.votes || 0)), 0)) || 0);
     const maxVotes = Math.max(1, ...candidates.map((row) => Math.max(0, Number(row.votes || 0) || 0)));
     const stage = electionStageLabel(election.stage || election.status);
@@ -788,13 +794,13 @@ export function createHomepageRenderer() {
         stat("Этап", stage, "текущий статус процесса"),
         stat("Кандидаты", String(candidates.length), "заявки одобрены"),
         stat("Учтено голосов", totalVotes.toLocaleString("ru-RU"), "агрегированный результат"),
-        stat("Участки", String(Number(summary.activePollingStations || summary.pollingStations || 0)), "активные участки"),
+        stat("Блоки голосования", String(Number(summary.votingBlocks || 0)), "защищённые блоки в игре"),
       ]);
     }
 
     if (electionCandidates) {
       if (!candidates.length) {
-        replaceChildrenSafe(electionCandidates, [cardStrong("Одобренных кандидатов пока нет", "Когда ЦИК одобрит заявки, они появятся здесь.", "", mcIcon("written_book.png"))]);
+        replaceChildrenSafe(electionCandidates, [cardStrong("Одобренных кандидатов пока нет", "Администратор покажет список после проверки заявок.", "", mcIcon("written_book.png"))]);
       } else {
         replaceChildrenSafe(electionCandidates, candidates.map((row, index) => {
           const name = String(row.name || "Кандидат").trim();
@@ -831,18 +837,6 @@ export function createHomepageRenderer() {
       }
     }
 
-    if (electionLaws) {
-      if (!laws.length) {
-        replaceChildrenSafe(electionLaws, [makeElement("p", "election-empty-note", "Опубликованных законов для этого срока пока нет.")]);
-      } else {
-        replaceChildrenSafe(electionLaws, laws.slice(0, 12).map((row) => {
-          const card = makeElement("article", "election-law-card");
-          card.append(makeElement("strong", "", String(row.title || "Опубликованный закон")), makeElement("p", "", String(row.body || "Текст закона опубликован в игре.")));
-          if (row.publishedAt) card.append(makeElement("small", "", formatDate(row.publishedAt)));
-          return card;
-        }));
-      }
-    }
   }
 
   function renderPresidentCard(president = {}) {

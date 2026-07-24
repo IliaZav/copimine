@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class OverdoseService {
+    private static final int MAX_PRELOAD_RETRIES = 5;
     private final CopiMineNarcotics plugin;
     private NarcoticsConfigService configService;
     private final NarcoticsDatabase database;
@@ -34,6 +35,7 @@ public final class OverdoseService {
     private final Set<UUID> movementGuard = ConcurrentHashMap.newKeySet();
     private final Set<UUID> loadingStates = ConcurrentHashMap.newKeySet();
     private final Set<UUID> readyStates = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Integer> preloadFailures = new ConcurrentHashMap<>();
     private final AtomicLong stateEpoch = new AtomicLong(0L);
     private final Map<UUID, Long> sessionEpochs = new ConcurrentHashMap<>();
 
@@ -60,6 +62,7 @@ public final class OverdoseService {
                             return;
                         }
                         loadingStates.remove(playerUuid);
+                        preloadFailures.remove(playerUuid);
                         PlayerState loaded = state == null ? PlayerState.empty(playerUuid) : state;
                         states.compute(playerUuid, (ignored, current) -> current == null || loaded.stateVersion() >= current.stateVersion() ? loaded : current);
                         readyStates.add(playerUuid);
@@ -77,7 +80,20 @@ public final class OverdoseService {
                         loadingStates.remove(playerUuid);
                         readyStates.remove(playerUuid);
                         plugin.getLogger().warning("Failed to preload narcotics state: " + error.getMessage());
-                        Bukkit.getScheduler().runTaskLater(plugin, () -> preloadState(playerUuid), 100L);
+                        int failures = preloadFailures.merge(playerUuid, 1, Integer::sum);
+                        if (failures >= MAX_PRELOAD_RETRIES) {
+                            // Fail closed: an empty in-memory state must never
+                            // replace a saved overdose when the database is
+                            // unavailable.  Keeping the player unready blocks
+                            // consumption until the next login starts a fresh
+                            // bounded attempt, so a transient outage cannot
+                            // silently bypass a persisted penalty.
+                            states.remove(playerUuid);
+                            plugin.getLogger().severe("Narcotics state preload stopped after " + failures + " attempts for " + playerUuid + "; player remains blocked until reconnect");
+                        } else {
+                            long delay = Math.min(20L * 60L, 100L << Math.min(4, failures - 1));
+                            Bukkit.getScheduler().runTaskLater(plugin, () -> preloadState(playerUuid), delay);
+                        }
                     });
                     return null;
                 });
@@ -280,6 +296,7 @@ public final class OverdoseService {
         movementGuard.clear();
         loadingStates.clear();
         readyStates.clear();
+        preloadFailures.clear();
         sessionEpochs.clear();
     }
 
@@ -294,6 +311,7 @@ public final class OverdoseService {
         movementGuard.remove(playerUuid);
         loadingStates.remove(playerUuid);
         readyStates.remove(playerUuid);
+        preloadFailures.remove(playerUuid);
     }
 
     public void forceClearOverdose(Player player) {

@@ -24,6 +24,10 @@ if not exist "%ARCHIVE%" (
 
 set "ARCHIVE_NAME=%~nx1"
 if "%~1"=="" for %%F in ("%ARCHIVE%") do set "ARCHIVE_NAME=%%~nxF"
+echo(%ARCHIVE_NAME%| %SystemRoot%\System32\findstr.exe /r /x "[A-Za-z0-9._-][A-Za-z0-9._-]*" >nul || (
+  echo Archive filename contains unsafe shell characters.
+  exit /b 2
+)
 set "SHA=%ARCHIVE%.sha256"
 set "BOOTSTRAP=%ARCHIVE:.tar.gz=.bootstrap.json%"
 set "INSTALLER=%~dp0..\ubuntu\install_release.sh"

@@ -31,10 +31,9 @@ resolvers:
 permissions:
     groups:
         default:
-            permissions:
-            - worldedit.reload
-            - worldedit.selection
-            - worlds.creative.worldedit.region
+            # Ordinary players must not inherit WorldEdit operations.  Grant
+            # the required nodes through LuckPerms to a dedicated admin group.
+            permissions: []
         admins:
             permissions:
             - '*'

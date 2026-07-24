@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CauldronBrewingService {
     private static final long STALE_BREW_STATE_MILLIS = 15L * 60L * 1000L;
     private static final int MINIMUM_RECIPE_CHECK_SIZE = 3;
+    private static final int MAX_CACHED_STATES = 10_000;
 
     private final CopiMineNarcotics plugin;
     private NarcoticsConfigService configService;
@@ -64,18 +65,28 @@ public final class CauldronBrewingService {
     }
 
     private void loadBrewingCache() {
-        database.loadBrewingStates().thenAccept(states -> Bukkit.getScheduler().runTask(plugin, () -> {
+        database.loadBrewingStates(MAX_CACHED_STATES).thenAccept(states -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    int restoredCount = 0;
+                    long nowMillis = System.currentTimeMillis();
                     for (Map.Entry<BlockKey, NarcoticsDatabase.LoadedBrewingState> entry : states.entrySet()) {
+                        if (restoredCount >= MAX_CACHED_STATES) {
+                            plugin.getLogger().warning("Brewing state cache reached its safety limit; remaining rows were ignored.");
+                            break;
+                        }
                         NarcoticsDatabase.LoadedBrewingState loaded = entry.getValue();
                         long updatedAtMillis = loaded.updatedAtEpochMillis();
                         if (updatedAtMillis > 0L && updatedAtMillis < 10_000_000_000L) {
                             updatedAtMillis *= 1000L;
                         }
                         CauldronState restored = new CauldronState(List.copyOf(loaded.ingredients()), loaded.version(), updatedAtMillis);
+                        if (restored.isStale(nowMillis)) {
+                            continue;
+                        }
                         cache.merge(entry.getKey(), restored, (current, candidate) -> current.version() >= candidate.version() ? current : candidate);
+                        restoredCount++;
                     }
                     cacheReady = true;
-                    plugin.getLogger().info("Restored " + states.size() + " pending cauldron brew state(s).");
+                    plugin.getLogger().info("Restored " + restoredCount + " pending cauldron brew state(s).");
                 }))
                 .exceptionally(error -> {
                     plugin.getLogger().warning("Brewing state restore failed: " + error.getMessage());
@@ -178,13 +189,13 @@ public final class CauldronBrewingService {
             int maximumRecipeSize = recipeService.maximumRecipeSize();
             boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
             if (current.size() < MINIMUM_RECIPE_CHECK_SIZE) {
-                return queueIngredients(block, key, current, nextVersion, nowMillis);
+                return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
             }
             if (recipeService.containsUnrecognizedIngredient(current)) {
                 return finishWrongMix(block, key, nextVersion, current.size(), player);
             }
             if (canStillBecomeRecipe && current.size() < maximumRecipeSize) {
-                return queueIngredients(block, key, current, nextVersion, nowMillis);
+                return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
             }
             return finishWrongMix(block, key, nextVersion, current.size(), player);
         }
@@ -286,11 +297,22 @@ public final class CauldronBrewingService {
         }
     }
 
-    private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis) {
+    private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis, org.bukkit.entity.Player player, ItemStack consumed) {
         List<IngredientEntry> frozen = List.copyOf(current);
         cache.put(key, new CauldronState(frozen, version, nowMillis));
         database.saveBrewingState(key, version, frozen).exceptionally(error -> {
-            plugin.getLogger().warning("Brewing state save failed for " + key + ": " + error.getMessage());
+            plugin.getLogger().warning("Brewing state database save failed for " + key + ": " + error.getMessage());
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                synchronized (lockFor(key)) {
+                    CauldronState currentState = cache.get(key);
+                    if (currentState != null && currentState.version() == version && currentState.ingredients().equals(frozen)) {
+                        cache.remove(key, currentState);
+                        database.deleteBrewingState(key, version + 1L);
+                    }
+                }
+                itemFactory.restoreOne(player, consumed);
+                player.sendMessage("§cВарка не сохранена. Ингредиент возвращён.");
+            });
             return null;
         });
         spawnQueuedParticles(block, frozen.size(), false);

@@ -17,7 +17,32 @@ PASSWORD_FILE="${PG_PASSWORD_FILE:-$ADMIN_DIR/.postgres-password}"
 LOG_FILE="/tmp/copimine-postgres-repair-$(date +%Y%m%d-%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-fail() { echo; echo "ERROR: $*"; echo "Log: $LOG_FILE"; exit 1; }
+RESTORE_DUMP=""
+DB_RECREATED=0
+RESTORING=0
+
+restore_database_on_failure() {
+  local code="${1:-1}"
+  [[ "$code" -eq 0 || "$RESTORING" -eq 1 || "$DB_RECREATED" -ne 1 ]] && return 0
+  [[ -s "$RESTORE_DUMP" ]] || { echo "WARNING: no database dump is available for automatic restore." >&2; return 0; }
+  RESTORING=1
+  echo "Restoring the pre-recreation database backup after failure..." >&2
+  if runuser -u postgres -- psql -d postgres -Atqc "SELECT 1 FROM pg_database WHERE datname = '$PG_DB';" | grep -q 1; then
+    runuser -u postgres -- dropdb --if-exists "$PG_DB" >/dev/null 2>&1 || true
+  fi
+  if runuser -u postgres -- createdb --owner="$PG_USER" "$PG_DB" && runuser -u postgres -- pg_restore --no-owner --no-acl -d "$PG_DB" "$RESTORE_DUMP"; then
+    echo "Automatic database restore completed." >&2
+  else
+    echo "CRITICAL: automatic database restore failed; backup remains at $RESTORE_DUMP" >&2
+  fi
+  DB_RECREATED=0
+}
+
+fail() {
+  local code=$?
+  restore_database_on_failure "$code"
+  echo; echo "ERROR: $*"; echo "Log: $LOG_FILE"; exit "$code"
+}
 trap 'fail "Command failed at line $LINENO."' ERR
 
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || fail "Run this script through sudo."
@@ -63,13 +88,16 @@ DB_EXISTS="$(runuser -u postgres -- psql -d postgres -Atqc "SELECT 1 FROM pg_dat
 if [[ "$DB_EXISTS" == "1" ]]; then
   BACKUP_DUMP="$BACKUP_ROOT/copimine-pre-recreate-$(date +%Y%m%d-%H%M%S).dump"
   runuser -u postgres -- pg_dump -Fc -d "$PG_DB" -f "$BACKUP_DUMP"
+  [[ -s "$BACKUP_DUMP" ]] || fail "Database backup was not created; refusing to drop the database."
   chmod 600 "$BACKUP_DUMP"
+  RESTORE_DUMP="$BACKUP_DUMP"
   echo "Database backup saved to $BACKUP_DUMP"
   for service in copimine-admin copimine-discord-bot copimine-minecraft-discord-bridge "$MC_SERVICE"; do
     systemctl stop "$service" 2>/dev/null || true
   done
   runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PG_DB' AND pid <> pg_backend_pid();"
   runuser -u postgres -- dropdb --if-exists "$PG_DB"
+  DB_RECREATED=1
 fi
 runuser -u postgres -- createdb --owner="$PG_USER" "$PG_DB"
 runuser -u postgres -- psql -v ON_ERROR_STOP=1 -d "$PG_DB" <<SQL
@@ -131,4 +159,5 @@ if systemctl cat "$MC_SERVICE" >/dev/null 2>&1; then
 else
   echo "WARNING: $MC_SERVICE was not found; database repair is complete."
 fi
+DB_RECREATED=0
 echo "SUCCESS: PostgreSQL, schema access and .env configuration are ready."

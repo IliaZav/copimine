@@ -12,6 +12,7 @@ import me.copimine.narcotics.use.OverdoseService;
 import me.copimine.visualruntime.VisualRuntimeService;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
@@ -51,6 +52,7 @@ import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.time.Instant;
@@ -408,8 +410,33 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             };
         } catch (Exception error) {
             getLogger().warning(command.getName() + " failed: " + error.getMessage());
+            if (sender instanceof Player player) {
+                forwardBugToAdminPlus(player, "narcotics-command", command.getName() + " " + String.join(" ", args), error);
+            }
             sender.sendMessage(ChatColor.RED + "Не удалось выполнить команду.");
             return true;
+        }
+    }
+
+    /** Keep the player-facing error short while attaching technical context
+     * to the central /reporta workflow when AdminPlus is present. */
+    private void forwardBugToAdminPlus(Player player, String source, String action, Throwable error) {
+        Plugin admin = Bukkit.getPluginManager().getPlugin("CopiMineUltimateAdminPlus");
+        if (admin == null || !admin.isEnabled()) {
+            return;
+        }
+        try {
+            admin.getClass().getMethod(
+                    "capturePluginError",
+                    Player.class,
+                    String.class,
+                    String.class,
+                    Throwable.class,
+                    ItemStack.class,
+                    Location.class
+            ).invoke(admin, player, source, action, error, player.getInventory().getItemInMainHand(), player.getLocation());
+        } catch (ReflectiveOperationException bridgeError) {
+            getLogger().fine("reporta bridge unavailable: " + bridgeError.getMessage());
         }
     }
 

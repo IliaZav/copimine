@@ -198,7 +198,14 @@ PY
 restore_zapret_from_official_repo() {
   local source_dir='/home/qwerty/zapret-discord-youtube-linux-src'
   local target_dir='/opt/zapret-discord-youtube-linux'
+  local expected_commit="${ZAPRET_EXPECTED_COMMIT:-}"
   [[ -x "$source_dir/service.sh" ]] || { echo "[zapret] source checkout is missing: $source_dir" >&2; return 1; }
+  [[ "$expected_commit" =~ ^[0-9a-fA-F]{40}$ ]] || { echo '[zapret] set ZAPRET_EXPECTED_COMMIT to the reviewed 40-character commit before restoring' >&2; return 1; }
+  local actual_commit
+  actual_commit="$(git -C "$source_dir" rev-parse HEAD 2>/dev/null || true)"
+  [[ "$actual_commit" == "$expected_commit" ]] || { echo "[zapret] checkout commit mismatch: expected=$expected_commit actual=$actual_commit" >&2; return 1; }
+  git -C "$source_dir" diff --quiet || { echo '[zapret] source checkout has uncommitted changes; refusing root installation' >&2; return 1; }
+  [[ "${ZAPRET_ALLOW_DEPENDENCY_DOWNLOAD:-0}" == '1' ]] || { echo '[zapret] set ZAPRET_ALLOW_DEPENDENCY_DOWNLOAD=1 after reviewing dependency pins' >&2; return 1; }
   systemctl disable --now zapret_discord_youtube.service 2>/dev/null || true
   rm -rf -- "$target_dir"
   cp -a "$source_dir" "$target_dir"
@@ -491,6 +498,7 @@ updates = {
     'spawn-monsters': 'true',
     'spawn-npcs': 'true',
 }
+
 lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
 out, seen = [], set()
 for line in lines:
@@ -513,6 +521,24 @@ PY
   grep -q '^spawn-monsters=true$' "$properties" || { echo '[gameplay] spawn-monsters is disabled' >&2; return 1; }
   grep -q '^spawn-npcs=true$' "$properties" || { echo '[gameplay] spawn-npcs is disabled' >&2; return 1; }
   echo '[gameplay] vanilla mob spawning and view distances verified'
+}
+
+reset_gameplay_state_if_requested() {
+  if [[ "$RESET_GAMEPLAY" != "1" ]]; then
+    return 0
+  fi
+  local reset_script="$PROJECT_ROOT/deploy/ubuntu/reset_game_state_preserve_accounts.sh"
+  [[ -x "$reset_script" ]] || {
+    echo "[wipe] missing guarded reset script: $reset_script" >&2
+    return 1
+  }
+  # copimine_unpack_and_verify.sh has already stopped the services, replaced
+  # the tree and (when --wipe-worlds was supplied) recreated the world
+  # boundary while preserving whitelist.json and the configured seed.  The
+  # guarded reset now clears only gameplay state in PostgreSQL, writes a dump
+  # before doing so, and restarts the services with the clean state.
+  echo '[wipe] resetting elections, taxes, banks, shops and runtime state; site accounts and whitelist are preserved'
+  COPIMINE_CONFIRM_GAME_WIPE=YES "$reset_script"
 }
 
 runtime_app_user() {
@@ -578,6 +604,7 @@ if [[ "$result" -ne 0 ]]; then
   exit "$result"
 fi
 normalize_vanilla_mob_gameplay
+reset_gameplay_state_if_requested
 remove_retired_frontend
 verify_runtime
 if [[ "$RESET_TREASURY" == "1" ]]; then

@@ -9,20 +9,20 @@ $errors = New-Object System.Collections.Generic.List[string]
 
 $method = [regex]::Match($text, 'private String createPollingStationFromTarget\(Player p\)throws Exception\{(?<body>[\s\S]*?)\n    private String archivePollingStation', [System.Text.RegularExpressions.RegexOptions]::Singleline).Groups['body'].Value
 
-if (-not [regex]::IsMatch($method, 'String eid=issuableElectionId\(\);[\s\S]*?if\(eid==null\)[\s\S]*?startElection\(p\.getName\(\),\s*168\)', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
-    $errors.Add('Creating a polling station must recover by starting a new draft election when no issuable election exists.')
+if ([regex]::IsMatch($method, 'startElection\(', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+    $errors.Add('The retired AdminPlus station creator must not start a legacy election automatically.')
 }
 
-if ([regex]::IsMatch($method, 'if\(eid==null\)throw new SQLException\("')) {
-    $errors.Add('Polling-station creation must not report the expected missing-election state as a generic SQL bug.')
+if ($method -match 'cmv7_polling_stations|INSERT INTO|UPDATE cmv7_') {
+    $errors.Add('The retired AdminPlus station creator must not write legacy election tables.')
 }
 
 $coreMethod = [regex]::Match($coreText, 'private void createPollingStationFromTarget\(Player player\) throws Exception \{(?<body>[\s\S]*?)\n    private void createTaxOfficeFromTarget', [System.Text.RegularExpressions.RegexOptions]::Singleline).Groups['body'].Value
-if (-not [regex]::IsMatch($coreMethod, 'String electionId = ensureElectionExists\(player\.getName\(\)\)', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
-    $errors.Add('ElectionCore station creation must recover by creating a draft election when none is active.')
+if ([regex]::IsMatch($coreMethod, 'ensureElectionExists\(', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+    $errors.Add('ElectionCore station creation must not auto-create a legacy election.')
 }
-if ([regex]::IsMatch($coreMethod, 'String electionId = requireActiveElectionId\(\)', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
-    $errors.Add('ElectionCore station creation must not throw when no election is active.')
+if (-not [regex]::IsMatch($coreMethod, 'activeRpElectionId\(\)|currentElectionId\(\)', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+    $errors.Add('ElectionCore station creation must bind the block to the active RP campaign.')
 }
 
 if ($errors.Count -gt 0) {

@@ -23,12 +23,12 @@
 **Files:**
 - Modify: `copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java`
 
-- [ ] Заменить `openElectionRoot` и `openManagementMenu` на RP-меню без старых stage/ЦИК кнопок.
-- [ ] Добавить действия `rp:application`, `rp:select`, `rp:debates`, `rp:voting`, `rp:block:create`, `rp:block:disable`, `rp:finish`, `rp:president:remove`.
-- [ ] Создавать блок по `getTargetBlockExact(8)`, проверять активную RP-кампанию и повтор координат.
-- [ ] В меню кандидатов использовать головы и хранить выбор в action/context; разрешать только 2–4 approved заявок.
-- [ ] Перед голосованием проверять 2+ кандидатов и 1+ активный блок; при открытии задавать срок 24–72 часа.
-- [ ] При завершении считать `votes`, требовать выбор UUID только при ничьей и создавать срок 7 дней.
+- [x] Заменить `openElectionRoot` и `openManagementMenu` на RP-меню без старых stage/ЦИК кнопок.
+- [x] Добавить действия `rp:application`, `rp:select`, `rp:debates`, `rp:voting`, `rp:block:create`, `rp:block:disable`, `rp:finish`, `rp:president:remove`.
+- [x] Создавать блок по `getTargetBlockExact(8)`, проверять активную RP-кампанию и повтор координат.
+- [x] В меню кандидатов использовать головы и хранить выбор в action/context; разрешать только 2–4 approved заявок.
+- [x] Перед голосованием проверять 2+ кандидатов и 1+ активный блок; при открытии задавать срок 24–72 часа.
+- [x] При завершении считать `votes`, требовать выбор UUID только при ничьей и создавать срок 7 дней.
 
 ### Task 3: Disable legacy election actions safely
 
@@ -36,9 +36,9 @@
 - Modify: `copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java`
 - Modify: `copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java`
 
-- [ ] Убрать из нового меню ссылки на CIK/chair/seal/ballot/second-round.
-- [ ] В `handleMenuAction` и `isLegacyElectionAction` направлять устаревшие actions в новый hub с понятным сообщением и без SQL-изменения.
-- [ ] В fallback AdminPlus показывать новый раздел и не открывать legacy-панели.
+- [x] Убрать из нового меню ссылки на CIK/chair/seal/ballot/second-round.
+- [x] В `handleMenuAction` и `isLegacyElectionAction` направлять устаревшие actions в новый hub с понятным сообщением и без SQL-изменения.
+- [x] В fallback AdminPlus показывать новый раздел и не открывать legacy-панели.
 
 ### Task 4: Harden the player voting path
 
@@ -47,10 +47,10 @@
 - Modify: `admin-web/backend/main.py`
 - Modify: `admin-web/frontend/assets/js/cabinet-runtime.js`
 
-- [ ] Скрывать форму заявки после `DEBATES`; после `VOTING` показывать только статус.
-- [ ] Повторно проверять stage/deadline/block/candidate/UUID внутри транзакции.
-- [ ] Обеспечить идемпотентное повторное нажатие, понятные сообщения и запись аудита.
-- [ ] Синхронизировать таймер голосования и результаты на сайте.
+- [x] Скрывать форму заявки после `DEBATES`; после `VOTING` показывать только статус.
+- [x] Повторно проверять stage/deadline/block/candidate/UUID внутри транзакции.
+- [x] Обеспечить идемпотентное повторное нажатие, понятные сообщения и запись аудита.
+- [x] Синхронизировать таймер голосования и результаты на сайте.
 
 ### Task 5: Automated verification
 
@@ -58,17 +58,17 @@
 - Modify/Create: `tests/ValidateCopiMineElectionRpWorkflow.ps1`
 - Modify: `ELECTIONS_MANUAL_TEST_MATRIX.md`
 
-- [ ] Запустить Python compile, Java compile/tests, JS syntax checks и существующие validators.
-- [ ] Выполнить статическую проверку отсутствия старых кнопок/action в новом hub.
-- [ ] Прогнать сценарии отказа и проверить код возврата/сообщение.
-- [ ] Исправить каждую найденную ошибку и повторить полный набор проверок.
+- [x] Запустить Python compile, Java compile/tests, JS syntax checks и существующие validators.
+- [x] Выполнить статическую проверку отсутствия старых кнопок/action в новом hub.
+- [x] Прогнать сценарии отказа и проверить код возврата/сообщение.
+- [x] Исправить каждую найденную ошибку и повторить полный набор проверок.
 
 ### Task 6: Release and deployment
 
 **Files:**
 - Modify: `RELEASE_DEPLOYMENT.md` and release manifests as needed.
 
-- [ ] Собрать плагины и сайт из текущего checkout.
+- [x] Собрать плагины и сайт из текущего checkout.
 - [ ] Проверить SHA-256 и содержимое архива.
 - [ ] Закоммитить только относящиеся файлы, отправить в `main` согласно текущему remote.
 - [ ] Передать архив штатным install script, перезапустить сервисы и проверить health endpoint/logs.

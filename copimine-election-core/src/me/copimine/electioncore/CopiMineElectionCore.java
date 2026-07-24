@@ -141,6 +141,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private final Set<UUID> liveHidden = ConcurrentHashMap.newKeySet();
     private final Map<UUID, PromptContext> prompts = new ConcurrentHashMap<>();
+    /** Temporary selection state for the admin's 2-4 RP candidates picker. */
+    private final Map<UUID, Set<String>> rpCandidateSelections = new ConcurrentHashMap<>();
+    /** Debounce protected-block clicks before any database-backed menu load. */
+    private final Map<UUID, Long> protectedInteractAt = new ConcurrentHashMap<>();
     private final Map<UUID, List<ItemStack>> officialRestore = new ConcurrentHashMap<>();
     private final AtomicReference<LiveSnapshot> snapshot = new AtomicReference<>(LiveSnapshot.empty());
     private final Set<BlockKey> protectedBlocks = ConcurrentHashMap.newKeySet();
@@ -220,13 +224,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     @Override
     public void onDisable() {
         saveHiddenPlayers();
+        protectedInteractAt.clear();
+        rpCandidateSelections.clear();
         for (Player player : Bukkit.getOnlinePlayers()) {
             clearSidebar(player);
         }
     }
 
     public void openAdminElectionHub(Player player) {
-        openElectionRoot(player, 0);
+        // AdminHub must always open the simplified RP workflow.  Keep the
+        // legacy CIK menus compiled for historical compatibility only; they
+        // are never an entry point after the migration.
+        openRpElectionHub(player);
     }
 
     @Override
@@ -304,7 +313,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             ItemStack item = event.getItem();
             if (isBallot(item)) {
                 event.setCancelled(true);
-                openBallotVoteMenu(player, item);
+                player.sendMessage(color("&eСтарый бумажный бюллетень больше не используется. Голосование проходит через интерактивный блок."));
+                return;
+            }
+            if (isApplicationBook(item) || isCikSeal(item)) {
+                event.setCancelled(true);
+                player.sendMessage(color("&eСтарый интерфейс выборов отключён. Подай заявку на сайте, а голосуй через блок."));
                 return;
             }
             if (isPresidentMandate(item)) {
@@ -326,6 +340,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         event.setCancelled(true);
+        if (!allowProtectedInteract(player)) {
+            return;
+        }
         if ("TAX_OFFICE".equals(protectedInfo.kind())) {
             openTaxOfficeMenu(player, protectedInfo.linkedId(), "", null);
             return;
@@ -334,12 +351,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         try {
-            if (isApplicationBook(event.getItem())) {
-                submitApplicationBook(player, event.getItem(), protectedInfo.linkedId());
-                return;
-            }
-            if (isBallot(event.getItem()) && isConfirmedBallot(event.getItem())) {
-                depositBallot(player, event.getItem(), protectedInfo.linkedId());
+            if (isApplicationBook(event.getItem()) || isBallot(event.getItem())) {
+                player.sendMessage(color("&eСтарый бумажный сценарий выборов отключён. Выбери кандидата прямо в меню блока."));
                 return;
             }
             Map<String, Object> station = stationById(protectedInfo.linkedId());
@@ -347,20 +360,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 player.sendMessage(color("&cУчасток больше не найден."));
                 return;
             }
+            // Legacy CIK/paper-ballot stations stay in the database for
+            // history, but they must not expose the old gameplay path after
+            // the RP migration. Only blocks linked to an RP campaign may
+            // open a menu or accept a vote.
+            if (!isRpStation(station)) {
+                player.sendMessage(color("&eСтарый формат выборов отключён. Используйте новый интерактивный блок RP-голосования."));
+                return;
+            }
             if (hasElectionAdmin(player)) {
-                openStationAccessMenu(player, protectedInfo.linkedId(), station);
+                openRpBlocksMenu(player, 0);
                 return;
             }
             if (isDirectVotingOpen(station)) {
                 openDirectVoteMenu(player, protectedInfo.linkedId());
-                return;
-            }
-            if (isChairForStation(player, station)) {
-                openChairStationMenu(player, protectedInfo.linkedId(), 0);
-                return;
-            }
-            if (string(station.get("chair_uuid")).isBlank()) {
-                openStationCard(player, protectedInfo.linkedId());
                 return;
             }
             sendStationInfoToPlayer(player, station, protectedInfo.linkedId());
@@ -383,6 +396,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         event.setCancelled(true);
+        player.sendMessage(color("&eПечать ЦИК относится к старым выборам и больше не используется."));
+        return;
+        /*
         if (!hasElectionAdmin(player) && !isChair(player)) {
             player.sendMessage(color("&cПечать ЦИК доступна только председателю или администратору."));
             return;
@@ -400,6 +416,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             sendUserError(player, error, "&cНе удалось проверить печать ЦИК.");
             getLogger().warning("seal interact: " + safeError(error));
         }
+        */
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -566,6 +583,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if ("POLLING_STATION".equalsIgnoreCase(info.kind())) {
+            Map<String, Object> rpStation = stationById(info.linkedId());
+            if (isRpStation(rpStation)) {
+                openConfirmationMenu(event.getPlayer(), "&cОтключить блок голосования", List.of(
+                        "&7Блок будет выключен для новых голосов.",
+                        "&7История кампании и уже принятые голоса сохранятся."
+                ), "rp:block:disable:" + info.linkedId(), "open:rp-blocks");
+                return;
+            }
             openConfirmationMenu(event.getPlayer(), "&cУдалить участок", List.of(
                     "&7Блок участка будет снят с защиты и удалён из базы.",
                     "&7Потом участок можно будет создать заново, если он снова понадобится."
@@ -738,11 +763,168 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (action.equals("open:root")) {
-            openElectionRoot(player, 0);
+            openRpElectionHub(player);
             return;
         }
         if (action.equals("open:manage")) {
-            openManagementMenu(player);
+            openRpManagementMenu(player);
+            return;
+        }
+        if (action.equals("open:rp-root")) {
+            openRpElectionHub(player);
+            return;
+        }
+        if (action.equals("open:rp-manage")) {
+            openRpManagementMenu(player);
+            return;
+        }
+        if (action.equals("open:rp-applications")) {
+            openRpApplicationsMenu(player, 0);
+            return;
+        }
+        if (action.startsWith("open:rp-applications:")) {
+            openRpApplicationsMenu(player, parsePage(action));
+            return;
+        }
+        if (action.equals("open:rp-candidates")) {
+            openRpCandidatesMenu(player, 0);
+            return;
+        }
+        if (action.equals("open:rp-blocks")) {
+            openRpBlocksMenu(player, 0);
+            return;
+        }
+        if (action.startsWith("open:rp-blocks:")) {
+            openRpBlocksMenu(player, parsePage(action));
+            return;
+        }
+        if (action.equals("open:rp-results")) {
+            openRpResultsMenu(player);
+            return;
+        }
+        if (action.equals("open:rp-president")) {
+            openRpPresidentMenu(player);
+            return;
+        }
+        if (isRetiredElectionMenuAction(action)) {
+            player.sendMessage(color("&eСтарый интерфейс выборов отключён. Открываю новый RP-раздел."));
+            openRpElectionHub(player);
+            return;
+        }
+        if (action.equals("rp:start")) {
+            startRpElection(player.getName());
+            refreshSnapshotAndPush();
+            player.sendMessage(color("&aНовая RP-кампания открыта. Игроки могут подать заявку на сайте."));
+            openRpManagementMenu(player);
+            return;
+        }
+        if (action.equals("rp:debates")) {
+            openConfirmationMenu(player, "&dОткрыть дебаты", List.of(
+                    "&7Будет включён этап дебатов.",
+                    "&7Заявки и состав кандидатов после этого изменить нельзя."
+            ), "rp:debates:apply", "open:rp-manage");
+            return;
+        }
+        if (action.equals("rp:debates:apply")) {
+            setRpDebates(player.getName());
+            refreshSnapshotAndPush();
+            player.sendMessage(color("&aДебаты открыты."));
+            openRpManagementMenu(player);
+            return;
+        }
+        if (action.startsWith("rp:voting:apply:")) {
+            int hours = parseInt(action.substring("rp:voting:apply:".length()), 0);
+            setRpVoting(player.getName(), hours);
+            refreshSnapshotAndPush();
+            player.sendMessage(color("&aГолосование открыто на &f" + hours + " ч."));
+            openRpManagementMenu(player);
+            return;
+        }
+        if (action.startsWith("rp:voting:") && !action.startsWith("rp:voting:apply:")) {
+            int hours = parseInt(action.substring("rp:voting:".length()), 0);
+            if (hours < 24 || hours > 72) {
+                throw new IllegalStateException("Срок голосования должен быть 24, 48 или 72 часа.");
+            }
+            openConfirmationMenu(player, "&6Открыть голосование", List.of(
+                    "&7Срок: &f" + hours + " ч.",
+                    "&7После открытия голосование нельзя сократить."
+            ), "rp:voting:apply:" + hours, "open:rp-manage");
+            return;
+        }
+        if (action.startsWith("rp:candidate:toggle:")) {
+            String applicationId = action.substring("rp:candidate:toggle:".length());
+            toggleRpCandidateSelection(player, applicationId);
+            openRpCandidatesMenu(player, 0);
+            return;
+        }
+        if (action.equals("rp:candidates:apply")) {
+            applyRpCandidateSelection(player.getName(), player.getUniqueId());
+            refreshSnapshotAndPush();
+            openRpManagementMenu(player);
+            return;
+        }
+        if (action.equals("rp:select")) {
+            applyRpCandidateSelection(player.getName(), player.getUniqueId());
+            refreshSnapshotAndPush();
+            openRpManagementMenu(player);
+            return;
+        }
+        if (action.startsWith("rp:application:view:")) {
+            openRpApplicationDetail(player, action.substring("rp:application:view:".length()));
+            return;
+        }
+        if (action.startsWith("rp:application:book:")) {
+            openApplicationBook(player, action.substring("rp:application:book:".length()));
+            return;
+        }
+        if (action.startsWith("rp:application:approve:")) {
+            String id = action.substring("rp:application:approve:".length());
+            approveApplication(id, player.getName());
+            refreshSnapshotAndPush();
+            openRpApplicationDetail(player, id);
+            return;
+        }
+        if (action.startsWith("rp:application:reject:")) {
+            String id = action.substring("rp:application:reject:".length());
+            rejectApplication(id, player.getName());
+            refreshSnapshotAndPush();
+            openRpApplicationDetail(player, id);
+            return;
+        }
+        if (action.equals("rp:block:create")) {
+            createPollingStationFromTarget(player);
+            refreshSnapshotAndPush();
+            openRpBlocksMenu(player, 0);
+            return;
+        }
+        if (action.startsWith("rp:block:disable:")) {
+            disableRpVotingBlock(player.getName(), action.substring("rp:block:disable:".length()));
+            refreshSnapshotAndPush();
+            openRpBlocksMenu(player, 0);
+            return;
+        }
+        if (action.equals("rp:finish")) {
+            openRpResultsMenu(player);
+            return;
+        }
+        if (action.startsWith("rp:finish:")) {
+            finishRpElection(player.getName(), action.substring("rp:finish:".length()));
+            refreshSnapshotAndPush();
+            player.sendMessage(color("&aПобедитель назначен президентом на 7 дней."));
+            openRpPresidentMenu(player);
+            return;
+        }
+        if (action.equals("rp:president:remove")) {
+            openConfirmationMenu(player, "&cСнять президента", List.of(
+                    "&7Действующий срок и налог будут закрыты.",
+                    "&7Новые выборы автоматически не начнутся."
+            ), "rp:president:remove:apply", "open:rp-manage");
+            return;
+        }
+        if (action.equals("rp:president:remove:apply")) {
+            removePresident(player.getName(), "removed-by-admin");
+            refreshSnapshotAndPush();
+            openRpPresidentMenu(player);
             return;
         }
         if (action.startsWith("open:stations")) {
@@ -1048,6 +1230,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 confirmBallotChoice(player, parts[3], parts[4]);
                 player.closeInventory();
             }
+            return;
+        }
+        if (action.startsWith("apply:direct-vote:") && !action.startsWith("apply:direct-vote:confirm:")) {
             return;
         }
         if (action.startsWith("apply:direct-vote:confirm:")) {
@@ -1489,6 +1674,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             return;
         }
+        if (action.startsWith("direct-vote:") && !action.startsWith("direct-vote:choose:") && !action.startsWith("direct-vote:view-program:")) {
+            return;
+        }
         if (action.startsWith("direct-vote:choose:")) {
             String[] parts = action.split(":");
             if (parts.length >= 4) {
@@ -1639,6 +1827,58 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openElectionRoot(Player player, int page) {
+        openRpElectionHub(player);
+    }
+
+    /**
+     * The only election entry point exposed from AdminHub.  The old CIK/chair
+     * menus remain below as read-only compatibility code for historical data,
+     * but no longer have a link from this menu.
+     */
+    private void openRpElectionHub(Player player) {
+        if (!hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНедостаточно прав для управления выборами."));
+            return;
+        }
+        LiveSnapshot snap = snapshot.get();
+        MenuHolder holder = new MenuHolder("rp-root", "");
+        Inventory inv = holder.create(54, color("&2&lRP-выборы CopiMine"));
+        setStatic(inv, 4, infoItem(Material.PAPER, "&fТекущая кампания", List.of(
+                "&7Этап: &f" + snap.stageTitle(),
+                "&7Кандидатов: &f" + snap.candidates().size(),
+                "&7Голосов: &f" + snap.candidates().stream().mapToInt(CandidateResult::votes).sum(),
+                "&7Президент: &f" + first(snap.presidentName(), "нет"),
+                "&8Здесь нет ЦИК, председателей и бумажных бюллетеней."
+        )));
+        setButton(holder, 10, Material.NETHER_STAR, "&aКампания", List.of(
+                "&7Начать кампанию, открыть дебаты или голосование.",
+                "&7Все проверки выполняются перед изменением базы."
+        ), "open:rp-manage");
+        setButton(holder, 12, Material.WRITABLE_BOOK, "&eЗаявки", List.of(
+                "&7Заявки приходят только с сайта.",
+                "&7Здесь их можно прочитать и одобрить."
+        ), "open:rp-applications");
+        setButton(holder, 14, Material.PLAYER_HEAD, "&bКандидаты", List.of(
+                "&7Отметь от 2 до 4 одобренных игроков.",
+                "&7После подтверждения начинается этап дебатов."
+        ), "open:rp-candidates");
+        setButton(holder, 16, Material.LECTERN, "&dГолосовательные блоки", List.of(
+                "&7Создай блок, посмотрев на него.",
+                "&7Обычный игрок не сможет его сломать."
+        ), "open:rp-blocks");
+        setButton(holder, 28, Material.FEATHER, "&6Результаты", List.of(
+                "&7Голоса видны в реальном времени.",
+                "&7При ничьей администратор выбирает победителя."
+        ), "open:rp-results");
+        setButton(holder, 30, Material.GOLDEN_HELMET, "&cПрезидент", List.of(
+                "&7Срок победителя — ровно 7 дней.",
+                "&7Администратор может досрочно снять президента."
+        ), "open:rp-president");
+        setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7Вернуться в AdminHub."), "back:hub");
+        player.openInventory(inv);
+    }
+
+    private void openLegacyElectionRoot(Player player, int page) {
         if (!hasElectionAdmin(player)) {
             player.sendMessage(color("&cНет прав на раздел выборов."));
             return;
@@ -1667,6 +1907,367 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openManagementMenu(Player player) {
+        openRpManagementMenu(player);
+    }
+
+    private void openRpManagementMenu(Player player) {
+        if (!hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНедостаточно прав для управления выборами."));
+            return;
+        }
+        LiveSnapshot snap = snapshot.get();
+        MenuHolder holder = new MenuHolder("rp-manage", "");
+        Inventory inv = holder.create(54, color("&2&lКампания выборов"));
+        setStatic(inv, 4, infoItem(Material.PAPER, "&fСостояние кампании", List.of(
+                "&7Этап: &f" + snap.stageTitle(),
+                "&7Кандидатов: &f" + snap.candidates().size(),
+                "&7Активных блоков: &f" + snap.stationCount(),
+                "&7Срок президента: &f7 дней"
+        )));
+        setButton(holder, 10, Material.LIME_WOOL, "&aНачать кампанию", List.of(
+                "&7Открывает приём заявок на сайте.",
+                "&7Нельзя начать кампанию при действующем президенте."
+        ), "rp:start");
+        setButton(holder, 12, Material.WRITABLE_BOOK, "&eЗаявки", List.of("&7Одобрить или отклонить заявки."), "open:rp-applications");
+        setButton(holder, 14, Material.PLAYER_HEAD, "&bВыбрать кандидатов", List.of("&7Нужно выбрать от 2 до 4 одобренных заявок."), "open:rp-candidates");
+        setButton(holder, 16, Material.JUKEBOX, "&dОткрыть дебаты", List.of("&7Ручной RP-этап после отбора кандидатов."), "rp:debates");
+        setButton(holder, 19, Material.FEATHER, "&6Голосование 24 часа", List.of("&7Открыть голосование на сутки."), "rp:voting:24");
+        setButton(holder, 20, Material.CLOCK, "&6Голосование 48 часов", List.of("&7Открыть голосование на двое суток."), "rp:voting:48");
+        setButton(holder, 21, Material.CLOCK, "&6Голосование 72 часа", List.of("&7Максимальный срок голосования."), "rp:voting:72");
+        setButton(holder, 23, Material.LECTERN, "&dБлоки голосования", List.of("&7Создать или отключить блоки."), "open:rp-blocks");
+        setButton(holder, 25, Material.EMERALD, "&aЗавершить и назначить", List.of("&7При ничьей сначала выбери лидера в результатах."), "rp:finish");
+        setButton(holder, 28, Material.PAPER, "&fРезультаты", List.of("&7Показать голоса кандидатов."), "open:rp-results");
+        setButton(holder, 30, Material.BARRIER, "&cСнять президента", List.of("&7Закрывает срок и текущий налог."), "rp:president:remove");
+        setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7К новому разделу выборов."), "open:rp-root");
+        player.openInventory(inv);
+    }
+
+    private String activeRpElectionId() throws Exception {
+        Map<String, Object> row = queryOne("SELECT id FROM elections WHERE active=1 AND notes='rp-two-stage' ORDER BY updated_at DESC LIMIT 1");
+        return row == null ? "" : string(row.get("id"));
+    }
+
+    private void openRpApplicationsMenu(Player player, int page) {
+        if (!hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНедостаточно прав для просмотра заявок."));
+            return;
+        }
+        player.sendActionBar(color("&7Загружаю заявки на президентство..."));
+        runAsync(() -> {
+            try {
+                String electionId = activeRpElectionId();
+                List<Map<String, Object>> rows = electionId.isBlank() ? List.of() : queryList(
+                        "SELECT id,player_uuid,player_name,answers,admin_status,status,submitted_at FROM candidate_applications " +
+                                "WHERE election_id=? AND submitted_at>0 ORDER BY submitted_at DESC LIMIT 500", electionId);
+                runSync(() -> {
+                    if (player.isOnline()) renderRpApplicationsMenu(player, page, rows);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "rp applications menu load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) player.sendMessage(color("&cНе удалось загрузить заявки."));
+                });
+            }
+        });
+    }
+
+    private void renderRpApplicationsMenu(Player player, int page, List<Map<String, Object>> rows) {
+        MenuHolder holder = new MenuHolder("rp-applications", "");
+        Inventory inv = holder.create(54, color("&2&lЗаявки на президентство"));
+        setStatic(inv, 4, infoItem(Material.WRITABLE_BOOK, "&fЗаявки с сайта", List.of(
+                "&7Здесь нет председателей и печатей.",
+                "&7Открой заявку, прочитай программу и реши: одобрить или отклонить.",
+                "&7После одобрения от 2 до 4 игроков выбираются кандидатами."
+        )));
+        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+        int start = Math.max(0, page) * slots.length;
+        for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
+            Map<String, Object> row = rows.get(start + i);
+            String id = string(row.get("id"));
+            String name = first(string(row.get("player_name")), "Игрок");
+            String status = first(string(row.get("admin_status")), string(row.get("status")));
+            ItemStack head = playerHeadWithUuid(string(row.get("player_uuid")), name);
+            ItemMeta meta = head.getItemMeta();
+            meta.setDisplayName(color("&f" + name));
+            meta.setLore(List.of(
+                    color("&7Статус: &f" + status),
+                    color("&7Подана: &f" + formatTs(longValue(row.get("submitted_at")))),
+                    color("&eЛКМ: открыть полную заявку")
+            ));
+            head.setItemMeta(meta);
+            holder.actions().put(slots[i], "rp:application:view:" + id);
+            inv.setItem(slots[i], head);
+        }
+        if (rows.isEmpty()) {
+            setStatic(inv, 22, infoItem(Material.PAPER, "&eЗаявок пока нет", List.of("&7Игроки смогут подать заявку на сайте после старта кампании.")));
+        }
+        pageButtons(holder, inv, page, rows.size(), slots.length, "open:rp-applications:" + (page - 1), "open:rp-applications:" + (page + 1), "open:rp-root");
+        player.openInventory(inv);
+    }
+
+    private void openRpApplicationDetail(Player player, String applicationId) throws Exception {
+        Map<String, Object> app = applicationById(applicationId);
+        if (app == null) {
+            player.sendMessage(color("&cЗаявка не найдена."));
+            openRpApplicationsMenu(player, 0);
+            return;
+        }
+        String name = first(string(app.get("player_name")), "Игрок");
+        String status = first(string(app.get("admin_status")), string(app.get("status")));
+        String answers = first(string(app.get("answers")), "Ответы не заполнены.");
+        MenuHolder holder = new MenuHolder("rp-application-detail", applicationId);
+        Inventory inv = holder.create(45, color("&2Заявка: " + name));
+        setStatic(inv, 4, infoItem(Material.PLAYER_HEAD, "&f" + name, List.of(
+                "&7Статус: &f" + status,
+                "&7Подана: &f" + formatTs(longValue(app.get("submitted_at"))),
+                "&7Заявка принимается только на сайте."
+        )));
+        setButton(holder, 20, Material.WRITTEN_BOOK, "&eОткрыть программу", List.of("&7Показать все ответы игрока отдельной книгой."), "rp:application:book:" + applicationId);
+        boolean pending = "PENDING".equalsIgnoreCase(string(app.get("admin_status"))) && longValue(app.get("submitted_at")) > 0L;
+        if (pending) {
+            setButton(holder, 22, Material.LIME_WOOL, "&aОдобрить заявку", List.of("&7После этого игрок появится в списке для выбора кандидатов."), "rp:application:approve:" + applicationId);
+            setButton(holder, 24, Material.RED_WOOL, "&cОтклонить заявку", List.of("&7Заявка останется в истории как отклонённая."), "rp:application:reject:" + applicationId);
+        } else {
+            setStatic(inv, 22, infoItem(Material.PAPER, "&fРешение уже принято", List.of("&7Эту заявку нельзя изменить повторно.")));
+        }
+        setButton(holder, 31, Material.PAPER, "&fКратко", List.of("&7" + shortText(answers.replace('\n', ' '), 90)), "none");
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К списку заявок."), "open:rp-applications");
+        player.openInventory(inv);
+    }
+
+    private ItemStack playerHeadWithUuid(String uuid, String name) {
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta raw = head.getItemMeta();
+        if (raw instanceof SkullMeta meta) {
+            try {
+                if (uuid != null && !uuid.isBlank()) meta.setOwningPlayer(Bukkit.getOfflinePlayer(UUID.fromString(uuid)));
+                else meta.setOwningPlayer(Bukkit.getOfflinePlayer(name));
+            } catch (Exception error) {
+                meta.setOwningPlayer(Bukkit.getOfflinePlayer(name));
+            }
+            head.setItemMeta(meta);
+        }
+        return head;
+    }
+
+    private void openRpCandidatesMenu(Player player, int page) {
+        if (!hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНедостаточно прав для выбора кандидатов."));
+            return;
+        }
+        runAsync(() -> {
+            try {
+                String electionId = activeRpElectionId();
+                List<Map<String, Object>> rows = electionId.isBlank() ? List.of() : queryList(
+                        "SELECT id,player_uuid,player_name,admin_status,answers FROM candidate_applications " +
+                        "WHERE election_id=? AND submitted_at>0 AND admin_status='APPROVED' AND status='APPROVED' ORDER BY player_name ASC LIMIT 500", electionId);
+                Set<String> selected = new LinkedHashSet<>();
+                if (!electionId.isBlank()) {
+                    selected.addAll(queryList("SELECT application_id FROM candidates WHERE election_id=? AND active=1", electionId).stream()
+                            .map(row -> string(row.get("application_id"))).filter(value -> !value.isBlank()).toList());
+                }
+                Set<String> pending = rpCandidateSelections.computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet());
+                if (pending.isEmpty()) pending.addAll(selected);
+                runSync(() -> {
+                    if (player.isOnline()) renderRpCandidatesMenu(player, page, rows, pending);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "rp candidates menu load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) player.sendMessage(color("&cНе удалось загрузить кандидатов."));
+                });
+            }
+        });
+    }
+
+    private void renderRpCandidatesMenu(Player player, int page, List<Map<String, Object>> rows, Set<String> selected) {
+        MenuHolder holder = new MenuHolder("rp-candidates", "");
+        Inventory inv = holder.create(54, color("&2&lВыбор кандидатов"));
+        setStatic(inv, 4, infoItem(Material.PLAYER_HEAD, "&fОтбор 2–4 кандидатов", List.of(
+                "&7Выбранные игроки участвуют в дебатах и голосовании.",
+                "&7Состав блокируется после открытия дебатов.",
+                "&7Сейчас выбрано: &f" + selected.size()
+        )));
+        int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+        int start = Math.max(0, page) * slots.length;
+        for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
+            Map<String, Object> row = rows.get(start + i);
+            String id = string(row.get("id"));
+            String name = first(string(row.get("player_name")), "Игрок");
+            boolean checked = selected.contains(id);
+            ItemStack head = playerHeadWithUuid(string(row.get("player_uuid")), name);
+            ItemMeta meta = head.getItemMeta();
+            meta.setDisplayName(color((checked ? "&a✓ " : "&f") + name));
+            meta.setLore(List.of(color(checked ? "&aВыбран кандидатом" : "&7Нажми, чтобы добавить в состав"), color("&7Программа: &f" + shortText(string(row.get("answers")), 65))));
+            head.setItemMeta(meta);
+            holder.actions().put(slots[i], "rp:candidate:toggle:" + id);
+            inv.setItem(slots[i], head);
+        }
+        setButton(holder, 43, Material.EMERALD, "&aСохранить состав", List.of("&7Требуется от 2 до 4 игроков.", "&7После сохранения можно открыть дебаты."), "rp:select");
+        pageButtons(holder, inv, page, rows.size(), slots.length, "open:rp-candidates", "open:rp-candidates", "open:rp-root");
+        player.openInventory(inv);
+    }
+
+    private void toggleRpCandidateSelection(Player player, String applicationId) throws Exception {
+        if (applicationId == null || applicationId.isBlank()) return;
+        String electionId = activeRpElectionId();
+        if (electionId.isBlank()) throw new IllegalStateException("Активная RP-кампания не найдена.");
+        Map<String, Object> app = applicationById(applicationId);
+        if (app == null || !electionId.equals(string(app.get("election_id")))
+                || !"APPROVED".equalsIgnoreCase(string(app.get("admin_status")))
+                || !"APPROVED".equalsIgnoreCase(string(app.get("status")))) {
+            throw new IllegalStateException("Эта заявка не может быть кандидатом.");
+        }
+        Set<String> selected = rpCandidateSelections.computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet());
+        if (selected.contains(applicationId)) selected.remove(applicationId);
+        else {
+            if (selected.size() >= 4) throw new IllegalStateException("Можно выбрать максимум 4 кандидатов.");
+            selected.add(applicationId);
+        }
+    }
+
+    private void applyRpCandidateSelection(String actor, UUID playerUuid) throws Exception {
+        Set<String> selected = new LinkedHashSet<>(rpCandidateSelections.getOrDefault(playerUuid, Set.of()));
+        if (selected.size() < 2 || selected.size() > 4) throw new IllegalStateException("Нужно выбрать от 2 до 4 кандидатов.");
+        selectRpCandidates(actor, selected);
+        rpCandidateSelections.remove(playerUuid);
+    }
+
+    private void openRpBlocksMenu(Player player, int page) {
+        if (!hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНедостаточно прав для управления блоками голосования."));
+            return;
+        }
+        runAsync(() -> {
+            try {
+                String electionId = activeRpElectionId();
+                List<Map<String, Object>> rows = electionId.isBlank() ? List.of() : queryList(
+                        "SELECT b.id,b.world,b.x,b.y,b.z,b.active,COALESCE(p.ballots_submitted,0) AS votes " +
+                                "FROM election_voting_blocks b LEFT JOIN polling_stations p ON p.id=b.id " +
+                                "WHERE b.election_id=? AND b.active=1 ORDER BY b.created_at DESC LIMIT 500", electionId);
+                runSync(() -> {
+                    if (player.isOnline()) renderRpBlocksMenu(player, page, rows);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "rp blocks menu load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) player.sendMessage(color("&cНе удалось загрузить блоки голосования."));
+                });
+            }
+        });
+    }
+
+    private void renderRpBlocksMenu(Player player, int page, List<Map<String, Object>> rows) {
+        MenuHolder holder = new MenuHolder("rp-blocks", "");
+        Inventory inv = holder.create(54, color("&2&lБлоки голосования"));
+        setButton(holder, 10, Material.EMERALD_BLOCK, "&aСоздать блок по взгляду", List.of(
+                "&7Посмотри на нужный блок и нажми.",
+                "&7Администратор может поставить несколько блоков.",
+                "&7Сломать его обычный игрок не сможет."
+        ), "rp:block:create");
+        setStatic(inv, 4, infoItem(Material.LECTERN, "&fИнтерактивный участок", List.of(
+                "&7Игрок нажимает на блок во время голосования.",
+                "&7Открываются головы утверждённых кандидатов.",
+                "&7Удаление блока не сбрасывает голоса."
+        )));
+        int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34, 37, 38, 39, 40, 41, 42, 43};
+        int start = Math.max(0, page) * slots.length;
+        for (int i = 0; i < slots.length && start + i < rows.size(); i++) {
+            Map<String, Object> row = rows.get(start + i);
+            String id = string(row.get("id"));
+            setButton(holder, slots[i], Material.LECTERN, "&f" + string(row.get("world")) + " " + intValue(row.get("x")) + "," + intValue(row.get("y")) + "," + intValue(row.get("z")), List.of(
+                    "&7Принято голосов: &f" + intValue(row.get("votes")),
+                    "&cЛКМ: отключить этот блок"
+            ), "rp:block:disable:" + id);
+        }
+        if (rows.isEmpty()) setStatic(inv, 22, infoItem(Material.PAPER, "&eБлоков пока нет", List.of("&7Создай первый блок взглядом на выбранную поверхность.")));
+        pageButtons(holder, inv, page, rows.size(), slots.length, "open:rp-blocks:" + (page - 1), "open:rp-blocks:" + (page + 1), "open:rp-root");
+        player.openInventory(inv);
+    }
+
+    private void openRpResultsMenu(Player player) {
+        if (!hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНедостаточно прав для просмотра результатов."));
+            return;
+        }
+        try {
+            String electionId = activeRpElectionId();
+            MenuHolder holder = new MenuHolder("rp-results", "");
+            Inventory inv = holder.create(54, color("&2&lРезультаты голосования"));
+            if (electionId.isBlank()) {
+                setStatic(inv, 22, infoItem(Material.PAPER, "&eАктивной кампании нет", List.of("&7История доступна на сайте.")));
+                setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:rp-root");
+                player.openInventory(inv);
+                return;
+            }
+            Map<String, Object> election = queryOne("SELECT current_stage,voting_deadline_at FROM elections WHERE id=?", electionId);
+            List<CandidateResult> results = loadRpCandidateResults(electionId);
+            setStatic(inv, 4, infoItem(Material.PAPER, "&fГолоса в реальном времени", List.of(
+                    "&7Этап: &f" + ElectionStage.safeValue(string(election == null ? "" : election.get("current_stage"))).title(),
+                    "&7Всего голосов: &f" + results.stream().mapToInt(CandidateResult::votes).sum(),
+                    "&7При равенстве администратор выбирает победителя вручную."
+            )));
+            int[] slots = {19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
+            for (int i = 0; i < results.size() && i < slots.length; i++) {
+                CandidateResult result = results.get(i);
+                setButton(holder, slots[i], Material.PLAYER_HEAD, "&f" + result.name(), List.of(
+                        "&7Голосов: &f" + result.votes(),
+                        "&7" + result.bar(),
+                        "&eЛКМ: завершить и назначить победителем"
+                ), "rp:finish:" + result.uuid());
+            }
+            setButton(holder, 49, Material.ARROW, "&aНазад", List.of("&7К управлению кампанией."), "open:rp-manage");
+            player.openInventory(inv);
+        } catch (Exception error) {
+            sendUserError(player, error, "&cНе удалось загрузить результаты.");
+        }
+    }
+
+    private List<CandidateResult> loadRpCandidateResults(String electionId) throws Exception {
+        int round = currentRoundNumberFor(electionId);
+        List<Map<String, Object>> rows = queryList(
+                "SELECT rc.candidate_uuid,rc.candidate_name,COUNT(v.id) AS votes FROM round_candidates rc " +
+                        "LEFT JOIN votes v ON v.election_id=rc.election_id AND v.round_no=rc.round_no AND v.candidate_uuid=rc.candidate_uuid " +
+                        "WHERE rc.election_id=? AND rc.round_no=? AND rc.active=1 GROUP BY rc.candidate_uuid,rc.candidate_name ORDER BY votes DESC,rc.candidate_name ASC",
+                electionId, round);
+        int max = rows.stream().mapToInt(row -> intValue(row.get("votes"))).max().orElse(0);
+        List<CandidateResult> result = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            int votes = intValue(row.get("votes"));
+            int blocks = max <= 0 ? 1 : Math.max(1, Math.min(12, (int) Math.ceil(votes * 12.0 / max)));
+            result.add(new CandidateResult(string(row.get("candidate_uuid")), first(string(row.get("candidate_name")), "Кандидат"), votes, "█".repeat(blocks)));
+        }
+        return result;
+    }
+
+    private int currentRoundNumberFor(String electionId) throws Exception {
+        Map<String, Object> row = queryOne("SELECT current_round FROM elections WHERE id=?", electionId);
+        return Math.max(1, row == null ? 1 : intValue(row.get("current_round")));
+    }
+
+    private void openRpPresidentMenu(Player player) {
+        try {
+            Map<String, Object> term = queryOne("SELECT president_uuid,president_name,started_at,ends_at FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1");
+            MenuHolder holder = new MenuHolder("rp-president", "");
+            Inventory inv = holder.create(27, color("&2&lДействующий президент"));
+            if (term == null) {
+                setStatic(inv, 13, infoItem(Material.BARRIER, "&eПрезидента нет", List.of("&7Сначала проведи дебаты и голосование.")));
+            } else {
+                setStatic(inv, 13, infoItem(Material.PLAYER_HEAD, "&f" + string(term.get("president_name")), List.of(
+                        "&7Начало: &f" + formatTs(longValue(term.get("started_at"))),
+                        "&7Окончание: &f" + formatTs(longValue(term.get("ends_at"))),
+                        "&7Срок всегда ровно 7 дней."
+                )));
+                setButton(holder, 11, Material.BARRIER, "&cДосрочно снять президента", List.of("&7Налог текущего срока будет закрыт.", "&7Новые выборы сами не начнутся."), "rp:president:remove");
+            }
+            setButton(holder, 15, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:rp-root");
+            player.openInventory(inv);
+        } catch (Exception error) {
+            sendUserError(player, error, "&cНе удалось загрузить данные президента.");
+        }
+    }
+
+    private void openLegacyManagementMenu(Player player) {
         LiveSnapshot snap = snapshot.get();
         MenuHolder holder = new MenuHolder("manage", "");
         Inventory inv = holder.create(54, color("&6Управление выборами"));
@@ -2784,6 +3385,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
+    private boolean isRpStation(Map<String, Object> station) {
+        if (station == null) return false;
+        try {
+            String electionId = string(station.get("election_id"));
+            return !electionId.isBlank() && scalarLong("SELECT COUNT(*) FROM elections WHERE id=? AND notes='rp-two-stage'", electionId) > 0;
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
     private void openDirectVoteMenu(Player player, String stationId) {
         try {
             Map<String, Object> station = stationById(stationId);
@@ -3049,11 +3660,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.sendMessage(color("&eЭтот блок уже защищён."));
             return;
         }
-        // Station setup is the first step of an election workflow.  Treating a
-        // missing/finished cycle as a SQL error sent the player into the generic
-        // bug-report flow (for example error code 9248E179).  Reuse the guarded
-        // lifecycle helper so a draft cycle is created atomically when needed.
-        String electionId = ensureElectionExists(player.getName());
+        // A voting block belongs to an explicitly started RP campaign.  Block
+        // creation must never silently start a campaign, otherwise an admin
+        // can create elections just by looking at a block and old state may be
+        // mixed into the new workflow.
+        String electionId = activeRpElectionId();
+        if (electionId.isBlank()) {
+            throw new IllegalStateException("Сначала откройте новую RP-кампанию в разделе «Кампания».");
+        }
+        Map<String, Object> campaign = queryOne("SELECT current_stage,status FROM elections WHERE id=? AND active=1", electionId);
+        ElectionStage campaignStage = ElectionStage.safeValue(campaign == null ? "" : string(campaign.get("current_stage")));
+        if (campaignStage == ElectionStage.PRESIDENT_TERM || campaignStage == ElectionStage.FINISHED) {
+            throw new IllegalStateException("Нельзя добавлять блок в уже завершённую кампанию.");
+        }
         String stationId = "station_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
         tx(connection -> {
@@ -4026,13 +4645,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 throw new IllegalStateException("Кандидат не может голосовать сам за себя.");
             }
             Map<String, Object> candidate = queryOne(connection,
-                    "SELECT rc.candidate_name,COALESCE(c.active,0) AS candidate_active,COALESCE(a.admin_status,'') AS admin_status " +
+                    "SELECT rc.candidate_name,COALESCE(c.active,0) AS candidate_active,COALESCE(a.admin_status,'') AS admin_status,COALESCE(a.status,'') AS application_status " +
                             "FROM round_candidates rc " +
                             "LEFT JOIN candidates c ON c.election_id=rc.election_id AND c.player_uuid=rc.candidate_uuid " +
                             "LEFT JOIN candidate_applications a ON a.id=c.application_id " +
                             "WHERE rc.election_id=? AND rc.round_no=? AND rc.candidate_uuid=? AND rc.active=1 LIMIT 1",
                     context.electionId(), liveRound, candidateUuid);
-            if (candidate == null || intValue(candidate.get("candidate_active")) <= 0 || !"APPROVED".equalsIgnoreCase(string(candidate.get("admin_status")))) {
+            if (candidate == null || intValue(candidate.get("candidate_active")) <= 0
+                    || !"APPROVED".equalsIgnoreCase(string(candidate.get("admin_status")))
+                    || !"APPROVED".equalsIgnoreCase(string(candidate.get("application_status")))) {
                 throw new IllegalStateException("Кандидат больше недоступен в текущем туре.");
             }
             update(connection, "UPDATE ballots SET status='CONFIRMED',confirmed_candidate_uuid=?,confirmed_candidate_name=?,confirmed_at=? WHERE id=?",
@@ -4074,10 +4695,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 throw new IllegalStateException("Ты уже проголосовал в этом туре.");
             }
             Map<String, Object> candidate = queryOne(connection,
-                    "SELECT rc.candidate_name,COALESCE(c.active,0) AS candidate_active,COALESCE(a.admin_status,'') AS admin_status FROM round_candidates rc LEFT JOIN candidates c ON c.election_id=rc.election_id AND c.player_uuid=rc.candidate_uuid LEFT JOIN candidate_applications a ON a.id=c.application_id WHERE rc.election_id=? AND rc.round_no=? AND rc.candidate_uuid=? AND rc.active=1 LIMIT 1",
+                    "SELECT rc.candidate_name,COALESCE(c.active,0) AS candidate_active,COALESCE(a.admin_status,'') AS admin_status,COALESCE(a.status,'') AS application_status FROM round_candidates rc LEFT JOIN candidates c ON c.election_id=rc.election_id AND c.player_uuid=rc.candidate_uuid LEFT JOIN candidate_applications a ON a.id=c.application_id WHERE rc.election_id=? AND rc.round_no=? AND rc.candidate_uuid=? AND rc.active=1 LIMIT 1",
                     context.electionId(), context.round(), candidateUuid);
-            if (candidate == null || intValue(candidate.get("candidate_active")) <= 0 || !"APPROVED".equalsIgnoreCase(string(candidate.get("admin_status")))) {
+            if (candidate == null || intValue(candidate.get("candidate_active")) <= 0
+                    || !"APPROVED".equalsIgnoreCase(string(candidate.get("admin_status")))
+                    || !"APPROVED".equalsIgnoreCase(string(candidate.get("application_status")))) {
                 throw new IllegalStateException("Кандидат больше недоступен.");
+            }
+            if (candidateUuid.equals(player.getUniqueId().toString())) {
+                throw new IllegalStateException("Нельзя голосовать за себя.");
             }
             long t = now();
             String voteId = "direct_vote_" + UUID.randomUUID().toString().replace("-", "");
@@ -4261,12 +4887,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 throw new IllegalStateException("Эта заявка уже рассмотрена или ещё не сдана.");
             }
             Map<String, Object> lockedElection = queryOne(connection,
-                    "SELECT candidate_limit,current_round,current_stage FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
+                    "SELECT candidate_limit,current_round,current_stage,notes FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
                     electionId);
             if (lockedElection == null) {
                 throw new IllegalStateException("Выборы для этой заявки уже не активны.");
             }
-            if (ElectionStage.safeValue(string(lockedElection.get("current_stage"))) != ElectionStage.REVIEW) {
+            boolean rpWorkflow = "rp-two-stage".equalsIgnoreCase(string(lockedElection.get("notes")));
+            ElectionStage lockedStage = ElectionStage.safeValue(string(lockedElection.get("current_stage")));
+            if ((!rpWorkflow && lockedStage != ElectionStage.REVIEW)
+                    || (rpWorkflow && (lockedStage == ElectionStage.DEBATES || lockedStage == ElectionStage.VOTING || lockedStage == ElectionStage.PRESIDENT_TERM))) {
                 throw new IllegalStateException("Финальное решение по кандидату доступно только на этапе проверки.");
             }
             long lockedActiveCount = scalarLong(connection, "SELECT COUNT(*) FROM candidates WHERE election_id=? AND active=1", electionId);
@@ -4275,11 +4904,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 throw new IllegalStateException("Лимит кандидатов уже заполнен.");
             }
             update(connection, "UPDATE candidate_applications SET admin_status='APPROVED',status='APPROVED',reviewed_at=?,reviewed_by=? WHERE id=?", t, actor, applicationId);
-            int round = Math.max(1, intValue(lockedElection.get("current_round")));
-            update(connection, "INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result) VALUES(?,?,?,?,?,?,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,application_id=excluded.application_id,active=1",
-                    "candidate_" + electionId + "_" + string(lockedApp.get("player_uuid")), electionId, string(lockedApp.get("player_uuid")), string(lockedApp.get("player_name")), applicationId, t);
-            update(connection, "INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) VALUES(?,?,?,?,1,?,?) ON CONFLICT(election_id,round_no,candidate_uuid) DO UPDATE SET candidate_name=excluded.candidate_name,active=1",
-                    electionId, round, string(lockedApp.get("player_uuid")), string(lockedApp.get("player_name")), t, actor);
+            if (!rpWorkflow) {
+                int round = Math.max(1, intValue(lockedElection.get("current_round")));
+                update(connection, "INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result) VALUES(?,?,?,?,?,?,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,application_id=excluded.application_id,active=1",
+                        "candidate_" + electionId + "_" + string(lockedApp.get("player_uuid")), electionId, string(lockedApp.get("player_uuid")), string(lockedApp.get("player_name")), applicationId, t);
+                update(connection, "INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) VALUES(?,?,?,?,1,?,?) ON CONFLICT(election_id,round_no,candidate_uuid) DO UPDATE SET candidate_name=excluded.candidate_name,active=1",
+                        electionId, round, string(lockedApp.get("player_uuid")), string(lockedApp.get("player_name")), t, actor);
+            }
             logPluginEvent(connection, "election_core", "application_approved", actor, applicationId, "");
             return null;
         });
@@ -4298,12 +4929,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 throw new IllegalStateException("Эта заявка уже рассмотрена или ещё не сдана.");
             }
             Map<String, Object> lockedElection = queryOne(connection,
-                    "SELECT current_stage FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
+                    "SELECT current_stage,notes FROM elections WHERE id=? LIMIT 1 FOR UPDATE",
                     string(lockedApp.get("election_id")));
             if (lockedElection == null) {
                 throw new IllegalStateException("Выборы для этой заявки уже не активны.");
             }
-            if (ElectionStage.safeValue(string(lockedElection.get("current_stage"))) != ElectionStage.REVIEW) {
+            boolean rpWorkflow = "rp-two-stage".equalsIgnoreCase(string(lockedElection.get("notes")));
+            ElectionStage lockedStage = ElectionStage.safeValue(string(lockedElection.get("current_stage")));
+            if ((!rpWorkflow && lockedStage != ElectionStage.REVIEW)
+                    || (rpWorkflow && (lockedStage == ElectionStage.DEBATES || lockedStage == ElectionStage.VOTING || lockedStage == ElectionStage.PRESIDENT_TERM))) {
                 throw new IllegalStateException("Финальное решение по кандидату доступно только на этапе проверки.");
             }
             update(connection, "UPDATE candidate_applications SET admin_status='REJECTED',status='REJECTED',reviewed_at=?,reviewed_by=? WHERE id=?", t, actor, applicationId);
@@ -4331,8 +4965,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         String termId = "term_" + UUID.randomUUID().toString().replace("-", "");
         update(connection, "INSERT INTO president_terms(id,election_id,president_uuid,president_name,status,started_at,ends_at,removed_at,removed_by,last_broadcast_at,last_law_replace_at) VALUES(?,?,?,?, 'ACTIVE', ?, ?, 0, '', 0, 0)",
                 termId, electionId, presidentUuid, presidentName, t, t + 7L * 86_400_000L);
-        update(connection, "UPDATE elections SET president_uuid=?,president_name=?,manual_winner_uuid=?,manual_winner_name=?,current_stage=?,second_round_needed=0,updated_at=? WHERE id=?",
-                presidentUuid, presidentName, presidentUuid, presidentName, ElectionStage.PRESIDENT_TERM.name(), t, electionId);
+        update(connection, "UPDATE elections SET president_uuid=?,president_name=?,winner_uuid=?,winner_name=?,manual_winner_uuid=?,manual_winner_name=?,status='PRESIDENT_TERM',current_stage=?,second_round_needed=0,updated_at=? WHERE id=?",
+                presidentUuid, presidentName, presidentUuid, presidentName, presidentUuid, presidentName, ElectionStage.PRESIDENT_TERM.name(), t, electionId);
         update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
                 electionId, ElectionStage.PRESIDENT_TERM.name(), round, actor, t, presidentName);
         Player online = Bukkit.getPlayer(UUID.fromString(presidentUuid));
@@ -4941,7 +5575,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         List<CandidateResult> candidates = loadCandidateResults(electionId, currentRound);
         List<String> laws = publishedLaws().stream().map(row -> string(row.get("text"))).limit(5).toList();
         long deposited = scalarLong("SELECT COUNT(*) FROM votes WHERE election_id=? AND round_no=?", electionId, currentRound);
-        long stations = scalarLong("SELECT COUNT(*) FROM polling_stations WHERE active=1");
+        long stations = scalarLong("SELECT COUNT(*) FROM election_voting_blocks WHERE election_id=? AND active=1", electionId);
         Map<String, Object> tax = activeTax();
         return new LiveSnapshot(
                 electionId,
@@ -5367,6 +6001,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 && scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE' AND ends_at>?", playerUuid, now()) > 0;
     }
 
+    private boolean allowProtectedInteract(Player player) {
+        if (player == null) {
+            return false;
+        }
+        long current = System.currentTimeMillis();
+        long previous = protectedInteractAt.getOrDefault(player.getUniqueId(), 0L);
+        if (current - previous < 400L) {
+            return false;
+        }
+        protectedInteractAt.put(player.getUniqueId(), current);
+        return true;
+    }
+
     private void enforceCurrentMenuAccess(Player player, String action) {
         if (requiresElectionAdminAction(action) && !hasElectionAdmin(player)) {
             throw new IllegalStateException("Недостаточно прав для этого действия.");
@@ -5382,10 +6029,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         // Самоназначение председателя доступно обычному игроку на свободном
         // участке; остальные действия с участком по-прежнему требуют админа.
-        if (action.startsWith("apply:station:self-chair:")) {
-            return false;
-        }
         return action.equals("open:manage")
+                || action.startsWith("open:rp-")
+                || action.startsWith("rp:")
                 || action.startsWith("open:stations")
                 || action.equals("open:cik")
                 || action.startsWith("open:cik:")
@@ -5410,7 +6056,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 || action.startsWith("manage:")
                 || action.startsWith("stage:")
                 || action.startsWith("stations:")
-                || action.startsWith("direct-vote:")
                 || action.startsWith("apply:manage:")
                 || action.startsWith("apply:stage:")
                 || action.startsWith("apply:station:")
@@ -5418,7 +6063,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 || action.startsWith("apply:chairreq:")
                 || action.startsWith("apply:application:")
                 || action.startsWith("apply:results:")
-                || action.startsWith("apply:direct-vote:")
                 || action.equals("president:remove")
                 || action.equals("apply:president:remove")
                 || action.equals("president:resign")
@@ -5430,6 +6074,49 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 || action.startsWith("legacy-disabled:tax:")
                 || action.startsWith("legacy-disabled:apply:tax:")
                 || action.equals("live:refresh");
+    }
+
+    /**
+     * Actions from the retired CIK/paper-ballot menu can still be present in
+     * an inventory opened before a plugin update.  They must never execute a
+     * legacy SQL path; sending the player to the new hub is safe and makes the
+     * migration self-healing for already-open menus.
+     */
+    private boolean isRetiredElectionMenuAction(String action) {
+        if (action == null || action.isBlank()) {
+            return false;
+        }
+        return action.startsWith("manage:")
+                || action.startsWith("stage:")
+                || action.startsWith("apply:manage:")
+                || action.startsWith("apply:stage:")
+                || action.startsWith("open:stations")
+                || action.startsWith("open:cik")
+                || action.startsWith("open:applications")
+                || action.equals("open:results")
+                || action.equals("open:president")
+                || action.equals("open:live")
+                || action.startsWith("station:")
+                || action.startsWith("cik:")
+                || action.startsWith("chair:")
+                || action.startsWith("chairreq:")
+                || action.startsWith("application:")
+                || action.startsWith("results:")
+                || action.startsWith("election:")
+                || action.startsWith("vote:")
+                || action.startsWith("apply:vote:")
+                || action.startsWith("open:station-ballot:")
+                || action.startsWith("open:station-hub:")
+                || action.startsWith("vote-seal:")
+                || action.startsWith("vote-deposit:")
+                || action.startsWith("apply:station:")
+                || action.startsWith("apply:cik:")
+                || action.startsWith("apply:chair:")
+                || action.startsWith("apply:chairreq:")
+                || action.startsWith("apply:application:")
+                || action.startsWith("apply:results:")
+                || action.startsWith("apply:vote:")
+                || action.startsWith("apply:admin:");
     }
 
     private boolean requiresPresidentOrElectionAdminAction(String action) {
@@ -5454,7 +6141,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (!(sender instanceof Player player)) {
             return true;
         }
-        return player.isOp() || player.hasPermission("copimine.admin") || player.hasPermission("copimine.election.admin");
+        // Junior administrators are deliberately allowed to run the complete
+        // simplified RP workflow.  Economy, world and database controls stay
+        // outside this plugin and remain restricted by their own permissions.
+        return player.isOp()
+                || player.hasPermission("copimine.admin")
+                || player.hasPermission("copimine.admin.junior")
+                || player.hasPermission("copimine.election.admin");
     }
 
     private boolean isChairForStation(Player player, Map<String, Object> station) {
@@ -5581,7 +6274,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private String currentElectionId() throws Exception {
-        Map<String, Object> row = queryOne("SELECT id FROM elections WHERE active=1 ORDER BY updated_at DESC LIMIT 1");
+        // Historical CIK rows remain readable, but only the new RP campaign
+        // is allowed to feed live AdminHub state and vote actions.
+        Map<String, Object> row = queryOne("SELECT id FROM elections WHERE active=1 AND LOWER(COALESCE(notes,''))='rp-two-stage' ORDER BY updated_at DESC LIMIT 1");
         return row == null ? null : string(row.get("id"));
     }
 
@@ -5593,33 +6288,217 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return electionId;
     }
 
+    /**
+     * Compatibility entry point for retired CIK/admin actions.
+     *
+     * The old screens are still compiled because historical databases and
+     * third-party integrations may reference this method, but their runtime
+     * routes are blocked by isRetiredElectionMenuAction().  If a stale route
+     * reaches this method anyway, it must create/use the guarded RP campaign
+     * rather than writing a legacy election row with a different lifecycle.
+     */
     private String ensureElectionExists(String actor) throws Exception {
-        String current = currentElectionId();
-        if (current != null) {
-            Map<String, Object> activeElection = queryOne("SELECT current_stage FROM elections WHERE id=? LIMIT 1", current);
-            if (activeElection != null && ElectionStage.PRESIDENT_TERM.name().equalsIgnoreCase(string(activeElection.get("current_stage")))) {
-                throw new IllegalStateException("Новые выборы нельзя начать до окончания президентского срока.");
-            }
-            return current;
-        }
-        if (scalarLong("SELECT COUNT(*) FROM president_terms WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>?)", now()) > 0) {
-            throw new IllegalStateException("Новые выборы нельзя начать, пока действует президент.");
-        }
-        String electionId = "election_" + UUID.randomUUID().toString().replace("-", "");
+        return startRpElection(actor);
+    }
+
+    private String startRpElection(String actor) throws Exception {
         long t = now();
-        tx(connection -> {
-            update(connection, "UPDATE elections SET active=0 WHERE active=1");
+        return tx(connection -> {
+            // Repair an expired term synchronously when an administrator tries
+            // to start the next campaign.  The periodic task normally does
+            // this, but the button must also work immediately after the
+            // seven-day deadline and must not depend on scheduler timing.
+            List<Map<String, Object>> expiredTerms = queryList(connection,
+                    "SELECT id,election_id,president_uuid FROM president_terms WHERE status='ACTIVE' AND ends_at>0 AND ends_at<=? FOR UPDATE",
+                    t);
+            for (Map<String, Object> expired : expiredTerms) {
+                String termId = string(expired.get("id"));
+                String electionId = string(expired.get("election_id"));
+                String presidentUuid = string(expired.get("president_uuid"));
+                update(connection, "UPDATE president_taxes SET status='EXPIRED' WHERE term_id=? AND status='ACTIVE'", termId);
+                update(connection, "UPDATE president_terms SET status='EXPIRED',removed_at=?,removed_by='SYSTEM' WHERE id=? AND status='ACTIVE'", t, termId);
+                update(connection,
+                        "UPDATE elections SET president_uuid='',president_name='',current_stage='FINISHED',status='FINISHED',active=0,ended_at=?,ended_by='SYSTEM',updated_at=? WHERE id=? AND president_uuid=?",
+                        t, t, electionId, presidentUuid);
+            }
+            Map<String, Object> president = queryOne(connection,
+                    "SELECT id FROM president_terms WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>?) ORDER BY started_at DESC LIMIT 1 FOR UPDATE", t);
+            if (president != null) {
+                throw new IllegalStateException("Новые выборы нельзя начать, пока действует президент. Сначала он должен уйти или быть снят.");
+            }
+            List<Map<String, Object>> activeRows = queryList(connection,
+                    "SELECT id,notes,current_stage FROM elections WHERE active=1 ORDER BY updated_at DESC FOR UPDATE");
+            for (Map<String, Object> active : activeRows) {
+                if ("rp-two-stage".equalsIgnoreCase(string(active.get("notes")))) {
+                    ElectionStage stage = ElectionStage.safeValue(string(active.get("current_stage")));
+                    // A campaign in its president term is not a new campaign
+                    // and must never be returned as the result of Start.  The
+                    // active president guard above handles the normal case;
+                    // this stage check also repairs rows left behind by an
+                    // older release after the term expired.
+                    if (stage != ElectionStage.PRESIDENT_TERM && stage != ElectionStage.FINISHED) {
+                        return string(active.get("id"));
+                    }
+                }
+            }
+            // The previous multi-stage election remains in history, but can
+            // no longer block the new RP workflow or expose its old GUI.  Do
+            // this for every stale active row because old releases could leave
+            // more than one active campaign behind.
+            for (Map<String, Object> active : activeRows) {
+                String notes = string(active.get("notes"));
+                String terminalStatus = "rp-two-stage".equalsIgnoreCase(notes) ? "FINISHED" : "MIGRATED";
+                update(connection, "UPDATE elections SET active=0,status=?,ended_at=?,ended_by=?,updated_at=? WHERE id=?",
+                        terminalStatus, t, actor, t, string(active.get("id")));
+            }
+            String electionId = "rp_election_" + UUID.randomUUID().toString().replace("-", "");
             update(connection,
-                    "INSERT INTO elections(id,status,started_at,scheduled_end_at,started_by,ended_at,ended_by,winner_uuid,winner_name,notes,current_stage,current_round,candidate_limit,president_term_days,manual_winner_uuid,manual_winner_name,president_uuid,president_name,active,second_round_needed,created_at,updated_at) VALUES(?,?,?,0,?,0,'','','','',?,?,?,?,'','','','',1,0,?,?)",
-                    electionId, "ACTIVE", t, actor, ElectionStage.PREPARATION.name(), 1, 4, 7, t, t);
+                    "INSERT INTO elections(id,status,started_at,scheduled_end_at,started_by,ended_at,ended_by,winner_uuid,winner_name,notes,current_stage,current_round,candidate_limit,president_term_days,manual_winner_uuid,manual_winner_name,president_uuid,president_name,active,second_round_needed,created_at,updated_at,voting_started_at,voting_deadline_at,voting_ended_at) " +
+                            "VALUES(?,?,?,0,?,0,'','','','rp-two-stage',?,?,4,7,'','','','',1,0,?,?,?,?,?)",
+                    electionId, "ACTIVE", t, actor, ElectionStage.PREPARATION.name(), 1, t, t, 0L, 0L, 0L);
             update(connection, "INSERT INTO rounds(id,election_id,round_no,status,started_at,ended_at,winner_uuid,winner_name) VALUES(?,?,?,?,?,0,'','')",
                     "round_" + electionId + "_1", electionId, 1, "ACTIVE", t);
             update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
-                    electionId, ElectionStage.PREPARATION.name(), 1, actor, t, "Старт новых выборов");
-            logPluginEvent(connection, "election_core", "election_started", actor, electionId, "");
+                    electionId, ElectionStage.PREPARATION.name(), 1, actor, t, "rp-two-stage: application intake");
+            logPluginEvent(connection, "election_core", "rp_election_started", actor, electionId, "stage=PREPARATION");
+            return electionId;
+        });
+    }
+
+    private void selectRpCandidates(String actor, Set<String> applicationIds) throws Exception {
+        if (applicationIds == null || applicationIds.size() < 2 || applicationIds.size() > 4) {
+            throw new IllegalStateException("Нужно выбрать от 2 до 4 кандидатов.");
+        }
+        long t = now();
+        tx(connection -> {
+            ElectionContext context = requireActiveElectionContext(connection);
+            if (!isRpElectionWorkflow(connection, context.electionId())) throw new IllegalStateException("Это не RP-кампания.");
+            if (context.stage() == ElectionStage.DEBATES || context.stage() == ElectionStage.VOTING || context.stage() == ElectionStage.PRESIDENT_TERM) {
+                throw new IllegalStateException("Состав кандидатов уже закрыт.");
+            }
+            update(connection, "UPDATE candidates SET active=0 WHERE election_id=?", context.electionId());
+            update(connection, "UPDATE round_candidates SET active=0 WHERE election_id=? AND round_no=?", context.electionId(), context.round());
+            for (String applicationId : applicationIds) {
+                Map<String, Object> app = queryOne(connection,
+                        "SELECT id,player_uuid,player_name,admin_status,status FROM candidate_applications WHERE id=? AND election_id=? FOR UPDATE",
+                        applicationId, context.electionId());
+                if (app == null || !"APPROVED".equalsIgnoreCase(string(app.get("admin_status"))) || !"APPROVED".equalsIgnoreCase(string(app.get("status")))) {
+                    throw new IllegalStateException("Все выбранные заявки должны быть одобрены администрацией.");
+                }
+                String candidateId = "candidate_" + context.electionId() + "_" + string(app.get("player_uuid"));
+                update(connection, "INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result) VALUES(?,?,?,?,?,?,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,application_id=excluded.application_id,active=1",
+                        candidateId, context.electionId(), string(app.get("player_uuid")), string(app.get("player_name")), applicationId, t);
+                update(connection, "INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) VALUES(?,?,?,?,1,?,?) ON CONFLICT(election_id,round_no,candidate_uuid) DO UPDATE SET candidate_name=excluded.candidate_name,active=1",
+                        context.electionId(), context.round(), string(app.get("player_uuid")), string(app.get("player_name")), t, actor);
+            }
+            update(connection, "UPDATE elections SET updated_at=? WHERE id=?", t, context.electionId());
+            logPluginEvent(connection, "election_core", "rp_candidates_selected", actor, context.electionId(), "count=" + applicationIds.size());
             return null;
         });
-        return electionId;
+    }
+
+    private void setRpDebates(String actor) throws Exception {
+        long t = now();
+        tx(connection -> {
+            ElectionContext context = requireActiveElectionContext(connection);
+            if (!isRpElectionWorkflow(connection, context.electionId())) throw new IllegalStateException("Это не RP-кампания.");
+            int candidateCount = countActiveRoundCandidates(connection, context.electionId(), context.round());
+            if (candidateCount < 2 || candidateCount > 4) throw new IllegalStateException("Перед дебатами нужно выбрать от 2 до 4 кандидатов.");
+            if (context.stage() == ElectionStage.DEBATES) return null;
+            if (context.stage() != ElectionStage.PREPARATION && context.stage() != ElectionStage.APPLICATIONS && context.stage() != ElectionStage.REVIEW) {
+                throw new IllegalStateException("Дебаты можно открыть только после отбора кандидатов.");
+            }
+            update(connection, "UPDATE elections SET current_stage='DEBATES',status='DEBATES',updated_at=? WHERE id=?", t, context.electionId());
+            update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
+                    context.electionId(), ElectionStage.DEBATES.name(), context.round(), actor, t, "rp-two-stage: public debates");
+            logPluginEvent(connection, "election_core", "rp_debates_opened", actor, context.electionId(), "");
+            return null;
+        });
+    }
+
+    private void setRpVoting(String actor, int hours) throws Exception {
+        if (!Set.of(24, 48, 72).contains(hours)) throw new IllegalStateException("Срок голосования может быть только 24, 48 или 72 часа.");
+        long t = now();
+        tx(connection -> {
+            ElectionContext context = requireActiveElectionContext(connection);
+            if (!isRpElectionWorkflow(connection, context.electionId())) throw new IllegalStateException("Это не RP-кампания.");
+            int candidates = countActiveRoundCandidates(connection, context.electionId(), context.round());
+            if (candidates < 2) throw new IllegalStateException("Для голосования нужно минимум 2 кандидата.");
+            if (countActiveVotingBlocks(connection, context.electionId()) < 1) throw new IllegalStateException("Создай хотя бы один блок голосования.");
+            Map<String, Object> row = queryOne(connection, "SELECT voting_started_at,voting_deadline_at FROM elections WHERE id=? FOR UPDATE", context.electionId());
+            long started = longValue(row == null ? 0L : row.get("voting_started_at"));
+            long oldDeadline = longValue(row == null ? 0L : row.get("voting_deadline_at"));
+            long deadline;
+            if (context.stage() == ElectionStage.VOTING) {
+                if (oldDeadline > 0L && t > oldDeadline) throw new IllegalStateException("Срок голосования уже закончился.");
+                if (started <= 0L) started = t;
+                deadline = Math.min(started + 72L * 60L * 60L * 1000L, Math.max(oldDeadline, started + hours * 60L * 60L * 1000L));
+            } else {
+                if (context.stage() != ElectionStage.DEBATES) throw new IllegalStateException("Голосование можно открыть только после дебатов.");
+                started = t;
+                deadline = t + hours * 60L * 60L * 1000L;
+            }
+            update(connection, "UPDATE elections SET current_stage='VOTING',status='VOTING',voting_started_at=?,voting_deadline_at=?,scheduled_end_at=?,updated_at=? WHERE id=?",
+                    started, deadline, deadline, t, context.electionId());
+            update(connection, "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(?,?,?,?,?,?)",
+                    context.electionId(), ElectionStage.VOTING.name(), context.round(), actor, t, "rp-two-stage: voting hours=" + hours);
+            // Keep the event name specific to the RP workflow.  The retired
+            // CIK lifecycle flag must not be emitted by the new two-stage elections.
+            logPluginEvent(connection, "election_core", "rp_vote_started", actor, context.electionId(), "deadline=" + deadline);
+            return null;
+        });
+    }
+
+    private void disableRpVotingBlock(String actor, String blockId) throws Exception {
+        if (blockId == null || blockId.isBlank()) return;
+        Map<String, Object> station = stationById(blockId);
+        cleanupNearbyTextDisplays(blockId);
+        cleanupProtectedBlockVisuals("POLLING_STATION", blockId);
+        long t = now();
+        tx(connection -> {
+            update(connection, "UPDATE election_voting_blocks SET active=0,updated_at=? WHERE id=?", t, blockId);
+            update(connection, "UPDATE polling_stations SET active=0,updated_at=? WHERE id=?", t, blockId);
+            update(connection, "UPDATE protected_blocks SET active=0,updated_at=? WHERE linked_id=?", t, blockId);
+            logPluginEvent(connection, "election_core", "rp_voting_block_disabled", actor, blockId, "");
+            return null;
+        });
+        reloadProtectedBlocks();
+    }
+
+    private void finishRpElection(String actor, String requestedWinnerUuid) throws Exception {
+        long t = now();
+        tx(connection -> {
+            ElectionContext context = requireActiveElectionContext(connection);
+            if (!isRpElectionWorkflow(connection, context.electionId()) || context.stage() != ElectionStage.VOTING) {
+                throw new IllegalStateException("Завершить можно только открытое RP-голосование.");
+            }
+            List<Map<String, Object>> rows = queryList(connection,
+                    "SELECT rc.candidate_uuid,rc.candidate_name,COUNT(v.id) AS votes FROM round_candidates rc " +
+                            "LEFT JOIN votes v ON v.election_id=rc.election_id AND v.round_no=rc.round_no AND v.candidate_uuid=rc.candidate_uuid " +
+                            "WHERE rc.election_id=? AND rc.round_no=? AND rc.active=1 GROUP BY rc.candidate_uuid,rc.candidate_name ORDER BY votes DESC,rc.candidate_name ASC",
+                    context.electionId(), context.round());
+            if (rows.isEmpty()) throw new IllegalStateException("Нет кандидатов для завершения голосования.");
+            int max = rows.stream().mapToInt(row -> intValue(row.get("votes"))).max().orElse(0);
+            List<Map<String, Object>> leaders = rows.stream().filter(row -> intValue(row.get("votes")) == max).toList();
+            Map<String, Object> winner = null;
+            if (requestedWinnerUuid != null && !requestedWinnerUuid.isBlank()) {
+                for (Map<String, Object> row : leaders) if (requestedWinnerUuid.equals(string(row.get("candidate_uuid")))) winner = row;
+                if (winner == null) throw new IllegalStateException("Выбранный игрок не является лидером голосования.");
+            } else if (leaders.size() == 1) {
+                winner = leaders.getFirst();
+            } else {
+                throw new IllegalStateException("Ничья. Выбери победителя среди лидеров вручную.");
+            }
+            String winnerUuid = string(winner.get("candidate_uuid"));
+            String winnerName = string(winner.get("candidate_name"));
+            update(connection, "UPDATE rounds SET status='COUNTED',ended_at=?,winner_uuid=?,winner_name=? WHERE election_id=? AND round_no=?",
+                    t, winnerUuid, winnerName, context.electionId(), context.round());
+            update(connection, "UPDATE elections SET winner_uuid=?,winner_name=?,voting_ended_at=?,manual_winner_uuid=?,manual_winner_name=?,updated_at=? WHERE id=?",
+                    winnerUuid, winnerName, t, winnerUuid, winnerName, t, context.electionId());
+            assignPresident(connection, context.electionId(), winnerUuid, winnerName, actor, t);
+            logPluginEvent(connection, "election_core", "rp_election_finished", actor, winnerUuid, "votes=" + max);
+            return null;
+        });
     }
 
     private void stopElection(String actor) throws Exception {
@@ -5677,6 +6556,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                             "cik_chair_removal_requests",
                             "cik_seals",
                             "cik_chairs",
+                            "election_voting_blocks",
                             "polling_stations",
                             "rounds",
                             "election_stages",
@@ -5846,7 +6726,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     String presidentUuid = string(term.get("president_uuid"));
                     update(connection, "UPDATE president_terms SET status='EXPIRED',removed_at=?,removed_by='SYSTEM' WHERE id=? AND status='ACTIVE'", expiredAt, termId);
                     update(connection, "UPDATE president_taxes SET status='EXPIRED' WHERE term_id=? AND status='ACTIVE'", termId);
-                    update(connection, "UPDATE elections SET president_uuid='',president_name='',updated_at=? WHERE id=? AND president_uuid=?", expiredAt, electionId, presidentUuid);
+                    update(connection,
+                            "UPDATE elections SET president_uuid='',president_name='',current_stage='FINISHED',status='FINISHED',active=0,ended_at=?,ended_by='SYSTEM',updated_at=? WHERE id=? AND president_uuid=?",
+                            expiredAt, expiredAt, electionId, presidentUuid);
                     logPluginEvent(connection, "election_core", "president_term_expired", "SYSTEM", termId, presidentUuid);
                     if (!presidentUuid.isBlank()) {
                         presidentUuids.add(presidentUuid);
@@ -5896,7 +6778,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private ElectionContext requireActiveElectionContext(Connection connection) throws Exception {
         Map<String, Object> row = queryOne(connection,
                 "SELECT id,current_stage,current_round,candidate_limit,president_term_days,manual_winner_uuid,manual_winner_name,president_uuid,president_name,second_round_needed " +
-                        "FROM elections WHERE active=1 ORDER BY updated_at DESC LIMIT 1 FOR UPDATE");
+                        "FROM elections WHERE active=1 AND LOWER(COALESCE(notes,''))='rp-two-stage' " +
+                        "ORDER BY updated_at DESC LIMIT 1 FOR UPDATE");
         if (row == null) {
             throw new IllegalStateException("Нет активных выборов.");
         }
@@ -6496,7 +7379,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     return true;
                 }
                 if (hasElectionAdmin(player)) {
-                    openStationAccessMenu(player, linkedId, station);
+                    if (isRpStation(station)) {
+                        openRpBlocksMenu(player, 0);
+                    } else {
+                        openStationAccessMenu(player, linkedId, station);
+                    }
                 } else if (isDirectVotingOpen(station)) {
                     openDirectVoteMenu(player, linkedId);
                 } else if (isChairForStation(player, station)) {

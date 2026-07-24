@@ -122,7 +122,12 @@ copimine_run_as_app() {
 
 copimine_stop_services() {
   for service in "${COPIMINE_SERVICES[@]}"; do
-    systemctl stop "$service" 2>/dev/null || true
+    if systemctl list-unit-files | grep -q "^${service}\.service"; then
+      if systemctl is-active --quiet "$service"; then
+        systemctl stop "$service" || copimine_fail "Could not stop active service: $service"
+        systemctl is-active --quiet "$service" && copimine_fail "Service remained active after stop: $service"
+      fi
+    fi
   done
 }
 

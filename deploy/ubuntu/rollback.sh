@@ -23,6 +23,10 @@ rollback_timestamp="$(date +%Y%m%d-%H%M%S)"
 old_root="${COPIMINE_ROOT}.pre-rollback-${rollback_timestamp}"
 old_secrets="${COPIMINE_SECRETS_DIR}.pre-rollback-${rollback_timestamp}"
 rollback_armed=0
+validator="${COPIMINE_ROOT}/deploy/shared/validate_archive.py"
+[[ -r "$validator" ]] || copimine_fail "Shared archive validator is missing: $validator"
+python3 "$validator" "$archive_path"
+rollback_armed=1
 
 cleanup() {
   local exit_code=$?
@@ -41,7 +45,7 @@ cleanup() {
 trap cleanup EXIT
 
 tar -tzf "$archive_path" >/dev/null
-tar -xzf "$archive_path" -C "$stage_root" --no-same-owner --no-same-permissions
+tar -xzf "$archive_path" -C "$stage_root" --no-same-owner --no-same-permissions --no-overwrite-dir
 [[ -d "$stage_root/$(basename "$COPIMINE_ROOT")" ]] || copimine_fail "Backup does not contain the CopiMine project tree."
 
 copimine_stop_services
@@ -51,8 +55,6 @@ fi
 if [[ -d "$COPIMINE_SECRETS_DIR" ]]; then
   mv "$COPIMINE_SECRETS_DIR" "$old_secrets"
 fi
-rollback_armed=1
-
 mv "$stage_root/$(basename "$COPIMINE_ROOT")" "$COPIMINE_ROOT"
 if [[ -d "$stage_root/$(basename "$COPIMINE_SECRETS_DIR")" ]]; then
   mv "$stage_root/$(basename "$COPIMINE_SECRETS_DIR")" "$COPIMINE_SECRETS_DIR"

@@ -17,6 +17,17 @@
 .candidate-card small{color:var(--muted);font-size:.78rem}
 .candidate-result-row{display:flex;justify-content:space-between;gap:16px;padding:11px 13px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface) 92%,var(--accent) 8%)}
 .candidate-result-row:last-child{border-bottom:0}
+.rp-application-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.rp-application-card{display:grid;gap:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow-soft)}
+.rp-application-head{display:flex;align-items:center;gap:10px;min-width:0}
+.rp-application-head>div{display:grid;gap:3px;min-width:0}
+.rp-application-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-application-head span{color:var(--muted);font-size:.78rem}
+.rp-application-answers{display:grid;gap:7px;color:var(--muted);font-size:.86rem;line-height:1.4}
+.rp-application-answers p{margin:0}
+.rp-application-answers b{color:var(--ink)}
+.rp-application-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+.check-row-inline{margin-left:auto;min-width:180px}
 .check-list{display:grid;gap:8px;margin-top:12px}
 .check-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer}
 .check-row:hover{border-color:var(--accent);background:color-mix(in srgb,var(--surface) 88%,var(--accent) 12%)}

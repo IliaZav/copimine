@@ -42,18 +42,14 @@ $onInteract = Slice-Between $election 'public void onInteract(PlayerInteractEven
 if ([string]::IsNullOrWhiteSpace($onInteract)) {
   $errors.Add('Could not isolate onInteract station click handler.')
 } else {
-  $depositIdx = $onInteract.IndexOf('depositBallot')
-  $citizenIdx = $onInteract.IndexOf('sendStationInfoToPlayer')
-  $hubIdx = $onInteract.IndexOf('openStationAccessMenu')
-  $roleIssueIdx = $onInteract.IndexOf('giveRoleOfficialItemsAtStation')
-  if ($depositIdx -lt 0 -or $citizenIdx -lt 0 -or $hubIdx -lt 0) {
-    $errors.Add('Station click handler must contain deposit, citizen info, and role hub branches.')
+  if ($onInteract.IndexOf('isRpStation') -lt 0 -or
+      $onInteract.IndexOf('openRpBlocksMenu') -lt 0 -or
+      $onInteract.IndexOf('openDirectVoteMenu') -lt 0) {
+    $errors.Add('Station click handler must route RP blocks to admin management or direct voting.')
   }
-  if ($roleIssueIdx -ge 0) {
-    $errors.Add('Plain station click must not auto-issue CIK seal or president mandate.')
-  }
-  if ($depositIdx -ge 0 -and $citizenIdx -ge 0 -and $depositIdx -gt $citizenIdx) {
-    $errors.Add('Station click must try sealed ballot deposit before ordinary citizen info.')
+  if ($onInteract.IndexOf('depositBallot') -ge 0 -or
+      $onInteract.IndexOf('giveRoleOfficialItemsAtStation') -ge 0) {
+    $errors.Add('The simplified RP block must not execute retired paper-ballot or role-item issuance branches.')
   }
 }
 

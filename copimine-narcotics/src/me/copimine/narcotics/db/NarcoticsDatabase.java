@@ -83,14 +83,28 @@ public final class NarcoticsDatabase {
         return pool.getActiveCount() < pool.getMaximumPoolSize() || pool.getQueue().remainingCapacity() > 0;
     }
 
-    public CompletableFuture<Map<BlockKey, LoadedBrewingState>> loadBrewingStates() {
+    public CompletableFuture<Map<BlockKey, LoadedBrewingState>> loadBrewingStates(int maxRows) {
         return supplyAsync(() -> {
             Map<BlockKey, LoadedBrewingState> states = new LinkedHashMap<>();
+            try (Connection connection = openConnection();
+                 PreparedStatement prune = connection.prepareStatement("""
+                         DELETE FROM narcotics_brewing_states
+                         WHERE deleted=TRUE
+                            OR (CASE WHEN updated_at < 100000000000 THEN updated_at * 1000 ELSE updated_at END) < ?
+                         """)) {
+                long cutoff = Instant.now().toEpochMilli() - 15L * 60L * 1000L;
+                prune.setLong(1, cutoff);
+                prune.executeUpdate();
+            }
             try (Connection connection = openConnection();
                  PreparedStatement statement = connection.prepareStatement("""
                          SELECT world_name,x,y,z,state_payload,state_version,deleted,ingredients_csv,updated_at
                          FROM narcotics_brewing_states
+                         WHERE deleted=FALSE
+                         ORDER BY updated_at DESC
+                         LIMIT ?
                          """)) {
+                statement.setInt(1, Math.max(1, Math.min(maxRows, 10000)));
                 try (ResultSet rs = statement.executeQuery()) {
                     while (rs.next()) {
                         BlockKey key = new BlockKey(rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4));

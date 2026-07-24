@@ -70,6 +70,7 @@ function Invoke-Scp([string[]]$Arguments) {
 Need-Command "ssh"
 Need-Command "scp"
 
+
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ReleaseScriptDir = $PSScriptRoot
 
@@ -105,9 +106,13 @@ $ArchivePath = Prompt-Value "Path to release archive" $ArchivePath
 $Server = Prompt-Value "Server or IP" $Server
 $User = Prompt-Value "SSH user" $User
 
+if ($User -notmatch '^[A-Za-z0-9._-]+$') { Fail "SSH user contains unsafe characters." }
+if ($Server -notmatch '^[A-Za-z0-9._:-]+$') { Fail "Server contains unsafe characters." }
+
 if (-not $RemoteDir) {
     $RemoteDir = "/home/$User/copimine-upload"
 }
+if ($RemoteDir -notmatch '^/[A-Za-z0-9._/-]+$' -or $RemoteDir.Contains('..')) { Fail "RemoteDir must be a simple absolute Unix path." }
 
 $ArchivePath = Resolve-RequiredPath $ArchivePath "Release archive"
 if (-not $BootstrapManifestPath) {
@@ -126,6 +131,7 @@ if ($BootstrapManifestPath) {
 }
 
 $ArchiveName = [System.IO.Path]::GetFileName($ArchivePath)
+if ($ArchiveName -notmatch '^[A-Za-z0-9._-]+$') { Fail "Archive filename contains unsafe characters." }
 $ArchiveSha256 = Read-Sha256 $ArchivePath
 $ArchiveSize = Read-Size $ArchivePath
 $ShaFileLocal = "$ArchivePath.sha256"

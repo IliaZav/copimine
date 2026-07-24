@@ -7,6 +7,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+function Assert-SafeUnixPath([string]$Value, [string]$Name) {
+    if ($Value -notmatch '^/[A-Za-z0-9._/-]+$' -or $Value.Contains('..')) { throw "$Name must be a simple absolute Unix path." }
+}
+Assert-SafeUnixPath $RemoteDir 'RemoteDir'
 
 function Require-Command {
     param([string]$Name)
@@ -48,6 +52,7 @@ if (-not $Archive) {
 
 $archivePath = Resolve-Path -LiteralPath $Archive
 $archiveName = Split-Path -Leaf $archivePath
+if ($archiveName -notmatch '^[A-Za-z0-9._-]+$') { throw 'Archive filename contains unsafe shell characters.' }
 $shaPath = "$archivePath.sha256"
 $bootstrapName = $archiveName -replace "\.gz$", ".bootstrap.json"
 $bootstrapPath = Join-Path (Split-Path -Parent $archivePath) $bootstrapName

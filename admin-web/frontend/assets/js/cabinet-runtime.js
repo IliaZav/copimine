@@ -193,8 +193,8 @@ const publicFeatures = {
   },
   elections: {
     kicker: "Выборы",
-    title: "ЦИК, бюллетени и результаты",
-    text: "Заявки, участки, бюллетени и подсчёт проходят через игровые интерфейсы.",
+    title: "Заявки, дебаты и голосование",
+    text: "Администратор выбирает кандидатов, открывает два этапа и назначает победителя.",
     icon: "/assets/mc-icons/item/writable_book.png"
   },
   president: {
@@ -226,7 +226,7 @@ const navGroups = [
       ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
       ["economy", "Банк и AR", "Счета, переводы и покупки", "Б"],
       ["artifacts", "Лавки", "Каталог, точки в мире, покупки и выдача", "Л"],
-      ["elections", "Выборы", "ЦИК, президент и результаты", "В"]
+      ["elections", "Выборы", "Заявки, дебаты и голосование", "В"]
     ]
   },
   {
@@ -328,7 +328,7 @@ const adminSearchAliases = {
   players: "игрок игроки ник бан кик варн эффекты наркотики очистить баланс",
   economy: "банк ar ар ары баланс казна перевод банкомат atm pin пин",
   artifacts: "лавка лавки артефакты магазин предметы покупка выдача ремонт удалить блок витрина",
-  elections: "выборы цик председатель председ предмедатель президент бюллетень участок законы мандат кандидат кандидаты книга заявка",
+  elections: "выборы заявки кандидаты дебаты голосование блоки президент срок результаты",
   requests: "заявки обращения жалобы книга рассмотреть одобрить отклонить discord дискорд",
   "narcotics-recipes": "рецепты наркотики нарко котел котёл ингредиенты варка фета кола гирион сбп жужево смесь",
   cms: "cms контент новости баннеры правила faq картинки страницы",
@@ -346,8 +346,7 @@ const adminSearchSectionItems = [
   { id: "economy", target: "economy-treasury", title: "Казна и счета", subtitle: "Казна, банковые счета и переводы", group: "Банк и AR", haystack: "казна счета ar переводы treasury account bank", focusNeedle: "Казна" },
   { id: "economy", target: "economy-treasury-pin", title: "PIN казны", subtitle: "Настройка PIN казны", group: "Банк и AR", haystack: "pin казны treasury pin казна пароль банка", focusNeedle: "PIN казны" },
   { id: "artifacts", target: "artifacts-shop", title: "Лавка артефактов", subtitle: "Каталог, покупки и выдача", group: "Лавки", haystack: "лавка артефакты магазин покупки выдача витрина", focusNeedle: "Лавки артефактов" },
-  { id: "elections", target: "elections-cik", title: "Участки и ЦИК", subtitle: "Участки, председатели и бюллетени", group: "Выборы", haystack: "цик участки председатели бюллетени seals chairs stations", focusNeedle: "Участки" },
-  { id: "elections", target: "elections-laws", title: "Законы и указы", subtitle: "Законы, указы и мандат", group: "Выборы", haystack: "законы указы мандат decrees petitions", focusNeedle: "Законы" },
+  { id: "elections", target: "elections-rp", title: "RP-кампания", subtitle: "Заявки, кандидаты и этапы", group: "Выборы", haystack: "заявки кандидаты дебаты голосование rp", focusNeedle: "Кампания" },
   { id: "requests", target: "requests-applications", title: "Заявки игроков", subtitle: "Заявки, жалобы и очередь", group: "Контроль", haystack: "заявки жалобы репорты обращения очередь discord", focusNeedle: "Заявки" },
   { id: "players", target: "players-profile", title: "Профиль игрока", subtitle: "Профиль, инвентарь и действия", group: "Игроки", haystack: "игрок профиль инвентарь действия эффекты timeline", focusNeedle: "Игроки" },
   { id: "security", target: "security-access", title: "Доступ и сессии", subtitle: "Доступ, сессии и защита", group: "Безопасность", haystack: "доступ сессии csrf ip security auth", focusNeedle: "Доступ" },
@@ -1493,8 +1492,8 @@ function electionStageLabel(value, fallback = "—") {
 function applicationStatusText(value) {
   const raw = cleanText(value).toUpperCase();
   const labels = {
-    ISSUED: "Книга выдана",
-    SUBMITTED: "Книга сдана",
+    ISSUED: "Заявка создана",
+    SUBMITTED: "Заявка отправлена",
     PENDING: "Ждёт решения",
     APPROVED: "Одобрено",
     REJECTED: "Отклонено"
@@ -1653,23 +1652,28 @@ function electionApplicationCards(rows) {
     return empty("Заявок пока нет", "Поданных заявок нет.");
   }
   return `
-    <div class="book-card-grid">
-      ${rows.slice(0, 6).map((row) => `
-        <article class="book-card">
-          <div class="book-card-head">
+    <div class="rp-application-grid">
+      ${rows.slice(0, 40).map((row) => `
+        <article class="rp-application-card">
+          <div class="rp-application-head">
             ${avatarBadge(row.player_name || "Игрок", "sm")}
             <div>
               <strong>${esc(row.player_name || "Кандидат")}</strong>
-              <span>${esc(row.submitted_at ? dt(row.submitted_at) : "Книга ещё не сдана")}</span>
+              <span>${esc(row.submitted_at ? `Отправлена ${dt(row.submitted_at)}` : "Дата не указана")}</span>
             </div>
           </div>
-          <div class="book-card-body">
-            <span>${esc(cleanText(parseApplicationAnswers(row.answers)[0]?.answer || "Ответ не заполнен.").slice(0, 140) || "Ответ не заполнен.")}</span>
+          <div class="rp-application-answers">
+            <p><b>Почему президент:</b> ${esc(cleanText(row.answers?.why_president || "Ответ не заполнен.").slice(0, 220))}</p>
+            <p><b>План сервера:</b> ${esc(cleanText(row.answers?.server_plan || "Ответ не заполнен.").slice(0, 220))}</p>
+            <p><b>Программа:</b> ${esc(cleanText(row.answers?.short_program || "Ответ не заполнен.").slice(0, 220))}</p>
+            ${row.answers?.faction ? `<p><b>Фракция:</b> ${esc(cleanText(row.answers.faction).slice(0, 120))}</p>` : ""}
           </div>
-          <div class="book-card-actions">
-            ${pill(recommendationText(row.chair_recommendation), recommendationTone(row.chair_recommendation))}
+          <div class="rp-application-actions">
             ${pill(applicationStatusText(row.admin_status || row.status), adminDecisionTone(row.admin_status || row.status))}
-            <button class="btn btn-secondary btn-small" data-click="openElectionApplicationBook('${esc(row.id)}')">Открыть книгу</button>
+            ${["APPROVED", "REJECTED"].includes(String(row.admin_status || row.status || "").toUpperCase()) ? "" : `
+              <button class="btn btn-secondary btn-small" data-click="reviewElectionApplication('${esc(row.id)}','approved')">Одобрить</button>
+              <button class="btn btn-danger btn-small" data-click="reviewElectionApplication('${esc(row.id)}','rejected')">Отклонить</button>
+            `}
           </div>
         </article>
       `).join("")}
@@ -3917,7 +3921,7 @@ window.snapshotInventoryFromInput = () => {
 };
 
 function renderRpElectionAdminPanel(applicationRows, votingBlocks) {
-  const approved = asArray(applicationRows).filter((row) => String(row.admin_status || row.status || "").toUpperCase() === "APPROVED");
+  const approved = asArray(applicationRows).filter((row) => String(row.admin_status || "").toUpperCase() === "APPROVED" && String(row.status || "").toUpperCase() === "APPROVED");
   const blocks = asArray(votingBlocks);
   return panel("Управление RP-выборами", "Одна кампания, два игровых этапа: дебаты и голосование.", `
     <div class="action-strip">
@@ -3941,7 +3945,32 @@ function renderRpElectionAdminPanel(applicationRows, votingBlocks) {
   `);
 }
 
-async function loadElections() {
+function rpVotingBlockCards(blocks = []) {
+  blocks = asArray(blocks);
+  if (!blocks.length) {
+    return `<div class="station-card-grid station-card-grid-empty">${empty("Блоки голосования пока не настроены", "В игре администратор создаёт защищённый блок по направлению взгляда.")}</div>`;
+  }
+  return `<div class="station-card-grid">${blocks.slice(0, 24).map(row => {
+    const active = number(row.active) > 0;
+    const coords = `${row.world || "world"} ${row.x ?? ""} ${row.y ?? ""} ${row.z ?? ""}`;
+    return `
+      <article class="station-card ${active ? "active" : "inactive"}">
+        <div class="station-card-top">
+          <strong>Блок голосования</strong>
+          ${pill(active ? "активен" : "выключен", active ? "good" : "warn")}
+        </div>
+        <div class="station-card-coords">${esc(coords)}</div>
+        <div class="station-card-stats">
+          <span>создал: <b>${esc(row.createdBy || row.created_by || "администратор")}</b></span>
+          <span>${dt(row.createdAt || row.created_at)}</span>
+        </div>
+        ${active ? `<div class="station-card-actions"><button class="btn btn-danger btn-small" data-click="rpDeleteVotingBlock('${esc(row.id || "")}')">Отключить блок</button></div>` : ""}
+      </article>
+    `;
+  }).join("")}</div>`;
+}
+
+async function loadElectionsLegacy() {
   setLoading("Загружаю выборы");
   const [data, detail] = await Promise.all([
     safeApi("/api/elections/overview", {}),
@@ -3954,12 +3983,8 @@ async function loadElections() {
   const candidateRows = firstArray(detail.candidates, web.candidates, getPath(data, "groups.candidates.0.rows", []));
   const fraudRows = [...asArray(detail.antiFraud), ...asArray(web.antiFraud), ...asArray(data.antiFraud)];
   const applicationRows = asArray(detail.applications);
-  const lawRows = firstArray(detail.laws, getPath(web, "raw.laws", []));
-  const pendingLawRows = asArray(detail.pendingLaws || getPath(web, "raw.pendingLaws", []));
-  const pollingStations = asArray(detail.pollingStations);
   const votingBlocks = asArray(detail.votingBlocks);
-  const voteDeposits = asArray(detail.voteDeposits);
-  const auditRows = asArray(detail.audit);
+  const auditRows = asArray(detail.audit).filter((row) => !/(cik|chair|ballot|law|petition|decree|station|seal|book)/i.test(String(row.action || row.type || "")));
   const treasuryBudget = Number(detail.treasury?.balance || detail.presidentBudget?.balance_ar || 0);
   const electionLoadErrors = [data.error, detail.error].filter(Boolean).map((value) => cleanText(value));
   state.electionApplications = Object.fromEntries(applicationRows.map((row) => [row.id, row]));
@@ -3970,7 +3995,7 @@ async function loadElections() {
       <div class="hero-copy">
         <span class="hero-kicker">Выборы CopiMine</span>
         <h2>${esc(electionStageLabel(election.current_stage || election.status || web.stageTitle, "Пауза"))}</h2>
-        <p>Стадия, кандидаты, участки, законы и открытая казна.</p>
+        <p>Заявки, кандидаты, дебаты, голосование и срок президента.</p>
         <div class="hero-actions">
           ${pill(`Тур ${esc(election.current_round || summary.round || web.raw?.round || 1)}`, "neutral")}
           ${pill(`${esc(summary.candidateCount ?? candidateRows.length)} `, candidateRows.length ? "good" : "warn")}
@@ -3990,8 +4015,8 @@ async function loadElections() {
         </div>
         <div class="hero-tile">
           <img src="/assets/mc-icons/item/lectern.png" alt="" />
-          <strong>${esc(summary.activePollingStations ?? pollingStations.length)}</strong>
-          <span>активных участков</span>
+          <strong>${esc(votingBlocks.filter((row) => number(row.active) > 0).length)}</strong>
+          <span>активных блоков</span>
         </div>
         <div class="hero-tile">
           <img src="/assets/mc-icons/item/diamond.png" alt="" />
@@ -4001,19 +4026,19 @@ async function loadElections() {
       </div>
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Состояние цикла", "Этап, тур и президент.", kv([
+      ${panel("Состояние кампании", "Этап, кандидаты и президентский срок.", kv([
         ["Этап", electionStageLabel(election.current_stage || election.status || web.stageTitle, "—")],
         ["Тур", election.current_round || summary.round || web.raw?.round || "1"],
         ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
-        [" ", election.candidate_limit ?? web.raw?.candidateLimit ?? ""],
+        ["Лимит кандидатов", election.candidate_limit ?? web.raw?.candidateLimit ?? "4"],
         ["Срок президента", election.president_term_days ? `${election.president_term_days} дн.` : "—"],
         ["Режим сайта", data.readOnly ? "Только просмотр" : "Управление разрешено"]
       ]), siteBulletList([
         "Сводка по выборам.",
-        "Кандидаты, законы и казна.",
+        "Кандидаты и результаты голосования.",
         "Смена этапов только в игре."
       ]))}
-      ${panel("Пульт цикла", "Этапы запускаются только в игре.", `
+      ${panel("Пульт кампании", "Кнопки управления доступны в игровом AdminHub.", `
         <div class="book-status-strip">
           ${pill("Только просмотр", "warn")}
           ${pill("Игровой GUI", "neutral")}
@@ -4021,42 +4046,35 @@ async function loadElections() {
         </div>
         <div class="spacer-12"></div>
         ${siteBulletList([
-          "Управление этапами через /cadm.",
-          "На сайте: обзор, книги, законы и казна.",
-          "Аварийных кнопок здесь нет."
+          "Заявки принимаются на сайте.",
+          "Кандидаты и этапы подтверждаются в игровом GUI.",
+          "Голосование идёт только на сервере."
         ])}
       `)}
-      ${panel("Заявки кандидатов", "Книги, статусы комиссии и решение админа.", `
+      ${panel("Заявки кандидатов", "Заявки с сайта и решение администратора.", `
         ${electionApplicationCards(applicationRows)}
-        <div class="spacer-12"></div>
-        ${pendingLawRows.length ? `<div class="book-status-strip">${pendingLawRows.slice(0, 5).map((row) => pill(`Закон на проверке · ${short(row.text || "", 42)}`, "warn")).join("")}</div>` : ""}
       `)}
-      ${panel("Кандидаты и результаты", "Список кандидатов и результаты туров.", `
+      ${panel("Кандидаты и результаты", "До четырёх кандидатов и открытый счёт голосов.", `
         ${candidateCards(candidateRows)}
         <div class="spacer-12"></div>
         ${resultBars(candidateRows, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}
       `)}
-      ${panel("Участки и ЦИК", "Участки, комиссии и приём бюллетеней.", `
-        ${stationCardsHtml(pollingStations, voteDeposits)}
+      ${panel("Блоки голосования", "Защищённые блоки, через которые игроки голосуют в игре.", `
+        ${rpVotingBlockCards(votingBlocks)}
         <div class="spacer-12"></div>
         ${kv([
-          [" ", summary.activePollingStations ?? pollingStations.length],
-          [" ", summary.voteDeposits ?? voteDeposits.reduce((sum, row) => sum + number(row.votes), 0)],
-          ["Сигналы антифрода", fraudRows.length || "не найдено"]
+          ["Активных блоков", votingBlocks.filter((row) => number(row.active) > 0).length],
+          ["Всего голосов", summary.totalVotes ?? 0],
+          ["Ошибок проверки", fraudRows.length || "не найдено"]
         ])}
       `)}
     </section>
     <section class="layout-grid grid-2">
-      ${panel("Президент и законы", "Действующий срок и законы.", `
-        ${lawCards(lawRows)}
-        <div class="spacer-12"></div>
-        ${pendingLawRows.length ? `<div class="law-stack">${pendingLawRows.slice(0, 5).map((row) => `
-          <article class="law-pending-row">
-            <strong>${esc(short(row.text || "", 88) || "Без текста")}</strong>
-            <span>${dt(row.created_at)}</span>
-          </article>
-        `).join("")}</div>` : empty("Новых законов на проверке нет", "Когда президент отправит новый закон или замену, он появится здесь.")}
-      `)}
+      ${panel("Президентский срок", "Победитель получает полномочия ровно на 7 дней.", kv([
+        ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
+        ["Срок", election.president_term_days ? `${election.president_term_days} дн.` : "7 дн."],
+        ["Смена президента", "Только после отставки или решения администрации"]
+      ]))}
       ${panel("Казна", "Баланс, владелец и история.", kv([
         ["Баланс", formatAr(treasuryBudget)],
         ["Владелец", detail.treasury?.ownerName || overview.president || "не указан"],
@@ -4064,7 +4082,7 @@ async function loadElections() {
         ["Публичность", "только открытые записи"]
       ]))}
     </section>
-    ${panel("Журнал цикла", "Этапы, книги кандидатов, законы и президент.", `
+    ${panel("Журнал кампании", "Записи о заявках, этапах, голосах и президенте.", `
       <div class="ledger election-ledger">
         ${auditRows.length ? auditRows.slice(0, 40).map((row) => `
           <article class="ledger-row">
@@ -4080,6 +4098,83 @@ async function loadElections() {
         `).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}
       </div>
     `)}
+  `);
+}
+
+/*
+ * RP election admin surface.  The former mixed election dashboard is kept
+ * above only as a migration reference and is never routed to.  This function
+ * is the sole renderer for the AdminHub elections tab.
+ */
+async function loadElections() {
+  setLoading("Загружаю RP-выборы");
+  const [overviewResponse, detailResponse] = await Promise.all([
+    safeApi("/api/elections/overview", {}),
+    safeApi("/api/elections/detail?limit=500", {})
+  ]);
+  const overviewPayload = overviewResponse || {};
+  const detail = detailResponse?.data || detailResponse || {};
+  const election = detail.election || {};
+  const summary = detail.summary || {};
+  const applications = asArray(detail.applications);
+  const candidates = firstArray(detail.candidates, overviewPayload.pluginWeb?.candidates, []);
+  const votingBlocks = asArray(detail.votingBlocks);
+  const auditRows = asArray(detail.audit).filter((row) => !/(cik|chair|ballot|law|petition|decree|seal|book)/i.test(String(row.action || row.type || "")));
+  const errors = [overviewPayload.error, detailResponse?.error, detail.connected === false ? "PostgreSQL недоступен" : ""].filter(Boolean).map(cleanText);
+  const stage = String(election.current_stage || election.status || overviewPayload.pluginWeb?.stageTitle || "NONE").toUpperCase();
+  const stageNames = {
+    NONE: "Кампания не начата",
+    PREPARATION: "Подготовка кампании",
+    APPLICATIONS: "Приём заявок",
+    REVIEW: "Проверка заявок",
+    DEBATES: "Дебаты",
+    VOTING: "Голосование",
+    PRESIDENT_TERM: "Президентский срок",
+    FINISHED: "Кампания завершена"
+  };
+  const stageHint = {
+    NONE: "Запусти кампанию, чтобы открыть приём заявок на сайте.",
+    PREPARATION: "Игроки могут подать заявку на сайте; затем одобри подходящих кандидатов.",
+    APPLICATIONS: "Проверь ответы игроков и одобри заявки в этом разделе.",
+    REVIEW: "Выбери от 2 до 4 одобренных заявок для дебатов.",
+    DEBATES: "Проведи RP-дебаты и вручную открой голосование.",
+    VOTING: "Игроки выбирают голову кандидата через интерактивный блок.",
+    PRESIDENT_TERM: "Победитель исполняет полномочия ровно семь дней.",
+    FINISHED: "Для новой кампании президент должен уйти или быть снят администратором."
+  }[stage] || "Состояние кампании уточняется.";
+  const president = detail.president || {};
+  const activeBlocks = votingBlocks.filter((row) => number(row.active) > 0);
+  const pending = applications.filter((row) => !["APPROVED", "REJECTED"].includes(String(row.admin_status || row.status || "").toUpperCase()));
+  const totalVotes = Number(summary.totalVotes ?? detail.turnout?.deposited_ballots ?? 0) || 0;
+  const deadline = Number(election.voting_deadline_at || election.votingDeadline || 0);
+  state.electionApplications = Object.fromEntries(applications.map((row) => [row.id, row]));
+  setView(`
+    <section id="elections-rp" class="election-rp-page">
+      ${errors.length ? `<div class="notice bad">${esc(errors.join("; "))}</div>` : ""}
+      <section class="dashboard-hero election-hero">
+        <div class="hero-copy">
+          <span class="hero-kicker">Выборы (RP)</span>
+          <h2>${esc(stageNames[stage] || stage)}</h2>
+          <p>${esc(stageHint)}</p>
+          <div class="hero-actions">
+            ${pill(`Кандидатов: ${Number(summary.candidateCount ?? candidates.length)}`, candidates.length ? "good" : "warn")}
+            ${pill(`Голосов: ${totalVotes}`, totalVotes ? "good" : "neutral")}
+            ${pill(president.president_name || president.minecraft_name ? `Президент: ${president.president_name || president.minecraft_name}` : "Президент не выбран", president.president_name || president.minecraft_name ? "good" : "warn")}
+          </div>
+        </div>
+        <div class="hero-board">
+          <div class="hero-tile"><img src="/assets/mc-icons/item/writable_book.png" alt="" /><strong>${applications.length}</strong><span>заявок</span></div>
+          <div class="hero-tile"><img src="/assets/mc-icons/item/paper.png" alt="" /><strong>${pending.length}</strong><span>на проверке</span></div>
+          <div class="hero-tile"><img src="/assets/mc-icons/item/lectern.png" alt="" /><strong>${activeBlocks.length}</strong><span>активных блоков</span></div>
+        </div>
+      </section>
+      ${renderRpElectionAdminPanel(applications, votingBlocks, election)}
+      ${panel("Заявки кандидатов", "Игроки подают заявку только на сайте. Здесь читаются ответы и принимается решение.", electionApplicationCards(applications))}
+      ${panel("Кандидаты и голоса", "Администратор утверждает от 2 до 4 кандидатов. Голоса видны во время голосования.", `${candidateCards(candidates)}<div class="spacer-12"></div>${resultBars(candidates, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}`)}
+      ${panel("Интерактивные блоки", "Игрок нажимает на защищённый блок, выбирает голову кандидата и подтверждает свой голос.", `${rpVotingBlockCards(votingBlocks)}<div class="spacer-12"></div>${kv([["Активных блоков", activeBlocks.length], ["Всего голосов", totalVotes], ["Голосование до", deadline ? dt(deadline) : "не открыто"]])}`)}
+      ${panel("Президентский срок", "Победитель получает полномочия ровно на семь дней. Новая кампания не запускается автоматически.", kv([["Президент", president.president_name || president.minecraft_name || election.president_name || "—"], ["Срок", election.president_term_days ? `${election.president_term_days} дней` : "7 дней"], ["Состояние", stage === "PRESIDENT_TERM" ? "исполняет полномочия" : "ожидает победителя"]]))}
+      ${panel("История кампании", "События нового RP-сценария без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система CopiMine")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
+    </section>
   `);
 }
 
@@ -4124,6 +4219,20 @@ window.rpCreateVotingBlock = async () => {
   try {
     await api("/api/elections/rp/voting-blocks", { method: "POST", body: JSON.stringify({ world, x, y, z }) });
     operationAlert("Голосовательный блок добавлен.");
+    await loadElections();
+  } catch (error) {
+    operationAlert(describeError(error), true);
+  }
+};
+
+window.rpDeleteVotingBlock = async (blockId) => {
+  const id = String(blockId || "").trim();
+  if (!id) return operationAlert("Не найден идентификатор блока.", true);
+  const headers = await dangerConfirm("Отключить этот блок голосования? Уже записанные голоса сохранятся.", "ELECTION_RP_BLOCK_REMOVE");
+  if (!headers) return;
+  try {
+    await api(`/api/elections/rp/voting-blocks/${encodeURIComponent(id)}`, { method: "DELETE", headers });
+    operationAlert("Блок отключён. Его можно поставить заново в игре или добавить снова по координатам.");
     await loadElections();
   } catch (error) {
     operationAlert(describeError(error), true);
@@ -6002,6 +6111,10 @@ async function loadPlayerSupport() {
   return getPlayerAccountPages().loadPlayerSupport();
 }
 
+function canSubmitApplication(stage) {
+  return !new Set(["DEBATES", "VOTING", "COUNTING", "SECOND_ROUND", "PRESIDENT_TERM", "FINISHED"]).has(String(stage || "NONE").toUpperCase());
+}
+
 async function loadPlayerElections() {
   setLoading("Загружаю выборы");
   const data = await safeApi("/api/player/elections", {});
@@ -6030,14 +6143,14 @@ async function loadPlayerElections() {
       <div><strong>Краткая программа</strong><p>${esc(answers.short_program || "—")}</p></div>
       <div><strong>Фракция</strong><p>${esc(answers.faction || "не указана")}</p></div>
     </div>
-  ` : `
+  ` : canSubmitApplication(stage) ? `
     <div class="form-grid">
       <label>Почему хотите стать президентом<textarea id="electionWhyPresident" minlength="20" maxlength="2400" required></textarea></label>
       <label>Что сделаете для сервера<textarea id="electionServerPlan" minlength="20" maxlength="2400" required></textarea></label>
       <label>Краткая программа<textarea id="electionShortProgram" minlength="20" maxlength="2400" required></textarea></label>
       <label>Фракция (необязательно)<input id="electionFaction" maxlength="240" /></label>
       <button class="btn btn-primary" type="button" data-click="submitPlayerElectionApplication()">Отправить заявку</button>
-    </div>`;
+    </div>` : `<div class="notice neutral">Приём заявок уже закрыт. Следующая заявка будет доступна после объявления новой кампании.</div>`;
   const resultsHtml = results.length ? `<div class="stack-list">${results.map((row) => `<div class="candidate-result-row"><strong>${esc(row.name || row.uuid)}</strong><span>${esc(row.votes || 0)} голосов</span></div>`).join("")}</div>` : empty("Голосов пока нет", "Результаты обновляются после действий игроков на сервере.");
   const candidateHtml = candidates.length ? `<div class="candidate-grid">${candidates.map((row) => `<article class="candidate-card">${avatarBadge(row.name || "Steve", "sm")}<strong>${esc(row.name || row.uuid)}</strong><small>Кандидат</small></article>`).join("")}</div>` : empty("Кандидаты ещё не выбраны", "Администратор объявит список после проверки заявок.");
   setView(`
@@ -6060,7 +6173,7 @@ async function loadPlayerElections() {
         <button class="btn btn-secondary" data-click="rpCreateVotingBlock()">Добавить голосовательный блок</button>
       </div>
       <p class="panel-hint">Одобрь заявки ниже, отметь от 2 до 4 человек и нажми «Утвердить выбранных». Председатель ЦИК и бюллетени для нового workflow не нужны.</p>
-      <div class="check-list">${applicationRows.filter((row) => String(row.admin_status || row.status || "").toUpperCase() === "APPROVED").map((row) => `<label class="check-row"><input type="checkbox" data-rp-application="${esc(row.id || "")}"><span><strong>${esc(row.player_name || "Игрок")}</strong><small>${esc(short(row.answers?.short_program || row.admin_note || "Одобрена заявка", 120))}</small></span></label>`).join("") || empty("Одобренных заявок пока нет", "Сначала открой приём заявок и проверь анкеты.")}</div>
+      <div class="check-list">${applicationRows.filter((row) => String(row.admin_status || "").toUpperCase() === "APPROVED" && String(row.status || "").toUpperCase() === "APPROVED").map((row) => `<label class="check-row"><input type="checkbox" data-rp-application="${esc(row.id || "")}"><span><strong>${esc(row.player_name || "Игрок")}</strong><small>${esc(short(row.answers?.short_program || row.admin_note || "Одобрена заявка", 120))}</small></span></label>`).join("") || empty("Одобренных заявок пока нет", "Сначала открой приём заявок и проверь анкеты.")}</div>
       <div class="book-status-strip"><span class="pill neutral">Блоков: ${esc(votingBlocks.length)}</span>${votingBlocks.slice(0, 8).map((row) => `<span class="pill good">${esc(row.world)} ${esc(row.x)},${esc(row.y)},${esc(row.z)}</span>`).join("")}</div>
     `)}
     <section class="layout-grid grid-2">

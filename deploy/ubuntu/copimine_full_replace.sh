@@ -191,40 +191,9 @@ sha256_file() {
 }
 
 validate_archive_members() {
-  python3 - "$ARCHIVE_PATH" <<'PY'
-from pathlib import PurePosixPath
-import stat
-import sys
-import tarfile
-import zipfile
-
-archive = sys.argv[1]
-
-def safe_name(value: str) -> bool:
-    value = value.replace("\\", "/")
-    path = PurePosixPath(value)
-    return bool(value) and not path.is_absolute() and ".." not in path.parts
-
-def check_link(value: str) -> bool:
-    return safe_name(value) and not PurePosixPath(value.replace("\\", "/")).is_absolute()
-
-if archive.endswith((".tar.gz", ".tgz")):
-    with tarfile.open(archive, "r:gz") as bundle:
-        for member in bundle.getmembers():
-            if not safe_name(member.name):
-                raise SystemExit(f"Unsafe archive member path: {member.name!r}")
-            if (member.issym() or member.islnk()) and not check_link(member.linkname):
-                raise SystemExit(f"Unsafe archive link: {member.name!r}")
-elif archive.endswith(".zip"):
-    with zipfile.ZipFile(archive) as bundle:
-        for member in bundle.infolist():
-            if not safe_name(member.filename):
-                raise SystemExit(f"Unsafe archive member path: {member.filename!r}")
-            if stat.S_ISLNK(member.external_attr >> 16):
-                raise SystemExit(f"Archive symlinks are not allowed: {member.filename!r}")
-else:
-    raise SystemExit("Unsupported archive extension")
-PY
+  local validator="$PROJECT_ROOT/deploy/shared/validate_archive.py"
+  [[ -r "$validator" ]] || fail "Shared archive validator is missing: $validator"
+  python3 "$validator" "$ARCHIVE_PATH"
 }
 
 preflight_system() {
@@ -318,10 +287,10 @@ extract_archive() {
   log "[4/14] Extract archive"
   case "$ARCHIVE_PATH" in
     *.tar.gz|*.tgz)
-      tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_ROOT" --no-same-owner --no-same-permissions
+      tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_ROOT" --no-same-owner --no-same-permissions --no-overwrite-dir
       ;;
     *.zip)
-      unzip -q "$ARCHIVE_PATH" -d "$EXTRACT_ROOT"
+      unzip -q -n "$ARCHIVE_PATH" -d "$EXTRACT_ROOT"
       ;;
   esac
 }
@@ -366,11 +335,16 @@ snapshot_runtime_state() {
       pg_db="$(grep -E '^POSTGRES_DB=' "$env_file" | tail -n 1 | cut -d= -f2- || echo copimine)"
       pg_user="$(grep -E '^POSTGRES_USER=' "$env_file" | tail -n 1 | cut -d= -f2- || echo copimine)"
     fi
-    if [[ -n "$pg_password" ]]; then
-      PGPASSWORD="$pg_password" pg_dump -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 || log "WARNING: PostgreSQL backup skipped."
-      [[ -f "$backup_dir/copimine-db.dump" ]] && chmod 600 "$backup_dir/copimine-db.dump"
-    else
-      log "WARNING: PostgreSQL password not found in .env, database backup skipped."
+    local database_exists
+    database_exists="$(runuser -u postgres -- psql -d postgres -Atqc "SELECT 1 FROM pg_database WHERE datname = '$pg_db';" 2>/dev/null || true)"
+    if [[ "$database_exists" == "1" ]]; then
+      if [[ -n "$pg_password" ]]; then
+        PGPASSWORD="$pg_password" pg_dump -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 || fail "PostgreSQL backup failed; replacement is aborted before any live files are moved."
+      else
+        runuser -u postgres -- pg_dump -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 || fail "PostgreSQL peer backup failed; replacement is aborted before any live files are moved."
+      fi
+      [[ -s "$backup_dir/copimine-db.dump" ]] || fail "PostgreSQL backup file was not created."
+      chmod 600 "$backup_dir/copimine-db.dump"
     fi
   fi
 
@@ -408,7 +382,10 @@ stop_services() {
   log "[7/14] Stop services"
   for service in "${SERVICES[@]}"; do
     if systemctl list-unit-files | grep -q "^${service}\.service"; then
-      systemctl stop "$service" || true
+      if systemctl is-active --quiet "$service"; then
+        systemctl stop "$service" || fail "Could not stop active service: $service"
+        systemctl is-active --quiet "$service" && fail "Service remained active after stop: $service"
+      fi
     fi
   done
 }
@@ -450,12 +427,15 @@ atomic_swap() {
   log "[9/14] Atomic replace"
   ACTIVE_RELEASE_BACKUP="${PROJECT_ROOT}.old-$TS"
   rm -rf "$ACTIVE_RELEASE_BACKUP"
+  [[ -d "${PROJECT_ROOT}.new" ]] || fail "Staged release tree is missing."
+  # Arm the EXIT trap before the first live-tree mutation.  A failure during
+  # either move must restore the previous tree and restart services.
+  ROLLBACK_READY=1
   if [[ -d "$PROJECT_ROOT" ]]; then
     mv "$PROJECT_ROOT" "$ACTIVE_RELEASE_BACKUP"
   fi
   mv "${PROJECT_ROOT}.new" "$PROJECT_ROOT"
   restore_runtime_state "$PROJECT_ROOT"
-  ROLLBACK_READY=1
 }
 
 bootstrap_runtime_environment() {

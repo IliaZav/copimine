@@ -133,6 +133,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.EventExecutor;
 import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -300,6 +301,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
 
             Bukkit.getPluginManager().registerEvents(this, this);
+            this.registerExternalItemRemovalListener();
             this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
             this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
             this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
@@ -309,6 +311,34 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else {
          this.getLogger().severe("CopiMineEconomyCore is not enabled. CopiMineArtifacts requires the official economy bridge and will stop.");
          this.getServer().getPluginManager().disablePlugin(this);
+      }
+   }
+
+   /**
+    * EntityRemoveEvent is deprecated by Paper, but it is the only reliable
+    * signal for a few silent item removals (clear-lag, creative cleanup and
+    * plugin discard). Register it explicitly instead of annotation scanning so
+    * Paper does not emit the deprecated-listener performance warning for every
+    * server start.
+    */
+   @SuppressWarnings({"deprecation", "removal"})
+   private void registerExternalItemRemovalListener() {
+      try {
+         EventExecutor executor = (listener, event) -> {
+            if (event instanceof EntityRemoveEvent removal) {
+               this.onDonationItemRemoved(removal);
+            }
+         };
+         Bukkit.getPluginManager().registerEvent(
+               EntityRemoveEvent.class,
+               this,
+               EventPriority.MONITOR,
+               executor,
+               this,
+               true
+         );
+      } catch (Throwable error) {
+         this.getLogger().warning("Entity removal reclaim listener unavailable: " + this.safeErr(error));
       }
    }
 
@@ -1428,7 +1458,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     * cancellable damage event, so we journal the loss before the next
     * reconciliation pass can mark the instance LOST_RECLAIMABLE.
     */
-   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
    public void onDonationItemRemoved(EntityRemoveEvent event) {
       if (!(event.getEntity() instanceof Item item)) {
          return;

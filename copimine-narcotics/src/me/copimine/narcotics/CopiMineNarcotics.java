@@ -91,7 +91,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        saveResource("config.yml", false);
         configService = new NarcoticsConfigService(this);
         configService.reload();
         database = new NarcoticsDatabase(this, configService);

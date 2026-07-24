@@ -9,6 +9,8 @@ Require-Contains $artifacts 'applyDonationLossJournalEntry(' 'Artifacts must rep
 Require-Contains $artifacts 'public void onDonationItemRemoved(EntityRemoveEvent event)' 'Artifacts must catch plugin/discard item-entity removal that has no damage event.'
 Require-Contains $artifacts 'EntityRemoveEvent.Cause.PLUGIN' 'Silent plugin item removal must be journaled for reclaim.'
 Require-Contains $artifacts 'recordDonationLossOnce(' 'Loss handlers must deduplicate removal notifications for one instance.'
+Require-Contains $artifacts 'registerExternalItemRemovalListener' 'Silent item removal listener must be registered explicitly.'
+Require-Contains $artifacts 'registerEvent(' 'EntityRemoveEvent must not rely on deprecated annotation scanning.'
 if ($artifacts -notmatch 'Keep the journal entry until the instance row becomes visible' -or $artifacts -notmatch '(?s)readDonationInstanceStatus\(var2, var1\.uniqueItemId\(\), var1\.itemId\(\)\).*?return false;') {
     $errors.Add('A loss journal entry must remain queued when its database instance is temporarily unavailable.')
 }

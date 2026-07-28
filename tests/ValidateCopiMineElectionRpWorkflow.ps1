@@ -8,7 +8,7 @@ $guide = Read-Utf8 (Join-Path $root 'docs\ELECTIONS_RP_GUIDE_RU.md')
 
 Require-Contains $main 'class PlayerElectionApplicationIn' 'Player application model is missing.'
 Require-Contains $main '@app.post("/api/player/elections/application")' 'Player application route is missing.'
-Require-Contains $main 'action not in {"start", "select", "stage", "finish", "remove", "resign"}' 'RP action allow-list is incomplete.'
+Require-Contains $main 'action not in {"start", "select", "stage", "finish", "finish_early", "remove", "resign"}' 'RP action allow-list is incomplete.'
 Require-Contains $main '2 <= len(ids) <= 4' 'Candidate selection must require two to four applications.'
 Require-Contains $main 'requested_deadline > max_deadline' 'Voting deadline must be capped at 72 hours.'
 Require-Contains $main 'resignation_reason' 'President removal reason is not recorded.'

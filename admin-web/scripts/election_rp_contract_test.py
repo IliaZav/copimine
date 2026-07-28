@@ -35,7 +35,7 @@ def main() -> None:
     for field in ("why_president", "server_plan", "short_program", "faction"):
         require(BACKEND, field, f"Application field missing: {field}")
     require(BACKEND, "ge=24, le=72", "Voting duration must be bounded to 24..72 hours")
-    require(BACKEND, 'action not in {"start", "select", "stage", "finish", "remove", "resign"}', "Unexpected RP action accepted")
+    require(BACKEND, 'action not in {"start", "select", "stage", "finish", "finish_early", "remove", "resign"}', "Unexpected RP action accepted")
     require(BACKEND, 'stage not in {"DEBATES", "VOTING"}', "Only Debates and Voting may be selected")
     require(BACKEND, "_rp_active_election", "Single active campaign guard missing")
     require(BACKEND, "president_terms WHERE status='ACTIVE'", "Active president guard missing")
@@ -57,6 +57,7 @@ def main() -> None:
     require(FRONTEND, "renderRpElectionAdminPanel", "Admin RP controls missing")
     require(FRONTEND, "submitPlayerElectionApplication", "Player application form missing")
     require(FRONTEND, "data-click=\"rpElectionControl('stage','VOTING')\"", "Voting control missing")
+    require(FRONTEND, "rpElectionControl('finish_early')", "Early campaign completion control missing")
     if re.search(r"/api/player/elections.*vote|player.*elections.*POST.*vote", BACKEND, re.I):
         raise AssertionError("Website voting endpoint must not be added")
     print("Election RP contract test OK")

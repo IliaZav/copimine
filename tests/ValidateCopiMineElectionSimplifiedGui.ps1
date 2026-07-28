@@ -31,7 +31,7 @@ if (-not $adminHubEntry.Success -or $adminHubEntry.Groups[1].Value.Contains('ope
 }
 Require-Regex $source 'if \(action\.equals\("open:root"\)\) \{\s*openRpElectionHub\(player\);' 'Legacy root route must redirect to the RP hub.'
 Require-Regex $source 'if \(action\.equals\("open:manage"\)\) \{\s*openRpManagementMenu\(player\);' 'Legacy management route must redirect to the RP manager.'
-Require-Contains $source 'if (!isRpStation(station)) {' 'Legacy physical stations must not expose the retired gameplay path.'
+Require-Regex $source 'boolean\s+rpStation\s*=\s*isRpStation\(station\);[\s\S]{0,500}if \(!rpStation\) \{' 'Legacy physical stations must not expose the retired gameplay path.'
 Require-Contains $frontend 'canSubmitApplication' 'Player application UI must close after debates.'
 
 Throw-IfErrors 'ValidateCopiMineElectionSimplifiedGui'

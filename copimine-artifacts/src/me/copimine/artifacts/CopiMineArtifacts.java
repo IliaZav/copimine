@@ -104,6 +104,7 @@ import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
@@ -1040,6 +1041,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onInventoryClick(InventoryClickEvent var1) {
       if (var1.getWhoClicked() instanceof Player var2) {
+         // Creative-mode deletion is not an entity event.  Handle it before
+         // the normal GUI path so an item removed from the cursor/inventory
+         // is journaled just like a cactus, explosion, or void loss.
+         if (var1 instanceof InventoryCreativeEvent creative && this.handleCreativeDonationLoss(creative)) {
+            return;
+         }
          Inventory top = var1.getView().getTopInventory();
          // event.getView().getTopInventory()
          Inventory var10 = top;
@@ -1144,6 +1151,33 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
          }
       }
+   }
+
+   /**
+    * Creative inventory deletion (usually dropping the cursor outside the
+    * inventory) bypasses Item entity events entirely.  Only an outside
+    * creative click is treated as a loss; normal creative duplication into a
+    * slot must remain untouched.  The durable journal is written before the
+    * cursor is cleared so the item cannot be duplicated or lost from the
+    * reclaim list when the server is interrupted.
+    */
+   private boolean handleCreativeDonationLoss(InventoryCreativeEvent event) {
+      if (event == null || event.getWhoClicked() == null || event.getRawSlot() >= 0
+            || event.getClick() != ClickType.CREATIVE
+            || !(event.getWhoClicked() instanceof Player player)) {
+         return false;
+      }
+      ItemStack candidate = event.getCursor();
+      OfficialDonationRef ref = this.officialDonationRef(candidate);
+      if (ref == null || !player.getUniqueId().equals(ref.ownerUuid())) {
+         return false;
+      }
+      if (!this.recordDonationLossOnce(ref, "creative-delete")) {
+         return false;
+      }
+      event.setCursor(new ItemStack(Material.AIR));
+      this.flushPendingDonationLossJournalAsync();
+      return true;
    }
 
    @EventHandler(
@@ -1475,9 +1509,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    @EventHandler(
-      ignoreCancelled = true
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = false
    )
    public void onDonationItemDestroyed(EntityDamageEvent var1) {
+      // A protection plugin may cancel the damage event without removing the
+      // item.  Observe the final decision at HIGHEST and only journal a real
+      // loss, otherwise a cancelled cactus/explosion would create a phantom
+      // reclaim entry.
+      if (var1.isCancelled()) {
+         return;
+      }
       if (var1.getEntity() instanceof Item var2) {
          CopiMineArtifacts.OfficialDonationRef var4 = this.officialDonationRef(var2.getItemStack());
          if (var4 != null) {
@@ -1497,13 +1539,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                    }
                    break;
                case VOID:
-                  // A void throw is recoverable in-place: move the official
-                  // item to its owner's safe position (or world spawn) instead
-                  // of deleting it and relying on a delayed reclaim journal.
+                  // A void throw is a real loss.  Journal it before removing
+                  // the entity so the owner can see it in the loss-only
+                  // reclaim menu after the database reconciliation.
                   var1.setCancelled(true);
-                  if (this.preserveDonationItemFromVoid(var2, var4.ownerUuid())) {
-                     return;
-                  }
                   if (!this.recordDonationLossOnce(var4, "void")) {
                      return;
                   }
@@ -4678,6 +4717,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void openDonationReclaim(Player var1) {
       this.runAsync(
          () -> {
+            try {
+               // The loss journal is written synchronously before this menu
+               // query.  A background flush alone could leave the menu empty
+               // for the first click after a void, explosion, cactus, or
+               // creative/plugin removal.
+               this.reconcileDonationLossJournal();
+            } catch (Exception var10) {
+               this.getLogger().log(Level.WARNING, "Donation reclaim journal reconcile before menu failed", (Throwable)var10);
+            }
             List var2 = this.readReclaimableDonationRows(var1.getUniqueId().toString(), 21);
             this.runSync(
                () -> {
@@ -4716,7 +4764,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                               "&dВернуть: " + var9,
                               List.of(
                                  "&7Потерян: &f"
-                                    + Instant.ofEpochSecond(var7.updatedAt()),
+                                    + Instant.ofEpochMilli(var7.updatedAt()),
                                  "&8Старый экземпляр будет переведён в REPLACED_AFTER_LOSS."
                               )
                            ),

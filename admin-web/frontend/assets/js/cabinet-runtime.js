@@ -3930,6 +3930,7 @@ function renderRpElectionAdminPanel(applicationRows, votingBlocks) {
       <button class="btn btn-secondary" data-click="rpElectionControl('stage','DEBATES')">Открыть дебаты</button>
       <button class="btn btn-secondary" data-click="rpElectionControl('stage','VOTING')">Открыть голосование</button>
       <button class="btn btn-danger" data-click="rpElectionControl('finish')">Завершить и назначить победителя</button>
+      <button class="btn btn-danger" data-click="rpElectionControl('finish_early')">Завершить кампанию досрочно</button>
       <button class="btn btn-danger" data-click="rpElectionControl('remove')">Снять президента</button>
     </div>
     <div class="form-grid compact-grid">
@@ -4126,6 +4127,7 @@ async function loadElections() {
     NONE: "Кампания не начата",
     PREPARATION: "Подготовка кампании",
     APPLICATIONS: "Приём заявок",
+    APPLICATIONS_OPEN: "Приём заявок",
     REVIEW: "Проверка заявок",
     DEBATES: "Дебаты",
     VOTING: "Голосование",
@@ -4136,6 +4138,7 @@ async function loadElections() {
     NONE: "Запусти кампанию, чтобы открыть приём заявок на сайте.",
     PREPARATION: "Игроки могут подать заявку на сайте; затем одобри подходящих кандидатов.",
     APPLICATIONS: "Проверь ответы игроков и одобри заявки в этом разделе.",
+    APPLICATIONS_OPEN: "Проверь ответы игроков и одобри заявки в этом разделе.",
     REVIEW: "Выбери от 2 до 4 одобренных заявок для дебатов.",
     DEBATES: "Проведи RP-дебаты и вручную открой голосование.",
     VOTING: "Игроки выбирают голову кандидата через интерактивный блок.",
@@ -4181,11 +4184,12 @@ async function loadElections() {
 window.rpElectionControl = async (action, stage = "") => {
   const payload = { action, stage, voting_hours: Number($("rpVotingHours")?.value || 24), candidate_uuid: $("rpWinnerUuid")?.value?.trim() || "" };
   if (action === "finish" && !await dangerConfirm("Завершить голосование? При единственном лидере он станет президентом на 7 дней.", "ELECTION_RP_FINISH")) return;
+  if (action === "finish_early" && !await dangerConfirm("Завершить текущую кампанию досрочно? На голосовании текущий лидер станет президентом на 7 дней; на подготовке и дебатах кампания закроется без президента.", "ELECTION_RP_FINISH_EARLY")) return;
   if (action === "remove" && !await dangerConfirm("Снять действующего президента? Его срок и текущий налог будут закрыты.", "ELECTION_RP_REMOVE")) return;
   try {
-    const headers = action === "finish" ? { [CONFIRM_HEADER]: "ELECTION_RP_FINISH" } : action === "remove" ? { [CONFIRM_HEADER]: "ELECTION_RP_REMOVE" } : {};
+    const headers = action === "finish" ? { [CONFIRM_HEADER]: "ELECTION_RP_FINISH" } : action === "finish_early" ? { [CONFIRM_HEADER]: "ELECTION_RP_FINISH_EARLY" } : action === "remove" ? { [CONFIRM_HEADER]: "ELECTION_RP_REMOVE" } : {};
     const result = await api("/api/elections/rp/control", { method: "POST", headers, body: JSON.stringify(payload) });
-    operationAlert(result.stage ? `Этап изменён: ${result.stage}` : "Действие выборов выполнено.");
+    operationAlert(result.earlyFinished ? "Кампания завершена досрочно. История и заявки сохранены." : result.stage ? `Этап изменён: ${result.stage}` : "Действие выборов выполнено.");
     await loadElections();
   } catch (error) {
     operationAlert(describeError(error), true);
@@ -6112,7 +6116,7 @@ async function loadPlayerSupport() {
 }
 
 function canSubmitApplication(stage) {
-  return !new Set(["DEBATES", "VOTING", "COUNTING", "SECOND_ROUND", "PRESIDENT_TERM", "FINISHED"]).has(String(stage || "NONE").toUpperCase());
+  return new Set(["PREPARATION", "APPLICATIONS", "APPLICATIONS_OPEN", "RP_APPLICATIONS"]).has(String(stage || "NONE").toUpperCase());
 }
 
 async function loadPlayerElections() {
@@ -6165,6 +6169,7 @@ async function loadPlayerElections() {
         <button class="btn btn-secondary" data-click="rpElectionControl('stage','DEBATES')">Открыть дебаты</button>
         <button class="btn btn-secondary" data-click="rpElectionControl('stage','VOTING')">Открыть голосование</button>
         <button class="btn btn-danger" data-click="rpElectionControl('finish')">Завершить и назначить победителя</button>
+        <button class="btn btn-danger" data-click="rpElectionControl('finish_early')">Завершить кампанию досрочно</button>
       </div>
       <div class="form-grid compact-grid">
         <label>Срок голосования<select id="rpVotingHours"><option value="24">24 часа</option><option value="48">48 часов</option><option value="72">72 часа</option></select></label>

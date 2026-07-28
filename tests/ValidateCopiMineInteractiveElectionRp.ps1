@@ -31,7 +31,7 @@ Require-Contains 'chairreq:reject:' 'Admin GUI must reject chair removal request
 Require-Contains 'depositBallot' 'Missing physical ballot deposit flow.'
 Require-Contains 'confirmBallotChoice' 'Missing ballot confirmation flow.'
 Require-Contains 'apply:vote:confirm:' 'Final vote confirmation must be explicit.'
-Require-Regex 'onInteract[\s\S]*openStationAccessMenu[\s\S]*openChairStationMenu[\s\S]*sendStationInfoToPlayer' 'PlayerInteractEvent must route station clicks by role/state.'
+Require-Regex 'onInteract[\s\S]*routePollingStationInteractAsync[\s\S]*openDirectVoteMenu' 'PlayerInteractEvent must route station clicks by role/state.'
 Require-Regex 'confirmBallotChoice[\s\S]*confirmed_candidate_uuid' 'Interactive voting must confirm the selected candidate into an owned physical ballot.'
 Require-Regex 'depositBallot[\s\S]*INSERT INTO votes[\s\S]*UPDATE ballots SET status' 'Physical station deposit must write vote ledger and mark the ballot used.'
 Require-Regex 'openStationAccessMenu[\s\S]*station:access:admin:[\s\S]*station:access:chair:[\s\S]*station:access:info:' 'Station access menu must separate admin, chair and citizen clicks.'

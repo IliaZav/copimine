@@ -7557,7 +7557,16 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                     "GROUP BY rc.candidate_uuid ORDER BY votes DESC,name ASC LIMIT %s",
                     (eid, current_round, limit)
                 ).fetchall()] if eid and pg_table_exists(conn, "votes") else []
-                vote_count = int(conn.execute("SELECT count(*) FROM votes WHERE election_id=%s AND round_no=%s", (eid, current_round)).fetchone()[0]) if eid and pg_table_exists(conn, "votes") else 0
+                # psycopg returns mapping-like rows for auth_conn(). Indexing
+                # the result with [0] worked with the old tuple row factory,
+                # but raises KeyError: 0 in production and makes the
+                # elections page silently fall back to an empty payload.
+                # Always use an explicit column name here.
+                vote_row = conn.execute(
+                    "SELECT count(*) AS vote_count FROM votes WHERE election_id=%s AND round_no=%s",
+                    (eid, current_round),
+                ).fetchone() if eid and pg_table_exists(conn, "votes") else None
+                vote_count = int((vote_row or {}).get("vote_count") or 0)
                 # The RP workflow uses one direct vote per player.  Do not
                 # expose or read the retired paper-ballot/CIK tables here.
                 turnout = {"issued_ballots": 0, "confirmed_ballots": 0, "deposited_ballots": vote_count}

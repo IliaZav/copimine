@@ -7581,7 +7581,11 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 # or render those legacy tables as part of the RP workflow.
                 decrees, petitions = [], []
                 laws, pending_laws = [], []
-                audit = [dict(r) for r in conn.execute("SELECT actor,action,created_at,details FROM admin_actions WHERE action ILIKE 'election.%' ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "admin_actions") else []
+                # psycopg parses percent signs in parameterized SQL.  The
+                # literal wildcard therefore must be written as %% or the
+                # query fails with "only '%s', '%b', '%t' are allowed" and
+                # the election detail endpoint falls back to an empty view.
+                audit = [dict(r) for r in conn.execute("SELECT actor,action,created_at,details FROM admin_actions WHERE action ILIKE 'election.%%' ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()] if pg_table_exists(conn, "admin_actions") else []
                 safe_election = sanitize_election_row_public_admin(election)
                 safe_president = sanitize_election_row_public_admin(president_rows[0]) if president_rows else {}
                 safe_ballots = [sanitize_ballot_admin_row(row) for row in ballots]

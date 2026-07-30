@@ -30,11 +30,15 @@ export function initPublicNav() {
     return;
   }
 
-  let toggle = shell.querySelector("#publicMobileNavToggle, .public-mobile-toggle");
+  // Several public pages predate this module and already contain
+  // #mobileNavToggle. Reuse that element so the enhancer never adds a second
+  // visually identical menu control to the compact header.
+  let toggle = shell.querySelector("#publicMobileNavToggle, #mobileNavToggle, .public-mobile-toggle");
   if (!(toggle instanceof HTMLButtonElement)) {
     toggle = createToggleButton();
     brand.insertAdjacentElement("afterend", toggle);
   } else {
+    toggle.id = "publicMobileNavToggle";
     toggle.classList.add("public-mobile-toggle");
     toggle.textContent = "\u2630";
     toggle.setAttribute("aria-label", OPEN_MENU_LABEL);

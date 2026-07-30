@@ -17,7 +17,7 @@
 
 ## Work Items
 
-- [ ] 1. Establish a baseline and live-site audit
+- [x] 1. Establish a baseline and live-site audit
 
   **Files:** `admin-web/backend/main.py`, `admin-web/frontend/**`, `admin-web/scripts/**`
 
@@ -26,7 +26,7 @@
   - Inventory API calls made by election, commerce, recovery, and account screens; trace each to its backend handler.
   - Record reproducible failures before editing implementation code.
 
-- [ ] 2. Repair website logic and feedback contracts
+- [x] 2. Repair website logic and feedback contracts
 
   **Files:** `admin-web/backend/main.py`, `admin-web/frontend/assets/js/**/*.js`, `admin-web/scripts/*test*.py`
 
@@ -34,7 +34,7 @@
   - Implement the smallest backend and frontend change that makes validation, permissions, response shapes, busy states, and visible feedback agree.
   - Run the focused test immediately after each fix, then the relevant contract suite.
 
-- [ ] 3. Repair verified visual and accessibility defects
+- [x] 3. Repair verified visual and accessibility defects
 
   **Files:** `admin-web/frontend/**/*.html`, `admin-web/frontend/assets/css/**/*.css`, `admin-web/frontend/assets/js/**/*.js`
 
@@ -42,7 +42,7 @@
   - Add a targeted browser- or static-regression assertion before changing the affected UI behaviour where practical.
   - Preserve existing content and cabinet navigation while making state and critical actions clearer.
 
-- [ ] 4. Run website integration and release checks
+- [x] 4. Run website integration and release checks
 
   **Files:** `admin-web/scripts/**`, `admin-web/frontend/assets/js/**/*.js`
 
@@ -50,7 +50,7 @@
   - Run JavaScript syntax checks and inspect changed browser routes on the isolated server.
   - Confirm no production payment route or provider configuration changed.
 
-- [ ] 5. Audit and harden plugins
+- [x] 5. Audit and harden plugins
 
   **Files:** `plugins/**/src/main/java/**/*.java`, `plugins/*/build.gradle.kts`, plugin tests where present
 

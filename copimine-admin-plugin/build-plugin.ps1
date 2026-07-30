@@ -19,13 +19,37 @@ if (-not $paperApi -or -not (Test-Path $paperApi)) {
 }
 
 $cp = @($paperApi)
+$mavenRepo = Join-Path $env:USERPROFILE '.m2\repository'
+if (Test-Path $mavenRepo) {
+  # Paper API is intentionally thin. Include its public signature
+  # dependencies so a clean local build does not rely on a populated server.
+  foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
+    $groupPath = Join-Path $mavenRepo $group
+    if (Test-Path $groupPath) {
+      $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
+    }
+  }
+}
+if ($env:PAPER_COMPILE_DEPS) {
+  $cp += $env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator
+}
 $placeholder = Get-ChildItem -Path (Join-Path $serverDir 'plugins') -Filter 'PlaceholderAPI-*.jar' -File -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending |
   Select-Object -First 1 -ExpandProperty FullName
+if (-not $placeholder -and (Test-Path (Join-Path $mavenRepo 'me\clip\placeholderapi'))) {
+  $placeholder = Get-ChildItem -Path (Join-Path $mavenRepo 'me\clip\placeholderapi') -Filter '*.jar' -Recurse -File -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+}
 if ($placeholder) { $cp += $placeholder }
 $voicechat = Get-ChildItem -Path (Join-Path $serverDir 'plugins') -Filter 'voicechat-*.jar' -File -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending |
   Select-Object -First 1 -ExpandProperty FullName
+if (-not $voicechat) {
+  $voicechat = Get-ChildItem -Path (Join-Path $releaseRoot 'thirdparty\client-mods') -Filter 'voicechat-*.jar' -File -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+}
 if ($voicechat) { $cp += $voicechat }
 if (Test-Path (Join-Path $serverDir 'libraries')) {
   $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName

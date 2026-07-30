@@ -5,6 +5,9 @@ psutil==6.1.1
 pydantic==2.10.4
 python-multipart==0.0.20
 discord.py==2.4.0
+# Python 3.13 removed audioop from the standard library; discord.py still
+# imports it for voice support.
+audioop-lts>=0.2.2; python_version >= "3.13"
 httpx==0.28.1
 psycopg[binary]==3.2.3
 PyYAML==6.0.2

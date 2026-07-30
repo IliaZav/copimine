@@ -20,6 +20,20 @@ if (-not $paperApi -or -not (Test-Path $paperApi)) {
 }
 
 $cp = @($paperApi)
+$mavenRepo = Join-Path $env:USERPROFILE '.m2\repository'
+if (Test-Path $mavenRepo) {
+  # Paper API is intentionally thin. Include its public signature
+  # dependencies so a clean local build does not rely on a populated server.
+  foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
+    $groupPath = Join-Path $mavenRepo $group
+    if (Test-Path $groupPath) {
+      $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
+    }
+  }
+}
+if ($env:PAPER_COMPILE_DEPS) {
+  $cp += $env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator
+}
 if (Test-Path (Join-Path $serverDir 'libraries')) {
   $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
 }

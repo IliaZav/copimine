@@ -58,7 +58,7 @@
   - Reproduce and test any high-confidence Elections or Shop/LostItems defect found during review before patching it.
   - Add narrowly scoped guards and regression coverage without changing game rules or production data.
 
-- [ ] 6. Final verification and integration
+- [x] 6. Final verification and integration
 
   **Files:** all changed files
 

@@ -588,7 +588,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                         openConfirmationMenu(player, "&cОтключить блок голосования", List.of(
                                 "&7Блок будет выключен для новых голосов.",
                                 "&7История кампании и уже принятые голоса сохранятся."
-                        ), "rp:block:disable:" + info.linkedId(), "open:rp-blocks");
+                        ), "rp:block:break:" + info.linkedId(), "open:rp-blocks");
                     } else {
                         openConfirmationMenu(player, "&cУдалить участок", List.of(
                                 "&7Блок участка будет снят с защиты и удалён из базы.",
@@ -899,8 +899,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             createRpVotingBlockFromTargetAsync(player);
             return;
         }
+        if (action.startsWith("rp:block:break:")) {
+            disableRpVotingBlockAsync(player, action.substring("rp:block:break:".length()), true);
+            return;
+        }
         if (action.startsWith("rp:block:disable:")) {
-            disableRpVotingBlockAsync(player, action.substring("rp:block:disable:".length()));
+            disableRpVotingBlockAsync(player, action.substring("rp:block:disable:".length()), false);
             return;
         }
         if (action.equals("rp:finish")) {
@@ -3911,7 +3915,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 getLogger().log(Level.WARNING, "rp voting block create failed", error);
                 runSync(() -> {
                     if (player.isOnline()) {
-                        sendUserError(player, error, "&cНе удалось создать блок голосования.");
+                        sendRpActionError(player, error, "&cНе удалось создать блок голосования.");
                     }
                 });
             }
@@ -6950,7 +6954,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
     }
 
-    private void disableRpVotingBlockAsync(Player player, String blockId) {
+    private void disableRpVotingBlockAsync(Player player, String blockId, boolean removePhysicalBlock) {
         if (player == null || blockId == null || blockId.isBlank()) {
             return;
         }
@@ -7000,6 +7004,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     }
                     if (disabled.get()) {
                         removeManagedElectionVisualEntities("POLLING_STATION", "STATION_LABEL", blockId, locationRef.get());
+                        if (removePhysicalBlock) {
+                            Location location = locationOf(locationRef.get());
+                            if (location != null && location.getWorld() != null) {
+                                location.getBlock().setType(Material.AIR, false);
+                            }
+                        }
                         player.sendMessage(color("&aБлок голосования отключён."));
                     } else {
                         player.sendMessage(color("&eБлок уже отключён."));
@@ -7011,7 +7021,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 getLogger().log(Level.WARNING, "rp voting block disable failed", error);
                 runSync(() -> {
                     if (player.isOnline()) {
-                        sendUserError(player, error, "&cНе удалось отключить блок голосования.");
+                        sendRpActionError(player, error, "&cНе удалось отключить блок голосования.");
                     }
                 });
             }
@@ -9139,7 +9149,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                             ? error.getCause()
                             : error;
                     getLogger().log(Level.WARNING, "rp candidate action failed: " + operation, cause);
-                    sendUserError(player, cause instanceof Exception exception ? exception : new Exception(cause),
+                    sendRpActionError(player, cause instanceof Exception exception ? exception : new Exception(cause),
                             "&cНе удалось изменить состав кандидатов.");
                     return;
                 }
@@ -9196,7 +9206,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 getLogger().log(Level.WARNING, "rp action failed: " + operation, error);
                 runSync(() -> {
                     if (player.isOnline()) {
-                        sendUserError(player, error, "&cНе удалось выполнить действие выборов.");
+                        sendRpActionError(player, error, "&cНе удалось выполнить действие выборов.");
                     }
                 });
             }
@@ -9206,6 +9216,31 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private String safeError(Throwable error) {
         String message = error == null ? "unknown" : String.valueOf(error.getMessage());
         return message.replaceAll("(?i)(password=)[^\\s&]+", "$1***").replaceAll("(?i)(POSTGRES_PASSWORD=)[^\\s&]+", "$1***");
+    }
+
+    /**
+     * Lifecycle guards intentionally use IllegalStateException: an admin can
+     * click a stage before the required candidates or voting block exist.  That
+     * is a normal, actionable condition, not a server bug.  Only unexpected
+     * failures are delegated to the generic error reporter.
+     */
+    private void sendRpActionError(Player player, Exception error, String fallback) {
+        if (player == null) {
+            return;
+        }
+        Throwable cause = error;
+        while (cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if ((cause instanceof IllegalStateException || cause instanceof IllegalArgumentException)
+                && cause.getMessage() != null && !cause.getMessage().isBlank()) {
+            String message = cause.getMessage().trim();
+            if (message.length() <= 280) {
+                player.sendMessage(color("&e" + message));
+                return;
+            }
+        }
+        sendUserError(player, error, fallback);
     }
 
     private void warnSuppressed(String context, Throwable error) {

@@ -8127,6 +8127,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             try {
                if (!this.applyDonationLossJournalEntry(var4)) {
                   var2.add(var4);
+               } else {
+                  this.releaseDonationLossJournalGuard(var4);
                }
             } catch (SQLException var6) {
                var2.add(var4);
@@ -8226,6 +8228,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       } else {
          return true;
+      }
+   }
+
+   /**
+    * The guard prevents duplicate Paper removal notifications while a loss is
+    * pending.  Once the durable journal entry reaches a terminal state it must
+    * be released; otherwise every historic loss remains in memory forever and
+    * can suppress a legitimate retry after a transient delivery race.
+    */
+   private void releaseDonationLossJournalGuard(CopiMineArtifacts.DonationLossJournalEntry var1) {
+      if (var1 != null && !this.firstNonBlank(var1.ownerUuid(), "").isBlank() && !this.firstNonBlank(var1.uniqueItemId(), "").isBlank()) {
+         this.lossJournalInFlight.remove(var1.ownerUuid() + ":" + var1.uniqueItemId());
       }
    }
 

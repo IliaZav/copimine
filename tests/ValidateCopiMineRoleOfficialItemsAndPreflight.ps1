@@ -39,12 +39,14 @@ Require-Contains 'president_mandate' 'President mandate item must use a stable P
 Require-Regex 'handleDestroyableOfficialDrop[\s\S]*markOfficialItemDestroyed' 'Destroying a seal or mandate with Q must update the official item binding.'
 
 $onInteract = Slice-Between $election 'public void onInteract(PlayerInteractEvent event)' '@EventHandler(priority = EventPriority.HIGHEST'
-if ([string]::IsNullOrWhiteSpace($onInteract)) {
+$stationRoute = Slice-Between $election 'private void routePollingStationInteractAsync(Player player, String stationId)' 'private void openDirectVoteMenuAsync'
+if ([string]::IsNullOrWhiteSpace($onInteract) -or [string]::IsNullOrWhiteSpace($stationRoute)) {
   $errors.Add('Could not isolate onInteract station click handler.')
 } else {
-  if ($onInteract.IndexOf('isRpStation') -lt 0 -or
-      $onInteract.IndexOf('openRpBlocksMenu') -lt 0 -or
-      $onInteract.IndexOf('openDirectVoteMenu') -lt 0) {
+  if ($onInteract.IndexOf('routePollingStationInteractAsync') -lt 0 -or
+      $stationRoute.IndexOf('isRpStation') -lt 0 -or
+      $stationRoute.IndexOf('openRpBlocksMenu') -lt 0 -or
+      $stationRoute.IndexOf('openDirectVoteMenu') -lt 0) {
     $errors.Add('Station click handler must route RP blocks to admin management or direct voting.')
   }
   if ($onInteract.IndexOf('depositBallot') -ge 0 -or

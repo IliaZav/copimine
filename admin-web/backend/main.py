@@ -8625,10 +8625,12 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                         conn.execute("INSERT INTO candidates(id,election_id,player_uuid,player_name,application_id,created_at,active,last_result) VALUES(%s,%s,%s,%s,%s,%s,1,0)", (cid, eid, row.get("player_uuid") or "", row.get("player_name") or "", row.get("id") or "", now))
                     conn.execute("INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by) VALUES(%s,%s,%s,%s,1,%s,%s) ON CONFLICT(election_id,round_no,candidate_uuid) DO UPDATE SET active=1,candidate_name=EXCLUDED.candidate_name", (eid, round_no, row.get("player_uuid") or "", row.get("player_name") or "", now, actor))
                     selected.append({"uuid": row.get("player_uuid") or "", "name": row.get("player_name") or ""})
-                conn.execute("UPDATE elections SET current_stage='DEBATES',status='DEBATES',updated_at=%s WHERE id=%s", (now, eid))
-                conn.execute("INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,'DEBATES',%s,%s,%s,'candidates selected for RP debates')", (eid, round_no, actor, now))
+                # Candidate selection and stage changes are deliberately
+                # separate.  Administrators run every RP stage manually, so
+                # saving 2–4 candidates must not silently open the debates.
+                conn.execute("UPDATE elections SET updated_at=%s WHERE id=%s", (now, eid))
                 conn.commit()
-                result = {"electionId": eid, "stage": "DEBATES", "candidates": selected}
+                result = {"electionId": eid, "stage": current_stage, "candidates": selected}
             elif action == "stage":
                 stage = str(data.stage or "").strip().upper()
                 if stage not in {"DEBATES", "VOTING"}:

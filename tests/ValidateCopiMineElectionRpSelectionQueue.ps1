@@ -14,5 +14,9 @@ Require 'enqueueRpCandidateAction(player, "save candidates"' 'Candidate save act
 Require 'rp:finish:early' 'The admin menu must expose an explicit early campaign finish action.'
 Require 'setButton(holder, 32' 'The early finish button slot must be visible in the admin menu.'
 Require 'stopRpElectionEarly' 'Early finish before voting must close the campaign safely.'
+Require 'PlayerQuitEvent' 'Election temporary state must be cleaned when a player leaves.'
+Require 'protectedInteractAt.remove(playerId);' 'Protected-block click debounce entries must not accumulate for departed players.'
+Require 'rpCandidateSelections.remove(playerId);' 'Candidate-picker drafts must not survive a player disconnect.'
+Require 'rpCandidateSelectionCampaigns.remove(playerId);' 'Candidate-picker campaign bindings must not survive a player disconnect.'
 
 Write-Output 'Election RP candidate queue contract: PASS'

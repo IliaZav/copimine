@@ -51,6 +51,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
@@ -276,6 +277,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (!liveHidden.contains(event.getPlayer().getUniqueId())) {
             Bukkit.getScheduler().runTaskLater(this, () -> renderSidebar(event.getPlayer(), snapshot.get()), 20L);
         }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        UUID playerId = event.getPlayer().getUniqueId();
+        protectedInteractAt.remove(playerId);
+        prompts.remove(playerId);
+        rpCandidateSelections.remove(playerId);
+        rpCandidateSelectionCampaigns.remove(playerId);
     }
 
     @EventHandler
@@ -3520,11 +3530,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                         player.sendMessage(color("&eСтарый формат выборов отключён. Используйте новый интерактивный блок RP-голосования."));
                         return;
                     }
-                    if (hasElectionAdmin(player)) {
-                        openRpBlocksMenu(player, 0);
-                    } else {
-                        openDirectVoteMenu(player, stationId);
-                    }
+                    // An administrator is still an active server player and
+                    // must be able to cast the same in-game vote as everyone
+                    // else. Block administration remains available from the
+                    // election control menu rather than replacing the ballot
+                    // when an admin checks a polling station.
+                    openDirectVoteMenu(player, stationId);
                 });
             } catch (Exception error) {
                 getLogger().warning("station interact async: " + safeError(error));
@@ -3620,110 +3631,109 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openTaxOfficeMenu(Player player, String taxId, String mode, String pinBuffer) {
-        if (player != null) {
-            Map<String, Object> tax;
+        if (player == null) {
+            return;
+        }
+        String playerUuid = player.getUniqueId().toString();
+        String playerName = player.getName();
+        player.sendActionBar(color("&7Загружаю налоговую..."));
+        loadTaxOfficeMenuAsync(player, playerUuid, playerName, taxId, mode, pinBuffer);
+    }
+
+    private void loadTaxOfficeMenuAsync(Player player, String playerUuid, String playerName, String taxId, String mode, String pinBuffer) {
+        runAsync(() -> {
             try {
-                tax = requireActiveTaxRecord(taxId);
+                Map<String, Object> tax = requireActiveTaxRecord(taxId);
+                long due = 0L;
+                long paid = 0L;
+                Map<String, Object> taxClockExemption = null;
+                if (tax != null) {
+                    String actualTaxId = string(tax.get("id"));
+                    due = dueTaxAmount(playerUuid, actualTaxId, tax);
+                    paid = paidTaxAmount(playerUuid, actualTaxId);
+                    taxClockExemption = activeTaxClockExemption(playerUuid);
+                }
+                long dueRef = due;
+                long paidRef = paid;
+                Map<String, Object> taxRef = tax;
+                Map<String, Object> exemptionRef = taxClockExemption;
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        renderTaxOfficeMenu(player, taxRef, mode, pinBuffer, dueRef, paidRef, exemptionRef);
+                    }
+                });
             } catch (Exception error) {
-                player.sendMessage(color("&cНе удалось открыть налоговую: &f" + publicErrorMessage(error)));
-                return;
+                getLogger().warning("tax menu amount player=" + playerName + " taxId=" + taxId + " error=" + safeError(error));
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(color("&cНе удалось открыть налоговую: &f" + publicErrorMessage(error)));
+                    }
+                });
             }
-            if (tax == null) {
-                MenuHolder holder = new MenuHolder("tax-office", "");
-                Inventory inv = holder.create(27, color("&6Налоговая"));
-                setStatic(inv, 13, infoItem(Material.GOLD_INGOT, "&eАктивный налог не назначен", List.of(
-                        "&7Президент пока не открыл добровольный налог.",
-                        "&7Оплата сейчас недоступна."
-                )));
-                setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
-                player.openInventory(inv);
-                return;
-            }
+        });
+    }
 
-            String actualTaxId = string(tax.get("id"));
-            MenuHolder holder = new MenuHolder("tax-office", actualTaxId);
-            Inventory inv = holder.create(54, color("&6Налоговая"));
-            long due;
-            long paid;
-            Map<String, Object> taxClockExemption;
-            try {
-                due = dueTaxAmount(player.getUniqueId().toString(), actualTaxId, tax);
-                paid = paidTaxAmount(player.getUniqueId().toString(), actualTaxId);
-                taxClockExemption = activeTaxClockExemption(player.getUniqueId().toString());
-            } catch (Exception error) {
-                player.sendMessage(color("&cНе удалось рассчитать налог: &f" + publicErrorMessage(error)));
-                getLogger().warning("tax menu amount player=" + player.getName() + " taxId=" + actualTaxId + " error=" + safeError(error));
-                return;
-            }
-            String pin = first(pinBuffer, "");
-
-            if (taxClockExemption != null) {
-                setStatic(inv, 6, infoItem(Material.CLOCK, "&aОсвобождение от налогов", List.of(
-                        "&7Осталось: &f" + formatTaxExemptionRemaining(longValue(taxClockExemption.get("expires_at")))
-                )));
-            }
-
-            setStatic(inv, 4, infoItem(Material.GOLD_INGOT, "&6Добровольный налог", List.of(
-                    "&7Ставка: &f" + longValue(tax.get("amount")) + " AR",
-                    "&7Период: &f" + taxPeriodLabel(taxPeriodHours(tax)),
-                    "&7Уже оплачено: &f" + paid + " AR",
-                    "&7К оплате сейчас: &f" + due + " AR"
+    private void renderTaxOfficeMenu(Player player, Map<String, Object> tax, String mode, String pinBuffer,
+                                     long due, long paid, Map<String, Object> taxClockExemption) {
+        if (tax == null) {
+            MenuHolder holder = new MenuHolder("tax-office", "");
+            Inventory inv = holder.create(27, color("&6Налоговая"));
+            setStatic(inv, 13, infoItem(Material.GOLD_INGOT, "&eАктивный налог не назначен", List.of(
+                    "&7Президент пока не открыл добровольный налог.",
+                    "&7Оплата сейчас недоступна."
             )));
-            setStatic(inv, 13, infoItem(Material.BOOK, "&fКак это работает", List.of(
-                    "&7Оплата только вручную по кнопке.",
-                    "&7Автосписаний нет.",
-                    "&7Неуплата не обрабатывается кодом."
-            )));
-
-            if ("BANK_PIN".equalsIgnoreCase(mode)) {
-                holder.data().put("pin", pin);
-                renderPinPad(holder, inv, pin);
-                setStatic(inv, 5, infoItem(Material.TRIPWIRE_HOOK, "&fПодтверждение банка", List.of(
-                        "&7Введи PIN от счёта AR.",
-                        "&7Будет списано: &f" + due + " AR"
-                )));
-            } else if (due > 0L) {
-                setButton(holder, 29, Material.EMERALD, "&aОплатить через банк", List.of(
-                        "&7Списать со счёта AR: &f" + due + " AR",
-                        "&7Платёж добровольный."
-                ), "taxpay:bank:" + actualTaxId);
-            } else {
-                setStatic(inv, 29, infoItem(Material.LIME_WOOL, "&aТекущий период уже закрыт", List.of(
-                        "&7На этот период больше ничего платить не нужно."
-                )));
-            }
-
-            setStatic(inv, 31, infoItem(Material.CHEST, "&fНаличная оплата", List.of(
-                    "&7Наличными налог не принимается.",
-                    "&7Используй кнопку оплаты через банк."
-            )));
-            setStatic(inv, 40, infoItem(Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Список доступен президенту и администрации.")));
-            setButton(holder, 49, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
+            setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
             player.openInventory(inv);
             return;
         }
-        if (!PRESIDENT_TAX_FEATURE_ENABLED) {
-            MenuHolder holder = new MenuHolder("tax-office-disabled", first(taxId, ""));
-            Inventory inv = holder.create(27, color("&6Налоги скрыты"));
-            setStatic(inv, 11, infoItem(Material.GOLD_INGOT, "&fПрезидентский налог пока отключён", List.of(
-                    "&7Каркас оставлен в коде, но игрокам",
-                    "&7налоги сейчас не показываются и не начисляются.",
-                    "&7При включении период оплаты: &f24 часа&7."
+
+        String actualTaxId = string(tax.get("id"));
+        MenuHolder holder = new MenuHolder("tax-office", actualTaxId);
+        Inventory inv = holder.create(54, color("&6Налоговая"));
+        String pin = first(pinBuffer, "");
+
+        if (taxClockExemption != null) {
+            setStatic(inv, 6, infoItem(Material.CLOCK, "&aОсвобождение от налогов", List.of(
+                    "&7Осталось: &f" + formatTaxExemptionRemaining(longValue(taxClockExemption.get("expires_at")))
             )));
-            setStatic(inv, 15, infoItem(Material.BOOKSHELF, "&aПоступления из лавки", List.of("&7Список доступен президенту и администрации.")));
-            setButton(holder, 22, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть это меню."), "close");
-            player.openInventory(inv);
-            return;
         }
-        MenuHolder holder = new MenuHolder("tax-office", first(taxId, ""));
-        Inventory inv = holder.create(27, color("&6\u041d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430"));
-        setStatic(inv, 11, infoItem(Material.GOLD_INGOT, "&f\u041f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043d\u0430\u043b\u043e\u0433 \u0443\u0431\u0440\u0430\u043d", List.of(
-                "&7\u042d\u0442\u0430 \u043c\u0435\u0445\u0430\u043d\u0438\u043a\u0430 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442\u0441\u044f.",
-                "&7\u0414\u043e\u0445\u043e\u0434 \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u043f\u043e\u0441\u0442\u0443\u043f\u0430\u0435\u0442",
-                "&7\u043d\u0430 \u043b\u0438\u0447\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 \u0438\u0437 AR-\u043b\u0430\u0432\u043a\u0438 CopiMine."
+
+        setStatic(inv, 4, infoItem(Material.GOLD_INGOT, "&6Добровольный налог", List.of(
+                "&7Ставка: &f" + longValue(tax.get("amount")) + " AR",
+                "&7Период: &f" + taxPeriodLabel(taxPeriodHours(tax)),
+                "&7Уже оплачено: &f" + paid + " AR",
+                "&7К оплате сейчас: &f" + due + " AR"
         )));
-        setStatic(inv, 15, infoItem(Material.BOOKSHELF, "&a\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u044f \u0438\u0437 \u043b\u0430\u0432\u043a\u0438", List.of("&7\u0421\u043f\u0438\u0441\u043e\u043a \u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u043f\u0440\u0435\u0437\u0438\u0434\u0435\u043d\u0442\u0443 \u0438 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438.")));
-        setButton(holder, 22, Material.BARRIER, "&c\u0417\u0430\u043a\u0440\u044b\u0442\u044c", List.of("&7\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u044d\u0442\u043e \u043c\u0435\u043d\u044e."), "close");
+        setStatic(inv, 13, infoItem(Material.BOOK, "&fКак это работает", List.of(
+                "&7Оплата только вручную по кнопке.",
+                "&7Автосписаний нет.",
+                "&7Неуплата не обрабатывается кодом."
+        )));
+
+        if ("BANK_PIN".equalsIgnoreCase(mode)) {
+            holder.data().put("pin", pin);
+            renderPinPad(holder, inv, pin);
+            setStatic(inv, 5, infoItem(Material.TRIPWIRE_HOOK, "&fПодтверждение банка", List.of(
+                    "&7Введи PIN от счёта AR.",
+                    "&7Будет списано: &f" + due + " AR"
+            )));
+        } else if (due > 0L) {
+            setButton(holder, 29, Material.EMERALD, "&aОплатить через банк", List.of(
+                    "&7Списать со счёта AR: &f" + due + " AR",
+                    "&7Платёж добровольный."
+            ), "taxpay:bank:" + actualTaxId);
+        } else {
+            setStatic(inv, 29, infoItem(Material.LIME_WOOL, "&aТекущий период уже закрыт", List.of(
+                    "&7На этот период больше ничего платить не нужно."
+            )));
+        }
+
+        setStatic(inv, 31, infoItem(Material.CHEST, "&fНаличная оплата", List.of(
+                "&7Наличными налог не принимается.",
+                "&7Используй кнопку оплаты через банк."
+        )));
+        setStatic(inv, 40, infoItem(Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Список доступен президенту и администрации.")));
+        setButton(holder, 49, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
         player.openInventory(inv);
     }
 

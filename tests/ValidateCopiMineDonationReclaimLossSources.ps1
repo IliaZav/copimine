@@ -19,8 +19,10 @@ Require 'EntityRemoveEvent.Cause.DISCARD' 'Discard removals must be journaled fo
 Require 'EntityRemoveEvent.Cause.OUT_OF_WORLD' 'Out-of-world removals must be journaled for reclaim.'
 Require 'InventoryCreativeEvent' 'Creative inventory deletion must be handled explicitly.'
 Require 'handleCreativeDonationLoss' 'Creative cursor deletion must use the durable loss journal.'
-Require 'priority = EventPriority.HIGHEST' 'Loss events must run after protection plugins have made their decision.'
-Require 'ignoreCancelled = false' 'Loss handler must observe cancellation state before deciding whether to journal.'
+$destroyHandler = [regex]::Match($source, '(?s)@EventHandler\(\s*priority\s*=\s*EventPriority\.(?<priority>[A-Z_]+),\s*ignoreCancelled\s*=\s*(?<ignore>true|false)\s*\)\s*public void onDonationItemDestroyed\(EntityDamageEvent')
+if (-not $destroyHandler.Success) { throw 'Donation loss damage handler annotation was not found.' }
+if ($destroyHandler.Groups['priority'].Value -ne 'MONITOR') { throw 'Loss damage handling must run at MONITOR after all protection listeners have made their final decision.' }
+if ($destroyHandler.Groups['ignore'].Value -ne 'true') { throw 'Cancelled damage must never create a reclaim entry.' }
 
 $destroyedBlock = [regex]::Match($source, '(?s)case VOID:.*?flushPendingDonationLossJournalAsync\(\);')
 if (-not $destroyedBlock.Success) { throw 'Void loss handler was not found.' }

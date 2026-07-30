@@ -1508,18 +1508,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   @EventHandler(
-      priority = EventPriority.HIGHEST,
-      ignoreCancelled = false
-   )
-   public void onDonationItemDestroyed(EntityDamageEvent var1) {
-      // A protection plugin may cancel the damage event without removing the
-      // item.  Observe the final decision at HIGHEST and only journal a real
-      // loss, otherwise a cancelled cactus/explosion would create a phantom
-      // reclaim entry.
-      if (var1.isCancelled()) {
-         return;
-      }
+    @EventHandler(
+       priority = EventPriority.MONITOR,
+       ignoreCancelled = true
+    )
+    public void onDonationItemDestroyed(EntityDamageEvent var1) {
+       // Run after every protection listener has made its final decision.
+       // Recording a loss earlier can delete an item and create a reclaim entry
+       // even when a later plugin cancels cactus or explosion damage.
       if (var1.getEntity() instanceof Item var2) {
          CopiMineArtifacts.OfficialDonationRef var4 = this.officialDonationRef(var2.getItemStack());
          if (var4 != null) {
@@ -1604,19 +1600,24 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onJoin(PlayerJoinEvent var1) {
       this.recoverStrandedDeliveries(var1.getPlayer());
       this.refreshEquippedArtifactBindingsAsync(var1.getPlayer());
+      UUID playerUuid = var1.getPlayer().getUniqueId();
       this.runAsync(
          () -> {
-            int var2 = this.pendingCount(var1.getPlayer().getUniqueId().toString());
+            int var2 = this.pendingCount(playerUuid.toString());
             if (var2 > 0) {
                this.runSync(
-                  () -> var1.getPlayer()
-                        .sendMessage(
+                  () -> {
+                     Player player = Bukkit.getPlayer(playerUuid);
+                     if (player != null && player.isOnline()) {
+                        player.sendMessage(
                                                        this.color(
                                "&eУ вас есть отложенная выдача CopiMineArtifacts: &f"
                                   + var2
                                  + "&e. Используйте &f/cmartifacts claim&e."
                             )
-                        )
+                        );
+                     }
+                  }
                );
             }
          }
@@ -2804,6 +2805,21 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void createAdminShopFromTarget(Player player) {
       if (!this.hasArtifactPermission(player, "copimine.artifacts.shop.create")) { this.noPermission(player); return; }
       Block target = player.getTargetBlockExact(6);
+      String targetWorld = "";
+      int targetX = 0;
+      int targetY = 0;
+      int targetZ = 0;
+      if (target != null) {
+         targetWorld = target.getWorld().getName();
+         targetX = target.getX();
+         targetY = target.getY();
+         targetZ = target.getZ();
+      }
+      String actorName = player.getName();
+      final String finalTargetWorld = targetWorld;
+      final int finalTargetX = targetX;
+      final int finalTargetY = targetY;
+      final int finalTargetZ = targetZ;
       if (target == null || target.getType().isAir()) { player.sendMessage(this.color("&cСмотрите на существующий блок в пределах 6 блоков.")); return; }
       if (this.shopsByLocation.containsKey(this.blockKey(target.getLocation()))) { player.sendMessage(this.color("&cНа этом блоке уже есть лавка.")); return; }
       this.runAsync(() -> {
@@ -2813,11 +2829,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                generatedId = this.nextGeneratedShopId();
                if (this.shopIdExistsInDatabase(generatedId)) throw new SQLException("Generated shop name already exists");
             }
-            CopiMineArtifacts.Shop shop = new CopiMineArtifacts.Shop(generatedId, "Лавка " + generatedId, target.getWorld().getName(), target.getX(), target.getY(), target.getZ(), true);
+            CopiMineArtifacts.Shop shop = new CopiMineArtifacts.Shop(generatedId, "Лавка " + generatedId, finalTargetWorld, finalTargetX, finalTargetY, finalTargetZ, true);
             this.saveShop(shop);
             this.shopsByLocation.put(shop.locationKey(), shop);
-            this.audit(player.getName(), "shop_create", shop.shopId(), shop.locationKey());
-            this.runSync(() -> { try { this.spawnOrReplaceProtectedBlockVisual(target.getLocation(), "ARTIFACT_SHOP", shop.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker"); this.spawnShopTitleDisplay(target.getLocation(), shop.shopId(), shop.title()); } catch (Exception ignored) {} if (player.isOnline()) player.sendMessage(this.color("&aЛавка создана.")); });
+            this.audit(actorName, "shop_create", shop.shopId(), shop.locationKey());
+            this.runSync(() -> { try { Location location = this.shopLocation(shop); if (location != null) { this.spawnOrReplaceProtectedBlockVisual(location, "ARTIFACT_SHOP", shop.shopId(), Material.PAPER, MODEL_ARTIFACT_SHOP_MARKER, "artifact_shop_marker"); this.spawnShopTitleDisplay(location, shop.shopId(), shop.title()); } } catch (Exception ignored) {} if (player.isOnline()) player.sendMessage(this.color("&aЛавка создана.")); });
          } catch (SQLException error) { this.getLogger().log(Level.WARNING, "Admin shop create failed", error); this.runSync(() -> { if (player.isOnline()) player.sendMessage(this.color("&cНе удалось создать лавку.")); }); }
       });
    }

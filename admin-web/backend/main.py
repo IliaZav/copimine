@@ -8638,8 +8638,8 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 current_stage = str(election.get("current_stage") or "").strip().upper()
                 if stage == "DEBATES":
                     count = int(conn.execute("SELECT COUNT(*) AS c FROM round_candidates WHERE election_id=%s AND round_no=%s AND active=1", (eid, round_no)).fetchone().get("c") or 0)
-                    if count < 2:
-                        raise HTTPException(status_code=409, detail="Сначала выберите минимум двух кандидатов")
+                    if count < 2 or count > 4:
+                        raise HTTPException(status_code=409, detail="Для дебатов нужно от 2 до 4 кандидатов")
                     if current_stage not in {"PREPARATION", "APPLICATIONS", "REVIEW", "DEBATES"}:
                         raise HTTPException(status_code=409, detail="В дебаты можно перейти только до голосования")
                     deadline = 0
@@ -8648,8 +8648,8 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 else:
                     count = int(conn.execute("SELECT COUNT(*) AS c FROM round_candidates WHERE election_id=%s AND round_no=%s AND active=1", (eid, round_no)).fetchone().get("c") or 0)
                     blocks = int(conn.execute("SELECT COUNT(*) AS c FROM election_voting_blocks WHERE election_id=%s AND active=1", (eid,)).fetchone().get("c") or 0)
-                    if count < 2 or blocks < 1:
-                        raise HTTPException(status_code=409, detail="Нужны минимум два кандидата и один голосовательный блок")
+                    if count < 2 or count > 4 or blocks < 1:
+                        raise HTTPException(status_code=409, detail="Нужны от 2 до 4 кандидатов и один голосовательный блок")
                     requested_hours = int(data.voting_hours or 24)
                     if requested_hours not in {24, 48, 72}:
                         raise HTTPException(status_code=400, detail="Срок голосования должен быть 24, 48 или 72 часа")

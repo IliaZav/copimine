@@ -2125,7 +2125,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 UUID playerUuid = player.getUniqueId();
                 Set<String> pending = rpCandidateSelections.computeIfAbsent(playerUuid, ignored -> ConcurrentHashMap.newKeySet());
                 String draftCampaign = rpCandidateSelectionCampaigns.putIfAbsent(playerUuid, electionId);
-                if (!electionId.equals(draftCampaign)) {
+                if (draftCampaign == null || !electionId.equals(draftCampaign)) {
                     synchronized (pending) {
                         pending.clear();
                         pending.addAll(selected);
@@ -2176,6 +2176,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (applicationId == null || applicationId.isBlank()) return;
         String electionId = activeRpElectionId();
         if (electionId.isBlank()) throw new IllegalStateException("Активная RP-кампания не найдена.");
+        String draftCampaign = rpCandidateSelectionCampaigns.get(playerUuid);
+        if (!electionId.equals(draftCampaign)) {
+            throw new IllegalStateException("Состав кандидатов устарел. Открой меню отбора заново.");
+        }
         Map<String, Object> app = applicationById(applicationId);
         if (app == null || !electionId.equals(string(app.get("election_id")))
                 || !"APPROVED".equalsIgnoreCase(string(app.get("admin_status")))
@@ -2193,6 +2197,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void applyRpCandidateSelection(String actor, UUID playerUuid) throws Exception {
+        String electionId = activeRpElectionId();
+        String draftCampaign = rpCandidateSelectionCampaigns.get(playerUuid);
+        if (electionId.isBlank() || !electionId.equals(draftCampaign)) {
+            throw new IllegalStateException("Состав кандидатов устарел. Открой меню отбора заново.");
+        }
         Set<String> draft = rpCandidateSelections.getOrDefault(playerUuid, Set.of());
         Set<String> selected;
         synchronized (draft) {
@@ -3070,6 +3079,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
 
         setButton(holder, 49, Material.BOOKSHELF, "&aПоступления президенту", List.of("&7Открыть последние начисления."), "mandate:payments");
+        setButton(holder, 52, Material.RED_DYE, "&eОставить полномочия", List.of(
+                "&7Добровольно закрыть президентский срок.",
+                "&7Текущий налог будет закрыт, новый президент не назначается."
+        ), "president:resign");
         setButton(holder, 53, Material.BARRIER, "&cЗакрыть", List.of("&7Закрыть меню."), "close");
         player.openInventory(inv);
     }
@@ -3615,7 +3628,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             } catch (Exception error) {
                 runSync(() -> {
                     if (player.isOnline()) {
-                        sendUserError(player, error, "&cНе удалось открыть голосование.");
+                        sendRpActionError(player, error, "&cНе удалось открыть голосование.");
                     }
                 });
                 getLogger().warning("direct vote menu async: " + safeError(error));
@@ -5172,7 +5185,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 getLogger().log(Level.WARNING, "direct vote failed", error);
                 runSync(() -> {
                     if (player.isOnline()) {
-                        sendUserError(player, error, "&cНе удалось записать голос.");
+                        sendRpActionError(player, error, "&cНе удалось записать голос.");
                     }
                 });
             }
@@ -6579,8 +6592,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 || action.startsWith("apply:results:")
                 || action.equals("president:remove")
                 || action.equals("apply:president:remove")
-                || action.equals("president:resign")
-                || action.equals("apply:president:resign")
                 || action.startsWith("law:")
                 || action.startsWith("apply:law:")
                 || action.startsWith("tax:")
@@ -6819,6 +6830,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private String startRpElection(String actor) throws Exception {
         long t = now();
         return tx(connection -> {
+            lockRpElectionLifecycle(connection);
             // Repair an expired term synchronously when an administrator tries
             // to start the next campaign.  The periodic task normally does
             // this, but the button must also work immediately after the
@@ -6938,7 +6950,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             ElectionContext context = requireActiveElectionContext(connection);
             if (!isRpElectionWorkflow(connection, context.electionId())) throw new IllegalStateException("Это не RP-кампания.");
             int candidates = countActiveRoundCandidates(connection, context.electionId(), context.round());
-            if (candidates < 2) throw new IllegalStateException("Для голосования нужно минимум 2 кандидата.");
+            if (candidates < 2 || candidates > 4) throw new IllegalStateException("Для голосования нужно от 2 до 4 кандидатов.");
             if (countActiveVotingBlocks(connection, context.electionId()) < 1) throw new IllegalStateException("Создай хотя бы один блок голосования.");
             Map<String, Object> row = queryOne(connection, "SELECT voting_started_at,voting_deadline_at FROM elections WHERE id=? FOR UPDATE", context.electionId());
             long started = longValue(row == null ? 0L : row.get("voting_started_at"));
@@ -6947,6 +6959,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (context.stage() == ElectionStage.VOTING) {
                 if (oldDeadline > 0L && t > oldDeadline) throw new IllegalStateException("Срок голосования уже закончился.");
                 if (started <= 0L) started = t;
+                if (oldDeadline > 0L && started + hours * 60L * 60L * 1000L < oldDeadline) {
+                    throw new IllegalStateException("Срок голосования можно только продлить.");
+                }
                 deadline = Math.min(started + 72L * 60L * 60L * 1000L, Math.max(oldDeadline, started + hours * 60L * 60L * 1000L));
             } else {
                 if (context.stage() != ElectionStage.DEBATES) throw new IllegalStateException("Голосование можно открыть только после дебатов.");
@@ -8975,6 +8990,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             statement.execute("SET search_path TO " + db.schemaIdent());
         }
         return connection;
+    }
+
+    /**
+     * The website uses the same named PostgreSQL advisory lock.  Taking it
+     * before looking for an active campaign makes a simultaneous web click
+     * and in-game click serializable even when there is no active row yet.
+     */
+    private void lockRpElectionLifecycle(Connection connection) throws Exception {
+        queryOne(connection, "SELECT pg_advisory_xact_lock(hashtext('copimine-rp-election')) AS locked");
     }
 
     private void update(String sql, Object... args) throws Exception {

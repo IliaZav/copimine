@@ -21,4 +21,4 @@
 
 - [x] Run the complete shop-related validator set and compile the plugin.
 - [x] Inspect the diff for data-destructive or payment-provider changes.
-- [ ] Fast-forward the verified branch to local and remote `main` without deploying or restarting services.
+- [x] Fast-forward the verified branch to local `main`; remote push is the final non-deployment step.

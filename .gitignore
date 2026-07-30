@@ -65,6 +65,7 @@ release/
 *.sqlite3
 
 # Project-local generated/runtime dirs
+/.worktrees/
 admin-web/.venv/
 admin-web/.venv-*/
 admin-web/.venv*/

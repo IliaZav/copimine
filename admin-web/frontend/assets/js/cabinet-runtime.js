@@ -4181,8 +4181,23 @@ async function loadElections() {
   `);
 }
 
+function buildRpElectionControlPayload(action, stage = "") {
+  const payload = { action };
+  if (action === "stage") {
+    payload.stage = String(stage || "").trim().toUpperCase();
+    if (payload.stage === "VOTING") {
+      payload.voting_hours = Number($("rpVotingHours")?.value || 24);
+    }
+  }
+  if (action === "finish") {
+    const candidateUuid = $("rpWinnerUuid")?.value?.trim();
+    if (candidateUuid) payload.candidate_uuid = candidateUuid;
+  }
+  return payload;
+}
+
 window.rpElectionControl = async (action, stage = "") => {
-  const payload = { action, stage, voting_hours: Number($("rpVotingHours")?.value || 24), candidate_uuid: $("rpWinnerUuid")?.value?.trim() || "" };
+  const payload = buildRpElectionControlPayload(action, stage);
   if (action === "finish" && !await dangerConfirm("Завершить голосование? При единственном лидере он станет президентом на 7 дней.", "ELECTION_RP_FINISH")) return;
   if (action === "finish_early" && !await dangerConfirm("Завершить текущую кампанию досрочно? На голосовании текущий лидер станет президентом на 7 дней; на подготовке и дебатах кампания закроется без президента.", "ELECTION_RP_FINISH_EARLY")) return;
   if (action === "remove" && !await dangerConfirm("Снять действующего президента? Его срок и текущий налог будут закрыты.", "ELECTION_RP_REMOVE")) return;

@@ -8,7 +8,8 @@ param(
     [string]$CommonScriptPath = "",
     [string]$VerifyScriptPath = "",
     [string]$ReleaseManifestPath = "",
-    [string]$BootstrapManifestPath = ""
+    [string]$BootstrapManifestPath = "",
+    [int]$SshPort = 22
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,14 +55,14 @@ function Invoke-Ssh([string]$Target, [string]$CommandText) {
     # (for example `/home/qwerty/copimine-upload\r`), so normalize every
     # remote command to LF before handing it to SSH.
     $normalized = $CommandText -replace "`r`n", "`n" -replace "`r", "`n"
-    & ssh $Target $normalized
+    & ssh @SshCommonArguments $Target $normalized
     if ($LASTEXITCODE -ne 0) {
         Fail "SSH command failed: $CommandText"
     }
 }
 
 function Invoke-Scp([string[]]$Arguments) {
-    & scp @Arguments
+    & scp @SshCommonArguments @Arguments
     if ($LASTEXITCODE -ne 0) {
         Fail "SCP failed."
     }
@@ -69,6 +70,16 @@ function Invoke-Scp([string[]]$Arguments) {
 
 Need-Command "ssh"
 Need-Command "scp"
+
+if ($SshPort -lt 1 -or $SshPort -gt 65535) {
+    Fail "SshPort must be between 1 and 65535."
+}
+$SshCommonArguments = @(
+    '-p', [string]$SshPort,
+    '-o', 'ServerAliveInterval=60',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'ConnectTimeout=10'
+)
 
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
@@ -223,14 +234,14 @@ chmod 755 '$InstallerRemoteName' '$UnpackRemoteName' '$CommonRemoteName' '$Verif
 Invoke-Ssh $SshTarget $RenameScript
 
 Write-Host "[4/6] Checking remote size and SHA256"
-$RemoteSize = (& ssh $SshTarget "stat -c %s '$RemoteArchive'").Trim()
+$RemoteSize = (& ssh @SshCommonArguments $SshTarget "stat -c %s '$RemoteArchive'").Trim()
 if (-not $RemoteSize) {
     Fail "Could not read remote archive size."
 }
 if ([int64]$RemoteSize -ne [int64]$ArchiveSize) {
     Fail "Remote archive size mismatch. Local: $ArchiveSize Remote: $RemoteSize"
 }
-$RemoteShaValue = (& ssh $SshTarget "sha256sum '$RemoteArchive' | cut -d' ' -f1").Trim().ToLowerInvariant()
+$RemoteShaValue = (& ssh @SshCommonArguments $SshTarget "sha256sum '$RemoteArchive' | cut -d' ' -f1").Trim().ToLowerInvariant()
 if ($RemoteShaValue -ne $ArchiveSha256) {
     Fail "Remote archive SHA256 mismatch. Local: $ArchiveSha256 Remote: $RemoteShaValue"
 }
@@ -245,9 +256,9 @@ Write-Host "Remote dir: $RemoteDir"
 Write-Host "SHA256: $ArchiveSha256"
 Write-Host ""
 
-$UnpackCommand = 'ssh ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $UnpackRemoteName + " '$RemoteArchive' '$ArchiveSha256'" + '"'
-$ReplaceCommand = 'ssh ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $InstallerRemoteName + " '$RemoteArchive'" + '"'
-$VerifyCommand = 'ssh ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $VerifyRemoteName + '"'
+$UnpackCommand = 'ssh -p ' + [string]$SshPort + ' ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $UnpackRemoteName + " '$RemoteArchive' '$ArchiveSha256'" + '"'
+$ReplaceCommand = 'ssh -p ' + [string]$SshPort + ' ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $InstallerRemoteName + " '$RemoteArchive'" + '"'
+$VerifyCommand = 'ssh -p ' + [string]$SshPort + ' ' + $SshTarget + ' "cd ' + $RemoteDir + ' && sudo bash ./' + $VerifyRemoteName + '"'
 
 Write-Host "Recommended deploy command:"
 Write-Host ("  " + $UnpackCommand)

@@ -7534,6 +7534,8 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                     election = dict(row) if row else {}
                 eid = str(election.get("id") or "")
                 current_round = max(1, int(election.get("current_round") or 1))
+                if eid:
+                    _repair_rp_candidate_rows(conn, eid, current_round)
                 # Only the RP campaign tables are part of the live contract.
                 # Historical election_candidates rows must never be promoted
                 # into the active admin/player view after a migration.
@@ -8131,6 +8133,88 @@ def _is_rp_election_workflow(conn: Any, election_id: str) -> bool:
     return str((row or {}).get("notes") or "").strip().lower() == "rp-two-stage"
 
 
+def _repair_rp_candidate_rows(
+    conn: Any,
+    election_id: str,
+    round_no: int,
+    actor: str = "SYSTEM",
+    now: Optional[int] = None,
+) -> None:
+    """Repair the denormalized RP candidate roster before reads or finishing.
+
+    Older releases could persist an active ``candidates`` row without its
+    approved ``application_id`` or without an active ``round_candidates``
+    row. Every live surface used to join both tables, so those campaigns
+    appeared to have no candidates even though the administrator had already
+    selected them. Keep the repair idempotent and reactivate an existing
+    inactive round row instead of relying on ``NOT EXISTS``.
+    """
+    eid = str(election_id or "").strip()
+    if not eid:
+        return
+    round_value = max(1, int(round_no or 1))
+    timestamp = int(now or election_now_ms())
+    actor_value = str(actor or "SYSTEM")[:96]
+    conn.execute(
+        """
+        UPDATE candidates c
+           SET application_id=(
+               SELECT a.id
+                 FROM candidate_applications a
+                WHERE a.election_id=c.election_id
+                  AND a.player_uuid=c.player_uuid
+                  AND a.admin_status='APPROVED'
+                  AND a.status='APPROVED'
+                ORDER BY a.submitted_at DESC
+                LIMIT 1
+           )
+         WHERE c.election_id=%s
+           AND c.active=1
+           AND (
+               COALESCE(c.application_id,'')=''
+               OR NOT EXISTS (
+                   SELECT 1
+                     FROM candidate_applications current_app
+                    WHERE current_app.id=c.application_id
+                      AND current_app.election_id=c.election_id
+                      AND current_app.player_uuid=c.player_uuid
+                      AND current_app.admin_status='APPROVED'
+                      AND current_app.status='APPROVED'
+               )
+           )
+           AND EXISTS (
+               SELECT 1
+                 FROM candidate_applications a
+                WHERE a.election_id=c.election_id
+                  AND a.player_uuid=c.player_uuid
+                  AND a.admin_status='APPROVED'
+                  AND a.status='APPROVED'
+           )
+        """,
+        (eid,),
+    )
+    conn.execute(
+        """
+        INSERT INTO round_candidates(
+            election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by
+        )
+        SELECT c.election_id,%s,c.player_uuid,c.player_name,1,%s,%s
+          FROM candidates c
+          JOIN candidate_applications a
+            ON a.id=c.application_id
+           AND a.admin_status='APPROVED'
+           AND a.status='APPROVED'
+         WHERE c.election_id=%s
+           AND c.active=1
+        ON CONFLICT(election_id,round_no,candidate_uuid) DO UPDATE SET
+            active=1,
+            candidate_name=EXCLUDED.candidate_name,
+            created_by=EXCLUDED.created_by
+        """,
+        (round_value, timestamp, actor_value, eid),
+    )
+
+
 def _rp_answers(row: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
     raw = row.get("answers") if isinstance(row, dict) else None
     if isinstance(raw, dict):
@@ -8153,6 +8237,8 @@ def player_elections_sync(account: Mapping[str, Any] | dict[str, Any]) -> dict[s
             return {"ok": True, "election": None, "application": None, "candidates": [], "results": [], "voted": False}
         eid = str(election.get("id") or "")
         current_round = max(1, int(election.get("current_round") or 1))
+        if eid:
+            _repair_rp_candidate_rows(conn, eid, current_round)
         player_uuid = str(account.get("minecraft_uuid") or "")
         application = conn.execute(
             "SELECT * FROM candidate_applications WHERE election_id=%s AND player_uuid=%s ORDER BY submitted_at DESC,issued_at DESC LIMIT 1",
@@ -8310,6 +8396,7 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
             early_winner: dict[str, Any] | None = None
             if current_stage == "VOTING":
                 round_no = int(election.get("current_round") or 1)
+                _repair_rp_candidate_rows(conn, eid, round_no, actor, now)
                 leaders = conn.execute(
                     """
                     SELECT rc.candidate_uuid,rc.candidate_name,COUNT(v.id) AS votes
@@ -8371,12 +8458,16 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 winner_uuid = str(early_winner.get("candidate_uuid") or "")
                 winner_name = str(early_winner.get("candidate_name") or "")
                 conn.execute(
+                    "UPDATE rounds SET status='COUNTED',ended_at=%s,winner_uuid=%s,winner_name=%s WHERE election_id=%s AND round_no=%s AND status='ACTIVE'",
+                    (now, winner_uuid, winner_name, eid, int(election.get("current_round") or 1)),
+                )
+                conn.execute(
                     "INSERT INTO president_terms(id,election_id,president_uuid,president_name,status,started_at,ends_at,removed_at,removed_by) VALUES(%s,%s,%s,%s,'ACTIVE',%s,%s,0,'')",
                     (term_id, eid, winner_uuid, winner_name, now, ends_at),
                 )
                 conn.execute(
-                    "UPDATE elections SET status='PRESIDENT_TERM',current_stage='PRESIDENT_TERM',winner_uuid=%s,winner_name=%s,president_uuid=%s,president_name=%s,active=1,voting_ended_at=%s,ended_at=0,ended_by='',updated_at=%s WHERE id=%s",
-                    (winner_uuid, winner_name, winner_uuid, winner_name, now, now, eid),
+                    "UPDATE elections SET status='PRESIDENT_TERM',current_stage='PRESIDENT_TERM',winner_uuid=%s,winner_name=%s,manual_winner_uuid=%s,manual_winner_name=%s,president_uuid=%s,president_name=%s,active=1,voting_ended_at=%s,ended_at=0,ended_by='',updated_at=%s WHERE id=%s",
+                    (winner_uuid, winner_name, winner_uuid, winner_name, winner_uuid, winner_name, now, now, eid),
                 )
                 conn.execute(
                     "INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,'PRESIDENT_TERM',%s,%s,%s,'early vote finish; exact seven-day term')",
@@ -8390,6 +8481,10 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 }
             else:
                 conn.execute(
+                    "UPDATE rounds SET status='CANCELLED',ended_at=%s WHERE election_id=%s AND round_no=%s AND status='ACTIVE'",
+                    (now, eid, int(election.get("current_round") or 1)),
+                )
+                conn.execute(
                     "UPDATE elections SET current_stage='FINISHED',status='FINISHED',active=0,ended_at=%s,ended_by=%s,updated_at=%s WHERE id=%s",
                     (now, actor, now, eid),
                 )
@@ -8400,7 +8495,7 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 result = {"electionId": eid, "stage": "FINISHED", "earlyFinished": True}
             conn.commit()
             audit_event(actor, "election.rp.control.early_finish", target=eid, details={"fromStage": current_stage})
-            append_panel_event("admin-panel", "election_rp_control", actor=actor, target=eid, metadata={"action": "finish_early", "fromStage": current_stage, "stage": "FINISHED"}, tags=["elections", "rp"])
+            append_panel_event("admin-panel", "election_rp_control", actor=actor, target=eid, metadata={"action": "finish_early", "fromStage": current_stage, "stage": result.get("stage")}, tags=["elections", "rp"])
             return {"ok": True, **result}
         if action in {"remove", "resign"}:
             term = conn.execute(
@@ -8597,6 +8692,7 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 ids = list(dict.fromkeys(str(x).strip() for x in data.application_ids if str(x).strip()))
                 if not 2 <= len(ids) <= 4:
                     raise HTTPException(status_code=400, detail="Нужно выбрать от 2 до 4 кандидатов")
+                _repair_rp_candidate_rows(conn, eid, round_no, actor, now)
                 rows = conn.execute("SELECT * FROM candidate_applications WHERE election_id=%s AND id=ANY(%s) AND admin_status='APPROVED' AND status='APPROVED'", (eid, ids)).fetchall()
                 if len(rows) != len(ids):
                     raise HTTPException(status_code=409, detail="Все выбранные заявки должны быть одобрены")
@@ -8636,8 +8732,67 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 if stage not in {"DEBATES", "VOTING"}:
                     raise HTTPException(status_code=400, detail="Доступны этапы DEBATES и VOTING")
                 current_stage = str(election.get("current_stage") or "").strip().upper()
+                _repair_rp_candidate_rows(conn, eid, round_no, actor, now)
                 if stage == "DEBATES":
-                    count = int(conn.execute("SELECT COUNT(*) AS c FROM round_candidates WHERE election_id=%s AND round_no=%s AND active=1", (eid, round_no)).fetchone().get("c") or 0)
+                    # Older game releases persisted the selected rows in
+                    # candidates but not in round_candidates.  Repair that
+                    # harmless denormalisation before evaluating the gate so
+                    # the web button cannot fail with a false "need 2
+                    # candidates" error.
+                    conn.execute(
+                        """
+                        UPDATE candidates c
+                           SET application_id=(
+                               SELECT a.id FROM candidate_applications a
+                                WHERE a.election_id=c.election_id
+                                  AND a.player_uuid=c.player_uuid
+                                  AND a.admin_status='APPROVED' AND a.status='APPROVED'
+                                ORDER BY a.submitted_at DESC LIMIT 1
+                           )
+                         WHERE c.election_id=%s AND c.active=1
+                           AND COALESCE(c.application_id,'')=''
+                           AND EXISTS (
+                               SELECT 1 FROM candidate_applications a
+                                WHERE a.election_id=c.election_id
+                                  AND a.player_uuid=c.player_uuid
+                                  AND a.admin_status='APPROVED' AND a.status='APPROVED'
+                           )
+                        """,
+                        (eid,),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by)
+                        SELECT c.election_id,%s,c.player_uuid,c.player_name,1,%s,%s
+                          FROM candidates c
+                          JOIN candidate_applications a ON a.id=c.application_id
+                           AND a.admin_status='APPROVED' AND a.status='APPROVED'
+                         WHERE c.election_id=%s AND c.active=1
+                           AND NOT EXISTS (
+                               SELECT 1 FROM round_candidates rc
+                                WHERE rc.election_id=c.election_id
+                                  AND rc.round_no=%s
+                                  AND rc.candidate_uuid=c.player_uuid
+                           )
+                        """,
+                        (round_no, now, actor, eid, round_no),
+                    )
+                    count = int(conn.execute(
+                        """
+                        SELECT COUNT(*) AS c
+                          FROM round_candidates rc
+                          JOIN candidates c
+                            ON c.election_id=rc.election_id
+                           AND c.player_uuid=rc.candidate_uuid
+                           AND c.active=1
+                          JOIN candidate_applications a
+                            ON a.id=c.application_id
+                           AND a.admin_status='APPROVED'
+                           AND a.status='APPROVED'
+                         WHERE rc.election_id=%s AND rc.round_no=%s AND rc.active=1
+                        """,
+                        (eid, round_no),
+                    ).fetchone().get("c") or 0)
                     if count < 2 or count > 4:
                         raise HTTPException(status_code=409, detail="Для дебатов нужно от 2 до 4 кандидатов")
                     if current_stage not in {"PREPARATION", "APPLICATIONS", "REVIEW", "DEBATES"}:
@@ -8646,7 +8801,64 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                     voting_started_at = 0
                     voting_deadline_at = 0
                 else:
-                    count = int(conn.execute("SELECT COUNT(*) AS c FROM round_candidates WHERE election_id=%s AND round_no=%s AND active=1", (eid, round_no)).fetchone().get("c") or 0)
+                    # Apply the same legacy-row repair for the voting gate;
+                    # otherwise a campaign that was selected in an older
+                    # release can open debates but fail immediately when an
+                    # administrator chooses 24/48/72 hours.
+                    conn.execute(
+                        """
+                        UPDATE candidates c
+                           SET application_id=(
+                               SELECT a.id FROM candidate_applications a
+                                WHERE a.election_id=c.election_id
+                                  AND a.player_uuid=c.player_uuid
+                                  AND a.admin_status='APPROVED' AND a.status='APPROVED'
+                                ORDER BY a.submitted_at DESC LIMIT 1
+                           )
+                         WHERE c.election_id=%s AND c.active=1
+                           AND COALESCE(c.application_id,'')=''
+                           AND EXISTS (
+                               SELECT 1 FROM candidate_applications a
+                                WHERE a.election_id=c.election_id
+                                  AND a.player_uuid=c.player_uuid
+                                  AND a.admin_status='APPROVED' AND a.status='APPROVED'
+                           )
+                        """,
+                        (eid,),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO round_candidates(election_id,round_no,candidate_uuid,candidate_name,active,created_at,created_by)
+                        SELECT c.election_id,%s,c.player_uuid,c.player_name,1,%s,%s
+                          FROM candidates c
+                          JOIN candidate_applications a ON a.id=c.application_id
+                           AND a.admin_status='APPROVED' AND a.status='APPROVED'
+                         WHERE c.election_id=%s AND c.active=1
+                           AND NOT EXISTS (
+                               SELECT 1 FROM round_candidates rc
+                                WHERE rc.election_id=c.election_id
+                                  AND rc.round_no=%s
+                                  AND rc.candidate_uuid=c.player_uuid
+                           )
+                        """,
+                        (round_no, now, actor, eid, round_no),
+                    )
+                    count = int(conn.execute(
+                        """
+                        SELECT COUNT(*) AS c
+                          FROM round_candidates rc
+                          JOIN candidates c
+                            ON c.election_id=rc.election_id
+                           AND c.player_uuid=rc.candidate_uuid
+                           AND c.active=1
+                          JOIN candidate_applications a
+                            ON a.id=c.application_id
+                           AND a.admin_status='APPROVED'
+                           AND a.status='APPROVED'
+                         WHERE rc.election_id=%s AND rc.round_no=%s AND rc.active=1
+                        """,
+                        (eid, round_no),
+                    ).fetchone().get("c") or 0)
                     blocks = int(conn.execute("SELECT COUNT(*) AS c FROM election_voting_blocks WHERE election_id=%s AND active=1", (eid,)).fetchone().get("c") or 0)
                     if count < 2 or count > 4 or blocks < 1:
                         raise HTTPException(status_code=409, detail="Нужны от 2 до 4 кандидатов и один голосовательный блок")
@@ -8654,7 +8866,12 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                     if requested_hours not in {24, 48, 72}:
                         raise HTTPException(status_code=400, detail="Срок голосования должен быть 24, 48 или 72 часа")
                     if current_stage == "VOTING":
-                        voting_started_at = int(election.get("voting_started_at") or election.get("started_at") or now)
+                        # A few pre-RP rows entered VOTING without a start
+                        # timestamp.  Falling back to the campaign start can
+                        # make every legal extension look already expired;
+                        # repair such rows from the current request time.
+                        stored_voting_started = int(election.get("voting_started_at") or 0)
+                        voting_started_at = stored_voting_started if stored_voting_started > 0 else now
                         current_deadline = int(election.get("voting_deadline_at") or election.get("scheduled_end_at") or 0)
                         requested_deadline = voting_started_at + requested_hours * 60 * 60 * 1000
                         max_deadline = voting_started_at + 72 * 60 * 60 * 1000
@@ -8684,6 +8901,7 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
             else:
                 if str(election.get("current_stage") or "").upper() != "VOTING":
                     raise HTTPException(status_code=409, detail="Завершить можно только голосование")
+                _repair_rp_candidate_rows(conn, eid, round_no, actor, now)
                 # Include candidates with zero votes.  With no votes the
                 # result is a tie, so the administrator must explicitly pick
                 # one of the approved leaders instead of the API rejecting a
@@ -8747,11 +8965,13 @@ def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str,
                 conn.execute("UPDATE protected_block_visuals SET active=0,updated_at=%s WHERE kind='POLLING_STATION' AND linked_id IN (SELECT id FROM polling_stations WHERE election_id=%s)", (now, eid))
                 term_id = "term_" + secrets.token_hex(10)
                 ends_at = now + 7 * 24 * 60 * 60 * 1000
-                conn.execute("INSERT INTO president_terms(id,election_id,president_uuid,president_name,status,started_at,ends_at,removed_at,removed_by) VALUES(%s,%s,%s,%s,'ACTIVE',%s,%s,0,'')", (term_id, eid, winner_uuid, winner.get("candidate_name") or "", now, ends_at))
-                conn.execute("UPDATE elections SET status='PRESIDENT_TERM',current_stage='PRESIDENT_TERM',winner_uuid=%s,winner_name=%s,president_uuid=%s,president_name=%s,active=1,voting_ended_at=%s,ended_at=0,updated_at=%s WHERE id=%s", (winner_uuid, winner.get("candidate_name") or "", winner_uuid, winner.get("candidate_name") or "", now, now, eid))
+                winner_name = str(winner.get("candidate_name") or "")
+                conn.execute("INSERT INTO president_terms(id,election_id,president_uuid,president_name,status,started_at,ends_at,removed_at,removed_by) VALUES(%s,%s,%s,%s,'ACTIVE',%s,%s,0,'')", (term_id, eid, winner_uuid, winner_name, now, ends_at))
+                conn.execute("UPDATE rounds SET status='COUNTED',ended_at=%s,winner_uuid=%s,winner_name=%s WHERE election_id=%s AND round_no=%s AND status='ACTIVE'", (now, winner_uuid, winner_name, eid, round_no))
+                conn.execute("UPDATE elections SET status='PRESIDENT_TERM',current_stage='PRESIDENT_TERM',winner_uuid=%s,winner_name=%s,manual_winner_uuid=%s,manual_winner_name=%s,president_uuid=%s,president_name=%s,active=1,voting_ended_at=%s,ended_at=0,updated_at=%s WHERE id=%s", (winner_uuid, winner_name, winner_uuid, winner_name, winner_uuid, winner_name, now, now, eid))
                 conn.execute("INSERT INTO election_stages(election_id,stage,round_no,actor,created_at,notes) VALUES(%s,'PRESIDENT_TERM',%s,%s,%s,'automatic winner assignment; exact seven-day term')", (eid, round_no, actor, now))
                 conn.commit()
-                result = {"electionId": eid, "stage": "PRESIDENT_TERM", "president": {"uuid": winner_uuid, "name": winner.get("candidate_name") or "", "endsAt": ends_at}}
+                result = {"electionId": eid, "stage": "PRESIDENT_TERM", "president": {"uuid": winner_uuid, "name": winner_name, "endsAt": ends_at}}
     audit_event(actor, "election.rp.control", target=str(result.get("electionId") or ""), details={"action": action, "stage": result.get("stage")})
     append_panel_event("admin-panel", "election_rp_control", actor=actor, target=str(result.get("electionId") or ""), metadata={"action": action, "stage": result.get("stage")}, tags=["elections", "rp"])
     return {"ok": True, **result}
@@ -8783,7 +9003,12 @@ def create_rp_voting_block_sync(data: ElectionVotingBlockIn, actor: str) -> dict
                 raise HTTPException(status_code=409, detail="Этот блок уже занят другой защищённой точкой")
             linked_id = str(existing_protection.get("linked_id") or "")
             owner = conn.execute(
-                "SELECT election_id FROM election_voting_blocks WHERE id=%s AND active=1 LIMIT 1 FOR UPDATE",
+                # A station is deliberately left in history with active=0
+                # when its physical block is removed.  Re-placing the block
+                # must be able to repair that persisted row; requiring
+                # active=1 here made the web control panel report a false
+                # "belongs to another election" conflict after a restart.
+                "SELECT election_id,active FROM election_voting_blocks WHERE id=%s LIMIT 1 FOR UPDATE",
                 (linked_id,),
             ).fetchone()
             if not owner or str(owner.get("election_id") or "") != eid:
@@ -8793,7 +9018,7 @@ def create_rp_voting_block_sync(data: ElectionVotingBlockIn, actor: str) -> dict
         if existing:
             conn.execute("UPDATE election_voting_blocks SET active=1,updated_at=%s,created_by=%s WHERE id=%s", (now, actor, block_id))
         else:
-            conn.execute("INSERT INTO election_voting_blocks(id,election_id,world,x,y,z,active,created_at,created_by,updated_at) VALUES(%s,%s,%s,%s,%s,1,%s,%s,%s)", (block_id, eid, world, data.x, data.y, data.z, now, actor, now))
+            conn.execute("INSERT INTO election_voting_blocks(id,election_id,world,x,y,z,active,created_at,created_by,updated_at) VALUES(%s,%s,%s,%s,%s,%s,1,%s,%s,%s)", (block_id, eid, world, data.x, data.y, data.z, now, actor, now))
         conn.execute(
             "INSERT INTO polling_stations(id,election_id,world,x,y,z,chair_uuid,chair_name,active,created_at,updated_at,text_display_uuid) VALUES(%s,%s,%s,%s,%s,%s,'','',1,%s,%s,'') ON CONFLICT(id) DO UPDATE SET election_id=EXCLUDED.election_id,world=EXCLUDED.world,x=EXCLUDED.x,y=EXCLUDED.y,z=EXCLUDED.z,active=1,updated_at=EXCLUDED.updated_at",
             (block_id, eid, world, data.x, data.y, data.z, now, now),
@@ -8803,6 +9028,13 @@ def create_rp_voting_block_sync(data: ElectionVotingBlockIn, actor: str) -> dict
             "INSERT INTO protected_blocks(id,kind,world,x,y,z,linked_id,active,created_at,updated_at) VALUES(%s,'POLLING_STATION',%s,%s,%s,%s,%s,1,%s,%s) ON CONFLICT(id) DO UPDATE SET linked_id=EXCLUDED.linked_id,active=1,updated_at=EXCLUDED.updated_at",
             (protected_id, world, data.x, data.y, data.z, block_id, now, now),
         )
+        # The disable/finish paths enqueue visual cleanup before marking a
+        # station inactive.  Reactivation must cancel that stale cleanup and
+        # restore both visual-link tables, otherwise the freshly placed block
+        # becomes non-interactive again on the next cleanup pass.
+        conn.execute("UPDATE text_display_links SET active=1 WHERE kind='STATION_LABEL' AND linked_id=%s", (block_id,))
+        conn.execute("UPDATE protected_block_visuals SET active=1,updated_at=%s WHERE kind='POLLING_STATION' AND linked_id=%s", (now, block_id))
+        conn.execute("DELETE FROM election_visual_cleanup_queue WHERE linked_id=%s", (block_id,))
         conn.commit()
     audit_event(actor, "election.voting_block.create", target=block_id, details={"electionId": eid, "world": data.world, "x": data.x, "y": data.y, "z": data.z})
     return {"ok": True, "id": block_id, "electionId": eid, "world": world, "x": data.x, "y": data.y, "z": data.z, "protected": True}

@@ -4189,7 +4189,7 @@ function buildRpElectionControlPayload(action, stage = "") {
       payload.voting_hours = Number($("rpVotingHours")?.value || 24);
     }
   }
-  if (action === "finish") {
+  if (action === "finish" || action === "finish_early") {
     const candidateUuid = $("rpWinnerUuid")?.value?.trim();
     if (candidateUuid) payload.candidate_uuid = candidateUuid;
   }
@@ -6150,6 +6150,13 @@ async function loadPlayerElections() {
   const candidates = asArray(data.candidates);
   const results = asArray(data.results);
   const voted = Boolean(data.voted);
+  // The player endpoint intentionally omits the admin-only application and
+  // station collections.  Keep those values local and empty unless a future
+  // privileged response explicitly supplies them; otherwise the player
+  // renderer used to throw ReferenceError for undefined variables before the
+  // admin panel could be removed from the DOM.
+  const applicationRows = isPanelAdminRole() ? asArray(data.applications) : [];
+  const votingBlocks = isPanelAdminRole() ? asArray(data.votingBlocks) : [];
   const stage = String(election.stage || "NONE").toUpperCase();
   const answers = application?.answers || {};
   const applicationForm = application ? `
@@ -6185,9 +6192,11 @@ async function loadPlayerElections() {
         <button class="btn btn-secondary" data-click="rpElectionControl('stage','VOTING')">Открыть голосование</button>
         <button class="btn btn-danger" data-click="rpElectionControl('finish')">Завершить и назначить победителя</button>
         <button class="btn btn-danger" data-click="rpElectionControl('finish_early')">Завершить кампанию досрочно</button>
+        <button class="btn btn-danger" data-click="rpElectionControl('remove')">Снять президента</button>
       </div>
       <div class="form-grid compact-grid">
         <label>Срок голосования<select id="rpVotingHours"><option value="24">24 часа</option><option value="48">48 часов</option><option value="72">72 часа</option></select></label>
+        <label>Победитель при ничьей (UUID, необязательно)<input id="rpWinnerUuid" maxlength="64" placeholder="UUID кандидата"></label>
         <label>Мир блока<input id="rpBlockWorld" value="world" maxlength="96"></label>
         <label>X<input id="rpBlockX" type="number" value="0"></label><label>Y<input id="rpBlockY" type="number" value="64"></label><label>Z<input id="rpBlockZ" type="number" value="0"></label>
         <button class="btn btn-secondary" data-click="rpCreateVotingBlock()">Добавить голосовательный блок</button>

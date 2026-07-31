@@ -8,6 +8,7 @@ function Require([string]$needle, [string]$message) {
 }
 
 Require 'reconcileDonationLossJournal();' 'The reclaim menu must reconcile the durable loss journal before querying rows.'
+Require 'journalPending' 'The reclaim menu must retry while a loss journal entry is waiting for its instance row.'
 Require 'Instant.ofEpochMilli(var7.updatedAt())' 'Reclaim timestamps must use the millisecond database clock.'
 Require 'recordDonationLossOnce(var4, "void")' 'Void-destroyed donation items must become reclaimable losses.'
 Require 'var2.remove();' 'The void item entity must be removed only after its loss is journaled.'
@@ -16,12 +17,16 @@ Require 'case ENTITY_EXPLOSION:' 'Entity explosions must be journaled for reclai
 Require 'case CONTACT:' 'Cactus/contact losses must be journaled for reclaim.'
 Require 'EntityRemoveEvent.Cause.PLUGIN' 'Plugin and creative cleanup removals must be journaled for reclaim.'
 Require 'EntityRemoveEvent.Cause.DISCARD' 'Discard removals must be journaled for reclaim.'
+Require 'EntityRemoveEvent.Cause.EXPLODE' 'Silent explosion removals must be journaled for reclaim.'
+Require 'EntityRemoveEvent.Cause.DESPAWN' 'Silent despawn removals must be journaled for reclaim.'
 Require 'EntityRemoveEvent.Cause.OUT_OF_WORLD' 'Out-of-world removals must be journaled for reclaim.'
 Require 'InventoryCreativeEvent' 'Creative inventory deletion must be handled explicitly.'
 Require 'handleCreativeDonationLoss' 'Creative cursor deletion must use the durable loss journal.'
+Require 'candidate = event.getCurrentItem();' 'Creative outside-window deletion must also handle clients that report the item in the clicked slot.'
+Require 'player::updateInventory' 'Creative deletion must synchronize the cleared cursor back to the client.'
 $destroyHandler = [regex]::Match($source, '(?s)@EventHandler\(\s*priority\s*=\s*EventPriority\.(?<priority>[A-Z_]+),\s*ignoreCancelled\s*=\s*(?<ignore>true|false)\s*\)\s*public void onDonationItemDestroyed\(EntityDamageEvent')
 if (-not $destroyHandler.Success) { throw 'Donation loss damage handler annotation was not found.' }
-if ($destroyHandler.Groups['priority'].Value -ne 'MONITOR') { throw 'Loss damage handling must run at MONITOR after all protection listeners have made their final decision.' }
+if ($destroyHandler.Groups['priority'].Value -ne 'HIGHEST') { throw 'Loss damage handling must run at HIGHEST so the item is protected before vanilla damage removes it.' }
 if ($destroyHandler.Groups['ignore'].Value -ne 'true') { throw 'Cancelled damage must never create a reclaim entry.' }
 
 $destroyedBlock = [regex]::Match($source, '(?s)case VOID:.*?flushPendingDonationLossJournalAsync\(\);')

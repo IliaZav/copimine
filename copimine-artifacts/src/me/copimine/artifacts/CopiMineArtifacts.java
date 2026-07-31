@@ -1163,19 +1163,38 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     */
    private boolean handleCreativeDonationLoss(InventoryCreativeEvent event) {
       if (event == null || event.getWhoClicked() == null || event.getRawSlot() >= 0
-            || event.getClick() != ClickType.CREATIVE
             || !(event.getWhoClicked() instanceof Player player)) {
          return false;
       }
       ItemStack candidate = event.getCursor();
       OfficialDonationRef ref = this.officialDonationRef(candidate);
+      // Some Paper/vanilla creative clients report the item being deleted in
+      // the clicked slot rather than on the cursor.  Outside-window clicks
+      // are still the only destructive signal; inspect both representations
+      // so either client path reaches the same durable loss journal.
+      if (ref == null) {
+         candidate = event.getCurrentItem();
+         ref = this.officialDonationRef(candidate);
+      }
       if (ref == null || !player.getUniqueId().equals(ref.ownerUuid())) {
          return false;
       }
+      // Creative deletion is an outside-window InventoryCreativeEvent.  The
+      // client reports different ClickType values across Paper versions;
+      // rawSlot < 0 is the stable signal.  Cancel first so an I/O failure
+      // cannot silently destroy the only physical copy.
+      event.setCancelled(true);
       if (!this.recordDonationLossOnce(ref, "creative-delete")) {
-         return false;
+         return true;
       }
       event.setCursor(new ItemStack(Material.AIR));
+      // A cancelled creative click does not always synchronize the cursor
+      // state back to the client.  Force the inventory update on the Bukkit
+      // thread so the journaled item cannot remain visually usable (and then
+      // be duplicated through reclaim).
+      if (player.isOnline()) {
+         Bukkit.getScheduler().runTask(this, player::updateInventory);
+      }
       this.flushPendingDonationLossJournalAsync();
       return true;
    }
@@ -1499,6 +1518,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       EntityRemoveEvent.Cause cause = event.getCause();
       if (cause != EntityRemoveEvent.Cause.PLUGIN
             && cause != EntityRemoveEvent.Cause.DISCARD
+            && cause != EntityRemoveEvent.Cause.EXPLODE
+            && cause != EntityRemoveEvent.Cause.DESPAWN
             && cause != EntityRemoveEvent.Cause.OUT_OF_WORLD) {
          return;
       }
@@ -1509,13 +1530,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
     @EventHandler(
-       priority = EventPriority.MONITOR,
+       priority = EventPriority.HIGHEST,
        ignoreCancelled = true
     )
     public void onDonationItemDestroyed(EntityDamageEvent var1) {
-       // Run after every protection listener has made its final decision.
-       // Recording a loss earlier can delete an item and create a reclaim entry
-       // even when a later plugin cancels cactus or explosion damage.
+       // Official donation items are intentionally indestructible.  Handle
+       // the damage at HIGHEST so vanilla cactus/explosion/void processing
+       // cannot remove the entity before the durable loss journal is written.
+       // Other protection listeners should leave already-cancelled damage
+       // alone; this handler only owns a real, uncancelled damage event.
       if (var1.getEntity() instanceof Item var2) {
          CopiMineArtifacts.OfficialDonationRef var4 = this.officialDonationRef(var2.getItemStack());
          if (var4 != null) {
@@ -4733,16 +4756,32 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void openDonationReclaim(Player var1) {
       this.runAsync(
          () -> {
-            try {
-               // The loss journal is written synchronously before this menu
-               // query.  A background flush alone could leave the menu empty
-               // for the first click after a void, explosion, cactus, or
-               // creative/plugin removal.
-               this.reconcileDonationLossJournal();
-            } catch (Exception var10) {
-               this.getLogger().log(Level.WARNING, "Donation reclaim journal reconcile before menu failed", (Throwable)var10);
+            // The loss journal is written synchronously before this menu
+            // query. A background flush can still race the instance
+            // transaction, so retry the short read/apply cycle while the
+            // journal file remains. This prevents the first menu opening
+            // after a void, explosion, cactus, or creative/plugin removal
+            // from showing a false empty state.
+            List<CopiMineArtifacts.ReclaimableDonationRow> var2 = List.of();
+            for (int attempt = 0; attempt < 3; attempt++) {
+               try {
+                  this.reconcileDonationLossJournal();
+               } catch (Exception var10) {
+                  this.getLogger().log(Level.WARNING, "Donation reclaim journal reconcile before menu failed", (Throwable)var10);
+               }
+               var2 = this.readReclaimableDonationRows(var1.getUniqueId().toString(), 21);
+               boolean journalPending = this.donationLossJournalPath != null && Files.exists(this.donationLossJournalPath);
+               if (!var2.isEmpty() || !journalPending || attempt == 2) {
+                  break;
+               }
+               try {
+                  Thread.sleep(75L);
+               } catch (InterruptedException interrupted) {
+                  Thread.currentThread().interrupt();
+                  break;
+               }
             }
-            List var2 = this.readReclaimableDonationRows(var1.getUniqueId().toString(), 21);
+            final List<CopiMineArtifacts.ReclaimableDonationRow> reclaimRows = var2;
             this.runSync(
                () -> {
                   if (var1.isOnline()) {
@@ -4767,8 +4806,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      );
                      int[] var5 = new int[]{10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34};
 
-                     for (int var6 = 0; var6 < Math.min(var5.length, var2.size()); var6++) {
-                        CopiMineArtifacts.ReclaimableDonationRow var7 = (CopiMineArtifacts.ReclaimableDonationRow)var2.get(var6);
+                     for (int var6 = 0; var6 < Math.min(var5.length, reclaimRows.size()); var6++) {
+                         CopiMineArtifacts.ReclaimableDonationRow var7 = (CopiMineArtifacts.ReclaimableDonationRow)reclaimRows.get(var6);
                         CopiMineArtifacts.DonationCatalogItem var8 = this.donationCatalogItem(var7.itemId());
                         String var9 = var8 == null ? var7.itemId() : var8.displayName();
                         this.setAction(
@@ -4788,7 +4827,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         );
                      }
 
-                     if (var2.isEmpty()) {
+                     if (reclaimRows.isEmpty()) {
                         var4.setItem(
                            22,
                            this.button(
@@ -8135,24 +8174,31 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void reconcileDonationLossJournal() throws IOException, SQLException {
-      List<CopiMineArtifacts.DonationLossJournalEntry> var1 = this.readDonationLossJournalEntries();
-      if (!var1.isEmpty()) {
-         ArrayList var2 = new ArrayList();
+      // Several loss events can enqueue reconciliation at once (for example
+      // ItemDespawnEvent followed by EntityRemoveEvent).  Serialize the full
+      // read/apply/rewrite cycle, not only the individual file operations;
+      // otherwise two workers can read the same journal and the later rewrite
+      // can resurrect or discard entries written by the first worker.
+      synchronized (this.donationLossJournalLock) {
+         List<CopiMineArtifacts.DonationLossJournalEntry> var1 = this.readDonationLossJournalEntries();
+         if (!var1.isEmpty()) {
+            ArrayList var2 = new ArrayList();
 
-         for (CopiMineArtifacts.DonationLossJournalEntry var4 : var1) {
-            try {
-               if (!this.applyDonationLossJournalEntry(var4)) {
+            for (CopiMineArtifacts.DonationLossJournalEntry var4 : var1) {
+               try {
+                  if (!this.applyDonationLossJournalEntry(var4)) {
+                     var2.add(var4);
+                  } else {
+                     this.releaseDonationLossJournalGuard(var4);
+                  }
+               } catch (SQLException var6) {
                   var2.add(var4);
-               } else {
-                  this.releaseDonationLossJournalGuard(var4);
                }
-            } catch (SQLException var6) {
-               var2.add(var4);
             }
-         }
 
-         if (var2.size() != var1.size()) {
-            this.rewriteDonationLossJournalEntries(var2);
+            if (var2.size() != var1.size()) {
+               this.rewriteDonationLossJournalEntries(var2);
+            }
          }
       }
    }

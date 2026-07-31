@@ -3274,9 +3274,9 @@ def ensure_auth_db() -> None:
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'admin',
                 enabled INTEGER NOT NULL DEFAULT 1,
-                created_at INTEGER NOT NULL DEFAULT 0,
+                created_at BIGINT NOT NULL DEFAULT 0,
                 created_by TEXT NOT NULL DEFAULT '',
-                updated_at INTEGER NOT NULL DEFAULT 0,
+                updated_at BIGINT NOT NULL DEFAULT 0,
                 updated_by TEXT NOT NULL DEFAULT '',
                 source TEXT NOT NULL DEFAULT 'db'
             )
@@ -3289,11 +3289,11 @@ def ensure_auth_db() -> None:
                 username TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'admin',
                 token_hash TEXT NOT NULL DEFAULT '',
-                created_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL,
+                created_at BIGINT NOT NULL,
+                expires_at BIGINT NOT NULL,
                 ip TEXT NOT NULL DEFAULT '',
                 user_agent TEXT NOT NULL DEFAULT '',
-                revoked_at INTEGER NOT NULL DEFAULT 0
+                revoked_at BIGINT NOT NULL DEFAULT 0
             )
             """
                 )
@@ -3307,10 +3307,10 @@ def ensure_auth_db() -> None:
                 role TEXT NOT NULL DEFAULT 'player',
                 token_hash TEXT NOT NULL DEFAULT '',
                 family_id TEXT NOT NULL DEFAULT '',
-                created_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL,
+                created_at BIGINT NOT NULL,
+                expires_at BIGINT NOT NULL,
                 replaced_by TEXT NOT NULL DEFAULT '',
-                revoked_at INTEGER NOT NULL DEFAULT 0,
+                revoked_at BIGINT NOT NULL DEFAULT 0,
                 ip TEXT NOT NULL DEFAULT '',
                 user_agent TEXT NOT NULL DEFAULT ''
             )
@@ -10557,14 +10557,14 @@ def ensure_plugin_ticket_tables(conn: Any) -> None:
             applicant_uuid TEXT,
             applicant_name TEXT,
             statement TEXT,
-            submitted_at INTEGER,
+            submitted_at BIGINT,
             status TEXT DEFAULT 'PENDING',
             reviewed_by TEXT DEFAULT '',
-            reviewed_at INTEGER DEFAULT 0,
+            reviewed_at BIGINT DEFAULT 0,
             verdict_reason TEXT DEFAULT '',
             visible_in_game INTEGER DEFAULT 1,
             deleted_by TEXT DEFAULT '',
-            deleted_at INTEGER DEFAULT 0
+            deleted_at BIGINT DEFAULT 0
         )
         """
     )
@@ -10576,8 +10576,8 @@ def ensure_plugin_ticket_tables(conn: Any) -> None:
             player_name TEXT,
             message TEXT,
             status TEXT DEFAULT 'OPEN',
-            created_at INTEGER DEFAULT 0,
-            updated_at INTEGER DEFAULT 0,
+            created_at BIGINT DEFAULT 0,
+            updated_at BIGINT DEFAULT 0,
             assigned_to TEXT DEFAULT '',
             closed_by TEXT DEFAULT '',
             close_reason TEXT DEFAULT '',
@@ -16199,7 +16199,11 @@ def artifact_health_sync() -> dict[str, Any]:
         "postgres": pg_ready(),
         "activeJars": active_jars,
         "expectedJars": expected,
-        "jarsOk": active_jars == expected,
+        # Election, narcotics and world-core plugins may be installed beside
+        # the artifacts bridge.  Health should require the bridge's required
+        # jars, not reject an otherwise valid server because the active list
+        # contains additional CopiMine modules.
+        "jarsOk": all(jar in active_jars for jar in expected),
         "counts": counts,
     }
 

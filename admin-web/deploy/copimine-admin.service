@@ -1,6 +1,11 @@
 [Unit]
 Description=CopiMine Ultimate Admin Web Panel
-After=network.target
+# The startup preflight performs a real PostgreSQL query.  The cluster unit
+# can be started in parallel with the web panel during boot; ordering the
+# panel behind the cluster avoids the transient "database system is starting
+# up" failure that otherwise exhausts systemd's restart burst.
+Requires=postgresql@16-main.service
+After=network.target postgresql@16-main.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

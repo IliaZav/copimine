@@ -18,8 +18,6 @@ dab:
   activation-dist-mod: 8
   blacklisted-entities: []
 tps-catchup: false
-# Keep the vanilla mob-spawn path. Async spawning changes timing and can make
-# farms appear stalled when other plugins inspect the spawn cycle.
 enable-async-mob-spawning: false
 # These values define a entity's maximum lifespan. If an
 # entity is in this list and it has survived for longer than

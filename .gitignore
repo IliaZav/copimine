@@ -66,6 +66,7 @@ release/
 
 # Project-local generated/runtime dirs
 /.worktrees/
+local-runtime/
 admin-web/.venv/
 admin-web/.codex-audit-venv/
 admin-web/.venv-*/

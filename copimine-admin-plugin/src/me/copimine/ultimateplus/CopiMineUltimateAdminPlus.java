@@ -3419,7 +3419,27 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         exec("CREATE INDEX IF NOT EXISTS idx_atm_events_atm_time ON atm_events(atm_id,created_at DESC)");
         exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_transfers_idempotency ON cmv4_bank_transfers(idempotency_key) WHERE idempotency_key<>''");
         exec("INSERT INTO cmv4_schema_migrations(version,applied_at,component) VALUES(?,?,?) ON CONFLICT(version) DO NOTHING","20260611_001_plugin_postgres_v4",now(),"plugin");
+        normalizeEpochColumns();
         try(Connection c=conn(); Statement st=c.createStatement()){st.execute("ANALYZE");}
+    }
+
+    /**
+     * All plugin timestamps are epoch milliseconds (see now()).  Older
+     * schemas used PostgreSQL INTEGER for several of these columns, which
+     * overflowed immediately at startup and made audit/self-check actions
+     * fail.  Upgrade every clearly time-shaped integer column in-place while
+     * retaining data and defaults.  Identifiers come only from
+     * information_schema and are validated before interpolation.
+     */
+    private void normalizeEpochColumns() throws SQLException {
+        for(Map<String,Object> row:query("SELECT table_name,column_name FROM information_schema.columns WHERE table_schema=current_schema() AND data_type='integer' AND (column_name='time' OR column_name LIKE '%_at' OR column_name LIKE '%_until' OR column_name LIKE '%_deadline')")){
+            String table=s(row.get("table_name")), column=s(row.get("column_name"));
+            if(!table.matches("[a-z0-9_]+")||!column.matches("[a-z0-9_]+"))continue;
+            String t="\""+table+"\"", c="\""+column+"\"";
+            exec("ALTER TABLE "+t+" ALTER COLUMN "+c+" DROP DEFAULT");
+            exec("ALTER TABLE "+t+" ALTER COLUMN "+c+" TYPE BIGINT USING "+c+"::bigint");
+            exec("ALTER TABLE "+t+" ALTER COLUMN "+c+" SET DEFAULT 0");
+        }
     }
 
     private ElectionLifecycleSnapshot lifecycleSnapshot()throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)return new ElectionLifecycleSnapshot(null,"NONE","NONE",0,0,0,0,0,0,""); String status=electionStatus(eid); long apps=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND COALESCE(deleted_at,0)=0",eid), pending=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='PENDING' AND COALESCE(deleted_at,0)=0",eid), approved=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='APPROVED' AND COALESCE(deleted_at,0)=0",eid), candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid), ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid), votes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=?",eid):0; String winner=safeWinnerName(eid); return new ElectionLifecycleSnapshot(eid,status,status,apps,pending,approved,candidates,ballots,votes,winner);}

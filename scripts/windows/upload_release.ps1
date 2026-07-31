@@ -4,6 +4,7 @@ param(
     [string]$User = "",
     [string]$RemoteDir = "",
     [string]$InstallerPath = "",
+    [string]$InstallReleaseScriptPath = "",
     [string]$UnpackScriptPath = "",
     [string]$CommonScriptPath = "",
     [string]$VerifyScriptPath = "",
@@ -106,6 +107,9 @@ function Resolve-DefaultHelperPath {
 if (-not $InstallerPath) {
     $InstallerPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_full_replace.sh" -ProjectRelative "deploy\ubuntu\copimine_full_replace.sh"
 }
+if (-not $InstallReleaseScriptPath) {
+    $InstallReleaseScriptPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_install_release.sh" -ProjectRelative "deploy\ubuntu\install_release.sh"
+}
 if (-not $UnpackScriptPath) {
     $UnpackScriptPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_unpack_and_verify.sh" -ProjectRelative "deploy\ubuntu\copimine_unpack_and_verify.sh"
 }
@@ -139,6 +143,7 @@ if (-not $BootstrapManifestPath) {
     }
 }
 $InstallerPath = Resolve-RequiredPath $InstallerPath "Ubuntu full replace script"
+$InstallReleaseScriptPath = Resolve-RequiredPath $InstallReleaseScriptPath "Ubuntu release entrypoint"
 $UnpackScriptPath = Resolve-RequiredPath $UnpackScriptPath "Ubuntu unpack script"
 $CommonScriptPath = Resolve-RequiredPath $CommonScriptPath "Shared deploy helper"
 $VerifyScriptPath = Resolve-RequiredPath $VerifyScriptPath "Ubuntu verify script"
@@ -159,6 +164,7 @@ $ReadmeLocal = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-upload-rea
 ) | Set-Content -LiteralPath $ShaFileLocal -Encoding ascii
 
 $InstallerRemoteName = "copimine_full_replace.sh"
+$InstallReleaseRemoteName = "install_release.sh"
 $UnpackRemoteName = "copimine_unpack_and_verify.sh"
 $CommonRemoteName = "copimine_common.sh"
 $VerifyRemoteName = "copimine_verify.sh"
@@ -175,7 +181,7 @@ Size: $ArchiveSize bytes
 
 Recommended deploy:
   cd $RemoteDir
-  chmod +x $InstallerRemoteName $UnpackRemoteName $VerifyRemoteName
+  chmod +x $InstallerRemoteName $InstallReleaseRemoteName $UnpackRemoteName $VerifyRemoteName
   sudo bash ./$UnpackRemoteName "$RemoteDir/$ArchiveName" "$ArchiveSha256"
 
 Full replace:
@@ -194,6 +200,7 @@ $UploadItems = @(
     $ArchivePath,
     $ShaFileLocal,
     $InstallerPath,
+    $InstallReleaseScriptPath,
     $UnpackScriptPath,
     $CommonScriptPath,
     $VerifyScriptPath,
@@ -216,6 +223,7 @@ Invoke-Scp $UploadItems
 Write-Host "[3/6] Normalizing remote filenames"
 $RemoteArchive = "$RemoteDir/$ArchiveName"
 $RemoteInstaller = "$RemoteDir/$InstallerRemoteName"
+$RemoteInstallRelease = "$RemoteDir/$InstallReleaseRemoteName"
 $RemoteUnpack = "$RemoteDir/$UnpackRemoteName"
 $RemoteCommon = "$RemoteDir/$CommonRemoteName"
 $RemoteVerify = "$RemoteDir/$VerifyRemoteName"
@@ -227,6 +235,7 @@ $RenameScript = @"
 set -e
 cd '$RemoteDir'
 if [ '$(Split-Path -Leaf $InstallerPath)' != '$InstallerRemoteName' ]; then mv -f '$(Split-Path -Leaf $InstallerPath)' '$InstallerRemoteName'; fi
+if [ '$(Split-Path -Leaf $InstallReleaseScriptPath)' != '$InstallReleaseRemoteName' ]; then mv -f '$(Split-Path -Leaf $InstallReleaseScriptPath)' '$InstallReleaseRemoteName'; fi
 if [ '$(Split-Path -Leaf $UnpackScriptPath)' != '$UnpackRemoteName' ]; then mv -f '$(Split-Path -Leaf $UnpackScriptPath)' '$UnpackRemoteName'; fi
 if [ '$(Split-Path -Leaf $CommonScriptPath)' != '$CommonRemoteName' ]; then mv -f '$(Split-Path -Leaf $CommonScriptPath)' '$CommonRemoteName'; fi
 if [ '$(Split-Path -Leaf $VerifyScriptPath)' != '$VerifyRemoteName' ]; then mv -f '$(Split-Path -Leaf $VerifyScriptPath)' '$VerifyRemoteName'; fi
@@ -235,7 +244,7 @@ if [ -n '$BootstrapLeaf' ] && [ -f '$BootstrapLeaf' ]; then mv -f '$BootstrapLea
 mv -f '$(Split-Path -Leaf $ReadmeLocal)' '$ReadmeRemoteName'
 chmod 644 '$ArchiveName' '$ArchiveName.sha256' '$ManifestRemoteName' '$ReadmeRemoteName'
 if [ -f '$BootstrapRemoteName' ]; then chmod 644 '$BootstrapRemoteName'; fi
-chmod 755 '$InstallerRemoteName' '$UnpackRemoteName' '$CommonRemoteName' '$VerifyRemoteName'
+chmod 755 '$InstallerRemoteName' '$InstallReleaseRemoteName' '$UnpackRemoteName' '$CommonRemoteName' '$VerifyRemoteName'
 "@
 Invoke-Ssh $SshTarget $RenameScript
 
@@ -253,7 +262,7 @@ if ($RemoteShaValue -ne $ArchiveSha256) {
 }
 
 Write-Host "[5/6] Checking remote deploy scripts"
-Invoke-Ssh $SshTarget "test -f '$RemoteInstaller' && test -x '$RemoteInstaller' && test -f '$RemoteUnpack' && test -x '$RemoteUnpack' && test -f '$RemoteCommon' && test -x '$RemoteCommon' && test -f '$RemoteVerify' && test -x '$RemoteVerify'"
+Invoke-Ssh $SshTarget "test -f '$RemoteInstaller' && test -x '$RemoteInstaller' && test -f '$RemoteInstallRelease' && test -x '$RemoteInstallRelease' && test -f '$RemoteUnpack' && test -x '$RemoteUnpack' && test -f '$RemoteCommon' && test -x '$RemoteCommon' && test -f '$RemoteVerify' && test -x '$RemoteVerify'"
 
 Write-Host "[6/6] Done"
 Write-Host ""

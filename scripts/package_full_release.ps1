@@ -66,6 +66,7 @@ $thirdpartyManifestPath = Join-Path $ProjectRoot "thirdparty\thirdparty_manifest
 $releaseManifestPath = Join-Path $ProjectRoot "deploy\release_manifest.json"
 $installerManifestPath = Join-Path $ProjectRoot "deploy\installer_manifest.json"
 $deployInstall = Join-Path $ProjectRoot "deploy\ubuntu\install.sh"
+$deployInstallRelease = Join-Path $ProjectRoot "deploy\ubuntu\install_release.sh"
 $deployUpdate = Join-Path $ProjectRoot "deploy\ubuntu\update.sh"
 $deployVerify = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
 $deployUnpack = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
@@ -430,7 +431,20 @@ $serverReleaseJars = @(
     'minecraft\server\plugins\Vault.jar',
     'minecraft\server\plugins\voicechat-bukkit-2.6.11.jar',
     'minecraft\server\plugins\worldedit-bukkit-7.3.9.jar',
-    'minecraft\server\plugins\worldguard-bukkit-7.0.12-dist.jar'
+    'minecraft\server\plugins\worldguard-bukkit-7.0.12-dist.jar',
+    # Paper's plugin.yml libraries are resolved through its local Maven cache.
+    # Ship the PostgreSQL driver and its required runtime annotation artifact
+    # so a public server can start even when Maven Central/DNS is unavailable.
+    'minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.jar',
+    'minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.pom',
+    'minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.jar.sha1',
+    'minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.pom.sha1',
+    'minecraft\server\libraries\org\postgresql\postgresql\42.7.5\_remote.repositories',
+    'minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.jar',
+    'minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.pom',
+    'minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.jar.sha1',
+    'minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.pom.sha1',
+    'minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\_remote.repositories'
 )
 foreach ($relative in ($generatedReleaseFiles + $serverReleaseJars)) {
     $source = Join-Path $ProjectRoot $relative
@@ -506,6 +520,7 @@ try {
 
 Write-Host "[8/8] Finalize release metadata and validate bundle"
 $deployInstallCopy = Join-Path $ReleaseDir "copimine_install.sh"
+$deployInstallReleaseCopy = Join-Path $ReleaseDir "copimine_install_release.sh"
 $deployUpdateCopy = Join-Path $ReleaseDir "copimine_update.sh"
 $deployVerifyCopy = Join-Path $ReleaseDir "copimine_verify.sh"
 $deployUnpackCopy = Join-Path $ReleaseDir "copimine_unpack_and_verify.sh"
@@ -513,6 +528,7 @@ $deployReplaceCopy = Join-Path $ReleaseDir "copimine_full_replace.sh"
 $deployCommonCopy = Join-Path $ReleaseDir "copimine_common.sh"
 $uploadScriptCopy = Join-Path $ReleaseDir "upload_release.ps1"
 Copy-LfShellFile -Source $deployInstall -Destination $deployInstallCopy
+Copy-LfShellFile -Source $deployInstallRelease -Destination $deployInstallReleaseCopy
 Copy-LfShellFile -Source $deployUpdate -Destination $deployUpdateCopy
 Copy-LfShellFile -Source $deployVerify -Destination $deployVerifyCopy
 Copy-LfShellFile -Source $deployUnpack -Destination $deployUnpackCopy
@@ -541,6 +557,7 @@ $bootstrapManifest = [ordered]@{
     }
     exportedHelpers = [ordered]@{
         install = [System.IO.Path]::GetFileName($deployInstallCopy)
+        installRelease = [System.IO.Path]::GetFileName($deployInstallReleaseCopy)
         update = [System.IO.Path]::GetFileName($deployUpdateCopy)
         verify = [System.IO.Path]::GetFileName($deployVerifyCopy)
         unpackAndVerify = [System.IO.Path]::GetFileName($deployUnpackCopy)

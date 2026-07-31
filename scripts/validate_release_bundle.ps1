@@ -194,7 +194,7 @@ try {
     $libraryRoot = Join-Path $payloadRoot "minecraft\server\libraries"
     if (Test-Path -LiteralPath $libraryRoot) {
         foreach ($libraryFile in (Get-ChildItem -LiteralPath $libraryRoot -Recurse -File -ErrorAction SilentlyContinue)) {
-            $relative = Get-RelativePathCompat $payloadRoot $libraryFile.FullName
+            $relative = (Get-RelativePathCompat $payloadRoot $libraryFile.FullName).Replace('/', '\')
             if ($relative -notin $allowedOfflineLibraryFiles) {
                 $errors.Add("Unpinned server library must not be bundled in release archive: $relative")
             }

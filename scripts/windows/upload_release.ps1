@@ -62,7 +62,7 @@ function Invoke-Ssh([string]$Target, [string]$CommandText) {
 }
 
 function Invoke-Scp([string[]]$Arguments) {
-    & scp @SshCommonArguments @Arguments
+    & scp @ScpCommonArguments @Arguments
     if ($LASTEXITCODE -ne 0) {
         Fail "SCP failed."
     }
@@ -76,6 +76,12 @@ if ($SshPort -lt 1 -or $SshPort -gt 65535) {
 }
 $SshCommonArguments = @(
     '-p', [string]$SshPort,
+    '-o', 'ServerAliveInterval=60',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'ConnectTimeout=10'
+)
+$ScpCommonArguments = @(
+    '-P', [string]$SshPort,
     '-o', 'ServerAliveInterval=60',
     '-o', 'StrictHostKeyChecking=accept-new',
     '-o', 'ConnectTimeout=10'

@@ -116,6 +116,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import java.util.logging.Level;
 
@@ -8115,7 +8116,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         BookMeta meta = (BookMeta) book.getItemMeta();
         meta.setTitle("Заявка кандидата");
         meta.setAuthor(first(string(row.get("player_name")), "CopiMine"));
-        meta.setPages(paginateBookText(first(string(row.get("answers")), "Текст заявки пока пуст.")));
+        meta.setPages(applicationBookPages(first(string(row.get("answers")), "Текст заявки пока пуст.")));
         book.setItemMeta(meta);
         player.openBook(book);
     }
@@ -8618,6 +8619,118 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             builder.append(normalizeBookText(ChatColor.stripColor(page)));
         }
         return builder.toString().trim();
+    }
+
+    private List<String> applicationBookPages(String raw) {
+        final int pageLimit = 220;
+        List<String> pages = new ArrayList<>();
+        for (ApplicationQuestion question : parseApplicationAnswers(raw)) {
+            String title = ChatColor.ITALIC + question.title() + ChatColor.RESET;
+            int firstAnswerLimit = Math.max(40, pageLimit - question.title().length() - 2);
+            List<String> answerPages = wrapBookAnswer(question.answer(), firstAnswerLimit);
+            if (answerPages.isEmpty()) {
+                answerPages = List.of("Ответ не заполнен.");
+            }
+            pages.add(title + "\n\n" + answerPages.get(0));
+            for (int i = 1; i < answerPages.size(); i++) {
+                pages.add(answerPages.get(i));
+            }
+        }
+        return pages.isEmpty() ? List.of("Ответы заявки пока пусты.") : pages;
+    }
+
+    private List<ApplicationQuestion> parseApplicationAnswers(String raw) {
+        String text = normalizeBookText(raw);
+        if (text.isBlank()) {
+            return List.of(new ApplicationQuestion("Заявка кандидата", "Ответы заявки пока пусты."));
+        }
+        if (!text.trim().startsWith("{")) {
+            return List.of(new ApplicationQuestion("Заявка кандидата", text));
+        }
+        List<ApplicationQuestion> questions = new ArrayList<>();
+        addApplicationQuestion(questions, text, "why_president", "Почему вы хотите стать президентом?", "Ответ не указан.");
+        addApplicationQuestion(questions, text, "server_plan", "Что вы сделаете для сервера?", "Ответ не указан.");
+        addApplicationQuestion(questions, text, "short_program", "Какова ваша краткая программа?", "Ответ не указан.");
+        addApplicationQuestion(questions, text, "faction", "Какая у вас фракция?", "Не указана.");
+        return questions;
+    }
+
+    private void addApplicationQuestion(List<ApplicationQuestion> questions, String json, String key, String title, String emptyAnswer) {
+        String answer = jsonStringValue(json, key);
+        if (answer == null) {
+            return;
+        }
+        questions.add(new ApplicationQuestion(title, answer.isBlank() ? emptyAnswer : answer));
+    }
+
+    private String jsonStringValue(String json, String key) {
+        Pattern pattern = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\"\\s*:\\s*\\\"((?:\\\\\\.|[^\\\"\\\\])*)\\\"");
+        Matcher matcher = pattern.matcher(json);
+        return matcher.find() ? unescapeJsonString(matcher.group(1)) : null;
+    }
+
+    private String unescapeJsonString(String value) {
+        StringBuilder result = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char current = value.charAt(i);
+            if (current != '\\' || i + 1 >= value.length()) {
+                result.append(current);
+                continue;
+            }
+            char escaped = value.charAt(++i);
+            switch (escaped) {
+                case '"' -> result.append('"');
+                case '\\' -> result.append('\\');
+                case '/' -> result.append('/');
+                case 'b' -> result.append('\b');
+                case 'f' -> result.append('\f');
+                case 'n' -> result.append('\n');
+                case 'r' -> result.append('\r');
+                case 't' -> result.append('\t');
+                case 'u' -> {
+                    if (i + 4 <= value.length() - 1) {
+                        try {
+                            result.append((char) Integer.parseInt(value.substring(i + 1, i + 5), 16));
+                            i += 4;
+                        } catch (NumberFormatException error) {
+                            result.append('u');
+                        }
+                    } else {
+                        result.append('u');
+                    }
+                }
+                default -> result.append(escaped);
+            }
+        }
+        return normalizeBookText(result.toString());
+    }
+
+    private List<String> wrapBookAnswer(String answer, int limit) {
+        String remaining = normalizeBookText(answer);
+        if (remaining.isBlank()) {
+            return List.of();
+        }
+        List<String> chunks = new ArrayList<>();
+        while (remaining.length() > limit) {
+            int cut = limit;
+            for (int i = limit; i > 0; i--) {
+                if (Character.isWhitespace(remaining.charAt(i - 1))) {
+                    cut = i;
+                    break;
+                }
+            }
+            String chunk = remaining.substring(0, cut).trim();
+            if (chunk.isBlank()) {
+                chunk = remaining.substring(0, limit);
+                cut = limit;
+            }
+            chunks.add(chunk);
+            remaining = remaining.substring(cut).trim();
+        }
+        if (!remaining.isBlank()) {
+            chunks.add(remaining);
+        }
+        return chunks;
     }
 
     private List<String> paginateBookText(String raw) {
@@ -9819,6 +9932,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                         : StageTransitionResult.deny("Президентский срок можно только завершить.");
             };
         }
+    }
+
+    private record ApplicationQuestion(String title, String answer) {
     }
 
     private record CandidateResult(String uuid, String name, int votes, String bar) {

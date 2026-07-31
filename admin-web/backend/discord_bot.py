@@ -385,6 +385,40 @@ def norm_status(value: Any) -> str:
     }
     return aliases.get(text, text)
 
+
+APPLICATION_ANSWER_LABELS = (
+    ("why_president", "Почему вы хотите стать президентом?"),
+    ("server_plan", "Что вы сделаете для сервера?"),
+    ("short_program", "Какова ваша краткая программа?"),
+    ("faction", "Какая у вас фракция?"),
+)
+
+
+def format_application_answers(value: Any) -> str:
+    """Render stored candidate answers as readable text instead of raw JSON."""
+    if isinstance(value, dict):
+        payload = value
+        raw_text = ""
+    else:
+        raw_text = str(value or "").strip()
+        try:
+            parsed = json.loads(raw_text) if raw_text else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed = None
+        payload = parsed if isinstance(parsed, dict) else None
+
+    if payload is None:
+        return raw_text or "Ответы заявки пока не заполнены."
+
+    sections: list[str] = []
+    for key, label in APPLICATION_ANSWER_LABELS:
+        answer = str(payload.get(key) or "").strip()
+        if key == "faction" and not answer:
+            answer = "Не указана."
+        if answer:
+            sections.append(f"**{label}**\n{answer}")
+    return "\n\n".join(sections) or "Ответы заявки пока не заполнены."
+
 def is_final_status(status: str) -> bool:
     return norm_status(status) in {"APPROVED", "DENIED", "ARCHIVED", "DELETED", "REMOVED", "WITHDRAWN"}
 
@@ -726,7 +760,12 @@ def candidate_application_summaries_v2(election_id: str, top_candidates: list[di
                     """,
                     (election_id, limit),
                 ).fetchall()
-                return [row_to_dict(r) for r in rows]
+                summaries = []
+                for row in rows:
+                    item = row_to_dict(row)
+                    item["statement"] = format_application_answers(row.get("statement"))
+                    summaries.append(item)
+                return summaries
             except Exception:
                 pass
     return [
@@ -746,7 +785,7 @@ def application_snapshot_v2(row: Any | dict[str, Any]) -> dict[str, Any]:
         "election_id": str(get_col(d, "election_id", "election", default="")),
         "applicant_uuid": str(get_col(d, "applicant_uuid", "uuid", "player_uuid", default="")),
         "applicant_name": str(get_col(d, "applicant_name", "name", "player", "player_name", default="unknown")),
-        "statement": str(get_col(d, "answers", "statement", "text", "message", "application", default="")),
+        "statement": format_application_answers(get_col(d, "answers", "statement", "text", "message", "application", default="")),
         "status": norm_status(get_col(d, "admin_status", "status", default="PENDING")),
         "submitted_at": get_col(d, "submitted_at", "created_at", "time", "issued_at", default=0),
         "reviewed_by": str(get_col(d, "reviewed_by", "admin", default="") or ""),
@@ -781,7 +820,12 @@ def candidate_application_summaries(election_id: str, top_candidates: list[dict[
                 ORDER BY COALESCE(NULLIF(c.display_name,''), NULLIF(c.name,''), a.applicant_name, c.uuid) ASC
                 LIMIT ?
             """, (election_id, limit)).fetchall()
-            return [row_to_dict(r) for r in rows]
+            summaries = []
+            for row in rows:
+                item = row_to_dict(row)
+                item["statement"] = format_application_answers(row.get("statement"))
+                summaries.append(item)
+            return summaries
     fallback = []
     for row in (top_candidates or [])[:limit]:
         fallback.append({
@@ -895,7 +939,7 @@ def application_snapshot(row: Any | dict[str, Any]) -> dict[str, Any]:
         "election_id": str(get_col(d, "election_id", "election", default="")),
         "applicant_uuid": str(get_col(d, "applicant_uuid", "uuid", "player_uuid", default="")),
         "applicant_name": str(get_col(d, "applicant_name", "name", "player", default="unknown")),
-        "statement": str(get_col(d, "statement", "text", "message", "application", default="")),
+        "statement": format_application_answers(get_col(d, "answers", "statement", "text", "message", "application", default="")),
         "status": norm_status(get_col(d, "status", default="PENDING")),
         "submitted_at": get_col(d, "submitted_at", "created_at", "time", default=0),
         "reviewed_by": str(get_col(d, "reviewed_by", "admin", default="") or ""),

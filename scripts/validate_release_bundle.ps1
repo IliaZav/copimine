@@ -116,7 +116,6 @@ try {
         "admin-web\backups",
         "minecraft\server\logs",
         "minecraft\server\cache",
-        "minecraft\server\libraries",
         "minecraft\server\CopiMine",
         "minecraft\server\CopiMine_nether",
         "minecraft\server\CopiMine_the_end",
@@ -173,6 +172,37 @@ try {
         $forbiddenPath = Join-Path $payloadRoot $relative
         if (Test-Path -LiteralPath $forbiddenPath) {
             $errors.Add("Runtime-only file must not be bundled in release archive: $relative")
+        }
+    }
+
+    # The JDBC plugins declare PostgreSQL in plugin.yml.  Keep the release
+    # self-contained on an offline production host, but allow only the pinned
+    # Maven cache entries required to resolve that declaration.  Arbitrary
+    # server libraries remain forbidden as runtime state.
+    $allowedOfflineLibraryFiles = @(
+        "minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.jar",
+        "minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.pom",
+        "minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.jar.sha1",
+        "minecraft\server\libraries\org\postgresql\postgresql\42.7.5\postgresql-42.7.5.pom.sha1",
+        "minecraft\server\libraries\org\postgresql\postgresql\42.7.5\_remote.repositories",
+        "minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.jar",
+        "minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.pom",
+        "minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.jar.sha1",
+        "minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.pom.sha1",
+        "minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\_remote.repositories"
+    )
+    $libraryRoot = Join-Path $payloadRoot "minecraft\server\libraries"
+    if (Test-Path -LiteralPath $libraryRoot) {
+        foreach ($libraryFile in (Get-ChildItem -LiteralPath $libraryRoot -Recurse -File -ErrorAction SilentlyContinue)) {
+            $relative = Get-RelativePathCompat $payloadRoot $libraryFile.FullName
+            if ($relative -notin $allowedOfflineLibraryFiles) {
+                $errors.Add("Unpinned server library must not be bundled in release archive: $relative")
+            }
+        }
+        foreach ($requiredLibrary in $allowedOfflineLibraryFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $payloadRoot $requiredLibrary) -PathType Leaf)) {
+                $errors.Add("Missing pinned offline server library: $requiredLibrary")
+            }
         }
     }
 

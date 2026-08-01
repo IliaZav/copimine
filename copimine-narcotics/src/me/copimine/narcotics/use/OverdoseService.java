@@ -23,6 +23,7 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.CompletableFuture;
 
 public final class OverdoseService {
     private static final int MAX_PRELOAD_RETRIES = 5;
@@ -121,7 +122,7 @@ public final class OverdoseService {
         visualRuntime.apply(player, resolveOverdoseVisual(definition), Math.max(1, remainingSeconds), true);
     }
 
-    public void consume(Player player, NarcoticDefinition definition) {
+    public CompletableFuture<Void> consume(Player player, NarcoticDefinition definition) {
         long now = System.currentTimeMillis() / 1000L;
         PlayerState state = states.getOrDefault(player.getUniqueId(), PlayerState.empty(player.getUniqueId()));
         if (now - state.lastConsumedAt() > configService.usageWindowSeconds()) {
@@ -142,8 +143,7 @@ public final class OverdoseService {
                     ? applyOverdose(player, definition, base, now)
                     : applyZhuzevo(player, definition, state, now);
             states.put(player.getUniqueId(), updated);
-            database.savePlayerState(updated);
-            return;
+            return database.savePlayerState(updated);
         }
         int newScale = state.currentScale() + Math.max(0, configService.overdoseWeightFor(definition));
         boolean overdose = activeOverdose;
@@ -170,7 +170,7 @@ public final class OverdoseService {
             visualRuntime.apply(player, definition.visualEffectId(), effectiveDuration(Math.max(15, definition.maxEffectDurationSeconds(false))), false);
         }
         states.put(player.getUniqueId(), updated);
-        database.savePlayerState(updated);
+        return database.savePlayerState(updated);
     }
 
     public boolean shouldBlockMilk(Player player) {

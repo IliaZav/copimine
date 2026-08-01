@@ -96,7 +96,12 @@ import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
+import org.bukkit.event.block.BlockFadeEvent;
+import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
+import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockCookEvent;
@@ -108,6 +113,7 @@ import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -119,6 +125,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.BrewEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.event.inventory.PrepareGrindstoneEvent;
@@ -130,11 +137,13 @@ import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import io.papermc.paper.event.player.PlayerShieldDisableEvent;
 import io.papermc.paper.event.entity.EntityInsideBlockEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
@@ -200,6 +209,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Set<String> bindingRefreshInFlight = ConcurrentHashMap.newKeySet();
    private final Set<String> pendingVisualRepairChunks = ConcurrentHashMap.newKeySet();
    private final Set<String> suspiciousSeen = ConcurrentHashMap.newKeySet();
+   /**
+    * Foreign copies are quarantined by unique id.  The set is only a
+    * short-lived event guard; the loss journal and the DB row remain the
+    * durable idempotency boundary.
+    */
+   private final Set<String> foreignQuarantineInFlight = ConcurrentHashMap.newKeySet();
    private final Set<String> chainedTreeBreaks = ConcurrentHashMap.newKeySet();
    private final Queue<String> visualRepairQueue = new ConcurrentLinkedQueue<>();
    private final Object donationLossJournalLock = new Object();
@@ -240,6 +255,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private BukkitTask sessionCleanupTask;
    private BukkitTask artifactEffectTask;
    private BukkitTask armorEffectTask;
+   private BukkitTask donationOwnershipSweepTask;
 
    public void onEnable() {
       this.saveDefaultConfig();
@@ -323,6 +339,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
             this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
             this.armorEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickEquippedArmor, 1L, 20L);
+            // A pickup/inventory event is the fast path.  This low-cost sweep
+            // is the restart/third-party-plugin safety net for a foreign copy
+            // that was already present in an online inventory.
+            this.donationOwnershipSweepTask = Bukkit.getScheduler().runTaskTimer(this, this::sweepForeignDonationItems, 20L, 20L);
             this.getLogger().info("CopiMineArtifacts enabled with " + this.catalogById.size() + " active catalog items.");
          }
       } else {
@@ -424,6 +444,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       if (this.armorEffectTask != null) {
          this.armorEffectTask.cancel();
+      }
+
+      if (this.donationOwnershipSweepTask != null) {
+         this.donationOwnershipSweepTask.cancel();
       }
 
       if (this.dbExecutor != null) {
@@ -901,9 +925,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    @EventHandler(
       priority = EventPriority.HIGHEST,
-      ignoreCancelled = true
+      ignoreCancelled = false
    )
    public void onShopInteract(PlayerInteractEvent var1) {
+      if (var1.getHand() != EquipmentSlot.HAND) {
+         return;
+      }
       if (var1.getAction() == Action.RIGHT_CLICK_BLOCK) {
          Block var2 = var1.getClickedBlock();
          if (var2 != null) {
@@ -947,9 +974,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    @EventHandler(
       priority = EventPriority.HIGHEST,
-      ignoreCancelled = true
+      ignoreCancelled = false
    )
    public void onShopVisualInteract(PlayerInteractEntityEvent var1) {
+      if (var1.getHand() != EquipmentSlot.HAND) {
+         return;
+      }
       if (var1.getRightClicked() instanceof ItemDisplay var2) {
          PersistentDataContainer var6 = var2.getPersistentDataContainer();
          if ("PROTECTED_BLOCK_VISUAL".equals(var6.get(this.visualEntityTypeKey, PersistentDataType.STRING))) {
@@ -1086,14 +1116,31 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    @EventHandler(
       priority = EventPriority.HIGHEST,
-      ignoreCancelled = true
+      ignoreCancelled = false
    )
    public void onInventoryClick(InventoryClickEvent var1) {
       if (var1.getWhoClicked() instanceof Player var2) {
+         // Run before every GUI/vanilla path, including clicks cancelled by a
+         // protection plugin.  A foreign donation instance must never reach a
+         // chest, shulker, hopper or any other block inventory.
+         if (this.quarantineForeignDonationClick(var1, var2)) {
+            return;
+         }
+         if (var1.isCancelled()) {
+            return;
+         }
+         if (this.isRepairLockedItem(var2, var1.getCurrentItem())
+               || this.isRepairLockedItem(var2, var1.getCursor())) {
+            var1.setCancelled(true);
+            return;
+         }
          // Creative-mode deletion is not an entity event.  Handle it before
          // the normal GUI path so an item removed from the cursor/inventory
          // is journaled just like a cactus, explosion, or void loss.
          if (var1 instanceof InventoryCreativeEvent creative && this.handleCreativeDonationLoss(creative)) {
+            return;
+         }
+         if (var1 instanceof InventoryCreativeEvent creative && this.blockCreativeOfficialCopy(creative)) {
             return;
          }
          Inventory top = var1.getView().getTopInventory();
@@ -1248,11 +1295,126 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return true;
    }
 
+   /**
+    * Creative clone/set-slot packets can create a second stack without a
+    * normal inventory click.  Deletion is handled above; every other creative
+    * packet containing an official artifact is cancelled so a unique PDC
+    * identity can never be cloned.  Admin delivery uses the plugin's pending
+    * delivery transaction, not a creative packet.
+    */
+   private boolean blockCreativeOfficialCopy(InventoryCreativeEvent event) {
+      if (event == null || !(event.getWhoClicked() instanceof Player player)) {
+         return false;
+      }
+      ItemStack cursor = event.getCursor();
+      ItemStack current = event.getCurrentItem();
+      if (!this.isOfficialArtifactItem(cursor) && !this.isOfficialArtifactItem(current)
+            && !this.isOfficialDonationItem(cursor) && !this.isOfficialDonationItem(current)) {
+         return false;
+      }
+      event.setCancelled(true);
+      if (player.isOnline()) {
+         Bukkit.getScheduler().runTask(this, player::updateInventory);
+      }
+      return true;
+   }
+
+   /**
+    * Removes a donation instance owned by somebody else before the inventory
+    * click can move it.  The journal is written first; if it cannot be
+    * persisted the click is cancelled and the physical item is left intact.
+    */
+   private boolean quarantineForeignDonationClick(InventoryClickEvent event, Player actor) {
+      if (event == null || actor == null) {
+         return false;
+      }
+      boolean handled = false;
+      ItemStack cursor = event.getCursor();
+      OfficialDonationRef cursorRef = this.foreignDonationRef(cursor, actor.getUniqueId());
+      if (cursorRef != null) {
+         event.setCancelled(true);
+         boolean quarantined = this.quarantineForeignDonation(actor, cursorRef, "foreign-cursor-click");
+         if (quarantined) {
+            event.setCursor(new ItemStack(Material.AIR));
+         }
+         handled = true;
+      }
+
+      ItemStack current = event.getCurrentItem();
+      OfficialDonationRef currentRef = this.foreignDonationRef(current, actor.getUniqueId());
+      if (currentRef != null) {
+         event.setCancelled(true);
+         this.quarantineForeignDonation(actor, currentRef, "foreign-inventory-click");
+         handled = true;
+      }
+
+      // NUMBER_KEY/HOTBAR_SWAP and SWAP_OFFHAND move an item that is not
+      // exposed as the event's current item.  Inspect those source slots too;
+      // otherwise a foreign copy could bypass the normal click path straight
+      // into a chest, shulker or other block inventory.
+      ItemStack alternateSource = null;
+      String alternateReason = "foreign-hotbar-swap";
+      if (event.getClick() == ClickType.NUMBER_KEY && event.getHotbarButton() >= 0) {
+         alternateSource = actor.getInventory().getItem(event.getHotbarButton());
+      } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
+         alternateSource = actor.getInventory().getItemInOffHand();
+         alternateReason = "foreign-offhand-swap";
+      }
+      OfficialDonationRef alternateRef = this.foreignDonationRef(alternateSource, actor.getUniqueId());
+      if (alternateRef != null) {
+         event.setCancelled(true);
+         this.quarantineForeignDonation(actor, alternateRef, alternateReason);
+         handled = true;
+      }
+
+      // A container may already contain a foreign copy from an older plugin
+      // or a restart.  Scrub only foreign instances; the owner may still keep
+      // their own donation item in a normal chest.
+      Inventory top = event.getView() == null ? null : event.getView().getTopInventory();
+      if (top != null && !(top.getHolder() instanceof MenuHolder)) {
+         for (int slot = 0; slot < top.getSize(); slot++) {
+            ItemStack stack = top.getItem(slot);
+            OfficialDonationRef ref = this.foreignDonationRef(stack, actor.getUniqueId());
+            if (ref != null && this.quarantineForeignDonation(actor, ref, "foreign-container-scrub")) {
+               top.setItem(slot, new ItemStack(Material.AIR));
+               event.setCancelled(true);
+               handled = true;
+            }
+         }
+      }
+      return handled;
+   }
+
    @EventHandler(
       priority = EventPriority.HIGHEST,
-      ignoreCancelled = true
+      ignoreCancelled = false
    )
    public void onInventoryDrag(InventoryDragEvent var1) {
+      if (var1.getWhoClicked() instanceof Player player) {
+         OfficialDonationRef cursorRef = this.foreignDonationRef(var1.getOldCursor(), player.getUniqueId());
+         if (cursorRef == null && var1.getNewItems() != null) {
+            for (ItemStack stack : var1.getNewItems().values()) {
+               cursorRef = this.foreignDonationRef(stack, player.getUniqueId());
+               if (cursorRef != null) {
+                  break;
+               }
+            }
+         }
+         if (cursorRef != null) {
+            var1.setCancelled(true);
+            if (this.quarantineForeignDonation(player, cursorRef, "foreign-inventory-drag")) {
+               var1.setCursor(new ItemStack(Material.AIR));
+            }
+            return;
+         }
+         if (this.isRepairLockedItem(player, var1.getOldCursor())) {
+            var1.setCancelled(true);
+            return;
+         }
+         if (var1.isCancelled()) {
+            return;
+         }
+      }
       Inventory var2 = var1.getView().getTopInventory();
       if (var2.getHolder() instanceof CopiMineArtifacts.MenuHolder) {
          var1.setCancelled(true);
@@ -1274,6 +1436,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onInventoryMoveItem(InventoryMoveItemEvent var1) {
+      OfficialDonationRef donation = this.rawDonationIdentity(var1.getItem());
+      if (donation != null) {
+         // A hopper has no player UUID, so treat a donation item entering or
+         // leaving a block inventory as an unsafe foreign-storage path.  The
+         // owner can still keep the item in their own player inventory.
+         var1.setCancelled(true);
+         if (this.quarantineForeignDonation(null, donation, "foreign-hopper-move")) {
+            this.removeUniqueItemFromInventory(var1.getSource(), donation.uniqueItemId());
+         }
+         return;
+      }
       if (this.isOfficialArtifactItem(var1.getItem())
             && (this.isBlockedArtifactProcessingInventory(var1.getDestination())
                || this.isBlockedArtifactProcessingInventory(var1.getSource()))) {
@@ -1295,6 +1468,92 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (event != null && event.getItem() != null
             && this.isOfficialDonationItem(event.getItem().getItemStack())) {
          event.setCancelled(true);
+      }
+   }
+
+   /**
+    * A placeable donation material must not be usable as a world/block
+    * storage bypass by somebody who picked it up from another player.  The
+    * owner is left untouched; foreign copies are journaled and removed by
+    * unique id before the cancelled placement can consume them.
+    */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onForeignDonationPlace(BlockPlaceEvent event) {
+      if (event == null || event.getPlayer() == null) {
+         return;
+      }
+      OfficialDonationRef ref = this.foreignDonationRef(event.getItemInHand(), event.getPlayer().getUniqueId());
+      if (ref == null) {
+         return;
+      }
+      event.setCancelled(true);
+      if (this.quarantineForeignDonation(event.getPlayer(), ref, "foreign-block-place")) {
+         event.getPlayer().sendMessage(this.color("&eЧужой донат-предмет нельзя размещать в мире; он возвращён владельцу через меню возврата."));
+      }
+   }
+
+   /**
+    * Pickup is cancellable before the item is inserted into the player's
+    * inventory.  A player who is not the PDC/DB owner therefore cannot ever
+    * obtain a usable copy after somebody's death.
+    */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onForeignDonationPickup(EntityPickupItemEvent event) {
+      if (event == null || !(event.getEntity() instanceof Player player) || event.getItem() == null) {
+         return;
+      }
+      OfficialDonationRef ref = this.foreignDonationRef(event.getItem().getItemStack(), player.getUniqueId());
+      if (ref == null) {
+         return;
+      }
+      event.setCancelled(true);
+      if (this.quarantineForeignDonation(player, ref, "foreign-pickup")) {
+         event.getItem().remove();
+      }
+   }
+
+   /**
+    * The event fires before a drop becomes an Item entity.  Cancel and
+    * quarantine a foreign instance instead of allowing it to be picked up by
+    * a second player or duplicated through a drop/pickup race.
+    */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onForeignDonationDrop(PlayerDropItemEvent event) {
+      if (event == null || event.getPlayer() == null || event.getItemDrop() == null) {
+         return;
+      }
+      if (this.isRepairLockedItem(event.getPlayer(), event.getItemDrop().getItemStack())) {
+         event.setCancelled(true);
+         return;
+      }
+      OfficialDonationRef ref = this.foreignDonationRef(event.getItemDrop().getItemStack(), event.getPlayer().getUniqueId());
+      if (ref == null) {
+         return;
+      }
+      event.setCancelled(true);
+      if (this.quarantineForeignDonation(event.getPlayer(), ref, "foreign-drop")) {
+         event.getItemDrop().remove();
+      }
+   }
+
+   /**
+    * InventoryOpenEvent catches foreign copies left in a chest before a click
+    * (or a hopper) is possible.  The owner is deliberately excluded so their
+    * own item remains usable in ordinary storage.
+    */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onDonationInventoryOpen(InventoryOpenEvent event) {
+      if (event == null || !(event.getPlayer() instanceof Player player) || event.getInventory() == null
+            || event.getInventory().getHolder() instanceof MenuHolder) {
+         return;
+      }
+      Inventory inventory = event.getInventory();
+      for (int slot = 0; slot < inventory.getSize(); slot++) {
+         ItemStack stack = inventory.getItem(slot);
+         OfficialDonationRef ref = this.foreignDonationRef(stack, player.getUniqueId());
+         if (ref != null && this.quarantineForeignDonation(player, ref, "foreign-container-open")) {
+            inventory.setItem(slot, new ItemStack(Material.AIR));
+         }
       }
    }
 
@@ -1757,6 +2016,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    @EventHandler
    public void onJoin(PlayerJoinEvent var1) {
+      // Remove any foreign instance that was already in the player inventory
+      // before this plugin (or its DB cache) finished starting.
+      this.sweepForeignDonationItems();
       this.recoverStrandedDeliveries(var1.getPlayer());
       this.refreshEquippedArtifactBindingsAsync(var1.getPlayer());
       UUID playerUuid = var1.getPlayer().getUniqueId();
@@ -1995,6 +2257,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          event.setCooldown(0);
          player.setCooldown(Material.SHIELD, 0);
       }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onRepairTargetDamage(PlayerItemDamageEvent event) {
+      if (event != null && this.isRepairLockedItem(event.getPlayer(), event.getItem())) {
+         event.setCancelled(true);
+      }
+   }
+
+   /**
+    * Durability break is reported after vanilla has removed the item.  Catch
+    * the threshold one event earlier so a journal/fsync failure never turns
+    * a donation item into an unrecoverable loss.
+    */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onDonationItemDamage(PlayerItemDamageEvent event) {
+      if (event == null || event.getPlayer() == null || event.getItem() == null) {
+         return;
+      }
+      OfficialDonationRef ref = this.officialDonationRef(event.getItem());
+      if (ref == null || !event.getPlayer().getUniqueId().equals(ref.ownerUuid())) {
+         return;
+      }
+      ItemMeta meta = event.getItem().getItemMeta();
+      if (!(meta instanceof Damageable damageable)) {
+         return;
+      }
+      int maxDurability = event.getItem().getType().getMaxDurability();
+      if (maxDurability <= 0 || damageable.getDamage() + event.getDamage() < maxDurability) {
+         return;
+      }
+      event.setCancelled(true);
+      if (!this.recordDonationLossOnce(ref, "durability-break")) {
+         this.getLogger().warning("Donation loss journal is unavailable during durability break handling; item kept.");
+         return;
+      }
+      this.removeDonationInstanceFromOnlineInventories(ref.uniqueItemId());
+      this.flushPendingDonationLossJournalAsync();
    }
 
    @EventHandler(
@@ -2289,59 +2592,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          actor.sendMessage(this.color("&cНеизвестный административный предмет."));
          return true;
       }
-      if (target.getInventory().firstEmpty() < 0) {
-         actor.sendMessage(this.color("&cУ игрока нет свободного слота."));
-         return true;
-      }
-
-      String uniqueItemId = "admin-" + UUID.randomUUID();
-      String purchaseId = "ADMIN_GRANT-" + UUID.randomUUID();
+      String idempotencyKey = "admin-grant:" + actor.getUniqueId() + ":" + UUID.randomUUID();
       UUID ownerUuid = target.getUniqueId();
       this.runAsync(() -> {
-         try {
-            this.persistAdminGrantedInstance(ownerUuid, purchaseId, itemId, uniqueItemId);
-            this.cacheOfficialBinding(uniqueItemId, itemId, ownerUuid);
-            this.audit(actor.getName(), "admin_grant", uniqueItemId, "item=" + itemId + " target=" + target.getName());
-            this.runSync(() -> {
-               if (!target.isOnline() || target.getInventory().firstEmpty() < 0) {
-                  this.runAsync(() -> this.revokeAdminGrantedInstance(uniqueItemId));
-                  if (actor.isOnline()) {
-                     actor.sendMessage(this.color("&cВыдача отменена: у игрока больше нет места в инвентаре."));
-                  }
-                  return;
-               }
-
-               ItemStack stack = this.createOfficialItem(item, uniqueItemId, ownerUuid, purchaseId);
-               ItemMeta meta = stack.getItemMeta();
-               if (meta != null) {
-                  meta.addEnchant(Enchantment.THORNS, 3, true);
-                  meta.removeItemFlags(ItemFlag.HIDE_ENCHANTS);
-                  stack.setItemMeta(meta);
-               }
-               Map<Integer, ItemStack> leftovers = target.getInventory().addItem(stack);
-               if (!leftovers.isEmpty()) {
-                  this.runAsync(() -> this.revokeAdminGrantedInstance(uniqueItemId));
-                  if (actor.isOnline()) {
-                     actor.sendMessage(this.color("&cВыдача отменена: предмет не поместился в инвентарь."));
-                  }
-                  return;
-               }
-               target.sendMessage(this.color("&6Получен административный предмет: &f" + item.name()));
-               if (actor.isOnline() && actor != target) {
-                  actor.sendMessage(this.color("&aПредмет выдан игроку &f" + target.getName() + "&a."));
-               }
-            });
-         } catch (Exception error) {
-            this.removeOfficialBinding(uniqueItemId);
-            this.getLogger().log(Level.WARNING, "Admin artifact grant failed for " + itemId, error);
-            this.runSync(() -> {
+         boolean created = this.persistAdminGiftDelivery(ownerUuid, target.getName(), item, actor.getName(), idempotencyKey);
+         this.runSync(() -> {
+            if (created) {
+               this.giftNotice(ownerUuid);
                if (actor.isOnline()) {
-                  actor.sendMessage(this.color("&cНе удалось выдать предмет. Ошибка записана в лог: ARTIFACT_ADMIN_GRANT_FAILED"));
+                  actor.sendMessage(this.color("&aПредмет поставлен в безопасную очередь выдачи игроку &f" + target.getName() + "&a. Он заберёт его в лавке."));
                }
-            });
-         }
+            } else if (actor.isOnline()) {
+               actor.sendMessage(this.color("&cНе удалось выдать предмет. Ошибка записана в лог: ARTIFACT_ADMIN_GRANT_FAILED"));
+            }
+         });
       });
-      actor.sendMessage(this.color("&eВыдача предмета поставлена в очередь PostgreSQL."));
+      actor.sendMessage(this.color("&eВыдача предмета поставлена в безопасную очередь PostgreSQL."));
       return true;
    }
 
@@ -5882,7 +6148,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   } catch (SQLException var3x) {
                      this.getLogger().log(Level.WARNING, "Artifacts admin reload failed", (Throwable)var3x);
                      this.runSync(
-                        () -> { this.session(var1).repairInFlightId = ""; var1.sendMessage(
+                        () -> { this.session(var1).repairInFlightId = ""; this.session(var1).repairItemUniqueId = ""; var1.sendMessage(
                               this.color(
                                  "&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_RELOAD_FAILED"
                               )
@@ -6577,6 +6843,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
             repairState.repairInFlightId = UUID.randomUUID().toString();
             String repairId = repairState.repairInFlightId;
+            String repairItemUniqueId = this.uniqueItemIdOf(var4);
+            int repairOriginalDamage = var6.getDamage();
+            repairState.repairItemUniqueId = repairItemUniqueId;
             // Keep the bridge idempotency key scoped to this repair attempt.
             // The database repair row and the refund path continue to use the
             // short repair id, while the economy bridge never receives a key
@@ -6590,11 +6859,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         this.persistRepair(var1, var5, var4, var7, 0L, "free-repair-" + var7);
                         this.runSync(
                            () -> {
+                              boolean applied = this.applyRepairToCapturedItem(var1, repairItemUniqueId, var5.itemId(), repairOriginalDamage);
                               this.session(var1).repairInFlightId = "";
-                              Damageable var8 = (Damageable)var4.getItemMeta();
-                              var8.setDamage(0);
-                              var4.setItemMeta(var8);
-                              var1.getInventory().setItemInMainHand(var4);
+                              this.session(var1).repairItemUniqueId = "";
+                              if (!applied) {
+                                 this.runAsync(() -> this.markRepairNeedsReview(repairId));
+                                 var1.sendMessage(this.color("&eПредмет был перемещён во время ремонта. Операция отправлена на ручную проверку."));
+                                 return;
+                              }
+                              this.runAsync(() -> this.completeRepair(repairId, repairItemUniqueId));
                               var1.sendMessage(this.color("&aРемонт завершён бесплатно."));
                               var1.closeInventory();
                            }
@@ -6602,6 +6875,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      } catch (SQLException error) {
                         this.getLogger().log(Level.WARNING, "Free artifact repair persistence failed", error);
                         this.session(var1).repairInFlightId = "";
+                        this.session(var1).repairItemUniqueId = "";
                         this.runSync(() -> var1.sendMessage(this.color("&cНе удалось сохранить ремонт. Повтори попытку.")));
                      }
                   }
@@ -6624,7 +6898,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      );
                   if (!var6x.ok()) {
                      this.runSync(
-                        () -> { this.session(var1).repairInFlightId = ""; var1.sendMessage(
+                        () -> { this.session(var1).repairInFlightId = ""; this.session(var1).repairItemUniqueId = ""; var1.sendMessage(
                               this.color(
                                  "&cРемонт отклонён. Код: "
                                     + this.safeBridgeCode(var6x.code())
@@ -6662,6 +6936,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         this.runSync(
                            () -> {
                               this.session(var1).repairInFlightId = "";
+                              this.session(var1).repairItemUniqueId = "";
                               if (var9.ok()) {
                                  var1.sendMessage(
                                     this.color(
@@ -6682,18 +6957,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                      this.runSync(
                         () -> {
+                           boolean applied = this.applyRepairToCapturedItem(var1, repairItemUniqueId, var5.itemId(), repairOriginalDamage);
                            this.session(var1).repairInFlightId = "";
-                           Damageable var5xx = (Damageable)var4.getItemMeta();
-                           var5xx.setDamage(0);
-                           var4.setItemMeta(var5xx);
-                           var1.getInventory().setItemInMainHand(var4);
-                           var1.sendMessage(
-                              this.color(
-                                 "&aРемонт завершён за &f"
-                                    + var2
-                                    + " AR"
-                              )
-                           );
+                           this.session(var1).repairItemUniqueId = "";
+                           if (!applied) {
+                              this.runAsync(() -> {
+                                 this.markRepairNeedsReview(repairId);
+                                 this.refundRepairAfterPhysicalFailure(var1, var2, repairId);
+                              });
+                              var1.sendMessage(this.color("&eПредмет перемещён во время ремонта. Деньги возвращаются, операция отправлена на проверку."));
+                              return;
+                           }
+                           this.runAsync(() -> this.completeRepair(repairId, repairItemUniqueId));
+                           var1.sendMessage(this.color("&aРемонт завершён за &f" + var2 + " AR"));
                            var1.closeInventory();
                         }
                      );
@@ -6852,7 +7128,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         return;
                      }
 
-                     ItemStack var6 = this.createOfficialItem(var5, var2.uniqueItemId(), var1.getUniqueId(), var2.purchaseId());
+                     ItemStack var6 = this.decorateAdminGrantedItem(
+                           this.createOfficialItem(var5, var2.uniqueItemId(), var1.getUniqueId(), var2.purchaseId()), var5);
                      this.cacheProvisionalDonationInstances(var2.itemId(), var1.getUniqueId(), List.of(var2.uniqueItemId()));
                      HashMap var7 = var1.getInventory().addItem(new ItemStack[]{var6});
                      if (!var7.isEmpty()) {
@@ -8034,8 +8311,162 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   /**
+    * Reads only the immutable donation identity from the item.  Unlike
+    * {@link #officialDonationRef(ItemStack)}, this deliberately does not
+    * require the in-memory binding cache: after a restart a foreign copy must
+    * still be quarantined before it can enter storage.  The durable journal
+    * remains the final DB validation boundary, so a random PDC clone cannot
+    * turn into a reclaimable instance.
+    */
+   private OfficialDonationRef rawDonationIdentity(ItemStack stack) {
+      if (stack == null || stack.getType() == Material.AIR || !stack.hasItemMeta()) {
+         return null;
+      }
+      ItemMeta meta = stack.getItemMeta();
+      if (meta == null) {
+         return null;
+      }
+      PersistentDataContainer pdc = meta.getPersistentDataContainer();
+      String itemType = this.firstNonBlank(pdc.get(this.keyItemType, PersistentDataType.STRING), "");
+      String source = this.firstNonBlank(pdc.get(this.keySource, PersistentDataType.STRING), "");
+      String itemId = this.firstNonBlank(pdc.get(this.keyItemId, PersistentDataType.STRING), "").toLowerCase(Locale.ROOT);
+      String uniqueId = this.firstNonBlank(pdc.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
+      String ownerText = this.firstNonBlank(pdc.get(this.keyOwnerUuid, PersistentDataType.STRING), "");
+      if (!"DONATION_SHOP_ITEM".equalsIgnoreCase(itemType) || !"DONATION_SHOP".equalsIgnoreCase(source)
+            || itemId.isBlank() || uniqueId.isBlank() || ownerText.isBlank() || !this.isDonationCatalogItem(itemId)) {
+         return null;
+      }
+      UUID owner;
+      try {
+         owner = UUID.fromString(ownerText);
+      } catch (IllegalArgumentException invalidOwner) {
+         return null;
+      }
+      return new OfficialDonationRef(
+            uniqueId,
+            itemId,
+            owner,
+            this.firstNonBlank(pdc.get(this.keyPurchaseId, PersistentDataType.STRING), "")
+      );
+   }
+
+   private OfficialDonationRef foreignDonationRef(ItemStack stack, UUID actorUuid) {
+      OfficialDonationRef ref = this.rawDonationIdentity(stack);
+      return ref != null && actorUuid != null && !actorUuid.equals(ref.ownerUuid()) ? ref : null;
+   }
+
+   /**
+    * Durable-first quarantine for a foreign donation item.  Physical removal
+    * happens only after the loss journal append succeeds.  Every online copy
+    * with this unique id is removed, including a duplicate in the real
+    * owner's inventory, so one DB instance can never be reclaimed twice.
+    */
+   private boolean quarantineForeignDonation(Player actor, OfficialDonationRef ref, String reason) {
+      if (ref == null || (actor != null && actor.getUniqueId().equals(ref.ownerUuid()))) {
+         return false;
+      }
+      String guardKey = ref.ownerUuid() + ":" + ref.uniqueItemId();
+      if (!this.recordDonationLossOnce(ref, reason)) {
+         if (actor != null) {
+            actor.sendMessage(this.color("&cЧужой донат-предмет заблокирован: не удалось сохранить возврат. Предмет оставлен до повторной попытки."));
+         }
+         return false;
+      }
+      if (this.foreignQuarantineInFlight.add(guardKey)) {
+         try {
+            this.removeDonationInstanceFromOnlineInventories(ref.uniqueItemId());
+         } finally {
+            this.foreignQuarantineInFlight.remove(guardKey);
+         }
+      } else {
+         // A re-entrant event may have observed the same stack while the
+         // first handler was removing it.  Re-run the idempotent sweep once
+         // rather than leaving a physical duplicate behind.
+         this.removeDonationInstanceFromOnlineInventories(ref.uniqueItemId());
+      }
+      this.flushPendingDonationLossJournalAsync();
+      this.audit(actor == null ? "SERVER" : actor.getName(), "foreign_donation_quarantined", ref.uniqueItemId(),
+            ref.itemId() + " owner=" + ref.ownerUuid() + " reason=" + this.firstNonBlank(reason, "unknown"));
+      if (actor != null) {
+         actor.sendMessage(this.color("&eЧужой донат-предмет удалён и возвращён владельцу через меню возврата."));
+      }
+      return true;
+   }
+
+   private void removeUniqueItemFromInventory(Inventory inventory, String uniqueItemId) {
+      if (inventory == null || this.firstNonBlank(uniqueItemId, "").isBlank()) {
+         return;
+      }
+      for (int slot = 0; slot < inventory.getSize(); slot++) {
+         if (uniqueItemId.equals(this.uniqueItemIdOf(inventory.getItem(slot)))) {
+            inventory.setItem(slot, new ItemStack(Material.AIR));
+         }
+      }
+   }
+
+   private void removeDonationInstanceFromOnlineInventories(String uniqueItemId) {
+      String wanted = this.firstNonBlank(uniqueItemId, "");
+      if (wanted.isBlank()) {
+         return;
+      }
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         PlayerInventory inventory = player.getInventory();
+         boolean changed = false;
+         for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (wanted.equals(this.uniqueItemIdOf(stack))) {
+               inventory.setItem(slot, new ItemStack(Material.AIR));
+               changed = true;
+            }
+         }
+         ItemStack cursor = player.getItemOnCursor();
+         if (wanted.equals(this.uniqueItemIdOf(cursor))) {
+            player.setItemOnCursor(new ItemStack(Material.AIR));
+            changed = true;
+         }
+         if (changed) {
+            player.updateInventory();
+         }
+      }
+   }
+
+   private String uniqueItemIdOf(ItemStack stack) {
+      if (stack == null || stack.getType() == Material.AIR || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+         return "";
+      }
+      return this.firstNonBlank(
+            stack.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING), "");
+   }
+
+   private boolean isRepairLockedItem(Player player, ItemStack stack) {
+      if (player == null || stack == null) {
+         return false;
+      }
+      SessionState state = this.sessions.get(player.getUniqueId());
+      return state != null && !state.repairInFlightId.isBlank()
+            && !state.repairItemUniqueId.isBlank()
+            && state.repairItemUniqueId.equals(this.uniqueItemIdOf(stack));
+   }
+
+   private void sweepForeignDonationItems() {
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         Set<String> seen = new HashSet<>();
+         for (ItemStack stack : player.getInventory().getContents()) {
+            OfficialDonationRef ref = this.foreignDonationRef(stack, player.getUniqueId());
+            if (ref != null && seen.add(ref.uniqueItemId())) {
+               this.quarantineForeignDonation(player, ref, "foreign-inventory-sweep");
+            }
+         }
+         OfficialDonationRef cursorRef = this.foreignDonationRef(player.getItemOnCursor(), player.getUniqueId());
+         if (cursorRef != null && seen.add(cursorRef.uniqueItemId())) {
+            this.quarantineForeignDonation(player, cursorRef, "foreign-cursor-sweep");
+         }
+      }
+   }
+
    private boolean isOfficialDonationItem(ItemStack stack) {
-      return this.officialDonationRef(stack) != null;
+      return this.officialDonationRef(stack) != null || this.rawDonationIdentity(stack) != null;
    }
 
    private boolean hasBlockingDonationInstance(UUID var1, String var2) throws SQLException {
@@ -8391,6 +8822,42 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
    public void onProtectedShopBurn(BlockBurnEvent event) {
       if (this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onProtectedShopFlow(BlockFromToEvent event) {
+      if (event != null && (this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))
+            || this.shopsByLocation.containsKey(this.blockKey(event.getToBlock().getLocation())))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onProtectedShopFade(BlockFadeEvent event) {
+      if (event != null && this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onProtectedShopIgnite(BlockIgniteEvent event) {
+      if (event != null && this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onProtectedShopPhysics(BlockPhysicsEvent event) {
+      if (event != null && this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onProtectedShopEntityForm(EntityBlockFormEvent event) {
+      if (event != null && this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))) {
          event.setCancelled(true);
       }
    }
@@ -8898,12 +9365,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var10.setString(5, var2.itemId());
             var10.setLong(6, var5);
             var10.setString(7, var7);
-            var10.setString(8, "COMPLETED");
+            // The physical item is repaired on the Bukkit thread after this
+            // row is durable.  Keep it APPLYING until that step succeeds;
+            // this prevents a restart/slot race from looking completed while
+            // the item is still damaged.
+            var10.setString(8, "APPLYING");
             var10.setLong(9, var12);
             var10.executeUpdate();
-            var11.setLong(1, var12);
-            var11.setString(2, var8);
-            var11.executeUpdate();
             var9.commit();
          } catch (SQLException var29) {
             var9.rollback();
@@ -8916,6 +9384,125 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
 
          this.pgPool.release(var9);
+      }
+   }
+
+   /** Apply the repair only to the captured unique instance, wherever it is
+    * still held by the player.  Never write a stale ItemStack into the current
+    * main hand after the player has changed slots. */
+   private boolean applyRepairToCapturedItem(Player player, String uniqueItemId, String itemId, int originalDamage) {
+      if (player == null || !player.isOnline() || uniqueItemId == null || uniqueItemId.isBlank()) {
+         return false;
+      }
+      PlayerInventory inventory = player.getInventory();
+      for (int slot = 0; slot < inventory.getSize(); slot++) {
+         ItemStack current = inventory.getItem(slot);
+         if (!uniqueItemId.equals(this.uniqueItemIdOf(current))) {
+            continue;
+         }
+         CatalogItem authenticated = this.authenticCatalogItem(current, player, "repair_apply");
+         if (authenticated == null || !authenticated.itemId().equalsIgnoreCase(itemId)
+               || !(current.getItemMeta() instanceof Damageable damageable)
+               || damageable.getDamage() <= 0) {
+            return false;
+         }
+         damageable.setDamage(0);
+         current.setItemMeta(damageable);
+         inventory.setItem(slot, current);
+         return true;
+      }
+      ItemStack offhand = inventory.getItemInOffHand();
+      if (uniqueItemId.equals(this.uniqueItemIdOf(offhand)) && offhand.getItemMeta() instanceof Damageable damageable
+            && damageable.getDamage() > 0) {
+         CatalogItem authenticated = this.authenticCatalogItem(offhand, player, "repair_apply_offhand");
+         if (authenticated != null && authenticated.itemId().equalsIgnoreCase(itemId)) {
+            damageable.setDamage(0);
+            offhand.setItemMeta(damageable);
+            inventory.setItemInOffHand(offhand);
+            return true;
+         }
+      }
+      return false;
+   }
+
+   private void completeRepair(String repairId, String uniqueItemId) {
+      if (repairId == null || repairId.isBlank() || uniqueItemId == null || uniqueItemId.isBlank() || this.pgPool == null) {
+         return;
+      }
+      Connection connection = null;
+      try {
+         connection = this.pgPool.acquire();
+         connection.setAutoCommit(false);
+         try (PreparedStatement repair = connection.prepareStatement(
+               "UPDATE artifact_repairs SET status='COMPLETED' WHERE repair_id=? AND status='APPLYING'" );
+              PreparedStatement instance = connection.prepareStatement(
+               "UPDATE artifact_item_instances SET repaired_count=repaired_count+1,updated_at=? WHERE unique_item_id=?")) {
+            repair.setString(1, repairId);
+            if (repair.executeUpdate() != 1) {
+               throw new SQLException("Repair is no longer APPLYING: " + repairId);
+            }
+            instance.setLong(1, this.now());
+            instance.setString(2, uniqueItemId);
+            if (instance.executeUpdate() != 1) {
+               throw new SQLException("Repair instance is missing: " + uniqueItemId);
+            }
+            connection.commit();
+         } catch (SQLException error) {
+            connection.rollback();
+            throw error;
+         }
+      } catch (SQLException error) {
+         this.getLogger().log(Level.WARNING, "Repair finalization failed: " + repairId, error);
+         this.markRepairNeedsReview(repairId);
+      } finally {
+         if (connection != null) {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+            this.pgPool.release(connection);
+         }
+      }
+   }
+
+   private void markRepairNeedsReview(String repairId) {
+      if (repairId == null || repairId.isBlank() || this.pgPool == null) {
+         return;
+      }
+      Connection connection = null;
+      try {
+         connection = this.pgPool.acquire();
+         try (PreparedStatement statement = connection.prepareStatement(
+               "UPDATE artifact_repairs SET status='REVIEW' WHERE repair_id=? AND status IN ('APPLYING','COMPLETED')")) {
+            statement.setString(1, repairId);
+            statement.executeUpdate();
+         }
+      } catch (SQLException error) {
+         this.getLogger().log(Level.WARNING, "Repair review mark failed: " + repairId, error);
+      } finally {
+         if (connection != null) {
+            this.pgPool.release(connection);
+         }
+      }
+   }
+
+   private void refundRepairAfterPhysicalFailure(Player player, long amount, String repairId) {
+      if (player == null || amount <= 0L || this.bridge == null) {
+         return;
+      }
+      try {
+         CopiMineArtifacts.BridgeTxnResult refund = this.bridge.transferFromAccount(
+               PRESIDENT_BUDGET_ACCOUNT_ID,
+               EMPTY_UUID.toString(),
+               "Президентская казна",
+               player.getUniqueId(),
+               player.getName(),
+               amount,
+               "artifact-repair-refund-" + repairId,
+               "AR_ITEM_REPAIR_REFUND",
+               "repair=" + repairId);
+         if (!refund.ok()) {
+            this.audit(player.getName(), "repair_manual_review", repairId, "refund=" + this.safeBridgeCode(refund.code()));
+         }
+      } catch (Exception error) {
+         this.getLogger().log(Level.WARNING, "Repair refund failed: " + repairId, error);
       }
    }
 
@@ -10515,6 +11102,21 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private void giftNotice(UUID playerUuid) { Player target = Bukkit.getPlayer(playerUuid); if (target != null && target.isOnline()) target.sendMessage(this.color("&6В лавке тебя ждёт подарок от администрации")); }
 
+   /** Preserve the visual/ability marker used by the legacy admin give path
+    * when the same item is delivered through the durable pending queue. */
+   private ItemStack decorateAdminGrantedItem(ItemStack stack, CopiMineArtifacts.CatalogItem item) {
+      if (stack == null || item == null || !"POZDNYAKOV_ACE".equalsIgnoreCase(item.effect())) {
+         return stack;
+      }
+      ItemMeta meta = stack.getItemMeta();
+      if (meta != null) {
+         meta.addEnchant(Enchantment.THORNS, 3, true);
+         meta.removeItemFlags(ItemFlag.HIDE_ENCHANTS);
+         stack.setItemMeta(meta);
+      }
+      return stack;
+   }
+
    private boolean persistAdminGiftDelivery(UUID ownerUuid, String ownerName, CopiMineArtifacts.CatalogItem item, String actor, String idempotencyKey) {
       Connection connection = null;
       try { connection = this.pgPool.acquire(); connection.setAutoCommit(false);
@@ -10582,14 +11184,27 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private boolean pointCompassToLastDeath(Player player, ItemStack ignored) {
+      if (player == null || player.getWorld() == null) {
+         return false;
+      }
       double maxDistance = compassTeleportDistance(player);
       Location origin = player.getLocation().clone();
       Location eye = player.getEyeLocation();
       Vector direction = eye.getDirection().normalize();
+      // Do not let a compass click synchronously load an arbitrary chunk.  A
+      // target outside the sent/loaded range is reported as unavailable and
+      // leaves the player in place instead of stalling the main tick.
+      if (!this.isLoadedCompassChunk(player.getWorld(), eye.getBlockX(), eye.getBlockZ())) {
+         return false;
+      }
       RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, maxDistance, FluidCollisionMode.NEVER, true);
       Location requested = hit == null
          ? eye.clone().add(direction.clone().multiply(maxDistance))
          : hit.getHitPosition().toLocation(player.getWorld()).subtract(direction.clone().multiply(1.75D));
+      if (!this.isLoadedCompassChunk(player.getWorld(), requested.getBlockX(), requested.getBlockZ())) {
+         player.sendMessage(this.color("&eТочка вне загруженной дальности прорисовки; подойдите ближе и повторите."));
+         return false;
+      }
       Location safe = this.findSafeCompassLocation(origin, requested, maxDistance);
       if (safe == null) {
          player.sendMessage(this.color("&eНе удалось найти безопасную точку в направлении взгляда."));
@@ -10606,8 +11221,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (player == null || player.getWorld() == null) {
          return MAX_COMPASS_TELEPORT_DISTANCE;
       }
-      int viewDistanceChunks = Math.max(1, player.getWorld().getViewDistance());
-      return Math.max(MAX_COMPASS_TELEPORT_DISTANCE, viewDistanceChunks * MAX_COMPASS_TELEPORT_DISTANCE);
+       int viewDistanceChunks = Math.max(1, player.getWorld().getViewDistance());
+       // Leave a small margin so the destination is inside the server's sent
+       // chunk ring rather than on its unloaded edge.
+       return Math.max(MAX_COMPASS_TELEPORT_DISTANCE, viewDistanceChunks * 16.0D - 2.0D);
+   }
+
+   private boolean isLoadedCompassChunk(World world, int blockX, int blockZ) {
+      return world != null && world.isChunkLoaded(blockX >> 4, blockZ >> 4);
    }
 
    private Location findSafeCompassLocation(Location origin, Location requested, double maxDistance) {
@@ -10617,6 +11238,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       World world = origin.getWorld();
       int baseX = requested.getBlockX();
       int baseZ = requested.getBlockZ();
+      if (!this.isLoadedCompassChunk(world, baseX, baseZ) || !world.getWorldBorder().isInside(requested)) {
+         return null;
+      }
       // A downward ray can hit the side of a cave or a deep underground
       // block.  Never use that Y directly: resolve the target column to its
       // highest safe surface first, then search only around that surface.
@@ -10626,8 +11250,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          for (int dy = -4; dy <= 4; dy++) {
             for (int dx = -radius; dx <= radius; dx++) {
                for (int dz = -radius; dz <= radius; dz++) {
-                  Location candidate = new Location(world, baseX + dx + 0.5D, baseY + dy, baseZ + dz + 0.5D);
-                  if (candidate.distanceSquared(origin) <= maxDistance * maxDistance && this.isSafeCompassLocation(candidate)) return candidate;
+                   Location candidate = new Location(world, baseX + dx + 0.5D, baseY + dy, baseZ + dz + 0.5D);
+                   if (candidate.distanceSquared(origin) <= maxDistance * maxDistance
+                         && world.getWorldBorder().isInside(candidate)
+                         && this.isLoadedCompassChunk(world, candidate.getBlockX(), candidate.getBlockZ())
+                         && this.isSafeCompassLocation(candidate)) return candidate;
                }
             }
          }
@@ -10641,8 +11268,31 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       Block feet = world.getBlockAt(location);
       Block head = feet.getRelative(BlockFace.UP);
       Block floor = feet.getRelative(BlockFace.DOWN);
-      return feet.isPassable() && head.isPassable() && floor.getType().isSolid()
-         && !feet.isLiquid() && !head.isLiquid() && !floor.isLiquid();
+      if (!world.getWorldBorder().isInside(location)
+            || !feet.isPassable() || !head.isPassable() || !floor.getType().isSolid()
+            || feet.isLiquid() || head.isLiquid() || floor.isLiquid()) {
+         return false;
+      }
+      if (this.isCompassHazard(feet.getType()) || this.isCompassHazard(head.getType())
+            || this.isCompassHazard(floor.getType())) {
+         return false;
+      }
+      // Do not materialize a player inside an entity or a non-passable
+      // protection/physics hitbox at the destination.
+      return world.getNearbyEntities(location, 0.31D, 0.9D, 0.31D).stream()
+            .noneMatch(entity -> entity instanceof LivingEntity && !entity.isDead());
+   }
+
+   private boolean isCompassHazard(Material material) {
+      if (material == null) {
+         return true;
+      }
+      return switch (material) {
+         case FIRE, SOUL_FIRE, CAMPFIRE, SOUL_CAMPFIRE, MAGMA_BLOCK, CACTUS,
+               LAVA, WATER, POWDER_SNOW, SWEET_BERRY_BUSH, WITHER_ROSE,
+               END_PORTAL, NETHER_PORTAL, VOID_AIR -> true;
+         default -> false;
+      };
    }
 
    private Location persistedLastDeathLocation(Player player) {
@@ -12311,6 +12961,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       String pinBuffer = "";
       String pinAction = "purchase";
       String repairInFlightId = "";
+      String repairItemUniqueId = "";
       String purchaseInFlightId = "";
       UUID giftTargetUuid;
       String giftTargetName = "";

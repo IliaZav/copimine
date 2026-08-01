@@ -12,7 +12,7 @@ if ($service -notmatch 'Set<UUID> loadingStates' -or
     throw 'Overdose state loading must explicitly block consumption until a player state is ready.'
 }
 
-$preload = [regex]::Match($service, '(?s)public void preloadState\(UUID playerUuid\) \{.*?(?=\r?\n\s*public void consume)')
+$preload = [regex]::Match($service, '(?s)public void preloadState\(UUID playerUuid\) \{.*?(?=\r?\n\s*public CompletableFuture<Void> consume)')
 if (-not $preload.Success -or
     $preload.Value -notmatch 'Bukkit\.getScheduler\(\)\.runTask\(plugin' -or
     $preload.Value -notmatch 'restoreActiveOverdose\(' -or

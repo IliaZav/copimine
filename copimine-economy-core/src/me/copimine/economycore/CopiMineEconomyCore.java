@@ -17,15 +17,31 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockBurnEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
+import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.block.EntityBlockFormEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemFlag;
@@ -71,6 +87,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import javax.crypto.SecretKeyFactory;
@@ -106,6 +123,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private NamespacedKey visualKindKey;
     private NamespacedKey visualLinkedIdKey;
     private NamespacedKey visualModelIdKey;
+    private NamespacedKey officialArSerialKey;
 
     private final BankService bankService = new BankServiceImpl();
     private final PinService pinService = new PinServiceImpl();
@@ -289,6 +307,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         visualKindKey = new NamespacedKey(this, "visual_kind");
         visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
         visualModelIdKey = new NamespacedKey(this, "visual_model_id");
+        officialArSerialKey = new NamespacedKey(this, "ar_serial");
         dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors())), task -> {
             Thread thread = new Thread(task, "copimine-economy-db");
             thread.setDaemon(true);
@@ -333,7 +352,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     public void onDisable() {
         Bukkit.getServicesManager().unregisterAll(this);
         if (dbExecutor != null) {
-            dbExecutor.shutdownNow();
+            dbExecutor.shutdown();
+            try {
+                if (!dbExecutor.awaitTermination(5L, TimeUnit.SECONDS)) {
+                    dbExecutor.shutdownNow();
+                    dbExecutor.awaitTermination(2L, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                dbExecutor.shutdownNow();
+            }
         }
         taxStatusCache.clear();
     }
@@ -457,7 +485,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onInteract(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) {
+        if (event.getHand() != EquipmentSlot.HAND
+                || event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) {
             return;
         }
         String cachedAtmId = atmId(event.getClickedBlock());
@@ -470,6 +499,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onInteractDisplay(PlayerInteractAtEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
         Entity entity = event.getRightClicked();
         if (!(entity instanceof ItemDisplay display)) {
             return;
@@ -506,6 +538,155 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return;
         }
         openAtmDeleteConfirm(player, linkedAtmId);
+    }
+
+    /** Registered ATM blocks are stateful database records, never ordinary world blocks. */
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockBurn(BlockBurnEvent event) {
+        if (isAtmBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockFade(BlockFadeEvent event) {
+        if (isAtmBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockIgnite(BlockIgniteEvent event) {
+        if (isAtmBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockPhysics(BlockPhysicsEvent event) {
+        if (isAtmBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockForm(EntityBlockFormEvent event) {
+        if (isAtmBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockFlow(BlockFromToEvent event) {
+        if (isAtmBlock(event.getBlock()) || isAtmBlock(event.getToBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockExplode(BlockExplodeEvent event) {
+        if (isAtmBlock(event.getBlock())) {
+            event.setCancelled(true);
+            return;
+        }
+        event.blockList().removeIf(this::isAtmBlock);
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmEntityExplode(EntityExplodeEvent event) {
+        event.blockList().removeIf(this::isAtmBlock);
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockPistonExtend(BlockPistonExtendEvent event) {
+        if (event.getBlocks().stream().anyMatch(this::isAtmBlock)
+                || isAtmBlock(event.getBlock().getRelative(event.getDirection(), event.getBlocks().size() + 1))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAtmBlockPistonRetract(BlockPistonRetractEvent event) {
+        if (event.getBlocks().stream().anyMatch(this::isAtmBlock)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArPlace(BlockPlaceEvent event) {
+        if (!isOfficialAr(event.getItemInHand())) {
+            return;
+        }
+        event.setCancelled(true);
+        event.getPlayer().sendMessage(color("&cОфициальный AR нельзя размещать в мире. Используйте банкомат для внесения."));
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArCreative(InventoryCreativeEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        if (isOfficialAr(event.getCursor()) || isOfficialAr(event.getCurrentItem())) {
+            event.setCancelled(true);
+            player.updateInventory();
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArInventoryClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        if (officialArTouchesContainer(event)) {
+            event.setCancelled(true);
+            player.updateInventory();
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArInventoryDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player) || !isOfficialAr(event.getOldCursor())) {
+            return;
+        }
+        if (event.getRawSlots().stream().anyMatch(slot -> slot < event.getView().getTopInventory().getSize())) {
+            event.setCancelled(true);
+            player.updateInventory();
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArInventoryMove(InventoryMoveItemEvent event) {
+        if (isOfficialAr(event.getItem())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArInventoryPickup(InventoryPickupItemEvent event) {
+        if (isOfficialAr(event.getItem().getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    private boolean officialArTouchesContainer(InventoryClickEvent event) {
+        Inventory top = event.getView().getTopInventory();
+        if (top == null || top.getType() == org.bukkit.event.inventory.InventoryType.PLAYER) {
+            return false;
+        }
+        if (event.getRawSlot() < top.getSize() && isOfficialAr(event.getCurrentItem())) {
+            return true;
+        }
+        if (isOfficialAr(event.getCursor())) {
+            return true;
+        }
+        if (event.getClick() == ClickType.NUMBER_KEY) {
+            ItemStack hotbar = event.getWhoClicked().getInventory().getItem(event.getHotbarButton());
+            return isOfficialAr(hotbar);
+        }
+        if (event.getClick() == ClickType.SWAP_OFFHAND) {
+            return isOfficialAr(event.getWhoClicked().getInventory().getItemInOffHand());
+        }
+        return false;
     }
 
     @EventHandler
@@ -1283,6 +1464,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
         int amount = stack.getAmount();
         ItemStack snapshot = stack.clone();
+        String serial = officialArSerial(snapshot);
         player.getInventory().setItemInMainHand(null);
         player.updateInventory();
         String txKey = "atm-hand-" + UUID.randomUUID();
@@ -1296,7 +1478,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                                     "atm=" + atmId + ",scope=" + scope + ",hand=true");
                             return;
                         }
-                        player.getInventory().setItemInMainHand(snapshot);
+                        int notRestored = restoreOfficialArSafely(player, snapshot, serial);
+                        if (notRestored > 0) {
+                            queuePendingArSettlement(player.getUniqueId(), player.getName(), notRestored,
+                                    PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
+                                    "atm=" + atmId + ",scope=" + scope + ",hand=true,reason=inventory_changed");
+                        }
                         player.updateInventory();
                         player.sendMessage(color("&cНе удалось внести AR в банк."));
                         if (error != null) {
@@ -1320,7 +1507,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return "&cВ инвентаре нет официального AR.";
         }
         String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
-        ItemStack[] snapshot = cloneInventoryContents(player.getInventory());
+        List<ItemStack> snapshots = snapshotOfficialArStacks(player.getInventory());
         removeOfficialAr(player.getInventory(), available);
         player.updateInventory();
         String txKey = "atm-all-" + UUID.randomUUID();
@@ -1334,7 +1521,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                                     "atm=" + atmId + ",scope=" + scope + ",all=true");
                             return;
                         }
-                        restoreInventorySnapshot(player, snapshot);
+                        int notRestored = restoreOfficialArSafely(player, snapshots);
+                        if (notRestored > 0) {
+                            queuePendingArSettlement(player.getUniqueId(), player.getName(), notRestored,
+                                    PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
+                                    "atm=" + atmId + ",scope=" + scope + ",all=true,reason=inventory_changed");
+                        }
                         player.sendMessage(color("&cНе удалось внести AR в банк."));
                         if (error != null) {
                             getLogger().warning("atm deposit all: " + safeError(error));
@@ -1501,16 +1693,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private boolean issueOfficialArAmount(Player player, long amount, String source, boolean dropOverflow) {
+        if (player == null || amount <= 0 || amount > Integer.MAX_VALUE || arCapacity(player.getInventory()) < amount) {
+            return false;
+        }
         long remaining = amount;
         while (remaining > 0) {
             int stackAmount = (int) Math.min(64L, remaining);
             ItemStack out = createOfficialArStack(stackAmount, player.getUniqueId().toString(), player.getName(), source);
+            String serial = officialArSerial(out);
             Map<Integer, ItemStack> left = player.getInventory().addItem(out);
             if (!left.isEmpty()) {
-                if (!dropOverflow) {
-                    return false;
-                }
-                left.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
+                removeOfficialArSerial(player.getInventory(), serial, stackAmount);
+                return false;
             }
             remaining -= stackAmount;
         }
@@ -1518,26 +1712,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return true;
     }
 
-    private ItemStack[] cloneInventoryContents(Inventory inventory) {
-        ItemStack[] contents = inventory.getContents();
-        ItemStack[] copy = new ItemStack[contents.length];
-        for (int i = 0; i < contents.length; i++) {
-            copy[i] = contents[i] == null ? null : contents[i].clone();
-        }
-        return copy;
-    }
-
-    private void restoreInventorySnapshot(Player player, ItemStack[] snapshot) {
-        ItemStack[] copy = new ItemStack[snapshot.length];
-        for (int i = 0; i < snapshot.length; i++) {
-            copy[i] = snapshot[i] == null ? null : snapshot[i].clone();
-        }
-        player.getInventory().setContents(copy);
-        player.updateInventory();
-    }
-
     private void completeWithdrawOnMainThread(Player player, long amount) {
-        issueOfficialArAmount(player, amount, "bank-withdraw", true);
+        if (!issueOfficialArAmount(player, amount, "bank-withdraw", false)) {
+            queuePendingArSettlement(player.getUniqueId(), player.getName(), amount,
+                    PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY,
+                    "bank-withdraw,reason=inventory_full");
+            player.sendMessage(color("&eБанк списал AR, но инвентарь заполнен. Сумма помещена в безопасную очередь выдачи."));
+        }
     }
 
     private ItemStack createOfficialArStack(int amount, String ownerUuid, String ownerName, String source) {
@@ -1559,8 +1740,102 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.remove(new NamespacedKey("copiminear", "owner_uuid"));
         pdc.remove(new NamespacedKey("copiminear", "owner_name"));
         pdc.remove(new NamespacedKey("copiminear", "source"));
+        pdc.set(officialArSerialKey, PersistentDataType.STRING, UUID.randomUUID().toString());
         stack.setItemMeta(meta);
         return stack;
+    }
+
+    private String officialArSerial(ItemStack stack) {
+        if (stack == null || !stack.hasItemMeta()) {
+            return "";
+        }
+        return first(stack.getItemMeta().getPersistentDataContainer().get(officialArSerialKey, PersistentDataType.STRING), "");
+    }
+
+    private List<ItemStack> snapshotOfficialArStacks(Inventory inventory) {
+        List<ItemStack> snapshots = new ArrayList<>();
+        if (inventory == null) {
+            return snapshots;
+        }
+        for (ItemStack stack : inventory.getContents()) {
+            if (isOfficialAr(stack)) {
+                snapshots.add(stack.clone());
+            }
+        }
+        return snapshots;
+    }
+
+    /** Restore only the failed AR deposit, never overwrite intervening player changes. */
+    private int restoreOfficialArSafely(Player player, ItemStack snapshot, String serial) {
+        if (player == null || snapshot == null || !isOfficialAr(snapshot)) {
+            return 0;
+        }
+        int wanted = Math.max(0, snapshot.getAmount());
+        int alreadyPresent = serial.isBlank() ? 0 : countOfficialArSerial(player.getInventory(), serial);
+        int missing = Math.max(0, wanted - alreadyPresent);
+        if (missing == 0) {
+            return 0;
+        }
+        ItemStack restore = snapshot.clone();
+        restore.setAmount(missing);
+        Map<Integer, ItemStack> left = player.getInventory().addItem(restore);
+        int notRestored = left.values().stream().mapToInt(ItemStack::getAmount).sum();
+        player.updateInventory();
+        return notRestored;
+    }
+
+    private int restoreOfficialArSafely(Player player, List<ItemStack> snapshots) {
+        int notRestored = 0;
+        if (snapshots == null) {
+            return 0;
+        }
+        for (ItemStack snapshot : snapshots) {
+            notRestored += restoreOfficialArSafely(player, snapshot, officialArSerial(snapshot));
+        }
+        return notRestored;
+    }
+
+    private int countOfficialArSerial(Inventory inventory, String serial) {
+        if (inventory == null || serial == null || serial.isBlank()) {
+            return 0;
+        }
+        int total = 0;
+        for (ItemStack stack : inventory.getContents()) {
+            if (isOfficialAr(stack) && serial.equals(officialArSerial(stack))) {
+                total += stack.getAmount();
+            }
+        }
+        ItemStack offhand = inventory instanceof org.bukkit.inventory.PlayerInventory playerInventory
+                ? playerInventory.getItemInOffHand() : null;
+        if (isOfficialAr(offhand) && serial.equals(officialArSerial(offhand))) {
+            total += offhand.getAmount();
+        }
+        return total;
+    }
+
+    private void removeOfficialArSerial(Inventory inventory, String serial, int amount) {
+        if (inventory == null || serial == null || serial.isBlank() || amount <= 0) {
+            return;
+        }
+        int left = amount;
+        for (int slot = 0; slot < inventory.getSize() && left > 0; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!isOfficialAr(stack) || !serial.equals(officialArSerial(stack))) {
+                continue;
+            }
+            int take = Math.min(left, stack.getAmount());
+            stack.setAmount(stack.getAmount() - take);
+            inventory.setItem(slot, stack.getAmount() <= 0 ? null : stack);
+            left -= take;
+        }
+        if (inventory instanceof org.bukkit.inventory.PlayerInventory playerInventory && left > 0) {
+            ItemStack offhand = playerInventory.getItemInOffHand();
+            if (isOfficialAr(offhand) && serial.equals(officialArSerial(offhand))) {
+                int take = Math.min(left, offhand.getAmount());
+                offhand.setAmount(offhand.getAmount() - take);
+                playerInventory.setItemInOffHand(offhand.getAmount() <= 0 ? null : offhand);
+            }
+        }
     }
 
     private void normalizeOfficialArItems(Player player) {
@@ -1571,7 +1846,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         updated = normalizeOfficialArInventory(player.getEnderChest()) || updated;
         ItemStack offHand = player.getInventory().getItemInOffHand();
         if (isOfficialAr(offHand) && needsOfficialArNormalization(offHand)) {
-            player.getInventory().setItemInOffHand(createOfficialArStack(offHand.getType(), Math.max(1, offHand.getAmount()), player.getUniqueId().toString(), player.getName(), "join-normalize"));
+            player.getInventory().setItemInOffHand(normalizeOfficialArStack(offHand, "join-normalize"));
             updated = true;
         }
         if (updated) {
@@ -1589,10 +1864,21 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (!isOfficialAr(stack) || !needsOfficialArNormalization(stack)) {
                 continue;
             }
-            inventory.setItem(slot, createOfficialArStack(stack.getType(), Math.max(1, stack.getAmount()), "", "", "normalize"));
+            inventory.setItem(slot, normalizeOfficialArStack(stack, "normalize"));
             updated = true;
         }
         return updated;
+    }
+
+    private ItemStack normalizeOfficialArStack(ItemStack source, String reason) {
+        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason);
+        String serial = officialArSerial(source);
+        if (!serial.isBlank() && normalized.hasItemMeta()) {
+            ItemMeta meta = normalized.getItemMeta();
+            meta.getPersistentDataContainer().set(officialArSerialKey, PersistentDataType.STRING, serial);
+            normalized.setItemMeta(meta);
+        }
+        return normalized;
     }
 
     private boolean needsOfficialArNormalization(ItemStack stack) {
@@ -1612,7 +1898,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         return pdc.has(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING)
                 || pdc.has(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING)
-                || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING);
+                || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING)
+                || !pdc.has(officialArSerialKey, PersistentDataType.STRING);
     }
 
     private int countOfficialAr(Inventory inventory) {
@@ -2201,24 +2488,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         String playerKey = playerUuid.toString();
         String providedPin = first(pin, "");
         try {
-            if (!providedPin.isBlank()) {
-                long locked = bankPinLockedSeconds(playerKey);
-                if (locked > 0) {
-                    return new TxnResult(false, "PIN_LOCKED", "PIN temporarily locked.", 0L, "");
+            if (providedPin.isBlank()) {
+                return new TxnResult(false, "PIN_REQUIRED", "Bank PIN is required for this transfer.", 0L, "");
+            }
+            long locked = bankPinLockedSeconds(playerKey);
+            if (locked > 0) {
+                return new TxnResult(false, "PIN_LOCKED", "PIN temporarily locked.", 0L, "");
+            }
+            if (!bankPinSet(playerKey)) {
+                return new TxnResult(false, "PIN_REQUIRED", "Bank PIN is not configured.", 0L, "");
+            }
+            if (bankPinMustChange(playerKey)) {
+                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Temporary PIN must be changed first.", 0L, "");
+            }
+            if (!verifyBankPin(playerKey, providedPin)) {
+                Player online = Bukkit.getPlayer(playerUuid);
+                if (online != null) {
+                    recordFailedPinAttempt(online, "economy-artifact-transfer");
                 }
-                if (!bankPinSet(playerKey)) {
-                    return new TxnResult(false, "PIN_REQUIRED", "Bank PIN is not configured.", 0L, "");
-                }
-                if (bankPinMustChange(playerKey)) {
-                    return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Temporary PIN must be changed first.", 0L, "");
-                }
-                if (!verifyBankPin(playerKey, providedPin)) {
-                    Player online = Bukkit.getPlayer(playerUuid);
-                    if (online != null) {
-                        recordFailedPinAttempt(online, "economy-artifact-transfer");
-                    }
-                    return new TxnResult(false, "PIN_INVALID", "PIN is invalid.", 0L, "");
-                }
+                return new TxnResult(false, "PIN_INVALID", "PIN is invalid.", 0L, "");
             }
             return tx(connection -> {
                 Map<String, Object> fromAccount = ensureBankAccount(connection, playerKey, first(playerName, ""));

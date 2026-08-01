@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $sourcePath = Join-Path $PSScriptRoot '..\copimine-narcotics\src\me\copimine\narcotics\use\OverdoseService.java'
 $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$consume = [regex]::Match($source, '(?s)public void consume\(Player player, NarcoticDefinition definition\) \{.*?(?=\r?\n\s*public boolean shouldBlockMilk)')
+$consume = [regex]::Match($source, '(?s)public CompletableFuture<Void> consume\(Player player, NarcoticDefinition definition\) \{.*?(?=\r?\n\s*public boolean shouldBlockMilk)')
 if (-not $consume.Success) {
     throw 'Could not locate narcotics consumption flow.'
 }

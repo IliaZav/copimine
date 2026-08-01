@@ -39,6 +39,7 @@ public final class CauldronBrewingService {
     private final Map<BlockKey, CauldronState> cache = new ConcurrentHashMap<>();
     private final Map<BlockKey, Object> locks = new ConcurrentHashMap<>();
     private volatile boolean cacheReady = false;
+    private int integrityCursor = 0;
 
     public CauldronBrewingService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, NarcoticsRecipeService recipeService, NarcoticItemFactory itemFactory) {
         this.plugin = plugin;
@@ -79,9 +80,6 @@ public final class CauldronBrewingService {
                             updatedAtMillis *= 1000L;
                         }
                         CauldronState restored = new CauldronState(List.copyOf(loaded.ingredients()), loaded.version(), updatedAtMillis);
-                        if (restored.isStale(nowMillis)) {
-                            continue;
-                        }
                         cache.merge(entry.getKey(), restored, (current, candidate) -> current.version() >= candidate.version() ? current : candidate);
                         restoredCount++;
                     }
@@ -97,7 +95,16 @@ public final class CauldronBrewingService {
 
     public void runIntegritySweep() {
         long nowMillis = System.currentTimeMillis();
-        for (Map.Entry<BlockKey, CauldronState> entry : List.copyOf(cache.entrySet())) {
+        List<Map.Entry<BlockKey, CauldronState>> snapshot = List.copyOf(cache.entrySet());
+        if (snapshot.isEmpty()) {
+            integrityCursor = 0;
+            return;
+        }
+        int start = Math.floorMod(integrityCursor, snapshot.size());
+        int budget = Math.min(100, snapshot.size());
+        integrityCursor = (start + budget) % snapshot.size();
+        for (int offset = 0; offset < budget; offset++) {
+            Map.Entry<BlockKey, CauldronState> entry = snapshot.get((start + offset) % snapshot.size());
             BlockKey key = entry.getKey();
             World world = plugin.getServer().getWorld(key.world());
             if (world == null || !world.isChunkLoaded(key.x() >> 4, key.z() >> 4)) {
@@ -204,20 +211,28 @@ public final class CauldronBrewingService {
     public void handleCauldronBroken(Block block, Location dropLocation) {
         BlockKey key = BlockKey.of(block);
         synchronized (lockFor(key)) {
-            CauldronState removed = cache.remove(key);
-            if (removed == null || removed.ingredients().isEmpty()) {
+            CauldronState pending = cache.get(key);
+            if (pending == null || pending.ingredients().isEmpty()) {
                 return;
             }
-            spawnQueuedParticles(block, removed.ingredients().size(), true);
-            if (configService.dropIngredientsOnBreakOrWaterLoss()) {
-                for (ItemStack drop : recipeService.ingredientDrops(removed.ingredients())) {
-                    block.getWorld().dropItemNaturally(dropLocation, drop);
+            database.deleteBrewingState(key, pending.version() + 1L).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                synchronized (lockFor(key)) {
+                    CauldronState current = cache.get(key);
+                    if (error != null || current == null || current.version() != pending.version()) {
+                        if (error != null) {
+                            plugin.getLogger().warning("Brewing state delete failed for " + key + ": " + error.getMessage());
+                        }
+                        return;
+                    }
+                    cache.remove(key, current);
+                    spawnQueuedParticles(block, current.ingredients().size(), true);
+                    if (configService.dropIngredientsOnBreakOrWaterLoss() && block.getWorld() != null) {
+                        for (ItemStack drop : recipeService.ingredientDrops(current.ingredients())) {
+                            block.getWorld().dropItemNaturally(dropLocation, drop);
+                        }
+                    }
                 }
-            }
-            database.deleteBrewingState(key, removed.version() + 1L).exceptionally(error -> {
-                plugin.getLogger().warning("Brewing state delete failed for " + key + ": " + error.getMessage());
-                return null;
-            });
+            }));
         }
     }
 
@@ -256,12 +271,14 @@ public final class CauldronBrewingService {
     public void clearCache() {
         cache.clear();
         locks.clear();
+        integrityCursor = 0;
     }
 
     public void shutdown() {
         cacheReady = false;
         cache.clear();
         locks.clear();
+        integrityCursor = 0;
     }
 
     private boolean finishWrongMix(Block block, BlockKey key, long version, int ingredientCount, org.bukkit.entity.Player initiator) {
@@ -275,13 +292,30 @@ public final class CauldronBrewingService {
     }
 
     private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix, org.bukkit.entity.Player initiator) {
-        if (wrongMix) {
-            simulateWrongMixExplosion(block, initiator);
-        }
-        block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), itemFactory.createOfficialItem(definition, 1));
-        particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH, "zhuzevo".equals(definition.id()) ? 24 : 12);
-        spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
-        clearState(block, key, version);
+        database.deleteBrewingState(key, version).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+            synchronized (lockFor(key)) {
+                CauldronState current = cache.get(key);
+                if (error != null || current == null || current.version() != version) {
+                    if (error != null) {
+                        plugin.getLogger().warning("Brewing completion tombstone failed for " + key + ": " + error.getMessage());
+                    }
+                    return;
+                }
+                cache.remove(key, current);
+                if (wrongMix) {
+                    simulateWrongMixExplosion(block, initiator);
+                }
+                if (block.getWorld() != null) {
+                    block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), itemFactory.createOfficialItem(definition, 1));
+                    particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH, "zhuzevo".equals(definition.id()) ? 24 : 12);
+                    spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
+                }
+                extinguishRig(block);
+                if (configService.clearCauldronOnCompletion()) {
+                    block.setType(Material.CAULDRON, false);
+                }
+            }
+        }));
     }
 
     private void simulateWrongMixExplosion(Block block, org.bukkit.entity.Player initiator) {
@@ -310,8 +344,15 @@ public final class CauldronBrewingService {
                         database.deleteBrewingState(key, version + 1L);
                     }
                 }
-                itemFactory.restoreOne(player, consumed);
-                player.sendMessage("§cВарка не сохранена. Ингредиент возвращён.");
+                database.queuePendingRefund(player.getUniqueId(), "INGREDIENT:" + frozen.getLast().serialize(), 1)
+                        .whenComplete((queued, queueError) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (queueError != null) {
+                                plugin.getLogger().warning("Ingredient refund queue failed for " + key + ": " + queueError.getMessage());
+                            }
+                            if (player.isOnline()) {
+                                player.sendMessage("&cBrewing was not saved. The ingredient was queued for safe return.");
+                            }
+                        }));
             });
             return null;
         });
@@ -320,15 +361,22 @@ public final class CauldronBrewingService {
     }
 
     private void clearState(Block block, BlockKey key, long version) {
-        cache.remove(key);
-        extinguishRig(block);
-        if (configService.clearCauldronOnCompletion()) {
-            block.setType(Material.CAULDRON, false);
-        }
-        database.deleteBrewingState(key, version).exceptionally(error -> {
-            plugin.getLogger().warning("Brewing state tombstone failed for " + key + ": " + error.getMessage());
-            return null;
-        });
+        database.deleteBrewingState(key, version).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+            synchronized (lockFor(key)) {
+                CauldronState current = cache.get(key);
+                if (error != null || current == null || current.version() != version) {
+                    if (error != null) {
+                        plugin.getLogger().warning("Brewing state tombstone failed for " + key + ": " + error.getMessage());
+                    }
+                    return;
+                }
+                cache.remove(key, current);
+                extinguishRig(block);
+                if (configService.clearCauldronOnCompletion()) {
+                    block.setType(Material.CAULDRON, false);
+                }
+            }
+        }));
     }
 
     private void particle(Location location, Particle particle, int count) {

@@ -7,6 +7,7 @@ import me.copimine.narcotics.db.NarcoticsDatabase;
 import me.copimine.narcotics.item.NarcoticItemFactory;
 import me.copimine.narcotics.model.NarcoticDefinition;
 import me.copimine.narcotics.recipe.NarcoticsRecipeService;
+import me.copimine.narcotics.recipe.IngredientEntry;
 import me.copimine.narcotics.resourcepack.NarcoticsResourcePackAudit;
 import me.copimine.narcotics.use.OverdoseService;
 import me.copimine.visualruntime.VisualRuntimeService;
@@ -35,6 +36,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
@@ -54,6 +56,8 @@ import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.NamespacedKey;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -63,6 +67,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class CopiMineNarcotics extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
@@ -76,6 +81,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     private static final Set<String> VALID_VISUAL_MODES = Set.of("AUTO", "CLIENT_MOD", "SERVER_FALLBACK");
 
     private final ConcurrentHashMap<UUID, Long> consumeCooldownUntil = new ConcurrentHashMap<>();
+    private final Set<UUID> consumeInFlight = ConcurrentHashMap.newKeySet();
+    private NamespacedKey pendingRefundKey;
     private volatile boolean resetInProgress = false;
 
     private NarcoticsConfigService configService;
@@ -96,6 +103,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         database = new NarcoticsDatabase(this, configService);
         database.start();
         itemFactory = new NarcoticItemFactory(this, configService);
+        pendingRefundKey = new NamespacedKey(this, "pending_refund_id");
         recipeService = new NarcoticsRecipeService(configService, itemFactory);
         clientBridge = new CopiMineClientBridge(this, configService);
         clientBridge.register();
@@ -124,15 +132,24 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     public void onDisable() {
         Bukkit.getScheduler().cancelTasks(this);
         for (Player player : Bukkit.getOnlinePlayers()) {
-            overdoseService.clearActiveEffects(player, true);
-            visualRuntime.clear(player);
+            if (overdoseService != null) {
+                overdoseService.clearActiveEffects(player, true);
+            }
+            if (visualRuntime != null) {
+                visualRuntime.clear(player);
+            }
         }
         consumeCooldownUntil.clear();
+        consumeInFlight.clear();
         if (clientBridge != null) {
             clientBridge.shutdown();
         }
-        cauldronService.shutdown();
-        database.shutdown();
+        if (cauldronService != null) {
+            cauldronService.shutdown();
+        }
+        if (database != null) {
+            database.shutdown();
+        }
     }
 
     private void scheduleIntegritySweep() {
@@ -147,7 +164,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }, 100L);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent event) {
         if (event.getHand() == null || event.getHand().name().contains("OFF_HAND")) {
             return;
@@ -155,6 +172,13 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         Player player = event.getPlayer();
         ItemStack inHand = player.getInventory().getItemInMainHand();
         NarcoticDefinition official = itemFactory.resolveOfficial(inHand);
+        if (event.isCancelled()) {
+            if (official != null || (event.getClickedBlock() != null && cauldronService.isSupportedCauldron(event.getClickedBlock())
+                    && recipeService.canEnterCauldron(inHand))) {
+                player.sendMessage(ChatColor.RED + "Взаимодействие с котлом запрещено защитой региона.");
+            }
+            return;
+        }
         if (resetInProgress) {
             boolean brewingAttempt = event.getAction() == Action.RIGHT_CLICK_BLOCK
                     && event.getClickedBlock() != null
@@ -197,8 +221,29 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 }
                 consumeCooldownUntil.put(player.getUniqueId(), now + cooldownSeconds);
             }
+            if (!consumeInFlight.add(player.getUniqueId())) {
+                player.sendMessage(ChatColor.YELLOW + "Предыдущая операция ещё сохраняется. Попробуйте через секунду.");
+                return;
+            }
+            ItemStack consumed = inHand.clone();
+            consumed.setAmount(1);
             itemFactory.consumeOne(player, inHand);
-            overdoseService.consume(player, official);
+            overdoseService.consume(player, official).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                consumeInFlight.remove(player.getUniqueId());
+                if (error == null) {
+                    return;
+                }
+                getLogger().log(java.util.logging.Level.WARNING, "Failed to persist narcotic consumption for " + player.getUniqueId(), error);
+                database.queuePendingRefund(player.getUniqueId(), official.id(), 1).whenComplete((queued, queueError) -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (queueError != null) {
+                        getLogger().log(java.util.logging.Level.SEVERE, "Failed to queue narcotic refund for " + player.getUniqueId(), queueError);
+                        player.sendMessage(ChatColor.RED + "Не удалось сохранить возврат наркотика. Обратитесь к администрации.");
+                    } else {
+                        player.sendMessage(ChatColor.YELLOW + "Сохранение не удалось: наркотик добавлен в безопасный возврат. Перезайдите или освободите место.");
+                        processPendingRefunds(player);
+                    }
+                }));
+            }));
             return;
         }
 
@@ -244,7 +289,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         getServer().getScheduler().runTaskLater(this, () -> cauldronService.reconcileLoadedChunk(event.getWorld().getName(), event.getChunk().getX(), event.getChunk().getZ()), 1L);
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInventoryClick(InventoryClickEvent event) {
         if (shouldBlockInventoryClick(event)) {
             event.setCancelled(true);
@@ -254,7 +299,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInventoryDrag(InventoryDragEvent event) {
         if (!itemFactory.isOfficialFinishedItem(event.getOldCursor())) {
             return;
@@ -262,7 +307,19 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         Inventory top = event.getView().getTopInventory();
         if (isBlockedDestination(top) && event.getRawSlots().stream().anyMatch(slot -> slot >= 0 && slot < top.getSize())) {
             event.setCancelled(true);
-            sendBlocked((Player) event.getWhoClicked());
+            if (event.getWhoClicked() instanceof Player player) {
+                sendBlocked(player);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onCreativeOfficialCopy(InventoryCreativeEvent event) {
+        if (itemFactory.isOfficialFinishedItem(event.getCursor()) || itemFactory.isOfficialFinishedItem(event.getCurrentItem())) {
+            event.setCancelled(true);
+            if (event.getWhoClicked() instanceof Player player) {
+                player.updateInventory();
+            }
         }
     }
 
@@ -322,13 +379,118 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         overdoseService.preloadState(event.getPlayer().getUniqueId());
+        processPendingRefunds(event.getPlayer());
         visualRuntime.clearTracking(event.getPlayer());
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         overdoseService.releasePlayerSession(event.getPlayer());
+        consumeInFlight.remove(event.getPlayer().getUniqueId());
         visualRuntime.clearTracking(event.getPlayer());
+    }
+
+    private void processPendingRefunds(Player player) {
+        if (player == null || !player.isOnline() || database == null) {
+            return;
+        }
+        database.reservePendingRefunds(player.getUniqueId(), 16).whenComplete((rows, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null || rows == null || rows.isEmpty() || !player.isOnline()) {
+                if (error != null) {
+                    getLogger().log(java.util.logging.Level.WARNING, "Failed to load narcotics refunds", error);
+                }
+                return;
+            }
+            for (NarcoticsDatabase.PendingRefund row : rows) {
+                ItemStack refund = null;
+                if (row.narcoticId().startsWith("INGREDIENT:")) {
+                    IngredientEntry entry = IngredientEntry.deserialize(row.narcoticId().substring("INGREDIENT:".length()));
+                    if (entry != null) {
+                        refund = entry.toItemStack();
+                    }
+                } else {
+                    NarcoticDefinition definition = configService.items().get(row.narcoticId());
+                    if (definition != null) {
+                        refund = itemFactory.createOfficialItem(definition, Math.max(1, row.amount()));
+                    }
+                }
+                if (refund == null) {
+                    database.releasePendingRefund(row.id());
+                    continue;
+                }
+                // The database row is intentionally marked DELIVERING before
+                // we touch the inventory.  A crash between addItem() and the
+                // completion update must therefore be recognizable on the
+                // next join; otherwise the stale-row retry would duplicate
+                // the refund.  The marker is scoped to this exact row and is
+                // never used as an authorization signal for normal items.
+                if (hasPendingRefundMarker(player, row.id())) {
+                    database.completePendingRefund(row.id());
+                    continue;
+                }
+                markPendingRefund(refund, row.id());
+                refund.setAmount(Math.max(1, row.amount()));
+                Map<Integer, ItemStack> leftovers = player.getInventory().addItem(refund);
+                if (!leftovers.isEmpty()) {
+                    // addItem may have inserted a partial stack before
+                    // reporting leftovers.  Remove that partial, then release
+                    // the row; otherwise the next retry would duplicate the
+                    // already inserted portion.
+                    removePendingRefundMarkers(player, row.id());
+                    database.releasePendingRefund(row.id());
+                    player.sendMessage(ChatColor.YELLOW + "Освободите место для возврата наркотика.");
+                } else {
+                    database.completePendingRefund(row.id());
+                }
+            }
+            player.updateInventory();
+        }));
+    }
+
+    private void markPendingRefund(ItemStack stack, String refundId) {
+        if (stack == null || stack.getItemMeta() == null || pendingRefundKey == null
+                || refundId == null || refundId.isBlank()) {
+            return;
+        }
+        var meta = stack.getItemMeta();
+        meta.getPersistentDataContainer().set(pendingRefundKey, PersistentDataType.STRING, refundId);
+        stack.setItemMeta(meta);
+    }
+
+    private boolean hasPendingRefundMarker(Player player, String refundId) {
+        if (player == null || refundId == null || refundId.isBlank() || pendingRefundKey == null) {
+            return false;
+        }
+        for (ItemStack stack : player.getInventory().getContents()) {
+            if (hasPendingRefundMarker(stack, refundId)) {
+                return true;
+            }
+        }
+        return hasPendingRefundMarker(player.getItemOnCursor(), refundId);
+    }
+
+    private boolean hasPendingRefundMarker(ItemStack stack, String refundId) {
+        if (stack == null || stack.getType() == Material.AIR || stack.getItemMeta() == null
+                || pendingRefundKey == null) {
+            return false;
+        }
+        String marker = stack.getItemMeta().getPersistentDataContainer().get(pendingRefundKey, PersistentDataType.STRING);
+        return refundId.equals(marker);
+    }
+
+    private void removePendingRefundMarkers(Player player, String refundId) {
+        if (player == null || refundId == null || refundId.isBlank()) {
+            return;
+        }
+        for (int slot = 0; slot < player.getInventory().getSize(); slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (hasPendingRefundMarker(stack, refundId)) {
+                player.getInventory().setItem(slot, new ItemStack(Material.AIR));
+            }
+        }
+        if (hasPendingRefundMarker(player.getItemOnCursor(), refundId)) {
+            player.setItemOnCursor(new ItemStack(Material.AIR));
+        }
     }
 
     @EventHandler

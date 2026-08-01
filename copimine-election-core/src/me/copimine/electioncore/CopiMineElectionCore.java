@@ -46,6 +46,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
@@ -84,6 +85,9 @@ import org.joml.Vector3f;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -156,8 +160,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private final Map<UUID, CompletableFuture<Void>> rpCandidateActionQueues = new ConcurrentHashMap<>();
     /** Debounce protected-block clicks before any database-backed menu load. */
     private final Map<UUID, Long> protectedInteractAt = new ConcurrentHashMap<>();
-    private final Map<UUID, List<ItemStack>> officialRestore = new ConcurrentHashMap<>();
-    /** Logical item keys queued for delivery; one key can have at most one pending copy. */
+    /**
+     * Durable-in-process delivery queue.  The logical key is the identity of
+     * the entitlement, not a list position: retries must replace/retain the
+     * exact stack until Bukkit accepts it into an inventory slot.
+     */
+    private final Map<UUID, Map<String, ItemStack>> officialRestore = new ConcurrentHashMap<>();
+    /** Kept for compatibility with older recovery cleanup; delivery is owned by officialRestore. */
     private final Map<UUID, Set<String>> pendingOfficialRestore = new ConcurrentHashMap<>();
     /** Prevent overlapping async DB lookups from racing the same inventory. */
     private final Set<UUID> officialRestoreInFlight = ConcurrentHashMap.newKeySet();
@@ -167,6 +176,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private final AtomicLong snapshotRefreshGeneration = new AtomicLong();
     private final Set<BlockKey> protectedBlocks = ConcurrentHashMap.newKeySet();
     private final Map<BlockKey, ProtectedBlockInfo> protectedBlockInfoCache = new ConcurrentHashMap<>();
+    /** Coordinates of inactive RP stations that may be repaired by placement. */
+    private final Set<BlockKey> inactivePollingStationLocations = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean electionResetInFlight = new AtomicBoolean(false);
     /** Read-only president identity used by event handlers; refreshed off the Bukkit thread. */
     private final AtomicReference<PresidentCache> presidentCache = new AtomicReference<>(PresidentCache.empty());
@@ -349,7 +360,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
@@ -406,8 +417,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         routePollingStationInteractAsync(player, protectedInfo.linkedId());
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onSealInteract(PlayerInteractEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
         // Election items are rights, not transportable loot.  Entity targets
         // (item frames and armour stands) are not represented by a normal
         // InventoryClickEvent, so close this insertion path explicitly.
@@ -510,7 +524,21 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         ItemStack current = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
-        if (isProtectedOfficialItem(current) || isProtectedOfficialItem(cursor)) {
+        ItemStack hotbar = null;
+        if (event.getClick() == ClickType.NUMBER_KEY && event.getHotbarButton() >= 0) {
+            hotbar = event.getWhoClicked() instanceof Player player
+                    ? player.getInventory().getItem(event.getHotbarButton()) : null;
+        }
+        ItemStack offhand = event.getWhoClicked() instanceof Player player
+                ? player.getInventory().getItemInOffHand() : null;
+        boolean protectedMovedByHotbar = isProtectedOfficialItem(hotbar)
+                && (event.getClick() == ClickType.NUMBER_KEY
+                || event.getAction() == InventoryAction.HOTBAR_SWAP
+                || event.getAction() == InventoryAction.HOTBAR_MOVE_AND_READD);
+        boolean protectedMovedOffhand = event.getClick() == ClickType.SWAP_OFFHAND
+                && isProtectedOfficialItem(offhand);
+        if (isProtectedOfficialItem(current) || isProtectedOfficialItem(cursor)
+                || protectedMovedByHotbar || protectedMovedOffhand) {
             boolean external = isExternalOfficialStorage(view, event.getRawSlot());
             // Bundles live in the player's own inventory, so they do not
             // expose a separate InventoryView/top holder.  Treat a bundle as
@@ -705,7 +733,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         // inactive so its votes/history survive.  Re-placing a block at the
         // same coordinates is the documented repair path; restore the
         // station asynchronously instead of requiring a second GUI action.
-        if (!event.isCancelled() && hasElectionAdmin(event.getPlayer())) {
+        if (!event.isCancelled() && hasElectionAdmin(event.getPlayer())
+                && inactivePollingStationLocations.contains(placedKey)) {
             Block placed = event.getBlockPlaced();
             BlockLocationRef ref = new BlockLocationRef(
                     placed.getWorld().getName(), placed.getX(), placed.getY(), placed.getZ());
@@ -3095,14 +3124,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void openPresidentAdminMenu(Player player, int selectedPeriodHours) {
         LiveSnapshot snap = snapshot.get();
-        Map<String, Object> activeTax = null;
-        try {
-            activeTax = activeTax();
-        } catch (Exception error) {
-            warnSuppressed("president admin menu active tax player=" + player.getName(), error);
-        }
-        int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
-        int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
+        int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours <= 0 ? snap.taxPeriodHours() : selectedPeriodHours);
+        int currentAmount = Math.max(taxMinAmount(), Math.min(taxMaxAmount(), snap.taxAmount()));
         MenuHolder holder = new MenuHolder("president-admin", Integer.toString(resolvedPeriod));
         Inventory inv = holder.create(54, color("&dПрезидент"));
         setButton(holder, 42, Material.LIME_DYE, "Paid players", List.of("Open players who paid the current period."), "president:tax-roster:paid");
@@ -3120,7 +3143,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         setStatic(inv, 14, infoItem(Material.GOLD_INGOT, "&6Текущий налог", List.of(
                 "&7Ставка: &f" + currentAmount + " AR",
-                "&7Период: &f" + taxPeriodLabel(activeTax == null ? resolvedPeriod : taxPeriodHours(activeTax)),
+                "&7Период: &f" + taxPeriodLabel(snap.taxPeriodHours()),
                 "&7Автосписания: &cвыключены",
                 "&7Неуплата не обрабатывается кодом."
         )));
@@ -3187,14 +3210,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void openPresidentMandateMenu(Player player, int selectedPeriodHours) {
         LiveSnapshot snap = snapshot.get();
-        Map<String, Object> activeTax = null;
-        try {
-            activeTax = activeTax();
-        } catch (Exception error) {
-            warnSuppressed("president mandate menu active tax player=" + player.getName(), error);
-        }
-        int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
-        int currentAmount = activeTax == null ? taxMinAmount() : Math.max(taxMinAmount(), Math.min(taxMaxAmount(), intValue(activeTax.get("amount"))));
+        int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours <= 0 ? snap.taxPeriodHours() : selectedPeriodHours);
+        int currentAmount = Math.max(taxMinAmount(), Math.min(taxMaxAmount(), snap.taxAmount()));
         MenuHolder holder = new MenuHolder("president-mandate", Integer.toString(resolvedPeriod));
         Inventory inv = holder.create(54, color("&dМандат президента"));
         setButton(holder, 45, Material.LIME_DYE, "Paid players", List.of("Open players who paid the current period."), "president:tax-roster:paid");
@@ -3217,7 +3234,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         setButton(holder, 21, Material.CLOCK, "&eОбращение в ActionBar", List.of("&7Показать команду для actionbar-сообщения."), "mandate:show-command:actionbar");
         setStatic(inv, 22, infoItem(Material.GOLD_INGOT, "&6Текущий налог", List.of(
                 "&7Ставка: &f" + currentAmount + " AR",
-                "&7Период: &f" + taxPeriodLabel(activeTax == null ? resolvedPeriod : taxPeriodHours(activeTax)),
+                "&7Период: &f" + taxPeriodLabel(snap.taxPeriodHours()),
                 "&7Игрок сам решает, платить или нет."
         )));
 
@@ -3751,14 +3768,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 try (Connection connection = openConnection()) {
                     ElectionContext context = requireActiveElectionContext(connection);
                     round = context.round();
-                    if (scalarLong(connection, "SELECT COUNT(*) FROM votes WHERE election_id=? AND round_no=? AND voter_uuid=?", context.electionId(), round, voterUuid.toString()) > 0) {
-                        runSync(() -> {
-                            if (player.isOnline()) {
-                                player.sendMessage(color("&eТы уже проголосовал в этом туре. Повторный голос невозможен."));
-                            }
-                        });
-                        return;
-                    }
                 }
                 List<Map<String, Object>> candidates = activeCandidates(string(station.get("election_id")), round);
                 runSync(() -> {
@@ -4076,6 +4085,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 if (!restored.get()) {
                     return;
                 }
+                inactivePollingStationLocations.remove(new BlockKey(ref.world(), ref.x(), ref.y(), ref.z()));
                 reloadProtectedBlocks();
                 runSync(() -> {
                     if (!player.isOnline()) {
@@ -4916,6 +4926,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             logPluginEvent(connection, "election_core", "station_removed", player.getName(), stationId, "");
             return null;
         });
+        inactivePollingStationLocations.add(new BlockKey(
+                string(station.get("world")), intValue(station.get("x")), intValue(station.get("y")), intValue(station.get("z"))));
         reloadProtectedBlocks();
     }
 
@@ -4965,8 +4977,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return null;
         });
         if (target == null) {
-            officialRestore.computeIfAbsent(parsedPlayerUuid, key -> new ArrayList<>())
-                    .add(createSealItem(sealId, electionId, stationId, playerUuid, playerName));
+            ItemStack seal = createSealItem(sealId, electionId, stationId, playerUuid, playerName);
+            String logicalKey = officialRestoreKey(seal);
+            if (!logicalKey.isBlank()) {
+                officialRestore.computeIfAbsent(parsedPlayerUuid, key -> new ConcurrentHashMap<>())
+                        .putIfAbsent(logicalKey, seal.clone());
+            }
             return;
         }
     }
@@ -5293,6 +5309,27 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
     }
 
+    /**
+     * Reserve one anonymous participation slot.  The voter UUID is kept only
+     * in this access-control table; the public vote row receives a fresh
+     * anonymous token and never stores the player's name or UUID.
+     */
+    private boolean reserveVoteParticipation(Connection connection, String electionId, int round,
+            UUID voterUuid, long createdAt) throws Exception {
+        if (connection == null || electionId == null || electionId.isBlank() || voterUuid == null) {
+            return false;
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO vote_participation(election_id,round_no,voter_uuid,anonymous_token,created_at) VALUES(?,?,?,?,?) ON CONFLICT(election_id,round_no,voter_uuid) DO NOTHING")) {
+            statement.setString(1, electionId);
+            statement.setInt(2, round);
+            statement.setString(3, voterUuid.toString());
+            statement.setString(4, "anonymous_token:" + UUID.randomUUID().toString().replace("-", ""));
+            statement.setLong(5, createdAt);
+            return statement.executeUpdate() == 1;
+        }
+    }
+
     private void confirmBallotChoice(Player player, String ballotId, String candidateUuid) throws Exception {
         if (candidateUuid.equals(player.getUniqueId().toString())) {
             player.sendMessage(color("&cКандидат не может голосовать сам за себя."));
@@ -5373,9 +5410,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (scalarLong(connection, "SELECT COUNT(*) FROM election_voting_blocks WHERE election_id=? AND id=? AND active=1", context.electionId(), stationId) <= 0) {
                 throw new IllegalStateException("Этот блок не зарегистрирован для текущих выборов.");
             }
-            if (scalarLong(connection, "SELECT COUNT(*) FROM votes WHERE election_id=? AND round_no=? AND voter_uuid=?", context.electionId(), context.round(), voterUuid.toString()) > 0) {
-                throw new IllegalStateException("Ты уже проголосовал в этом туре.");
-            }
             Map<String, Object> candidate = queryOne(connection,
                     "SELECT rc.candidate_name,COALESCE(c.active,0) AS candidate_active,COALESCE(a.admin_status,'') AS admin_status,COALESCE(a.status,'') AS application_status FROM round_candidates rc LEFT JOIN candidates c ON c.election_id=rc.election_id AND c.player_uuid=rc.candidate_uuid LEFT JOIN candidate_applications a ON a.id=c.application_id WHERE rc.election_id=? AND rc.round_no=? AND rc.candidate_uuid=? AND rc.active=1 LIMIT 1",
                     context.electionId(), context.round(), candidateUuid);
@@ -5389,11 +5423,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             long t = now();
             String voteId = "direct_vote_" + UUID.randomUUID().toString().replace("-", "");
-            String ballotId = "direct:" + context.electionId() + ":" + context.round() + ":" + voterUuid;
+            if (!reserveVoteParticipation(connection, context.electionId(), context.round(), voterUuid, t)) {
+                throw new IllegalStateException("Ты уже проголосовал в этом туре.");
+            }
+            String ballotId = "anonymous_ballot:" + UUID.randomUUID().toString().replace("-", "");
+            String anonymousVoterToken = "anonymous_voter:" + UUID.randomUUID().toString().replace("-", "");
             update(connection, "INSERT INTO votes(id,election_id,round_no,ballot_id,voter_uuid,voter_name,candidate_uuid,candidate_name,station_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    voteId, context.electionId(), context.round(), ballotId, voterUuid.toString(), voterName, candidateUuid, string(candidate.get("candidate_name")), stationId, t);
+                    voteId, context.electionId(), context.round(), ballotId, anonymousVoterToken, "", candidateUuid, string(candidate.get("candidate_name")), stationId, t);
             update(connection, "UPDATE polling_stations SET ballots_submitted=ballots_submitted+1,updated_at=? WHERE id=?", t, stationId);
-            logPluginEvent(connection, "election_core", "direct_vote_accepted", voterName, voteId, "station=" + stationId + ";candidate=" + candidateUuid);
+            logPluginEvent(connection, "election_core", "direct_vote_accepted", voterName, voteId, "station=" + stationId);
             candidateNameRef.set(string(candidate.get("candidate_name")));
             return null;
         });
@@ -5479,24 +5517,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (!"CONFIRMED".equalsIgnoreCase(string(lockedBallot.get("status")))) {
                 throw new IllegalStateException("Бюллетень нужно сначала подтвердить в меню голосования.");
             }
-            if (scalarLong(connection, "SELECT COUNT(*) FROM votes WHERE ballot_id=?", ballotId) > 0) {
-                throw new IllegalStateException("Этот бюллетень уже сдан.");
-            }
-            if (scalarLong(connection, "SELECT COUNT(*) FROM votes WHERE election_id=? AND round_no=? AND voter_uuid=?", context.electionId(), liveRound, player.getUniqueId().toString()) > 0) {
-                throw new IllegalStateException("Голос этого игрока уже принят.");
-            }
             Map<String, Object> candidate = queryOne(connection,
                     "SELECT candidate_name FROM round_candidates WHERE election_id=? AND round_no=? AND candidate_uuid=? AND active=1 LIMIT 1",
                     context.electionId(), liveRound, string(lockedBallot.get("confirmed_candidate_uuid")));
             if (candidate == null) {
                 throw new IllegalStateException("Голосование уже закрыто. Этот бюллетень больше нельзя сдать.");
             }
+            if (!reserveVoteParticipation(connection, context.electionId(), liveRound, player.getUniqueId(), t)) {
+                throw new IllegalStateException("Голос этого игрока уже принят.");
+            }
             update(connection, "INSERT INTO votes(id,election_id,round_no,ballot_id,voter_uuid,voter_name,candidate_uuid,candidate_name,station_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    "vote_" + UUID.randomUUID().toString().replace("-", ""), context.electionId(), liveRound, ballotId, player.getUniqueId().toString(), player.getName(),
+                    "vote_" + UUID.randomUUID().toString().replace("-", ""), context.electionId(), liveRound,
+                    "anonymous_ballot:" + UUID.randomUUID().toString().replace("-", ""),
+                    "anonymous_voter:" + UUID.randomUUID().toString().replace("-", ""), "",
                     string(lockedBallot.get("confirmed_candidate_uuid")), string(candidate.get("candidate_name")), clickedStationId, t);
             update(connection, "UPDATE ballots SET status='DEPOSITED',submitted_at=?,submitted_station_id=? WHERE id=?", t, clickedStationId, ballotId);
             update(connection, "UPDATE polling_stations SET ballots_submitted=ballots_submitted+1,updated_at=? WHERE id=?", t, clickedStationId);
-            logPluginEvent(connection, "election_core", "ballot_deposited", player.getName(), ballotId, "station=" + clickedStationId);
+            logPluginEvent(connection, "election_core", "ballot_deposited", "SYSTEM", "ballot_deposited:" + UUID.randomUUID(), "station=" + clickedStationId);
             return null;
         });
         consumeSingleItem(player, item);
@@ -6361,6 +6398,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 intValue(election.get("candidate_limit")),
                 intValue(election.get("president_term_days")),
                 tax == null ? 0 : Math.max(0, intValue(tax.get("amount"))),
+                tax == null ? normalizeTaxPeriodHours(getConfig().getInt("president-tax.payment-interval-hours", 24)) : taxPeriodHours(tax),
                 deposited,
                 stations,
                 intValue(election.get("second_round_needed")) > 0
@@ -6405,8 +6443,30 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 "annulled_ballots", scalarLong("SELECT COUNT(*) FROM ballots WHERE election_id=? AND round_no=? AND status='ANNULLED'", snap.electionId(), snap.round())
         ));
         payload.put("stations", queryList("SELECT id,world,x,y,z,applications_issued,ballots_issued,ballots_submitted,ballots_annulled FROM polling_stations WHERE election_id=? AND active=1 ORDER BY created_at DESC LIMIT 100", snap.electionId()));
-        Files.createDirectories(webDataFile.getParent());
-        Files.writeString(webDataFile, toJson(payload), StandardCharsets.UTF_8);
+        writeAtomicUtf8(webDataFile, toJson(payload));
+    }
+
+    private void writeAtomicUtf8(Path target, String content) throws IOException {
+        if (target == null) {
+            throw new IOException("web data path is not configured");
+        }
+        Files.createDirectories(target.getParent());
+        Path temp = target.resolveSibling(target.getFileName() + ".tmp-" + UUID.randomUUID());
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        try {
+            try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE)) {
+                channel.write(java.nio.ByteBuffer.wrap(bytes));
+                channel.force(true);
+            }
+            try {
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temp);
+        }
     }
 
     private void renderSidebar(Player player, LiveSnapshot snap) {
@@ -6491,25 +6551,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         if (hasOfficialLogicalItem(player, logicalKey)) {
-            pendingOfficialRestore.computeIfPresent(player.getUniqueId(), (uuid, keys) -> {
-                keys.remove(logicalKey);
-                return keys.isEmpty() ? null : keys;
-            });
+            removeQueuedOfficialItem(player.getUniqueId(), logicalKey);
             return;
         }
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(stack);
+        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(stack.clone());
         if (!leftovers.isEmpty()) {
-            Set<String> pending = pendingOfficialRestore.computeIfAbsent(player.getUniqueId(), key -> ConcurrentHashMap.newKeySet());
-            if (pending.add(logicalKey)) {
-                officialRestore.computeIfAbsent(player.getUniqueId(), key -> new ArrayList<>())
-                        .addAll(leftovers.values().stream().filter(Objects::nonNull).map(ItemStack::clone).toList());
-            }
+            queueOfficialRestore(player.getUniqueId(), leftovers.values().stream().filter(Objects::nonNull).findFirst().orElse(stack));
             player.sendMessage(color("&eИнвентарь заполнен. Выборный предмет будет выдан после освобождения слота."));
         } else {
-            pendingOfficialRestore.computeIfPresent(player.getUniqueId(), (uuid, keys) -> {
-                keys.remove(logicalKey);
-                return keys.isEmpty() ? null : keys;
-            });
+            removeQueuedOfficialItem(player.getUniqueId(), logicalKey);
         }
     }
 
@@ -6532,10 +6582,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (logicalKey.isBlank()) {
             return;
         }
-        Set<String> pending = pendingOfficialRestore.computeIfAbsent(playerUuid, key -> ConcurrentHashMap.newKeySet());
-        if (pending.add(logicalKey)) {
-            officialRestore.computeIfAbsent(playerUuid, key -> new ArrayList<>()).add(stack.clone());
+        officialRestore.computeIfAbsent(playerUuid, key -> new ConcurrentHashMap<>())
+                .putIfAbsent(logicalKey, stack.clone());
+        pendingOfficialRestore.computeIfAbsent(playerUuid, key -> ConcurrentHashMap.newKeySet()).add(logicalKey);
+    }
+
+    private void removeQueuedOfficialItem(UUID playerUuid, String logicalKey) {
+        if (playerUuid == null || logicalKey == null || logicalKey.isBlank()) {
+            return;
         }
+        officialRestore.computeIfPresent(playerUuid, (uuid, queued) -> {
+            queued.remove(logicalKey);
+            return queued.isEmpty() ? null : queued;
+        });
+        pendingOfficialRestore.computeIfPresent(playerUuid, (uuid, pending) -> {
+            pending.remove(logicalKey);
+            return pending.isEmpty() ? null : pending;
+        });
     }
 
     private boolean hasOfficialLogicalItem(Player player, String logicalKey) {
@@ -6592,7 +6655,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             List<Map<String, Object>> seals = List.of();
             try {
                 Map<String, Object> active = queryOne(
-                        "SELECT id FROM elections WHERE COALESCE(active,0)=1 ORDER BY COALESCE(updated_at,0) DESC LIMIT 1"
+                        "SELECT id FROM elections WHERE COALESCE(active,0)=1 AND LOWER(COALESCE(notes,''))='rp-two-stage' ORDER BY COALESCE(updated_at,0) DESC LIMIT 1"
                 );
                 activeElection = active != null;
                 Map<String, Object> term = queryOne(
@@ -6624,11 +6687,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 // Drain death/full-inventory recovery before entitlement
                 // checks; otherwise a fresh mandate could be created first
                 // and the queued copy would become a duplicate.
-                List<ItemStack> queued = officialRestore.remove(playerUuid);
+                Map<String, ItemStack> queued = officialRestore.get(playerUuid);
                 if (queued != null) {
-                    for (ItemStack stack : queued) {
+                    for (Map.Entry<String, ItemStack> queuedEntry : new ArrayList<>(queued.entrySet())) {
+                        ItemStack stack = queuedEntry.getValue();
                         if (stack != null && "CIK_SEAL".equals(readString(stack, itemTypeKey))
                                 && hasOfficialItem(player, "CIK_SEAL", readString(stack, sealIdKey))) {
+                            removeQueuedOfficialItem(playerUuid, queuedEntry.getKey());
                             continue;
                         }
                         addOrQueueOfficialItem(player, stack);
@@ -7401,6 +7466,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     update(connection, "UPDATE text_display_links SET active=0 WHERE linked_id=?", blockId);
                     update(connection, "UPDATE protected_block_visuals SET active=0,updated_at=? WHERE kind='POLLING_STATION' AND linked_id=?", t, blockId);
                     disabled.set(true);
+                    inactivePollingStationLocations.add(new BlockKey(ref.world(), ref.x(), ref.y(), ref.z()));
                     logPluginEvent(connection, "election_core", "rp_voting_block_disabled", actor, blockId, "");
                     return null;
                 });
@@ -8238,9 +8304,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private int selectedTaxPeriodHours() {
         try {
-            Map<String, Object> tax = activeTax();
-            if (tax != null) {
-                return taxPeriodHours(tax);
+            int cached = snapshot.get().taxPeriodHours();
+            if (cached == 24 || cached == 48 || cached == 72) {
+                return cached;
             }
         } catch (Exception error) {
             warnSuppressed("selected tax period", error);
@@ -8841,7 +8907,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         // from the inventory, so persistence must run even when no slot was
         // found.  This also clears a queued offline restoration.
         officialRestore.computeIfPresent(player.getUniqueId(), (uuid, queued) -> {
-            queued.removeIf(item -> sealId.equals(readString(item, sealIdKey)));
+            queued.entrySet().removeIf(entry -> sealId.equals(readString(entry.getValue(), sealIdKey)));
             return queued.isEmpty() ? null : queued;
         });
         pendingOfficialRestore.computeIfPresent(player.getUniqueId(), (uuid, queued) -> {
@@ -9222,6 +9288,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE TABLE IF NOT EXISTS round_candidates(election_id TEXT NOT NULL,round_no INTEGER NOT NULL DEFAULT 1,candidate_uuid TEXT NOT NULL,candidate_name TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,created_at BIGINT NOT NULL DEFAULT 0,created_by TEXT NOT NULL DEFAULT '',PRIMARY KEY(election_id,round_no,candidate_uuid))");
             update(connection, "CREATE TABLE IF NOT EXISTS ballots(id TEXT PRIMARY KEY,election_id TEXT NOT NULL,round_no INTEGER NOT NULL DEFAULT 1,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',station_id TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'ISSUED',issued_at BIGINT NOT NULL DEFAULT 0,issued_by TEXT NOT NULL DEFAULT '',confirmed_candidate_uuid TEXT NOT NULL DEFAULT '',confirmed_candidate_name TEXT NOT NULL DEFAULT '',confirmed_at BIGINT NOT NULL DEFAULT 0,submitted_at BIGINT NOT NULL DEFAULT 0,submitted_station_id TEXT NOT NULL DEFAULT '',annulled_at BIGINT NOT NULL DEFAULT 0,annulled_by TEXT NOT NULL DEFAULT '',annul_reason TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS votes(id TEXT PRIMARY KEY,election_id TEXT NOT NULL,round_no INTEGER NOT NULL DEFAULT 1,ballot_id TEXT NOT NULL,voter_uuid TEXT NOT NULL,voter_name TEXT NOT NULL DEFAULT '',candidate_uuid TEXT NOT NULL,candidate_name TEXT NOT NULL DEFAULT '',station_id TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0)");
+            // Keep voter identity only in the one-use participation table.  A
+            // vote row contains an unlinkable token and the candidate count;
+            // it must not join a player's UUID/name to a candidate.
+            update(connection, "CREATE TABLE IF NOT EXISTS vote_participation(election_id TEXT NOT NULL,round_no INTEGER NOT NULL,voter_uuid TEXT NOT NULL,anonymous_token TEXT NOT NULL,created_at BIGINT NOT NULL DEFAULT 0,PRIMARY KEY(election_id,round_no,voter_uuid))");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_vote_participation_token ON vote_participation(anonymous_token)");
+            update(connection, "INSERT INTO vote_participation(election_id,round_no,voter_uuid,anonymous_token,created_at) SELECT election_id,round_no,voter_uuid,'legacy_anonymous_token:' || id,created_at FROM votes WHERE voter_uuid<>'' AND voter_uuid NOT LIKE 'anonymous_voter:%' ON CONFLICT(election_id,round_no,voter_uuid) DO NOTHING");
+            update(connection, "UPDATE votes SET voter_uuid='anonymous_voter:' || id,voter_name='' WHERE voter_uuid<>'' AND voter_uuid NOT LIKE 'anonymous_voter:%'");
             update(connection, "CREATE TABLE IF NOT EXISTS rounds(id TEXT PRIMARY KEY,election_id TEXT NOT NULL,round_no INTEGER NOT NULL DEFAULT 1,status TEXT NOT NULL DEFAULT 'ACTIVE',started_at BIGINT NOT NULL DEFAULT 0,ended_at BIGINT NOT NULL DEFAULT 0,winner_uuid TEXT NOT NULL DEFAULT '',winner_name TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS president_terms(id TEXT PRIMARY KEY,election_id TEXT NOT NULL,president_uuid TEXT NOT NULL,president_name TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'ACTIVE',started_at BIGINT NOT NULL DEFAULT 0,ends_at BIGINT NOT NULL DEFAULT 0,removed_at BIGINT NOT NULL DEFAULT 0,removed_by TEXT NOT NULL DEFAULT '',resignation_reason TEXT NOT NULL DEFAULT '',ended_at BIGINT NOT NULL DEFAULT 0,last_broadcast_at BIGINT NOT NULL DEFAULT 0,last_law_replace_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "ALTER TABLE president_terms ADD COLUMN IF NOT EXISTS resignation_reason TEXT NOT NULL DEFAULT ''");
@@ -9362,10 +9435,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void reloadProtectedBlocks() throws Exception {
         protectedBlocks.clear();
         protectedBlockInfoCache.clear();
+        inactivePollingStationLocations.clear();
         for (Map<String, Object> row : queryList("SELECT kind,linked_id,world,x,y,z FROM protected_blocks WHERE active=1")) {
             BlockKey key = new BlockKey(string(row.get("world")), intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z")));
             protectedBlocks.add(key);
             protectedBlockInfoCache.put(key, new ProtectedBlockInfo(string(row.get("kind")), string(row.get("linked_id"))));
+        }
+        for (Map<String, Object> row : queryList(
+                "SELECT b.world,b.x,b.y,b.z FROM election_voting_blocks b "
+                        + "JOIN elections e ON e.id=b.election_id "
+                        + "WHERE COALESCE(b.active,0)=0 AND COALESCE(e.active,0)=1 "
+                        + "AND LOWER(COALESCE(e.notes,''))='rp-two-stage'")) {
+            inactivePollingStationLocations.add(new BlockKey(
+                    string(row.get("world")), intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z"))));
         }
     }
 
@@ -10268,12 +10350,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             int candidateLimit,
             int termDays,
             int taxAmount,
+            int taxPeriodHours,
             long depositedBallots,
             long stationCount,
             boolean secondRoundNeeded
     ) {
         static LiveSnapshot empty() {
-            return new LiveSnapshot("", ElectionStage.NONE, 1, "", List.of(), List.of(), 4, 7, 0, 0, 0, false);
+            return new LiveSnapshot("", ElectionStage.NONE, 1, "", List.of(), List.of(), 4, 7, 0, 24, 0, 0, false);
         }
 
         String stageTitle() {

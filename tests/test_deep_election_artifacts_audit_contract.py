@@ -8,11 +8,47 @@ ITEMS = (ROOT / "copimine-artifacts" / "items.yml").read_text(encoding="utf-8")
 
 
 def test_election_restore_is_idempotent_and_cleans_player_state():
-    assert "officialRestore.remove(playerUuid)" in ELECTION
+    assert "officialRestore.get(playerUuid)" in ELECTION
+    assert "removeQueuedOfficialItem(playerUuid" in ELECTION
     assert "officialRestore.computeIfAbsent" in ELECTION
     assert "pendingOfficialRestore" in ELECTION
     assert "officialRestore.remove(playerId)" in ELECTION
     assert "hasOfficialLogicalItem(player, \"PRESIDENT_MANDATE\")" in ELECTION
+
+
+def test_election_restore_queue_keeps_each_item_until_inventory_accepts_it():
+    """A full inventory must not drop an item just because a delivery retry ran."""
+    assert "Map<String, ItemStack>" in ELECTION
+    assert "officialRestore.computeIfAbsent(playerUuid, key -> new ConcurrentHashMap<>())" in ELECTION
+    assert "leftovers" in ELECTION
+    assert "pendingOfficialRestore" not in ELECTION[ELECTION.index("private void addOrQueueOfficialItem"):ELECTION.index("private String officialRestoreKey")]
+
+
+def test_election_item_and_visual_handlers_cover_all_hands_and_cancelled_protection():
+    assert "event.getHand() != EquipmentSlot.HAND" in ELECTION
+    assert "event.getClick() == ClickType.NUMBER_KEY" in ELECTION
+    assert "InventoryAction.HOTBAR_SWAP" in ELECTION
+    assert "InventoryAction.HOTBAR_MOVE_AND_READD" in ELECTION
+    assert "ClickType.SWAP_OFFHAND" in ELECTION
+    assert "event.getHotbarButton()" in ELECTION
+    assert "getItemInOffHand()" in ELECTION
+    assert "@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)\n    public void onInteract" in ELECTION
+
+
+def test_election_president_menus_are_snapshot_only_on_bukkit_thread():
+    admin = ELECTION[ELECTION.index("private void openPresidentAdminMenu(Player player, int selectedPeriodHours)"):ELECTION.index("private void openPresidentMandateMenu(Player player)")]
+    mandate = ELECTION[ELECTION.index("private void openPresidentMandateMenu(Player player, int selectedPeriodHours)"):ELECTION.index("private PresidentTaxRoster loadPresidentTaxRoster")]
+    assert "activeTax()" not in admin
+    assert "activeTax()" not in mandate
+    assert "snapshot.get()" in admin or "snapshot.get()" in mandate
+    assert "taxPeriodHours()" in admin or "taxPeriodHours()" in mandate
+
+
+def test_election_web_snapshot_is_atomic_and_votes_are_split_from_voter_identity():
+    assert "ATOMIC_MOVE" in ELECTION
+    assert "vote_participation" in ELECTION
+    assert "anonymous_token" in ELECTION
+    assert "candidate_uuid" not in ELECTION[ELECTION.index("INSERT INTO vote_participation"):ELECTION.index("INSERT INTO vote_participation") + 600]
 
 
 def test_election_official_items_cannot_move_to_any_external_storage_or_be_cloned():
@@ -57,6 +93,30 @@ def test_artifact_reclaim_covers_loss_sources_and_durable_journal():
     assert ".force(true)" in ARTIFACTS
     assert "ATOMIC_MOVE" in ARTIFACTS
     assert "onQuit" in ARTIFACTS and "actionCooldowns.entrySet().removeIf" in ARTIFACTS
+
+
+def test_foreign_donation_pickup_is_quarantined_before_storage_or_duplication():
+    """A non-owner pickup must be journaled first and removed by unique id."""
+    assert "EntityPickupItemEvent" in ARTIFACTS
+    assert "foreignDonationRef" in ARTIFACTS
+    assert "rawDonationIdentity" in ARTIFACTS
+    assert "onForeignDonationPickup" in ARTIFACTS
+    assert "onForeignDonationDrop" in ARTIFACTS
+    assert "onForeignDonationPlace" in ARTIFACTS
+    assert "onDonationInventoryOpen" in ARTIFACTS
+    assert "quarantineForeignDonation" in ARTIFACTS
+    assert "recordDonationLossOnce(ref, reason)" in ARTIFACTS
+    assert "removeDonationInstanceFromOnlineInventories(ref.uniqueItemId())" in ARTIFACTS
+    assert "removeUniqueItemFromInventory(var1.getSource(), donation.uniqueItemId())" in ARTIFACTS
+    assert "event.getClick() == ClickType.NUMBER_KEY" in ARTIFACTS
+    assert "event.getClick() == ClickType.SWAP_OFFHAND" in ARTIFACTS
+    assert "getItem(event.getHotbarButton())" in ARTIFACTS
+    # Physical removal is guarded by the durable append in both pickup and
+    # drop handlers, so a DB/journal failure leaves the only copy intact.
+    pickup = ARTIFACTS[ARTIFACTS.index("public void onForeignDonationPickup"):ARTIFACTS.index("public void onForeignDonationDrop")]
+    drop = ARTIFACTS[ARTIFACTS.index("public void onForeignDonationDrop"):ARTIFACTS.index("public void onDonationInventoryOpen")]
+    assert "if (this.quarantineForeignDonation(player, ref, \"foreign-pickup\"))" in pickup
+    assert "if (this.quarantineForeignDonation(event.getPlayer(), ref, \"foreign-drop\"))" in drop
 
 
 def test_artifact_compass_is_explicit_teleport_item_with_fifteen_second_cooldown():

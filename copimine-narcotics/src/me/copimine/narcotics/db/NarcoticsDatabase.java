@@ -40,6 +40,8 @@ public final class NarcoticsDatabase {
     private ExecutorService executor;
     private DbSettings dbSettings;
 
+    public record PendingRefund(String id, String playerUuid, String narcoticId, int amount) {}
+
     public NarcoticsDatabase(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
         this.plugin = plugin;
         this.configService = configService;
@@ -72,7 +74,16 @@ public final class NarcoticsDatabase {
 
     public void shutdown() {
         if (executor != null) {
-            executor.shutdownNow();
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(5L, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                    executor.awaitTermination(2L, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                executor.shutdownNow();
+            }
         }
     }
 
@@ -86,16 +97,6 @@ public final class NarcoticsDatabase {
     public CompletableFuture<Map<BlockKey, LoadedBrewingState>> loadBrewingStates(int maxRows) {
         return supplyAsync(() -> {
             Map<BlockKey, LoadedBrewingState> states = new LinkedHashMap<>();
-            try (Connection connection = openConnection();
-                 PreparedStatement prune = connection.prepareStatement("""
-                         DELETE FROM narcotics_brewing_states
-                         WHERE deleted=TRUE
-                            OR (CASE WHEN updated_at < 100000000000 THEN updated_at * 1000 ELSE updated_at END) < ?
-                         """)) {
-                long cutoff = Instant.now().toEpochMilli() - 15L * 60L * 1000L;
-                prune.setLong(1, cutoff);
-                prune.executeUpdate();
-            }
             try (Connection connection = openConnection();
                  PreparedStatement statement = connection.prepareStatement("""
                          SELECT world_name,x,y,z,state_payload,state_version,deleted,ingredients_csv,updated_at
@@ -247,6 +248,7 @@ public final class NarcoticsDatabase {
                     VALUES (?,?,?,?)
                     ON CONFLICT (player_uuid)
                     DO UPDATE SET window_started_at=EXCLUDED.window_started_at,last_item_id=EXCLUDED.last_item_id,updated_at=EXCLUDED.updated_at
+                    WHERE narcotics_player_usage_window.updated_at <= EXCLUDED.updated_at
                     """)) {
                 statement.setString(1, state.playerUuid().toString());
                 statement.setLong(2, state.lastConsumedAt());
@@ -271,6 +273,90 @@ public final class NarcoticsDatabase {
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     statement.executeUpdate();
                 }
+            }
+            return null;
+        }));
+    }
+
+    public CompletableFuture<Void> queuePendingRefund(UUID playerUuid, String narcoticId, int amount) {
+        if (playerUuid == null || narcoticId == null || narcoticId.isBlank() || amount <= 0) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid narcotics refund."));
+        }
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")) {
+                long now = Instant.now().getEpochSecond();
+                statement.setString(1, UUID.randomUUID().toString());
+                statement.setString(2, playerUuid.toString());
+                statement.setString(3, narcoticId);
+                statement.setInt(4, amount);
+                statement.setString(5, "PENDING");
+                statement.setLong(6, now);
+                statement.setLong(7, now);
+                statement.executeUpdate();
+            }
+            return null;
+        }));
+    }
+
+    public CompletableFuture<List<PendingRefund>> reservePendingRefunds(UUID playerUuid, int limit) {
+        if (playerUuid == null) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        return supplyAsync(() -> tx(connection -> {
+            List<PendingRefund> result = new ArrayList<>();
+            List<String> ids = new ArrayList<>();
+            long staleBefore = Instant.now().getEpochSecond() - 60L;
+            try (PreparedStatement reset = connection.prepareStatement(
+                    "UPDATE narcotics_pending_refunds SET status='PENDING',updated_at=? WHERE player_uuid=? AND status='DELIVERING' AND updated_at<?")) {
+                reset.setLong(1, Instant.now().getEpochSecond());
+                reset.setString(2, playerUuid.toString());
+                reset.setLong(3, staleBefore);
+                reset.executeUpdate();
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT id,player_uuid,narcotic_id,amount FROM narcotics_pending_refunds WHERE player_uuid=? AND status='PENDING' ORDER BY created_at ASC LIMIT ? FOR UPDATE")) {
+                statement.setString(1, playerUuid.toString());
+                statement.setInt(2, Math.max(1, Math.min(limit, 32)));
+                try (ResultSet rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        result.add(new PendingRefund(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)));
+                        ids.add(rs.getString(1));
+                    }
+                }
+            }
+            long now = Instant.now().getEpochSecond();
+            for (String id : ids) {
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE narcotics_pending_refunds SET status='DELIVERING',updated_at=? WHERE id=? AND status='PENDING'")) {
+                    update.setLong(1, now);
+                    update.setString(2, id);
+                    update.executeUpdate();
+                }
+            }
+            return result;
+        }));
+    }
+
+    public CompletableFuture<Void> completePendingRefund(String id) {
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE narcotics_pending_refunds SET status='DELIVERED',updated_at=? WHERE id=? AND status='DELIVERING'")) {
+                statement.setLong(1, Instant.now().getEpochSecond());
+                statement.setString(2, id);
+                statement.executeUpdate();
+            }
+            return null;
+        }));
+    }
+
+    public CompletableFuture<Void> releasePendingRefund(String id) {
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE narcotics_pending_refunds SET status='PENDING',updated_at=? WHERE id=? AND status='DELIVERING'")) {
+                statement.setLong(1, Instant.now().getEpochSecond());
+                statement.setString(2, id);
+                statement.executeUpdate();
             }
             return null;
         }));
@@ -383,6 +469,18 @@ public final class NarcoticsDatabase {
                   created_at BIGINT NOT NULL DEFAULT 0
                 )
                 """);
+        sql.add("""
+                CREATE TABLE IF NOT EXISTS narcotics_pending_refunds (
+                  id TEXT PRIMARY KEY,
+                  player_uuid TEXT NOT NULL,
+                  narcotic_id TEXT NOT NULL,
+                  amount INTEGER NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'PENDING',
+                  created_at BIGINT NOT NULL DEFAULT 0,
+                  updated_at BIGINT NOT NULL DEFAULT 0
+                )
+                """);
+        sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_refunds_player ON narcotics_pending_refunds(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_brewing_updated ON narcotics_brewing_states(updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_admin_audit_created ON narcotics_admin_audit(created_at)");
         return sql;

@@ -12,6 +12,66 @@
 }
 .elections-hero .public-hero-copy,
 .elections-hero .election-readonly-note { position: relative; z-index: 1; }
+.elections-hero-side { position: relative; z-index: 1; }
+.elections-live-card {
+  display: grid;
+  gap: 12px;
+  min-height: 100%;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 18%, transparent), transparent 54%),
+    var(--showcase-panel, var(--surface));
+}
+.elections-live-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.elections-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.elections-live-status {
+  color: var(--ink);
+  font-size: clamp(1.45rem, 2.4vw, 2.15rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.elections-live-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.elections-hero-mini-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+}
+.elections-hero-mini-stats span {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, var(--accent));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-soft) 84%, transparent);
+}
+.elections-hero-mini-stats small {
+  color: var(--muted);
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.elections-hero-mini-stats strong {
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
 .election-readonly-note {
   display: inline-flex;
   align-items: center;
@@ -35,6 +95,12 @@
   margin-top: 2px;
 }
 .election-summary-bar h2 { margin: 4px 0 0; }
+.election-summary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
 .election-updated { color: var(--muted); font-size: .82rem; white-space: nowrap; }
 .election-stats-grid {
   display: grid;
@@ -130,6 +196,7 @@
 }
 @media (max-width: 640px) {
   .election-summary-bar { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .election-summary-actions { align-items: flex-start; justify-content: space-between; width: 100%; }
   .election-updated { white-space: normal; }
   .election-stats-grid { grid-template-columns: 1fr 1fr; }
   .public-candidate-card { grid-template-columns: 1fr; }

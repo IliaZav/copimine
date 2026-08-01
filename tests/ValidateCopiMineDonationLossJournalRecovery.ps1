@@ -18,9 +18,8 @@ Require-Contains 'private void releaseDonationLossJournalGuard' 'A completed los
 Require-Regex 'if \(!this\.applyDonationLossJournalEntry\(var4\)\) \{[\s\S]*?\} else \{[\s\S]*?releaseDonationLossJournalGuard\(var4\);' 'Only successfully applied loss entries may release the deduplication key.'
 Require-Regex 'catch \(SQLException var6\) \{[\s\S]*?var2\.add\(var4\);' 'Database failures must leave the journal entry queued for retry.'
 Require-Regex 'releaseDonationLossJournalGuard\(CopiMineArtifacts\.DonationLossJournalEntry var1\)[\s\S]*?lossJournalInFlight\.remove\(' 'The release helper must remove exactly the completed instance key.'
-Require-Contains 'case VOID:' 'Void loss must remain covered.'
-Require-Contains 'case BLOCK_EXPLOSION:' 'Explosion loss must remain covered.'
-Require-Contains 'case CONTACT:' 'Cactus/contact loss must remain covered.'
+Require-Contains 'DamageCause.VOID' 'Void loss must remain covered.'
+Require-Contains 'case KILL, WORLD_BORDER, CONTACT, ENTITY_ATTACK, ENTITY_SWEEP_ATTACK, PROJECTILE,' 'All damage causes must remain covered.'
 Require-Contains 'handleCreativeDonationLoss' 'Creative deletion must remain covered.'
 
 if ($errors.Count -gt 0) {

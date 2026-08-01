@@ -425,6 +425,10 @@ export function createHomepageRenderer() {
   const electionCandidates = document.getElementById("publicElectionCandidates");
   const electionLaws = document.getElementById("publicElectionLaws");
   const electionUpdated = document.getElementById("publicElectionUpdated");
+  const electionHeroStatus = document.getElementById("publicElectionHeroStatus");
+  const electionHeroMeta = document.getElementById("publicElectionHeroMeta");
+  const electionHeroCandidates = document.getElementById("publicElectionHeroCandidates");
+  const electionHeroVotes = document.getElementById("publicElectionHeroVotes");
 
   let currentBudgetValue = 0;
   let currentAuth = { role: "", cookieAuth: false };
@@ -765,24 +769,46 @@ export function createHomepageRenderer() {
       ACTIVE: "Идут",
     };
     const normalized = String(stage || "").trim().toUpperCase();
-    return labels[normalized] || (normalized ? normalized.replaceAll("_", " ") : "Этап не задан");
+    return labels[normalized] || (normalized ? normalized.replaceAll("_", " ") : "Нет активной кампании");
   }
 
   function renderElections(payload = {}) {
     if (!electionStage && !electionCandidates) return;
+    const unavailable = payload?._unavailable === true;
     const election = payload && typeof payload.election === "object" ? payload.election : {};
     const summary = payload && typeof payload.summary === "object" ? payload.summary : {};
     const candidates = Array.isArray(payload.candidates)
       ? payload.candidates.filter((row) => row && row.approved !== false && String(row.name || "").trim())
       : [];
-    const totalVotes = Math.max(0, Number(summary.totalVotes || candidates.reduce((sum, row) => sum + Math.max(0, Number(row.votes || 0)), 0)) || 0);
+    const candidateCount = Math.max(candidates.length, Number(summary.candidateCount ?? candidates.length) || 0);
+    const totalVotes = Math.max(0, Number(summary.totalVotes ?? candidates.reduce((sum, row) => sum + Math.max(0, Number(row.votes || 0)), 0)) || 0);
+    const votingBlocks = Math.max(0, Number(summary.votingBlocks ?? 0) || 0);
+    const hasElection = !unavailable && Boolean(String(election.id || election.stage || election.status || "").trim());
     const maxVotes = Math.max(1, ...candidates.map((row) => Math.max(0, Number(row.votes || 0) || 0)));
-    const stage = electionStageLabel(election.stage || election.status);
+    const stage = unavailable ? "Данные недоступны" : electionStageLabel(election.stage || election.status);
     const round = Math.max(1, Number(election.round || 1) || 1);
 
     if (electionStage) electionStage.textContent = stage;
-    if (electionMeta) electionMeta.textContent = `Тур ${round} · ${candidates.length} одобренных кандидатов · только просмотр`;
-    if (electionUpdated) electionUpdated.textContent = payload.generatedAt ? `Обновлено ${formatDate(payload.generatedAt)}` : "Данные обновляются автоматически";
+    if (electionMeta) electionMeta.textContent = unavailable
+      ? "Сейчас не удалось получить снимок выборов · повторите обновление"
+      : hasElection
+        ? `Тур ${round} · ${candidateCount} одобренных кандидатов · только просмотр`
+        : "Активная кампания ещё не запущена · только просмотр";
+    if (electionUpdated) electionUpdated.textContent = unavailable
+      ? "Обновление не удалось"
+      : payload.generatedAt ? `Обновлено ${formatDate(payload.generatedAt)}` : "Данные обновляются автоматически";
+    if (electionHeroStatus) electionHeroStatus.textContent = stage;
+    if (electionHeroMeta) {
+      electionHeroMeta.textContent = unavailable
+        ? "Сервер не ответил вовремя. Нажмите «Обновить», чтобы повторить запрос."
+        : !hasElection
+        ? "Активная кампания ещё не запущена. Здесь появится актуальный этап после старта выборов."
+        : candidateCount
+        ? `${candidateCount} кандидатов участвуют в текущем туре · ${totalVotes.toLocaleString("ru-RU")} голосов учтено.`
+        : "Заявки ещё проходят подготовку. Как только состав будет утверждён, он появится здесь.";
+    }
+    if (electionHeroCandidates) electionHeroCandidates.textContent = candidateCount.toLocaleString("ru-RU");
+    if (electionHeroVotes) electionHeroVotes.textContent = totalVotes.toLocaleString("ru-RU");
 
     if (electionStats) {
       const stat = (label, value, note) => {
@@ -792,15 +818,20 @@ export function createHomepageRenderer() {
       };
       replaceChildrenSafe(electionStats, [
         stat("Этап", stage, "текущий статус процесса"),
-        stat("Кандидаты", String(candidates.length), "заявки одобрены"),
+        stat("Кандидаты", String(candidateCount), "заявки одобрены"),
         stat("Учтено голосов", totalVotes.toLocaleString("ru-RU"), "агрегированный результат"),
-        stat("Блоки голосования", String(Number(summary.votingBlocks || 0)), "защищённые блоки в игре"),
+        stat("Блоки голосования", String(votingBlocks), "защищённые блоки в игре"),
       ]);
     }
 
     if (electionCandidates) {
       if (!candidates.length) {
-        replaceChildrenSafe(electionCandidates, [cardStrong("Одобренных кандидатов пока нет", "Администратор покажет список после проверки заявок.", "", mcIcon("written_book.png"))]);
+        replaceChildrenSafe(electionCandidates, [cardStrong(
+          unavailable ? "Не удалось получить список кандидатов" : candidateCount ? "Список кандидатов синхронизируется" : "Одобренных кандидатов пока нет",
+          unavailable ? "Повторите обновление через несколько секунд." : candidateCount ? "Количество уже обновлено. Имена появятся после следующего ответа сервера." : "Администратор покажет список после проверки заявок.",
+          "",
+          mcIcon("written_book.png"),
+        )]);
       } else {
         replaceChildrenSafe(electionCandidates, candidates.map((row, index) => {
           const name = String(row.name || "Кандидат").trim();

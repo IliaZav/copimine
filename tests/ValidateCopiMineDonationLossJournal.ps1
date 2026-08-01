@@ -7,7 +7,7 @@ Require-Contains $artifacts 'recordDonationLossJournal(' 'Artifacts must persist
 Require-Contains $artifacts 'flushPendingDonationLossJournalAsync()' 'Artifacts must asynchronously reconcile pending loss journal entries back into PostgreSQL.'
 Require-Contains $artifacts 'applyDonationLossJournalEntry(' 'Artifacts must replay pending loss journal entries on startup or retry.'
 Require-Contains $artifacts 'public void onDonationItemRemoved(EntityRemoveEvent event)' 'Artifacts must catch plugin/discard item-entity removal that has no damage event.'
-Require-Contains $artifacts 'EntityRemoveEvent.Cause.PLUGIN' 'Silent plugin item removal must be journaled for reclaim.'
+Require-Contains $artifacts 'case DEATH, DESPAWN, DROP, ENTER_BLOCK, EXPLODE, HIT, MERGE, OUT_OF_WORLD, PLUGIN, DISCARD' 'Silent plugin item removal must be journaled for reclaim.'
 Require-Contains $artifacts 'recordDonationLossOnce(' 'Loss handlers must deduplicate removal notifications for one instance.'
 Require-Contains $artifacts 'registerExternalItemRemovalListener' 'Silent item removal listener must be registered explicitly.'
 Require-Contains $artifacts 'registerEvent(' 'EntityRemoveEvent must not rely on deprecated annotation scanning.'

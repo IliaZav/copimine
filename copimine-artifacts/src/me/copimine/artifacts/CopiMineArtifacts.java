@@ -3,9 +3,12 @@ package me.copimine.artifacts;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.sql.Array;
 import java.sql.Connection;
@@ -92,15 +95,22 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockBurnEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.block.BlockCookEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -108,6 +118,8 @@ import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.inventory.InventoryPickupItemEvent;
+import org.bukkit.event.inventory.BrewEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.event.inventory.PrepareGrindstoneEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
@@ -120,6 +132,7 @@ import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import io.papermc.paper.event.player.PlayerShieldDisableEvent;
+import io.papermc.paper.event.entity.EntityInsideBlockEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -158,6 +171,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
    private static final String GUI_BACK_LABEL = "&aНазад";
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
+   private static final int COMPASS_COOLDOWN_SECONDS = 15;
+   /** One chunk is sixteen blocks; the actual limit is the world's view distance. */
+   private static final double MAX_COMPASS_TELEPORT_DISTANCE = 16.0D;
    private static final Map<String, Integer> ARTIFACT_MODEL_DATA = Map.of("zmei_gorynych", 10001);
    private static final Map<String, Integer> ARTIFACT_EFFECT_CHANCE = Map.of("zmei_gorynych", 10);
    private static final Map<String, String> ARTIFACT_VISUAL_EFFECTS = Map.of("zmei_gorynych", "INVERTED_SCREEN");
@@ -388,6 +404,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    public void onDisable() {
+      // Never leave temporary magma blocks behind during a normal plugin
+      // reload/restart; every graceful shutdown restores the exact original
+      // BlockData before the world is handed back to Bukkit.
+      this.restorePendingMagmaBlocks();
       Bukkit.getScheduler().cancelTasks(this);
       this.cleanupAllProtectedBlockVisualEntities();
       if (this.deliveryTask != null) {
@@ -437,9 +457,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                Files.writeString(var1.toPath(), this.defaultItemsYaml(), StandardCharsets.UTF_8);
             } catch (IOException var4) {
                throw new RuntimeException(var4);
-            }
-         }
-      }
+   }
+   }
+   }
+
    }
 
    private String defaultItemsYaml() {
@@ -588,6 +609,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS custom_model_data INTEGER NOT NULL DEFAULT 0");
          var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS effect_chance_percent INTEGER NOT NULL DEFAULT 100");
          var2.execute("ALTER TABLE artifact_items_catalog ADD COLUMN IF NOT EXISTS visual_effect_id TEXT NOT NULL DEFAULT ''");
+         try (PreparedStatement migrateBroken = var1.prepareStatement(
+               "UPDATE artifact_item_instances SET status='LOST_RECLAIMABLE',updated_at=? WHERE status='BROKEN'"
+         )) {
+            migrateBroken.setLong(1, this.now());
+            int migrated = migrateBroken.executeUpdate();
+            if (migrated > 0) {
+               this.getLogger().info("Migrated " + migrated + " legacy BROKEN donation instances to LOST_RECLAIMABLE.");
+            }
+         }
       } finally {
          this.pgPool.release(var1);
       }
@@ -893,8 +923,26 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   this.openMain(var1.getPlayer(), var3, true);
                }
             }
+      }
+      }
+   }
+
+   private void restorePendingMagmaBlocks() {
+      for (PozdnyakovMagmaRestore restore : this.pozdnyakovMagmaRestores.values()) {
+         if (restore == null || restore.location() == null || restore.location().getWorld() == null) {
+            continue;
+         }
+         Block block = restore.location().getBlock();
+         if (block.getType() != Material.MAGMA_BLOCK) {
+            continue;
+         }
+         try {
+            block.setBlockData(Bukkit.createBlockData(restore.originalBlockData()), false);
+         } catch (IllegalArgumentException ignored) {
+            block.setType(Material.LAVA, false);
          }
       }
+      this.pozdnyakovMagmaRestores.clear();
    }
 
    @EventHandler(
@@ -955,9 +1003,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onShopBreak(BlockBreakEvent var1) {
-      if (!this.chainedTreeBreaks.remove(this.blockKey(var1.getBlock().getLocation()))) {
-         CopiMineArtifacts.Shop var2 = this.shopsByLocation.get(this.blockKey(var1.getBlock().getLocation()));
-         if (var2 != null) {
+      String blockKey = this.blockKey(var1.getBlock().getLocation());
+      CopiMineArtifacts.Shop var2 = this.shopsByLocation.get(blockKey);
+      // The chain marker prevents recursive tool events only after the shop
+      // registry has had a chance to veto the protected anchor itself.
+      if (var2 != null) {
             var1.setCancelled(true);
             if (!this.isArtifactsAdmin(var1.getPlayer())) {
                var1.getPlayer()
@@ -969,7 +1019,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             } else {
                this.removeShopWithCleanup(var1.getPlayer(), var2);
             }
-         } else {
+      } else if (!this.chainedTreeBreaks.remove(blockKey)) {
             Player var3 = var1.getPlayer();
             CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var3.getInventory().getItemInMainHand(), var3, "tool_use");
             if (var4 != null) {
@@ -1033,7 +1083,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
          }
       }
-   }
 
    @EventHandler(
       priority = EventPriority.HIGHEST,
@@ -1208,7 +1257,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var2.getHolder() instanceof CopiMineArtifacts.MenuHolder) {
          var1.setCancelled(true);
       } else {
-         if (this.isBlockedArtifactProcessingInventory(var2) && this.isOfficialArtifactItem(var1.getOldCursor())) {
+         if (this.isBlockedArtifactProcessingInventory(var2)
+               && (this.isOfficialArtifactItem(var1.getOldCursor()) || this.containsOfficialArtifact(var2))) {
             for (int var4 : var1.getRawSlots()) {
                if (var4 >= 0 && var4 < var2.getSize()) {
                   var1.setCancelled(true);
@@ -1224,8 +1274,52 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onInventoryMoveItem(InventoryMoveItemEvent var1) {
-      if (this.isBlockedArtifactProcessingInventory(var1.getDestination()) && this.isOfficialArtifactItem(var1.getItem())) {
+      if (this.isOfficialArtifactItem(var1.getItem())
+            && (this.isBlockedArtifactProcessingInventory(var1.getDestination())
+               || this.isBlockedArtifactProcessingInventory(var1.getSource()))) {
          var1.setCancelled(true);
+      }
+   }
+
+   /**
+    * Hopper-like inventories can pick an item entity directly without first
+    * firing InventoryMoveItemEvent.  Keep official donation items as physical
+    * entities so a container/plugin cannot silently own or discard the only
+    * copy before the loss journal sees it.
+    */
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onInventoryPickupItem(InventoryPickupItemEvent event) {
+      if (event != null && event.getItem() != null
+            && this.isOfficialDonationItem(event.getItem().getItemStack())) {
+         event.setCancelled(true);
+      }
+   }
+
+   /** Prevent an already-present official item from being consumed by a
+    * furnace, smoker, blast furnace, or campfire after an older plugin/client
+    * path inserted it before the inventory guard ran. */
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onOfficialBlockCook(BlockCookEvent event) {
+      if (event != null && this.isOfficialArtifactItem(event.getSource())) {
+         event.setCancelled(true);
+      }
+   }
+
+   /** Brewing consumes its ingredient slots without an item-entity event. */
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onOfficialBrew(BrewEvent event) {
+      if (event != null && event.getContents() != null
+            && this.hasOfficialArtifactIngredient(event.getContents().getContents())) {
+         event.setCancelled(true);
       }
    }
 
@@ -1306,8 +1400,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    @EventHandler
    public void onQuit(PlayerQuitEvent var1) {
-      this.sessions.remove(var1.getPlayer().getUniqueId());
-      this.pozdnyakovNauseaCooldowns.remove(var1.getPlayer().getUniqueId());
+      UUID playerUuid = var1.getPlayer().getUniqueId();
+      this.sessions.remove(playerUuid);
+      this.pozdnyakovNauseaCooldowns.remove(playerUuid);
+      String prefix = playerUuid + ":";
+      this.actionCooldowns.keySet().removeIf(key -> key.startsWith(prefix));
    }
 
    private void tickPozdnyakovAce() {
@@ -1319,7 +1416,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
          Block block = restore.location().getBlock();
          if (block.getType() == Material.MAGMA_BLOCK) {
-            block.setType(Material.LAVA, false);
+            try {
+               block.setBlockData(Bukkit.createBlockData(restore.originalBlockData()), false);
+            } catch (IllegalArgumentException ignored) {
+               block.setType(Material.LAVA, false);
+            }
          }
          this.pozdnyakovMagmaRestores.remove(entry.getKey(), restore);
       }
@@ -1339,10 +1440,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                Block block = center.getRelative(dx, 0, dz);
                Material originalType = block.getType();
                if (originalType == Material.LAVA) {
+                  String originalBlockData = block.getBlockData().getAsString();
                   block.setType(Material.MAGMA_BLOCK, false);
                   this.pozdnyakovMagmaRestores.put(
                      this.blockKey(block.getLocation()),
-                     new PozdnyakovMagmaRestore(block.getLocation(), nowMillis + (POZDNYAKOV_LAVA_RESTORE_TICKS * 50L))
+                     new PozdnyakovMagmaRestore(block.getLocation(), originalBlockData, nowMillis + (POZDNYAKOV_LAVA_RESTORE_TICKS * 50L))
                   );
                }
             }
@@ -1470,24 +1572,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onPlayerItemBreak(PlayerItemBreakEvent var1) {
       CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getBrokenItem());
       if (var2 != null && var1.getPlayer().getUniqueId().equals(var2.ownerUuid())) {
-         this.runAsync(() -> {
-            try {
-               CopiMineArtifacts.DonationCatalogItem catalog = this.donationCatalogById.get(var2.itemId());
-               boolean consumed = catalog != null && "CONSUME".equalsIgnoreCase(catalog.consumePolicy());
-               boolean marked = consumed
-                  ? this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "CONSUMED", Set.of("ACTIVE", "DELIVERING"), true)
-                  : this.updateDonationInstanceStatus(var2.ownerUuid(), var2.uniqueItemId(), var2.itemId(), "BROKEN", Set.of("ACTIVE", "DELIVERING"), true);
-               // Breaking an item is different from losing it: a broken
-               // instance is terminal and must not appear in the loss-only
-               // reclaim list.  Items lost in the void, on despawn, or during
-               // an interrupted delivery use LOST_RECLAIMABLE instead.
-               if (marked) {
-                  this.audit(var1.getPlayer().getName(), "donation_item_broken", var2.uniqueItemId(), var2.itemId());
-               }
-            } catch (SQLException var4) {
-               this.getLogger().log(Level.WARNING, "Donation item break status update failed", (Throwable)var4);
-            }
-         });
+         // A durability break is still physical destruction.  Journal it
+         // before any asynchronous DB work so it follows the same durable
+         // LOST_RECLAIMABLE path as cactus, void, fire and explosions.
+         if (!this.recordDonationLossOnce(var2, "break")) {
+            this.getLogger().warning("Donation loss journal is unavailable during durability break handling.");
+            return;
+         }
+         this.flushPendingDonationLossJournalAsync();
       }
    }
 
@@ -1506,6 +1598,33 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    /**
+    * A dropped item entering a cactus is discarded by the block-contact path
+    * before older Paper/Purpur builds reliably emit an EntityDamageEvent for
+    * the Item entity.  Journal the loss at the block boundary, before vanilla
+    * can discard the physical entity, so the reclaim menu has a durable row.
+    */
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = false
+   )
+   public void onDonationItemInsideBlock(EntityInsideBlockEvent event) {
+      if (!(event.getEntity() instanceof Item item) || event.getBlock() == null
+            || event.getBlock().getType() != Material.CACTUS) {
+         return;
+      }
+      OfficialDonationRef ref = this.officialDonationRef(item.getItemStack());
+      if (ref == null) {
+         return;
+      }
+      event.setCancelled(true);
+      if (!this.recordDonationLossOnce(ref, "cactus")) {
+         return;
+      }
+      item.remove();
+      this.flushPendingDonationLossJournalAsync();
+   }
+
+   /**
     * Covers silent removal by another plugin (creative cleanup, clear-lag,
     * discard, or a direct entity removal).  Those paths do not expose a
     * cancellable damage event, so we journal the loss before the next
@@ -1516,11 +1635,21 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       EntityRemoveEvent.Cause cause = event.getCause();
-      if (cause != EntityRemoveEvent.Cause.PLUGIN
-            && cause != EntityRemoveEvent.Cause.DISCARD
-            && cause != EntityRemoveEvent.Cause.EXPLODE
-            && cause != EntityRemoveEvent.Cause.DESPAWN
-            && cause != EntityRemoveEvent.Cause.OUT_OF_WORLD) {
+      if (cause == null) {
+         // Paper currently guarantees a cause, but a malformed/custom event
+         // must fail closed rather than crash the listener before journaling.
+         cause = EntityRemoveEvent.Cause.PLUGIN;
+      }
+      // Pickup, chunk/world unload and player quit preserve the physical
+      // item. Every other removal cause means the entity copy disappeared;
+      // keep the unique identity recoverable, including transformation and
+      // MERGE/DEATH/DROP/HIT paths that cleanup plugins or Paper updates expose.
+      boolean preservesPhysicalItem = switch (cause) {
+         case PICKUP, PLAYER_QUIT, UNLOAD -> true;
+         case DEATH, DESPAWN, DROP, ENTER_BLOCK, EXPLODE, HIT, MERGE, OUT_OF_WORLD, PLUGIN, DISCARD, TRANSFORMATION -> false;
+         default -> false;
+      };
+      if (preservesPhysicalItem) {
          return;
       }
       OfficialDonationRef ref = this.officialDonationRef(item.getItemStack());
@@ -1529,11 +1658,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-    @EventHandler(
-       priority = EventPriority.HIGHEST,
-       ignoreCancelled = true
-    )
-    public void onDonationItemDestroyed(EntityDamageEvent var1) {
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onDonationItemDestroyed(EntityDamageEvent var1) {
        // Official donation items are intentionally indestructible.  Handle
        // the damage at HIGHEST so vanilla cactus/explosion/void processing
        // cannot remove the entity before the durable loss journal is written.
@@ -1541,35 +1670,38 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        // alone; this handler only owns a real, uncancelled damage event.
       if (var1.getEntity() instanceof Item var2) {
          CopiMineArtifacts.OfficialDonationRef var4 = this.officialDonationRef(var2.getItemStack());
-         if (var4 != null) {
-            switch (var1.getCause()) {
-               case FIRE:
-               case FIRE_TICK:
-               case LAVA:
-               case BLOCK_EXPLOSION:
-               case ENTITY_EXPLOSION:
-               case CONTACT:
-                  var1.setCancelled(true);
-                  if (!this.recordDonationLossOnce(var4, var1.getCause().name().toLowerCase(Locale.ROOT))) {
-                     return;
-                   } else {
-                      var2.remove();
-                      this.flushPendingDonationLossJournalAsync();
-                   }
-                   break;
-               case VOID:
-                  // A void throw is a real loss.  Journal it before removing
-                  // the entity so the owner can see it in the loss-only
-                  // reclaim menu after the database reconciliation.
-                  var1.setCancelled(true);
-                  if (!this.recordDonationLossOnce(var4, "void")) {
-                     return;
-                  }
-                  var2.remove();
-                  this.flushPendingDonationLossJournalAsync();
+         if (var4 != null && this.isPotentiallyDestructiveItemDamage(var1.getCause())) {
+            // Treat every damage cause on a dropped official item as a loss.
+            // This includes /kill (KILL), world-border/falling-block cases,
+            // fire/lava/cactus, all explosion variants and future Paper causes
+            // through the default branch. Never let one omitted enum value
+            // bypass the reclaim journal.
+            var1.setCancelled(true);
+            DamageCause damageCause = var1.getCause();
+            String reason = damageCause == DamageCause.VOID
+               ? "void"
+               : damageCause == null ? "unknown-damage" : damageCause.name().toLowerCase(Locale.ROOT);
+            if (!this.recordDonationLossOnce(var4, reason)) {
+               return;
             }
-         }
+             var2.remove();
+             this.flushPendingDonationLossJournalAsync();
+          }
+       }
+   }
+
+   private boolean isPotentiallyDestructiveItemDamage(DamageCause cause) {
+      if (cause == null) {
+         return true;
       }
+      return switch (cause) {
+         case KILL, WORLD_BORDER, CONTACT, ENTITY_ATTACK, ENTITY_SWEEP_ATTACK, PROJECTILE,
+            SUFFOCATION, FALL, FIRE, FIRE_TICK, MELTING, LAVA, DROWNING, BLOCK_EXPLOSION,
+            ENTITY_EXPLOSION, VOID, LIGHTNING, SUICIDE, STARVATION, POISON, MAGIC, WITHER,
+            FALLING_BLOCK, THORNS, DRAGON_BREATH, CUSTOM, FLY_INTO_WALL, HOT_FLOOR,
+            CAMPFIRE, CRAMMING, DRYOUT, FREEZE, SONIC_BOOM -> true;
+         default -> true;
+      };
    }
 
    private boolean recordDonationLossOnce(OfficialDonationRef ref, String reason) {
@@ -1617,6 +1749,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          CopiMineArtifacts.SessionState var3 = var2.getValue();
          return var3 != null && var3.purchaseInFlightId.isBlank() && var3.lastActionAt > 0L && var3.lastActionAt < var1;
       });
+      long nowSeconds = this.now();
+      this.actionCooldowns.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= nowSeconds);
+      this.pozdnyakovNauseaCooldowns.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= nowSeconds);
+      this.lastDeathLocations.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
    }
 
    @EventHandler
@@ -1736,7 +1872,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   default -> false;
                };
                if (var10) {
-                  this.actionCooldowns.put(this.actionCooldownKey(var2, var3), var6 + (long)Math.max(1, var3.cooldownSeconds()));
+                  long cooldownSeconds = "LOOT_COMPASS".equals(var4)
+                     ? COMPASS_COOLDOWN_SECONDS
+                     : Math.max(1, var3.cooldownSeconds());
+                  this.actionCooldowns.put(this.actionCooldownKey(var2, var3), var6 + cooldownSeconds);
                   if (!var3.visualEffectId().isBlank()) {
                      this.visualEffects.applyTo(var2, var3.visualEffectId(), Math.max(4, var3.cooldownSeconds()));
                   }
@@ -1923,7 +2062,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      Location var20 = var1.getEntity().getLocation().add(0.0, 1.0, 0.0);
                      switch (var16) {
                         case "LIGHTNING":
-                           var20.getWorld().strikeLightning(var1.getEntity().getLocation());
+                            var20.getWorld().strikeLightning(var1.getEntity().getLocation());
                            var20.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, var20, 10, 0.3, 0.3, 0.3, 0.01);
                            var20.getWorld().playSound(var20, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 0.5F, 1.8F);
                            var1.setDamage(var1.getDamage() + 2.0);
@@ -1981,7 +2120,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  this.applyTemporaryCobwebSnare(var2, var10, 200L);
                               }
                            }
-                           var20.getWorld().strikeLightning(var1.getEntity().getLocation());
+                           var20.getWorld().strikeLightningEffect(var1.getEntity().getLocation());
                            var20.getWorld().spawnParticle(Particle.CRIT, var20, 18, 0.35, 0.35, 0.35, 0.03);
                            break;
                         case "NAKOPAL_PICKAXE":
@@ -7139,26 +7278,30 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private CopiMineArtifacts.ShopRevenueRecipient resolveActivePresidentRevenueRecipient() {
       Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineElectionCore");
       if (var1 == null || !var1.isEnabled()) {
-         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, TREASURY_LABEL, "", PRESIDENT_BUDGET_ACCOUNT_ID);
+         return null;
       }
 
       try {
-         Object var2 = var1.getClass().getMethod("activePresidentRevenueProfile").invoke(var1);
-         if (!(var2 instanceof Map<?, ?> var3)) {
-            return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, TREASURY_LABEL, "", PRESIDENT_BUDGET_ACCOUNT_ID);
-         }
+          Object var2 = var1.getClass().getMethod("activePresidentRevenueProfile").invoke(var1);
+          if (!(var2 instanceof Map<?, ?> var3)) {
+             return null;
+          }
 
-         String var4 = this.firstNonBlank(this.str(var3.get("president_uuid")), "");
-         UUID var5 = var4.isBlank() ? EMPTY_UUID : UUID.fromString(var4);
-         return new CopiMineArtifacts.ShopRevenueRecipient(
-            var5,
-            TREASURY_LABEL,
-            this.firstNonBlank(this.str(var3.get("term_id")), ""),
-            this.firstNonBlank(this.str(var3.get("budget_account_id")), PRESIDENT_BUDGET_ACCOUNT_ID)
-         );
+          String var4 = this.firstNonBlank(this.str(var3.get("president_uuid")), "");
+          String termId = this.firstNonBlank(this.str(var3.get("term_id")), "");
+          if (var4.isBlank() || termId.isBlank()) {
+             return null;
+          }
+          UUID var5 = UUID.fromString(var4);
+          return new CopiMineArtifacts.ShopRevenueRecipient(
+             var5,
+             TREASURY_LABEL,
+             termId,
+             this.firstNonBlank(this.str(var3.get("budget_account_id")), PRESIDENT_BUDGET_ACCOUNT_ID)
+          );
       } catch (Exception var6) {
          this.getLogger().log(Level.WARNING, "Failed to resolve active president for artifact revenue", (Throwable)var6);
-         return new CopiMineArtifacts.ShopRevenueRecipient(EMPTY_UUID, TREASURY_LABEL, "", PRESIDENT_BUDGET_ACCOUNT_ID);
+         return null;
       }
    }
 
@@ -7852,24 +7995,33 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                String var7 = this.firstNonBlank((String)var3.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
                String var8 = this.firstNonBlank((String)var3.get(this.keyOwnerUuid, PersistentDataType.STRING), "");
                if (!var6.isBlank() && !var7.isBlank() && !var8.isBlank() && this.isDonationCatalogItem(var6)) {
-                  CopiMineArtifacts.OfficialInstanceBinding var9 = this.instanceBindings.get(var7);
-                  if (var9 != null
+               CopiMineArtifacts.OfficialInstanceBinding var9 = this.instanceBindings.get(var7);
+               if (this.provisionalDonationInstanceIds.contains(var7)) {
+                  // Delivery rows are deliberately fail-closed until the
+                  // inventory write and DB transition are committed.
+                  return null;
+               }
+               boolean cachedBindingMatches = var9 != null
                      && var6.equalsIgnoreCase(var9.itemId())
                      && var8.equalsIgnoreCase(var9.ownerUuid())
-                     && var6.equalsIgnoreCase(this.firstNonBlank(this.instanceToItem.get(var7), ""))) {
-                     UUID var10;
-                     try {
-                        var10 = UUID.fromString(var8);
-                     } catch (IllegalArgumentException var12) {
-                        return null;
-                     }
+                     && var6.equalsIgnoreCase(this.firstNonBlank(this.instanceToItem.get(var7), ""));
+               // Loss events can arrive while the plugin is still rebuilding
+               // its in-memory cache after a restart. The PDC carries the
+               // durable identity; the journal's DB lookup remains the final
+               // owner/item/status validation before anything is reclaimable.
+               if (var9 != null && !cachedBindingMatches) {
+                  return null;
+               }
+               UUID var10;
+               try {
+                  var10 = UUID.fromString(var8);
+               } catch (IllegalArgumentException var12) {
+                  return null;
+               }
 
-                     return new CopiMineArtifacts.OfficialDonationRef(
-                        var7, var6, var10, this.firstNonBlank((String)var3.get(this.keyPurchaseId, PersistentDataType.STRING), "")
-                     );
-                  } else {
-                     return null;
-                  }
+               return new CopiMineArtifacts.OfficialDonationRef(
+                  var7, var6, var10, this.firstNonBlank((String)var3.get(this.keyPurchaseId, PersistentDataType.STRING), "")
+               );
                } else {
                   return null;
                }
@@ -7880,6 +8032,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else {
          return null;
       }
+   }
+
+   private boolean isOfficialDonationItem(ItemStack stack) {
+      return this.officialDonationRef(stack) != null;
    }
 
    private boolean hasBlockingDonationInstance(UUID var1, String var2) throws SQLException {
@@ -8115,7 +8271,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                boolean var10000;
                try {
                   Files.createDirectories(this.donationLossJournalPath.getParent());
-                  Files.write(this.donationLossJournalPath, var4, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                   String payload = String.join(System.lineSeparator(), var4) + System.lineSeparator();
+                   try (FileChannel channel = FileChannel.open(this.donationLossJournalPath,
+                         StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+                      writeFully(channel, StandardCharsets.UTF_8.encode(payload));
+                      channel.force(true);
+                  }
                   var10000 = true;
                } catch (IOException var13) {
                   this.getLogger().log(Level.WARNING, "Failed to persist donation loss journal", (Throwable)var13);
@@ -8203,6 +8364,53 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   public void onProtectedShopExplode(EntityExplodeEvent event) {
+      event.blockList().removeIf(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())));
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   public void onProtectedShopBlockExplode(BlockExplodeEvent event) {
+      event.blockList().removeIf(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())));
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   public void onProtectedShopPistonExtend(BlockPistonExtendEvent event) {
+      if (event.getBlocks().stream().anyMatch(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   public void onProtectedShopPistonRetract(BlockPistonRetractEvent event) {
+      if (event.getBlocks().stream().anyMatch(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   public void onProtectedShopBurn(BlockBurnEvent event) {
+      if (this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))) {
+         event.setCancelled(true);
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onDonationItemMerge(ItemMergeEvent event) {
+      Item source = event.getEntity();
+      Item target = event.getTarget();
+      if (this.isOfficialDonationItem(source == null ? null : source.getItemStack())
+            || this.isOfficialDonationItem(target == null ? null : target.getItemStack())) {
+         // A merge would discard one unique PDC identity. Keep both physical
+         // copies separate; if another plugin removes one directly, the
+         // EntityRemoveEvent fallback still journals it as MERGE.
+         event.setCancelled(true);
+      }
+   }
+
    private List<CopiMineArtifacts.DonationLossJournalEntry> readDonationLossJournalEntries() throws IOException {
       if (this.donationLossJournalPath == null) {
          return List.of();
@@ -8249,18 +8457,30 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   );
                }
 
-               Files.write(
-                  this.donationLossJournalPath,
-                  var3,
-                  StandardCharsets.UTF_8,
-                  StandardOpenOption.CREATE,
-                  StandardOpenOption.TRUNCATE_EXISTING,
-                  StandardOpenOption.WRITE
-               );
+               Path temporary = this.donationLossJournalPath.resolveSibling(
+                  this.donationLossJournalPath.getFileName() + ".tmp-" + UUID.randomUUID());
+                String payload = String.join(System.lineSeparator(), var3) + System.lineSeparator();
+                try (FileChannel channel = FileChannel.open(temporary,
+                      StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                   writeFully(channel, StandardCharsets.UTF_8.encode(payload));
+                   channel.force(true);
+               }
+               try {
+                  Files.move(temporary, this.donationLossJournalPath,
+                     StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+               } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                  Files.move(temporary, this.donationLossJournalPath, StandardCopyOption.REPLACE_EXISTING);
+               }
             } else {
                Files.deleteIfExists(this.donationLossJournalPath);
             }
          }
+      }
+   }
+
+   private static void writeFully(FileChannel channel, ByteBuffer buffer) throws IOException {
+      while (buffer.hasRemaining()) {
+         channel.write(buffer);
       }
    }
 
@@ -8274,9 +8494,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
 
          String var3 = this.readDonationInstanceStatus(var2, var1.uniqueItemId(), var1.itemId());
-         if (var3 != null && !var3.isBlank()) {
+            if (var3 != null && !var3.isBlank()) {
             String var4 = var3.toUpperCase(Locale.ROOT);
-            if (Set.of("LOST_RECLAIMABLE", "REPLACED_AFTER_LOSS", "BROKEN", "CONSUMED", "DELETED_AS_INVALID").contains(var4)) {
+            if (Set.of("LOST_RECLAIMABLE", "REPLACED_AFTER_LOSS", "CONSUMED", "DELETED_AS_INVALID").contains(var4)) {
                return true;
             } else {
                this.markDonationInstancesLost(var2, Map.of(var1.uniqueItemId(), var1.itemId()), var1.reason());
@@ -8416,10 +8636,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return false;
       } else {
          return switch (var1.getType()) {
-            case CRAFTING, WORKBENCH, CRAFTER, FURNACE, BLAST_FURNACE, SMOKER, BREWING, SMITHING, ANVIL, GRINDSTONE, STONECUTTER, HOPPER, DROPPER, DISPENSER, LOOM, CARTOGRAPHY, ENCHANTING, MERCHANT -> true;
+            case CRAFTING, WORKBENCH, CRAFTER, FURNACE, BLAST_FURNACE, SMOKER, BREWING, SMITHING, ANVIL, GRINDSTONE, STONECUTTER, HOPPER, DROPPER, DISPENSER, LOOM, CARTOGRAPHY, ENCHANTING, MERCHANT, BEACON, COMPOSTER -> true;
             default -> false;
          };
       }
+   }
+
+   private boolean containsOfficialArtifact(Inventory inventory) {
+      if (inventory == null) {
+         return false;
+      }
+      for (ItemStack stack : inventory.getStorageContents()) {
+         if (this.isOfficialArtifactItem(stack)) {
+            return true;
+         }
+      }
+      return false;
    }
 
    private boolean shouldBlockOfficialArtifactInsertion(InventoryClickEvent var1) {
@@ -8432,6 +8664,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          boolean var5 = var3 >= 0 && var3 < var4;
          ItemStack var6 = var1.getCursor();
          ItemStack var7 = var1.getCurrentItem();
+         // An official item already inside a processing inventory can be
+         // consumed by furnace/anvil/grindstone logic even when the click is
+         // aimed at another slot. Cancel the whole interaction instead of
+         // protecting only the insertion side.
+         if (this.isOfficialArtifactItem(var6) || this.isOfficialArtifactItem(var7) || this.containsOfficialArtifact(var2)) {
+            return true;
+         }
          Inventory var8 = var1.getClickedInventory();
          if (var5 && this.isOfficialArtifactItem(var6)) {
             return true;
@@ -8565,7 +8804,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "AR_SHOP");
          }
 
-         this.ensureAttackDamageAttribute(var5, var1);
+         this.ensureAttackDamageAttribute(var6, var1);
          var5.setItemMeta(var6);
          return var5;
       }
@@ -8577,6 +8816,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       ItemMeta meta = stack.getItemMeta();
       if (meta == null) {
+         return;
+      }
+      this.ensureAttackDamageAttribute(meta, item);
+      stack.setItemMeta(meta);
+   }
+
+   private void ensureAttackDamageAttribute(ItemMeta meta, CopiMineArtifacts.CatalogItem item) {
+      if (meta == null || item == null || !this.isDamageMaterial(item.material()) || this.attackDamageKey == null) {
          return;
       }
       Collection<AttributeModifier> modifiers = meta.getAttributeModifiers(Attribute.GENERIC_ATTACK_DAMAGE);
@@ -8594,7 +8841,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             Attribute.GENERIC_ATTACK_DAMAGE,
             new AttributeModifier(this.attackDamageKey, delta, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.MAINHAND)
          );
-         stack.setItemMeta(meta);
       }
    }
 
@@ -9859,11 +10105,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return var1.isOp()
          || var1.hasPermission("copimine.artifacts.admin")
          || var1.hasPermission("copimine.admin")
-         || var1.hasPermission("copimine.ultra.admin")
-         || var1.hasPermission("copimine.election.admin")
-         || var1.hasPermission("copimine.election.cik")
-         || var1.hasPermission("copimine.economy.admin")
-         || var1.hasPermission("copimine.players.admin");
+         || var1.hasPermission("copimine.admin.ultra")
+         || var1.hasPermission("copimine.ultra.admin");
    }
 
    private boolean isRestrictedJuniorArtifactsAdmin(Player var1) {
@@ -10339,14 +10582,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private boolean pointCompassToLastDeath(Player player, ItemStack ignored) {
+      double maxDistance = compassTeleportDistance(player);
       Location origin = player.getLocation().clone();
       Location eye = player.getEyeLocation();
       Vector direction = eye.getDirection().normalize();
-      RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, 100.0D, FluidCollisionMode.NEVER, true);
+      RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, maxDistance, FluidCollisionMode.NEVER, true);
       Location requested = hit == null
-         ? eye.clone().add(direction.clone().multiply(100.0D))
+         ? eye.clone().add(direction.clone().multiply(maxDistance))
          : hit.getHitPosition().toLocation(player.getWorld()).subtract(direction.clone().multiply(1.75D));
-      Location safe = this.findSafeCompassLocation(origin, requested);
+      Location safe = this.findSafeCompassLocation(origin, requested, maxDistance);
       if (safe == null) {
          player.sendMessage(this.color("&eНе удалось найти безопасную точку в направлении взгляда."));
          return false;
@@ -10354,14 +10598,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!player.teleport(safe)) {
          return false;
       }
-      player.sendMessage(this.color("&aКомпас перенёс вас вперёд по направлению взгляда. &7Максимум 100 блоков."));
+      player.sendMessage(this.color("&aКомпас телепортации перенёс вас по направлению взгляда. &7Дальность: " + Math.round(maxDistance) + " блоков."));
       return true;
    }
 
-   private Location findSafeCompassLocation(Location origin, Location requested) {
+   private double compassTeleportDistance(Player player) {
+      if (player == null || player.getWorld() == null) {
+         return MAX_COMPASS_TELEPORT_DISTANCE;
+      }
+      int viewDistanceChunks = Math.max(1, player.getWorld().getViewDistance());
+      return Math.max(MAX_COMPASS_TELEPORT_DISTANCE, viewDistanceChunks * MAX_COMPASS_TELEPORT_DISTANCE);
+   }
+
+   private Location findSafeCompassLocation(Location origin, Location requested, double maxDistance) {
       if (origin == null || requested == null || origin.getWorld() == null || requested.getWorld() != origin.getWorld()) return null;
       Vector offset = requested.toVector().subtract(origin.toVector());
-      if (offset.lengthSquared() > 100.0D * 100.0D) requested = origin.clone().add(offset.normalize().multiply(100.0D));
+      if (offset.lengthSquared() > maxDistance * maxDistance) requested = origin.clone().add(offset.normalize().multiply(maxDistance));
       World world = origin.getWorld();
       int baseX = requested.getBlockX();
       int baseZ = requested.getBlockZ();
@@ -10375,7 +10627,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             for (int dx = -radius; dx <= radius; dx++) {
                for (int dz = -radius; dz <= radius; dz++) {
                   Location candidate = new Location(world, baseX + dx + 0.5D, baseY + dy, baseZ + dz + 0.5D);
-                  if (candidate.distanceSquared(origin) <= 100.0D * 100.0D && this.isSafeCompassLocation(candidate)) return candidate;
+                  if (candidate.distanceSquared(origin) <= maxDistance * maxDistance && this.isSafeCompassLocation(candidate)) return candidate;
                }
             }
          }
@@ -10438,7 +10690,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                boolean shell = Math.abs(dx) == 1 || Math.abs(dz) == 1 || y == 2;
                if (!shell) continue;
                Block block = origin.getRelative(dx, y, dz);
-               if (!block.isPassable() || block.isLiquid()
+               if (block.getType() != Material.AIR || block.isLiquid()
                      || this.shopsByLocation.containsKey(this.blockKey(block.getLocation()))) continue;
                Material cageMaterial = y == 2 ? Material.SAND : Material.COBWEB;
                BlockPlaceEvent place = new BlockPlaceEvent(
@@ -10476,7 +10728,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                Block block = origin.getRelative(dx, y, dz);
-               if (!block.isPassable() || block.isLiquid() || this.shopsByLocation.containsKey(this.blockKey(block.getLocation()))) {
+               if (block.getType() != Material.AIR || block.isLiquid() || this.shopsByLocation.containsKey(this.blockKey(block.getLocation()))) {
                   continue;
                }
                BlockPlaceEvent place = new BlockPlaceEvent(
@@ -11804,7 +12056,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    ) {
    }
 
-   private static record PozdnyakovMagmaRestore(Location location, long expiresAtMillis) {
+   private static record PozdnyakovMagmaRestore(Location location, String originalBlockData, long expiresAtMillis) {
    }
 
    private static enum Category {

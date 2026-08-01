@@ -71,7 +71,7 @@ export function createAdminCommercePages(deps) {
   function paymentModeLabel(value) {
     const provider = String(value || "").toUpperCase();
     if (provider === "YOOKASSA") return "ЮKassa";
-    if (provider === "MOCK_SBP") return "Тестовый режим";
+    if (provider === "MOCK_SBP") return "Платёжный шлюз не подключён";
     return "Оплата недоступна";
   }
 

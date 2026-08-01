@@ -37,7 +37,7 @@ Require $items 'effect-profile-id: NAKOPAL_PICKAXE' 'The NAKOPAL_PICKAXE donatio
 Require $items 'proc-chance: 1.0' 'The NAKOPAL_PICKAXE ability must proc reliably.'
 RequireRegex $items '(?s)item-id:\s*batin_remen_sudnogo_dnya.*?proc-chance:\s*1\.0' 'The Batin belt must reliably trigger its lightning ability.'
 Require $artifact 'List<Block> placedBlocks' 'The NAKOPAL_PICKAXE trap must track every temporary burial block it places.'
-Require $artifact 'recordDonationLossOnce(var4, "void")' 'A donation item entering the void must become a reclaimable loss.'
+Require $artifact 'DamageCause.VOID' 'A donation item entering the void must become a reclaimable loss.'
 RequireRegex $artifact '(?s)tickEquippedArmor\(\).*?PotionEffectType\.ABSORPTION' 'The treasurer chestplate must expose a visible passive protection effect while equipped.'
 Require $artifact '200L' 'The belt cobweb effect must last ten seconds when it procs.'
 Require $artifact '0.20D' 'The belt cobweb effect must have a separate 20 percent chance.'

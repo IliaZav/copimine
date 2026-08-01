@@ -1693,7 +1693,9 @@ function humanizeAuditAction(value) {
     law_published: "Закон опубликован",
     tax_set: "Обновлена казна",
     president_assigned: "Выбран президент",
-    election_reset: "Выборы очищены"
+    election_reset: "Выборы очищены",
+    "election.maintenance.wipe_test_data": "Полный вайп данных выборов",
+    "election.maintenance.clear_custom_blocks": "Удалены кастомные блоки выборов"
   };
   return map[raw] || cleanText(value).replace(/^election[._]/i, "").replaceAll("_", " ") || "Событие";
 }
@@ -3933,6 +3935,16 @@ function renderRpElectionAdminPanel(applicationRows, votingBlocks) {
       <button class="btn btn-danger" data-click="rpElectionControl('finish_early')">Завершить кампанию досрочно</button>
       <button class="btn btn-danger" data-click="rpElectionControl('remove')">Снять президента</button>
     </div>
+    <div class="election-maintenance-panel">
+      <div class="election-maintenance-copy">
+        <strong>Тестовое обслуживание</strong>
+        <span>Опасные операции выполняются атомарно и записываются в аудит. Данные аккаунтов, экономики и лавки не затрагиваются.</span>
+      </div>
+      <div class="election-maintenance-actions">
+        <button class="btn btn-danger" data-click="rpElectionMaintenance('wipe_test_data')">Полный вайп данных выборов</button>
+        <button class="btn btn-danger btn-outline" data-click="rpElectionMaintenance('clear_custom_blocks')">Удалить кастомные блоки выборов</button>
+      </div>
+    </div>
     <div class="form-grid compact-grid">
       <label>Срок голосования<select id="rpVotingHours"><option value="24">24 часа</option><option value="48">48 часов</option><option value="72">72 часа</option></select></label>
       <label>Победитель при ничьей (UUID, необязательно)<input id="rpWinnerUuid" maxlength="64" placeholder="UUID кандидата"></label>
@@ -4089,7 +4101,7 @@ async function loadElectionsLegacy() {
           <article class="ledger-row">
             <div>
               <strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong>
-              <span>${esc(row.actor || row.actor_name || row.player_name || "Система CopiMine")}</span>
+              <span>${esc(row.actor || row.actor_name || row.player_name || "Система")}</span>
             </div>
             <div>
               <span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span>
@@ -4163,6 +4175,7 @@ async function loadElections() {
             ${pill(`Кандидатов: ${Number(summary.candidateCount ?? candidates.length)}`, candidates.length ? "good" : "warn")}
             ${pill(`Голосов: ${totalVotes}`, totalVotes ? "good" : "neutral")}
             ${pill(president.president_name || president.minecraft_name ? `Президент: ${president.president_name || president.minecraft_name}` : "Президент не выбран", president.president_name || president.minecraft_name ? "good" : "warn")}
+            <button class="btn btn-secondary btn-small" type="button" data-click="refreshElections()">Обновить данные</button>
           </div>
         </div>
         <div class="hero-board">
@@ -4176,10 +4189,12 @@ async function loadElections() {
       ${panel("Кандидаты и голоса", "Администратор утверждает от 2 до 4 кандидатов. Голоса видны во время голосования.", `${candidateCards(candidates)}<div class="spacer-12"></div>${resultBars(candidates, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}`)}
       ${panel("Интерактивные блоки", "Игрок нажимает на защищённый блок, выбирает голову кандидата и подтверждает свой голос.", `${rpVotingBlockCards(votingBlocks)}<div class="spacer-12"></div>${kv([["Активных блоков", activeBlocks.length], ["Всего голосов", totalVotes], ["Голосование до", deadline ? dt(deadline) : "не открыто"]])}`)}
       ${panel("Президентский срок", "Победитель получает полномочия ровно на семь дней. Новая кампания не запускается автоматически.", kv([["Президент", president.president_name || president.minecraft_name || election.president_name || "—"], ["Срок", election.president_term_days ? `${election.president_term_days} дней` : "7 дней"], ["Состояние", stage === "PRESIDENT_TERM" ? "исполняет полномочия" : "ожидает победителя"]]))}
-      ${panel("История кампании", "События нового RP-сценария без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система CopiMine")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
+      ${panel("История кампании", "События нового RP-сценария без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
     </section>
   `);
 }
+
+window.refreshElections = () => loadElections();
 
 function buildRpElectionControlPayload(action, stage = "") {
   const payload = { action };
@@ -4205,6 +4220,36 @@ window.rpElectionControl = async (action, stage = "") => {
     const headers = action === "finish" ? { [CONFIRM_HEADER]: "ELECTION_RP_FINISH" } : action === "finish_early" ? { [CONFIRM_HEADER]: "ELECTION_RP_FINISH_EARLY" } : action === "remove" ? { [CONFIRM_HEADER]: "ELECTION_RP_REMOVE" } : {};
     const result = await api("/api/elections/rp/control", { method: "POST", headers, body: JSON.stringify(payload) });
     operationAlert(result.earlyFinished ? "Кампания завершена досрочно. История и заявки сохранены." : result.stage ? `Этап изменён: ${result.stage}` : "Действие выборов выполнено.");
+    await loadElections();
+  } catch (error) {
+    operationAlert(describeError(error), true);
+  }
+};
+
+window.rpElectionMaintenance = async (action) => {
+  const normalized = String(action || "").trim().toLowerCase();
+  const configs = {
+    wipe_test_data: {
+      label: "ELECTION_RP_WIPE_TEST_DATA",
+      message: "Полностью очистить данные выборов для теста? Аккаунты, whitelist, экономика и лавка останутся нетронутыми. Визуальные маркеры будут удалены сервером через очередь очистки."
+    },
+    clear_custom_blocks: {
+      label: "ELECTION_RP_CLEAR_CUSTOM_BLOCKS",
+      message: "Удалить из базы все кастомные блоки выборов и связанные визуальные записи? Голоса, заявки, кандидаты и история кампании сохранятся."
+    }
+  };
+  const config = configs[normalized];
+  if (!config) return operationAlert("Неизвестная операция обслуживания выборов.", true);
+  const headers = await dangerConfirm(config.message, config.label);
+  if (!headers) return;
+  try {
+    const result = await api("/api/elections/rp/maintenance", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ action: normalized })
+    });
+    const deleted = Object.values(result.deleted || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+    operationAlert(`${normalized === "wipe_test_data" ? "Данные выборов очищены" : "Кастомные блоки удалены"}. Записей: ${deleted}. В очередь очистки визуалов: ${Number(result.queuedVisualCleanup || 0)}.`);
     await loadElections();
   } catch (error) {
     operationAlert(describeError(error), true);
@@ -4704,6 +4749,7 @@ async function loadRequests() {
     errorCode: cleanText(row.errorCode || ""),
     errorSummary: short(cleanText(row.errorSummary || ""), 96),
   }));
+  const reportLoadError = cleanText(reports.error || "");
   setView(`
     <section class="layout-grid grid-4">
       ${metric("Связь", `${ready}/${total}`, "бот, каналы и роль", ready === total ? "good" : "warn")}
@@ -4711,6 +4757,8 @@ async function loadRequests() {
       ${metric("Жалобы", asArray(reports.reports).length, "активные обращения")}
       ${metric("Публикации", asArray(status.outbox).length, "сообщения для Discord")}
     </section>
+    <div class="action-strip page-toolbar"><button class="btn btn-secondary" type="button" data-click="refreshRequests()">Обновить очередь</button></div>
+    ${reportLoadError ? `<div class="notice bad" role="alert">Не удалось обновить очередь жалоб: ${esc(reportLoadError)}. Локальный снимок показан, повтори обновление позже.</div>` : ""}
     <section class="layout-grid grid-2">
       ${panel("Новая заявка", "Создайте обращение вручную, если игрок написал вне сайта.", `
         <div class="form-grid">
@@ -4753,6 +4801,8 @@ async function loadRequests() {
     </section>
   `);
 }
+
+window.refreshRequests = () => loadRequests();
 
 window.createRequestApplication = async () => {
   try {
@@ -5125,7 +5175,7 @@ async function loadSecurity() {
         ${kv([
           ["Требуется OP для входа", access.requireOp],
           ["Нужен whitelist", access.requireWhitelist],
-          ["Изменения через сайт", access.dbWriteEnabled ? "разрешены только готовые действия" : "только через серверный runtime"]
+          ["Изменения через сайт", access.dbWriteEnabled ? "разрешены только готовые действия" : "изменения выполняются на сервере"]
         ])}
       `)}
     </section>
@@ -5453,7 +5503,6 @@ async function loadPlayerCabinet() {
   const whitelistRequest = state.user.whitelistRequest || null;
   const balance = linked ? number(bank?.account?.balance || 0) : 0;
   const donationBalance = donation?.linked ? number(donation.balance || 0) : 0;
-  const whitelistStatus = whitelisted ? "одобрен" : (whitelistRequest?.status || (linked ? "не отправлен" : "нужна привязка"));
   const historyBankRows = asArray(bank?.ledger);
   const historyDonationRows = asArray(donationHistory.history);
   setMiniHealthSummary(state.user.username || "игрок", [
@@ -5466,21 +5515,14 @@ async function loadPlayerCabinet() {
       ${metric("Донат-баланс", donation?.linked ? formatDonate(donationBalance) : "нужна привязка", donation?.linked ? "Покупки и выдачи" : "Привяжи Minecraft", donation?.linked ? "good" : "warn")}
     </section>
     ${panel("История платежей", "Простая лента пополнений, переводов и покупок.", paymentHistoryTable(historyBankRows, historyDonationRows, 14))}
-    ${panel("Действия", "", `
-      <div class="action-strip account-actions">
+    ${panel("Действия", "Быстрые переходы по кабинету.", `
+      <div class="action-strip account-actions" aria-label="Быстрые действия кабинета">
         <button class="btn btn-primary" data-click="setTab('bank')">Открыть банк</button>
         <button class="btn btn-secondary" data-click="setTab('donation-shop')">Донат-лавка</button>
         <button class="btn btn-secondary" data-click="setTab('link')">Minecraft</button>
         <button class="btn btn-secondary" data-click="setTab('settings')">Аккаунт</button>
         ${linked && !whitelisted && !whitelistRequest ? `<button class="btn btn-secondary" data-click="playerRequestWhitelist()">Whitelist</button>` : ""}
       </div>
-      <div class="spacer-12"></div>
-      ${kv([
-        ["Логин", state.user.username || "—"],
-        ["Minecraft", state.user.minecraftName || "не привязан"],
-        ["Whitelist", whitelistStatus],
-        ["Последний вход", dt(state.user.lastLoginAt)]
-      ])}
     `)}
   `);
 }

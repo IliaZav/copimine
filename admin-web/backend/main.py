@@ -534,6 +534,10 @@ class ElectionRpControlIn(BaseModel):
     voting_hours: int = Field(default=24, ge=24, le=72)
 
 
+class ElectionMaintenanceIn(BaseModel):
+    action: str = Field(min_length=2, max_length=40)
+
+
 class ElectionVotingBlockIn(BaseModel):
     world: str = Field(min_length=1, max_length=96)
     x: int = Field(ge=-30000000, le=30000000)
@@ -2448,6 +2452,27 @@ def _ensure_v4_schema(conn: Any) -> None:
         )
         """
     )
+    # The RP election detail/control paths use this table exclusively for
+    # the currently selected round.  Do not rely on the separate election
+    # migration being applied first: admin-web must be able to bootstrap a
+    # partially upgraded database and still return the live campaign.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS round_candidates(
+            election_id TEXT NOT NULL,
+            round_no INTEGER NOT NULL DEFAULT 1,
+            candidate_uuid TEXT NOT NULL,
+            candidate_name TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at BIGINT NOT NULL DEFAULT 0,
+            created_by TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (election_id,round_no,candidate_uuid)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_round_candidates_active ON round_candidates(election_id,round_no,active)"
+    )
     conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE candidate_applications ADD COLUMN IF NOT EXISTS station_id TEXT NOT NULL DEFAULT ''")
@@ -3984,16 +4009,82 @@ def row_get(row: Any, key: str, default: Any = None) -> Any:
             return default
 
 
+def hydrate_player_account_link(conn: Any, account: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    """Hydrate the account from the durable Minecraft-link tables.
+
+    ``site_accounts.minecraft_*`` is a denormalized session cache.  The link
+    tables are also written by the in-game whitelist/link flow, so an account
+    can be correctly linked while that cache is empty or stale.  Resolve the
+    latest active link before returning an account used by session/auth/shop
+    endpoints and repair the cache in the same transaction.
+    """
+    hydrated = dict(account or {})
+    account_id = str(hydrated.get("id") or "").strip()
+    if not account_id:
+        return hydrated
+    link = None
+    try:
+        link = conn.execute(
+            """
+            SELECT minecraft_uuid,minecraft_name
+            FROM minecraft_account_links
+            WHERE site_account_id=%s AND status='ACTIVE'
+            ORDER BY updated_at DESC,linked_at DESC
+            LIMIT 1
+            """,
+            (account_id,),
+        ).fetchone()
+        if not link:
+            link = conn.execute(
+                """
+                SELECT minecraft_uuid,minecraft_name
+                FROM whitelist_account_links
+                WHERE site_account_id=%s AND whitelisted=1
+                ORDER BY synced_at DESC
+                LIMIT 1
+                """,
+                (account_id,),
+            ).fetchone()
+    except Exception:
+        # Older databases may not have the link tables yet.  The schema
+        # bootstrap normally creates them, but auth must still fail open to
+        # the denormalized fields during a rolling upgrade.
+        try:
+            # A missing table (or a transient catalog error) aborts the
+            # current PostgreSQL transaction.  Roll it back before the
+            # caller attempts the cache repair or commits its request.
+            conn.rollback()
+        except Exception:
+            pass
+        return hydrated
+    linked_uuid = str(row_get(link, "minecraft_uuid", "") or "").strip()
+    if not linked_uuid:
+        return hydrated
+    linked_name = str(row_get(link, "minecraft_name", "") or "").strip()
+    if not linked_name:
+        linked_name = str(hydrated.get("minecraft_name") or "").strip()
+    if (
+        str(hydrated.get("minecraft_uuid") or "").strip() != linked_uuid
+        or str(hydrated.get("minecraft_name") or "").strip() != linked_name
+    ):
+        hydrated.update({"minecraft_uuid": linked_uuid, "minecraft_name": linked_name})
+        conn.execute(
+            "UPDATE site_accounts SET minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
+            (linked_uuid, linked_name, now_ts(), account_id),
+        )
+    return hydrated
+
+
 def player_account_by_id(conn: Any, account_id: str) -> dict[str, Any]:
     row = conn.execute("SELECT * FROM site_accounts WHERE id=%s AND enabled=1", (account_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=401, detail="Player account is disabled or missing")
-    return dict(row)
+    return hydrate_player_account_link(conn, dict(row))
 
 
 def player_account_by_username(conn: Any, username: str) -> Optional[dict[str, Any]]:
     row = conn.execute("SELECT * FROM site_accounts WHERE username_norm=%s", (username.lower(),)).fetchone()
-    return dict(row) if row else None
+    return hydrate_player_account_link(conn, dict(row)) if row else None
 
 
 def player_account_by_minecraft_name(conn: Any, minecraft_name: str) -> Optional[dict[str, Any]]:
@@ -4002,7 +4093,7 @@ def player_account_by_minecraft_name(conn: Any, minecraft_name: str) -> Optional
         return None
     row = conn.execute("SELECT * FROM site_accounts WHERE LOWER(minecraft_name)=%s ORDER BY updated_at DESC LIMIT 1", (normalized,)).fetchone()
     if row:
-        return dict(row)
+        return hydrate_player_account_link(conn, dict(row))
     row = conn.execute(
         """
         SELECT sa.*
@@ -4014,7 +4105,7 @@ def player_account_by_minecraft_name(conn: Any, minecraft_name: str) -> Optional
         """,
         (normalized,),
     ).fetchone()
-    return dict(row) if row else None
+    return hydrate_player_account_link(conn, dict(row)) if row else None
 
 
 def require_player(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
@@ -7568,7 +7659,7 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                     "SELECT count(*) AS vote_count FROM votes WHERE election_id=%s AND round_no=%s",
                     (eid, current_round),
                 ).fetchone() if eid and pg_table_exists(conn, "votes") else None
-                vote_count = int((vote_row or {}).get("vote_count") or 0)
+                vote_count = int(row_get(vote_row, "vote_count", 0) or 0)
                 # The RP workflow uses one direct vote per player.  Do not
                 # expose or read the retired paper-ballot/CIK tables here.
                 turnout = {"issued_ballots": 0, "confirmed_ballots": 0, "deposited_ballots": vote_count}
@@ -8362,6 +8453,176 @@ def submit_player_election_application_sync(account: Mapping[str, Any] | dict[st
     audit_event(str(account.get("username") or player_name), "election.application.submit", target=application_id, details={"electionId": str(election.get("id") or "")})
     append_panel_event("player", "election_application_submitted", actor=str(account.get("username") or player_name), target=application_id, metadata={"electionId": str(election.get("id") or "")}, tags=["elections", "application"])
     return {"ok": True, "applicationId": application_id, "status": "SUBMITTED"}
+
+
+# These tables are the election domain only.  Audit/event tables, player
+# accounts, whitelist, economy, inventory and artifact-shop data deliberately
+# stay outside the test wipe so an administrator cannot accidentally reset the
+# rest of the server while preparing a fresh election scenario.
+ELECTION_WIPE_TABLES = [
+    "votes",
+    "ballots",
+    "round_candidates",
+    "candidates",
+    "candidate_applications",
+    "cik_chair_removal_requests",
+    "cik_seals",
+    "cik_chairs",
+    "election_voting_blocks",
+    "polling_stations",
+    "rounds",
+    "election_stages",
+    "president_law_reviews",
+    "president_laws",
+    "president_broadcasts",
+    "president_tax_payment_ops",
+    "president_tax_payments",
+    "president_tax_exemptions",
+    "president_taxes",
+    "president_terms",
+    "election_presidents",
+    "election_decrees",
+    "election_petitions",
+    "elections",
+]
+def _maintenance_table_count(conn: Any, table: str) -> int:
+    """Return a safe count for an optional migration table."""
+    if not pg_table_exists(conn, table):
+        return 0
+    row = conn.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()
+    return int((row or {}).get("c") or 0)
+
+
+def _queue_maintenance_visual_cleanup(conn: Any, run_id: str, now: int) -> int:
+    """Queue loaded-world visual removal before deleting its database rows.
+
+    The queue is intentionally retained after the wipe.  ElectionCore polls it
+    and removes matching TextDisplay/ItemDisplay entities when their chunks are
+    loaded, so a web-side reset cannot leave phantom custom markers in-game.
+    """
+    if not pg_table_exists(conn, "election_visual_cleanup_queue"):
+        return 0
+    visual_parts = []
+    if pg_table_exists(conn, "polling_stations"):
+        visual_parts.extend(
+            [
+                "SELECT 'STATION_LABEL' AS kind,id AS linked_id,world,x,y,z FROM polling_stations",
+                "SELECT 'POLLING_STATION' AS kind,id AS linked_id,world,x,y,z FROM polling_stations",
+            ]
+        )
+    if pg_table_exists(conn, "protected_blocks"):
+        visual_parts.extend(
+            [
+                "SELECT 'TAX_LABEL' AS kind,linked_id,world,x,y,z FROM protected_blocks WHERE kind='TAX_OFFICE'",
+                "SELECT 'TAX_OFFICE' AS kind,linked_id,world,x,y,z FROM protected_blocks WHERE kind='TAX_OFFICE'",
+            ]
+        )
+    if pg_table_exists(conn, "protected_block_visuals"):
+        visual_parts.append(
+            "SELECT CASE WHEN kind='POLLING_STATION' THEN 'POLLING_STATION' ELSE 'TAX_OFFICE' END AS kind,"
+            "linked_id,world,x,y,z FROM protected_block_visuals WHERE kind IN ('POLLING_STATION','TAX_OFFICE')"
+        )
+    visual_rows = conn.execute(" UNION ALL ".join(visual_parts)).fetchall() if visual_parts else []
+    queued = 0
+    for row in visual_rows:
+        kind = str(row.get("kind") or "").strip().upper()
+        linked_id = str(row.get("linked_id") or "").strip()
+        world = str(row.get("world") or "").strip()
+        if not kind or not linked_id or not world:
+            continue
+        x = int(row.get("x") or 0)
+        y = int(row.get("y") or 0)
+        z = int(row.get("z") or 0)
+        queue_id = f"maintenance:{run_id}:{kind}:{linked_id}"
+        conn.execute(
+            """
+            INSERT INTO election_visual_cleanup_queue(id,kind,linked_id,world,x,y,z,created_at)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(id) DO UPDATE SET
+                world=EXCLUDED.world,x=EXCLUDED.x,y=EXCLUDED.y,z=EXCLUDED.z,created_at=EXCLUDED.created_at
+            """,
+            (queue_id, kind, linked_id, world, x, y, z, now),
+        )
+        queued += 1
+    return queued
+
+
+def election_maintenance_sync(data: ElectionMaintenanceIn, actor: str) -> dict[str, Any]:
+    """Run one explicitly-confirmed, atomic election maintenance operation."""
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for election maintenance")
+    action = str(data.action or "").strip().lower()
+    if action not in {"wipe_test_data", "clear_custom_blocks"}:
+        raise HTTPException(status_code=400, detail="Неизвестная операция обслуживания выборов")
+    now = election_now_ms()
+    run_id = "maint_" + secrets.token_hex(10)
+    deleted: dict[str, int] = {}
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        # Share the election workflow lock so a wipe cannot race a stage,
+        # candidate or block mutation from the same panel.
+        advisory_lock(conn, "copimine-rp-election")
+        queued = _queue_maintenance_visual_cleanup(conn, run_id, now)
+
+        if action == "wipe_test_data":
+            tables = list(ELECTION_WIPE_TABLES)
+            # Legacy deployments may not have every historical table.  The
+            # wipe remains idempotent and still clears all tables that exist.
+            for table in tables:
+                before = _maintenance_table_count(conn, table)
+                if before:
+                    conn.execute(f"DELETE FROM {table}")
+                deleted[table] = before
+            for table, predicate in (
+                ("protected_blocks", "kind IN ('POLLING_STATION','TAX_OFFICE')"),
+                ("text_display_links", "kind IN ('STATION_LABEL','TAX_LABEL')"),
+                ("protected_block_visuals", "kind IN ('POLLING_STATION','TAX_OFFICE')"),
+            ):
+                if not pg_table_exists(conn, table):
+                    continue
+                before = int((conn.execute(f"SELECT COUNT(*) AS c FROM {table} WHERE {predicate}").fetchone() or {}).get("c") or 0)
+                if before:
+                    conn.execute(f"DELETE FROM {table} WHERE {predicate}")
+                deleted[table] = deleted.get(table, 0) + before
+        else:
+            # This is deliberately narrower than a campaign wipe: votes,
+            # applications, candidates and president history remain available.
+            for table in ("election_voting_blocks", "polling_stations"):
+                before = _maintenance_table_count(conn, table)
+                if before:
+                    conn.execute(f"DELETE FROM {table}")
+                deleted[table] = before
+            for table, predicate in (
+                ("protected_blocks", "kind IN ('POLLING_STATION','TAX_OFFICE')"),
+                ("text_display_links", "kind IN ('STATION_LABEL','TAX_LABEL')"),
+                ("protected_block_visuals", "kind IN ('POLLING_STATION','TAX_OFFICE')"),
+            ):
+                if not pg_table_exists(conn, table):
+                    continue
+                before = int((conn.execute(f"SELECT COUNT(*) AS c FROM {table} WHERE {predicate}").fetchone() or {}).get("c") or 0)
+                if before:
+                    conn.execute(f"DELETE FROM {table} WHERE {predicate}")
+                deleted[table] = deleted.get(table, 0) + before
+        conn.commit()
+
+    details = {
+        "runId": run_id,
+        "action": action,
+        "deleted": deleted,
+        "queuedVisualCleanup": queued,
+        "scope": "election-domain" if action == "wipe_test_data" else "election-protected-blocks",
+    }
+    audit_event(actor, f"election.maintenance.{action}", target=run_id, details=details)
+    append_panel_event(
+        "admin-panel",
+        "election_maintenance",
+        actor=actor,
+        target=run_id,
+        metadata=details,
+        tags=["elections", "maintenance", action],
+        severity="warning",
+    )
+    return {"ok": True, **details}
 
 
 def rp_election_control_sync(data: ElectionRpControlIn, actor: str) -> dict[str, Any]:
@@ -10366,11 +10627,122 @@ def pg_delete_collection_item(namespace: str, object_id: str) -> None:
 
 def load_collection_sync(path: Path, namespace: str, limit: int = 5000) -> list[dict[str, Any]]:
     if pg_ready():
-        rows = pg_load_collection(namespace, limit)
-        if rows:
-            return rows
+        try:
+            rows = pg_load_collection(namespace, limit)
+            if rows:
+                return rows
+        except Exception:
+            # A temporary database outage must not hide the local durable
+            # snapshot from the panel.  The next request will retry PG.
+            LOGGER.warning("Collection read from PostgreSQL failed", exc_info=True)
     rows = read_json(path, [])
     return rows[:limit] if isinstance(rows, list) else []
+
+
+def report_row_time(row: Mapping[str, Any] | dict[str, Any]) -> int:
+    value = row_get(row, "updatedAt", None)
+    if value in (None, ""):
+        value = row_get(row, "updated_at", None)
+    if value in (None, ""):
+        value = row_get(row, "createdAt", None)
+    if value in (None, ""):
+        value = row_get(row, "created_at", 0)
+    return report_timestamp(value)
+
+
+def report_timestamp(value: Any, default: int = 0) -> int:
+    """Coerce a report timestamp without letting one malformed row break the queue."""
+    try:
+        return int(float(value if value not in (None, "") else default))
+    except (TypeError, ValueError, OverflowError):
+        return int(default or 0)
+
+
+def admin_request_to_report_row(row: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    """Convert the canonical plugin/Discord ticket row to report shape."""
+    raw = dict(row or {})
+    snapshot = pg_json_loads(raw.get("snapshot"), {})
+    item = dict(snapshot) if isinstance(snapshot, dict) else {}
+    report_id = str(item.get("id") or raw.get("id") or "").strip()
+    if not report_id:
+        return {}
+    created_at = report_timestamp(item.get("createdAt") or raw.get("created_at"))
+    updated_at = max(report_timestamp(item.get("updatedAt")), report_timestamp(raw.get("updated_at")), created_at)
+    status = str(raw.get("status") or item.get("status") or "OPEN").strip().upper()
+    status_map = {"OPEN": "open", "IN_PROGRESS": "in_progress", "CLOSED": "closed"}
+    item.update(
+        {
+            "id": report_id,
+            "reporter_uuid": str(item.get("reporter_uuid") or raw.get("player_uuid") or ""),
+            "reporter": str(item.get("reporter") or raw.get("player_name") or "unknown"),
+            "message": str(item.get("message") or raw.get("message") or ""),
+            "status": status_map.get(status, normalize_status(status.lower(), REPORT_STATUSES, "open")),
+            "createdAt": created_at,
+            "updatedAt": updated_at,
+            "source": str(item.get("source") or "admin-request"),
+        }
+    )
+    if raw.get("assigned_to"):
+        item["assignedTo"] = str(raw.get("assigned_to"))
+    if raw.get("close_reason"):
+        item["lastReason"] = str(raw.get("close_reason"))
+    return item
+
+
+def merge_report_rows(
+    collection_rows: list[Mapping[str, Any] | dict[str, Any]],
+    admin_rows: list[Mapping[str, Any] | dict[str, Any]],
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Merge both storage projections without losing the latest rich snapshot."""
+    merged: dict[str, dict[str, Any]] = {}
+    for source_rows in (collection_rows, admin_rows):
+        for raw in source_rows or []:
+            candidate = dict(raw or {})
+            report_id = str(candidate.get("id") or "").strip()
+            if not report_id:
+                continue
+            current = merged.get(report_id)
+            if current is None:
+                merged[report_id] = candidate
+                continue
+            current_time = report_row_time(current)
+            candidate_time = report_row_time(candidate)
+            if candidate_time >= current_time:
+                combined = {**current, **candidate}
+            else:
+                combined = {**candidate, **current}
+            # Keep rich fields from the collection snapshot when the queue
+            # projection only contains the ticket columns.
+            for key in ("metadata", "timeline", "replies", "attached_events"):
+                if not combined.get(key) and (current.get(key) or candidate.get(key)):
+                    combined[key] = current.get(key) or candidate.get(key)
+            merged[report_id] = combined
+    return sorted(merged.values(), key=report_row_time, reverse=True)[: max(1, min(int(limit or 5000), 10000))]
+
+
+def load_report_rows_sync(limit: int = 5000) -> list[dict[str, Any]]:
+    """Read reports from the collection and the canonical admin request queue."""
+    try:
+        collection_rows = load_collection_sync(DISCORD_REPORTS_FILE, "report", limit)
+    except Exception:
+        LOGGER.warning("Report collection read failed", exc_info=True)
+        collection_rows = []
+    admin_rows: list[dict[str, Any]] = []
+    if auth_storage_ready():
+        try:
+            with auth_conn() as conn:
+                ensure_plugin_ticket_tables(conn)
+                rows = conn.execute(
+                    "SELECT id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot "
+                    "FROM admin_requests ORDER BY updated_at DESC,created_at DESC LIMIT %s",
+                    (max(1, min(int(limit or 5000), 10000)),),
+                ).fetchall()
+                admin_rows = [admin_request_to_report_row(dict(row)) for row in rows]
+                conn.commit()
+        except Exception:
+            LOGGER.warning("Canonical report queue read failed", exc_info=True)
+    return merge_report_rows(collection_rows, [row for row in admin_rows if row], limit)
 
 
 def save_collection_item_sync(path: Path, namespace: str, item: dict[str, Any], limit: int = 5000) -> dict[str, Any]:
@@ -11484,7 +11856,7 @@ async def player_elections_application(data: PlayerElectionApplicationIn, accoun
 @app.get("/api/player/reports")
 async def player_reports(request: Request, status: str = "", account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     check_rate_limit(request, "player-reports-list", limit=30, window_seconds=60)
-    rows = await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 5000)
+    rows = await bg(load_report_rows_sync, 5000)
     minecraft_uuid = str(account.get("minecraft_uuid") or "").strip()
     username = str(account.get("username") or "").strip().lower()
     account_id = str(account.get("id") or "").strip()
@@ -11807,7 +12179,7 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
 
     report_rows = [
         normalized_report_row(row)
-        for row in load_collection_sync(DISCORD_REPORTS_FILE, "report", 5000)
+        for row in load_report_rows_sync(5000)
         if report_involves_player(row, name, uuid)
     ]
     report_rows.sort(key=lambda row: int(row.get("updatedAt") or row.get("createdAt") or 0), reverse=True)
@@ -12500,7 +12872,7 @@ async def elections_overview(_: str = Depends(require_panel_admin)) -> dict[str,
             db_data = {
                 "db": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallback": safe_location(admin_plugin_db_path())},
                 "tables": [],
-                "groups": {"postgresql": ["elections", "candidate_applications", "candidates", "votes", "election_voting_blocks", "president_terms"]},
+                "groups": {"postgresql": ["elections", "candidate_applications", "candidates", "round_candidates", "votes", "election_voting_blocks", "president_terms"]},
                 "antiFraud": detail.get("antiFraud", []),
                 "summary": detail.get("summary", {}),
             }
@@ -12538,6 +12910,24 @@ async def elections_rp_control(data: ElectionRpControlIn, request: Request, user
     if data.action.strip().lower() in {"finish", "finish_early", "remove", "resign"}:
         require_sensitive_confirm(request, f"ELECTION_RP_{data.action.strip().upper()}")
     return await bg(rp_election_control_sync, data, username)
+
+
+@app.post("/api/elections/rp/maintenance")
+async def elections_rp_maintenance(
+    data: ElectionMaintenanceIn,
+    request: Request,
+    username: str = Depends(require_panel_admin),
+) -> dict[str, Any]:
+    action = data.action.strip().lower()
+    labels = {
+        "wipe_test_data": "ELECTION_RP_WIPE_TEST_DATA",
+        "clear_custom_blocks": "ELECTION_RP_CLEAR_CUSTOM_BLOCKS",
+    }
+    label = labels.get(action)
+    if not label:
+        raise HTTPException(status_code=400, detail="Неизвестная операция обслуживания выборов")
+    require_sensitive_confirm(request, label)
+    return await bg(election_maintenance_sync, data, username)
 
 
 @app.post("/api/elections/rp/voting-blocks")
@@ -12796,7 +13186,7 @@ def update_application_status_sync(application_id: str, data: DiscordObjectStatu
 
 
 def update_report_status_sync(report_id: str, data: DiscordObjectStatusIn, actor: str, source: str) -> dict[str, Any]:
-    rows = load_collection_sync(DISCORD_REPORTS_FILE, "report")
+    rows = load_report_rows_sync(5000)
     item = find_collection_item(rows, report_id)
     old_status = str(item.get("status", "open"))
     new_status = normalize_status(data.status, REPORT_STATUSES, old_status if old_status in REPORT_STATUSES else "open")
@@ -12820,7 +13210,7 @@ def update_report_status_sync(report_id: str, data: DiscordObjectStatusIn, actor
 
 
 def add_discord_reply_sync(path: Path, namespace: str, object_type: str, object_id: str, data: DiscordReplyIn, actor: str, source: str) -> dict[str, Any]:
-    rows = load_collection_sync(path, namespace)
+    rows = load_report_rows_sync(5000) if namespace == "report" else load_collection_sync(path, namespace)
     item = find_collection_item(rows, object_id)
     reply = data.model_dump()
     reply.update({"id": secrets.token_hex(8), "createdAt": now_ts(), "source": source, "author": data.author or actor})
@@ -12832,6 +13222,10 @@ def add_discord_reply_sync(path: Path, namespace: str, object_type: str, object_
     item["updatedAt"] = now_ts()
     add_timeline(item, "reply", actor, data.message, {"source": source, "visibility": data.visibility})
     save_collection_item_sync(path, namespace, item)
+    if namespace == "report":
+        mirror_report_to_postgres(item, actor)
+    elif namespace == "application":
+        mirror_application_to_postgres(item, actor)
     enqueue_discord_object_update(object_type, item, data.message)
     return {"object": item, "reply": reply}
 
@@ -12877,7 +13271,7 @@ async def create_report(data: DiscordReportIn, username: str = Depends(require_a
 
 @app.get("/api/reports")
 async def list_reports(status: str = "", reporter: str = "", target: str = "", kind: str = "", _: str = Depends(require_admin)) -> dict[str, Any]:
-    rows = [normalized_report_row(row) for row in await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 5000)]
+    rows = [normalized_report_row(row) for row in await bg(load_report_rows_sync, 5000)]
     if status:
         rows = [x for x in rows if x.get("status") == status]
     if reporter:
@@ -13939,7 +14333,7 @@ async def discord_status(_: str = Depends(require_admin)) -> dict[str, Any]:
     outbox = await bg(load_collection_sync, DISCORD_OUTBOX_FILE, "outbox", 1000)
     actions = await bg(read_recent_bridge_events, 100)
     applications = await bg(load_collection_sync, DISCORD_APPLICATIONS_FILE, "application", 1000)
-    reports = await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 1000)
+    reports = await bg(load_report_rows_sync, 1000)
     return {
         "configured": {
             "token": DISCORD_BOT_TOKEN_CONFIGURED,
@@ -13989,7 +14383,7 @@ async def discord_bot_application_reply(application_id: str, data: DiscordReplyI
 @app.get("/api/discord/reports", dependencies=[Depends(require_discord_bot_key)])
 async def discord_bot_reports(request: Request, status: str = "", limit: int = 100) -> dict[str, Any]:
     check_discord_rate_limit(request, "reports")
-    rows = await bg(load_collection_sync, DISCORD_REPORTS_FILE, "report", 5000)
+    rows = await bg(load_report_rows_sync, 5000)
     if status:
         rows = [x for x in rows if x.get("status") == status]
     return {"reports": rows[: max(1, min(limit, 250))], "count": len(rows)}
@@ -15341,12 +15735,21 @@ def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentI
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         advisory_lock(conn, purchase_key)
+        # Authenticate every retry as well.  Returning an idempotent result
+        # before checking the PIN allowed a guessed key to reveal purchase
+        # metadata, and the old lookup did not bind the key to its owner or
+        # item.
+        verify_bank_pin(conn, account, data.pin)
         existing = conn.execute(
-            "SELECT purchase_id,unique_item_id,item_id,status,price_ar FROM artifact_purchases WHERE idempotency_key=%s LIMIT 1",
+            "SELECT purchase_id,unique_item_id,player_uuid,item_id,status,price_ar FROM artifact_purchases WHERE idempotency_key=%s LIMIT 1",
             (purchase_key,),
         ).fetchone()
         if existing:
             row = dict(existing)
+            if str(row.get("player_uuid") or "") != player_uuid:
+                raise HTTPException(status_code=409, detail="idempotency_key уже используется другой покупкой")
+            if str(row.get("item_id") or "") != str(data.item_id or "").strip().lower():
+                raise HTTPException(status_code=409, detail="idempotency_key уже привязан к другому предмету")
             return {
                 "ok": True,
                 "itemId": row.get("item_id"),
@@ -15356,7 +15759,6 @@ def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentI
                 "priceAr": int(row.get("price_ar") or 0),
                 "pickupHint": "Заберите предмет в игре через /cmartifacts claim.",
             }
-        verify_bank_pin(conn, account, data.pin)
         item_id = str(item.get("item_id") or "").strip()
         advisory_lock(conn, f"artifact-purchase-supply:{item_id.lower()}")
         advisory_lock(conn, f"artifact-purchase-player:{player_uuid.lower()}:{item_id.lower()}")

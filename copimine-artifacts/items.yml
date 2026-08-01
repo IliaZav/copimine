@@ -394,7 +394,7 @@ donation-catalog:
         - "&7Освобождение от налогов на 3 месяца."
 
     - item-id: gde_moy_lut_blyat_compass
-      display-name: "&6Компас \"Где мой лут, блять?\""
+      display-name: "&6Компас телепортации"
       base-material: COMPASS
       price-donation: 200
       enabled: true
@@ -403,8 +403,8 @@ donation-catalog:
       reclaim-policy: LOSS_ONLY
       consume-policy: PERSISTENT
       effect-profile-id: LOOT_COMPASS
-      effect-description: "Указывает только владельцу на его последнюю точку смерти, если мир это допускает."
-      cooldown-seconds: 10
+      effect-description: "Телепортирует владельца по направлению взгляда на расстояние прорисовки сервера."
+      cooldown-seconds: 15
       proc-chance: 1.0
       max-stack: 1
       repairable: false
@@ -412,6 +412,6 @@ donation-catalog:
       custom-model-data: 20010
       visual-effect-id: TUNNEL_VISION
       lore:
-        - "&7Ищет только твою последнюю смерть."
-        - "&7Уважает закрытые и защищённые миры."
+        - "&7Телепортация по направлению взгляда."
+        - "&7Перезарядка: 15 секунд."
 

@@ -7,7 +7,7 @@
   <title>CopiMine — Выборы</title>
   <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260801release3" />
   <link rel="stylesheet" href="/assets/css/tokens.css" />
   <link rel="stylesheet" href="/assets/css/themes.css" />
   <link rel="stylesheet" href="/assets/css/release-ui.css" />
@@ -49,6 +49,20 @@
           <p>Здесь собраны одобренные кандидаты и открытый результат текущего тура. Голосование проходит только в игре — сайт остаётся спокойной витриной результатов.</p>
           <span class="election-readonly-note">Только просмотр · без голосования на сайте</span>
         </div>
+        <aside class="public-hero-side elections-hero-side" aria-label="Текущее состояние выборов">
+          <article class="hero-side-card elections-live-card">
+            <div class="elections-live-card-head">
+              <span class="hero-kicker">Сейчас на сервере</span>
+              <span class="elections-live-dot" aria-hidden="true"></span>
+            </div>
+            <strong id="publicElectionHeroStatus" class="elections-live-status" aria-live="polite">Получаем данные</strong>
+            <p id="publicElectionHeroMeta">Проверяем актуальный этап и состав кандидатов.</p>
+            <div class="elections-hero-mini-stats" aria-label="Краткая статистика выборов">
+              <span><small>Кандидаты</small><strong id="publicElectionHeroCandidates">—</strong></span>
+              <span><small>Голоса</small><strong id="publicElectionHeroVotes">—</strong></span>
+            </div>
+          </article>
+        </aside>
       </section>
 
       <section class="public-section">
@@ -58,7 +72,10 @@
             <h2>Панель выборов</h2>
             <p id="publicElectionMeta" class="section-head-note">Получаем список одобренных кандидатов…</p>
           </div>
-          <span id="publicElectionUpdated" class="election-updated">Данные обновляются автоматически</span>
+          <div class="election-summary-actions">
+            <span id="publicElectionUpdated" class="election-updated">Данные обновляются автоматически</span>
+            <button id="publicElectionRefresh" class="btn btn-secondary" type="button">Обновить</button>
+          </div>
         </div>
         <div id="publicElectionStats" class="election-stats-grid" aria-live="polite"></div>
       </section>
@@ -91,6 +108,6 @@
       </section>
     </div>
   </main>
-  <script type="module" src="/assets/js/public/public-page.js?v=20260723elections1"></script>
+  <script type="module" src="/assets/js/public/public-page.js?v=20260801elections2"></script>
 </body>
 </html>

@@ -7,7 +7,10 @@ Require-Contains $items 'reclaim-policy: LOSS_ONLY' 'Donation catalog entries mu
 Require-Regex $artifacts "status='LOST_RECLAIMABLE'" 'Artifacts reclaim flow must read only LOST_RECLAIMABLE instances.'
 Require-Regex $artifacts '"LOSS_ONLY"\.equalsIgnoreCase\(this\.firstNonBlank\([^)]*reclaimPolicy\(\)' 'Artifacts must reject reclaim when donation catalog policy is not LOSS_ONLY.'
 Require-Regex $artifacts "status='REPLACED_AFTER_LOSS'" 'Artifacts reclaim flow must retire the old instance with REPLACED_AFTER_LOSS.'
-Require-Regex $artifacts 'updateDonationInstanceStatus[\s\S]{0,240}"BROKEN"|status=''BROKEN''' 'Artifacts must keep BROKEN status separate from reclaimable loss.'
-Require-Regex $artifacts 'updateDonationInstanceStatus[\s\S]{0,240}"CONSUMED"|status=''CONSUMED''' 'Artifacts must keep CONSUMED status separate from reclaimable loss.'
+Require-Regex $artifacts '"CONSUMED"' 'Artifacts must keep intentional CONSUMED status separate from reclaimable loss.'
+$breakHandler = [regex]::Match($artifacts, '(?s)public void onPlayerItemBreak\(PlayerItemBreakEvent var1\).*?(?=\n\s*@EventHandler|\n\s*private |\z)')
+if ($breakHandler.Success -and $breakHandler.Value -match '"BROKEN"') {
+    $errors.Add('Durability destruction must use the reclaimable loss journal instead of terminal BROKEN status.')
+}
 
 Throw-IfErrors 'ValidateCopiMineDonationReclaimLossOnly'

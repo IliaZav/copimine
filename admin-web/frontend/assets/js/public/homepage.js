@@ -13,6 +13,8 @@ import { createSuccessfulLoadRegistry } from "../shared/successful-load-registry
 const renderer = createHomepageRenderer();
 const pageLoads = createSuccessfulLoadRegistry();
 let homepageEventsBound = false;
+let electionRefreshTimer = 0;
+let electionRefreshInFlight = false;
 
 function bindCopyIpButton() {
   const button = document.getElementById("copyIpBtn");
@@ -44,6 +46,48 @@ function resolvePublicPageKind() {
   return "public-home";
 }
 
+async function refreshPublicElections({ silent = false } = {}) {
+  if (electionRefreshInFlight) return;
+  electionRefreshInFlight = true;
+  const refreshButton = document.getElementById("publicElectionRefresh");
+  const previousLabel = refreshButton?.textContent || "Обновить";
+  if (refreshButton) {
+    refreshButton.disabled = true;
+    refreshButton.textContent = "Обновляем…";
+  }
+  try {
+    const payload = await loadPublicElectionsPageData();
+    if (payload.elections?._unavailable) {
+      const updated = document.getElementById("publicElectionUpdated");
+      if (updated && !silent) updated.textContent = "Не удалось обновить данные — повторите попытку";
+      return;
+    }
+    renderer.renderElections(payload.elections || {});
+    renderer.renderStatus(payload.status || {}, payload.config || {});
+  } catch (_error) {
+    const updated = document.getElementById("publicElectionUpdated");
+    if (updated && !silent) updated.textContent = "Не удалось обновить данные — повторите попытку";
+  } finally {
+    electionRefreshInFlight = false;
+    if (refreshButton) {
+      refreshButton.disabled = false;
+      refreshButton.textContent = previousLabel;
+    }
+  }
+}
+
+function bindElectionRefresh() {
+  const button = document.getElementById("publicElectionRefresh");
+  if (!button || button.dataset.bound === "true") return;
+  button.dataset.bound = "true";
+  button.addEventListener("click", () => void refreshPublicElections());
+  window.clearInterval(electionRefreshTimer);
+  electionRefreshTimer = window.setInterval(() => {
+    if (document.visibilityState === "hidden") return;
+    void refreshPublicElections({ silent: true });
+  }, 30000);
+}
+
 async function loadPublicPageByKind(kind, authState) {
   switch (kind) {
     case "public-elections": {
@@ -52,6 +96,7 @@ async function loadPublicPageByKind(kind, authState) {
       renderer.renderStatus(payload.status || {}, payload.config || {});
       renderer.renderAuthState(authState);
       renderer.renderCms(payload.cms || {}, kind);
+      bindElectionRefresh();
       return;
     }
     case "public-server": {

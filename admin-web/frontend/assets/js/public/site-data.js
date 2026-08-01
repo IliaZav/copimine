@@ -3,11 +3,17 @@ const PUBLIC_FETCH_TIMEOUT_MS = 8000;
 async function fetchJson(path, fallback = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), PUBLIC_FETCH_TIMEOUT_MS);
+  const rawPath = String(path || "");
+  const freshPath = rawPath.startsWith("/api/")
+    ? `${rawPath}${rawPath.includes("?") ? "&" : "?"}_fresh=${Date.now()}`
+    : rawPath;
   try {
-    const response = await fetch(path, {
+    const response = await fetch(freshPath, {
       credentials: "include",
+      cache: "no-store",
       headers: {
         Accept: "application/json",
+        "Cache-Control": "no-cache",
       },
       signal: controller.signal,
     });
@@ -123,8 +129,11 @@ export async function loadPublicElectionsPageData() {
     fetchConfigPayload(),
     fetchCmsPayload(),
   ]);
+  const electionData = electionsPayload?.data && typeof electionsPayload.data === "object"
+    ? electionsPayload.data
+    : {};
   return {
-    elections: electionsPayload?.data || {},
+    elections: { ...electionData, _unavailable: electionsPayload?.ok !== true },
     status: statusPayload?.data || {},
     config: configPayload?.data || {},
     cms: cmsPayload || { items: [], sections: [] },

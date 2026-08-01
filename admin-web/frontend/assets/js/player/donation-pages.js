@@ -38,7 +38,7 @@ export function createPlayerDonationPages(deps) {
   function paymentModeLabel(value) {
     const provider = String(value || "").toUpperCase();
     if (provider === "YOOKASSA") return "ЮKassa";
-    if (provider === "MOCK_SBP") return "Тестовая оплата";
+    if (provider === "MOCK_SBP") return "Платёжный шлюз не подключён";
     return "Оплата недоступна";
   }
 
@@ -187,7 +187,7 @@ export function createPlayerDonationPages(deps) {
       <section class="layout-grid grid-4">
         ${metric("Donation", formatDonate(balance.balance || 0), "Отдельно от AR", "good")}
         ${metric("Курс", `${packs.rubPerUnit || 1} ₽ = 1 DC`, "Фиксированный курс", "neutral")}
-        ${metric("Режим оплаты", paymentModeLabel(packs.provider), packs.providerConfigured === false ? "Требуется настройка ЮKassa" : (String(packs.provider || "").toUpperCase() === "YOOKASSA" ? "Оплата на защищённой странице провайдера" : "Тестовый режим"), packs.providerConfigured === false ? "warn" : "good")}
+        ${metric("Режим оплаты", paymentModeLabel(packs.provider), packs.providerConfigured === false ? "Требуется настройка ЮKassa" : (String(packs.provider || "").toUpperCase() === "YOOKASSA" ? "Оплата на защищённой странице провайдера" : "Платёжный шлюз не подключён"), packs.providerConfigured === false ? "warn" : "good")}
         ${metric("Сессия", session ? statusLabel(session.status || "created") : "нет", session ? `Код ${session.session_code || short(donationSessionKey(session), 8)}` : "Создай новую сессию", session ? "neutral" : "good")}
       </section>
       ${panel("Donation-баланс", "Отдельный баланс для donation-лавки.", kv([

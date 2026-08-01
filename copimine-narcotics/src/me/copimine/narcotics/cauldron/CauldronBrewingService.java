@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.UUID;
 
 public final class CauldronBrewingService {
     private static final long STALE_BREW_STATE_MILLIS = 15L * 60L * 1000L;
@@ -79,7 +81,7 @@ public final class CauldronBrewingService {
                         if (updatedAtMillis > 0L && updatedAtMillis < 10_000_000_000L) {
                             updatedAtMillis *= 1000L;
                         }
-                        CauldronState restored = new CauldronState(List.copyOf(loaded.ingredients()), loaded.version(), updatedAtMillis);
+                        CauldronState restored = new CauldronState(List.copyOf(loaded.ingredients()), loaded.version(), updatedAtMillis, parseOwner(loaded.ownerUuid()));
                         cache.merge(entry.getKey(), restored, (current, candidate) -> current.version() >= candidate.version() ? current : candidate);
                         restoredCount++;
                     }
@@ -112,11 +114,11 @@ public final class CauldronBrewingService {
             }
             Block block = world.getBlockAt(key.x(), key.y(), key.z());
             if (!isSupportedCauldron(block)) {
-                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), entry.getValue().isStale(nowMillis));
                 continue;
             }
             if (entry.getValue().isStale(nowMillis)) {
-                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), entry.getValue().isStale(nowMillis));
                 continue;
             }
             spawnQueuedParticles(block, entry.getValue().ingredients().size(), false);
@@ -136,7 +138,7 @@ public final class CauldronBrewingService {
             }
             Block block = world.getBlockAt(key.x(), key.y(), key.z());
             if (!isSupportedCauldron(block) || entry.getValue().isStale(nowMillis)) {
-                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D));
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), entry.getValue().isStale(nowMillis));
                 continue;
             }
             spawnQueuedParticles(block, entry.getValue().ingredients().size(), false);
@@ -182,7 +184,7 @@ public final class CauldronBrewingService {
         }
         synchronized (lockFor(key)) {
             long nowMillis = System.currentTimeMillis();
-            CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis));
+            CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis, player.getUniqueId()));
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
             long nextVersion = base.version() + 1L;
@@ -209,6 +211,10 @@ public final class CauldronBrewingService {
     }
 
     public void handleCauldronBroken(Block block, Location dropLocation) {
+        handleCauldronBroken(block, dropLocation, false);
+    }
+
+    private void handleCauldronBroken(Block block, Location dropLocation, boolean stale) {
         BlockKey key = BlockKey.of(block);
         synchronized (lockFor(key)) {
             CauldronState pending = cache.get(key);
@@ -226,10 +232,14 @@ public final class CauldronBrewingService {
                     }
                     cache.remove(key, current);
                     spawnQueuedParticles(block, current.ingredients().size(), true);
-                    if (configService.dropIngredientsOnBreakOrWaterLoss() && block.getWorld() != null) {
+                    if (stale && current.ownerUuid() != null) {
+                        queueIngredientRefunds(current.ownerUuid(), current.ingredients(), key + ":stale");
+                    } else if (configService.dropIngredientsOnBreakOrWaterLoss() && block.getWorld() != null) {
                         for (ItemStack drop : recipeService.ingredientDrops(current.ingredients())) {
                             block.getWorld().dropItemNaturally(dropLocation, drop);
                         }
+                    } else if (current.ownerUuid() != null) {
+                        queueIngredientRefunds(current.ownerUuid(), current.ingredients(), key + ":break");
                     }
                 }
             }));
@@ -333,31 +343,67 @@ public final class CauldronBrewingService {
 
     private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis, org.bukkit.entity.Player player, ItemStack consumed) {
         List<IngredientEntry> frozen = List.copyOf(current);
-        cache.put(key, new CauldronState(frozen, version, nowMillis));
-        database.saveBrewingState(key, version, frozen).exceptionally(error -> {
+        UUID ownerUuid = player == null ? null : player.getUniqueId();
+        cache.put(key, new CauldronState(frozen, version, nowMillis, ownerUuid));
+        CompletableFuture<Void> persisted = ownerUuid == null
+                ? database.saveBrewingState(key, version, frozen)
+                : database.saveBrewingState(key, version, frozen, ownerUuid);
+        persisted.exceptionally(error -> {
             plugin.getLogger().warning("Brewing state database save failed for " + key + ": " + error.getMessage());
             Bukkit.getScheduler().runTask(plugin, () -> {
                 synchronized (lockFor(key)) {
                     CauldronState currentState = cache.get(key);
                     if (currentState != null && currentState.version() == version && currentState.ingredients().equals(frozen)) {
-                        cache.remove(key, currentState);
-                        database.deleteBrewingState(key, version + 1L);
+                        // Do not refund until the compensating tombstone is
+                        // committed.  If the original save actually reached
+                        // PostgreSQL but its acknowledgement was lost, an
+                        // early refund would duplicate the ingredient on the
+                        // next restart.
+                        database.deleteBrewingState(key, version + 1L).whenComplete((deleted, deleteError) ->
+                                Bukkit.getScheduler().runTask(plugin, () -> {
+                                    synchronized (lockFor(key)) {
+                                        CauldronState stillCurrent = cache.get(key);
+                                        if (deleteError != null || stillCurrent == null
+                                                || stillCurrent.version() != version
+                                                || !stillCurrent.ingredients().equals(frozen)) {
+                                            if (deleteError != null) {
+                                                plugin.getLogger().warning("Brewing state compensation tombstone failed for " + key + ": " + deleteError.getMessage());
+                                            }
+                                            return;
+                                        }
+                                        cache.remove(key, stillCurrent);
+                                        refundFailedIngredient(block, key, frozen, ownerUuid, consumed);
+                                    }
+                                }));
                     }
                 }
-                database.queuePendingRefund(player.getUniqueId(), "INGREDIENT:" + frozen.getLast().serialize(), 1)
-                        .whenComplete((queued, queueError) -> Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (queueError != null) {
-                                plugin.getLogger().warning("Ingredient refund queue failed for " + key + ": " + queueError.getMessage());
-                            }
-                            if (player.isOnline()) {
-                                player.sendMessage("&cBrewing was not saved. The ingredient was queued for safe return.");
-                            }
-                        }));
             });
             return null;
         });
         spawnQueuedParticles(block, frozen.size(), false);
         return true;
+    }
+
+    private void refundFailedIngredient(Block block, BlockKey key, List<IngredientEntry> frozen,
+                                        UUID ownerUuid, ItemStack consumed) {
+        if (ownerUuid == null) {
+            if (consumed != null && block.getWorld() != null) {
+                ItemStack dropped = consumed.clone();
+                dropped.setAmount(Math.max(1, dropped.getAmount()));
+                block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), dropped);
+            }
+            return;
+        }
+        database.queuePendingRefund(ownerUuid, "INGREDIENT:" + frozen.getLast().serialize(), 1)
+                .whenComplete((queued, queueError) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (queueError != null) {
+                        plugin.getLogger().warning("Ingredient refund queue failed for " + key + ": " + queueError.getMessage());
+                    }
+                    org.bukkit.entity.Player online = Bukkit.getPlayer(ownerUuid);
+                    if (online != null && online.isOnline()) {
+                        online.sendMessage("&cBrewing was not saved. The ingredient was queued for safe return.");
+                    }
+                }));
     }
 
     private void clearState(Block block, BlockKey key, long version) {
@@ -430,7 +476,32 @@ public final class CauldronBrewingService {
         return locks.computeIfAbsent(key, ignored -> new Object());
     }
 
-    private record CauldronState(List<IngredientEntry> ingredients, long version, long updatedAtMillis) {
+    private void queueIngredientRefunds(UUID ownerUuid, List<IngredientEntry> ingredients, String reason) {
+        if (ownerUuid == null || ingredients == null || ingredients.isEmpty()) {
+            return;
+        }
+        for (IngredientEntry ingredient : ingredients) {
+            database.queuePendingRefund(ownerUuid, "INGREDIENT:" + ingredient.serialize(), 1)
+                    .whenComplete((ignored, error) -> {
+                        if (error != null) {
+                            plugin.getLogger().warning("Ingredient mailbox refund failed for " + reason + ": " + error.getMessage());
+                        }
+                    });
+        }
+    }
+
+    private UUID parseOwner(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private record CauldronState(List<IngredientEntry> ingredients, long version, long updatedAtMillis, UUID ownerUuid) {
         private boolean isStale(long nowMillis) {
             return updatedAtMillis > 0L && nowMillis - updatedAtMillis >= STALE_BREW_STATE_MILLIS;
         }

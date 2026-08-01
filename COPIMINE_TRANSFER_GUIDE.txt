@@ -1,0 +1,26 @@
+# CopiMine transfer guide
+
+Read this guide before moving a release to Ubuntu. The supported entry points
+are `deploy/ubuntu/install.sh`, `deploy/ubuntu/update.sh` and
+`deploy/ubuntu/verify.sh`; keep `admin-web/deploy/copimine-admin.service`
+enabled while applying an update.
+
+Configure `POSTGRES_PASSWORD` and the shared PostgreSQL URL in
+`admin-web/.env` before the first launch. Passwords must never be passed in a
+command-line argument or committed to Git. The installer creates the
+dedicated `copimine` service account, applies ordered migrations, verifies
+SHA-256 manifests and restarts the admin, Discord bridge and Minecraft units.
+
+Active gameplay jars:
+
+* `CopiMineUltimateAdminPlus.jar`
+* `CopiMineArtifacts.jar`
+* `CopiMineEconomyCore.jar`
+* `CopiMineElectionCore.jar`
+
+The active auth/data store is PostgreSQL. Keep worlds, inventories, site
+accounts and whitelist during a normal update. For a clean gameplay test use
+`db/runtime/clean_world_state.sql`, which preserves identity records. After
+launch, read `FIRST_RUN_ADMIN_GUIDE.md`, check `/api/health`, verify the
+startup-readiness panel and run the donation recovery matrix (death, void,
+cactus, explosion, creative deletion, foreign pickup and restart).

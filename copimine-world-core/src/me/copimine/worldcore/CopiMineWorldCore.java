@@ -32,6 +32,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,13 +40,19 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class CopiMineWorldCore extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+    private static final int MAX_SAFE_LOCATION_CHECKS = 256;
+    private static final int MAX_NETHER_SAFE_Y = 120;
     private WorldLimit overworldLimit;
     private WorldAccess netherAccess;
     private WorldAccess endAccess;
     private final Set<UUID> warnedOutside = new LinkedHashSet<>();
     private final Map<UUID, String> blockedWorldWarnings = new HashMap<>();
+    private final Map<String, BorderSnapshot> savedBorders = new HashMap<>();
+    private final Set<UUID> trustedPluginTeleports = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> redirectInFlight = ConcurrentHashMap.newKeySet();
 
     @Override
     public void onEnable() {
@@ -60,6 +67,15 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         getServer().getPluginManager().registerEvents(this, this);
         Bukkit.getScheduler().runTaskTimer(this, this::enforceWorldAccessAndBorders, 40L, 40L);
         applyOverworldBorder();
+    }
+
+    @Override
+    public void onDisable() {
+        restoreSavedBorders();
+        warnedOutside.clear();
+        blockedWorldWarnings.clear();
+        trustedPluginTeleports.clear();
+        redirectInFlight.clear();
     }
 
     public void openAdminWorldHub(Player player) {
@@ -99,6 +115,24 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 "&7/cmworld end open|close"
         ), "");
         player.openInventory(inventory);
+    }
+
+    /**
+     * Explicit API for trusted server plugins.  A normal PLUGIN teleport never
+     * inherits the command-teleport exemption; callers must opt in for exactly
+     * one next teleport event.
+     */
+    public boolean teleportTrusted(Player player, Location target) {
+        if (player == null || target == null || target.getWorld() == null || !player.isOnline()) {
+            return false;
+        }
+        UUID uuid = player.getUniqueId();
+        trustedPluginTeleports.add(uuid);
+        boolean result = player.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN);
+        if (!result) {
+            trustedPluginTeleports.remove(uuid);
+        }
+        return result;
     }
 
     private void openWorldCloseConfirmMenu(Player player, boolean nether, int playersInside) {
@@ -165,8 +199,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             return true;
         }
         if ("apply".equalsIgnoreCase(args[1])) {
-            applyOverworldBorder();
-            sender.sendMessage(color("&aVanilla worldborder применён."));
+            OperationResult result = applyOverworldBorder();
+            sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
             return true;
         }
         if ("set".equalsIgnoreCase(args[1]) && args.length >= 3) {
@@ -200,10 +234,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             return true;
         }
         if ("open".equalsIgnoreCase(args[1])) {
-            getConfig().set(path, true);
-            saveConfig();
-            reloadLocalConfig();
-            sender.sendMessage(color("&a" + title + " открыт."));
+            OperationResult result = setWorldState(isNether, true);
+            sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
             return true;
         }
         if ("close".equalsIgnoreCase(args[1])) {
@@ -212,15 +244,30 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 sender.sendMessage(color("&eВ мире есть игроки. Повтори: &f/cmworld " + args[0] + " close confirm"));
                 return true;
             }
-            getConfig().set(path, false);
-            saveConfig();
-            reloadLocalConfig();
-            evacuatePlayers(access, color("&e" + title + " сейчас закрыт."));
-            sender.sendMessage(color("&a" + title + " закрыт."));
+            OperationResult result = setWorldState(isNether, false);
+            sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
             return true;
         }
         sendHelp(sender);
         return true;
+    }
+
+    private OperationResult setWorldState(boolean nether, boolean enabled) {
+        String path = nether ? "world_access.nether.enabled" : "world_access.end.enabled";
+        String title = nether ? "Нижний мир" : "Энд";
+        WorldAccess previous = nether ? netherAccess : endAccess;
+        try {
+            getConfig().set(path, enabled);
+            saveConfig();
+            reloadLocalConfig();
+            if (!enabled) {
+                evacuatePlayers(previous, color("&e" + title + " сейчас закрыт."));
+            }
+            return new OperationResult(true, title + (enabled ? " открыт." : " закрыт."));
+        } catch (Exception error) {
+            getLogger().log(java.util.logging.Level.WARNING, "WorldCore failed to change world state", error);
+            return new OperationResult(false, "Не удалось изменить состояние мира.");
+        }
     }
 
     @Override
@@ -246,8 +293,11 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         return List.of();
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPortal(PlayerPortalEvent event) {
+        if (event.isCancelled()) {
+            return;
+        }
         if (event.getCause() == PlayerTeleportEvent.TeleportCause.END_PORTAL && !endAccess.enabled() && !endAccess.allowPortals()) {
             event.setCancelled(true);
             event.getPlayer().sendMessage(color("&eЭнд сейчас закрыт."));
@@ -268,8 +318,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onTeleport(PlayerTeleportEvent event) {
+        if (event.isCancelled()) {
+            trustedPluginTeleports.remove(event.getPlayer().getUniqueId());
+            return;
+        }
         if (event.getTo() == null || event.getTo().getWorld() == null) {
             return;
         }
@@ -278,12 +332,14 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             case NETHER_PORTAL, END_PORTAL, END_GATEWAY -> true;
             default -> false;
         };
-        boolean commandTeleport = switch (event.getCause()) {
-            case COMMAND, PLUGIN -> true;
-            default -> false;
-        };
+        boolean commandTeleport = event.getCause() == PlayerTeleportEvent.TeleportCause.COMMAND;
+        boolean pluginTeleport = event.getCause() == PlayerTeleportEvent.TeleportCause.PLUGIN;
         WorldAccess targetAccess = accessFor(targetWorld);
         if (commandTeleport && targetAccess != null && !targetAccess.enabled() && targetAccess.allowCommandsTeleport()) {
+            return;
+        }
+        boolean trustedPluginTeleport = pluginTeleport && trustedPluginTeleports.remove(event.getPlayer().getUniqueId());
+        if (pluginTeleport && targetAccess != null && !targetAccess.enabled() && trustedPluginTeleport) {
             return;
         }
         if (isBlockedWorld(targetWorld, portalTeleport)) {
@@ -356,6 +412,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     public void onQuit(PlayerQuitEvent event) {
         warnedOutside.remove(event.getPlayer().getUniqueId());
         blockedWorldWarnings.remove(event.getPlayer().getUniqueId());
+        redirectInFlight.remove(event.getPlayer().getUniqueId());
+        trustedPluginTeleports.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -379,11 +437,15 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         switch (action) {
             case "gui:border:status" -> player.sendMessage(color("&7Текущий радиус границы: &f" + overworldLimit.radius()));
             case "gui:border:apply" -> {
-                applyOverworldBorder();
-                player.sendMessage(color("&aVanilla worldborder применён."));
+                OperationResult result = applyOverworldBorder();
+                player.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
             }
             case "gui:nether:open" -> {
-                dispatchConsole("cmworld nether open");
+                OperationResult result = setWorldState(true, true);
+                if (!result.success()) {
+                    player.sendMessage(color("&c" + result.message()));
+                    return;
+                }
                 player.sendMessage(color("&aНижний мир открыт."));
                 openAdminWorldHub(player);
             }
@@ -391,13 +453,21 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 if (playersInside(netherAccess) > 0) {
                     openWorldCloseConfirmMenu(player, true, playersInside(netherAccess));
                 } else {
-                    dispatchConsole("cmworld nether close");
+                    OperationResult result = setWorldState(true, false);
+                    if (!result.success()) {
+                        player.sendMessage(color("&c" + result.message()));
+                        return;
+                    }
                     player.sendMessage(color("&aНижний мир закрыт."));
                     openAdminWorldHub(player);
                 }
             }
             case "gui:end:open" -> {
-                dispatchConsole("cmworld end open");
+                OperationResult result = setWorldState(false, true);
+                if (!result.success()) {
+                    player.sendMessage(color("&c" + result.message()));
+                    return;
+                }
                 player.sendMessage(color("&aЭнд открыт."));
                 openAdminWorldHub(player);
             }
@@ -405,18 +475,30 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 if (playersInside(endAccess) > 0) {
                     openWorldCloseConfirmMenu(player, false, playersInside(endAccess));
                 } else {
-                    dispatchConsole("cmworld end close");
+                    OperationResult result = setWorldState(false, false);
+                    if (!result.success()) {
+                        player.sendMessage(color("&c" + result.message()));
+                        return;
+                    }
                     player.sendMessage(color("&aЭнд закрыт."));
                     openAdminWorldHub(player);
                 }
             }
             case "gui:confirm:close:nether" -> {
-                dispatchConsole("cmworld nether close confirm");
+                OperationResult result = setWorldState(true, false);
+                if (!result.success()) {
+                    player.sendMessage(color("&c" + result.message()));
+                    return;
+                }
                 player.sendMessage(color("&aНижний мир закрыт."));
                 openAdminWorldHub(player);
             }
             case "gui:confirm:close:end" -> {
-                dispatchConsole("cmworld end close confirm");
+                OperationResult result = setWorldState(false, false);
+                if (!result.success()) {
+                    player.sendMessage(color("&c" + result.message()));
+                    return;
+                }
                 player.sendMessage(color("&aЭнд закрыт."));
                 openAdminWorldHub(player);
             }
@@ -508,19 +590,38 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         );
     }
 
-    private void applyOverworldBorder() {
+    private OperationResult applyOverworldBorder() {
         if (!overworldLimit.enabled() || !overworldLimit.useVanillaWorldBorder()) {
-            return;
+            restoreSavedBorders();
+            return new OperationResult(true, "Vanilla worldborder restored to its previous settings.");
         }
+        int applied = 0;
         for (String worldName : overworldLimit.worldNames()) {
             World world = Bukkit.getWorld(worldName);
             if (world == null) {
                 continue;
             }
             WorldBorder border = world.getWorldBorder();
+            savedBorders.computeIfAbsent(worldName, ignored -> BorderSnapshot.capture(border));
             Location center = world.getSpawnLocation();
             border.setCenter(center.getX(), center.getZ());
             border.setSize(overworldLimit.radius() * 2.0D);
+            applied++;
+        }
+        if (applied == 0) {
+            return new OperationResult(false, "No configured overworld worlds are loaded.");
+        }
+        return new OperationResult(true, "Vanilla worldborder applied to " + applied + " world(s).");
+    }
+
+    private void restoreSavedBorders() {
+        for (Map.Entry<String, BorderSnapshot> entry : new ArrayList<>(savedBorders.entrySet())) {
+            World world = Bukkit.getWorld(entry.getKey());
+            if (world == null) {
+                continue;
+            }
+            entry.getValue().restore(world.getWorldBorder());
+            savedBorders.remove(entry.getKey());
         }
     }
 
@@ -538,6 +639,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         sender.sendMessage(color("&6/cmworld border apply"));
         sender.sendMessage(color("&6/cmworld nether open|close|status"));
         sender.sendMessage(color("&6/cmworld end open|close|status"));
+        sender.sendMessage(color("&7If players are inside: &f/cmworld nether close confirm"));
+        sender.sendMessage(color("&7If players are inside: &f/cmworld end close confirm"));
         sender.sendMessage(color("&6/cmworld reload"));
         sender.sendMessage(color("&6/cmworld safecheck"));
     }
@@ -623,28 +726,84 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private void redirectPlayer(Player player, WorldAccess access, String message) {
-        if (access == null || player == null) {
+        // The final validated location is teleported with player.teleport(safe)
+        // in finishRedirect after the target chunk has been prepared.
+        if (access == null || player == null || !redirectInFlight.add(player.getUniqueId())) {
             return;
         }
-        World target = Bukkit.getWorld(access.redirectWorld());
-        if (target == null && !Bukkit.getWorlds().isEmpty()) {
-            target = Bukkit.getWorlds().getFirst();
-        }
+        World target = resolveRedirectTarget(player.getWorld(), access);
         if (target == null) {
+            redirectInFlight.remove(player.getUniqueId());
             return;
         }
-        Location safe = access.redirectToSafeSpawn() ? safeSpawn(target) : findSafeLocation(target, target.getSpawnLocation());
-        if (safe == null) {
-            getLogger().warning("WorldCore could not find a safe redirect location in world " + target.getName() + " for " + player.getName());
-            player.sendMessage(color("&cНе удалось найти безопасную точку для перемещения."));
+        int chunkX = target.getSpawnLocation().getBlockX() >> 4;
+        int chunkZ = target.getSpawnLocation().getBlockZ() >> 4;
+        if (!target.isChunkLoaded(chunkX, chunkZ)) {
+            target.getChunkAtAsync(chunkX, chunkZ, true).whenComplete((chunk, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                finishRedirect(player, access, message, target, error);
+            }));
             return;
         }
-        if (player.teleport(safe)) {
-            blockedWorldWarnings.remove(player.getUniqueId());
-            player.sendMessage(message);
-        } else {
-            getLogger().warning("WorldCore could not redirect " + player.getName() + " from a closed world.");
+        finishRedirect(player, access, message, target, null);
+    }
+
+    private void finishRedirect(Player player, WorldAccess access, String message, World target, Throwable preparationError) {
+        try {
+            if (preparationError != null || player == null || !player.isOnline()) {
+                if (preparationError != null) {
+                    getLogger().warning("WorldCore failed to prepare redirect chunk: " + preparationError.getMessage());
+                }
+                return;
+            }
+            Location safe = access.redirectToSafeSpawn() ? safeSpawn(target) : findSafeLocation(target, target.getSpawnLocation());
+            if (safe == null) {
+                getLogger().warning("WorldCore could not find a safe redirect location in world " + target.getName() + " for " + player.getName());
+                player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё Р±РµР·РѕРїР°СЃРЅСѓСЋ С‚РѕС‡РєСѓ РґР»СЏ РїРµСЂРµРјРµС‰РµРЅРёСЏ."));
+                return;
+            }
+            if (player.teleport(safe)) {
+                blockedWorldWarnings.remove(player.getUniqueId());
+                player.sendMessage(message);
+            } else {
+                getLogger().warning("WorldCore could not redirect " + player.getName() + " from a closed world.");
+            }
+        } finally {
+            if (player != null) {
+                redirectInFlight.remove(player.getUniqueId());
+            }
         }
+    }
+
+    private World resolveRedirectTarget(World source, WorldAccess requested) {
+        Set<String> visited = new HashSet<>();
+        WorldAccess current = requested;
+        while (current != null) {
+            String redirectName = current.redirectWorld();
+            if (redirectName == null || redirectName.isBlank()
+                    || !visited.add(redirectName.toLowerCase(Locale.ROOT))) {
+                break;
+            }
+            World target = Bukkit.getWorld(redirectName);
+            if (target != null && target != source) {
+                WorldAccess targetAccess = accessFor(target);
+                if (targetAccess == null || targetAccess.enabled()) {
+                    return target;
+                }
+                current = targetAccess;
+                continue;
+            }
+            break;
+        }
+        for (World candidate : Bukkit.getWorlds()) {
+            if (candidate == source) {
+                continue;
+            }
+            WorldAccess candidateAccess = accessFor(candidate);
+            if (candidateAccess == null || candidateAccess.enabled()) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private Location safeSpawn(World world) {
@@ -652,13 +811,20 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private Location findSafeLocation(World world, Location origin) {
+        if (world == null || origin == null || origin.getWorld() != world) {
+            return null;
+        }
         int originX = origin.getBlockX();
         int originZ = origin.getBlockZ();
+        int[] checks = {0};
         for (int radius = 0; radius <= 6; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     if (radius > 0 && Math.abs(dx) != radius && Math.abs(dz) != radius) {
                         continue;
+                    }
+                    if (checks[0]++ >= MAX_SAFE_LOCATION_CHECKS) {
+                        return null;
                     }
                     Location safe = safeLocationAt(world, originX + dx, originZ + dz);
                     if (safe != null) {
@@ -673,12 +839,18 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                     if (Math.abs(dx) != radius && Math.abs(dz) != radius) {
                         continue;
                     }
+                    if (checks[0]++ >= MAX_SAFE_LOCATION_CHECKS) {
+                        return null;
+                    }
                     Location safe = safeLocationAt(world, originX + dx, originZ + dz);
                     if (safe != null) {
                         return safe;
                     }
                 }
             }
+        }
+        if (!world.isChunkLoaded(originX >> 4, originZ >> 4)) {
+            return null;
         }
         int fallbackY = Math.max(world.getMinHeight() + 2, world.getHighestBlockYAt(originX, originZ) + 1);
         if (isSafeStandingLocation(world, originX, fallbackY, originZ)) {
@@ -694,8 +866,14 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private Location safeLocationAt(World world, int x, int z) {
+        if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+            return null;
+        }
         int minY = world.getMinHeight() + 1;
         int maxY = world.getMaxHeight() - 2;
+        if (world.getEnvironment() == World.Environment.NETHER) {
+            maxY = Math.min(maxY, MAX_NETHER_SAFE_Y - 1);
+        }
         int highest = Math.max(minY + 1, Math.min(maxY, world.getHighestBlockYAt(x, z) + 1));
         for (int y = Math.min(maxY, highest + 2); y >= Math.max(minY, highest - 6); y--) {
             if (isSafeStandingLocation(world, x, y, z)) {
@@ -714,6 +892,9 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if (y <= world.getMinHeight() || y >= world.getMaxHeight() - 1) {
             return false;
         }
+        if (world.getEnvironment() == World.Environment.NETHER && y + 1 >= MAX_NETHER_SAFE_Y) {
+            return false;
+        }
         Block feet = world.getBlockAt(x, y, z);
         Block head = world.getBlockAt(x, y + 1, z);
         Block ground = world.getBlockAt(x, y - 1, z);
@@ -722,7 +903,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     private boolean isPassableForPlayer(Block block) {
         Material type = block.getType();
-        return !type.isSolid() && !isHazard(type);
+        return type == Material.AIR;
     }
 
     private boolean isSafeGround(Material type) {
@@ -731,9 +912,9 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     private boolean isHazard(Material type) {
         return switch (type) {
-            case LAVA, FIRE, SOUL_FIRE, CAMPFIRE, SOUL_CAMPFIRE, CACTUS, MAGMA_BLOCK,
+            case LAVA, WATER, BUBBLE_COLUMN, FIRE, SOUL_FIRE, CAMPFIRE, SOUL_CAMPFIRE, CACTUS, MAGMA_BLOCK,
                     END_PORTAL, END_PORTAL_FRAME, NETHER_PORTAL, POWDER_SNOW, SWEET_BERRY_BUSH,
-                    WITHER_ROSE, VOID_AIR, CAVE_AIR -> true;
+                    WITHER_ROSE, VOID_AIR, CAVE_AIR, KELP, KELP_PLANT, SEAGRASS, TALL_SEAGRASS -> true;
             default -> false;
         };
     }
@@ -821,6 +1002,26 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     private record WorldAccess(boolean enabled, Set<String> worldNames, boolean allowPortals,
                                boolean allowCommandsTeleport, String redirectWorld, boolean redirectToSafeSpawn) {
+    }
+
+    private record OperationResult(boolean success, String message) {
+    }
+
+    private record BorderSnapshot(double centerX, double centerZ, double size, double damageBuffer,
+                                  double damageAmount, int warningDistance, int warningTime) {
+        private static BorderSnapshot capture(WorldBorder border) {
+            return new BorderSnapshot(border.getCenter().getX(), border.getCenter().getZ(), border.getSize(),
+                    border.getDamageBuffer(), border.getDamageAmount(), border.getWarningDistance(), border.getWarningTime());
+        }
+
+        private void restore(WorldBorder border) {
+            border.setCenter(centerX, centerZ);
+            border.setSize(size);
+            border.setDamageBuffer(damageBuffer);
+            border.setDamageAmount(damageAmount);
+            border.setWarningDistance(warningDistance);
+            border.setWarningTime(warningTime);
+        }
     }
 
     private static final class MenuHolder implements InventoryHolder {

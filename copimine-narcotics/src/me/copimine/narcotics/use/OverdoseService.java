@@ -123,54 +123,108 @@ public final class OverdoseService {
     }
 
     public CompletableFuture<Void> consume(Player player, NarcoticDefinition definition) {
+        if (player == null || definition == null) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Player and narcotic definition are required."));
+        }
         long now = System.currentTimeMillis() / 1000L;
-        PlayerState state = states.getOrDefault(player.getUniqueId(), PlayerState.empty(player.getUniqueId()));
+        UUID playerUuid = player.getUniqueId();
+        PlayerState state = states.getOrDefault(playerUuid, PlayerState.empty(playerUuid));
         if (now - state.lastConsumedAt() > configService.usageWindowSeconds()) {
             state = state.withCurrentScale(0);
         }
+        // Routing contract: configService.zhuzevoForcesOverdose() must use the
+        // universal applyOverdose(player, definition, ...) plan before the
+        // normal applyZhuzevo(player, definition, ...) plan is considered.
+        ConsumptionPlan plan = prepareConsumption(player, definition, state, now);
+        return database.savePlayerState(plan.state()).thenCompose(ignored -> {
+            states.put(playerUuid, plan.state());
+            CompletableFuture<Void> applied = new CompletableFuture<>();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                try {
+                    if (player.isOnline()) {
+                        plan.effects().run();
+                    }
+                    applied.complete(null);
+                } catch (Throwable error) {
+                    applied.completeExceptionally(error);
+                }
+            });
+            return applied;
+        });
+    }
+
+    private ConsumptionPlan prepareConsumption(Player player, NarcoticDefinition definition, PlayerState state, long now) {
         boolean activeOverdose = state.overdoseUntil() > now;
         if ("zhuzevo".equals(definition.id())) {
-            PlayerState base = new PlayerState(
-                    player.getUniqueId(),
-                    state.currentScale(),
-                    now,
-                    state.overdoseUntil(),
-                    state.invertedMovementUntil(),
-                    definition.id(),
-                    state.stateVersion() + 1L
-            );
-            PlayerState updated = configService.zhuzevoForcesOverdose()
-                    ? applyOverdose(player, definition, base, now)
-                    : applyZhuzevo(player, definition, state, now);
-            states.put(player.getUniqueId(), updated);
-            return database.savePlayerState(updated);
+            PlayerState base = new PlayerState(player.getUniqueId(), state.currentScale(), now,
+                    state.overdoseUntil(), state.invertedMovementUntil(), definition.id(), state.stateVersion() + 1L);
+            return configService.zhuzevoForcesOverdose()
+                    ? prepareOverdose(player, definition, base, now)
+                    : prepareZhuzevo(player, definition, state, now);
         }
         int newScale = state.currentScale() + Math.max(0, configService.overdoseWeightFor(definition));
-        boolean overdose = activeOverdose;
-        overdose = overdose || newScale >= configService.overdoseThreshold();
-
-        if (configService.clearNormalEffectsBeforeNewUse() && !activeOverdose) {
-            clearTransientEffects(player, false);
-        }
-
-        PlayerState updated = new PlayerState(
-                player.getUniqueId(),
-                newScale,
-                now,
-                state.overdoseUntil(),
-                state.invertedMovementUntil(),
-                definition.id(),
-                state.stateVersion() + 1L
-        );
-
+        boolean overdose = activeOverdose || newScale >= configService.overdoseThreshold();
+        PlayerState updated = new PlayerState(player.getUniqueId(), newScale, now,
+                state.overdoseUntil(), state.invertedMovementUntil(), definition.id(), state.stateVersion() + 1L);
         if (overdose) {
-            updated = applyOverdose(player, definition, updated, now);
-        } else {
-            applyConfiguredEffects(player, definition.normalEffects());
-            visualRuntime.apply(player, definition.visualEffectId(), effectiveDuration(Math.max(15, definition.maxEffectDurationSeconds(false))), false);
+            return prepareOverdose(player, definition, updated, now);
         }
-        states.put(player.getUniqueId(), updated);
-        return database.savePlayerState(updated);
+        Runnable effects = () -> {
+            if (configService.clearNormalEffectsBeforeNewUse() && !activeOverdose) {
+                clearTransientEffects(player, false);
+            }
+            applyConfiguredEffects(player, definition.normalEffects());
+            visualRuntime.apply(player, definition.visualEffectId(),
+                    effectiveDuration(Math.max(15, definition.maxEffectDurationSeconds(false))), false);
+        };
+        return new ConsumptionPlan(updated, effects);
+    }
+
+    private ConsumptionPlan prepareOverdose(Player player, NarcoticDefinition definition, PlayerState state, long now) {
+        List<ConfiguredEffect> effects = buildOverdoseEffects(definition);
+        int duration = effectiveDuration(Math.max(30, maxDuration(effects)));
+        PlayerState updated = new PlayerState(state.playerUuid(), 0, state.lastConsumedAt(),
+                now + duration, now + duration, state.lastItemId(), state.stateVersion());
+        Runnable apply = () -> {
+            applyConfiguredEffects(player, effects, -1, clientModAvailable(player, "OVERDOSE"));
+            if (player.getWorld() != null) {
+                player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D),
+                        30, 0.45D, 0.55D, 0.45D, 0.01D);
+            }
+            visualRuntime.apply(player, resolveOverdoseVisual(definition), duration, true);
+        };
+        return new ConsumptionPlan(updated, apply);
+    }
+
+    private ConsumptionPlan prepareZhuzevo(Player player, NarcoticDefinition definition, PlayerState state, long now) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        int duration = random.nextInt(240, 301);
+        List<ConfiguredEffect> pool = new ArrayList<>();
+        pool.add(new ConfiguredEffect("DARKNESS", 0, duration));
+        pool.add(new ConfiguredEffect("HUNGER", random.nextInt(0, 3), duration));
+        pool.add(new ConfiguredEffect("SLOWNESS", random.nextInt(0, 3), duration));
+        pool.add(new ConfiguredEffect("MINING_FATIGUE", random.nextInt(1, 5), duration));
+        pool.add(new ConfiguredEffect("NAUSEA", random.nextInt(0, 3), duration));
+        Collections.shuffle(pool);
+        List<ConfiguredEffect> effects = new ArrayList<>(pool.subList(0, Math.min(random.nextInt(4, 6), pool.size())));
+        boolean luckyShader = random.nextInt(10) == 0;
+        String visual = luckyShader ? "OVERDOSE" : "ZHUZEVO_TRIP";
+        PlayerState updated = new PlayerState(player.getUniqueId(), state.currentScale(), now,
+                state.overdoseUntil(), state.invertedMovementUntil(),
+                state.overdoseUntil() > now ? state.lastItemId() : definition.id(), state.stateVersion() + 1L);
+        Runnable apply = () -> {
+            List<ConfiguredEffect> applied = new ArrayList<>(effects);
+            if (luckyShader) {
+                applied.add(new ConfiguredEffect("WITHER", 0, Math.min(duration, 60)));
+            }
+            applyConfiguredEffects(player, applied, duration, clientModAvailable(player, visual));
+            visualRuntime.apply(player, visual, duration, luckyShader);
+            if (player.getWorld() != null) {
+                player.getWorld().spawnParticle(Particle.WITCH, player.getLocation().add(0.0D, 1.0D, 0.0D),
+                        18, 0.35D, 0.45D, 0.35D, 0.01D);
+            }
+        };
+        return new ConsumptionPlan(updated, apply);
     }
 
     public boolean shouldBlockMilk(Player player) {
@@ -479,6 +533,9 @@ public final class OverdoseService {
             }
         }
         effects.add(required);
+    }
+
+    private record ConsumptionPlan(PlayerState state, Runnable effects) {
     }
 
     public record PlayerState(UUID playerUuid, int currentScale, long lastConsumedAt, long overdoseUntil, long invertedMovementUntil, String lastItemId, long stateVersion) {

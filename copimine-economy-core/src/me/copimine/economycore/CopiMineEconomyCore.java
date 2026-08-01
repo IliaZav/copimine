@@ -41,6 +41,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.InventoryView;
@@ -53,6 +54,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
@@ -61,6 +63,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -68,6 +71,8 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -87,11 +92,18 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 import javax.crypto.SecretKeyFactory;
+import javax.crypto.Mac;
 import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 import org.bukkit.util.Transformation;
 
 public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
@@ -113,7 +125,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private static final String PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE = "DEPOSIT_RESTORE";
 
     private DbSettings db;
-    private ExecutorService dbExecutor;
+    private ThreadPoolExecutor dbExecutor;
+    private SimpleConnectionPool connectionPool;
     private final Map<UUID, AtmPinSession> atmPinSessions = new ConcurrentHashMap<>();
     private final Map<UUID, TaxStatusCache> taxStatusCache = new ConcurrentHashMap<>();
     private final Set<UUID> atmPinRefreshBypass = ConcurrentHashMap.newKeySet();
@@ -124,6 +137,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private NamespacedKey visualLinkedIdKey;
     private NamespacedKey visualModelIdKey;
     private NamespacedKey officialArSerialKey;
+    private NamespacedKey officialArSignatureKey;
+    private byte[] officialArSigningSecret;
+    private BukkitTask atmAnchorGuardTask;
 
     private final BankService bankService = new BankServiceImpl();
     private final PinService pinService = new PinServiceImpl();
@@ -300,6 +316,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private record BlockKey(String world, int x, int y, int z) {}
     private record PendingArSettlement(String id, UUID playerUuid, String playerName, long amount, String settlementType, String reason) {}
+    private record ArFragment(int slot, ItemStack snapshot) {}
 
     @Override
     public void onEnable() {
@@ -308,14 +325,19 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
         visualModelIdKey = new NamespacedKey(this, "visual_model_id");
         officialArSerialKey = new NamespacedKey(this, "ar_serial");
-        dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors())), task -> {
+        officialArSignatureKey = new NamespacedKey(this, "ar_signature");
+        officialArSigningSecret = loadOrCreateArSigningSecret();
+        int dbThreads = Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors()));
+        dbExecutor = new ThreadPoolExecutor(dbThreads, dbThreads, 30L, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(512), task -> {
             Thread thread = new Thread(task, "copimine-economy-db");
             thread.setDaemon(true);
             return thread;
-        });
+        }, new ThreadPoolExecutor.AbortPolicy());
         try {
             Class.forName("org.postgresql.Driver");
             db = loadDbSettings();
+            connectionPool = new SimpleConnectionPool(db, Math.max(2, Math.min(8, dbThreads + 2)));
             ensureSchema();
             int interruptedSettlements = quarantineInterruptedPendingArSettlements();
             if (interruptedSettlements > 0) {
@@ -346,11 +368,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }, 20L);
         Bukkit.getScheduler().runTaskLater(this, () -> Bukkit.getOnlinePlayers().forEach(player -> processPendingArSettlements(player, false)), 40L);
         Bukkit.getScheduler().runTaskTimer(this, this::refreshOpenTaxButtons, 20L, 20L);
+        atmAnchorGuardTask = Bukkit.getScheduler().runTaskTimer(this, this::guardAtmAnchors, 40L, 40L);
     }
 
     @Override
     public void onDisable() {
         Bukkit.getServicesManager().unregisterAll(this);
+        if (atmAnchorGuardTask != null) {
+            atmAnchorGuardTask.cancel();
+            atmAnchorGuardTask = null;
+        }
         if (dbExecutor != null) {
             dbExecutor.shutdown();
             try {
@@ -362,6 +389,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 Thread.currentThread().interrupt();
                 dbExecutor.shutdownNow();
             }
+        }
+        if (connectionPool != null) {
+            connectionPool.close();
+            connectionPool = null;
         }
         taxStatusCache.clear();
     }
@@ -459,6 +490,32 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
             return remove;
         });
+    }
+
+    /** Keep ATM interaction/cache state tied to an actual loaded world block. */
+    private void guardAtmAnchors() {
+        for (Map.Entry<BlockKey, String> entry : new ArrayList<>(atmIdsByBlock.entrySet())) {
+            BlockKey key = entry.getKey();
+            World world = Bukkit.getWorld(key.world());
+            if (world == null || !world.isChunkLoaded(key.x() >> 4, key.z() >> 4)) {
+                continue;
+            }
+            if (!world.getBlockAt(key.x(), key.y(), key.z()).getType().isAir()) {
+                continue;
+            }
+            String atmId = entry.getValue();
+            evictAtmCache(atmId);
+            try {
+                cleanupProtectedBlockVisuals("ATM", atmId);
+            } catch (Exception error) {
+                getLogger().warning("ATM anchor visual cleanup: " + safeError(error));
+            }
+            dbAsync("archive missing ATM anchor", () -> update(
+                    "UPDATE ar_atms SET active=0,archived_by='SYSTEM_ANCHOR_MISSING',archived_at=? WHERE id=? AND active=1",
+                    now(), atmId));
+            getLogger().warning("Archived ATM " + atmId + " because its anchor block is missing at "
+                    + key.world() + ":" + key.x() + ":" + key.y() + ":" + key.z());
+        }
     }
 
     public boolean isAtmBlock(Block block) {
@@ -626,7 +683,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
-        if (isOfficialAr(event.getCursor()) || isOfficialAr(event.getCurrentItem())) {
+        ItemStack clicked = event.getClickedInventory() == null || event.getSlot() < 0 || event.getSlot() >= event.getClickedInventory().getSize()
+                ? null : event.getClickedInventory().getItem(event.getSlot());
+        ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+                ? player.getInventory().getItem(event.getHotbarButton()) : null;
+        if (isOfficialAr(event.getCursor()) || isOfficialAr(event.getCurrentItem())
+                || isOfficialAr(clicked) || isOfficialAr(hotbar)
+                || isOfficialAr(player.getInventory().getItemInOffHand())) {
             event.setCancelled(true);
             player.updateInventory();
         }
@@ -1465,6 +1528,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         int amount = stack.getAmount();
         ItemStack snapshot = stack.clone();
         String serial = officialArSerial(snapshot);
+        int handSlot = player.getInventory().getHeldItemSlot();
         player.getInventory().setItemInMainHand(null);
         player.updateInventory();
         String txKey = "atm-hand-" + UUID.randomUUID();
@@ -1475,14 +1539,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     if (error != null || result == null || !result.ok) {
                         if (!player.isOnline()) {
                             queuePendingArSettlement(player.getUniqueId(), player.getName(), amount, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",hand=true");
+                                    "atm=" + atmId + ",scope=" + scope + ",hand=true,slot=" + handSlot + ",tx=" + txKey);
                             return;
                         }
-                        int notRestored = restoreOfficialArSafely(player, snapshot, serial);
+                        int notRestored = restoreOfficialArAtSlot(player, snapshot, serial, handSlot);
                         if (notRestored > 0) {
                             queuePendingArSettlement(player.getUniqueId(), player.getName(), notRestored,
                                     PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",hand=true,reason=inventory_changed");
+                                    "atm=" + atmId + ",scope=" + scope + ",hand=true,slot=" + handSlot + ",tx=" + txKey + ",reason=inventory_changed");
                         }
                         player.updateInventory();
                         player.sendMessage(color("&cНе удалось внести AR в банк."));
@@ -1507,7 +1571,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return "&cВ инвентаре нет официального AR.";
         }
         String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
-        List<ItemStack> snapshots = snapshotOfficialArStacks(player.getInventory());
+        List<ArFragment> snapshots = snapshotOfficialArFragments(player.getInventory());
         removeOfficialAr(player.getInventory(), available);
         player.updateInventory();
         String txKey = "atm-all-" + UUID.randomUUID();
@@ -1518,14 +1582,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     if (error != null || result == null || !result.ok) {
                         if (!player.isOnline()) {
                             queuePendingArSettlement(player.getUniqueId(), player.getName(), available, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",all=true");
+                                    "atm=" + atmId + ",scope=" + scope + ",all=true,tx=" + txKey);
                             return;
                         }
-                        int notRestored = restoreOfficialArSafely(player, snapshots);
+                        int notRestored = restoreOfficialArFragments(player, snapshots);
                         if (notRestored > 0) {
                             queuePendingArSettlement(player.getUniqueId(), player.getName(), notRestored,
                                     PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",all=true,reason=inventory_changed");
+                                    "atm=" + atmId + ",scope=" + scope + ",all=true,tx=" + txKey + ",reason=inventory_changed");
                         }
                         player.sendMessage(color("&cНе удалось внести AR в банк."));
                         if (error != null) {
@@ -1576,7 +1640,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                                     return;
                                 }
                                 if (reserved == null || reserved != ids.size()) {
-                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(ids));
+                                    // Another join/retry may have reserved the
+                                    // same rows. Do not release the entire id
+                                    // list here: that would make the first
+                                    // worker's DELIVERING rows PENDING again
+                                    // and allow a duplicate physical issue.
                                     return;
                                 }
                                 if (arCapacity(player.getInventory()) < totalAmount || !issueOfficialArAmount(player, totalAmount, "pending-ar-settlement", false)) {
@@ -1661,21 +1729,36 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void queuePendingArSettlement(UUID playerUuid, String playerName, long amount, String settlementType, String reason) {
-        if (amount <= 0) {
+        if (playerUuid == null || amount <= 0) {
             return;
         }
+        String normalizedType = first(settlementType, PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY);
+        String normalizedReason = first(reason, "");
+        String idempotencyKey = "pending-ar-" + sha256Hex(playerUuid + "|" + normalizedType + "|" + amount + "|" + normalizedReason);
         dbAsync("queue pending ar settlement", () -> update(
-                "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,0)",
+                "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
                 UUID.randomUUID().toString(),
                 playerUuid.toString(),
                 first(playerName, ""),
                 amount,
-                first(settlementType, PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY),
+                normalizedType,
                 PENDING_AR_SETTLEMENT_STATUS_PENDING,
-                first(reason, ""),
+                normalizedReason,
+                idempotencyKey,
                 now(),
                 now()
         ));
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(first(value, "").getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte current : digest) hex.append(String.format(Locale.ROOT, "%02x", current));
+            return hex.toString();
+        } catch (Exception error) {
+            return UUID.nameUUIDFromBytes(first(value, "").getBytes(StandardCharsets.UTF_8)).toString().replace("-", "");
+        }
     }
 
     private long arCapacity(Inventory inventory) {
@@ -1740,7 +1823,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.remove(new NamespacedKey("copiminear", "owner_uuid"));
         pdc.remove(new NamespacedKey("copiminear", "owner_name"));
         pdc.remove(new NamespacedKey("copiminear", "source"));
-        pdc.set(officialArSerialKey, PersistentDataType.STRING, UUID.randomUUID().toString());
+        String serial = UUID.randomUUID().toString();
+        pdc.set(officialArSerialKey, PersistentDataType.STRING, serial);
+        pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArSignature(serial, arMaterial));
         stack.setItemMeta(meta);
         return stack;
     }
@@ -1752,6 +1837,40 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return first(stack.getItemMeta().getPersistentDataContainer().get(officialArSerialKey, PersistentDataType.STRING), "");
     }
 
+    private String officialArSignature(String serial, Material material) {
+        if (serial == null || serial.isBlank() || material == null || officialArSigningSecret == null) {
+            return "";
+        }
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(officialArSigningSecret, "HmacSHA256"));
+            byte[] digest = mac.doFinal((serial + "|" + material.name() + "|certified").getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte value : digest) {
+                hex.append(String.format(Locale.ROOT, "%02x", value));
+            }
+            return hex.toString();
+        } catch (Exception error) {
+            getLogger().warning("AR signature generation failed: " + safeError(error));
+            return "";
+        }
+    }
+
+    private boolean hasValidArSignature(ItemStack stack) {
+        if (stack == null || !stack.hasItemMeta()) {
+            return false;
+        }
+        PersistentDataContainer pdc = stack.getItemMeta().getPersistentDataContainer();
+        String serial = first(pdc.get(officialArSerialKey, PersistentDataType.STRING), "");
+        String signature = first(pdc.get(officialArSignatureKey, PersistentDataType.STRING), "");
+        if (serial.isBlank() || signature.isBlank()) {
+            return false;
+        }
+        String expected = officialArSignature(serial, stack.getType());
+        return !expected.isBlank() && MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII));
+    }
+
     private List<ItemStack> snapshotOfficialArStacks(Inventory inventory) {
         List<ItemStack> snapshots = new ArrayList<>();
         if (inventory == null) {
@@ -1760,6 +1879,20 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         for (ItemStack stack : inventory.getContents()) {
             if (isOfficialAr(stack)) {
                 snapshots.add(stack.clone());
+            }
+        }
+        return snapshots;
+    }
+
+    private List<ArFragment> snapshotOfficialArFragments(Inventory inventory) {
+        List<ArFragment> snapshots = new ArrayList<>();
+        if (inventory == null) {
+            return snapshots;
+        }
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (isOfficialAr(stack)) {
+                snapshots.add(new ArFragment(slot, stack.clone()));
             }
         }
         return snapshots;
@@ -1781,6 +1914,59 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         Map<Integer, ItemStack> left = player.getInventory().addItem(restore);
         int notRestored = left.values().stream().mapToInt(ItemStack::getAmount).sum();
         player.updateInventory();
+        return notRestored;
+    }
+
+    /** Restore to the original hand slot first; never overwrite a new item. */
+    private int restoreOfficialArAtSlot(Player player, ItemStack snapshot, String serial, int slot) {
+        if (player == null || snapshot == null || !isOfficialAr(snapshot)) {
+            return 0;
+        }
+        PlayerInventory inventory = player.getInventory();
+        int wanted = Math.max(0, snapshot.getAmount());
+        int alreadyPresent = serial.isBlank() ? 0 : countOfficialArSerial(inventory, serial);
+        int missing = Math.max(0, wanted - alreadyPresent);
+        if (missing == 0) {
+            return 0;
+        }
+        if (slot >= 0 && slot < inventory.getSize()) {
+            ItemStack current = inventory.getItem(slot);
+            String currentSerial = officialArSerial(current);
+            if (isOfficialAr(current) && serial.equals(currentSerial)) {
+                int room = Math.max(0, current.getMaxStackSize() - current.getAmount());
+                int add = Math.min(room, missing);
+                if (add > 0) {
+                    current.setAmount(current.getAmount() + add);
+                    inventory.setItem(slot, current);
+                    missing -= add;
+                }
+            } else if (current == null || current.getType().isAir()) {
+                ItemStack restored = snapshot.clone();
+                int add = Math.min(restored.getMaxStackSize(), missing);
+                restored.setAmount(add);
+                inventory.setItem(slot, restored);
+                missing -= add;
+            }
+        }
+        if (missing > 0) {
+            ItemStack restore = snapshot.clone();
+            restore.setAmount(missing);
+            Map<Integer, ItemStack> left = inventory.addItem(restore);
+            missing = left.values().stream().mapToInt(ItemStack::getAmount).sum();
+        }
+        player.updateInventory();
+        return missing;
+    }
+
+    private int restoreOfficialArFragments(Player player, List<ArFragment> fragments) {
+        int notRestored = 0;
+        if (fragments == null) {
+            return 0;
+        }
+        for (ArFragment fragment : fragments) {
+            if (fragment == null) continue;
+            notRestored += restoreOfficialArAtSlot(player, fragment.snapshot(), officialArSerial(fragment.snapshot()), fragment.slot());
+        }
         return notRestored;
     }
 
@@ -1875,7 +2061,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         String serial = officialArSerial(source);
         if (!serial.isBlank() && normalized.hasItemMeta()) {
             ItemMeta meta = normalized.getItemMeta();
-            meta.getPersistentDataContainer().set(officialArSerialKey, PersistentDataType.STRING, serial);
+            PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            pdc.set(officialArSerialKey, PersistentDataType.STRING, serial);
+            pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArSignature(serial, normalized.getType()));
             normalized.setItemMeta(meta);
         }
         return normalized;
@@ -1899,7 +2087,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return pdc.has(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING)
                 || pdc.has(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING)
                 || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING)
-                || !pdc.has(officialArSerialKey, PersistentDataType.STRING);
+                || !pdc.has(officialArSerialKey, PersistentDataType.STRING)
+                || !hasValidArSignature(stack);
     }
 
     private int countOfficialAr(Inventory inventory) {
@@ -1943,8 +2132,26 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (!stack.hasItemMeta()) {
             return false;
         }
-        String kind = stack.getItemMeta().getPersistentDataContainer().get(new NamespacedKey("copiminear", "type"), PersistentDataType.STRING);
-        return "certified".equalsIgnoreCase(kind);
+        PersistentDataContainer pdc = stack.getItemMeta().getPersistentDataContainer();
+        String kind = pdc.get(new NamespacedKey("copiminear", "type"), PersistentDataType.STRING);
+        if (!"certified".equalsIgnoreCase(kind)) {
+            return false;
+        }
+        // Existing servers may have certified serials from before signatures
+        // were introduced. Accept only a non-empty serial for one boot and let
+        // the join normalizer replace it with a signed stack; every newly
+        // issued/normalized stack must pass the HMAC check.
+        String serial = first(pdc.get(officialArSerialKey, PersistentDataType.STRING), "");
+        return !serial.isBlank() && (hasValidArSignature(stack) || isLegacyArSerial(serial));
+    }
+
+    private boolean isLegacyArSerial(String serial) {
+        try {
+            UUID.fromString(serial);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void spawnOrReplaceProtectedBlockVisual(Location blockLocation, String kind, String linkedId, Material baseMaterial, int customModelData, String modelId) throws Exception {
@@ -2057,6 +2264,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 }
                 Location location = new Location(world, intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z")));
                 String linkedId = string(row.get("id"));
+                if (world.getBlockAt(location).getType().isAir()) {
+                    evictAtmCache(linkedId);
+                    dbAsync("archive ATM visual orphan", () -> update(
+                            "UPDATE ar_atms SET active=0,archived_by='SYSTEM_ANCHOR_MISSING',archived_at=? WHERE id=? AND active=1",
+                            now(), linkedId));
+                    continue;
+                }
                 Entity entity = findEntityByUuid(string(row.get("entity_uuid")));
                 boolean valid = isOwnedProtectedVisualEntity(entity, "ATM", linkedId, "atm_terminal", MODEL_ATM_TERMINAL);
                 if (!valid) {
@@ -2920,7 +3134,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS donation_payment_sessions(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL DEFAULT '',player_name TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT 'MOCK_SBP',amount BIGINT NOT NULL DEFAULT 0,amount_rub BIGINT NOT NULL DEFAULT 0,donation_units BIGINT NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'RUB',status TEXT NOT NULL DEFAULT 'CREATED',qr_payload TEXT NOT NULL DEFAULT '',qr_image_path TEXT NOT NULL DEFAULT '',callback_payload_json TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,expires_at BIGINT NOT NULL DEFAULT 0,paid_at BIGINT NOT NULL DEFAULT 0,cancelled_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_purchases(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',item_id TEXT NOT NULL,price BIGINT NOT NULL DEFAULT 0,price_donation BIGINT NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'CREATED',source TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_item_claims(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,item_id TEXT NOT NULL,amount BIGINT NOT NULL DEFAULT 1,status TEXT NOT NULL DEFAULT 'UNCLAIMED',claimed_at BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,purchase_id TEXT NOT NULL DEFAULT '',actor TEXT NOT NULL DEFAULT '')");
-            update(connection, "CREATE TABLE IF NOT EXISTS cmv4_pending_ar_settlements(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0 CHECK(amount>0),settlement_type TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,delivered_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv4_pending_ar_settlements(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0 CHECK(amount>0),settlement_type TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,delivered_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_block_visuals(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,entity_uuid TEXT NOT NULL DEFAULT '',base_material TEXT NOT NULL DEFAULT 'PAPER',custom_model_data INTEGER NOT NULL DEFAULT 0,model_id TEXT NOT NULL DEFAULT '',offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,yaw DOUBLE PRECISION NOT NULL DEFAULT 0,pitch DOUBLE PRECISION NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS amount_rub BIGINT NOT NULL DEFAULT 0");
@@ -2953,6 +3168,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_purchases_player_status ON donation_purchases(player_uuid,status,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_donation_claims_player_status ON donation_item_claims(player_uuid,status,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv4_pending_ar_player_status ON cmv4_pending_ar_settlements(player_uuid,status,created_at ASC)");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_pending_ar_idempotency ON cmv4_pending_ar_settlements(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_ar_atms_location_active ON ar_atms(world,x,y,z) WHERE active=1");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_ar_atms_location ON ar_atms(world,x,y,z,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
@@ -3028,6 +3244,42 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return candidates.getFirst();
     }
 
+    private byte[] loadOrCreateArSigningSecret() {
+        String configured = System.getenv("COPIMINE_AR_SIGNING_SECRET");
+        if (configured != null && !configured.isBlank()) {
+            try {
+                byte[] decoded = Base64.getDecoder().decode(configured.trim());
+                if (decoded.length >= 32) {
+                    return decoded;
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Fall through to the durable local secret. Never use a
+                // short/invalid operator value as an item-signing key.
+            }
+        }
+        Path secretFile = getDataFolder().toPath().resolve("ar-signing-secret.b64");
+        try {
+            Files.createDirectories(secretFile.getParent());
+            if (Files.isRegularFile(secretFile)) {
+                byte[] decoded = Base64.getDecoder().decode(Files.readString(secretFile, StandardCharsets.US_ASCII).trim());
+                if (decoded.length >= 32) {
+                    return decoded;
+                }
+            }
+            byte[] generated = new byte[32];
+            new SecureRandom().nextBytes(generated);
+            Files.writeString(secretFile, Base64.getEncoder().encodeToString(generated), StandardCharsets.US_ASCII);
+            return generated;
+        } catch (Exception error) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Unable to persist AR signing secret", error);
+            // A process-local fallback still prevents accidental vanilla AR
+            // acceptance during this boot; the next restart will retry.
+            byte[] generated = new byte[32];
+            new SecureRandom().nextBytes(generated);
+            return generated;
+        }
+    }
+
     private Path releaseRoot() {
         try {
             Path server = getServer().getWorldContainer().toPath().toAbsolutePath().normalize();
@@ -3057,10 +3309,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private Connection openConnection() throws Exception {
-        Connection connection = DriverManager.getConnection(db.jdbcUrl(), db.user(), db.password());
+        Connection connection = connectionPool == null ? DriverManager.getConnection(db.jdbcUrl(), db.user(), db.password()) : connectionPool.acquire();
         try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA IF NOT EXISTS " + db.schemaIdent());
             statement.execute("SET search_path TO " + db.schemaIdent());
+            statement.execute("SET statement_timeout TO 15000");
+            statement.execute("SET idle_in_transaction_session_timeout TO 30000");
+        } catch (Exception error) {
+            try {
+                connection.close();
+            } catch (Exception ignored) {
+            }
+            throw error;
         }
         return connection;
     }
@@ -3168,13 +3428,17 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
             return;
         }
-        dbExecutor.execute(() -> {
-            try {
-                body.run();
-            } catch (Exception error) {
-                getLogger().warning(label + ": " + safeError(error));
-            }
-        });
+        try {
+            dbExecutor.execute(() -> {
+                try {
+                    body.run();
+                } catch (Exception error) {
+                    getLogger().warning(label + ": " + safeError(error));
+                }
+            });
+        } catch (RejectedExecutionException rejected) {
+            getLogger().warning(label + ": database queue is full; operation was not scheduled.");
+        }
     }
 
     private <T> CompletableFuture<T> dbFuture(String label, SqlSupplier<T> body) {
@@ -3187,13 +3451,19 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return failed;
             }
         }
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return body.get();
-            } catch (Exception error) {
-                throw new CompletionException(new IllegalStateException(label + ": " + safeError(error), error));
-            }
-        }, dbExecutor);
+        try {
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    return body.get();
+                } catch (Exception error) {
+                    throw new CompletionException(new IllegalStateException(label + ": " + safeError(error), error));
+                }
+            }, dbExecutor);
+        } catch (RejectedExecutionException rejected) {
+            CompletableFuture<T> failed = new CompletableFuture<>();
+            failed.completeExceptionally(new IllegalStateException(label + ": database queue is full."));
+            return failed;
+        }
     }
 
     private void requireAsyncBankContext(String operation) {
@@ -3459,9 +3729,129 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         void run() throws Exception;
     }
 
+    /** Small bounded JDBC pool used when Hikari is not present in the server. */
+    private static final class SimpleConnectionPool {
+        private final DbSettings settings;
+        private final int maxSize;
+        private final BlockingQueue<Connection> idle = new ArrayBlockingQueue<>(8);
+        private int created;
+        private boolean closed;
+
+        private SimpleConnectionPool(DbSettings settings, int maxSize) {
+            this.settings = settings;
+            this.maxSize = Math.max(2, Math.min(8, maxSize));
+        }
+
+        private Connection acquire() throws SQLException {
+            Connection delegate;
+            while (true) {
+                synchronized (this) {
+                    if (closed) {
+                        throw new SQLException("Economy connection pool is closed");
+                    }
+                    delegate = idle.poll();
+                    if (delegate == null && created < maxSize) {
+                        delegate = createPhysical();
+                        created++;
+                    }
+                }
+                if (delegate != null) {
+                    break;
+                }
+                try {
+                    delegate = idle.poll(1L, TimeUnit.SECONDS);
+                    if (delegate == null) {
+                        synchronized (this) {
+                            if (closed) {
+                                throw new SQLException("Economy connection pool is closed");
+                            }
+                        }
+                        continue;
+                    }
+                    break;
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new SQLException("Interrupted while waiting for economy connection", interrupted);
+                }
+            }
+            Connection physical = delegate;
+            AtomicBoolean logicalClosed = new AtomicBoolean(false);
+            return (Connection) Proxy.newProxyInstance(
+                    Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, args) -> {
+                        if ("close".equals(method.getName())) {
+                            if (logicalClosed.compareAndSet(false, true)) {
+                                release(physical);
+                            }
+                            return null;
+                        }
+                        if ("isClosed".equals(method.getName())) {
+                            return logicalClosed.get() || physical.isClosed();
+                        }
+                        if (logicalClosed.get()) {
+                            throw new SQLException("Connection is closed");
+                        }
+                        try {
+                            return method.invoke(physical, args);
+                        } catch (InvocationTargetException target) {
+                            throw target.getCause();
+                        }
+                    });
+        }
+
+        private Connection createPhysical() throws SQLException {
+            try {
+                Connection connection = DriverManager.getConnection(settings.jdbcUrl(), settings.user(), settings.password());
+                connection.setAutoCommit(true);
+                return connection;
+            } catch (SQLException error) {
+                throw error;
+            }
+        }
+
+        private synchronized void release(Connection connection) {
+            if (connection == null) return;
+            if (closed) {
+                closePhysical(connection);
+                created = Math.max(0, created - 1);
+                return;
+            }
+            try {
+                if (!connection.getAutoCommit()) {
+                    connection.rollback();
+                    connection.setAutoCommit(true);
+                }
+                connection.clearWarnings();
+                if (!idle.offer(connection)) {
+                    closePhysical(connection);
+                    created = Math.max(0, created - 1);
+                }
+            } catch (SQLException error) {
+                closePhysical(connection);
+                created = Math.max(0, created - 1);
+            }
+        }
+
+        private synchronized void close() {
+            closed = true;
+            Connection connection;
+            while ((connection = idle.poll()) != null) {
+                closePhysical(connection);
+                created = Math.max(0, created - 1);
+            }
+        }
+
+        private void closePhysical(Connection connection) {
+            try {
+                connection.close();
+            } catch (SQLException ignored) {
+            }
+        }
+    }
+
     private record DbSettings(String host, int port, String database, String user, String password, String schema, Path envFile) {
         String jdbcUrl() {
-            return "jdbc:postgresql://" + host + ":" + port + "/" + database;
+            return "jdbc:postgresql://" + host + ":" + port + "/" + database
+                    + "?connectTimeout=5&socketTimeout=20&tcpKeepAlive=true&ApplicationName=CopiMineEconomyCore";
         }
 
         String schemaIdent() {
@@ -4611,6 +5001,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     }
                     if (bankPinMustChange(uuid)) {
                         return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Temporary PIN must be changed first.", 0L, "");
+                    }
+                    if (pin == null || !pin.matches("\\d{4,8}")) {
+                        return new TxnResult(false, "PIN_REQUIRED", "A 4-8 digit PIN is required.", 0L, "");
                     }
                     if (!verifyBankPin(uuid, pin)) {
                         Player online = Bukkit.getPlayer(playerUuid);

@@ -1,0 +1,7 @@
+# Профиль совместимости CopiMine для развёртывания GrimAC.
+experimental-checks: false
+max-transaction-time: 60
+packet-spam-threshold: 100
+client-brand:
+  ignored-clients:
+    - ".*"

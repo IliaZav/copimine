@@ -260,9 +260,9 @@ if tls_enabled == "1":
 else:
     values["AUTH_COOKIE_SECURE"] = "0"
     if values.get("ALLOW_INSECURE_HTTP_AUTH", "").strip() in {"", "CHANGE_ME"}:
-        # This keeps the temporary no-TLS installation usable. Operators can
-        # explicitly set 0 to disable HTTP login before TLS is configured.
-        values["ALLOW_INSECURE_HTTP_AUTH"] = "1"
+        # No-TLS installations remain safe by default. Operators who knowingly
+        # run the panel on a trusted LAN must explicitly set this to 1.
+        values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
 if values.get("ALLOW_INSECURE_HTTP_AUTH", "") not in {"0", "1"}:
     raise SystemExit("ALLOW_INSECURE_HTTP_AUTH must be 0 or 1")
 if values.get("RESOURCE_PACK_PUBLIC_URL", "").strip() in {"", "CHANGE_ME"}:
@@ -306,11 +306,11 @@ for line in lines:
 
 tls = values.get("COPIMINE_TLS_ENABLED", "0").strip() == "1"
 updates = {
-    "ALLOW_INSECURE_HTTP_AUTH": "0" if tls else values.get("ALLOW_INSECURE_HTTP_AUTH", "1"),
+    "ALLOW_INSECURE_HTTP_AUTH": "0" if tls else values.get("ALLOW_INSECURE_HTTP_AUTH", "0"),
     "AUTH_COOKIE_SECURE": "1" if tls else values.get("AUTH_COOKIE_SECURE", "0"),
 }
 if updates["ALLOW_INSECURE_HTTP_AUTH"] not in {"0", "1"}:
-    updates["ALLOW_INSECURE_HTTP_AUTH"] = "0" if tls else "1"
+    updates["ALLOW_INSECURE_HTTP_AUTH"] = "0"
 if updates["AUTH_COOKIE_SECURE"] not in {"0", "1"}:
     updates["AUTH_COOKIE_SECURE"] = "1" if tls else "0"
 

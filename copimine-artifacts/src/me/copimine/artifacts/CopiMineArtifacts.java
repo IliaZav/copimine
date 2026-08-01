@@ -18,10 +18,12 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
@@ -143,6 +145,7 @@ import io.papermc.paper.event.player.PlayerShieldDisableEvent;
 import io.papermc.paper.event.entity.EntityInsideBlockEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.InventoryHolder;
@@ -151,8 +154,11 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.meta.CompassMeta;
+import org.bukkit.inventory.meta.BundleMeta;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.block.Container;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -195,6 +201,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, Long> actionCooldowns = new ConcurrentHashMap<>();
    private final Map<UUID, Long> pozdnyakovNauseaCooldowns = new ConcurrentHashMap<>();
    private final Map<String, PozdnyakovMagmaRestore> pozdnyakovMagmaRestores = new ConcurrentHashMap<>();
+   private final Map<String, TemporaryBlockRestore> temporaryTrapRestores = new ConcurrentHashMap<>();
    /**
     * A plugin can remove an Item entity without producing a damage/despawn
     * event.  Keep a small in-memory guard so the durable loss journal is not
@@ -231,6 +238,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private boolean debugGui;
    private CopiMineArtifacts.VisualEffectService visualEffects;
    private Path donationLossJournalPath;
+   private Path temporaryTrapJournalPath;
    private NamespacedKey keyItemId;
    private NamespacedKey keyUniqueItemId;
    private NamespacedKey keyCategory;
@@ -256,6 +264,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private BukkitTask artifactEffectTask;
    private BukkitTask armorEffectTask;
    private BukkitTask donationOwnershipSweepTask;
+   private BukkitTask shopAnchorGuardTask;
+   /** Monotonic catalog generation used to invalidate stale purchase screens. */
+   private long catalogGeneration = 1L;
 
    public void onEnable() {
       this.saveDefaultConfig();
@@ -287,6 +298,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.visualEffects = new CopiMineArtifacts.VisualEffectService(this);
       this.dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors())));
       this.donationLossJournalPath = this.getDataFolder().toPath().resolve("donation-loss-journal.tsv");
+      this.temporaryTrapJournalPath = this.getDataFolder().toPath().resolve("temporary-traps.tsv");
+      this.loadTemporaryTrapJournal();
       Plugin var1 = Bukkit.getPluginManager().getPlugin("CopiMineEconomyCore");
       if (var1 != null && var1.isEnabled()) {
          this.bridge = new CopiMineArtifacts.ArtifactBridgeAdapter();
@@ -303,7 +316,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                if (!this.customBlockVisualsEnabled()) {
                   this.deactivateAllProtectedBlockVisualRowsAsync();
                }
-               this.loadCatalogFromConfig();
+      this.loadCatalogFromConfig();
                this.syncCatalogToPostgres();
                this.loadShopsFromPostgres();
                this.repairShopTitleDisplays();
@@ -343,6 +356,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             // is the restart/third-party-plugin safety net for a foreign copy
             // that was already present in an online inventory.
             this.donationOwnershipSweepTask = Bukkit.getScheduler().runTaskTimer(this, this::sweepForeignDonationItems, 20L, 20L);
+            // A shop is anchored to a real block.  Do not recreate a visual
+            // for a missing anchor (the old code left a ghost shop after a
+            // plugin/WorldEdit removal).  The guard is deliberately cheap and
+            // only checks loaded chunks.
+            this.shopAnchorGuardTask = Bukkit.getScheduler().runTaskTimer(this, this::guardShopAnchors, 40L, 40L);
             this.getLogger().info("CopiMineArtifacts enabled with " + this.catalogById.size() + " active catalog items.");
          }
       } else {
@@ -428,6 +446,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       // reload/restart; every graceful shutdown restores the exact original
       // BlockData before the world is handed back to Bukkit.
       this.restorePendingMagmaBlocks();
+      this.restoreAllTemporaryTraps();
       Bukkit.getScheduler().cancelTasks(this);
       this.cleanupAllProtectedBlockVisualEntities();
       if (this.deliveryTask != null) {
@@ -448,6 +467,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       if (this.donationOwnershipSweepTask != null) {
          this.donationOwnershipSweepTask.cancel();
+      }
+
+      if (this.shopAnchorGuardTask != null) {
+         this.shopAnchorGuardTask.cancel();
       }
 
       if (this.dbExecutor != null) {
@@ -600,6 +623,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var2.execute(
             "    CREATE TABLE IF NOT EXISTS artifact_repairs(\n        repair_id TEXT PRIMARY KEY,\n        unique_item_id TEXT NOT NULL,\n        player_uuid TEXT NOT NULL,\n        player_name TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        repair_cost_ar BIGINT NOT NULL,\n        bank_tx_id TEXT NOT NULL DEFAULT '',\n        status TEXT NOT NULL,\n        created_at BIGINT NOT NULL\n    )\n"
          );
+         // Physical repair is a slot/instance operation.  These columns let
+         // recovery prove that the item seen after an async bank call is the
+         // exact stack that was charged, instead of overwriting a new item in
+         // the player's hand.
+         var2.execute("ALTER TABLE artifact_repairs ADD COLUMN IF NOT EXISTS slot INTEGER NOT NULL DEFAULT -1");
+         var2.execute("ALTER TABLE artifact_repairs ADD COLUMN IF NOT EXISTS item_fingerprint TEXT NOT NULL DEFAULT ''");
+         var2.execute("ALTER TABLE artifact_repairs ADD COLUMN IF NOT EXISTS original_damage INTEGER NOT NULL DEFAULT 0");
          var2.execute(
             "    CREATE TABLE IF NOT EXISTS artifact_suspicious_events(\n        event_id TEXT PRIMARY KEY,\n        player_uuid TEXT NOT NULL,\n        player_name TEXT NOT NULL,\n        event_type TEXT NOT NULL,\n        details TEXT NOT NULL,\n        created_at BIGINT NOT NULL\n    )\n"
          );
@@ -642,12 +672,25 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.getLogger().info("Migrated " + migrated + " legacy BROKEN donation instances to LOST_RECLAIMABLE.");
             }
          }
+         // A process restart cannot safely replay a physical repair.  Leave
+         // charged rows in an explicit review state instead of allowing a
+         // later retry to mutate whichever item happens to be in the slot.
+         try (PreparedStatement recoverRepairs = var1.prepareStatement(
+               "UPDATE artifact_repairs SET status='REVIEW' WHERE status IN ('PAID','APPLYING')")) {
+            int recovered = recoverRepairs.executeUpdate();
+            if (recovered > 0) {
+               this.getLogger().warning("Moved " + recovered + " interrupted artifact repairs to REVIEW after restart.");
+            }
+         }
       } finally {
          this.pgPool.release(var1);
       }
    }
 
    private void loadCatalogFromConfig() {
+      // Every reload invalidates purchase/confirmation snapshots.  A stale
+      // GUI must never charge the price that was shown before /setprice.
+      this.catalogGeneration++;
       this.catalogById.clear();
       this.adminOnlyCatalogItems.clear();
       this.donationCatalogById.clear();
@@ -970,6 +1013,105 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       }
       this.pozdnyakovMagmaRestores.clear();
+   }
+
+   private void loadTemporaryTrapJournal() {
+      if (temporaryTrapJournalPath == null || !Files.isRegularFile(temporaryTrapJournalPath)) return;
+      try {
+         for (String line : Files.readAllLines(temporaryTrapJournalPath, StandardCharsets.UTF_8)) {
+            String[] parts = line.split("\\t", -1);
+            if (parts.length < 7) continue;
+            World world = Bukkit.getWorld(parts[0]);
+            if (world == null) continue;
+            String original = new String(Base64.getDecoder().decode(parts[6]), StandardCharsets.UTF_8);
+            TemporaryBlockRestore restore = new TemporaryBlockRestore(
+                  new Location(world, Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[3])),
+                  Material.valueOf(parts[4]), original, Long.parseLong(parts[5]));
+            temporaryTrapRestores.put(blockKey(restore.location()), restore);
+         }
+         restorePendingTemporaryTraps();
+      } catch (Exception error) {
+         this.getLogger().log(Level.WARNING, "Temporary trap journal load failed", error);
+      }
+   }
+
+   private void recordTemporaryTrap(Block block, Material placed, String originalData, long expiresAtMillis) {
+      if (block == null || placed == null || temporaryTrapJournalPath == null) return;
+      TemporaryBlockRestore restore = new TemporaryBlockRestore(block.getLocation(), placed, originalData, expiresAtMillis);
+      temporaryTrapRestores.put(blockKey(block.getLocation()), restore);
+      try {
+         Files.createDirectories(temporaryTrapJournalPath.getParent());
+         String line = block.getWorld().getName() + "\t" + block.getX() + "\t" + block.getY() + "\t" + block.getZ()
+               + "\t" + placed.name() + "\t" + expiresAtMillis + "\t"
+               + Base64.getEncoder().encodeToString(originalData.getBytes(StandardCharsets.UTF_8)) + System.lineSeparator();
+         Files.writeString(temporaryTrapJournalPath, line, StandardCharsets.UTF_8,
+               StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+      } catch (IOException error) {
+         this.getLogger().log(Level.WARNING, "Temporary trap journal append failed", error);
+      }
+   }
+
+   private void restorePendingTemporaryTraps() {
+      long now = System.currentTimeMillis();
+      for (Entry<String, TemporaryBlockRestore> entry : new ArrayList<>(temporaryTrapRestores.entrySet())) {
+         TemporaryBlockRestore restore = entry.getValue();
+         if (restore == null || restore.location() == null || restore.location().getWorld() == null) continue;
+         if (restore.expiresAtMillis() > now) continue;
+         restoreTemporaryTrap(restore);
+      }
+      rewriteTemporaryTrapJournal();
+   }
+
+   private void tickTemporaryTrapRestores() {
+      long now = System.currentTimeMillis();
+      boolean changed = false;
+      for (TemporaryBlockRestore restore : new ArrayList<>(temporaryTrapRestores.values())) {
+         if (restore != null && restore.expiresAtMillis() <= now) {
+            restoreTemporaryTrap(restore);
+            changed = true;
+         }
+      }
+      if (changed) rewriteTemporaryTrapJournal();
+   }
+
+   private void restoreAllTemporaryTraps() {
+      for (TemporaryBlockRestore restore : new ArrayList<>(temporaryTrapRestores.values())) {
+         restoreTemporaryTrap(restore);
+      }
+      temporaryTrapRestores.clear();
+      rewriteTemporaryTrapJournal();
+   }
+
+   private void restoreTemporaryTrap(TemporaryBlockRestore restore) {
+      if (restore == null || restore.location() == null || restore.location().getWorld() == null) return;
+      Block block = restore.location().getBlock();
+      if (block.getType() == restore.placedMaterial()) {
+         try {
+            block.setBlockData(Bukkit.createBlockData(restore.originalBlockData()), false);
+         } catch (IllegalArgumentException ignored) {
+            block.setType(Material.AIR, false);
+         }
+      }
+      temporaryTrapRestores.remove(blockKey(restore.location()), restore);
+   }
+
+   private void rewriteTemporaryTrapJournal() {
+      if (temporaryTrapJournalPath == null) return;
+      try {
+         StringBuilder data = new StringBuilder();
+         for (TemporaryBlockRestore restore : temporaryTrapRestores.values()) {
+            if (restore.location() == null || restore.location().getWorld() == null) continue;
+            Location location = restore.location();
+            data.append(location.getWorld().getName()).append('\t').append(location.getBlockX()).append('\t')
+                  .append(location.getBlockY()).append('\t').append(location.getBlockZ()).append('\t')
+                  .append(restore.placedMaterial().name()).append('\t').append(restore.expiresAtMillis()).append('\t')
+                  .append(Base64.getEncoder().encodeToString(restore.originalBlockData().getBytes(StandardCharsets.UTF_8))).append(System.lineSeparator());
+         }
+         if (data.length() == 0) Files.deleteIfExists(temporaryTrapJournalPath);
+         else Files.writeString(temporaryTrapJournalPath, data.toString(), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+      } catch (IOException error) {
+         this.getLogger().log(Level.WARNING, "Temporary trap journal rewrite failed", error);
+      }
    }
 
    @EventHandler(
@@ -1308,8 +1450,21 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       ItemStack cursor = event.getCursor();
       ItemStack current = event.getCurrentItem();
-      if (!this.isOfficialArtifactItem(cursor) && !this.isOfficialArtifactItem(current)
-            && !this.isOfficialDonationItem(cursor) && !this.isOfficialDonationItem(current)) {
+      ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+            ? player.getInventory().getItem(event.getHotbarButton()) : null;
+      ItemStack offhand = player.getInventory().getItemInOffHand();
+      boolean official = this.isOfficialArtifactItem(cursor) || this.isOfficialArtifactItem(current)
+            || this.isOfficialArtifactItem(hotbar) || this.isOfficialArtifactItem(offhand)
+            || this.isOfficialDonationItem(cursor) || this.isOfficialDonationItem(current)
+            || this.isOfficialDonationItem(hotbar) || this.isOfficialDonationItem(offhand);
+      // CLONE_STACK is reported with an empty current slot on a number of
+      // Paper clients.  Inspect the clicked slot as well as the cursor so a
+      // middle-click clone can never mint a second PDC identity.
+      if (event.getAction() == InventoryAction.CLONE_STACK && event.getClickedInventory() != null
+            && this.isOfficialArtifactItem(event.getClickedInventory().getItem(event.getSlot()))) {
+         official = true;
+      }
+      if (!official) {
          return false;
       }
       event.setCancelled(true);
@@ -1354,7 +1509,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       // into a chest, shulker or other block inventory.
       ItemStack alternateSource = null;
       String alternateReason = "foreign-hotbar-swap";
-      if (event.getClick() == ClickType.NUMBER_KEY && event.getHotbarButton() >= 0) {
+      if ((event.getClick() == ClickType.NUMBER_KEY
+               || event.getAction() == InventoryAction.HOTBAR_SWAP
+               || event.getAction() == InventoryAction.HOTBAR_MOVE_AND_READD)
+            && event.getHotbarButton() >= 0) {
          alternateSource = actor.getInventory().getItem(event.getHotbarButton());
       } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
          alternateSource = actor.getInventory().getItemInOffHand();
@@ -1364,6 +1522,41 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (alternateRef != null) {
          event.setCancelled(true);
          this.quarantineForeignDonation(actor, alternateRef, alternateReason);
+         handled = true;
+      }
+
+      // DOUBLE_CLICK/COLLECT_TO_CURSOR can pull a matching stack from any
+      // player slot without exposing that source stack through
+      // getCurrentItem(). Inspect the complete player inventory before the
+      // client can collect a foreign owner-bound item into its cursor (and
+      // potentially drop it into a block inventory on the next click).
+      if (event.getAction() == InventoryAction.COLLECT_TO_CURSOR || event.getClick() == ClickType.DOUBLE_CLICK) {
+         List<ItemStack> playerStacks = new ArrayList<>();
+         playerStacks.addAll(Arrays.asList(actor.getInventory().getContents()));
+         playerStacks.addAll(Arrays.asList(actor.getInventory().getArmorContents()));
+         playerStacks.add(actor.getInventory().getItemInOffHand());
+         for (ItemStack stack : playerStacks) {
+            OfficialDonationRef collectedRef = this.foreignDonationRef(stack, actor.getUniqueId());
+            if (collectedRef != null) {
+               event.setCancelled(true);
+               this.quarantineForeignDonation(actor, collectedRef, "foreign-collect-to-cursor");
+               handled = true;
+               break;
+            }
+         }
+      }
+
+      // A just-issued item remains provisional until the DB transition is
+      // committed.  Do not let a number-key/hotbar move or a regular click
+      // place that item into a block inventory while finalization is pending;
+      // otherwise recovery cannot prove where the physical instance lives.
+      String provisionalId = this.provisionalUniqueId(event, actor);
+      Inventory topForProvisional = event.getView() == null ? null : event.getView().getTopInventory();
+      if (!provisionalId.isBlank() && topForProvisional != null
+            && !(topForProvisional.getHolder() instanceof MenuHolder)
+            && !topForProvisional.equals(event.getView().getBottomInventory())) {
+         event.setCancelled(true);
+         actor.updateInventory();
          handled = true;
       }
 
@@ -1383,6 +1576,24 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       }
       return handled;
+   }
+
+   private String provisionalUniqueId(InventoryClickEvent event, Player actor) {
+      if (event == null || actor == null) return "";
+      List<ItemStack> candidates = new ArrayList<>();
+      candidates.add(event.getCursor());
+      candidates.add(event.getCurrentItem());
+      if (event.getHotbarButton() >= 0 && event.getHotbarButton() < 9) {
+         candidates.add(actor.getInventory().getItem(event.getHotbarButton()));
+      }
+      if (event.getClick() == ClickType.SWAP_OFFHAND) {
+         candidates.add(actor.getInventory().getItemInOffHand());
+      }
+      for (ItemStack candidate : candidates) {
+         String id = this.uniqueItemIdOf(candidate);
+         if (!id.isBlank() && this.provisionalDonationInstanceIds.contains(id)) return id;
+      }
+      return "";
    }
 
    @EventHandler(
@@ -1405,6 +1616,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if (this.quarantineForeignDonation(player, cursorRef, "foreign-inventory-drag")) {
                var1.setCursor(new ItemStack(Material.AIR));
             }
+            return;
+         }
+         String provisionalId = this.uniqueItemIdOf(var1.getOldCursor());
+         Inventory dragTop = var1.getView() == null ? null : var1.getView().getTopInventory();
+         if (!provisionalId.isBlank() && this.provisionalDonationInstanceIds.contains(provisionalId)
+               && dragTop != null && !(dragTop.getHolder() instanceof MenuHolder)
+               && var1.getRawSlots().stream().anyMatch(slot -> slot >= 0 && slot < dragTop.getSize())) {
+            var1.setCancelled(true);
+            player.updateInventory();
             return;
          }
          if (this.isRepairLockedItem(player, var1.getOldCursor())) {
@@ -1445,6 +1665,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (this.quarantineForeignDonation(null, donation, "foreign-hopper-move")) {
             this.removeUniqueItemFromInventory(var1.getSource(), donation.uniqueItemId());
          }
+         return;
+      }
+      String provisionalId = this.uniqueItemIdOf(var1.getItem());
+      if (!provisionalId.isBlank() && this.provisionalDonationInstanceIds.contains(provisionalId)) {
+         var1.setCancelled(true);
          return;
       }
       if (this.isOfficialArtifactItem(var1.getItem())
@@ -1668,6 +1893,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private void tickPozdnyakovAce() {
       long nowMillis = System.currentTimeMillis();
+      this.tickTemporaryTrapRestores();
       for (Entry<String, PozdnyakovMagmaRestore> entry : this.pozdnyakovMagmaRestores.entrySet()) {
          PozdnyakovMagmaRestore restore = entry.getValue();
          if (restore.expiresAtMillis() > nowMillis) {
@@ -1701,6 +1927,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                if (originalType == Material.LAVA) {
                   String originalBlockData = block.getBlockData().getAsString();
                   block.setType(Material.MAGMA_BLOCK, false);
+                  this.recordTemporaryTrap(block, Material.MAGMA_BLOCK, originalBlockData,
+                        nowMillis + (POZDNYAKOV_LAVA_RESTORE_TICKS * 50L));
                   this.pozdnyakovMagmaRestores.put(
                      this.blockKey(block.getLocation()),
                      new PozdnyakovMagmaRestore(block.getLocation(), originalBlockData, nowMillis + (POZDNYAKOV_LAVA_RESTORE_TICKS * 50L))
@@ -2696,7 +2924,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return true;
       }
 
+      Path itemsPath = this.getDataFolder().toPath().resolve("items.yml");
+      byte[] previousItemsConfig = null;
       try {
+         if (Files.exists(itemsPath)) {
+            previousItemsConfig = Files.readAllBytes(itemsPath);
+         }
          this.updateItemPriceInConfig(itemId, resolvedKind, price);
          this.loadCatalogFromConfig();
          this.syncCatalogToPostgres();
@@ -2708,6 +2941,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          );
       } catch (Exception error) {
          this.getLogger().log(Level.WARNING, "Artifact setprice failed for " + itemId, error);
+         if (previousItemsConfig != null) {
+            try {
+               this.writeAtomicBytes(itemsPath, previousItemsConfig);
+               this.loadCatalogFromConfig();
+            } catch (Exception rollbackError) {
+               this.getLogger().log(Level.SEVERE, "Artifact setprice rollback failed for " + itemId, rollbackError);
+            }
+         }
          player.sendMessage(this.color("&cНе удалось обновить цену. Подробности записаны в лог. Код: ARTIFACT_SET_PRICE_FAILED"));
       }
 
@@ -4173,6 +4414,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       CopiMineArtifacts.SessionState var3 = this.session(var1);
       var3.viewType = CopiMineArtifacts.ViewType.CONFIRM;
       var3.currentItemId = var2.itemId();
+      // Pin entry can remain open while an administrator reloads the catalog.
+      // Keep the price/generation that the player actually confirmed so the
+      // charge path can reject a stale screen instead of charging a different
+      // price than the one shown in the GUI.
+      var3.confirmedPriceAr = var2.priceAr();
+      var3.confirmedCatalogGeneration = this.catalogGeneration;
       Inventory var4 = this.createMenu(
          var1,
          var3,
@@ -5864,6 +6111,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (player == null || item == null) {
          return;
       }
+      // Donation catalog entries are rendered asynchronously. Re-read the
+      // current catalog row at click time so a price edit cannot charge the
+      // value embedded in an old inventory.
+      CopiMineArtifacts.DonationCatalogItem liveItem = this.donationCatalogById.get(item.itemId().toLowerCase(Locale.ROOT));
+      if (liveItem == null || !liveItem.enabled()) {
+         player.sendMessage(this.color("&cЭтот donation-предмет больше недоступен."));
+         this.openDonationCatalog(player);
+         return;
+      }
+      if (liveItem != item || liveItem.priceDonation() != item.priceDonation()) {
+         player.sendMessage(this.color("&eЦена donation-предмета изменилась. Каталог обновлён."));
+         this.openDonationCatalog(player);
+         return;
+      }
       CopiMineArtifacts.SessionState state = this.session(player);
       if (!state.purchaseInFlightId.isBlank()) {
          player.sendMessage(this.color("&eПокупка уже обрабатывается."));
@@ -6148,7 +6409,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   } catch (SQLException var3x) {
                      this.getLogger().log(Level.WARNING, "Artifacts admin reload failed", (Throwable)var3x);
                      this.runSync(
-                        () -> { this.session(var1).repairInFlightId = ""; this.session(var1).repairItemUniqueId = ""; var1.sendMessage(
+                        () -> { this.clearRepairState(this.session(var1)); var1.sendMessage(
                               this.color(
                                  "&cНе удалось выполнить действие. Ошибка записана в лог. Код: ARTIFACT_RELOAD_FAILED"
                               )
@@ -6289,6 +6550,27 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             return;
          }
          CopiMineArtifacts.SessionState var5 = this.session(var1);
+         CopiMineArtifacts.CatalogItem liveItem = this.catalogById.get(var3.itemId());
+         if (liveItem == null) {
+            var5.purchaseInFlightId = "";
+            var1.sendMessage(this.color("&cЭтот товар больше недоступен в каталоге."));
+            this.openMain(var1, var2, true);
+            return;
+         }
+         if (var3 != liveItem || var5.confirmedCatalogGeneration >= 0L
+               && (var5.confirmedCatalogGeneration != this.catalogGeneration
+                  || var5.confirmedPriceAr >= 0L && var5.confirmedPriceAr != liveItem.priceAr())) {
+            var5.pinBuffer = "";
+            var5.purchaseInFlightId = "";
+            var1.sendMessage(this.color("&eЦена товара изменилась. Проверьте подтверждение ещё раз."));
+            this.openConfirm(var1, liveItem);
+            return;
+         }
+         // The GUI action contains only an item id. It must reference the
+         // current catalog object, never a stale object retained by an old
+         // inventory (the identity check above enforces that invariant).
+         var5.confirmedPriceAr = var3.priceAr();
+         var5.confirmedCatalogGeneration = this.catalogGeneration;
          if (!var5.purchaseInFlightId.isBlank()) {
             var1.sendMessage(
                this.color(
@@ -6651,13 +6933,38 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
 
       ItemStack var5 = this.createOfficialItem(var2.item(), var2.uniqueItemId(), var1.getUniqueId(), var2.purchaseId());
+      this.cacheProvisionalDonationInstances(var2.item().itemId(), var1.getUniqueId(), List.of(var2.uniqueItemId()));
       HashMap var6 = var1.getInventory().addItem(new ItemStack[]{var5});
       if (var6.isEmpty()) {
-         this.cacheOfficialBinding(var2.uniqueItemId(), var2.item().itemId(), var1.getUniqueId());
+         // Inventory#addItem returning no leftovers is not, by itself, a
+         // durable proof that the instance is still present.  A listener or
+         // another plugin can consume/move the stack in the same tick before
+         // the asynchronous purchase transition commits.  Never finalize a
+         // paid row without first proving the exact physical identity is
+         // still owned by the buyer; otherwise recovery can mint a second
+         // copy after a restart.
+         if (!this.playerHasOfficialInstance(var1, var2.uniqueItemId(), var2.item().itemId(), var1.getUniqueId())) {
+            this.runAsync(() -> {
+               try {
+                  this.markArtifactPurchaseReview(var2.purchaseId(), var2.uniqueItemId());
+                  this.audit(var1.getName(), "purchase_manual_review", var2.purchaseId(), var2.item().itemId() + " reason=physical_delivery_missing");
+               } catch (SQLException var6x) {
+                  this.getLogger().log(Level.WARNING, "Artifact purchase review mark failed after missing physical delivery: " + var2.purchaseId(), (Throwable)var6x);
+               }
+            });
+            var4.purchaseInFlightId = "";
+            var1.sendMessage(this.color("&eРћРїР»Р°С‚Р° РїРѕР»учена, но физическая выдача не подтверждена. Покупка отправлена на ручную проверку; повторная копия не будет выдана автоматически."));
+            this.openPurchases(var1);
+            return;
+         }
          this.runAsync(
             () -> {
                try {
                   this.markPurchaseDelivered(var2.purchaseId(), var2.uniqueItemId(), var2.item().itemId());
+                  this.runSync(() -> {
+                     this.cacheOfficialBinding(var2.uniqueItemId(), var2.item().itemId(), var1.getUniqueId());
+                     this.removeProvisionalDonationInstances(List.of(var2.uniqueItemId()));
+                  });
                   this.audit(var1.getName(), "purchase_delivered", var2.purchaseId(), var2.item().itemId());
                   this.triggerRevenuePayoutAsync(var2.purchaseId());
                } catch (SQLException var6x) {
@@ -6672,6 +6979,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   }
 
                   this.getLogger().log(Level.WARNING, "Artifact purchase finalize failed after physical issuance: " + var2.purchaseId(), (Throwable)var6x);
+                  // Keep the item provisional.  It remains physically in the
+                  // owner's inventory for deterministic recovery and cannot
+                  // be used or moved into external storage meanwhile.
                }
             }
          );
@@ -6822,7 +7132,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       repair_manual_review
       bridge.refund
       */
-      ItemStack var4 = var1.getInventory().getItemInMainHand();
+            ItemStack var4 = var1.getInventory().getItemInMainHand();
       CopiMineArtifacts.CatalogItem var5 = this.authenticCatalogItem(var4, var1, "repair");
       if (var5 == null) {
          var1.sendMessage(
@@ -6843,8 +7153,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
             repairState.repairInFlightId = UUID.randomUUID().toString();
             String repairId = repairState.repairInFlightId;
-            String repairItemUniqueId = this.uniqueItemIdOf(var4);
+            // Bukkit inventory stacks are mutable and are owned by the main
+            // thread. Capture an immutable snapshot before any async DB work;
+            // the actual mutation is still validated against the exact slot
+            // and current stack on the main thread.
+            ItemStack capturedRepairItem = var4.clone();
+            String repairItemUniqueId = this.uniqueItemIdOf(capturedRepairItem);
             int repairOriginalDamage = var6.getDamage();
+            int repairSlot = var1.getInventory().getHeldItemSlot();
+            String repairFingerprint = this.repairFingerprint(capturedRepairItem);
+            repairState.repairSlot = repairSlot;
+            repairState.repairFingerprint = repairFingerprint;
+            repairState.repairOriginalDamage = repairOriginalDamage;
             repairState.repairItemUniqueId = repairItemUniqueId;
             // Keep the bridge idempotency key scoped to this repair attempt.
             // The database repair row and the refund path continue to use the
@@ -6856,12 +7176,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   () -> {
                      String var7 = repairId;
                      try {
-                        this.persistRepair(var1, var5, var4, var7, 0L, "free-repair-" + var7);
+                        this.persistRepair(var1, var5, capturedRepairItem, var7, 0L, "free-repair-" + var7, repairSlot, repairFingerprint, repairOriginalDamage);
+                        this.markRepairApplying(var7);
                         this.runSync(
                            () -> {
-                              boolean applied = this.applyRepairToCapturedItem(var1, repairItemUniqueId, var5.itemId(), repairOriginalDamage);
-                              this.session(var1).repairInFlightId = "";
-                              this.session(var1).repairItemUniqueId = "";
+                              boolean applied = this.applyRepairToCapturedItem(var1, repairItemUniqueId, var5.itemId(), repairOriginalDamage, repairSlot, repairFingerprint);
+                              this.clearRepairState(this.session(var1));
                               if (!applied) {
                                  this.runAsync(() -> this.markRepairNeedsReview(repairId));
                                  var1.sendMessage(this.color("&eПредмет был перемещён во время ремонта. Операция отправлена на ручную проверку."));
@@ -6874,8 +7194,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         );
                      } catch (SQLException error) {
                         this.getLogger().log(Level.WARNING, "Free artifact repair persistence failed", error);
-                        this.session(var1).repairInFlightId = "";
-                        this.session(var1).repairItemUniqueId = "";
+                        this.clearRepairState(this.session(var1));
                         this.runSync(() -> var1.sendMessage(this.color("&cНе удалось сохранить ремонт. Повтори попытку.")));
                      }
                   }
@@ -6898,7 +7217,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      );
                   if (!var6x.ok()) {
                      this.runSync(
-                        () -> { this.session(var1).repairInFlightId = ""; this.session(var1).repairItemUniqueId = ""; var1.sendMessage(
+                        () -> { this.clearRepairState(this.session(var1)); var1.sendMessage(
                               this.color(
                                  "&cРемонт отклонён. Код: "
                                     + this.safeBridgeCode(var6x.code())
@@ -6909,7 +7228,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      String var7 = repairId;
 
                      try {
-                        this.persistRepair(var1, var5, var4, var7, var2, var6x.txId());
+                              this.persistRepair(var1, var5, capturedRepairItem, var7, var2, var6x.txId(), repairSlot, repairFingerprint, repairOriginalDamage);
+                              this.markRepairApplying(var7);
                      } catch (SQLException var10) {
                         CopiMineArtifacts.BridgeTxnResult var9 = this.bridge
                            .transferFromAccount(
@@ -6935,8 +7255,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                         this.runSync(
                            () -> {
-                              this.session(var1).repairInFlightId = "";
-                              this.session(var1).repairItemUniqueId = "";
+                              this.clearRepairState(this.session(var1));
                               if (var9.ok()) {
                                  var1.sendMessage(
                                     this.color(
@@ -6957,9 +7276,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                      this.runSync(
                         () -> {
-                           boolean applied = this.applyRepairToCapturedItem(var1, repairItemUniqueId, var5.itemId(), repairOriginalDamage);
-                           this.session(var1).repairInFlightId = "";
-                           this.session(var1).repairItemUniqueId = "";
+                           boolean applied = this.applyRepairToCapturedItem(var1, repairItemUniqueId, var5.itemId(), repairOriginalDamage, repairSlot, repairFingerprint);
+                           this.clearRepairState(this.session(var1));
                            if (!applied) {
                               this.runAsync(() -> {
                                  this.markRepairNeedsReview(repairId);
@@ -6985,6 +7303,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             )
          );
       }
+   }
+
+   private void clearRepairState(CopiMineArtifacts.SessionState state) {
+      if (state == null) {
+         return;
+      }
+      state.repairInFlightId = "";
+      state.repairItemUniqueId = "";
+      state.repairFingerprint = "";
+      state.repairSlot = -1;
+      state.repairOriginalDamage = 0;
    }
 
    private void claimPending(Player var1) {
@@ -7138,12 +7467,33 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         var1.sendMessage(this.color("&cИнвентарь заполнен. Отложенная выдача не потеряна."));
                         return;
                      }
-
-                     this.cacheOfficialBinding(var2.uniqueItemId(), var2.itemId(), var1.getUniqueId());
-                     this.removeProvisionalDonationInstances(List.of(var2.uniqueItemId()));
+                     if (!this.playerHasOfficialInstance(var1, var2.uniqueItemId(), var2.itemId(), var1.getUniqueId())) {
+                        this.runAsync(() -> {
+                           try {
+                              this.markArtifactPurchaseReview(var2.purchaseId(), var2.uniqueItemId());
+                              this.audit(var1.getName(), "purchase_manual_review", var2.purchaseId(), var2.itemId() + " reason=pending_physical_delivery_missing");
+                           } catch (SQLException reviewError) {
+                              this.getLogger().log(Level.WARNING, "Pending delivery review mark failed after missing physical delivery: " + var2.deliveryId(), reviewError);
+                           }
+                        });
+                        var1.sendMessage(this.color("&eФизическая выдача не подтверждена. Покупка отправлена на ручную проверку; повторная копия не будет выдана автоматически."));
+                        return;
+                     }
+                     // Keep the physical item provisional until the DB
+                     // transition is committed.  authenticCatalogItem() and
+                     // all storage paths fail closed while this marker is
+                     // present, so a crash cannot expose a live instance
+                     // whose DELIVERING row is still unresolved.
                      this.runAsync(() -> {
                         try {
                            this.markPendingClaimed(var2.deliveryId(), var2.purchaseId(), var2.uniqueItemId(), var2.itemId());
+                           this.runSync(() -> {
+                              if (var1.isOnline()) {
+                                 this.cacheOfficialBinding(var2.uniqueItemId(), var2.itemId(), var1.getUniqueId());
+                                 this.removeProvisionalDonationInstances(List.of(var2.uniqueItemId()));
+                                 var1.sendMessage(this.color("&aОтложенная выдача получена: &f" + this.strip(var5.name())));
+                              }
+                           });
                         } catch (SQLException var3xx) {
                            try {
                               this.markArtifactPurchaseReview(var2.purchaseId(), var2.uniqueItemId());
@@ -7151,10 +7501,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            } catch (SQLException var4xx) {
                               this.getLogger().log(Level.WARNING, "Pending delivery review mark failed after finalize error: " + var2.deliveryId(), var4xx);
                            }
+                           // Leave the item provisional and physically
+                           // present.  Recovery on the next join can prove
+                           // the exact instance and finalize/review it; it is
+                           // never re-issued as a second copy.
                            this.getLogger().log(Level.WARNING, "Pending delivery finalization failed: " + var2.deliveryId(), var3xx);
+                           this.runSync(() -> {
+                              if (var1.isOnline()) {
+                                 var1.sendMessage(this.color("&eВыдача сохранена на проверку. Предмет временно заблокирован до подтверждения базы."));
+                              }
+                           });
                         }
                      });
-                     var1.sendMessage(this.color("&aОтложенная выдача получена: &f" + this.strip(var5.name())));
                   }
                )
          );
@@ -7273,10 +7631,25 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           var9x.add(var11);
                                        }
 
-                                       for (String var11 : var9x) {
-                                          this.cacheOfficialBinding(var11, var5.itemId(), var1.getUniqueId());
+                                       // All instances were inserted into the
+                                       // player's inventory, but the database
+                                       // transition must not be finalized
+                                       // unless every exact unique id is still
+                                       // physically present.  This closes the
+                                       // small window where another plugin (or
+                                       // a disconnect race) removes one item
+                                       // before the async claim finalization;
+                                       // review is safer than making the
+                                       // missing instance claimable twice.
+                                       boolean physicalDeliveryPresent = var8.stream()
+                                          .allMatch(uniqueId -> this.playerHasOfficialInstance(var1, uniqueId, var5.itemId(), var1.getUniqueId()));
+                                       if (!physicalDeliveryPresent) {
+                                          this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                          this.removeOfficialItemsFromInventory(var1.getInventory(), var9x);
+                                          this.removeProvisionalDonationInstances(var8);
+                                          var1.sendMessage(this.color("&eФизическая донат-выдача не подтверждена. Заявка отправлена на ручную проверку; повторная копия не будет выдана автоматически."));
+                                          return;
                                        }
-                                       this.removeProvisionalDonationInstances(var8);
 
                                        this.finalizeDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var7, var5.itemId(), var8)
                                           .whenComplete(
@@ -7284,11 +7657,21 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                                 if (var4xxxx != null || !Boolean.TRUE.equals(var3xxxx)) {
                                                    this.getLogger().log(Level.WARNING, "Donation claim was delivered but completion failed: " + var2.claimId(), var4xxxx);
                                                    this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                                } else {
+                                                   this.runSync(() -> {
+                                                      for (String var11 : var9x) {
+                                                         this.cacheOfficialBinding(var11, var5.itemId(), var1.getUniqueId());
+                                                      }
+                                                      this.removeProvisionalDonationInstances(var8);
+                                                      if (var1.isOnline()) {
+                                                         var1.sendMessage(this.color("&aДонат-предмет получен: &f" + this.strip(var5.name()) + " &7x" + var6));
+                                                      }
+                                                   });
                                                 }
                                              }
                                           );
                                        this.audit(var1.getName(), "donation_claim_delivered", var2.claimId(), var5.itemId());
-                                       var1.sendMessage(this.color("&aДонат-предмет получен: &f" + this.strip(var5.name()) + " &7x" + var6));
+                                       var1.sendMessage(this.color("&7Выдача подготовлена; ожидается финализация базы..."));
                                     } else {
                                        if (Boolean.TRUE.equals(var7x)) {
                                           this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8);
@@ -8236,8 +8619,32 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (this.officialItemMatches(var1.getInventory().getItemInOffHand(), var2, var3, var4)) {
             return true;
          }
+         if (this.itemContainsOfficialInstance(var1.getItemOnCursor(), var2, var3, var4)) {
+            return true;
+         }
          for (ItemStack var9 : var1.getInventory().getArmorContents()) {
             if (this.officialItemMatches(var9, var2, var3, var4)) {
+               return true;
+            }
+         }
+         // A delivery can be moved into the player's ender chest or a bundle
+         // between the physical inventory write and the DB finalization.  A
+         // recovery check that only scans the main inventory would mint a
+         // second copy on the next join.
+         if (this.inventoryContainsOfficialInstance(var1.getEnderChest(), var2, var3, var4)) {
+            return true;
+         }
+         if (this.bundleContainsOfficialInstance(var1.getInventory().getContents(), var2, var3, var4)
+               || this.bundleContainsOfficialInstance(var1.getInventory().getArmorContents(), var2, var3, var4)
+               || this.bundleContainsOfficialInstance(new ItemStack[]{var1.getInventory().getItemInOffHand()}, var2, var3, var4)) {
+            return true;
+         }
+         // Containers currently open by any player are also authoritative
+         // physical storage.  The provisional-item click guards prevent new
+         // moves, while this scan covers a move made by another plugin.
+         for (Player online : Bukkit.getOnlinePlayers()) {
+            InventoryView view = online.getOpenInventory();
+            if (view != null && this.inventoryContainsOfficialInstance(view.getTopInventory(), var2, var3, var4)) {
                return true;
             }
          }
@@ -8245,6 +8652,48 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else {
          return false;
       }
+   }
+
+   private boolean inventoryContainsOfficialInstance(Inventory inventory, String uniqueId, String itemId, UUID owner) {
+      if (inventory == null) return false;
+      for (ItemStack stack : inventory.getContents()) {
+         if (this.itemContainsOfficialInstance(stack, uniqueId, itemId, owner)) return true;
+      }
+      return false;
+   }
+
+   private boolean itemContainsOfficialInstance(ItemStack stack, String uniqueId, String itemId, UUID owner) {
+      if (stack == null || stack.getType() == Material.AIR) {
+         return false;
+      }
+      if (this.officialItemMatches(stack, uniqueId, itemId, owner)) {
+         return true;
+      }
+      if (stack.hasItemMeta() && stack.getItemMeta() instanceof BundleMeta bundle && bundle.hasItems()) {
+         for (ItemStack nested : bundle.getItems()) {
+            if (this.itemContainsOfficialInstance(nested, uniqueId, itemId, owner)) return true;
+         }
+      }
+      // Shulker boxes and other block-state containers can be used as an
+      // external storage hop. Inspect their serialized inventory before
+      // finalizing a pending delivery, otherwise a moved provisional item
+      // would be minted again after reconnect.
+      if (stack.hasItemMeta() && stack.getItemMeta() instanceof BlockStateMeta stateMeta
+            && stateMeta.getBlockState() instanceof Container container) {
+         return this.inventoryContainsOfficialInstance(container.getInventory(), uniqueId, itemId, owner);
+      }
+      return false;
+   }
+
+   private boolean bundleContainsOfficialInstance(ItemStack[] stacks, String uniqueId, String itemId, UUID owner) {
+      if (stacks == null) return false;
+      for (ItemStack stack : stacks) {
+         if (stack == null || !stack.hasItemMeta() || !(stack.getItemMeta() instanceof BundleMeta bundle) || !bundle.hasItems()) continue;
+         for (ItemStack nested : bundle.getItems()) {
+            if (this.itemContainsOfficialInstance(nested, uniqueId, itemId, owner)) return true;
+         }
+      }
+      return false;
    }
 
    private boolean officialItemMatches(ItemStack var1, String var2, String var3, UUID var4) {
@@ -8394,15 +8843,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return true;
    }
 
-   private void removeUniqueItemFromInventory(Inventory inventory, String uniqueItemId) {
+   private boolean removeUniqueItemFromInventory(Inventory inventory, String uniqueItemId) {
       if (inventory == null || this.firstNonBlank(uniqueItemId, "").isBlank()) {
-         return;
+         return false;
       }
+      boolean changed = false;
       for (int slot = 0; slot < inventory.getSize(); slot++) {
          if (uniqueItemId.equals(this.uniqueItemIdOf(inventory.getItem(slot)))) {
             inventory.setItem(slot, new ItemStack(Material.AIR));
+            changed = true;
          }
       }
+      return changed;
    }
 
    private void removeDonationInstanceFromOnlineInventories(String uniqueItemId) {
@@ -8412,18 +8864,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       for (Player player : Bukkit.getOnlinePlayers()) {
          PlayerInventory inventory = player.getInventory();
-         boolean changed = false;
-         for (int slot = 0; slot < inventory.getSize(); slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (wanted.equals(this.uniqueItemIdOf(stack))) {
-               inventory.setItem(slot, new ItemStack(Material.AIR));
-               changed = true;
-            }
-         }
+         boolean changed = this.removeUniqueItemFromInventory(inventory, wanted);
          ItemStack cursor = player.getItemOnCursor();
          if (wanted.equals(this.uniqueItemIdOf(cursor))) {
             player.setItemOnCursor(new ItemStack(Material.AIR));
             changed = true;
+         }
+         InventoryView view = player.getOpenInventory();
+         if (view != null && view.getTopInventory() != null) {
+            // A foreign copy may have been inserted by an older build or a
+            // third-party plugin before the ownership guard ran.  Remove it
+            // from every currently open block inventory as well; otherwise a
+            // reclaim could issue a replacement while the stale stack stays
+            // hidden in a chest or shulker.
+            changed |= this.removeUniqueItemFromInventory(view.getTopInventory(), wanted);
          }
          if (changed) {
             player.updateInventory();
@@ -8461,6 +8915,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          OfficialDonationRef cursorRef = this.foreignDonationRef(player.getItemOnCursor(), player.getUniqueId());
          if (cursorRef != null && seen.add(cursorRef.uniqueItemId())) {
             this.quarantineForeignDonation(player, cursorRef, "foreign-cursor-sweep");
+         }
+         InventoryView view = player.getOpenInventory();
+         Inventory top = view == null ? null : view.getTopInventory();
+         if (top != null && !(top.getHolder() instanceof MenuHolder)) {
+            for (int slot = 0; slot < top.getSize(); slot++) {
+               OfficialDonationRef ref = this.foreignDonationRef(top.getItem(slot), player.getUniqueId());
+               if (ref != null && seen.add(ref.uniqueItemId()) && this.quarantineForeignDonation(player, ref, "foreign-container-sweep")) {
+                  top.setItem(slot, new ItemStack(Material.AIR));
+                  player.updateInventory();
+               }
+            }
          }
       }
    }
@@ -8795,31 +9260,31 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
    public void onProtectedShopExplode(EntityExplodeEvent event) {
       event.blockList().removeIf(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())));
    }
 
-   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
    public void onProtectedShopBlockExplode(BlockExplodeEvent event) {
       event.blockList().removeIf(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())));
    }
 
-   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
    public void onProtectedShopPistonExtend(BlockPistonExtendEvent event) {
       if (event.getBlocks().stream().anyMatch(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())))) {
          event.setCancelled(true);
       }
    }
 
-   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
    public void onProtectedShopPistonRetract(BlockPistonRetractEvent event) {
       if (event.getBlocks().stream().anyMatch(block -> this.shopsByLocation.containsKey(this.blockKey(block.getLocation())))) {
          event.setCancelled(true);
       }
    }
 
-   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
    public void onProtectedShopBurn(BlockBurnEvent event) {
       if (this.shopsByLocation.containsKey(this.blockKey(event.getBlock().getLocation()))) {
          event.setCancelled(true);
@@ -9342,7 +9807,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return Math.max(0L, Math.min(1_000_000_000L, this.getConfig().getLong("repair.fixed-price-ar", 3L)));
    }
 
-   private void persistRepair(Player var1, CopiMineArtifacts.CatalogItem var2, ItemStack var3, String var4, long var5, String var7) throws SQLException {
+   private void persistRepair(Player var1, CopiMineArtifacts.CatalogItem var2, ItemStack var3, String var4, long var5, String var7, int slot, String fingerprint, int originalDamage) throws SQLException {
       String var8 = (String)Objects.requireNonNull(var3.getItemMeta()).getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING);
       Connection var9 = this.pgPool.acquire();
 
@@ -9351,7 +9816,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
          try (
             PreparedStatement var10 = var9.prepareStatement(
-               "    INSERT INTO artifact_repairs(repair_id,unique_item_id,player_uuid,player_name,item_id,repair_cost_ar,bank_tx_id,status,created_at)\n    VALUES(?,?,?,?,?,?,?,?,?)\n"
+               "    INSERT INTO artifact_repairs(repair_id,unique_item_id,player_uuid,player_name,item_id,repair_cost_ar,bank_tx_id,status,created_at,slot,item_fingerprint,original_damage)\n    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)\n"
             );
             PreparedStatement var11 = var9.prepareStatement(
                "UPDATE artifact_item_instances SET repaired_count=repaired_count+1,updated_at=? WHERE unique_item_id=?"
@@ -9365,12 +9830,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var10.setString(5, var2.itemId());
             var10.setLong(6, var5);
             var10.setString(7, var7);
-            // The physical item is repaired on the Bukkit thread after this
-            // row is durable.  Keep it APPLYING until that step succeeds;
-            // this prevents a restart/slot race from looking completed while
-            // the item is still damaged.
-            var10.setString(8, "APPLYING");
+            // PAID is durable before the physical mutation.  The Bukkit
+            // callback moves it to APPLYING only after the exact slot and
+            // fingerprint are still present, then COMPLETED after the write.
+            var10.setString(8, "PAID");
             var10.setLong(9, var12);
+            var10.setInt(10, slot);
+            var10.setString(11, this.firstNonBlank(fingerprint, ""));
+            var10.setInt(12, Math.max(0, originalDamage));
             var10.executeUpdate();
             var9.commit();
          } catch (SQLException var29) {
@@ -9390,39 +9857,60 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    /** Apply the repair only to the captured unique instance, wherever it is
     * still held by the player.  Never write a stale ItemStack into the current
     * main hand after the player has changed slots. */
-   private boolean applyRepairToCapturedItem(Player player, String uniqueItemId, String itemId, int originalDamage) {
-      if (player == null || !player.isOnline() || uniqueItemId == null || uniqueItemId.isBlank()) {
+   private boolean applyRepairToCapturedItem(Player player, String uniqueItemId, String itemId, int originalDamage, int slot, String fingerprint) {
+      if (player == null || !player.isOnline() || uniqueItemId == null || uniqueItemId.isBlank()
+            || slot < 0 || slot >= player.getInventory().getSize()) {
          return false;
       }
       PlayerInventory inventory = player.getInventory();
-      for (int slot = 0; slot < inventory.getSize(); slot++) {
-         ItemStack current = inventory.getItem(slot);
-         if (!uniqueItemId.equals(this.uniqueItemIdOf(current))) {
-            continue;
-         }
-         CatalogItem authenticated = this.authenticCatalogItem(current, player, "repair_apply");
-         if (authenticated == null || !authenticated.itemId().equalsIgnoreCase(itemId)
-               || !(current.getItemMeta() instanceof Damageable damageable)
-               || damageable.getDamage() <= 0) {
-            return false;
-         }
-         damageable.setDamage(0);
-         current.setItemMeta(damageable);
-         inventory.setItem(slot, current);
-         return true;
+      ItemStack current = inventory.getItem(slot);
+      if (!uniqueItemId.equals(this.uniqueItemIdOf(current)) || !this.repairFingerprint(current).equals(fingerprint)) {
+         return false;
       }
-      ItemStack offhand = inventory.getItemInOffHand();
-      if (uniqueItemId.equals(this.uniqueItemIdOf(offhand)) && offhand.getItemMeta() instanceof Damageable damageable
-            && damageable.getDamage() > 0) {
-         CatalogItem authenticated = this.authenticCatalogItem(offhand, player, "repair_apply_offhand");
-         if (authenticated != null && authenticated.itemId().equalsIgnoreCase(itemId)) {
-            damageable.setDamage(0);
-            offhand.setItemMeta(damageable);
-            inventory.setItemInOffHand(offhand);
-            return true;
-         }
+      CatalogItem authenticated = this.authenticCatalogItem(current, player, "repair_apply");
+      if (authenticated == null || !authenticated.itemId().equalsIgnoreCase(itemId)
+            || !(current.getItemMeta() instanceof Damageable damageable)
+            || damageable.getDamage() != originalDamage || damageable.getDamage() <= 0) {
+         return false;
       }
-      return false;
+      damageable.setDamage(0);
+      current.setItemMeta(damageable);
+      inventory.setItem(slot, current);
+      player.updateInventory();
+      return true;
+   }
+
+   private void markRepairApplying(String repairId) throws SQLException {
+      if (repairId == null || repairId.isBlank() || this.pgPool == null) throw new SQLException("repair id missing");
+      Connection connection = this.pgPool.acquire();
+      try (PreparedStatement statement = connection.prepareStatement(
+            "UPDATE artifact_repairs SET status='APPLYING' WHERE repair_id=? AND status='PAID'")) {
+         statement.setString(1, repairId);
+         if (statement.executeUpdate() != 1) throw new SQLException("Repair is no longer PAID: " + repairId);
+      } finally {
+         this.pgPool.release(connection);
+      }
+   }
+
+   private String repairFingerprint(ItemStack stack) {
+      if (stack == null || stack.getType().isAir()) return "";
+      StringBuilder value = new StringBuilder(stack.getType().name()).append('|').append(stack.getAmount());
+      if (stack.getItemMeta() instanceof Damageable damageable) value.append('|').append(damageable.getDamage());
+      ItemMeta meta = stack.getItemMeta();
+      if (meta != null) {
+         value.append('|').append(meta.hasCustomModelData() ? meta.getCustomModelData() : 0);
+         value.append('|').append(meta.displayName());
+         value.append('|').append(meta.lore());
+         value.append('|').append(this.uniqueItemIdOf(stack));
+      }
+      try {
+         byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.toString().getBytes(StandardCharsets.UTF_8));
+         StringBuilder hex = new StringBuilder(digest.length * 2);
+         for (byte b : digest) hex.append(String.format(Locale.ROOT, "%02x", b));
+         return hex.toString();
+      } catch (Exception ignored) {
+         return value.toString();
+      }
    }
 
    private void completeRepair(String repairId, String uniqueItemId) {
@@ -9470,7 +9958,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       try {
          connection = this.pgPool.acquire();
          try (PreparedStatement statement = connection.prepareStatement(
-               "UPDATE artifact_repairs SET status='REVIEW' WHERE repair_id=? AND status IN ('APPLYING','COMPLETED')")) {
+               "UPDATE artifact_repairs SET status='REVIEW' WHERE repair_id=? AND status IN ('PAID','APPLYING','COMPLETED')")) {
             statement.setString(1, repairId);
             statement.executeUpdate();
          }
@@ -10114,6 +10602,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var7.setLong(6, var49);
                var7.executeUpdate();
                var3.commit();
+               // The old PDC identity is now terminal.  Drop its in-memory
+               // binding only after the transaction commits, otherwise a
+               // concurrently running game event could still authenticate a
+               // replaced physical copy and use it alongside the reclaim
+               // replacement.
+               this.removeOfficialBinding(row.uniqueItemId());
                var13 = new CopiMineArtifacts.DonationReclaimContext(row.uniqueItemId(), var12, var8, var9);
             } catch (SQLException var46) {
                var3.rollback();
@@ -10693,7 +11187,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          || var1.hasPermission("copimine.artifacts.admin")
          || var1.hasPermission("copimine.admin")
          || var1.hasPermission("copimine.admin.ultra")
-         || var1.hasPermission("copimine.ultra.admin");
+         || var1.hasPermission("copimine.ultra.admin")
+         // Existing CopiMine admin roles are intentionally accepted by the
+         // shop module as well.  The junior-admin guard above still denies
+         // restricted staff before this role bridge is evaluated.
+         || var1.hasPermission("copimine.election.admin")
+         || var1.hasPermission("copimine.election.cik")
+         || var1.hasPermission("copimine.economy.admin")
+         || var1.hasPermission("copimine.players.admin");
    }
 
    private boolean isRestrictedJuniorArtifactsAdmin(Player var1) {
@@ -11197,6 +11698,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!this.isLoadedCompassChunk(player.getWorld(), eye.getBlockX(), eye.getBlockZ())) {
          return false;
       }
+      if (!this.areCompassChunksLoaded(player.getWorld(), eye, direction, maxDistance)) {
+         player.sendMessage(this.color("&eВ направлении взгляда есть ещё не загруженные чанки; подойдите ближе и повторите."));
+         return false;
+      }
       RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, maxDistance, FluidCollisionMode.NEVER, true);
       Location requested = hit == null
          ? eye.clone().add(direction.clone().multiply(maxDistance))
@@ -11221,7 +11726,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (player == null || player.getWorld() == null) {
          return MAX_COMPASS_TELEPORT_DISTANCE;
       }
-       int viewDistanceChunks = Math.max(1, player.getWorld().getViewDistance());
+       int viewDistanceChunks = player.getViewDistance();
+       if (viewDistanceChunks <= 0) {
+          viewDistanceChunks = player.getClientViewDistance();
+       }
+       if (viewDistanceChunks <= 0) {
+          viewDistanceChunks = player.getWorld().getViewDistance();
+       }
        // Leave a small margin so the destination is inside the server's sent
        // chunk ring rather than on its unloaded edge.
        return Math.max(MAX_COMPASS_TELEPORT_DISTANCE, viewDistanceChunks * 16.0D - 2.0D);
@@ -11231,6 +11742,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return world != null && world.isChunkLoaded(blockX >> 4, blockZ >> 4);
    }
 
+   private boolean areCompassChunksLoaded(World world, Location origin, Vector direction, double distance) {
+      if (world == null || origin == null || direction == null) {
+         return false;
+      }
+      // Sample every block (plus both endpoints) before invoking Bukkit's
+      // ray tracer. This prevents an accidental chunk load in the middle of
+      // a long ray when the client has not received that chunk yet.
+      for (double travelled = 0.0D; travelled <= distance + 0.5D; travelled += 1.0D) {
+         Location point = origin.clone().add(direction.clone().multiply(travelled));
+         if (!this.isLoadedCompassChunk(world, point.getBlockX(), point.getBlockZ())) {
+            return false;
+         }
+      }
+      return true;
+   }
+
    private Location findSafeCompassLocation(Location origin, Location requested, double maxDistance) {
       if (origin == null || requested == null || origin.getWorld() == null || requested.getWorld() != origin.getWorld()) return null;
       Vector offset = requested.toVector().subtract(origin.toVector());
@@ -11238,7 +11765,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       World world = origin.getWorld();
       int baseX = requested.getBlockX();
       int baseZ = requested.getBlockZ();
-      if (!this.isLoadedCompassChunk(world, baseX, baseZ) || !world.getWorldBorder().isInside(requested)) {
+      double offsetLength = offset.length();
+      Vector offsetDirection = offsetLength <= 0.001D ? new Vector(0, 0, 0) : offset.clone().normalize();
+      if (!this.isLoadedCompassChunk(world, baseX, baseZ) || !world.getWorldBorder().isInside(requested)
+            || offsetLength > 0.001D && !this.areCompassChunksLoaded(world, origin, offsetDirection, Math.min(maxDistance, offsetLength))) {
          return null;
       }
       // A downward ray can hit the side of a cave or a deep underground
@@ -11348,7 +11878,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      new ItemStack(cageMaterial), attacker, true);
                Bukkit.getPluginManager().callEvent(place);
                if (place.isCancelled() || !place.canBuild()) continue;
+               String originalBlockData = block.getBlockData().getAsString();
                block.setType(cageMaterial, false);
+               this.recordTemporaryTrap(block, cageMaterial, originalBlockData,
+                     System.currentTimeMillis() + Math.max(1L, durationTicks) * 50L);
                placed.add(block);
             }
          }
@@ -11356,10 +11889,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!placed.isEmpty()) {
          Bukkit.getScheduler().runTaskLater(this, () -> {
             for (Block block : placed) {
-               if (block.getType() == Material.COBWEB || block.getType() == Material.SAND) {
-                  block.setType(Material.AIR, false);
-               }
+               TemporaryBlockRestore restore = this.temporaryTrapRestores.get(this.blockKey(block.getLocation()));
+               if (restore != null) this.restoreTemporaryTrap(restore);
+               else if (block.getType() == Material.COBWEB || block.getType() == Material.SAND) block.setType(Material.AIR, false);
             }
+            this.rewriteTemporaryTrapJournal();
          }, Math.max(1L, durationTicks));
       }
    }
@@ -11393,7 +11927,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                if (place.isCancelled() || !place.canBuild()) {
                   continue;
                }
+               String originalBlockData = block.getBlockData().getAsString();
                block.setType(Material.COBWEB, false);
+               this.recordTemporaryTrap(block, Material.COBWEB, originalBlockData,
+                     System.currentTimeMillis() + Math.max(1L, durationTicks) * 50L);
                placedBlocks.add(block);
             }
          }
@@ -11401,10 +11938,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!placedBlocks.isEmpty()) {
          Bukkit.getScheduler().runTaskLater(this, () -> {
             for (Block block : placedBlocks) {
-               if (block.getType() == Material.COBWEB) {
-                  block.setType(Material.AIR, false);
-               }
+               TemporaryBlockRestore restore = this.temporaryTrapRestores.get(this.blockKey(block.getLocation()));
+               if (restore != null) this.restoreTemporaryTrap(restore);
+               else if (block.getType() == Material.COBWEB) block.setType(Material.AIR, false);
             }
+            this.rewriteTemporaryTrapJournal();
          }, Math.max(1L, durationTicks));
       }
    }
@@ -11929,6 +12467,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       World var3 = Bukkit.getWorld(var1.world());
       if (var3 != null) {
          Location var4 = new Location(var3, (double)var1.x(), (double)var1.y(), (double)var1.z());
+         // The database row is not the block.  Never respawn a marker over an
+         // anchor that was removed by WorldEdit, a plugin or an admin.  The
+         // periodic guard will mark the shop disabled and re-enable it only
+         // after a real block is placed at the same location.
+         if (var3.isChunkLoaded(var1.x() >> 4, var1.z() >> 4)
+               && var3.getBlockAt(var1.x(), var1.y(), var1.z()).getType().isAir()) {
+            this.cleanupNearbyProtectedVisuals(var4, "ARTIFACT_SHOP", var1.shopId());
+            this.cleanupShopTitleDisplay(var4, var1.shopId());
+            return;
+         }
          String var5 = this.first(String.valueOf(var2.getOrDefault("entity_uuid", "")), "");
          Entity var6 = null;
          if (!var5.isBlank()) {
@@ -11944,6 +12492,65 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.spawnOrReplaceProtectedBlockVisual(var4, "ARTIFACT_SHOP", var1.shopId(), Material.PAPER, 14004, "artifact_shop_marker");
          }
          this.spawnShopTitleDisplay(var4, var1.shopId(), var1.title());
+      }
+   }
+
+   private void setShopEnabled(String shopId, boolean enabled) throws SQLException {
+      Connection connection = this.pgPool.acquire();
+      try (PreparedStatement statement = connection.prepareStatement(
+            "UPDATE artifact_shops SET enabled=?,updated_at=? WHERE shop_id=?")) {
+         statement.setBoolean(1, enabled);
+         statement.setLong(2, this.now());
+         statement.setString(3, shopId);
+         if (statement.executeUpdate() != 1) {
+            throw new SQLException("Shop row is missing: " + shopId);
+         }
+      } finally {
+         this.pgPool.release(connection);
+      }
+   }
+
+   /**
+    * Reconciles the durable shop registry with loaded world blocks.  Visual
+    * entities are presentation only; a missing anchor must make the shop
+    * unavailable, while placing a replacement block must make it usable again
+    * without requiring a restart or a second database row.
+    */
+   private void guardShopAnchors() {
+      for (CopiMineArtifacts.Shop shop : this.shopsByLocation.values()) {
+         World world = Bukkit.getWorld(shop.world());
+         if (world == null || !world.isChunkLoaded(shop.x() >> 4, shop.z() >> 4)) {
+            continue;
+         }
+         boolean present = !world.getBlockAt(shop.x(), shop.y(), shop.z()).getType().isAir();
+         if (present == shop.enabled()) {
+            continue;
+         }
+         CopiMineArtifacts.Shop updated = new CopiMineArtifacts.Shop(
+               shop.shopId(), shop.title(), shop.world(), shop.x(), shop.y(), shop.z(), present
+         );
+         if (!this.shopsByLocation.replace(shop.locationKey(), shop, updated)) {
+            continue;
+         }
+         if (present) {
+            this.enqueueProtectedBlockVisualRepair(shop.world(), shop.x() >> 4, shop.z() >> 4);
+            this.spawnShopTitleDisplay(this.shopLocation(updated), updated.shopId(), updated.title());
+         } else {
+            try {
+               this.cleanupProtectedBlockVisuals("ARTIFACT_SHOP", shop.shopId());
+            } catch (Exception error) {
+               this.getLogger().log(Level.WARNING, "Artifact shop visual cleanup after anchor removal failed", error);
+            }
+            this.cleanupShopTitleDisplay(this.shopLocation(updated), updated.shopId());
+         }
+         this.runAsync(() -> {
+            try {
+               this.setShopEnabled(shop.shopId(), present);
+            } catch (SQLException error) {
+               this.getLogger().log(Level.WARNING, "Artifact shop anchor state persistence failed for " + shop.shopId(), error);
+               this.runSync(() -> this.shopsByLocation.replace(shop.locationKey(), updated, shop));
+            }
+         });
       }
    }
 
@@ -12479,7 +13086,32 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          throw new IOException("Item " + itemId + " was not found in " + kind + " catalog.");
       }
 
-      config.save(itemsFile);
+      Path path = itemsFile.toPath();
+      Path temporary = Files.createTempFile(path.getParent(), "items.yml.", ".tmp");
+      try {
+         config.save(temporary.toFile());
+         try {
+            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+         } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+            Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+         }
+      } finally {
+         Files.deleteIfExists(temporary);
+      }
+   }
+
+   private void writeAtomicBytes(Path target, byte[] bytes) throws IOException {
+      Path temporary = Files.createTempFile(target.getParent(), target.getFileName().toString() + ".", ".rollback");
+      try {
+         Files.write(temporary, bytes, StandardOpenOption.TRUNCATE_EXISTING);
+         try {
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+         } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+         }
+      } finally {
+         Files.deleteIfExists(temporary);
+      }
    }
 
    private final class ArtifactBridgeAdapter {
@@ -12707,6 +13339,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private static record PozdnyakovMagmaRestore(Location location, String originalBlockData, long expiresAtMillis) {
+   }
+
+   private static record TemporaryBlockRestore(Location location, Material placedMaterial, String originalBlockData, long expiresAtMillis) {
    }
 
    private static enum Category {
@@ -12962,7 +13597,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       String pinAction = "purchase";
       String repairInFlightId = "";
       String repairItemUniqueId = "";
+      String repairFingerprint = "";
+      int repairSlot = -1;
+      int repairOriginalDamage = 0;
       String purchaseInFlightId = "";
+      long confirmedPriceAr = -1L;
+      long confirmedPriceDonation = -1L;
+      long confirmedCatalogGeneration = -1L;
       UUID giftTargetUuid;
       String giftTargetName = "";
       String giftKind = "";

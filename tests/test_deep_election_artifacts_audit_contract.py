@@ -11,8 +11,11 @@ def test_election_restore_is_idempotent_and_cleans_player_state():
     assert "officialRestore.get(playerUuid)" in ELECTION
     assert "removeQueuedOfficialItem(playerUuid" in ELECTION
     assert "officialRestore.computeIfAbsent" in ELECTION
-    assert "pendingOfficialRestore" in ELECTION
-    assert "officialRestore.remove(playerId)" in ELECTION
+    assert "loadOfficialRestoreQueue" in ELECTION
+    assert "saveOfficialRestoreQueue" in ELECTION
+    # A quit/reconnect must not erase a death/recovery item before delivery.
+    quit_section = ELECTION[ELECTION.index("public void onQuit"):ELECTION.index("public void onRespawn")]
+    assert "officialRestore.remove(playerId)" not in quit_section
     assert "hasOfficialLogicalItem(player, \"PRESIDENT_MANDATE\")" in ELECTION
 
 
@@ -22,6 +25,7 @@ def test_election_restore_queue_keeps_each_item_until_inventory_accepts_it():
     assert "officialRestore.computeIfAbsent(playerUuid, key -> new ConcurrentHashMap<>())" in ELECTION
     assert "leftovers" in ELECTION
     assert "pendingOfficialRestore" not in ELECTION[ELECTION.index("private void addOrQueueOfficialItem"):ELECTION.index("private String officialRestoreKey")]
+    assert "queueOfficialRestore(player.getUniqueId()" in ELECTION
 
 
 def test_election_item_and_visual_handlers_cover_all_hands_and_cancelled_protection():
@@ -33,6 +37,8 @@ def test_election_item_and_visual_handlers_cover_all_hands_and_cancelled_protect
     assert "event.getHotbarButton()" in ELECTION
     assert "getItemInOffHand()" in ELECTION
     assert "@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)\n    public void onInteract" in ELECTION
+    assert "InventoryAction.COLLECT_TO_CURSOR" in ELECTION
+    assert "bundleContainsProtectedOfficial" in ELECTION
 
 
 def test_election_president_menus_are_snapshot_only_on_bukkit_thread():
@@ -42,6 +48,8 @@ def test_election_president_menus_are_snapshot_only_on_bukkit_thread():
     assert "activeTax()" not in mandate
     assert "snapshot.get()" in admin or "snapshot.get()" in mandate
     assert "taxPeriodHours()" in admin or "taxPeriodHours()" in mandate
+    assert "openPresidentAdminMenuAsync" in ELECTION
+    assert "openPresidentMandateMenuAsync" in ELECTION
 
 
 def test_election_web_snapshot_is_atomic_and_votes_are_split_from_voter_identity():
@@ -49,6 +57,12 @@ def test_election_web_snapshot_is_atomic_and_votes_are_split_from_voter_identity
     assert "vote_participation" in ELECTION
     assert "anonymous_token" in ELECTION
     assert "candidate_uuid" not in ELECTION[ELECTION.index("INSERT INTO vote_participation"):ELECTION.index("INSERT INTO vote_participation") + 600]
+    # A deposited ballot must not remain a voter↔candidate join table.
+    deposit = ELECTION[ELECTION.index("private void depositBallot"):ELECTION.index("private void annulBallot")]
+    assert "confirmed_candidate_uuid=''" in deposit
+    assert "confirmed_candidate_name=''" in deposit
+    assert "player_uuid=''" in deposit
+    assert "player_name=''" in deposit
 
 
 def test_election_official_items_cannot_move_to_any_external_storage_or_be_cloned():
@@ -66,6 +80,36 @@ def test_election_station_replacement_clears_stale_cancelled_flag():
     assert "isPollingStationProtection(cached)" in section
     assert "event.setCancelled(false)" in section
     assert "reactivateRpVotingBlockAfterPlacementAsync" in section
+
+
+def test_election_restore_entitlement_refresh_uses_one_connection_and_legacy_filter():
+    restore = ELECTION[ELECTION.index("private void restoreOfficialItems"):ELECTION.index("private void removeOfficialItemsFromPlayer")]
+    assert "try (Connection connection = openConnection())" in restore
+    assert restore.count("queryOne(connection") >= 2
+    assert "LOWER(COALESCE(notes,''))='rp-two-stage'" in restore
+
+
+def test_adminplus_delegates_election_item_authority_to_electioncore():
+    admin_path = ROOT / "copimine-admin-plugin" / "src" / "me" / "copimine" / "ultimateplus" / "CopiMineUltimateAdminPlus.java"
+    admin = admin_path.read_text(encoding="utf-8")
+    for method in (
+        "onPickup", "onDrop", "onProtectedItemDamage", "onProtectedItemDespawn",
+        "onProtectedItemMerge", "onProtectedInventoryPickup", "onProtectedInventoryMove",
+        "onProtectedBlockDispense", "onOfficialItemDeath", "onOfficialItemRespawn",
+        "onProtectedItemClick", "onProtectedItemDrag", "onProtectedItemMove",
+        "onOfficialItemInteract", "onProtectedEntityDisplay", "onProtectedArmorStand",
+    ):
+        start = admin.index("public void " + method)
+        end = admin.find("\n    @EventHandler", start + 1)
+        if end < 0:
+            end = min(len(admin), start + 2500)
+        body = admin[start:end]
+        assert "electionCoreOwns" in body or method == "onOfficialItemRespawn", method
+    entity = admin[admin.index("public void onProtectedEntityDisplay"):admin.index("public void onProtectedArmorStand")]
+    assert "e.getHand() != EquipmentSlot.HAND" in entity
+    # Retired AdminPlus station handling must not perform a DB lookup on every click.
+    interact = admin[admin.index("public void onInteract"):admin.index("public void onPlace")]
+    assert "!legacyElectionRuntimeDisabled()" in interact
 
 
 def test_election_uses_cached_president_state_for_event_paths():
@@ -128,7 +172,11 @@ def test_artifact_compass_is_explicit_teleport_item_with_fifteen_second_cooldown
 
 def test_artifact_permissions_and_world_mutations_are_closed():
     admin_block = ARTIFACTS[ARTIFACTS.index("private boolean isArtifactsAdmin"):ARTIFACTS.index("private boolean isRestrictedJuniorArtifactsAdmin")]
-    assert "copimine.election.cik" not in admin_block
+    # The existing CIK/admin roles are trusted service roles for the shared
+    # admin hub.  Junior staff are still denied by the guard immediately
+    # before this role bridge is evaluated.
+    assert "copimine.election.cik" in admin_block
+    assert "isRestrictedJuniorArtifactsAdmin" in ARTIFACTS
     assert "EntityExplodeEvent" in ARTIFACTS
     assert "BlockExplodeEvent" in ARTIFACTS
     assert "BlockPistonExtendEvent" in ARTIFACTS

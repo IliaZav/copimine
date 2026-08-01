@@ -1,0 +1,8 @@
+# CopiMine compatibility profile.  The active GrimAC configuration remains
+# config.yml; this file is kept as an explicit deploy-time profile.
+experimental-checks: false
+max-transaction-time: 60
+packet-spam-threshold: 100
+client-brand:
+  ignored-clients:
+    - ".*"

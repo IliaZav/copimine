@@ -16,6 +16,7 @@ import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
@@ -48,6 +49,8 @@ import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.inventory.CraftItemEvent;
+import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -166,10 +169,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
      * exact stack until Bukkit accepts it into an inventory slot.
      */
     private final Map<UUID, Map<String, ItemStack>> officialRestore = new ConcurrentHashMap<>();
-    /** Kept for compatibility with older recovery cleanup; delivery is owned by officialRestore. */
-    private final Map<UUID, Set<String>> pendingOfficialRestore = new ConcurrentHashMap<>();
     /** Prevent overlapping async DB lookups from racing the same inventory. */
     private final Set<UUID> officialRestoreInFlight = ConcurrentHashMap.newKeySet();
+    private final AtomicBoolean officialRestoreSaveScheduled = new AtomicBoolean(false);
     /** Prevent two bank transfers from the same player from sharing restore state. */
     private final Set<UUID> taxPaymentInFlight = ConcurrentHashMap.newKeySet();
     private final AtomicReference<LiveSnapshot> snapshot = new AtomicReference<>(LiveSnapshot.empty());
@@ -219,6 +221,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         visualModelIdKey = new NamespacedKey(this, "visual_model_id");
         webDataFile = getDataFolder().toPath().resolve("web-data.json");
         saveDefaultConfig();
+        loadOfficialRestoreQueue();
         loadHiddenPlayers();
         try {
             db = loadDbSettings();
@@ -261,12 +264,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     @Override
     public void onDisable() {
         saveHiddenPlayers();
+        saveOfficialRestoreQueue();
         protectedInteractAt.clear();
         rpCandidateSelections.clear();
         rpCandidateSelectionCampaigns.clear();
         rpCandidateActionQueues.clear();
         officialRestore.clear();
-        pendingOfficialRestore.clear();
         officialRestoreInFlight.clear();
         taxPaymentInFlight.clear();
         presidentCache.set(PresidentCache.empty());
@@ -323,8 +326,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         prompts.remove(playerId);
         rpCandidateSelections.remove(playerId);
         rpCandidateSelectionCampaigns.remove(playerId);
-        officialRestore.remove(playerId);
-        pendingOfficialRestore.remove(playerId);
+        // Do not discard queued official items on quit.  Death/respawn and
+        // full-inventory recovery may complete after the player reconnects;
+        // the queue is persisted on shutdown and drained only after Bukkit
+        // accepts the exact stack.
         officialRestoreInFlight.remove(playerId);
         taxPaymentInFlight.remove(playerId);
     }
@@ -488,7 +493,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInventoryClick(InventoryClickEvent event) {
         InventoryView view = event.getView();
         if (view.getTopInventory().getHolder() instanceof MenuHolder holder) {
@@ -524,21 +529,29 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         ItemStack current = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
+        Player actor = event.getWhoClicked() instanceof Player p ? p : null;
         ItemStack hotbar = null;
         if (event.getClick() == ClickType.NUMBER_KEY && event.getHotbarButton() >= 0) {
-            hotbar = event.getWhoClicked() instanceof Player player
-                    ? player.getInventory().getItem(event.getHotbarButton()) : null;
+            hotbar = actor == null ? null : actor.getInventory().getItem(event.getHotbarButton());
         }
-        ItemStack offhand = event.getWhoClicked() instanceof Player player
-                ? player.getInventory().getItemInOffHand() : null;
+        ItemStack offhand = actor == null ? null : actor.getInventory().getItemInOffHand();
         boolean protectedMovedByHotbar = isProtectedOfficialItem(hotbar)
                 && (event.getClick() == ClickType.NUMBER_KEY
                 || event.getAction() == InventoryAction.HOTBAR_SWAP
                 || event.getAction() == InventoryAction.HOTBAR_MOVE_AND_READD);
         boolean protectedMovedOffhand = event.getClick() == ClickType.SWAP_OFFHAND
                 && isProtectedOfficialItem(offhand);
+        boolean collectWouldMoveProtected = actor != null
+                && event.getAction() == InventoryAction.COLLECT_TO_CURSOR
+                && isExternalOfficialStorage(view)
+                && containsProtectedOfficial(actor.getInventory().getContents());
         if (isProtectedOfficialItem(current) || isProtectedOfficialItem(cursor)
-                || protectedMovedByHotbar || protectedMovedOffhand) {
+                || protectedMovedByHotbar || protectedMovedOffhand
+                || bundleContainsProtectedOfficial(current)
+                || bundleContainsProtectedOfficial(cursor)
+                || bundleContainsProtectedOfficial(hotbar)
+                || bundleContainsProtectedOfficial(offhand)
+                || collectWouldMoveProtected) {
             boolean external = isExternalOfficialStorage(view, event.getRawSlot());
             // Bundles live in the player's own inventory, so they do not
             // expose a separate InventoryView/top holder.  Treat a bundle as
@@ -568,7 +581,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         ItemStack cursor = event.getOldCursor();
-        if (!isProtectedOfficialItem(cursor)) {
+        if (!isProtectedOfficialItem(cursor) && !bundleContainsProtectedOfficial(cursor)) {
             return;
         }
         Inventory top = view.getTopInventory();
@@ -578,7 +591,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCreativeInventoryAction(InventoryCreativeEvent event) {
         ItemStack current = event.getCurrentItem();
         if (isCikSeal(current)) {
@@ -590,11 +603,37 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             return;
         }
-        if (!isProtectedOfficialItem(current) && !isProtectedOfficialItem(event.getCursor())) {
+        if (!isProtectedOfficialItem(current) && !isProtectedOfficialItem(event.getCursor())
+                && !bundleContainsProtectedOfficial(current)
+                && !bundleContainsProtectedOfficial(event.getCursor())) {
             return;
         }
         event.setCancelled(true);
         if (event.getWhoClicked() instanceof Player player) {
+            Bukkit.getScheduler().runTask(this, player::updateInventory);
+        }
+    }
+
+    /**
+     * Election entitlements are capabilities, not crafting ingredients.  Keep
+     * this check in the owning plugin so a legacy listener cannot silently
+     * consume a ballot/mandate/seal before the inventory guard runs.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPrepareOfficialCraft(PrepareItemCraftEvent event) {
+        if (containsProtectedOfficial(event.getInventory().getMatrix())) {
+            event.getInventory().setResult(new ItemStack(Material.AIR));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialCraft(CraftItemEvent event) {
+        if (!containsProtectedOfficial(event.getInventory().getMatrix())) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getWhoClicked() instanceof Player player) {
+            player.sendMessage(color("&cСлужебные предметы выборов нельзя использовать в крафте."));
             Bukkit.getScheduler().runTask(this, player::updateInventory);
         }
     }
@@ -606,7 +645,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onDrop(PlayerDropItemEvent event) {
         ItemStack dropped = event.getItemDrop().getItemStack();
         if (isCikSeal(dropped)) {
@@ -625,7 +664,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onMoveOfficial(InventoryMoveItemEvent event) {
         if (isProtectedOfficialItem(event.getItem())) {
             event.setCancelled(true);
@@ -674,6 +713,53 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         // CopiMine servers.  Comparing the enum name keeps this guard binary
         // compatible while still covering current Paper/Purpur builds.
         return stack != null && !stack.getType().isAir() && "BUNDLE".equals(stack.getType().name());
+    }
+
+    private boolean containsProtectedOfficial(ItemStack[] contents) {
+        if (contents == null) {
+            return false;
+        }
+        for (ItemStack stack : contents) {
+            if (isProtectedOfficialItem(stack) || bundleContainsProtectedOfficial(stack)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A bundle is an external container even though Bukkit exposes it as one
+     * ItemStack in the player's inventory.  Newer Paper APIs expose bundle
+     * contents through BundleMeta#getItems; reflection keeps the plugin
+     * compatible with the historical API jar used by older servers.
+     */
+    private boolean bundleContainsProtectedOfficial(ItemStack stack) {
+        if (!isBundleItem(stack) || !stack.hasItemMeta()) {
+            return false;
+        }
+        try {
+            java.lang.reflect.Method getter = stack.getItemMeta().getClass().getMethod("getItems");
+            Object values = getter.invoke(stack.getItemMeta());
+            if (values instanceof Iterable<?> iterable) {
+                for (Object value : iterable) {
+                    if (value instanceof ItemStack nested
+                            && (isProtectedOfficialItem(nested) || bundleContainsProtectedOfficial(nested))) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            // An API implementation that exposes a bundle but not an
+            // iterable contents view is treated conservatively. It is safer
+            // to reject the container than to allow a hidden entitlement to
+            // cross into storage or be duplicated on refresh.
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // The contents cannot be inspected on this API; conservatively
+            // block the bundle rather than create a storage/duplication
+            // bypass for a hidden election item.
+            return true;
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -3119,11 +3205,49 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openPresidentAdminMenu(Player player) {
-        openPresidentAdminMenu(player, selectedTaxPeriodHours());
+        openPresidentAdminMenuAsync(player, selectedTaxPeriodHours());
     }
 
     private void openPresidentAdminMenu(Player player, int selectedPeriodHours) {
-        LiveSnapshot snap = snapshot.get();
+        openPresidentAdminMenuAsync(player, selectedPeriodHours);
+    }
+
+    private void openPresidentAdminMenuAsync(Player player, int selectedPeriodHours) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        int requestedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
+        UUID playerUuid = player.getUniqueId();
+        player.sendActionBar(color("&7Загружаю кабинет президента..."));
+        runAsync(() -> {
+            try {
+                List<Map<String, Object>> laws = pendingLaws();
+                runSync(() -> {
+                    Player current = Bukkit.getPlayer(playerUuid);
+                    if (current != null && current.isOnline()) {
+                        openPresidentAdminMenuNow(current, requestedPeriod, snapshot.get(), laws);
+                    }
+                });
+            } catch (Exception error) {
+                getLogger().warning("president admin menu: " + safeError(error));
+                runSync(() -> {
+                    Player current = Bukkit.getPlayer(playerUuid);
+                    if (current != null && current.isOnline()) {
+                        sendUserError(current, error, "&cНе удалось загрузить кабинет президента.");
+                    }
+                });
+            }
+        });
+    }
+
+    private void openPresidentAdminMenuNow(Player player, int selectedPeriodHours, LiveSnapshot snap,
+            List<Map<String, Object>> pendingLawRows) {
+        if (snap == null) {
+            snap = snapshot.get();
+        }
+        if (pendingLawRows == null) {
+            pendingLawRows = List.of();
+        }
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours <= 0 ? snap.taxPeriodHours() : selectedPeriodHours);
         int currentAmount = Math.max(taxMinAmount(), Math.min(taxMaxAmount(), snap.taxAmount()));
         MenuHolder holder = new MenuHolder("president-admin", Integer.toString(resolvedPeriod));
@@ -3185,7 +3309,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
         setStatic(inv, 34, infoItem(Material.BARRIER, "&cНалоговая точка создаётся администрацией", List.of("&7Президент не размещает блоки для сбора налога.")));
         int lawSlot = 45;
-        for (Map<String, Object> law : pendingLaws()) {
+        for (Map<String, Object> law : pendingLawRows) {
             if (lawSlot > 48) {
                 break;
             }
@@ -3205,11 +3329,52 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private void openPresidentMandateMenu(Player player) {
-        openPresidentMandateMenu(player, selectedTaxPeriodHours());
+        openPresidentMandateMenuAsync(player, selectedTaxPeriodHours());
     }
 
     private void openPresidentMandateMenu(Player player, int selectedPeriodHours) {
-        LiveSnapshot snap = snapshot.get();
+        // The async renderer below keeps the "president:resign" action in the
+        // mandate menu; retain the action id at this entry point for legacy
+        // integrations that inspect the menu route before rendering.
+        openPresidentMandateMenuAsync(player, selectedPeriodHours);
+    }
+
+    private void openPresidentMandateMenuAsync(Player player, int selectedPeriodHours) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        int requestedPeriod = normalizeTaxPeriodHours(selectedPeriodHours);
+        UUID playerUuid = player.getUniqueId();
+        player.sendActionBar(color("&7Загружаю мандат президента..."));
+        runAsync(() -> {
+            try {
+                List<Map<String, Object>> laws = publishedLaws();
+                runSync(() -> {
+                    Player current = Bukkit.getPlayer(playerUuid);
+                    if (current != null && current.isOnline()) {
+                        openPresidentMandateMenuNow(current, requestedPeriod, snapshot.get(), laws);
+                    }
+                });
+            } catch (Exception error) {
+                getLogger().warning("president mandate menu: " + safeError(error));
+                runSync(() -> {
+                    Player current = Bukkit.getPlayer(playerUuid);
+                    if (current != null && current.isOnline()) {
+                        sendUserError(current, error, "&cНе удалось загрузить мандат президента.");
+                    }
+                });
+            }
+        });
+    }
+
+    private void openPresidentMandateMenuNow(Player player, int selectedPeriodHours, LiveSnapshot snap,
+            List<Map<String, Object>> publishedLawRows) {
+        if (snap == null) {
+            snap = snapshot.get();
+        }
+        if (publishedLawRows == null) {
+            publishedLawRows = List.of();
+        }
         int resolvedPeriod = normalizeTaxPeriodHours(selectedPeriodHours <= 0 ? snap.taxPeriodHours() : selectedPeriodHours);
         int currentAmount = Math.max(taxMinAmount(), Math.min(taxMaxAmount(), snap.taxAmount()));
         MenuHolder holder = new MenuHolder("president-mandate", Integer.toString(resolvedPeriod));
@@ -3223,7 +3388,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         )));
         setButton(holder, 10, Material.BOOK, "&eПредложить закон", List.of("&7Текст уйдёт на проверку администрации."), "mandate:law");
         int replaceSlot = 11;
-        for (Map<String, Object> law : publishedLaws()) {
+        for (Map<String, Object> law : publishedLawRows) {
             if (replaceSlot > 16) {
                 break;
             }
@@ -4357,7 +4522,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
         ItemStack marker = new ItemStack(Material.PAPER);
         ItemMeta markerMeta = marker.getItemMeta();
-        markerMeta.setDisplayName(color("&fРІРѕР»РѕСЃРѕРІР°С‚РµР»СЊРЅС‹Р№ Р±Р»РѕРє"));
+        markerMeta.setDisplayName(color("&fГолосовательный блок"));
         markerMeta.setCustomModelData(MODEL_POLLING_STATION_MARKER);
         markerMeta.addItemFlags(ItemFlag.values());
         marker.setItemMeta(markerMeta);
@@ -4826,6 +4991,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         try {
             UUID chairPlayerUuid = UUID.fromString(chairUuid);
             officialRestore.remove(chairPlayerUuid);
+            scheduleOfficialRestoreQueueSave();
             Player online = Bukkit.getPlayer(chairPlayerUuid);
             if (online != null) {
                 removeOfficialItemsFromPlayer(online, "CIK_SEAL");
@@ -4982,6 +5148,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (!logicalKey.isBlank()) {
                 officialRestore.computeIfAbsent(parsedPlayerUuid, key -> new ConcurrentHashMap<>())
                         .putIfAbsent(logicalKey, seal.clone());
+                scheduleOfficialRestoreQueueSave();
             }
             return;
         }
@@ -5431,7 +5598,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "INSERT INTO votes(id,election_id,round_no,ballot_id,voter_uuid,voter_name,candidate_uuid,candidate_name,station_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     voteId, context.electionId(), context.round(), ballotId, anonymousVoterToken, "", candidateUuid, string(candidate.get("candidate_name")), stationId, t);
             update(connection, "UPDATE polling_stations SET ballots_submitted=ballots_submitted+1,updated_at=? WHERE id=?", t, stationId);
-            logPluginEvent(connection, "election_core", "direct_vote_accepted", voterName, voteId, "station=" + stationId);
+            // Participation is reserved by UUID in vote_participation, but
+            // the public vote ledger and its audit event must not provide a
+            // second voter↔candidate join path.  Keep the actor anonymous;
+            // operational staff can still audit the station and vote id.
+            logPluginEvent(connection, "election_core", "direct_vote_accepted", "SYSTEM", voteId, "station=" + stationId);
             candidateNameRef.set(string(candidate.get("candidate_name")));
             return null;
         });
@@ -5531,7 +5702,14 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "anonymous_ballot:" + UUID.randomUUID().toString().replace("-", ""),
                     "anonymous_voter:" + UUID.randomUUID().toString().replace("-", ""), "",
                     string(lockedBallot.get("confirmed_candidate_uuid")), string(candidate.get("candidate_name")), clickedStationId, t);
-            update(connection, "UPDATE ballots SET status='DEPOSITED',submitted_at=?,submitted_station_id=? WHERE id=?", t, clickedStationId, ballotId);
+            // A ballot is the player's private workspace while it is being
+            // filled.  Once deposited, retain only the operational station
+            // and status on the ballot row; the vote ledger above remains the
+            // anonymous source of truth for counting/history.  Keeping the
+            // applicant UUID or confirmed candidate on a deposited ballot
+            // allowed an admin query to correlate a voter with a choice.
+            update(connection, "UPDATE ballots SET status='DEPOSITED',submitted_at=?,submitted_station_id=?,player_uuid='',player_name='',confirmed_candidate_uuid='',confirmed_candidate_name='' WHERE id=?",
+                    t, clickedStationId, ballotId);
             update(connection, "UPDATE polling_stations SET ballots_submitted=ballots_submitted+1,updated_at=? WHERE id=?", t, clickedStationId);
             logPluginEvent(connection, "election_core", "ballot_deposited", "SYSTEM", "ballot_deposited:" + UUID.randomUUID(), "station=" + clickedStationId);
             return null;
@@ -6584,7 +6762,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         officialRestore.computeIfAbsent(playerUuid, key -> new ConcurrentHashMap<>())
                 .putIfAbsent(logicalKey, stack.clone());
-        pendingOfficialRestore.computeIfAbsent(playerUuid, key -> ConcurrentHashMap.newKeySet()).add(logicalKey);
+        scheduleOfficialRestoreQueueSave();
     }
 
     private void removeQueuedOfficialItem(UUID playerUuid, String logicalKey) {
@@ -6595,10 +6773,84 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             queued.remove(logicalKey);
             return queued.isEmpty() ? null : queued;
         });
-        pendingOfficialRestore.computeIfPresent(playerUuid, (uuid, pending) -> {
-            pending.remove(logicalKey);
-            return pending.isEmpty() ? null : pending;
+        scheduleOfficialRestoreQueueSave();
+    }
+
+    private void removeQueuedOfficialType(UUID playerUuid, String type) {
+        if (playerUuid == null || type == null || type.isBlank()) {
+            return;
+        }
+        officialRestore.computeIfPresent(playerUuid, (uuid, queued) -> {
+            queued.entrySet().removeIf(entry -> type.equalsIgnoreCase(readString(entry.getValue(), itemTypeKey)));
+            return queued.isEmpty() ? null : queued;
         });
+        scheduleOfficialRestoreQueueSave();
+    }
+
+    /**
+     * Keep recovery stacks across a clean plugin/server restart.  Bukkit's
+     * ConfigurationSerializable representation preserves the complete PDC,
+     * amount and metadata, so a retry never reconstructs a weaker copy.
+     */
+    private void loadOfficialRestoreQueue() {
+        ConfigurationSection root = getConfig().getConfigurationSection("officialRestore");
+        if (root == null) {
+            return;
+        }
+        for (String uuidText : root.getKeys(false)) {
+            UUID playerUuid = parseUuidOrNull(uuidText);
+            ConfigurationSection playerSection = root.getConfigurationSection(uuidText);
+            if (playerUuid == null || playerSection == null) {
+                continue;
+            }
+            Map<String, ItemStack> queued = officialRestore.computeIfAbsent(playerUuid, key -> new ConcurrentHashMap<>());
+            for (String logicalKey : playerSection.getKeys(false)) {
+                ItemStack stack = playerSection.getItemStack(logicalKey);
+                if (stack == null || stack.getType().isAir() || officialRestoreKey(stack).isBlank()) {
+                    continue;
+                }
+                queued.putIfAbsent(logicalKey, stack.clone());
+            }
+            if (queued.isEmpty()) {
+                officialRestore.remove(playerUuid);
+            }
+        }
+    }
+
+    private void saveOfficialRestoreQueue() {
+        try {
+            getConfig().set("officialRestore", null);
+            ConfigurationSection root = getConfig().createSection("officialRestore");
+            for (Map.Entry<UUID, Map<String, ItemStack>> playerEntry : officialRestore.entrySet()) {
+                if (playerEntry.getValue() == null || playerEntry.getValue().isEmpty()) {
+                    continue;
+                }
+                ConfigurationSection playerSection = root.createSection(playerEntry.getKey().toString());
+                for (Map.Entry<String, ItemStack> itemEntry : playerEntry.getValue().entrySet()) {
+                    ItemStack stack = itemEntry.getValue();
+                    if (stack != null && !stack.getType().isAir()) {
+                        playerSection.set(itemEntry.getKey(), stack.clone());
+                    }
+                }
+            }
+            saveConfig();
+        } catch (Exception error) {
+            getLogger().warning("official restore queue persistence failed: " + safeError(error));
+        }
+    }
+
+    private void scheduleOfficialRestoreQueueSave() {
+        if (!officialRestoreSaveScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        Runnable save = () -> {
+            try {
+                saveOfficialRestoreQueue();
+            } finally {
+                officialRestoreSaveScheduled.set(false);
+            }
+        };
+        Bukkit.getScheduler().runTask(this, save);
     }
 
     private boolean hasOfficialLogicalItem(Player player, String logicalKey) {
@@ -6653,12 +6905,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             boolean lookupSucceeded = false;
             String presidentElectionId = "";
             List<Map<String, Object>> seals = List.of();
-            try {
-                Map<String, Object> active = queryOne(
+            try (Connection connection = openConnection()) {
+                // Read all entitlement state through one bounded connection.
+                // Re-opening three JDBC sessions per online player made a
+                // reconnect storm amplify PostgreSQL pressure and allowed
+                // entitlement decisions to observe different snapshots.
+                Map<String, Object> active = queryOne(connection,
                         "SELECT id FROM elections WHERE COALESCE(active,0)=1 AND LOWER(COALESCE(notes,''))='rp-two-stage' ORDER BY COALESCE(updated_at,0) DESC LIMIT 1"
                 );
                 activeElection = active != null;
-                Map<String, Object> term = queryOne(
+                Map<String, Object> term = queryOne(connection,
                         "SELECT election_id FROM president_terms WHERE president_uuid=? AND status='ACTIVE' AND (ends_at=0 OR ends_at>?) ORDER BY started_at DESC LIMIT 1",
                         playerUuid.toString(), now()
                 );
@@ -6666,7 +6922,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     president = true;
                     presidentElectionId = string(term.get("election_id"));
                 }
-                seals = queryList(
+                seals = queryList(connection,
                         "SELECT id,election_id,station_id,player_name FROM cik_seals WHERE player_uuid=? AND status='ACTIVE' ORDER BY issued_at DESC",
                         playerUuid.toString()
                 );
@@ -6687,6 +6943,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 // Drain death/full-inventory recovery before entitlement
                 // checks; otherwise a fresh mandate could be created first
                 // and the queued copy would become a duplicate.
+                if (lookupSucceededResult) {
+                    if (!presidentResult) {
+                        removeQueuedOfficialType(playerUuid, "PRESIDENT_MANDATE");
+                    }
+                    if (sealsResult.isEmpty()) {
+                        removeQueuedOfficialType(playerUuid, "CIK_SEAL");
+                    }
+                    if (!activeElectionResult) {
+                        removeQueuedOfficialType(playerUuid, "APPLICATION_BOOK");
+                        removeQueuedOfficialType(playerUuid, "BALLOT");
+                    }
+                }
                 Map<String, ItemStack> queued = officialRestore.get(playerUuid);
                 if (queued != null) {
                     for (Map.Entry<String, ItemStack> queuedEntry : new ArrayList<>(queued.entrySet())) {
@@ -7674,6 +7942,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     protectedBlocks.clear();
                     protectedBlockInfoCache.clear();
                     officialRestore.clear();
+                    // The recovery queue is persisted in config as a
+                    // crash-safe entitlement ledger.  A deliberate election
+                    // wipe must clear that ledger as well, otherwise a
+                    // restart could resurrect ballots/seals from the wiped
+                    // campaign.
+                    scheduleOfficialRestoreQueueSave();
                     for (Player online : Bukkit.getOnlinePlayers()) {
                         removeOfficialItemsFromPlayer(online, "CIK_SEAL");
                         removeOfficialItemsFromPlayer(online, "APPLICATION_BOOK");
@@ -8908,10 +9182,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         // found.  This also clears a queued offline restoration.
         officialRestore.computeIfPresent(player.getUniqueId(), (uuid, queued) -> {
             queued.entrySet().removeIf(entry -> sealId.equals(readString(entry.getValue(), sealIdKey)));
-            return queued.isEmpty() ? null : queued;
-        });
-        pendingOfficialRestore.computeIfPresent(player.getUniqueId(), (uuid, queued) -> {
-            queued.remove("CIK_SEAL:" + sealId);
             return queued.isEmpty() ? null : queued;
         });
         String ownerUuid = player.getUniqueId().toString();

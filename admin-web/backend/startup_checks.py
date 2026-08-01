@@ -95,6 +95,16 @@ def _env_check(app_root: Path) -> tuple[CheckResult, dict[str, str], Path]:
         if not env_path.exists():
             summary = ".env file missing and required runtime env values are absent"
         return _fail("env_file", summary, path=str(env_path), missing=missing, envFileExists=env_path.exists(), authBackend=auth_backend), values, env_path
+    secret_key = str(values.get("SECRET_KEY", "")).strip()
+    if len(secret_key) < 32:
+        return _fail(
+            "env_file",
+            "SECRET_KEY must contain at least 32 characters",
+            path=str(env_path),
+            invalid=["SECRET_KEY"],
+            envFileExists=env_path.exists(),
+            authBackend=auth_backend,
+        ), values, env_path
     if not env_path.exists():
         return _warn(
             "env_file",

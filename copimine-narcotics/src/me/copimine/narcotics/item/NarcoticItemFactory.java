@@ -15,6 +15,7 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public final class NarcoticItemFactory {
     private final CopiMineNarcotics plugin;
@@ -23,6 +24,7 @@ public final class NarcoticItemFactory {
     private final NamespacedKey narcoticIdKey;
     private final NamespacedKey versionKey;
     private final NamespacedKey officialKey;
+    private final NamespacedKey instanceIdKey;
 
     public NarcoticItemFactory(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
         this.plugin = plugin;
@@ -31,6 +33,7 @@ public final class NarcoticItemFactory {
         narcoticIdKey = new NamespacedKey(plugin, "narcotic_id");
         versionKey = new NamespacedKey(plugin, "narcotic_version");
         officialKey = new NamespacedKey(plugin, "official");
+        instanceIdKey = new NamespacedKey(plugin, "narcotic_instance_id");
     }
 
     public void reload(NarcoticsConfigService configService) {
@@ -57,6 +60,10 @@ public final class NarcoticItemFactory {
         meta.getPersistentDataContainer().set(narcoticIdKey, PersistentDataType.STRING, definition.id());
         meta.getPersistentDataContainer().set(versionKey, PersistentDataType.INTEGER, configService.narcoticVersion());
         meta.getPersistentDataContainer().set(officialKey, PersistentDataType.BYTE, (byte) 1);
+        // Every issued stack carries a server-generated instance identifier.  It
+        // is not a security signature (Creative events are still cancelled),
+        // but it lets audits and recovery distinguish physical instances.
+        meta.getPersistentDataContainer().set(instanceIdKey, PersistentDataType.STRING, UUID.randomUUID().toString());
         stack.setItemMeta(meta);
         return stack;
     }
@@ -75,6 +82,18 @@ public final class NarcoticItemFactory {
         NarcoticDefinition definition = configService.items().get(id);
         if (definition == null) {
             return null;
+        }
+        String instanceId = meta.getPersistentDataContainer().get(instanceIdKey, PersistentDataType.STRING);
+        if (instanceId == null || instanceId.isBlank()) {
+            meta.getPersistentDataContainer().set(instanceIdKey, PersistentDataType.STRING, UUID.randomUUID().toString());
+            stack.setItemMeta(meta);
+        } else {
+            try {
+                UUID.fromString(instanceId);
+            } catch (IllegalArgumentException invalidInstanceId) {
+                meta.getPersistentDataContainer().set(instanceIdKey, PersistentDataType.STRING, UUID.randomUUID().toString());
+                stack.setItemMeta(meta);
+            }
         }
         if (stack.getType() != definition.material()) {
             return null;
@@ -95,6 +114,12 @@ public final class NarcoticItemFactory {
 
     public boolean isOfficialFinishedItem(ItemStack stack) {
         return resolveOfficial(stack) != null;
+    }
+
+    /** Returns true for a catalog item even when its instance metadata is stale.
+     * This is used only by quarantine/Creative guards, never to authorize use. */
+    public boolean isOfficialCandidate(ItemStack stack) {
+        return resolveOfficialLoose(stack) != null;
     }
 
     public void consumeOne(Player player, ItemStack stack) {

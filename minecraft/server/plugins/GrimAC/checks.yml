@@ -1,0 +1,2 @@
+# Explicit release profile; experimental checks stay disabled.
+experimental-checks: false

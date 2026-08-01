@@ -315,7 +315,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCreativeOfficialCopy(InventoryCreativeEvent event) {
-        if (itemFactory.isOfficialFinishedItem(event.getCursor()) || itemFactory.isOfficialFinishedItem(event.getCurrentItem())) {
+        if (itemFactory.isOfficialCandidate(event.getCursor()) || itemFactory.isOfficialCandidate(event.getCurrentItem())) {
             event.setCancelled(true);
             if (event.getWhoClicked() instanceof Player player) {
                 player.updateInventory();

@@ -172,7 +172,10 @@ def default_world_dir(server_dir: Path) -> Path:
 # No built-in real admins: production access is loaded from .env or data/admin_users.json.
 # Runtime roles are owner / admin / junior_admin / player.
 DEFAULT_ADMIN_USERS: dict[str, dict[str, str]] = {}
-SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_hex(32))
+# Authentication signing must be stable across restarts.  Never silently create
+# an ephemeral key: a restart would invalidate every session and, worse, could
+# make a misconfigured public instance look healthy while tokens are unstable.
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 PLUGIN_API_KEY = os.getenv("PLUGIN_API_KEY", "")
 REQUIRE_OP_FOR_LOGIN = os.getenv("REQUIRE_OP_FOR_LOGIN", "1").lower() in {"1", "true", "yes", "on"}
 REQUIRE_WHITELIST_FOR_LOGIN = os.getenv("REQUIRE_WHITELIST_FOR_LOGIN", "1").lower() in {"1", "true", "yes", "on"}
@@ -287,23 +290,24 @@ AUTH_COOKIE_SECURE = (
 
 
 def resolve_http_auth_setting(raw_value: Optional[str], public_base_url: str) -> bool:
-    """Resolve HTTP login from an explicit setting or the configured scheme.
+    """Resolve HTTP login from an explicit opt-in only.
 
-    The public panel is currently served over HTTP in a number of supported
-    installations.  In that mode an omitted flag must not make login
-    unusable: the URL itself is the operator's explicit transport choice.
-    Once the public URL is HTTPS, the safe default is to reject HTTP login.
-    An explicit value always wins so deployments can stage a migration.
+    Public pages, downloads and health remain available over HTTP, but admin
+    credentials must never be accepted there merely because the configured URL
+    is HTTP. Operators may explicitly set ``ALLOW_INSECURE_HTTP_AUTH=1`` for a
+    temporary trusted-network installation.
     """
     raw = str(raw_value or "").strip().lower()
     if raw:
         return raw in {"1", "true", "yes", "on"}
-    return not str(public_base_url or "").strip().lower().startswith("https://")
+    # A public HTTP URL is not an authentication opt-in.  Public pages and
+    # downloads remain available; only explicit ALLOW_INSECURE_HTTP_AUTH=1 may
+    # permit credentials over non-TLS transport.
+    return False
 
 
-# Public HTTP remains available for the site, files and status endpoints.  The
-# login transport follows ADMIN_PUBLIC_BASE_URL when the setting is omitted;
-# explicit ALLOW_INSECURE_HTTP_AUTH values still override it.
+# Public HTTP remains available for the site, files and status endpoints. Admin
+# login over HTTP is always an explicit opt-in; HTTPS/loopback are unaffected.
 ALLOW_INSECURE_HTTP_AUTH = resolve_http_auth_setting(os.getenv("ALLOW_INSECURE_HTTP_AUTH"), ADMIN_PUBLIC_BASE_URL)
 AUTH_BEARER_FALLBACK_ENABLED = os.getenv("AUTH_BEARER_FALLBACK_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")
@@ -1355,6 +1359,8 @@ async def copimine_unhandled_exception_handler(request: Request, _: Exception) -
 async def on_startup() -> None:
     global _STARTUP_REPORT
     _STARTUP_REPORT = run_startup_checks()
+    if len(SECRET_KEY) < 32 or SECRET_KEY == "CHANGE_ME":
+        raise RuntimeError("SECRET_KEY must be configured explicitly and contain at least 32 characters")
     if STARTUP_STRICT and not _STARTUP_REPORT.get("ok", False):
         failed = [
             f"{item.get('key')}: {item.get('summary')}"

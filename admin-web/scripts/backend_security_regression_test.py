@@ -214,7 +214,16 @@ def assert_http_does_not_issue_reusable_auth_cookies(main) -> None:
     with TestClient(main.app, base_url="https://panel.example.test") as client:
         secure_response = client.post("/api/auth/login", json={"username": "AdminUser", "password": password})
     assert secure_response.status_code == 200, secure_response.text
-    assert "secure" in secure_response.headers.get("set-cookie", "").lower(), secure_response.headers
+    secure_cookies = secure_response.headers.get_list("set-cookie")
+    auth_cookies = [
+        cookie for cookie in secure_cookies
+        if cookie.lower().startswith((main.AUTH_COOKIE_NAME.lower() + "=", main.AUTH_REFRESH_COOKIE_NAME.lower() + "="))
+    ]
+    assert len(auth_cookies) == 2, secure_cookies
+    for cookie in auth_cookies:
+        lowered = cookie.lower()
+        assert "secure" in lowered and "httponly" in lowered and "samesite=lax" in lowered, cookie
+    assert "max-age=31536000" in secure_response.headers.get("strict-transport-security", "").lower(), secure_response.headers
 
     original_opt_in = main.ALLOW_INSECURE_HTTP_AUTH
     main.ALLOW_INSECURE_HTTP_AUTH = True
@@ -228,8 +237,51 @@ def assert_http_does_not_issue_reusable_auth_cookies(main) -> None:
         main.ALLOW_INSECURE_HTTP_AUTH = original_opt_in
 
 
+def assert_live_http_transport_denies_public_login(main) -> None:
+    """Exercise the ASGI app through a real local TCP socket.
+
+    TestClient covers request semantics, but this check also verifies the
+    deployed uvicorn middleware path and that forwarded public HTTP is not
+    mistaken for a loopback request.
+    """
+    import socket
+    import threading
+
+    import httpx
+    import uvicorn
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+    server = uvicorn.Server(
+        uvicorn.Config(main.app, host="127.0.0.1", port=port, log_level="error", lifespan="on")
+    )
+    thread = threading.Thread(target=server.run, name="copimine-security-http", daemon=True)
+    thread.start()
+    try:
+        response = None
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=2.0) as client:
+            for _ in range(50):
+                try:
+                    response = client.get("/api/health")
+                    break
+                except httpx.HTTPError:
+                    time.sleep(0.05)
+            assert response is not None and response.status_code == 200, response
+            blocked = client.post(
+                "/api/auth/login",
+                headers={"x-forwarded-for": "198.51.100.44", "x-forwarded-proto": "http"},
+                json={"username": "AdminUser", "password": "CorrectHorseBatteryStaple!"},
+            )
+        assert blocked.status_code == 426, blocked.text
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+    assert not thread.is_alive(), "uvicorn security integration server did not stop cleanly"
+
+
 def assert_http_auth_setting_follows_public_url(main) -> None:
-    assert main.resolve_http_auth_setting(None, "http://panel.example.test") is True
+    assert main.resolve_http_auth_setting(None, "http://panel.example.test") is False
     assert main.resolve_http_auth_setting(None, "https://panel.example.test") is False
     assert main.resolve_http_auth_setting("0", "http://panel.example.test") is False
     assert main.resolve_http_auth_setting("1", "https://panel.example.test") is True
@@ -625,6 +677,7 @@ def main() -> None:
         assert_only_correlated_plugin_reports_keep_technical_context(main_module)
         assert_public_health_has_no_runtime_diagnostics(main_module)
         assert_http_does_not_issue_reusable_auth_cookies(main_module)
+        assert_live_http_transport_denies_public_login(main_module)
         assert_http_auth_setting_follows_public_url(main_module)
         assert_untrusted_forwarded_origin_is_not_accepted(main_module)
         assert_reverse_proxy_http_is_not_mistaken_for_a_local_login(main_module)

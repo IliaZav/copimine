@@ -1,0 +1,4 @@
+# CopiMineSilentMonitor: console audit only, never chat/title/webhook/proxy.
+CopiMineSilentMonitor:
+  commands:
+    - "1:1 [log]"

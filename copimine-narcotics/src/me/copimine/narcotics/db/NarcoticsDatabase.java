@@ -8,6 +8,7 @@ import me.copimine.narcotics.util.BlockKey;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -15,6 +16,8 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,13 +26,20 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 public final class NarcoticsDatabase {
@@ -39,6 +49,18 @@ public final class NarcoticsDatabase {
     private final NarcoticsConfigService configService;
     private ExecutorService executor;
     private DbSettings dbSettings;
+    private volatile CompletableFuture<Void> schemaReady = CompletableFuture.failedFuture(
+            new IllegalStateException("Narcotics database has not been started."));
+    private final AtomicLong writeGeneration = new AtomicLong(0L);
+    private final AtomicBoolean resetBarrier = new AtomicBoolean(false);
+    private final Object poolMonitor = new Object();
+    private final BlockingQueue<Connection> idleConnections = new ArrayBlockingQueue<>(8);
+    private final Set<Connection> allConnections = ConcurrentHashMap.newKeySet();
+    private final AtomicInteger createdConnections = new AtomicInteger(0);
+    private volatile int maxConnections = 2;
+    private final Map<Thread, Long> activeWriteGeneration = new ConcurrentHashMap<>();
+    private final Object refundJournalLock = new Object();
+    private Path refundJournal;
 
     public record PendingRefund(String id, String playerUuid, String narcoticId, int amount) {}
 
@@ -47,11 +69,12 @@ public final class NarcoticsDatabase {
         this.configService = configService;
     }
 
-    public void start() {
+    public CompletableFuture<Void> start() {
         try {
             Class.forName("org.postgresql.Driver");
             DriverManager.setLoginTimeout(10);
             int workers = configService.asyncThreads();
+            maxConnections = Math.max(1, Math.min(8, workers));
             executor = new ThreadPoolExecutor(
                     workers,
                     workers,
@@ -66,9 +89,30 @@ public final class NarcoticsDatabase {
                     new ThreadPoolExecutor.AbortPolicy()
             );
             dbSettings = loadDbSettings();
-            ensureSchema();
+            refundJournal = plugin.getDataFolder().toPath().resolve("pending-refunds.journal");
+            Files.createDirectories(refundJournal.getParent());
+            CompletableFuture<Void> ready = new CompletableFuture<>();
+            schemaReady = ready;
+            try {
+                executor.execute(() -> {
+                    try {
+                        ensureSchema();
+                        replayRefundJournal();
+                        ready.complete(null);
+                    } catch (Exception error) {
+                        ready.completeExceptionally(error);
+                        plugin.getLogger().log(java.util.logging.Level.SEVERE, "Narcotics PostgreSQL schema initialization failed", error);
+                    }
+                });
+            } catch (RejectedExecutionException error) {
+                ready.completeExceptionally(error);
+            }
+            return ready;
         } catch (Exception error) {
-            throw new IllegalStateException("CopiMineNarcotics PostgreSQL init failed: " + safeError(error), error);
+            CompletableFuture<Void> failed = CompletableFuture.failedFuture(
+                    new IllegalStateException("CopiMineNarcotics PostgreSQL init failed: " + safeError(error), error));
+            schemaReady = failed;
+            return failed;
         }
     }
 
@@ -85,10 +129,12 @@ public final class NarcoticsDatabase {
                 executor.shutdownNow();
             }
         }
+        closePool();
     }
 
     public boolean hasAsyncCapacity() {
-        if (!(executor instanceof ThreadPoolExecutor pool) || pool.isShutdown() || pool.isTerminated()) {
+        if (!(executor instanceof ThreadPoolExecutor pool) || pool.isShutdown() || pool.isTerminated()
+                || !schemaReady.isDone() || schemaReady.isCompletedExceptionally()) {
             return false;
         }
         return pool.getActiveCount() < pool.getMaximumPoolSize() || pool.getQueue().remainingCapacity() > 0;
@@ -99,7 +145,7 @@ public final class NarcoticsDatabase {
             Map<BlockKey, LoadedBrewingState> states = new LinkedHashMap<>();
             try (Connection connection = openConnection();
                  PreparedStatement statement = connection.prepareStatement("""
-                         SELECT world_name,x,y,z,state_payload,state_version,deleted,ingredients_csv,updated_at
+                         SELECT world_name,x,y,z,state_payload,state_version,deleted,ingredients_csv,updated_at,owner_uuid
                          FROM narcotics_brewing_states
                          WHERE deleted=FALSE
                          ORDER BY updated_at DESC
@@ -115,8 +161,9 @@ public final class NarcoticsDatabase {
                         String legacyCsv = rs.getString(8);
                         List<IngredientEntry> entries = parseEntriesPayload(payload, legacyCsv);
                         long updatedAt = rs.getLong(9);
+                        String ownerUuid = Optional.ofNullable(rs.getString(10)).orElse("");
                         if (!deleted && !entries.isEmpty()) {
-                            states.put(key, new LoadedBrewingState(entries, version, updatedAt));
+                            states.put(key, new LoadedBrewingState(entries, version, updatedAt, ownerUuid));
                         }
                     }
                 }
@@ -126,16 +173,21 @@ public final class NarcoticsDatabase {
     }
 
     public CompletableFuture<Void> saveBrewingState(BlockKey key, long version, List<IngredientEntry> ingredients) {
+        return saveBrewingState(key, version, ingredients, (UUID) null);
+    }
+
+    public CompletableFuture<Void> saveBrewingState(BlockKey key, long version, List<IngredientEntry> ingredients, UUID ownerUuid) {
         return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO narcotics_brewing_states(world_name,x,y,z,ingredients_csv,state_payload,state_version,deleted,updated_at)
-                    VALUES (?,?,?,?,?,?,?,?,?)
+                    INSERT INTO narcotics_brewing_states(world_name,x,y,z,ingredients_csv,state_payload,state_version,deleted,updated_at,owner_uuid)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT (world_name,x,y,z)
                     DO UPDATE SET ingredients_csv=EXCLUDED.ingredients_csv,
                                   state_payload=EXCLUDED.state_payload,
                                   state_version=EXCLUDED.state_version,
                                   deleted=EXCLUDED.deleted,
-                                  updated_at=EXCLUDED.updated_at
+                                  updated_at=EXCLUDED.updated_at,
+                                  owner_uuid=EXCLUDED.owner_uuid
                     WHERE narcotics_brewing_states.state_version < EXCLUDED.state_version
                     """)) {
                 statement.setString(1, key.world());
@@ -147,6 +199,7 @@ public final class NarcoticsDatabase {
                 statement.setLong(7, version);
                 statement.setBoolean(8, false);
                 statement.setLong(9, Instant.now().toEpochMilli());
+                statement.setString(10, ownerUuid == null ? "" : ownerUuid.toString());
                 statement.executeUpdate();
             }
             return null;
@@ -157,14 +210,15 @@ public final class NarcoticsDatabase {
         return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
                     """
-                    INSERT INTO narcotics_brewing_states(world_name,x,y,z,ingredients_csv,state_payload,state_version,deleted,updated_at)
-                    VALUES (?,?,?,?,?,?,?,?,?)
+                    INSERT INTO narcotics_brewing_states(world_name,x,y,z,ingredients_csv,state_payload,state_version,deleted,updated_at,owner_uuid)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT (world_name,x,y,z)
                     DO UPDATE SET ingredients_csv=EXCLUDED.ingredients_csv,
                                   state_payload=EXCLUDED.state_payload,
                                   state_version=EXCLUDED.state_version,
                                   deleted=EXCLUDED.deleted,
-                                  updated_at=EXCLUDED.updated_at
+                                  updated_at=EXCLUDED.updated_at,
+                                  owner_uuid=EXCLUDED.owner_uuid
                     WHERE narcotics_brewing_states.state_version < EXCLUDED.state_version
                     """)) {
                 statement.setString(1, key.world());
@@ -176,6 +230,7 @@ public final class NarcoticsDatabase {
                 statement.setLong(7, version);
                 statement.setBoolean(8, true);
                 statement.setLong(9, Instant.now().toEpochMilli());
+                statement.setString(10, "");
                 statement.executeUpdate();
             }
             return null;
@@ -244,16 +299,20 @@ public final class NarcoticsDatabase {
                 statement.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO narcotics_player_usage_window(player_uuid,window_started_at,last_item_id,updated_at)
-                    VALUES (?,?,?,?)
+                    INSERT INTO narcotics_player_usage_window(player_uuid,window_started_at,last_item_id,updated_at,state_version)
+                    VALUES (?,?,?,?,?)
                     ON CONFLICT (player_uuid)
-                    DO UPDATE SET window_started_at=EXCLUDED.window_started_at,last_item_id=EXCLUDED.last_item_id,updated_at=EXCLUDED.updated_at
-                    WHERE narcotics_player_usage_window.updated_at <= EXCLUDED.updated_at
+                    DO UPDATE SET window_started_at=EXCLUDED.window_started_at,last_item_id=EXCLUDED.last_item_id,
+                                  updated_at=EXCLUDED.updated_at,state_version=EXCLUDED.state_version
+                    WHERE narcotics_player_usage_window.state_version < EXCLUDED.state_version
+                       OR (narcotics_player_usage_window.state_version = EXCLUDED.state_version
+                           AND narcotics_player_usage_window.updated_at <= EXCLUDED.updated_at)
                     """)) {
                 statement.setString(1, state.playerUuid().toString());
                 statement.setLong(2, state.lastConsumedAt());
                 statement.setString(3, state.lastItemId());
                 statement.setLong(4, Instant.now().getEpochSecond());
+                statement.setLong(5, state.stateVersion());
                 statement.executeUpdate();
             }
             return null;
@@ -261,7 +320,11 @@ public final class NarcoticsDatabase {
     }
 
     public CompletableFuture<Void> resetNarcoticsState() {
-        return runAsync(() -> tx(connection -> {
+        if (!resetBarrier.compareAndSet(false, true)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Narcotics reset is already in progress."));
+        }
+        long resetGeneration = writeGeneration.incrementAndGet();
+        CompletableFuture<Void> reset = runAsyncInternal(() -> tx(connection -> {
             for (String sql : List.of(
                     "DELETE FROM narcotics_brewing_states",
                     "DELETE FROM narcotics_player_overdose",
@@ -275,18 +338,21 @@ public final class NarcoticsDatabase {
                 }
             }
             return null;
-        }));
+        }), resetGeneration, true);
+        reset.whenComplete((ignored, error) -> resetBarrier.set(false));
+        return reset;
     }
 
     public CompletableFuture<Void> queuePendingRefund(UUID playerUuid, String narcoticId, int amount) {
         if (playerUuid == null || narcoticId == null || narcoticId.isBlank() || amount <= 0) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid narcotics refund."));
         }
-        return runAsync(() -> tx(connection -> {
+        String refundId = UUID.randomUUID().toString();
+        CompletableFuture<Void> persisted = runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")) {
                 long now = Instant.now().getEpochSecond();
-                statement.setString(1, UUID.randomUUID().toString());
+                statement.setString(1, refundId);
                 statement.setString(2, playerUuid.toString());
                 statement.setString(3, narcoticId);
                 statement.setInt(4, amount);
@@ -297,6 +363,16 @@ public final class NarcoticsDatabase {
             }
             return null;
         }));
+        persisted.whenComplete((ignored, error) -> {
+            if (error != null) {
+                try {
+                    appendRefundJournal(refundId, playerUuid, narcoticId, amount);
+                } catch (Exception journalError) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Unable to persist narcotics refund journal", journalError);
+                }
+            }
+        });
+        return persisted;
     }
 
     public CompletableFuture<List<PendingRefund>> reservePendingRefunds(UUID playerUuid, int limit) {
@@ -362,8 +438,8 @@ public final class NarcoticsDatabase {
         }));
     }
 
-    public void auditAsync(String actor, String action, String details) {
-        runAsync(() -> tx(connection -> {
+    public CompletableFuture<Void> auditAsync(String actor, String action, String details) {
+        return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO narcotics_admin_audit(id,actor,action,details,created_at)
                     VALUES (?,?,?,?,?)
@@ -376,11 +452,21 @@ public final class NarcoticsDatabase {
                 statement.executeUpdate();
             }
             return null;
-        }));
+        })).whenComplete((ignored, error) -> {
+            if (error != null) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Narcotics audit write failed for action " + action, error);
+            }
+        });
     }
 
     private void ensureSchema() throws Exception {
-        tx(connection -> {
+        try (Connection connection = DriverManager.getConnection(dbSettings.jdbcUrl(), dbSettings.user(), dbSettings.password())) {
+            connection.setAutoCommit(false);
+            try (Statement schema = connection.createStatement()) {
+                schema.execute("CREATE SCHEMA IF NOT EXISTS " + dbSettings.schemaIdent());
+                schema.execute("SET search_path TO " + dbSettings.schemaIdent());
+            }
             for (String sql : schemaStatements()) {
                 try (Statement statement = connection.createStatement()) {
                     statement.execute(sql);
@@ -395,8 +481,8 @@ public final class NarcoticsDatabase {
                 statement.setLong(2, Instant.now().getEpochSecond());
                 statement.executeUpdate();
             }
-            return null;
-        });
+            connection.commit();
+        }
     }
 
     private List<String> schemaStatements() {
@@ -418,12 +504,14 @@ public final class NarcoticsDatabase {
                   state_version BIGINT NOT NULL DEFAULT 0,
                   deleted BOOLEAN NOT NULL DEFAULT FALSE,
                   updated_at BIGINT NOT NULL DEFAULT 0,
+                  owner_uuid TEXT NOT NULL DEFAULT '',
                   PRIMARY KEY(world_name,x,y,z)
                 )
                 """);
         sql.add("ALTER TABLE narcotics_brewing_states ADD COLUMN IF NOT EXISTS state_payload TEXT NOT NULL DEFAULT ''");
         sql.add("ALTER TABLE narcotics_brewing_states ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 0");
         sql.add("ALTER TABLE narcotics_brewing_states ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE");
+        sql.add("ALTER TABLE narcotics_brewing_states ADD COLUMN IF NOT EXISTS owner_uuid TEXT NOT NULL DEFAULT ''");
         sql.add("""
                 CREATE TABLE IF NOT EXISTS narcotics_player_overdose (
                   player_uuid TEXT PRIMARY KEY,
@@ -442,9 +530,11 @@ public final class NarcoticsDatabase {
                   player_uuid TEXT PRIMARY KEY,
                   window_started_at BIGINT NOT NULL DEFAULT 0,
                   last_item_id TEXT NOT NULL DEFAULT '',
-                  updated_at BIGINT NOT NULL DEFAULT 0
+                  updated_at BIGINT NOT NULL DEFAULT 0,
+                  state_version BIGINT NOT NULL DEFAULT 0
                 )
                 """);
+        sql.add("ALTER TABLE narcotics_player_usage_window ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 0");
         sql.add("""
                 CREATE TABLE IF NOT EXISTS narcotics_config_values (
                   key TEXT PRIMARY KEY,
@@ -549,45 +639,79 @@ public final class NarcoticsDatabase {
     }
 
     private CompletableFuture<Void> runAsync(SqlVoidWork work) {
+        if (resetBarrier.getAcquire()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Narcotics reset is in progress."));
+        }
+        return runAsyncInternal(work, writeGeneration.getAcquire(), false);
+    }
+
+    private CompletableFuture<Void> runAsyncInternal(SqlVoidWork work, long generation, boolean bypassReset) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         ExecutorService currentExecutor = executor;
         if (currentExecutor == null) {
             future.completeExceptionally(new IllegalStateException("Narcotics database executor is unavailable."));
             return future;
         }
-        try {
-            currentExecutor.execute(() -> {
-                try {
-                    work.run();
-                    future.complete(null);
-                } catch (Exception error) {
-                    future.completeExceptionally(error);
-                }
-            });
-        } catch (RejectedExecutionException error) {
-            future.completeExceptionally(error);
-        }
+        schemaReady.whenComplete((ready, schemaError) -> {
+            if (schemaError != null) {
+                future.completeExceptionally(schemaError);
+                return;
+            }
+            if (!bypassReset && resetBarrier.getAcquire()) {
+                future.completeExceptionally(new IllegalStateException("Narcotics reset is in progress."));
+                return;
+            }
+            try {
+                currentExecutor.execute(() -> {
+                    activeWriteGeneration.put(Thread.currentThread(), generation);
+                    try {
+                        if (!bypassReset && writeGeneration.getAcquire() != generation) {
+                            throw new IllegalStateException("Narcotics write fenced by reset.");
+                        }
+                        work.run();
+                        future.complete(null);
+                    } catch (Exception error) {
+                        future.completeExceptionally(error);
+                    } finally {
+                        activeWriteGeneration.remove(Thread.currentThread());
+                    }
+                });
+            } catch (RejectedExecutionException error) {
+                future.completeExceptionally(error);
+            }
+        });
         return future;
     }
 
     private <T> CompletableFuture<T> supplyAsync(SqlWork<T> work) {
         CompletableFuture<T> future = new CompletableFuture<>();
         ExecutorService currentExecutor = executor;
+        long readGeneration = writeGeneration.getAcquire();
         if (currentExecutor == null) {
             future.completeExceptionally(new IllegalStateException("Narcotics database executor is unavailable."));
             return future;
         }
-        try {
-            currentExecutor.execute(() -> {
-                try {
-                    future.complete(work.run());
-                } catch (Exception error) {
-                    future.completeExceptionally(error);
-                }
-            });
-        } catch (RejectedExecutionException error) {
-            future.completeExceptionally(error);
-        }
+        schemaReady.whenComplete((ready, schemaError) -> {
+            if (schemaError != null) {
+                future.completeExceptionally(schemaError);
+                return;
+            }
+            try {
+                currentExecutor.execute(() -> {
+                    try {
+                        T result = work.run();
+                        if (writeGeneration.getAcquire() != readGeneration) {
+                            throw new IllegalStateException("Narcotics read fenced by reset.");
+                        }
+                        future.complete(result);
+                    } catch (Exception error) {
+                        future.completeExceptionally(error);
+                    }
+                });
+            } catch (RejectedExecutionException error) {
+                future.completeExceptionally(error);
+            }
+        });
         return future;
     }
 
@@ -596,6 +720,10 @@ public final class NarcoticsDatabase {
             connection.setAutoCommit(false);
             try {
                 T result = work.run(connection);
+                Long generation = activeWriteGeneration.get(Thread.currentThread());
+                if (generation != null && writeGeneration.getAcquire() != generation) {
+                    throw new IllegalStateException("Narcotics write fenced by reset.");
+                }
                 connection.commit();
                 return result;
             } catch (Exception error) {
@@ -606,12 +734,189 @@ public final class NarcoticsDatabase {
     }
 
     private Connection openConnection() throws Exception {
-        Connection connection = DriverManager.getConnection(dbSettings.jdbcUrl(), dbSettings.user(), dbSettings.password());
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("CREATE SCHEMA IF NOT EXISTS " + dbSettings.schemaIdent());
-            statement.execute("SET search_path TO " + dbSettings.schemaIdent());
+        Connection raw = acquireConnection();
+        try {
+            try (Statement statement = raw.createStatement()) {
+                statement.execute("SET search_path TO " + dbSettings.schemaIdent());
+            }
+        } catch (Exception error) {
+            releaseConnection(raw);
+            throw error;
         }
-        return connection;
+        AtomicBoolean released = new AtomicBoolean(false);
+        return (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class},
+                (proxy, method, args) -> {
+                    String name = method.getName();
+                    if ("close".equals(name)) {
+                        if (released.compareAndSet(false, true)) {
+                            releaseConnection(raw);
+                        }
+                        return null;
+                    }
+                    if ("isClosed".equals(name)) {
+                        return released.getAcquire() || raw.isClosed();
+                    }
+                    try {
+                        return method.invoke(raw, args);
+                    } catch (InvocationTargetException targetError) {
+                        throw targetError.getCause();
+                    }
+                });
+    }
+
+    private Connection acquireConnection() throws Exception {
+        synchronized (poolMonitor) {
+            while (true) {
+                Connection idle = idleConnections.poll();
+                if (idle != null) {
+                    if (!idle.isClosed() && idle.isValid(2)) {
+                        return idle;
+                    }
+                    allConnections.remove(idle);
+                    createdConnections.decrementAndGet();
+                    try {
+                        idle.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (createdConnections.getAcquire() < maxConnections) {
+                    Connection created = DriverManager.getConnection(dbSettings.jdbcUrl(), dbSettings.user(), dbSettings.password());
+                    createdConnections.incrementAndGet();
+                    allConnections.add(created);
+                    return created;
+                }
+                poolMonitor.wait(5000L);
+            }
+        }
+    }
+
+    private void releaseConnection(Connection connection) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            if (!connection.getAutoCommit()) {
+                connection.rollback();
+                connection.setAutoCommit(true);
+            }
+            connection.clearWarnings();
+            if (connection.isClosed()) {
+                allConnections.remove(connection);
+                createdConnections.decrementAndGet();
+            } else if (!idleConnections.offer(connection)) {
+                allConnections.remove(connection);
+                createdConnections.decrementAndGet();
+                connection.close();
+            }
+        } catch (Exception error) {
+            allConnections.remove(connection);
+            createdConnections.decrementAndGet();
+            try {
+                connection.close();
+            } catch (Exception ignored) {
+            }
+        } finally {
+            synchronized (poolMonitor) {
+                poolMonitor.notifyAll();
+            }
+        }
+    }
+
+    private void closePool() {
+        for (Connection connection : List.copyOf(allConnections)) {
+            try {
+                connection.close();
+            } catch (Exception ignored) {
+            }
+        }
+        idleConnections.clear();
+        allConnections.clear();
+        createdConnections.set(0);
+    }
+
+    private void appendRefundJournal(String id, UUID playerUuid, String narcoticId, int amount) throws Exception {
+        if (refundJournal == null) {
+            throw new IllegalStateException("Refund journal is not initialized.");
+        }
+        String line = id + "\t" + playerUuid + "\t" + java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(narcoticId.getBytes(StandardCharsets.UTF_8)) + "\t" + amount + System.lineSeparator();
+        synchronized (refundJournalLock) {
+            Files.writeString(refundJournal, line, StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE,
+                    java.nio.file.StandardOpenOption.APPEND);
+            try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(refundJournal,
+                    java.nio.file.StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+        }
+    }
+
+    private void replayRefundJournal() {
+        synchronized (refundJournalLock) {
+            if (refundJournal == null || !Files.isRegularFile(refundJournal)) {
+                return;
+            }
+            List<String> pending;
+            try {
+                pending = Files.readAllLines(refundJournal, StandardCharsets.UTF_8);
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to read narcotics refund journal", error);
+                return;
+            }
+            if (pending.isEmpty()) {
+                return;
+            }
+            List<String> remaining = new ArrayList<>();
+            for (String line : pending) {
+                String[] fields = line.split("\\t", 4);
+                if (fields.length != 4) {
+                    remaining.add(line);
+                    plugin.getLogger().warning("Keeping malformed narcotics refund journal row for manual recovery.");
+                    continue;
+                }
+                try {
+                    UUID playerUuid = UUID.fromString(fields[1]);
+                    String narcoticId = new String(java.util.Base64.getUrlDecoder().decode(fields[2]), StandardCharsets.UTF_8);
+                    int amount = Integer.parseInt(fields[3].trim());
+                    tx(connection -> {
+                        try (PreparedStatement statement = connection.prepareStatement(
+                                "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING")) {
+                            long now = Instant.now().getEpochSecond();
+                            statement.setString(1, fields[0]);
+                            statement.setString(2, playerUuid.toString());
+                            statement.setString(3, narcoticId);
+                            statement.setInt(4, amount);
+                            statement.setString(5, "PENDING");
+                            statement.setLong(6, now);
+                            statement.setLong(7, now);
+                            statement.executeUpdate();
+                        }
+                        return null;
+                    });
+                } catch (Exception error) {
+                    remaining.add(line);
+                    plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to replay narcotics refund journal row", error);
+                }
+            }
+            try {
+                if (remaining.isEmpty()) {
+                    Files.deleteIfExists(refundJournal);
+                } else {
+                    Path temporary = refundJournal.resolveSibling(refundJournal.getFileName() + ".tmp");
+                    Files.write(temporary, remaining, StandardCharsets.UTF_8,
+                            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+                    try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(temporary,
+                            java.nio.file.StandardOpenOption.WRITE)) {
+                        channel.force(true);
+                    }
+                    Files.move(temporary, refundJournal, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to compact narcotics refund journal", error);
+            }
+        }
     }
 
     private List<IngredientEntry> parseEntriesPayload(String payload, String legacyCsv) {
@@ -694,12 +999,12 @@ public final class NarcoticsDatabase {
         void run() throws Exception;
     }
 
-    public record LoadedBrewingState(List<IngredientEntry> ingredients, long version, long updatedAtEpochMillis) {
+    public record LoadedBrewingState(List<IngredientEntry> ingredients, long version, long updatedAtEpochMillis, String ownerUuid) {
     }
 
     private record DbSettings(String host, int port, String database, String user, String password, String schema, Path envFile) {
         String jdbcUrl() {
-            return "jdbc:postgresql://" + host + ":" + port + "/" + database;
+            return "jdbc:postgresql://" + host + ":" + port + "/" + database + "?currentSchema=" + schema;
         }
 
         String schemaIdent() {

@@ -1,0 +1,4 @@
+# CopiMineSilentMonitor: только запись в консоль, без уведомлений игрокам.
+CopiMineSilentMonitor:
+  commands:
+    - "1:1 [log]"

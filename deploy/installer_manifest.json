@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-07-28T08:52:54.0163968Z",
-    "gitCommit":  "12f6336",
+    "generatedAtUtc":  "2026-08-01T05:13:42.0834860Z",
+    "gitCommit":  "3fd2aa0",
     "sourceTreeDirty":  false,
     "artifacts":  {
                       "resourcePack":  {
@@ -10,13 +10,13 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "adae32082c1d03dca99ef94045607f8be17d4a46",
-                                      "sha256":  "3e3f8d2f628cd831884878fb1902b00d1a57e11de04ef14f81217bdc43684e94"
+                                      "sha1":  "b96819e0fff1fc1d670b3cd42a9e7fd5af06e6e9",
+                                      "sha256":  "7bb20a83796eed31f081f853bf5224545ff1274a73d111434e5e40c3243e3e2a"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
-                                        "sha1":  "c825c74dbc0c3995e49bfac75804e53399015c0f",
-                                        "sha256":  "d8421fabbb61effe9395c9234907d43e73acc5afc8714404cc13e982d410b3f1"
+                                        "sha1":  "b50462eb9aeb186c6e96503442a7f69e1990616c",
+                                        "sha256":  "19df801c80f93adac92cf10503d3b7e168a5f84703538999cfc763cc1b9c3694"
                                     }
                   },
     "deploy":  {
@@ -64,7 +64,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "3b9c3bda3df522eb99c571bec0bafa536e45cb62b3554e389592ae23dce7e8d5"
+                                             "sha256":  "6be1b894681bfdc5316e7021095302af3f1ef56fc595493e1ac2e8713c255a2c"
                                          }
                  },
     "serverProperties":  {

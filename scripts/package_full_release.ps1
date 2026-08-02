@@ -2,7 +2,8 @@ param(
     [string]$ProjectRoot = "",
     [string]$ReleaseDir = "",
     [string]$DbDumpPath = "",
-    [string]$ResourcePackDownloadUrl = ""
+    [string]$ResourcePackDownloadUrl = "",
+    [string]$SigningKeyPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +12,11 @@ if (-not $ProjectRoot) {
     $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 }
 $ProjectRoot = (Resolve-Path $ProjectRoot).Path
+$SigningKeyPath = if ($SigningKeyPath) { $SigningKeyPath } else { $env:COPIMINE_RELEASE_SIGNING_KEY }
+if (-not $SigningKeyPath) {
+    throw 'Release packaging requires -SigningKeyPath or COPIMINE_RELEASE_SIGNING_KEY.'
+}
+$SigningKeyPath = (Resolve-Path -LiteralPath $SigningKeyPath).Path
 
 function Resolve-GitRoot {
     param([Parameter(Mandatory = $true)][string]$StartPath)
@@ -68,6 +74,9 @@ $installerManifestPath = Join-Path $ProjectRoot "deploy\installer_manifest.json"
 $sbomPath = Join-Path $ProjectRoot "deploy\sbom.spdx.json"
 $generateSbomScript = Join-Path $ProjectRoot "deploy\shared\generate_sbom.py"
 $scanReleaseScript = Join-Path $ProjectRoot "deploy\shared\scan_release_strings.py"
+$signReleaseScript = Join-Path $ProjectRoot "scripts\sign_release_manifest.ps1"
+$releaseSigningAllowedPath = Join-Path $ProjectRoot "deploy\release-signing.allowed"
+$releaseSignaturePath = Join-Path $ProjectRoot "deploy\release_manifest.sig"
 $deployInstall = Join-Path $ProjectRoot "deploy\ubuntu\install.sh"
 $deployInstallRelease = Join-Path $ProjectRoot "deploy\ubuntu\install_release.sh"
 $deployUpdate = Join-Path $ProjectRoot "deploy\ubuntu\update.sh"
@@ -428,10 +437,17 @@ $sbomDescriptor = [ordered]@{
         path = "deploy/shared/scan_release_strings.py"
         sha256 = (Get-Sha256Lower -LiteralPath $scanReleaseScript)
     }
+    manifestSignature = [ordered]@{
+        path = "deploy/release_manifest.sig"
+        allowedSigners = "deploy/release-signing.allowed"
+        namespace = "copimine-release"
+        identity = "release"
+        algorithm = "ssh-ed25519"
+    }
 }
-$releaseManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor })
+$releaseManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor; manifestSignature = $sbomDescriptor.manifestSignature })
 Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content ($releaseManifest | ConvertTo-Json -Depth 16)
-$installerManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor })
+$installerManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor; manifestSignature = $sbomDescriptor.manifestSignature })
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerManifest | ConvertTo-Json -Depth 16)
 
 Write-Host "[7/9] Stage Linux replacement payload"
@@ -562,6 +578,13 @@ Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content $releaseManifestJ
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content $installerManifestJson
 Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json') -Content $releaseManifestJson
 Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\installer_manifest.json') -Content $installerManifestJson
+Invoke-Checked -FilePath "powershell" -Arguments @(
+    "-ExecutionPolicy", "Bypass",
+    "-File", $signReleaseScript,
+    "-ManifestPath", (Join-Path $payloadRoot 'deploy\release_manifest.json'),
+    "-SigningKeyPath", $SigningKeyPath
+)
+Copy-Item -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json.sig') -Destination $releaseSignaturePath -Force
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"
 New-Item -ItemType Directory -Force -Path $runtimeDbDir | Out-Null

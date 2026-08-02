@@ -91,6 +91,8 @@ try {
     $releaseManifestPath = Join-Path $payloadRoot "deploy\release_manifest.json"
     $installerManifestPath = Join-Path $payloadRoot "deploy\installer_manifest.json"
     $sbomPath = Join-Path $payloadRoot "deploy\sbom.spdx.json"
+    $releaseSignaturePath = Join-Path $payloadRoot "deploy\release_manifest.sig"
+    $releaseSigningAllowedPath = Join-Path $payloadRoot "deploy\release-signing.allowed"
     $modpackZip = Join-Path $payloadRoot "thirdparty\CopiMineMods.zip"
     $modpackSha1Path = Join-Path $payloadRoot "thirdparty\CopiMineMods.sha1"
     $modpackSha256Path = Join-Path $payloadRoot "thirdparty\CopiMineMods.sha256"
@@ -145,6 +147,8 @@ try {
         $releaseManifestPath,
         $installerManifestPath,
         $sbomPath,
+        $releaseSignaturePath,
+        $releaseSigningAllowedPath,
         $modpackZip,
         $modpackSha1Path,
         $modpackSha256Path,
@@ -327,6 +331,24 @@ try {
         $releaseSbomDescriptor = $releaseManifest.security.sbom
         Require-Equal ([string]$sbomDescriptor.path) ([string]$releaseSbomDescriptor.path) 'release_manifest SBOM path mismatch.' $errors
         Require-Equal ([string]$sbomDescriptor.sha256) ([string]$releaseSbomDescriptor.sha256) 'release_manifest SBOM SHA256 mismatch.' $errors
+        $signatureDescriptor = $installerManifest.security.manifestSignature
+        $releaseSignatureDescriptor = $releaseManifest.security.manifestSignature
+        Require-Equal 'deploy/release_manifest.sig' ([string]$signatureDescriptor.path) 'installer_manifest signature path mismatch.' $errors
+        Require-Equal 'deploy/release-signing.allowed' ([string]$signatureDescriptor.allowedSigners) 'installer_manifest allowed-signers path mismatch.' $errors
+        Require-Equal 'copimine-release' ([string]$signatureDescriptor.namespace) 'installer_manifest signature namespace mismatch.' $errors
+        Require-Equal 'release' ([string]$signatureDescriptor.identity) 'installer_manifest signature identity mismatch.' $errors
+        Require-Equal 'ssh-ed25519' ([string]$signatureDescriptor.algorithm) 'installer_manifest signature algorithm mismatch.' $errors
+        Require-Equal ([string]$signatureDescriptor.path) ([string]$releaseSignatureDescriptor.path) 'release_manifest signature path mismatch.' $errors
+        Require-Equal ([string]$signatureDescriptor.allowedSigners) ([string]$releaseSignatureDescriptor.allowedSigners) 'release_manifest allowed-signers path mismatch.' $errors
+        if (Get-Command ssh-keygen -ErrorAction SilentlyContinue) {
+            $verifyCommand = 'ssh-keygen -Y verify -f "' + $releaseSigningAllowedPath + '" -I "' + [string]$signatureDescriptor.identity + '" -n "' + [string]$signatureDescriptor.namespace + '" -s "' + $releaseSignaturePath + '" < "' + $releaseManifestPath + '"'
+            cmd.exe /d /s /c $verifyCommand | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                $errors.Add('Release manifest cryptographic signature verification failed.')
+            }
+        } else {
+            $errors.Add('ssh-keygen is required to verify the release manifest signature.')
+        }
         if (@($sbom.files).Count -lt 1 -or @($sbom.packages).Count -lt 1) {
             $errors.Add('Release SBOM must contain at least one file and package.')
         }

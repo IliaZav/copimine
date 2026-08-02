@@ -216,6 +216,7 @@ preflight() {
   need stat
   need install
   need runuser
+  need ssh-keygen
   need psql
   need pg_restore
   need nginx
@@ -305,6 +306,19 @@ detect_payload() {
   for relative in "${REQUIRED_RUNTIME_PATHS[@]}"; do
     [[ -e "$PAYLOAD_ROOT/$relative" ]] || die "Runtime archive is incomplete. Missing: $relative"
   done
+}
+
+verify_release_signature() {
+  log "[5b/16] Verify signed release manifest"
+  local manifest="$PAYLOAD_ROOT/deploy/release_manifest.json"
+  local signature="$PAYLOAD_ROOT/deploy/release_manifest.sig"
+  local allowed="$PAYLOAD_ROOT/deploy/release-signing.allowed"
+  require_file "$manifest"
+  require_file "$signature"
+  require_file "$allowed"
+  ssh-keygen -Y verify -f "$allowed" -I release -n copimine-release -s "$signature" < "$manifest" >/dev/null \
+    || die "Release manifest signature verification failed."
+  log "Release manifest signature verified."
 }
 
 backup_current_release() {
@@ -734,6 +748,7 @@ main() {
   prepare_temp
   extract_archive
   detect_payload
+  verify_release_signature
   backup_current_release
   stop_services
   install_payload

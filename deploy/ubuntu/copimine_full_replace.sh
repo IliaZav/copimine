@@ -210,6 +210,7 @@ preflight_system() {
   need python3
   need systemctl
   need runuser
+  need ssh-keygen
   need psql
   need pg_dump
   need pg_restore
@@ -312,6 +313,19 @@ detect_payload_root() {
   for relative in "${REQUIRED_PAYLOAD_PATHS[@]}"; do
     [[ -e "$PAYLOAD_ROOT/$relative" ]] || fail "Archive payload is incomplete. Missing: $relative"
   done
+}
+
+verify_release_signature() {
+  log "[5b/14] Verify signed release manifest"
+  local manifest="$PAYLOAD_ROOT/deploy/release_manifest.json"
+  local signature="$PAYLOAD_ROOT/deploy/release_manifest.sig"
+  local allowed="$PAYLOAD_ROOT/deploy/release-signing.allowed"
+  require_file "$manifest"
+  require_file "$signature"
+  require_file "$allowed"
+  ssh-keygen -Y verify -f "$allowed" -I release -n copimine-release -s "$signature" < "$manifest" >/dev/null \
+    || fail "Release manifest signature verification failed."
+  log "Release manifest signature verified."
 }
 
 snapshot_runtime_state() {
@@ -675,6 +689,7 @@ main() {
   prepare_temp_dirs
   extract_archive
   detect_payload_root
+  verify_release_signature
   snapshot_runtime_state
   stop_services
   stage_payload

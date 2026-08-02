@@ -1001,6 +1001,15 @@ if errors:
         print(entry, file=sys.stderr)
     sys.exit(1)
 PY
+  local signed_manifest="$COPIMINE_ROOT/deploy/release_manifest.json"
+  local signed_signature="$COPIMINE_ROOT/deploy/release_manifest.sig"
+  local signed_allowed="$COPIMINE_ROOT/deploy/release-signing.allowed"
+  copimine_require_path "$signed_manifest"
+  copimine_require_path "$signed_signature"
+  copimine_require_path "$signed_allowed"
+  command -v ssh-keygen >/dev/null 2>&1 || copimine_fail "ssh-keygen is required to verify the release manifest signature"
+  ssh-keygen -Y verify -f "$signed_allowed" -I release -n copimine-release -s "$signed_signature" < "$signed_manifest" >/dev/null \
+    || copimine_fail "Release manifest signature verification failed"
 }
 
 copimine_backup_snapshot() {

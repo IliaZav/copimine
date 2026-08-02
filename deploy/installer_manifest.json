@@ -1,9 +1,9 @@
 {
-    "generatedAtUtc":  "2026-08-02T19:47:57.6960063Z",
-    "gitCommit":  "909b261b595c05d2c3a8ebe1774e80456cfc969d",
+    "generatedAtUtc":  "2026-08-02T20:10:15.5015046Z",
+    "gitCommit":  "ad0702204d2e08040e066b21bd2ec8b077c3288b",
     "sourceTreeDirty":  false,
     "sourceArtifacts":  {
-                            "gitCommit":  "909b261b595c05d2c3a8ebe1774e80456cfc969d",
+                            "gitCommit":  "ad0702204d2e08040e066b21bd2ec8b077c3288b",
                             "serverPlugins":  {
                                                   "minecraft/server/plugins/AuthEffects.jar":  "c81435063bb43cd9a4b9e1d4b7333c1b28745f5709cccb0304218bcb74e2c81c",
                                                   "minecraft/server/plugins/CopiMineArtifacts.jar":  "f1b92508ddaa8d1fb0e84829b105f7a9e0be6e23d9451e02252cbc9734696330",
@@ -22,8 +22,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "88b9bc91fc0a2e817db5d768086a7b97156a4748",
-                                      "sha256":  "b6a8938d551ff49e0bb4255695d717692df111d022cea733eedabed98ea741ed"
+                                      "sha1":  "c11423035c61f703caef7cf504b1ca63172c404b",
+                                      "sha256":  "89416c95a2ed768ff9534346c926924bdff63ccb381aca11e30a1f2404fdcdcb"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -35,15 +35,15 @@
                    "scripts":  {
                                    "unpackAndVerify":  {
                                                            "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
-                                                           "sha256":  "ad50cce8b2531ba6f260d1cd5faab2110593ee8dab08f839dcafef3ee3861b7c"
+                                                           "sha256":  "e074884b558972e0e692cf00e92047bf9f933b302107f5575cd1dae391a40490"
                                                        },
                                    "fullReplace":  {
                                                        "path":  "deploy/ubuntu/copimine_full_replace.sh",
-                                                       "sha256":  "1836b6e2c8f4c40cd33e06a830a387f22bc6bcba76c66d46ca8e1a7e8acd3c92"
+                                                       "sha256":  "8975192d0e06ecef924339f507fa85702539e521eee62212e50be8d83b44287c"
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
-                                                        "sha256":  "3d71b42a7fb4581427e52494654636017fdab0f5ff75aedef5a12fca070f1968"
+                                                        "sha256":  "77686894ebebae01b7826e4ae7f671c56ae9693795522fa2e388c133ca7c1692"
                                                     },
                                    "gameRuntimeHardening":  {
                                                                 "applyScript":  {
@@ -76,7 +76,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "2c00f4f8f1c83fed121ad8dff57e6cc70fd58038258d026fb613c4921592c205"
+                                             "sha256":  "137456dc8694f8f6ec1fbb05b66cff953025afefcd3caff19f829e8d10d32e0b"
                                          }
                  },
     "serverProperties":  {
@@ -90,7 +90,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "7931897f90421dc650d1cfd6cf41dca77aaad3eabafbdf01b02fdb73389a7634",
+                                  "sha256":  "3dd2711142f78488c1222030a9c550b5a14a750887f94515aa5bd7584c127a71",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

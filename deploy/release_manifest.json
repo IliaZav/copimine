@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-02T19:47:57.6870079Z",
-    "gitCommit":  "909b261b595c05d2c3a8ebe1774e80456cfc969d",
+    "generatedAtUtc":  "2026-08-02T20:10:15.4915028Z",
+    "gitCommit":  "ad0702204d2e08040e066b21bd2ec8b077c3288b",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,8 +11,8 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "88b9bc91fc0a2e817db5d768086a7b97156a4748",
-                    "sha256":  "b6a8938d551ff49e0bb4255695d717692df111d022cea733eedabed98ea741ed",
+                    "sha1":  "c11423035c61f703caef7cf504b1ca63172c404b",
+                    "sha256":  "89416c95a2ed768ff9534346c926924bdff63ccb381aca11e30a1f2404fdcdcb",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "6afc56e8cc1cc95c093e21a3f9dd5ba06ce81628b32b99fb72b9ff389d3d5ed4"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "909b261b595c05d2c3a8ebe1774e80456cfc969d",
+                      "sourceCommit":  "ad0702204d2e08040e066b21bd2ec8b077c3288b",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "7931897f90421dc650d1cfd6cf41dca77aaad3eabafbdf01b02fdb73389a7634",
+                                  "sha256":  "3dd2711142f78488c1222030a9c550b5a14a750887f94515aa5bd7584c127a71",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -8772,7 +8772,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  5799,
-                             "sha256":  "2c00f4f8f1c83fed121ad8dff57e6cc70fd58038258d026fb613c4921592c205"
+                             "sha256":  "137456dc8694f8f6ec1fbb05b66cff953025afefcd3caff19f829e8d10d32e0b"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -9461,8 +9461,8 @@
                          },
                          {
                              "path":  "copimine-narcotics/CopiMineNarcotics.jar",
-                             "sizeBytes":  184237,
-                             "sha256":  "b33a1c9e042f2cab58d2a79c5a60fce5e552ae4875e51d86b8a04e874ddd8173"
+                             "sizeBytes":  184455,
+                             "sha256":  "34826de6e2ade314b48398488e79e0f6bdd20a140dfc076c42dc777999e20834"
                          },
                          {
                              "path":  "copimine-narcotics/plugin.yml",
@@ -10037,7 +10037,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "0761ec1d2ad1de50374d4725598eb128aadd2792019647f27aecad86f4bab4f7"
+                             "sha256":  "84d2db4707d891ae543a1bbaf107a781f4429bd4126bea4d1effc770017f5cb7"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10047,12 +10047,12 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  30448,
-                             "sha256":  "7931897f90421dc650d1cfd6cf41dca77aaad3eabafbdf01b02fdb73389a7634"
+                             "sha256":  "3dd2711142f78488c1222030a9c550b5a14a750887f94515aa5bd7584c127a71"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
-                             "sizeBytes":  53298,
-                             "sha256":  "3d71b42a7fb4581427e52494654636017fdab0f5ff75aedef5a12fca070f1968"
+                             "sizeBytes":  53283,
+                             "sha256":  "77686894ebebae01b7826e4ae7f671c56ae9693795522fa2e388c133ca7c1692"
                          },
                          {
                              "path":  "deploy/shared/generate_sbom.py",
@@ -10111,13 +10111,13 @@
                          },
                          {
                              "path":  "deploy/ubuntu/copimine_full_replace.sh",
-                             "sizeBytes":  25693,
-                             "sha256":  "1836b6e2c8f4c40cd33e06a830a387f22bc6bcba76c66d46ca8e1a7e8acd3c92"
+                             "sizeBytes":  25867,
+                             "sha256":  "8975192d0e06ecef924339f507fa85702539e521eee62212e50be8d83b44287c"
                          },
                          {
                              "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
-                             "sizeBytes":  29293,
-                             "sha256":  "ad50cce8b2531ba6f260d1cd5faab2110593ee8dab08f839dcafef3ee3861b7c"
+                             "sizeBytes":  29467,
+                             "sha256":  "e074884b558972e0e692cf00e92047bf9f933b302107f5575cd1dae391a40490"
                          },
                          {
                              "path":  "deploy/ubuntu/install.sh",
@@ -10126,8 +10126,8 @@
                          },
                          {
                              "path":  "deploy/ubuntu/install_release.sh",
-                             "sizeBytes":  49025,
-                             "sha256":  "9e8c73fd013fb53fd9c9271e35773a9dd2a7f004c15178d6338ef91de172ede0"
+                             "sizeBytes":  49918,
+                             "sha256":  "b715a22481efbadf8a7c1888b25a5a7c09a6474a6e2b8583e76e287fd28393d5"
                          },
                          {
                              "path":  "deploy/ubuntu/migrate.sh",
@@ -14976,8 +14976,8 @@
                          },
                          {
                              "path":  "tests/ValidateCopiMineSignedPayloadIntegrity.ps1",
-                             "sizeBytes":  2554,
-                             "sha256":  "4ebf158bd5e3e8e71ba898c0e79eba619c2f3eb36df170c7c43a3db8daafb5f0"
+                             "sizeBytes":  2633,
+                             "sha256":  "3140f4ac9ed22f84af9a0da5a07c21356e05459a29f8b681b1749a43c22a3119"
                          },
                          {
                              "path":  "tests/ValidateCopiMineSimulationDistanceConfigured.ps1",
@@ -15487,17 +15487,17 @@
                          {
                              "path":  "thirdparty/CopiMineMods.sha1",
                              "sizeBytes":  42,
-                             "sha256":  "8b12b765880a642895e68cefcb0d52fab57aaeb9865644d781e9fdd478a27976"
+                             "sha256":  "3f1ea216dc54774d8a2d947c0ad0b7271c401bf7f3c11c37f4ac3847e16032c6"
                          },
                          {
                              "path":  "thirdparty/CopiMineMods.sha256",
                              "sizeBytes":  66,
-                             "sha256":  "d457d7520a08f209f0dbb9a58a5bbcbf997b92ea6b320e24940efccc76de90aa"
+                             "sha256":  "3f9d9b33c9768f377e9f587118d775a85e52aadd43eb873f48c7808765a02cf9"
                          },
                          {
                              "path":  "thirdparty/CopiMineMods.zip",
                              "sizeBytes":  16488659,
-                             "sha256":  "b6a8938d551ff49e0bb4255695d717692df111d022cea733eedabed98ea741ed"
+                             "sha256":  "89416c95a2ed768ff9534346c926924bdff63ccb381aca11e30a1f2404fdcdcb"
                          },
                          {
                              "path":  "thirdparty/modpack_manifest.json",
@@ -15512,7 +15512,7 @@
                          {
                              "path":  "thirdparty/thirdparty_manifest.json",
                              "sizeBytes":  6647,
-                             "sha256":  "cf8c9f86e912898a99031ae30d251d910ca82efe9915701db6f9a6d8c7a14739"
+                             "sha256":  "48228253ad7aec7071d0a356caf229f938a742926a21ce83ad5356fce4ee76a3"
                          },
                          {
                              "path":  "thirdparty/VOICE_CHAT_OFFICIAL_DOWNLOAD.txt",

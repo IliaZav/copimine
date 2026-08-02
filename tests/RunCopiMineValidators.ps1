@@ -68,3 +68,8 @@ if ($failures.Count -gt 0) {
   $failures | ForEach-Object { Write-Host "FAIL $_" }
   exit 1
 }
+
+# A validator can invoke native tools whose exit code is non-zero even when
+# the validator itself passed.  Return an explicit process status so callers
+# (including GitHub Actions on PowerShell 7) never inherit that stale code.
+exit 0

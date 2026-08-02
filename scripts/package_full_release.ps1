@@ -98,7 +98,7 @@ $serverPropertiesPath = Join-Path $ProjectRoot "minecraft\server\server.properti
 $resourcePackDownloadUrl = if ($ResourcePackDownloadUrl) {
     $ResourcePackDownloadUrl
 } else {
-    "http://copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
+    "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
 }
 
 $pluginBuildScripts = @(

@@ -24,7 +24,7 @@ TEXTURE_SOURCES = ROOT / "item_texture_sources.json"
 SERVER_PROPERTIES = ROOT.parent / "minecraft" / "server" / "server.properties"
 # The server-provided SHA1 changes with every rebuilt pack, so clients refresh
 # the archive without requiring a cache-busting query string in the URL.
-DEFAULT_RESOURCE_PACK_URL = r"http\://copimine.ru\:18080/resourcepacks/CopiMineResourcePack.zip"
+DEFAULT_RESOURCE_PACK_URL = r"https\://copimine.ru/resourcepacks/CopiMineResourcePack.zip"
 DEFAULT_WORLD_SEED = "-1861153001556076901"
 RESOURCE_PACK_ZIP_TIMESTAMP = (2024, 1, 1, 0, 0, 0)
 RESOURCE_PACK_TEXT_SUFFIXES = {".json", ".mcmeta"}

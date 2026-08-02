@@ -74,7 +74,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & .\tests\RunCopiMineValidators.ps1
+          # Source CI has no ignored production payload (server plugin jars,
+          # client jar and built resource pack).  Those 25 checks are run by
+          # the signed release-package validation; keep the source contract
+          # suite explicit and report the exact skipped set.
+          & .\tests\RunCopiMineValidators.ps1 -SkipReleaseArtifacts
           if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }
       - name: Verify clean release provenance
         shell: pwsh

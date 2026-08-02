@@ -40,12 +40,14 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     private static final int SLOWNESS_AMPLIFIER = 4;
     private static final List<String> AUTH_EVENT_CLASSES = List.of(
             "fr.xephi.authme.events.LoginEvent",
-            "fr.xephi.authme.events.RegisterEvent"
+            "fr.xephi.authme.events.RegisterEvent",
+            "fr.xephi.authme.events.LogoutEvent"
     );
 
     private final Set<UUID> authenticated = ConcurrentHashMap.newKeySet();
     private final Set<UUID> ownSlowness = ConcurrentHashMap.newKeySet();
     private final Map<UUID, PotionEffect> previousSlowness = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> previousSlownessCapturedAtMillis = new ConcurrentHashMap<>();
     private final Map<UUID, Long> ownSlownessAppliedAtMillis = new ConcurrentHashMap<>();
     private volatile Method authApiGetter;
     private volatile Method authApiIsAuthenticated;
@@ -81,6 +83,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         authenticated.clear();
         ownSlowness.clear();
         previousSlowness.clear();
+        previousSlownessCapturedAtMillis.clear();
         ownSlownessAppliedAtMillis.clear();
         Bukkit.getScheduler().cancelTasks(this);
         getLogger().info("AuthEffects disabled.");
@@ -123,6 +126,11 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             return;
         }
         Bukkit.getScheduler().runTask(this, () -> {
+            if ("LogoutEvent".equals(event.getClass().getSimpleName())) {
+                authenticated.remove(player.getUniqueId());
+                applyAuthEffect(player);
+                return;
+            }
             authenticated.add(player.getUniqueId());
             clearAuthEffect(player);
             playSuccessEffect(player);
@@ -135,6 +143,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         authenticated.remove(uuid);
         ownSlowness.remove(uuid);
         previousSlowness.remove(uuid);
+        previousSlownessCapturedAtMillis.remove(uuid);
         ownSlownessAppliedAtMillis.remove(uuid);
     }
 
@@ -246,7 +255,9 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
 
     private void initialiseAuthApi() {
         try {
-            Class<?> apiClass = Class.forName("fr.xephi.authme.api.v3.AuthMeApi", false, getClassLoader());
+            org.bukkit.plugin.Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
+            ClassLoader authMeLoader = authMe == null ? getClassLoader() : authMe.getClass().getClassLoader();
+            Class<?> apiClass = Class.forName("fr.xephi.authme.api.v3.AuthMeApi", false, authMeLoader);
             authApiGetter = apiClass.getMethod("getInstance");
             authApiIsAuthenticated = apiClass.getMethod("isAuthenticated", String.class);
             authApi = authApiGetter.invoke(null);
@@ -266,11 +277,8 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             return false;
         }
         UUID uuid = player.getUniqueId();
-        if (authenticated.contains(uuid)) {
-            return true;
-        }
         if (!authApiAvailable || authApiIsAuthenticated == null || authApi == null) {
-            return false;
+            return authenticated.contains(uuid);
         }
         try {
             Object result = authApiIsAuthenticated.invoke(authApi, player.getName());
@@ -278,10 +286,13 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
                 authenticated.add(uuid);
                 return true;
             }
+            authenticated.remove(uuid);
+            return false;
         } catch (ReflectiveOperationException | RuntimeException error) {
+            authenticated.remove(uuid);
             getLogger().fine("AuthMe authentication lookup failed for " + player.getName() + ": " + error.getMessage());
+            return false;
         }
-        return false;
     }
 
     @SuppressWarnings("unchecked")
@@ -289,7 +300,8 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         int registered = 0;
         List<String> missing = new ArrayList<>();
         EventExecutor executor = (listener, event) -> handleAuthEvent(event);
-        ClassLoader loader = getClassLoader();
+        org.bukkit.plugin.Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
+        ClassLoader loader = authMe == null ? getClassLoader() : authMe.getClass().getClassLoader();
         for (String className : AUTH_EVENT_CLASSES) {
             try {
                 Class<?> raw = Class.forName(className, false, loader);
@@ -331,6 +343,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             PotionEffect existing = player.getPotionEffect(PotionEffectType.SLOWNESS);
             if (existing != null) {
                 previousSlowness.putIfAbsent(uuid, existing);
+                previousSlownessCapturedAtMillis.putIfAbsent(uuid, System.currentTimeMillis());
             }
         }
         PotionEffect current = player.getPotionEffect(PotionEffectType.SLOWNESS);
@@ -372,8 +385,22 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             player.removePotionEffect(PotionEffectType.SLOWNESS);
         }
         PotionEffect previous = previousSlowness.remove(uuid);
+        Long capturedAt = previousSlownessCapturedAtMillis.remove(uuid);
         if (previous != null && player.getPotionEffect(PotionEffectType.SLOWNESS) == null) {
-            player.addPotionEffect(previous);
+            long elapsedTicks = capturedAt == null
+                    ? 0L
+                    : Math.max(0L, (System.currentTimeMillis() - capturedAt) / 50L);
+            int remaining = (int) Math.max(0L, previous.getDuration() - elapsedTicks);
+            if (remaining > 0) {
+                player.addPotionEffect(new PotionEffect(
+                        previous.getType(),
+                        remaining,
+                        previous.getAmplifier(),
+                        previous.isAmbient(),
+                        previous.hasParticles(),
+                        previous.hasIcon()
+                ));
+            }
         }
     }
 

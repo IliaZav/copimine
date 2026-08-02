@@ -2656,11 +2656,7 @@ async function playerDetailsHtml(player) {
         <input id="playerAdminPinInput" inputmode="numeric" autocomplete="off" placeholder="Новый PIN, 4-8 цифр" />
         <button class="btn btn-secondary btn-small" data-click="playerSetBankPinAdmin('${esc(player)}')">Задать PIN</button>
       </div>
-      <div class="toolbar compact">
-        <input id="playerVisiblePin" type="password" value="${esc(pin.visiblePin || "")}" readonly aria-label="Текущий PIN" />
-        <button class="btn btn-secondary btn-small" data-click="revealPlayerPin()">Показать</button>
-        <button class="btn btn-secondary btn-small" data-click="copyPlayerVisiblePin()">Копировать</button>
-      </div>
+      <div class="notice">Сохранённый PIN нельзя раскрыть. Используйте проверку текущего PIN или одноразовый сброс.</div>
     `
     : (site.id && !canManagePins ? `<div class="notice">Младший админ видит статус PIN, но не может раскрывать, сбрасывать или задавать его.</div>` : "");
   const credentialControls = site.id && canManagePins
@@ -2713,7 +2709,7 @@ async function playerDetailsHtml(player) {
       ["Счёт", bank.accountId ? "Открыт" : "Не открыт"],
       ["Баланс банка", formatAr(bank.balance || 0)],
       ["Состояние PIN", pinState],
-      ["Текущий PIN", canManagePins ? (pin.visiblePin || "Скрыт / не задан") : "Скрыт"],
+      ["Текущий PIN", "Не раскрывается"],
       ["PIN заблокирован", Boolean(pin.locked)],
       ["Временный PIN истекает", pin.temporaryExpiresAt ? dt(pin.temporaryExpiresAt) : "--"]
     ]), pinButtons)}
@@ -3061,17 +3057,6 @@ window.adminArAddBalance = async () => getAdminCommercePages().adminArAddBalance
 
 window.adminDonationAddBalance = async () => getAdminCommercePages().adminDonationAddBalance();
 
-window.revealPlayerPin = () => {
-  const input = $("playerVisiblePin");
-  if (input) input.type = input.type === "password" ? "text" : "password";
-};
-
-window.copyPlayerVisiblePin = async () => {
-  const value = $("playerVisiblePin")?.value || "";
-  if (!value) return toast("PIN не задан.", true);
-  await copyText(value, "PIN скопирован");
-};
-
 window.generatePlayerPassword = (player = state.selectedPlayer) => {
   const input = $("playerSitePasswordInput");
   if (!input) return;
@@ -3143,7 +3128,7 @@ window.playerResetAuthMePassword = async (player = state.selectedPlayer) => {
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
-  const headers = await dangerConfirm(`Назначить новый случайный постоянный PIN для ${player}?`, "PLAYER_BANK_PIN_RANDOMIZE");
+  const headers = await dangerConfirm(`Выдать игроку ${player} новый одноразовый PIN? Он будет показан только в игре и потребует смены.`, "PLAYER_BANK_PIN_RANDOMIZE");
   if (!headers) return;
   try {
     const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/randomize`, {
@@ -3151,7 +3136,9 @@ window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
       headers,
       body: "{}"
     });
-    toast(`Новый PIN для ${player}: ${result.pin}`);
+    toast(result.deliveredInGame
+      ? `Одноразовый PIN отправлен игроку ${player} в игре.`
+      : `Одноразовый PIN создан, но игрок не в сети: повторите выдачу после входа.`);
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
@@ -3171,7 +3158,7 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
       headers,
       body: JSON.stringify({ new_pin: pin.trim() })
     });
-    toast(`PIN для ${player} обновлён: ${result.pin}`);
+    toast(`PIN для ${player} обновлён.`);
     if ($("playerAdminPinInput")) $("playerAdminPinInput").value = "";
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {

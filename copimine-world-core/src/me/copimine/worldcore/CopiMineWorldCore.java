@@ -873,7 +873,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 player.sendMessage(message);
                 return;
             }
-            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРјРµСЃС‚РёС‚СЊ РІР°СЃ РёР· Р·Р°РєСЂС‹С‚РѕРіРѕ РјРёСЂР°.") );
+            player.sendMessage(color("&cНе удалось переместить вас из закрытого мира."));
         } finally {
             if (player != null) {
                 redirectInFlight.remove(player.getUniqueId());

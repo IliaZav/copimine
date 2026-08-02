@@ -1,0 +1,10 @@
+[Unit]
+Description=CopiMine PostgreSQL and runtime backup
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/copimine/deploy/ubuntu/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

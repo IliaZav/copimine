@@ -102,8 +102,8 @@ Require-Contains $main 'player = clean_mc_player(player)' 'RCON player names mus
 Require-Contains $main 'target = clean_mc_player(data.target)' 'RCON target names must be validated.'
 Require-Contains $main 'is_reserved_admin_username(username)' 'Player registration must reserve panel usernames.'
 Require-Contains $main 'is_reserved_admin_username(new_username)' 'Player username changes must reserve panel usernames.'
-Require-Contains $main '"visiblePin": ""' 'Player bank responses must not reveal the treasury PIN.'
-Require-Contains $main 'visible_pin = visible_account_pin(conn, TREASURY_ACCOUNT_ID)' 'Authorized treasury views may resolve the PIN through the treasury helper.'
+Require-NotContains $main 'visiblePin' 'Player bank responses must never expose the treasury PIN.'
+Require-NotContains $main 'visible_account_pin' 'Authorized treasury views must use hash verification rather than PIN recovery.'
 Require-NotContains $main "VALUES(%s,%s,%s,%s,%s,'AUTO_APPROVED'" 'Registration must not auto-approve whitelist requests.'
 
 if ($errors.Count -gt 0) {

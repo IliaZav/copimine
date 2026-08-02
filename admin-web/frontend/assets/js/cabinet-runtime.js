@@ -3460,7 +3460,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
         ["Счёт AR", bank.accountId ? "открыт" : "не открыт"],
         ["Баланс AR", formatAr(arCurrent)],
         ["Состояние PIN", pinState],
-        ["PIN", canManagePins ? (pin.visiblePin || "скрыт / не задан") : "скрыт"],
+        ["PIN", "Не раскрывается"],
         ["Блокировка PIN", pin.locked ? dt(pin.lockedUntil) : "нет"],
       ]), `${pinControls}${credentialControls}`)}
       ${panel("Действия и приколы", "Все действия пишутся в аудит. Опасные операции требуют подтверждения.", `
@@ -4481,7 +4481,7 @@ window.playerAdminDonationSetBalance = playerAdminDonationSetBalance;
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
-  const headers = await dangerConfirm(`Назначить новый случайный постоянный PIN для ${player}?`, "PLAYER_BANK_PIN_RANDOMIZE");
+  const headers = await dangerConfirm(`Выдать игроку ${player} новый одноразовый PIN? Он будет показан только в игре и потребует смены.`, "PLAYER_BANK_PIN_RANDOMIZE");
   if (!headers) return;
   try {
     const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/randomize`, {
@@ -4489,7 +4489,9 @@ window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
       headers,
       body: "{}"
     });
-    toast(`Новый PIN для ${player}: ${result.pin}`);
+    toast(result.deliveredInGame
+      ? `Одноразовый PIN отправлен игроку ${player} в игре.`
+      : `Одноразовый PIN создан, но игрок не в сети: повторите выдачу после входа.`);
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
@@ -4510,8 +4512,8 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
       body: JSON.stringify({ new_pin: pin.trim() })
     });
     toast(result.pinVerified
-      ? `PIN для ${player} сохранён и проверен: ${result.pin}`
-      : `PIN для ${player} сохранён: ${result.pin}`);
+      ? `PIN для ${player} сохранён и проверен.`
+      : `PIN для ${player} сохранён.`);
     if ($("playerAdminPinInput")) $("playerAdminPinInput").value = "";
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {

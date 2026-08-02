@@ -83,6 +83,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -98,6 +99,7 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -130,17 +132,27 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private static final long PIN_LOCK_SECONDS = 900L;
     private static final long PIN_ATTEMPT_WINDOW_SECONDS = 900L;
     private static final int MODEL_ATM_TERMINAL = 12002;
+    private static final int OFFICIAL_AR_SIGNATURE_VERSION = 2;
     // Preserve the legacy id for compatibility with existing rows and ledgers.
     private static final String TREASURY_ACCOUNT_ID = "PRESIDENT_BUDGET";
     private static final String TREASURY_ACCOUNT_LABEL = "Казна CopiMine";
     private static final String TREASURY_ACCOUNT_TYPE = "TREASURY";
     private static final Set<Long> DONATION_PACKS = Set.of(50L, 100L, 250L, 500L, 1000L);
     private static final long DONATION_SESSION_TTL_MS = 15L * 60L * 1000L;
+    private static final String PENDING_AR_SETTLEMENT_STATUS_DEBITED = "DEBITED";
     private static final String PENDING_AR_SETTLEMENT_STATUS_PENDING = "PENDING";
     private static final String PENDING_AR_SETTLEMENT_STATUS_DELIVERING = "DELIVERING";
     private static final String PENDING_AR_SETTLEMENT_STATUS_DELIVERED = "DELIVERED";
+    private static final String PENDING_AR_SETTLEMENT_STATUS_REVIEW = "DELIVERY_REVIEW";
     private static final String PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY = "WITHDRAW_DELIVERY";
     private static final String PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE = "DEPOSIT_RESTORE";
+    private static final String AR_DEPOSIT_STATUS_CREATED = "CREATED";
+    private static final String AR_DEPOSIT_STATUS_PHYSICAL_REMOVED = "PHYSICAL_REMOVED";
+    private static final String AR_DEPOSIT_STATUS_COMMITTED = "COMMITTED";
+    private static final String AR_DEPOSIT_STATUS_RESTORE_PENDING = "RESTORE_PENDING";
+    private static final String AR_DEPOSIT_STATUS_CANCELLED = "CANCELLED";
+    private static final String AR_DEPOSIT_STATUS_REVIEW = "REVIEW";
+    private static final String AR_DEPOSIT_STATUS_DEPOSITED = "DEPOSITED";
 
     private DbSettings db;
     private ThreadPoolExecutor dbExecutor;
@@ -165,12 +177,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private final Set<UUID> atmPinRefreshBypass = ConcurrentHashMap.newKeySet();
     private final Set<BlockKey> activeAtmBlocks = ConcurrentHashMap.newKeySet();
     private final Map<BlockKey, String> atmIdsByBlock = new ConcurrentHashMap<>();
+    private final Map<BlockKey, String> atmExpectedMaterials = new ConcurrentHashMap<>();
     private NamespacedKey visualEntityTypeKey;
     private NamespacedKey visualKindKey;
     private NamespacedKey visualLinkedIdKey;
     private NamespacedKey visualModelIdKey;
     private NamespacedKey officialArSerialKey;
     private NamespacedKey officialArSignatureKey;
+    private NamespacedKey officialArDenominationKey;
+    private NamespacedKey officialArSignatureVersionKey;
     private byte[] officialArSigningSecret;
     private BukkitTask atmAnchorGuardTask;
 
@@ -261,9 +276,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         void openPayment(Player player);
     }
 
-    public record TaxStatus(boolean active, boolean paid, boolean subscription, long validUntilMillis, long periodHours, long amount) {
+    public record TaxStatus(boolean available, boolean active, boolean paid, boolean subscription,
+                            long validUntilMillis, long periodHours, long amount) {
         public static TaxStatus inactive() {
-            return new TaxStatus(false, false, false, 0L, 0L, 0L);
+            return new TaxStatus(true, false, false, false, 0L, 0L, 0L);
+        }
+
+        public static TaxStatus unavailable() {
+            return new TaxStatus(false, false, false, false, 0L, 0L, 0L);
         }
     }
 
@@ -350,7 +370,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private record BlockKey(String world, int x, int y, int z) {}
     private record PendingArSettlement(String id, UUID playerUuid, String playerName, long amount, String settlementType, String reason) {}
     private record PendingArReservation(String token, List<String> ids) {}
+    private record SettlementResult(boolean accepted, String idempotencyKey, String message) {}
     private record ArFragment(int slot, ItemStack snapshot) {}
+    private record SerializedArFragment(int slot, String serial, Material material, int amount) {}
+    private record ArDepositIntent(String id, UUID playerUuid, String playerName, String accountId,
+                                   String scope, String atmId, long amount, String idempotencyKey,
+                                   List<SerializedArFragment> fragments, String status) {}
 
     @Override
     public void onEnable() {
@@ -360,6 +385,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         visualModelIdKey = new NamespacedKey(this, "visual_model_id");
         officialArSerialKey = new NamespacedKey(this, "ar_serial");
         officialArSignatureKey = new NamespacedKey(this, "ar_signature");
+        officialArDenominationKey = new NamespacedKey(this, "ar_denomination");
+        officialArSignatureVersionKey = new NamespacedKey(this, "ar_signature_version");
         officialArSigningSecret = loadOrCreateArSigningSecret();
         pendingArSettlementJournalPath = getDataFolder().toPath().resolve("pending-ar-settlements.tsv");
         try {
@@ -455,7 +482,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
         }, 20L);
         Bukkit.getScheduler().runTaskLater(this,
-                () -> Bukkit.getOnlinePlayers().forEach(player -> processPendingArSettlements(player, false)), 40L);
+                () -> Bukkit.getOnlinePlayers().forEach(player -> {
+                    processPendingArSettlements(player, false);
+                    processArDepositIntents(player, false);
+                }), 40L);
         Bukkit.getScheduler().runTaskTimer(this, this::refreshOpenTaxButtons, 20L, 20L);
         atmAnchorGuardTask = Bukkit.getScheduler().runTaskTimer(this, this::guardAtmAnchors, 40L, 40L);
         Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> refreshTreasuryAccessAsync(), 20L, 100L);
@@ -579,10 +609,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private void loadAtmCache() throws Exception {
         activeAtmBlocks.clear();
         atmIdsByBlock.clear();
-        for (Map<String, Object> row : queryList("SELECT id,world,x,y,z FROM ar_atms WHERE active=1")) {
+        atmExpectedMaterials.clear();
+        for (Map<String, Object> row : queryList("SELECT id,world,x,y,z,COALESCE(expected_material,'') AS expected_material FROM ar_atms WHERE active=1")) {
             BlockKey key = blockKey(string(row.get("world")), intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z")));
             activeAtmBlocks.add(key);
             atmIdsByBlock.put(key, string(row.get("id")));
+            String expected = string(row.get("expected_material"));
+            if (!expected.isBlank()) {
+                atmExpectedMaterials.put(key, expected);
+            }
         }
     }
 
@@ -590,6 +625,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         BlockKey key = blockKey(block);
         activeAtmBlocks.add(key);
         atmIdsByBlock.put(key, atmId);
+        if (block != null && block.getType() != Material.AIR) {
+            atmExpectedMaterials.put(key, block.getType().name());
+        }
     }
 
     private void evictAtmCache(String atmId) {
@@ -597,6 +635,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             boolean remove = atmId.equals(entry.getValue());
             if (remove) {
                 activeAtmBlocks.remove(entry.getKey());
+                atmExpectedMaterials.remove(entry.getKey());
             }
             return remove;
         });
@@ -610,7 +649,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (world == null || !world.isChunkLoaded(key.x() >> 4, key.z() >> 4)) {
                 continue;
             }
-            if (!world.getBlockAt(key.x(), key.y(), key.z()).getType().isAir()) {
+            Material actualMaterial = world.getBlockAt(key.x(), key.y(), key.z()).getType();
+            String expectedMaterial = first(atmExpectedMaterials.get(key), "");
+            if (expectedMaterial.isBlank() && !actualMaterial.isAir()) {
+                expectedMaterial = actualMaterial.name();
+                atmExpectedMaterials.put(key, expectedMaterial);
+                String finalExpectedMaterial = expectedMaterial;
+                dbAsync("record ATM anchor material", () -> update(
+                        "UPDATE ar_atms SET expected_material=? WHERE id=? AND active=1 AND COALESCE(expected_material,'')=''",
+                        finalExpectedMaterial, entry.getValue()));
+            }
+            if (!actualMaterial.isAir() && (expectedMaterial.isBlank()
+                    || actualMaterial.name().equalsIgnoreCase(expectedMaterial))) {
                 continue;
             }
             String atmId = entry.getValue();
@@ -860,10 +910,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDrop(PlayerDropItemEvent event) {
-        // Dropping is a supported player action.  The item is still signed and
-        // all destructive/automated paths below remain owned by this plugin.
+        // Certified AR is a bank instrument, not a world entity.  Refuse the
+        // drop instead of creating an unlimited-lifetime entity that can be
+        // copied, cleared by another plugin, or left on the ground forever.
         if (containsOfficialAr(event.getItemDrop().getItemStack())) {
-            normalizeOfficialArEntity(event.getItemDrop());
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(color("&eОфициальный AR нельзя выбрасывать. Внесите его через банкомат."));
         }
     }
 
@@ -892,7 +944,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArSpawn(ItemSpawnEvent event) {
         if (containsOfficialAr(event.getEntity().getItemStack())) {
-            normalizeOfficialArEntity(event.getEntity());
+            event.setCancelled(true);
+            getLogger().warning("Blocked an official AR world spawn; certified AR must remain in inventories or mailbox delivery.");
         }
     }
 
@@ -922,14 +975,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (containsOfficialAr(event.getPlayerItem()) || containsOfficialAr(event.getArmorStandItem())) {
             event.setCancelled(true);
         }
-    }
-
-    private void normalizeOfficialArEntity(Item item) {
-        if (item == null || !isOfficialAr(item.getItemStack())) {
-            return;
-        }
-        item.setCanMobPickup(false);
-        item.setUnlimitedLifetime(true);
     }
 
     private boolean officialArTouchesContainer(InventoryClickEvent event) {
@@ -998,7 +1043,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         normalizeOfficialArItems(event.getPlayer());
-        Bukkit.getScheduler().runTaskLater(this, () -> processPendingArSettlements(event.getPlayer(), true), 20L);
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            processPendingArSettlements(event.getPlayer(), true);
+            processArDepositIntents(event.getPlayer(), true);
+        }, 20L);
     }
 
     @EventHandler
@@ -1265,8 +1313,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         String id = "atm_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
-        int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
-                id, block.getWorld().getName(), block.getX(), block.getY(), block.getZ(), player.getName(), t);
+        int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,expected_material,expected_model_id,expected_custom_model_data,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
+                id, block.getWorld().getName(), block.getX(), block.getY(), block.getZ(), block.getType().name(), "atm_terminal", MODEL_ATM_TERMINAL, player.getName(), t);
         if (created != 1) {
             return "&eНа этом блоке уже есть банкомат.";
         }
@@ -1295,8 +1343,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         int z = block.getZ();
         Location location = block.getLocation();
         dbFuture("create atm", () -> {
-            int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
-                    id, worldName, x, y, z, player.getName(), t);
+            int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,expected_material,expected_model_id,expected_custom_model_data,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
+                    id, worldName, x, y, z, location.getBlock().getType().name(), "atm_terminal", MODEL_ATM_TERMINAL, player.getName(), t);
             if (created != 1) {
                 throw new IllegalStateException("ATM_EXISTS:");
             }
@@ -1411,7 +1459,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openBankAtmAccount(Player player, String atmId, String accountScope) {
-        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        String scope = requestedAccountScope(player, accountScope);
+        if (scope.isBlank()) {
+            return;
+        }
         if ("PERSONAL".equals(scope)) {
             openBankAtmLegacy(player, atmId);
             return;
@@ -1501,7 +1552,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openAtmBalancePreview(Player player, String atmId, String accountScope) {
-        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        String scope = requestedAccountScope(player, accountScope);
+        if (scope.isBlank()) {
+            return;
+        }
         if ("TREASURY".equals(scope)) {
             dbFuture("atm treasury balance preview", () -> {
                 Map<String, Object> treasury = tx(this::ensureTreasuryAccount);
@@ -1540,7 +1594,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openBankTransferTargets(Player player, String atmId, String accountScope) throws Exception {
-        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        String scope = requestedAccountScope(player, accountScope);
+        if (scope.isBlank()) {
+            return;
+        }
         if ("PERSONAL".equals(scope)) {
             openBankTransferTargetsLegacy(player, atmId);
             return;
@@ -1576,7 +1633,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openBankTransferAmounts(Player player, String atmId, String accountScope, String targetUuid) throws Exception {
-        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        String scope = requestedAccountScope(player, accountScope);
+        if (scope.isBlank()) {
+            return;
+        }
         if ("PERSONAL".equals(scope)) {
             openBankTransferAmountsLegacy(player, atmId, targetUuid);
             return;
@@ -1606,7 +1666,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void openAtmPinPad(Player player, String atmId, String accountScope, String action, int amount, String pin, String targetUuid, String targetName) {
-        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        String scope = requestedAccountScope(player, accountScope);
+        if (scope.isBlank()) {
+            return;
+        }
         String masked = pin.isBlank() ? "* * * *" : pin.chars().mapToObj(i -> "*").reduce((a, b) -> a + " " + b).orElse("*");
         MenuHolder holder = new MenuHolder("atm:pin", atmId);
         Inventory inventory = holder.create(45, color("&e&lВведите PIN"));
@@ -1649,7 +1712,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             player.closeInventory();
             return;
         }
-        String scope = "TREASURY".equalsIgnoreCase(session.accountScope()) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        String scope = requestedAccountScope(player, session.accountScope());
+        if (scope.isBlank()) {
+            atmPinSessions.remove(player.getUniqueId());
+            player.closeInventory();
+            return;
+        }
         String pin = first(session.pin(), "");
         if (action.startsWith("pin:digit:")) {
             if (pin.length() < 8) {
@@ -1730,10 +1798,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         future.whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
             if (!player.isOnline()) {
-                if (error == null && result != null && result.ok && !"TRANSFER".equals(session.action())) {
-                    queuePendingArSettlement(player.getUniqueId(), player.getName(), session.amount(), PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY,
-                            "atm=" + session.atmId() + ",scope=" + scope + ",tx=" + first(result.txId, ""));
-                }
+                // A successful debit creates its DEBITED delivery row in the
+                // same database transaction.  Do not append a second
+                // best-effort queue row here; the durable row is recovered on
+                // the next join.
                 return;
             }
             if (error != null || result == null || !result.ok) {
@@ -1746,7 +1814,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (!"TRANSFER".equals(session.action())) {
-                completeWithdrawOnMainThread(player, session.amount(), first(result.txId, ""));
+                completeWithdrawOnMainThread(player, session.amount(), first(result.txId, ""), session.atmId(), scope);
+                return;
             }
             player.sendMessage(color("&aОперация выполнена."));
             openBankAtmAccount(player, session.atmId(), scope);
@@ -1758,87 +1827,438 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (!isOfficialAr(stack)) {
             return "&cВ основной руке нет официального AR.";
         }
-        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
+        String scope = requestedAccountScope(player, accountScope);
+        if (scope.isBlank()) {
+            return "&cДоступ к казне отозван. Пополнение отменено.";
+        }
         int amount = stack.getAmount();
-        ItemStack snapshot = stack.clone();
-        String serial = officialArSerial(snapshot);
+        SerializedArFragment fragment = serializeArFragment(
+                new ArFragment(player.getInventory().getHeldItemSlot(), stack.clone()));
         int handSlot = player.getInventory().getHeldItemSlot();
-        player.getInventory().setItemInMainHand(null);
-        player.updateInventory();
         String txKey = "atm-hand-" + UUID.randomUUID();
-        ("TREASURY".equals(scope)
-                ? creditAccountAsync(treasuryAccountId(), player.getUniqueId().toString(), player.getName(), amount, txKey, "TREASURY_DEPOSIT", "atm=" + atmId)
-                : bankService.creditAsync(player.getUniqueId(), player.getName(), amount, txKey, "ATM_DEPOSIT", "atm=" + atmId))
-                .whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
-                    if (error != null || result == null || !result.ok) {
-                        if (!player.isOnline()) {
-                            queuePendingArSettlement(player.getUniqueId(), player.getName(), amount, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",hand=true,slot=" + handSlot + ",tx=" + txKey);
-                            return;
-                        }
-                        int notRestored = restoreOfficialArAtSlot(player, snapshot, serial, handSlot);
-                        if (notRestored > 0) {
-                            queuePendingArSettlement(player.getUniqueId(), player.getName(), notRestored,
-                                    PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",hand=true,slot=" + handSlot + ",tx=" + txKey + ",reason=inventory_changed");
-                        }
-                        player.updateInventory();
-                        player.sendMessage(color("&cНе удалось внести AR в банк."));
-                        if (error != null) {
-                            getLogger().warning("atm deposit hand: " + safeError(error));
-                        }
-                        openBankAtmAccount(player, atmId, scope);
-                        return;
-                    }
-                    if (!player.isOnline()) {
-                        return;
-                    }
-                    player.sendMessage(color("&aВ банк внесено: &f" + amount + " AR"));
-                    openBankAtmAccount(player, atmId, scope);
-                }));
+        ArDepositIntent intent = newArDepositIntent(player, atmId, scope, amount, txKey, List.of(fragment));
+        createArDepositIntent(intent).whenComplete((stored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null || stored == null) {
+                getLogger().warning("atm deposit hand intent creation failed: " + safeError(error));
+                player.sendMessage(color("&cОперация AR не создана. Предмет не изменён."));
+                return;
+            }
+            if (!player.isOnline() || !removeExactArFragments(player, stored.fragments())) {
+                if (player.isOnline()) {
+                    player.sendMessage(color("&eПредмет изменился до подтверждения операции. AR оставлен в инвентаре."));
+                }
+                dbAsync("cancel unchanged AR hand deposit", () -> cancelArDepositIntent(stored.id(), "physical_snapshot_changed"));
+                return;
+            }
+            player.updateInventory();
+            markArDepositPhysicalRemoved(stored.id()).whenComplete((marked, markError) -> Bukkit.getScheduler().runTask(this, () -> {
+                if (markError != null || !Boolean.TRUE.equals(marked)) {
+                    getLogger().warning("atm deposit hand physical removal journal failed: " + safeError(markError));
+                    player.sendMessage(color("&eAR снят после фиксации намерения, но подтверждение задержано. Операция будет повторена автоматически."));
+                    return;
+                }
+                advanceArDepositIntent(stored.id(), player);
+            }));
+        }));
         return "&7Вносим AR в банк...";
     }
 
     private String depositAllArAsync(Player player, String atmId, String accountScope) throws Exception {
-        int available = countOfficialAr(player.getInventory());
-        if (available <= 0) {
+        List<ArFragment> snapshots = snapshotOfficialArFragments(player.getInventory());
+        if (snapshots.isEmpty()) {
             return "&cВ инвентаре нет официального AR.";
         }
-        String scope = "TREASURY".equalsIgnoreCase(accountScope) && hasTreasuryAccess(player) ? "TREASURY" : "PERSONAL";
-        List<ArFragment> snapshots = snapshotOfficialArFragments(player.getInventory());
-        removeOfficialAr(player.getInventory(), available);
-        player.updateInventory();
+        String scope = requestedAccountScope(player, accountScope);
+        if (scope.isBlank()) {
+            return "&cДоступ к казне отозван. Пополнение отменено.";
+        }
+        List<SerializedArFragment> fragments = serializeArFragments(snapshots);
+        int available = fragments.stream().mapToInt(SerializedArFragment::amount).sum();
         String txKey = "atm-all-" + UUID.randomUUID();
-        ("TREASURY".equals(scope)
-                ? creditAccountAsync(treasuryAccountId(), player.getUniqueId().toString(), player.getName(), available, txKey, "TREASURY_DEPOSIT_ALL", "atm=" + atmId)
-                : bankService.creditAsync(player.getUniqueId(), player.getName(), available, txKey, "ATM_DEPOSIT_ALL", "atm=" + atmId))
-                .whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
-                    if (error != null || result == null || !result.ok) {
-                        if (!player.isOnline()) {
-                            queuePendingArSettlement(player.getUniqueId(), player.getName(), available, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",all=true,tx=" + txKey);
+        ArDepositIntent intent = newArDepositIntent(player, atmId, scope, available, txKey, fragments);
+        createArDepositIntent(intent).whenComplete((stored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (error != null || stored == null) {
+                getLogger().warning("atm deposit all intent creation failed: " + safeError(error));
+                player.sendMessage(color("&cОперация AR не создана. Предметы не изменены."));
+                return;
+            }
+            if (!player.isOnline() || !removeExactArFragments(player, stored.fragments())) {
+                if (player.isOnline()) {
+                    player.sendMessage(color("&eИнвентарь изменился до подтверждения операции. AR оставлен в инвентаре."));
+                }
+                dbAsync("cancel changed AR bulk deposit", () -> cancelArDepositIntent(stored.id(), "physical_snapshot_changed"));
+                return;
+            }
+            player.updateInventory();
+            markArDepositPhysicalRemoved(stored.id()).whenComplete((marked, markError) -> Bukkit.getScheduler().runTask(this, () -> {
+                if (markError != null || !Boolean.TRUE.equals(marked)) {
+                    getLogger().warning("atm deposit all physical removal journal failed: " + safeError(markError));
+                    player.sendMessage(color("&eAR снят после фиксации намерения, но подтверждение задержано. Операция будет повторена автоматически."));
+                    return;
+                }
+                advanceArDepositIntent(stored.id(), player);
+            }));
+        }));
+        return "&7Вносим весь AR в банк...";
+    }
+
+    private ArDepositIntent newArDepositIntent(Player player, String atmId, String scope, long amount,
+                                               String idempotencyKey, List<SerializedArFragment> fragments) {
+        return new ArDepositIntent(UUID.randomUUID().toString(), player.getUniqueId(), player.getName(),
+                "TREASURY".equals(scope) ? treasuryAccountId() : bankAccountId(player.getUniqueId().toString()),
+                scope, first(atmId, ""), amount, idempotencyKey, List.copyOf(fragments), AR_DEPOSIT_STATUS_CREATED);
+    }
+
+    private SerializedArFragment serializeArFragment(ArFragment fragment) throws Exception {
+        if (fragment == null || fragment.snapshot() == null || !isOfficialAr(fragment.snapshot())) {
+            throw new IllegalStateException("AR deposit snapshot is not an official item");
+        }
+        String serial = officialArSerial(fragment.snapshot());
+        if (serial.isBlank()) {
+            throw new IllegalStateException("AR deposit snapshot has no serial");
+        }
+        try {
+            UUID.fromString(serial);
+        } catch (IllegalArgumentException invalidSerial) {
+            throw new IllegalStateException("AR deposit snapshot serial is invalid", invalidSerial);
+        }
+        return new SerializedArFragment(fragment.slot(), serial, fragment.snapshot().getType(), fragment.snapshot().getAmount());
+    }
+
+    private List<SerializedArFragment> serializeArFragments(List<ArFragment> fragments) throws Exception {
+        List<SerializedArFragment> result = new ArrayList<>();
+        Set<String> serials = new HashSet<>();
+        if (fragments == null) {
+            return result;
+        }
+        for (ArFragment fragment : fragments) {
+            SerializedArFragment serialized = serializeArFragment(fragment);
+            if (!serials.add(serialized.serial())) {
+                throw new IllegalStateException("Duplicate AR serial in one deposit snapshot");
+            }
+            result.add(serialized);
+        }
+        return result;
+    }
+
+    private String encodeArDepositSnapshot(List<SerializedArFragment> fragments) {
+        StringBuilder encoded = new StringBuilder();
+        for (SerializedArFragment fragment : fragments) {
+            if (encoded.length() > 0) {
+                encoded.append(';');
+            }
+            encoded.append(fragment.slot()).append(',')
+                    .append(fragment.serial()).append(',')
+                    .append(fragment.material().name()).append(',')
+                    .append(fragment.amount());
+        }
+        return encoded.toString();
+    }
+
+    private List<SerializedArFragment> decodeArDepositSnapshot(String encoded) throws Exception {
+        List<SerializedArFragment> fragments = new ArrayList<>();
+        Set<String> serials = new HashSet<>();
+        if (encoded == null || encoded.isBlank()) {
+            throw new IllegalStateException("AR deposit snapshot is empty");
+        }
+        for (String raw : encoded.split(";", -1)) {
+            String[] parts = raw.split(",", -1);
+            if (parts.length != 4) {
+                throw new IllegalStateException("AR deposit snapshot is malformed");
+            }
+            int slot = Integer.parseInt(parts[0]);
+            String serial = parts[1];
+            Material material = Material.valueOf(parts[2]);
+            int amount = Integer.parseInt(parts[3]);
+            if (slot < 0 || amount <= 0 || (material != Material.DIAMOND_ORE && material != Material.DEEPSLATE_DIAMOND_ORE)
+                    || !serials.add(serial)) {
+                throw new IllegalStateException("AR deposit snapshot contains invalid data");
+            }
+            UUID.fromString(serial);
+            fragments.add(new SerializedArFragment(slot, serial, material, amount));
+        }
+        return fragments;
+    }
+
+    private CompletableFuture<ArDepositIntent> createArDepositIntent(ArDepositIntent intent) {
+        return dbFuture("create AR deposit intent", () -> tx(connection -> {
+            long createdAt = now();
+            update(connection,
+                    "INSERT INTO cmv8_ar_deposit_intents(id,player_uuid,player_name,account_id,account_scope,atm_id,amount,idempotency_key,snapshot,status,created_at,updated_at,committed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                    intent.id(), intent.playerUuid().toString(), intent.playerName(), intent.accountId(), intent.scope(), intent.atmId(),
+                    intent.amount(), intent.idempotencyKey(), encodeArDepositSnapshot(intent.fragments()), intent.status(), createdAt, createdAt);
+            Map<String, Object> row = queryOne(connection,
+                    "SELECT id,player_uuid,player_name,account_id,account_scope,atm_id,amount,idempotency_key,snapshot,status FROM cmv8_ar_deposit_intents WHERE idempotency_key=? LIMIT 1",
+                    intent.idempotencyKey());
+            return mapArDepositIntent(row);
+        }));
+    }
+
+    private ArDepositIntent mapArDepositIntent(Map<String, Object> row) throws Exception {
+        if (row == null || row.isEmpty()) {
+            throw new IllegalStateException("AR deposit intent was not persisted");
+        }
+        return new ArDepositIntent(
+                string(row.get("id")), UUID.fromString(string(row.get("player_uuid"))), string(row.get("player_name")),
+                string(row.get("account_id")), string(row.get("account_scope")), string(row.get("atm_id")), longValue(row.get("amount")),
+                string(row.get("idempotency_key")), decodeArDepositSnapshot(string(row.get("snapshot"))), string(row.get("status")));
+    }
+
+    private CompletableFuture<Boolean> markArDepositPhysicalRemoved(String intentId) {
+        return dbFuture("mark AR deposit physical removal", () -> tx(connection -> {
+            int changed = updateCount(connection,
+                    "UPDATE cmv8_ar_deposit_intents SET status=?,updated_at=? WHERE id=? AND status=?",
+                    AR_DEPOSIT_STATUS_PHYSICAL_REMOVED, now(), intentId, AR_DEPOSIT_STATUS_CREATED);
+            if (changed == 1) {
+                return true;
+            }
+            Map<String, Object> row = queryOne(connection, "SELECT status FROM cmv8_ar_deposit_intents WHERE id=? FOR UPDATE", intentId);
+            return row != null && AR_DEPOSIT_STATUS_PHYSICAL_REMOVED.equals(string(row.get("status")));
+        }));
+    }
+
+    private boolean cancelArDepositIntent(String intentId, String reason) throws Exception {
+        return tx(connection -> updateCount(connection,
+                "UPDATE cmv8_ar_deposit_intents SET status=?,updated_at=? WHERE id=? AND status=?",
+                AR_DEPOSIT_STATUS_CANCELLED, now(), intentId, AR_DEPOSIT_STATUS_CREATED) == 1);
+    }
+
+    private boolean markArDepositCommitted(String intentId) throws Exception {
+        return tx(connection -> {
+            Map<String, Object> intentRow = queryOne(connection,
+                    "SELECT snapshot,status,amount FROM cmv8_ar_deposit_intents WHERE id=? FOR UPDATE", intentId);
+            if (intentRow == null || intentRow.isEmpty()) {
+                return false;
+            }
+            String status = string(intentRow.get("status"));
+            if (AR_DEPOSIT_STATUS_COMMITTED.equals(status)) {
+                return true;
+            }
+            if (!AR_DEPOSIT_STATUS_PHYSICAL_REMOVED.equals(status)) {
+                return false;
+            }
+            List<SerializedArFragment> fragments = decodeArDepositSnapshot(string(intentRow.get("snapshot")));
+            long total = fragments.stream().mapToLong(SerializedArFragment::amount).sum();
+            if (total != longValue(intentRow.get("amount"))) {
+                throw new IllegalStateException("AR deposit amount does not match its durable snapshot");
+            }
+            long timestamp = now();
+            for (SerializedArFragment fragment : fragments) {
+                Map<String, Object> asset = queryOne(connection,
+                        "SELECT denomination,material,signature_version,status FROM cmv8_ar_assets WHERE serial=? FOR UPDATE",
+                        fragment.serial());
+                if (asset == null || asset.isEmpty()) {
+                    update(connection,
+                            "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_at,deposited_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                            fragment.serial(), fragment.amount(), fragment.material().name(), OFFICIAL_AR_SIGNATURE_VERSION,
+                            AR_DEPOSIT_STATUS_DEPOSITED, timestamp, timestamp, timestamp);
+                    continue;
+                }
+                if (intValue(asset.get("denomination")) != fragment.amount()
+                        || !fragment.material().name().equals(string(asset.get("material")))
+                        || intValue(asset.get("signature_version")) != OFFICIAL_AR_SIGNATURE_VERSION) {
+                    throw new IllegalStateException("AR serial registry metadata conflict");
+                }
+                String assetStatus = string(asset.get("status"));
+                if (AR_DEPOSIT_STATUS_DEPOSITED.equals(assetStatus)) {
+                    continue;
+                }
+                if (!"ACTIVE".equals(assetStatus)) {
+                    throw new IllegalStateException("AR serial registry is not active");
+                }
+                update(connection,
+                        "UPDATE cmv8_ar_assets SET status=?,deposited_at=?,updated_at=? WHERE serial=? AND status=?",
+                        AR_DEPOSIT_STATUS_DEPOSITED, timestamp, timestamp, fragment.serial(), "ACTIVE");
+            }
+            update(connection,
+                    "UPDATE cmv8_ar_deposit_intents SET status=?,committed_at=?,updated_at=? WHERE id=? AND status=?",
+                    AR_DEPOSIT_STATUS_COMMITTED, timestamp, timestamp, intentId, AR_DEPOSIT_STATUS_PHYSICAL_REMOVED);
+            return true;
+        });
+    }
+
+    private List<ArDepositIntent> loadArDepositIntents(UUID playerUuid) throws Exception {
+        return tx(connection -> {
+            List<Map<String, Object>> rows = queryList(connection,
+                    "SELECT id,player_uuid,player_name,account_id,account_scope,atm_id,amount,idempotency_key,snapshot,status FROM cmv8_ar_deposit_intents WHERE player_uuid=? AND status IN (?,?) ORDER BY created_at ASC",
+                    playerUuid.toString(), AR_DEPOSIT_STATUS_CREATED, AR_DEPOSIT_STATUS_PHYSICAL_REMOVED);
+            List<ArDepositIntent> result = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                result.add(mapArDepositIntent(row));
+            }
+            return result;
+        });
+    }
+
+    private boolean hasExactArFragments(Player player, List<SerializedArFragment> fragments) {
+        if (player == null || fragments == null || fragments.isEmpty()) {
+            return false;
+        }
+        for (SerializedArFragment fragment : fragments) {
+            if (countOfficialArSerial(player.getInventory(), fragment.serial()) != fragment.amount()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean removeExactArFragments(Player player, List<SerializedArFragment> fragments) {
+        if (!hasExactArFragments(player, fragments)) {
+            return false;
+        }
+        for (SerializedArFragment fragment : fragments) {
+            removeOfficialArSerial(player.getInventory(), fragment.serial(), fragment.amount());
+        }
+        return true;
+    }
+
+    private ItemStack restoreSerializedArStack(SerializedArFragment fragment) {
+        ItemStack restored = createOfficialArStack(fragment.material(), fragment.amount(), "", "", "deposit-restore", false);
+        ItemMeta meta = restored.getItemMeta();
+        if (meta == null) {
+            return restored;
+        }
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        pdc.set(officialArSerialKey, PersistentDataType.STRING, fragment.serial());
+        pdc.set(officialArDenominationKey, PersistentDataType.INTEGER, fragment.amount());
+        pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, OFFICIAL_AR_SIGNATURE_VERSION);
+        pdc.set(officialArSignatureKey, PersistentDataType.STRING,
+                officialArSignature(fragment.serial(), fragment.material(), fragment.amount()));
+        restored.setItemMeta(meta);
+        return restored;
+    }
+
+    private int restoreSerializedArFragments(Player player, List<SerializedArFragment> fragments) {
+        if (player == null || !player.isOnline() || fragments == null) {
+            return fragments == null ? 0 : fragments.stream().mapToInt(SerializedArFragment::amount).sum();
+        }
+        int notRestored = 0;
+        for (SerializedArFragment fragment : fragments) {
+            ItemStack snapshot = restoreSerializedArStack(fragment);
+            notRestored += restoreOfficialArSafely(player, snapshot, fragment.serial());
+        }
+        player.updateInventory();
+        return notRestored;
+    }
+
+    private void markArDepositRestoreState(String intentId, String status, String reason) throws Exception {
+        tx(connection -> {
+            update(connection,
+                    "UPDATE cmv8_ar_deposit_intents SET status=?,updated_at=? WHERE id=? AND status IN (?,?,?)",
+                    status, now(), intentId, AR_DEPOSIT_STATUS_CREATED, AR_DEPOSIT_STATUS_PHYSICAL_REMOVED, AR_DEPOSIT_STATUS_RESTORE_PENDING);
+            return null;
+        });
+    }
+
+    private void rejectArDeposit(ArDepositIntent intent, Player player, String reason) {
+        int notRestored = restoreSerializedArFragments(player, intent.fragments());
+        String restoreReason = "atm=" + intent.atmId() + ",scope=" + intent.scope() + ",tx=" + intent.idempotencyKey()
+                + ",reason=" + first(reason, "bank_rejected");
+        if (notRestored > 0) {
+            long available = notRestored;
+            dbAsync("mark AR deposit restore pending", () -> markArDepositRestoreState(intent.id(), AR_DEPOSIT_STATUS_RESTORE_PENDING, restoreReason));
+            if (player != null && player.isOnline()) {
+                long amount = available;
+                queuePendingArSettlement(player.getUniqueId(), player.getName(), amount, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE, restoreReason);
+            } else if (player != null) {
+                queuePendingArSettlement(player.getUniqueId(), player.getName(), available, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE, restoreReason);
+            } else {
+                queuePendingArSettlement(intent.playerUuid(), intent.playerName(), available, PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE, restoreReason);
+            }
+        } else {
+            dbAsync("cancel rejected AR deposit", () -> markArDepositRestoreState(intent.id(), AR_DEPOSIT_STATUS_CANCELLED, restoreReason));
+        }
+        if (player != null && player.isOnline()) {
+            player.sendMessage(color("&cБанк отклонил пополнение AR. Предмет возвращён или поставлен в безопасную очередь."));
+            openBankAtmAccount(player, intent.atmId(), intent.scope());
+        }
+    }
+
+    private void advanceArDepositIntent(String intentId, Player player) {
+        dbFuture("load AR deposit intent for commit", () -> tx(connection -> mapArDepositIntent(
+                queryOne(connection, "SELECT id,player_uuid,player_name,account_id,account_scope,atm_id,amount,idempotency_key,snapshot,status FROM cmv8_ar_deposit_intents WHERE id=? FOR UPDATE", intentId))))
+                .whenComplete((intent, loadError) -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (loadError != null || intent == null || !AR_DEPOSIT_STATUS_PHYSICAL_REMOVED.equals(intent.status())) {
+                        if (loadError != null) {
+                            getLogger().warning("AR deposit intent load failed: " + safeError(loadError));
+                        }
+                        return;
+                    }
+                    CompletableFuture<TxnResult> credit = "TREASURY".equals(intent.scope())
+                            ? creditAccountAsync(intent.accountId(), intent.playerUuid().toString(), intent.playerName(), intent.amount(),
+                            intent.idempotencyKey(), "TREASURY_DEPOSIT" + (intent.fragments().size() > 1 ? "_ALL" : ""), "atm=" + intent.atmId())
+                            : creditDepositForPlayerAsync(player, intent);
+                    credit.whenComplete((result, creditError) -> Bukkit.getScheduler().runTask(this, () -> {
+                        if (creditError != null || result == null) {
+                            // The bank may have committed immediately before a
+                            // connection failure. Keep PHYSICAL_REMOVED and
+                            // retry with the same idempotency key.
+                            getLogger().warning("AR deposit credit is pending retry for " + intent.id() + ": " + safeError(creditError));
+                            if (player != null && player.isOnline()) {
+                                player.sendMessage(color("&eAR снят и ожидает подтверждения банка. Повтор будет выполнен автоматически."));
+                            }
                             return;
                         }
-                        int notRestored = restoreOfficialArFragments(player, snapshots);
-                        if (notRestored > 0) {
-                            queuePendingArSettlement(player.getUniqueId(), player.getName(), notRestored,
-                                    PENDING_AR_SETTLEMENT_TYPE_DEPOSIT_RESTORE,
-                                    "atm=" + atmId + ",scope=" + scope + ",all=true,tx=" + txKey + ",reason=inventory_changed");
+                        if (!result.ok) {
+                            rejectArDeposit(intent, player, first(result.message, result.code));
+                            return;
                         }
-                        player.sendMessage(color("&cНе удалось внести AR в банк."));
-                        if (error != null) {
-                            getLogger().warning("atm deposit all: " + safeError(error));
-                        }
-                        openBankAtmAccount(player, atmId, scope);
-                        return;
-                    }
-                    if (!player.isOnline()) {
-                        return;
-                    }
-                    player.sendMessage(color("&aВ банк внесено: &f" + available + " AR"));
-                    openBankAtmAccount(player, atmId, scope);
+                        dbFuture("finalize AR deposit", () -> markArDepositCommitted(intent.id()))
+                                .whenComplete((committed, finalizeError) -> Bukkit.getScheduler().runTask(this, () -> {
+                                    if (finalizeError != null || !Boolean.TRUE.equals(committed)) {
+                                        getLogger().warning("AR deposit commit registry failed for " + intent.id() + ": " + safeError(finalizeError));
+                                        if (player != null && player.isOnline()) {
+                                            player.sendMessage(color("&eБанк подтвердил AR, но реестр предмета ещё не синхронизирован. Повтор будет выполнен автоматически."));
+                                        }
+                                        return;
+                                    }
+                                    if (player != null && player.isOnline()) {
+                                        player.sendMessage(color("&aВ банк внесено: &f" + intent.amount() + " AR"));
+                                        openBankAtmAccount(player, intent.atmId(), intent.scope());
+                                    }
+                                }));
+                    }));
                 }));
-        return "&7Вносим весь AR в банк...";
+    }
+
+    private CompletableFuture<TxnResult> creditDepositForPlayerAsync(Player player, ArDepositIntent intent) {
+        String action = "ATM_DEPOSIT" + (intent.fragments().size() > 1 ? "_ALL" : "");
+        String details = "atm=" + intent.atmId();
+        if (player != null && player.isOnline()) {
+            return bankService.creditAsync(player.getUniqueId(), player.getName(), intent.amount(), intent.idempotencyKey(),
+                    action, details);
+        }
+        return bankService.creditAsync(intent.playerUuid(), intent.playerName(), intent.amount(), intent.idempotencyKey(),
+                action, details);
+    }
+
+    private void processArDepositIntents(Player player, boolean notify) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        dbFuture("load AR deposit intents", () -> loadArDepositIntents(player.getUniqueId()))
+                .whenComplete((intents, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (error != null || intents == null || !player.isOnline()) {
+                        if (error != null) {
+                            getLogger().warning("AR deposit intent recovery failed: " + safeError(error));
+                        }
+                        return;
+                    }
+                    for (ArDepositIntent intent : intents) {
+                        if (AR_DEPOSIT_STATUS_CREATED.equals(intent.status())) {
+                            if (hasExactArFragments(player, intent.fragments())) {
+                                dbAsync("cancel unconsumed AR deposit intent", () -> cancelArDepositIntent(intent.id(), "physical_removal_never_started"));
+                            } else {
+                                dbAsync("review ambiguous AR deposit intent", () -> markArDepositRestoreState(intent.id(), AR_DEPOSIT_STATUS_REVIEW, "physical_snapshot_ambiguous"));
+                                if (notify) {
+                                    player.sendMessage(color("&eНезавершённое пополнение AR отправлено на проверку: предмет изменился до списания."));
+                                }
+                            }
+                        } else if (AR_DEPOSIT_STATUS_PHYSICAL_REMOVED.equals(intent.status())) {
+                            advanceArDepositIntent(intent.id(), player);
+                        }
+                    }
+                }));
     }
 
     private void processPendingArSettlements(Player player, boolean notifyNoSpace) {
@@ -1892,8 +2312,17 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                                     }
                                     return;
                                 }
-                                dbAsync("pending ar settlements delivered", () -> markPendingArSettlementsDelivered(reservedIds, safeReservation.token()));
-                                player.sendMessage(color("&aВыдан ожидающий официальный AR: &f" + totalAmount + " AR"));
+                                dbFuture("pending ar settlements delivered", () -> {
+                                    markPendingArSettlementsDelivered(reservedIds, safeReservation.token());
+                                    return true;
+                                }).whenComplete((delivered, deliveryError) -> Bukkit.getScheduler().runTask(this, () -> {
+                                    if (deliveryError != null || !Boolean.TRUE.equals(delivered)) {
+                                        dbAsync("pending ar settlements review", () -> markPendingArSettlementsReview(reservedIds, safeReservation.token(), "delivery_finalize_failed"));
+                                        player.sendMessage(color("&eAR выдан физически, но регистрация не подтверждена. Операция отправлена на проверку."));
+                                        return;
+                                    }
+                                    player.sendMessage(color("&aВыдан ожидающий официальный AR: &f" + totalAmount + " AR"));
+                                }));
                             }));
                 }));
     }
@@ -1901,8 +2330,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private List<PendingArSettlement> loadPendingArSettlements(UUID playerUuid) throws Exception {
         return tx(connection -> {
             List<Map<String, Object>> rows = queryList(connection,
-                    "SELECT id,player_uuid,player_name,amount,settlement_type,reason FROM cmv4_pending_ar_settlements WHERE player_uuid=? AND status=? ORDER BY created_at ASC",
-                    playerUuid.toString(), PENDING_AR_SETTLEMENT_STATUS_PENDING);
+                    "SELECT id,player_uuid,player_name,amount,settlement_type,reason FROM cmv4_pending_ar_settlements WHERE player_uuid=? AND status IN (?,?) ORDER BY created_at ASC",
+                    playerUuid.toString(), PENDING_AR_SETTLEMENT_STATUS_DEBITED, PENDING_AR_SETTLEMENT_STATUS_PENDING);
             List<PendingArSettlement> result = new ArrayList<>();
             for (Map<String, Object> row : rows) {
                 result.add(new PendingArSettlement(
@@ -1928,8 +2357,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             long updatedAt = now();
             for (String id : ids) {
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token=?,updated_at=? WHERE id=? AND status=?")) {
-                    bind(statement, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, token, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_PENDING);
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token=?,updated_at=? WHERE id=? AND status IN (?,?)")) {
+                    bind(statement, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, token, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_DEBITED, PENDING_AR_SETTLEMENT_STATUS_PENDING);
                     if (statement.executeUpdate() == 1) {
                         reserved.add(id);
                     }
@@ -1954,6 +2383,44 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         });
     }
 
+    private void markPendingArSettlementsReview(List<String> ids, String token, String reason) throws Exception {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        tx(connection -> {
+            long updatedAt = now();
+            for (String id : ids) {
+                update(connection,
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token='',reason=CASE WHEN reason='' THEN ? ELSE reason || ';' || ? END,updated_at=? WHERE id=? AND status=? AND delivery_token=?",
+                        PENDING_AR_SETTLEMENT_STATUS_REVIEW, first(reason, "delivery_review"), first(reason, "delivery_review"), updatedAt,
+                        id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, first(token, ""));
+            }
+            return null;
+        });
+    }
+
+    private CompletableFuture<PendingArReservation> reserveWithdrawalDelivery(String transactionId) {
+        return dbFuture("reserve withdrawal delivery", () -> tx(connection -> {
+            if (transactionId == null || transactionId.isBlank()) {
+                return new PendingArReservation("", List.of());
+            }
+            Map<String, Object> row = queryOne(connection,
+                    "SELECT id FROM cmv4_pending_ar_settlements WHERE idempotency_key=? AND settlement_type=? AND status IN (?,?) LIMIT 1",
+                    transactionId, PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY,
+                    PENDING_AR_SETTLEMENT_STATUS_DEBITED, PENDING_AR_SETTLEMENT_STATUS_PENDING);
+            if (row == null || row.isEmpty()) {
+                return new PendingArReservation("", List.of());
+            }
+            String id = first(string(row.get("id")), "");
+            String token = UUID.randomUUID().toString();
+            int changed = updateCount(connection,
+                    "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token=?,updated_at=? WHERE id=? AND status IN (?,?)",
+                    PENDING_AR_SETTLEMENT_STATUS_DELIVERING, token, now(), id,
+                    PENDING_AR_SETTLEMENT_STATUS_DEBITED, PENDING_AR_SETTLEMENT_STATUS_PENDING);
+            return changed == 1 ? new PendingArReservation(token, List.of(id)) : new PendingArReservation("", List.of());
+        }));
+    }
+
     private void releasePendingArSettlements(List<String> ids, String token) throws Exception {
         if (ids == null || ids.isEmpty()) {
             return;
@@ -1969,9 +2436,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         });
     }
 
-    private void queuePendingArSettlement(UUID playerUuid, String playerName, long amount, String settlementType, String reason) {
+    private CompletableFuture<SettlementResult> queuePendingArSettlement(UUID playerUuid, String playerName, long amount, String settlementType, String reason) {
         if (playerUuid == null || amount <= 0) {
-            return;
+            return CompletableFuture.completedFuture(new SettlementResult(false, "", "invalid_settlement"));
         }
         String normalizedType = first(settlementType, PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY);
         String normalizedReason = first(reason, "");
@@ -1983,9 +2450,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         // duplicate settlement.
         if (!appendPendingArSettlementJournal(idempotencyKey, playerUuid, playerName, amount, normalizedType, normalizedReason)) {
             getLogger().severe("Unable to durably journal pending AR settlement " + idempotencyKey + ". Manual review is required.");
-            return;
+            return CompletableFuture.completedFuture(new SettlementResult(false, idempotencyKey, "manual_review"));
         }
-        dbAsync("queue pending ar settlement", () -> {
+        return dbFuture("queue pending ar settlement", () -> {
             update(
                     "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
                     UUID.randomUUID().toString(),
@@ -1999,7 +2466,22 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     now(),
                     now()
             );
-            removePendingArSettlementJournalEntry(idempotencyKey);
+            return true;
+        }).handle((ignored, error) -> {
+            if (error != null) {
+                getLogger().warning("Pending AR settlement remains in the durable journal " + idempotencyKey + ": " + safeError(error));
+                return new SettlementResult(false, idempotencyKey, "manual_review");
+            }
+            try {
+                removePendingArSettlementJournalEntry(idempotencyKey);
+            } catch (Exception cleanupError) {
+                // The PostgreSQL row is already durable.  Keep the local
+                // journal on cleanup failure so startup replay remains a
+                // safe idempotent no-op, and make the degraded state visible.
+                getLogger().warning("Pending AR settlement was stored, but its local journal cleanup failed for "
+                        + idempotencyKey + ": " + safeError(cleanupError));
+            }
+            return new SettlementResult(true, idempotencyKey, "queued");
         });
     }
 
@@ -2209,14 +2691,56 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return true;
     }
 
-    private void completeWithdrawOnMainThread(Player player, long amount, String transactionId) {
-        if (!issueOfficialArAmount(player, amount, "bank-withdraw", false)) {
-            queuePendingArSettlement(player.getUniqueId(), player.getName(), amount,
-                    PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY,
-                    "bank-withdraw,reason=inventory_full,tx="
-                            + (transactionId == null || transactionId.isBlank() ? UUID.randomUUID() : transactionId));
-            player.sendMessage(color("&eБанк списал AR, но инвентарь заполнен. Сумма помещена в безопасную очередь выдачи."));
+    private void completeWithdrawOnMainThread(Player player, long amount, String transactionId, String atmId, String accountScope) {
+        if (player == null || !player.isOnline() || transactionId == null || transactionId.isBlank()) {
+            if (player != null && player.isOnline()) {
+                player.sendMessage(color("&eВыдача AR не подтверждена. Операция отправлена на ручную проверку."));
+            }
+            return;
         }
+        reserveWithdrawalDelivery(transactionId).whenComplete((reservation, reserveError) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (reserveError != null || reservation == null || reservation.ids().isEmpty()) {
+                getLogger().warning("Withdrawal delivery reservation failed for " + transactionId + ": " + safeError(reserveError));
+                player.sendMessage(color("&eAR списан, но выдача не подтверждена. Операция отправлена на ручную проверку."));
+                return;
+            }
+            if (!player.isOnline()) {
+                dbAsync("withdrawal delivery release offline", () -> releasePendingArSettlements(reservation.ids(), reservation.token()));
+                return;
+            }
+            if (!issueOfficialArAmount(player, amount, "bank-withdraw", false)) {
+                dbAsync("withdrawal delivery release full inventory", () -> releasePendingArSettlements(reservation.ids(), reservation.token()));
+                player.sendMessage(color("&eБанк списал AR, но инвентарь заполнен. Сумма помещена в безопасную очередь выдачи."));
+                return;
+            }
+            dbFuture("withdrawal delivery finalize", () -> {
+                markPendingArSettlementsDelivered(reservation.ids(), reservation.token());
+                return true;
+            }).whenComplete((delivered, deliveryError) -> Bukkit.getScheduler().runTask(this, () -> {
+                if (deliveryError != null || !Boolean.TRUE.equals(delivered)) {
+                    dbAsync("withdrawal delivery review", () -> markPendingArSettlementsReview(reservation.ids(), reservation.token(), "withdrawal_finalize_failed"));
+                    player.sendMessage(color("&eAR выдан физически, но регистрация не подтверждена. Операция отправлена на проверку."));
+                    return;
+                }
+                player.updateInventory();
+                player.sendMessage(color("&aОперация выполнена."));
+                openBankAtmAccount(player, first(atmId, ""), first(accountScope, "PERSONAL"));
+            }));
+        }));
+    }
+
+    private void createWithdrawalDeliveryRow(Connection connection, UUID playerUuid, String playerName, long amount,
+                                              String transactionId, String actionName, String details) throws Exception {
+        if (playerUuid == null || amount <= 0L || transactionId == null || transactionId.isBlank()
+                || !("TREASURY_WITHDRAW".equalsIgnoreCase(first(actionName, "")))) {
+            return;
+        }
+        long createdAt = now();
+        update(connection,
+                "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                "withdrawal-" + transactionId, playerUuid.toString(), first(playerName, ""), amount,
+                PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY, PENDING_AR_SETTLEMENT_STATUS_DEBITED,
+                first(details, "") + ";tx=" + transactionId, transactionId, createdAt, createdAt);
     }
 
     private ItemStack createOfficialArStack(int amount, String ownerUuid, String ownerName, String source) {
@@ -2224,6 +2748,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private ItemStack createOfficialArStack(Material material, int amount, String ownerUuid, String ownerName, String source) {
+        return createOfficialArStack(material, amount, ownerUuid, ownerName, source, true);
+    }
+
+    private ItemStack createOfficialArStack(Material material, int amount, String ownerUuid, String ownerName,
+                                            String source, boolean registerAsset) {
         Material arMaterial = material == Material.DEEPSLATE_DIAMOND_ORE ? Material.DEEPSLATE_DIAMOND_ORE : Material.DIAMOND_ORE;
         ItemStack stack = new ItemStack(arMaterial, Math.max(1, amount));
         ItemMeta meta = stack.getItemMeta();
@@ -2239,9 +2768,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.remove(new NamespacedKey("copiminear", "owner_name"));
         pdc.remove(new NamespacedKey("copiminear", "source"));
         String serial = UUID.randomUUID().toString();
+        int denomination = Math.max(1, amount);
         pdc.set(officialArSerialKey, PersistentDataType.STRING, serial);
-        pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArSignature(serial, arMaterial));
+        pdc.set(officialArDenominationKey, PersistentDataType.INTEGER, denomination);
+        pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, OFFICIAL_AR_SIGNATURE_VERSION);
+        pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArSignature(serial, arMaterial, denomination));
         stack.setItemMeta(meta);
+        if (registerAsset) {
+            registerArAssetAsync(serial, denomination, arMaterial);
+        }
         return stack;
     }
 
@@ -2252,14 +2787,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return first(stack.getItemMeta().getPersistentDataContainer().get(officialArSerialKey, PersistentDataType.STRING), "");
     }
 
-    private String officialArSignature(String serial, Material material) {
-        if (serial == null || serial.isBlank() || material == null || officialArSigningSecret == null) {
+    private String officialArSignature(String serial, Material material, int denomination) {
+        if (serial == null || serial.isBlank() || material == null || denomination <= 0 || officialArSigningSecret == null) {
             return "";
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(officialArSigningSecret, "HmacSHA256"));
-            byte[] digest = mac.doFinal((serial + "|" + material.name() + "|certified").getBytes(StandardCharsets.UTF_8));
+            byte[] digest = mac.doFinal((serial + "|" + material.name() + "|" + denomination + "|certified|v2").getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte value : digest) {
                 hex.append(String.format(Locale.ROOT, "%02x", value));
@@ -2278,12 +2813,35 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         PersistentDataContainer pdc = stack.getItemMeta().getPersistentDataContainer();
         String serial = first(pdc.get(officialArSerialKey, PersistentDataType.STRING), "");
         String signature = first(pdc.get(officialArSignatureKey, PersistentDataType.STRING), "");
-        if (serial.isBlank() || signature.isBlank()) {
+        Integer denomination = pdc.get(officialArDenominationKey, PersistentDataType.INTEGER);
+        Integer signatureVersion = pdc.get(officialArSignatureVersionKey, PersistentDataType.INTEGER);
+        if (serial.isBlank() || signature.isBlank() || denomination == null || denomination != stack.getAmount()
+                || signatureVersion == null || signatureVersion != OFFICIAL_AR_SIGNATURE_VERSION) {
             return false;
         }
-        String expected = officialArSignature(serial, stack.getType());
+        try {
+            UUID.fromString(serial);
+        } catch (IllegalArgumentException invalidSerial) {
+            return false;
+        }
+        String expected = officialArSignature(serial, stack.getType(), denomination);
         return !expected.isBlank() && MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    /**
+     * Record issuance without making the Bukkit thread wait for PostgreSQL.
+     * The registry is still authoritative at deposit time: a valid signed
+     * stack is inserted only inside the same transaction that consumes it,
+     * and the serial is then atomically moved from ACTIVE to DEPOSITED.
+     */
+    private void registerArAssetAsync(String serial, int denomination, Material material) {
+        if (serial == null || serial.isBlank() || denomination <= 0 || material == null) {
+            return;
+        }
+        dbAsync("register official AR asset", () -> update(
+                "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(serial) DO NOTHING",
+                serial, denomination, material.name(), OFFICIAL_AR_SIGNATURE_VERSION, "ACTIVE", now(), now()));
     }
 
     private List<ItemStack> snapshotOfficialArStacks(Inventory inventory) {
@@ -2472,13 +3030,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private ItemStack normalizeOfficialArStack(ItemStack source, String reason) {
-        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason);
+        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason, false);
         String serial = officialArSerial(source);
         if (!serial.isBlank() && normalized.hasItemMeta()) {
             ItemMeta meta = normalized.getItemMeta();
             PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            Integer denomination = source.getItemMeta().getPersistentDataContainer()
+                    .get(officialArDenominationKey, PersistentDataType.INTEGER);
+            Integer signatureVersion = source.getItemMeta().getPersistentDataContainer()
+                    .get(officialArSignatureVersionKey, PersistentDataType.INTEGER);
             pdc.set(officialArSerialKey, PersistentDataType.STRING, serial);
-            pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArSignature(serial, normalized.getType()));
+            if (denomination != null) {
+                pdc.set(officialArDenominationKey, PersistentDataType.INTEGER, denomination);
+            }
+            if (signatureVersion != null) {
+                pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, signatureVersion);
+            }
+            pdc.set(officialArSignatureKey, PersistentDataType.STRING,
+                    first(source.getItemMeta().getPersistentDataContainer()
+                            .get(officialArSignatureKey, PersistentDataType.STRING), ""));
             normalized.setItemMeta(meta);
         }
         return normalized;
@@ -2552,21 +3122,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (!"certified".equalsIgnoreCase(kind)) {
             return false;
         }
-        // Existing servers may have certified serials from before signatures
-        // were introduced. Accept only a non-empty serial for one boot and let
-        // the join normalizer replace it with a signed stack; every newly
-        // issued/normalized stack must pass the HMAC check.
-        String serial = first(pdc.get(officialArSerialKey, PersistentDataType.STRING), "");
-        return !serial.isBlank() && (hasValidArSignature(stack) || isLegacyArSerial(serial));
-    }
-
-    private boolean isLegacyArSerial(String serial) {
-        try {
-            UUID.fromString(serial);
-            return true;
-        } catch (Exception ignored) {
-            return false;
-        }
+        return hasValidArSignature(stack);
     }
 
     private void spawnOrReplaceProtectedBlockVisual(Location blockLocation, String kind, String linkedId, Material baseMaterial, int customModelData, String modelId) throws Exception {
@@ -2911,15 +3467,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         long stamp = now();
         update(
-                "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at) "
-                        + "VALUES(?,?,?,?,0,?,?) "
+                "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at) "
+                        + "VALUES(?,?,?,0,?,?) "
                         + "ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at",
-                playerKey, "", pinHash, "", stamp, stamp);
+                playerKey, "", pinHash, stamp, stamp);
         update(
-                "INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by) "
-                        + "VALUES(?,?,?,0,?,?,?) "
+                "INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by) "
+                        + "VALUES(?,?,0,?,?,?) "
                         + "ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by",
-                bankAccountId(playerKey), pinHash, "", stamp, stamp, "economy-core-pin-sync");
+                bankAccountId(playerKey), pinHash, stamp, stamp, "economy-core-pin-sync");
     }
 
     private void recordFailedPinAttempt(Player player, String source) {
@@ -2987,12 +3543,82 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return ok;
     }
 
+    private record PinVerification(boolean valid, String code, String message) {
+        static PinVerification ok() {
+            return new PinVerification(true, "OK", "");
+        }
+
+        static PinVerification failed(String code, String message) {
+            return new PinVerification(false, code, message);
+        }
+    }
+
+    /**
+     * Verify an account PIN, update lockout state, and keep the row lock until
+     * the caller's balance mutation commits.  The old implementation checked
+     * the PIN in a separate connection and recorded failures asynchronously,
+     * which allowed concurrent attempts to race the lockout boundary.
+     */
+    private PinVerification verifyAccountPinForMutation(Connection connection, String accountId,
+                                                        String pin, String source) throws Exception {
+        String normalizedAccountId = first(accountId, "");
+        if (!pinMatchesPolicy(pin)) {
+            return PinVerification.failed("PIN_INVALID", "Неверный PIN казны.");
+        }
+        long nowSeconds = nowSec();
+        Map<String, Object> lock = queryOne(connection,
+                "SELECT locked_until FROM account_lockouts WHERE account_id=? FOR UPDATE",
+                accountPinLockoutKey(normalizedAccountId));
+        if (lock != null && longValue(lock.get("locked_until")) > nowSeconds) {
+            return PinVerification.failed("PIN_LOCKED", "PIN казны временно заблокирован.");
+        }
+        Map<String, Object> row = queryOne(connection,
+                "SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=? FOR UPDATE",
+                normalizedAccountId);
+        if (row == null || first(string(row.get("pin_hash")), "").isBlank()) {
+            return PinVerification.failed("PIN_REQUIRED", "Для казны PIN ещё не задан.");
+        }
+        if (longValue(row.get("must_change")) > 0L) {
+            return PinVerification.failed("PIN_CHANGE_REQUIRED", "PIN казны нужно обновить на сайте.");
+        }
+        boolean valid;
+        try {
+            valid = verifyPinHash(string(row.get("pin_hash")), pin.trim());
+        } catch (Exception malformedHash) {
+            getLogger().warning("Treasury PIN hash rejected: " + safeError(malformedHash));
+            valid = false;
+        }
+        if (valid) {
+            update(connection, "DELETE FROM account_lockouts WHERE account_id=?",
+                    accountPinLockoutKey(normalizedAccountId));
+            return PinVerification.ok();
+        }
+        update(connection,
+                "INSERT INTO failed_pin_attempts(minecraft_uuid,site_account_id,attempted_at,source) VALUES(?,?,?,?)",
+                "", normalizedAccountId, nowSeconds, first(source, "economy-account-pin"));
+        long attempts = scalarLong(connection,
+                "SELECT COUNT(*) FROM failed_pin_attempts WHERE site_account_id=? AND attempted_at>=?",
+                normalizedAccountId, nowSeconds - PIN_ATTEMPT_WINDOW_SECONDS);
+        if (attempts >= PIN_MAX_ATTEMPTS) {
+            long lockedUntil = nowSeconds + PIN_LOCK_SECONDS;
+            update(connection,
+                    "INSERT INTO account_lockouts(account_id,locked_until,reason,updated_at) VALUES(?,?,?,?) "
+                            + "ON CONFLICT(account_id) DO UPDATE SET locked_until=GREATEST(account_lockouts.locked_until,excluded.locked_until),reason=excluded.reason,updated_at=excluded.updated_at",
+                    accountPinLockoutKey(normalizedAccountId), lockedUntil, "bank-account-pin", nowSeconds);
+        }
+        return PinVerification.failed("PIN_INVALID", "Неверный PIN казны.");
+    }
+
     private long now() {
         return System.currentTimeMillis();
     }
 
     private long nowSec() {
         return Math.max(1L, now() / 1000L);
+    }
+
+    private boolean pinMatchesPolicy(String pin) {
+        return pin != null && pin.matches("\\d{4,8}");
     }
 
     private String bankAccountId(String uuid) {
@@ -3027,6 +3653,33 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         // a blocking president_terms lookup here; the bounded async refresh
         // below makes the role decision available without freezing clicks.
         return treasuryAccessCache.getOrDefault(player.getUniqueId(), false);
+    }
+
+    /** Preserve an explicitly requested treasury scope; never silently fall
+     * back to a personal account after the president/admin role is revoked. */
+    private String requestedAccountScope(Player player, String requestedScope) {
+        if (!"TREASURY".equalsIgnoreCase(first(requestedScope, "PERSONAL"))) {
+            return "PERSONAL";
+        }
+        if (!hasTreasuryAccess(player)) {
+            if (player != null && player.isOnline()) {
+                player.sendMessage(color("&cДоступ к казне отозван. Операция отменена."));
+            }
+            return "";
+        }
+        return "TREASURY";
+    }
+
+    private boolean treasuryMutationAllowed(Connection connection, Player actor) throws Exception {
+        if (actor == null) {
+            return false;
+        }
+        if (hasEconomyAdmin(actor)) {
+            return true;
+        }
+        return scalarLong(connection,
+                "SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'",
+                actor.getUniqueId().toString()) > 0L;
     }
 
     private void refreshTreasuryAccessAsync() {
@@ -3331,20 +3984,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return new TxnResult(false, "PIN_REQUIRED", "PIN is required.", 0L, "");
             }
             String accountId = treasuryAccountId();
-            if (accountPinLockedSeconds(accountId) > 0L) {
-                return new TxnResult(false, "PIN_LOCKED", "PIN казны временно заблокирован.", 0L, "");
-            }
-            if (!accountPinSet(accountId)) {
-                return new TxnResult(false, "PIN_REQUIRED", "Для казны PIN ещё не задан.", 0L, "");
-            }
-            if (accountPinMustChange(accountId)) {
-                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN казны нужно обновить на сайте.", 0L, "");
-            }
-            if (!verifyAccountPinHash(accountId, pin)) {
-                recordFailedAccountPinAttempt(accountId, "economy-treasury-withdraw");
-                return new TxnResult(false, "PIN_INVALID", "Неверный PIN казны.", 0L, "");
-            }
             return tx(connection -> {
+                if (!treasuryMutationAllowed(connection, actor)) {
+                    return new TxnResult(false, "ACCESS_REVOKED", "Доступ к казне отозван.", 0L, "");
+                }
+                PinVerification pinVerification = verifyAccountPinForMutation(
+                        connection, accountId, pin, "economy-treasury-withdraw");
+                if (!pinVerification.valid()) {
+                    return new TxnResult(false, pinVerification.code(), pinVerification.message(), 0L, "");
+                }
                 ensureTreasuryAccount(connection);
                 String txKey = first(idempotencyKey, "treasury-charge-" + UUID.randomUUID());
                 // The ledger row records the president/admin actor UUID.  Use
@@ -3365,6 +4013,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, accountId);
                 update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                         txId, accountId, first(action, "TREASURY_DEBIT"), actor.getUniqueId().toString(), "DEBIT", amount, after, txKey, "COMMITTED", t, actor.getName(), first(details, ""));
+                createWithdrawalDeliveryRow(connection, actor.getUniqueId(), actor.getName(), amount, txId, action, details);
                 return new TxnResult(true, "OK", "Операция по казне подтверждена.", after, txId);
             });
         });
@@ -3381,20 +4030,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return new TxnResult(false, "PIN_REQUIRED", "PIN is required.", 0L, "");
             }
             String accountId = treasuryAccountId();
-            if (accountPinLockedSeconds(accountId) > 0L) {
-                return new TxnResult(false, "PIN_LOCKED", "PIN казны временно заблокирован.", 0L, "");
-            }
-            if (!accountPinSet(accountId)) {
-                return new TxnResult(false, "PIN_REQUIRED", "Для казны PIN ещё не задан.", 0L, "");
-            }
-            if (accountPinMustChange(accountId)) {
-                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "PIN казны нужно обновить на сайте.", 0L, "");
-            }
-            if (!verifyAccountPinHash(accountId, pin)) {
-                recordFailedAccountPinAttempt(accountId, "economy-treasury-transfer");
-                return new TxnResult(false, "PIN_INVALID", "Неверный PIN казны.", 0L, "");
-            }
             return tx(connection -> {
+                if (!treasuryMutationAllowed(connection, actor)) {
+                    return new TxnResult(false, "ACCESS_REVOKED", "Доступ к казне отозван.", 0L, "");
+                }
+                PinVerification pinVerification = verifyAccountPinForMutation(
+                        connection, accountId, pin, "economy-treasury-transfer");
+                if (!pinVerification.valid()) {
+                    return new TxnResult(false, pinVerification.code(), pinVerification.message(), 0L, "");
+                }
                 Map<String, Object> fromAccount = ensureTreasuryAccount(connection);
                 Map<String, Object> toAccount = ensureBankAccount(connection, targetUuid.toString(), first(targetName, ""));
                 String fromId = string(fromAccount.get("account_id"));
@@ -3568,14 +4212,30 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return false;
     }
 
+    private void dropLegacyPinSecretColumn(Connection connection, String table) throws Exception {
+        DatabaseMetaData metadata = connection.getMetaData();
+        boolean present = false;
+        try (ResultSet columns = metadata.getColumns(null, null, table, "pin_sealed")) {
+            present = columns.next();
+        }
+        if (present) {
+            update(connection, "ALTER TABLE " + table + " DROP COLUMN pin_sealed");
+        }
+    }
+
     private void ensureSchema() throws Exception {
         int archivedDuplicateAtms = tx(connection -> {
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_accounts(account_id TEXT PRIMARY KEY,owner_uuid TEXT NOT NULL,owner_name TEXT NOT NULL DEFAULT '',account_type TEXT NOT NULL DEFAULT 'PLAYER',currency TEXT NOT NULL DEFAULT 'AR',balance BIGINT NOT NULL DEFAULT 0 CHECK(balance>=0),status TEXT NOT NULL DEFAULT 'ACTIVE',version BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_ledger(tx_id TEXT PRIMARY KEY,account_id TEXT NOT NULL,counterparty_account_id TEXT NOT NULL DEFAULT '',player_uuid TEXT NOT NULL DEFAULT '',tx_type TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>=0),balance_after BIGINT NOT NULL DEFAULT 0,idempotency_key TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'COMMITTED',created_at BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_bank_transfers(tx_id TEXT PRIMARY KEY,from_account_id TEXT NOT NULL,to_account_id TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>0),currency TEXT NOT NULL DEFAULT 'AR',status TEXT NOT NULL DEFAULT 'COMMITTED',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS bank_pin_hashes(minecraft_uuid TEXT PRIMARY KEY,site_account_id TEXT NOT NULL DEFAULT '',pin_hash TEXT NOT NULL,must_change INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
-            update(connection, "CREATE TABLE IF NOT EXISTS bank_account_pins(account_id TEXT PRIMARY KEY,pin_hash TEXT NOT NULL,pin_sealed TEXT NOT NULL DEFAULT '',must_change INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,updated_by TEXT NOT NULL DEFAULT '')");
-            update(connection, "CREATE TABLE IF NOT EXISTS ar_atms(id TEXT PRIMARY KEY,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,name TEXT NOT NULL DEFAULT 'Банкомат',active INTEGER NOT NULL DEFAULT 1,created_by TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,archived_by TEXT NOT NULL DEFAULT '',archived_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS bank_account_pins(account_id TEXT PRIMARY KEY,pin_hash TEXT NOT NULL,must_change INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,updated_by TEXT NOT NULL DEFAULT '')");
+            dropLegacyPinSecretColumn(connection, "bank_pin_hashes");
+            dropLegacyPinSecretColumn(connection, "bank_account_pins");
+            update(connection, "CREATE TABLE IF NOT EXISTS ar_atms(id TEXT PRIMARY KEY,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,expected_material TEXT NOT NULL DEFAULT '',expected_model_id TEXT NOT NULL DEFAULT 'atm_terminal',expected_custom_model_data INTEGER NOT NULL DEFAULT 12002,name TEXT NOT NULL DEFAULT 'Банкомат',active INTEGER NOT NULL DEFAULT 1,created_by TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,archived_by TEXT NOT NULL DEFAULT '',archived_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS expected_material TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS expected_model_id TEXT NOT NULL DEFAULT 'atm_terminal'");
+            update(connection, "ALTER TABLE ar_atms ADD COLUMN IF NOT EXISTS expected_custom_model_data INTEGER NOT NULL DEFAULT 12002");
             update(connection, "CREATE TABLE IF NOT EXISTS account_lockouts(account_id TEXT PRIMARY KEY,locked_until BIGINT NOT NULL DEFAULT 0,reason TEXT NOT NULL DEFAULT '',updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS failed_pin_attempts(id BIGSERIAL PRIMARY KEY,minecraft_uuid TEXT NOT NULL,site_account_id TEXT NOT NULL DEFAULT '',attempted_at BIGINT NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT '')");
             update(connection, "CREATE TABLE IF NOT EXISTS atm_events(id BIGSERIAL PRIMARY KEY,atm_id TEXT NOT NULL,player_uuid TEXT NOT NULL DEFAULT '',player_name TEXT NOT NULL DEFAULT '',event_type TEXT NOT NULL,amount BIGINT NOT NULL DEFAULT 0,balance_after BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '')");
@@ -3589,6 +4249,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_pending_ar_settlements(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0 CHECK(amount>0),settlement_type TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',delivery_token TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,delivered_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS delivery_token TEXT NOT NULL DEFAULT ''");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_assets(serial TEXT PRIMARY KEY,denomination INTEGER NOT NULL CHECK(denomination>0),material TEXT NOT NULL,signature_version INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'ACTIVE',issued_at BIGINT NOT NULL DEFAULT 0,deposited_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv8_ar_assets_status ON cmv8_ar_assets(status,updated_at)");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_deposit_intents(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',account_id TEXT NOT NULL,account_scope TEXT NOT NULL DEFAULT 'PERSONAL',atm_id TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL CHECK(amount>0),idempotency_key TEXT NOT NULL,snapshot TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'CREATED',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,committed_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv8_ar_deposit_intents_idempotency ON cmv8_ar_deposit_intents(idempotency_key)");
+            update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv8_ar_deposit_intents_player_status ON cmv8_ar_deposit_intents(player_uuid,status,created_at ASC)");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_block_visuals(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,entity_uuid TEXT NOT NULL DEFAULT '',base_material TEXT NOT NULL DEFAULT 'PAPER',custom_model_data INTEGER NOT NULL DEFAULT 0,model_id TEXT NOT NULL DEFAULT '',offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,yaw DOUBLE PRECISION NOT NULL DEFAULT 0,pitch DOUBLE PRECISION NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS amount_rub BIGINT NOT NULL DEFAULT 0");
@@ -4116,10 +4781,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void refreshTaxButton(Player player, MenuHolder holder, String atmId) {
-        taxStatusCache.put(player.getUniqueId(), new TaxStatusCache(TaxStatus.inactive(), System.currentTimeMillis()));
+        taxStatusCache.put(player.getUniqueId(), new TaxStatusCache(TaxStatus.unavailable(), System.currentTimeMillis()));
         TaxService service = Bukkit.getServicesManager().load(TaxService.class);
         if (service == null) {
-            renderTaxButton(holder, holder.getInventory(), TaxStatus.inactive());
+            renderTaxButton(holder, holder.getInventory(), TaxStatus.unavailable());
             return;
         }
         CompletableFuture<TaxStatus> future;
@@ -4127,19 +4792,19 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             future = service.statusAsync(player.getUniqueId());
         } catch (Exception error) {
             getLogger().warning("ATM tax status: " + safeError(error));
-            renderTaxButton(holder, holder.getInventory(), TaxStatus.inactive());
+            renderTaxButton(holder, holder.getInventory(), TaxStatus.unavailable());
             return;
         }
         if (future == null) {
-            renderTaxButton(holder, holder.getInventory(), TaxStatus.inactive());
+            renderTaxButton(holder, holder.getInventory(), TaxStatus.unavailable());
             return;
         }
-        future.exceptionally(error -> TaxStatus.inactive()).thenAccept(status -> Bukkit.getScheduler().runTask(this, () -> {
+        future.exceptionally(error -> TaxStatus.unavailable()).thenAccept(status -> Bukkit.getScheduler().runTask(this, () -> {
             if (!player.isOnline() || player.getOpenInventory().getTopInventory() != holder.getInventory()) {
                 return;
             }
-            taxStatusCache.put(player.getUniqueId(), new TaxStatusCache(status == null ? TaxStatus.inactive() : status, System.currentTimeMillis()));
-            renderTaxButton(holder, holder.getInventory(), status == null ? TaxStatus.inactive() : status);
+            taxStatusCache.put(player.getUniqueId(), new TaxStatusCache(status == null ? TaxStatus.unavailable() : status, System.currentTimeMillis()));
+            renderTaxButton(holder, holder.getInventory(), status == null ? TaxStatus.unavailable() : status);
         }));
     }
 
@@ -4150,7 +4815,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         holder.actions.remove(20);
         holder.rightActions.remove(20);
         TaxStatus value = status == null ? TaxStatus.inactive() : status;
-        if (!value.active()) {
+        if (!value.available()) {
+            button(holder, inventory, 20, Material.ORANGE_WOOL, "&6Налог временно недоступен", List.of("&7Не удалось получить состояние налога."), "");
+        } else if (!value.active()) {
             button(holder, inventory, 20, Material.GRAY_WOOL, "&7Налог не назначен", List.of("&7Президент пока не установил налог."), "");
         } else if (value.subscription()) {
             button(holder, inventory, 20, Material.YELLOW_WOOL, "&eНалог оплачен", List.of(
@@ -5549,6 +6216,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     update(connection, "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?", after, t, accountId);
                     update(connection, "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                             txId, accountId, first(actionName, ""), uuid, signedAmount < 0 ? "DEBIT" : "CREDIT", amount, after, txKey, "COMMITTED", t, first(playerName, ""), detailText);
+                    createWithdrawalDelivery(connection, playerUuid, playerName, amount, txId, actionName, detailText);
                     return new TxnResult(true, "OK", "Committed.", after, txId);
                 });
             } catch (Exception error) {
@@ -5567,6 +6235,20 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 }
                 return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
             }
+        }
+
+        private void createWithdrawalDelivery(Connection connection, UUID playerUuid, String playerName, long amount,
+                                               String transactionId, String actionName, String details) throws Exception {
+            if (playerUuid == null || amount <= 0L || transactionId == null || transactionId.isBlank()
+                    || !("ATM_WITHDRAW".equalsIgnoreCase(first(actionName, "")))) {
+                return;
+            }
+            long createdAt = now();
+            update(connection,
+                    "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                    "withdrawal-" + transactionId, playerUuid.toString(), first(playerName, ""), amount,
+                    PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY, PENDING_AR_SETTLEMENT_STATUS_DEBITED,
+                    first(details, "") + ";tx=" + transactionId, transactionId, createdAt, createdAt);
         }
 
         private TxnResult replayTransferIfCommitted(Connection connection, String txKey, String fromAccountId, String toAccountId, long amount) throws Exception {
@@ -5628,7 +6310,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (stack == null || !isOfficialAr(stack)) {
                 return stack;
             }
-            return createOfficialArStack(stack.getType(), Math.max(1, stack.getAmount()), "", "", "normalize");
+            return normalizeOfficialArStack(stack, "service-normalize");
         }
 
         @Override

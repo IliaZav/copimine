@@ -21,7 +21,7 @@ DataSource:
     # Username to connect to the MySQL database
     mySQLUsername: authme
     # Password to connect to the MySQL database
-    mySQLPassword: 'CHANGE_ME'
+    mySQLPassword: CHANGE_ME
     # Database Name, use with converters or as SQLITE database name
     mySQLDatabase: authme
     # Table of the database
@@ -203,8 +203,6 @@ settings:
         # Spawn priority; values: authme, essentials, cmi, multiverse, default
         spawnPriority: authme,essentials,cmi,multiverse,default
         # Maximum Login authorized by IP
-        # Keep a bounded number of authenticated sessions per address. Zero
-        # means unlimited and makes a stolen/weak password cheap to brute-force.
         maxLoginPerIp: 5
         # Maximum Join authorized by IP
         maxJoinPerIp: 5
@@ -244,9 +242,6 @@ settings:
         # PBKDF2DJANGO, WORDPRESS, ROYALAUTH, ARGON2, CUSTOM (for developers only). See full list at
         # https://github.com/AuthMe/AuthMeReloaded/blob/master/docs/hash_algorithms.md
         # If you use ARGON2, check that you have the argon2 c library on your system
-        # Use the managed work-factor KDF for new credentials. Existing
-        # SHA256 hashes are accepted once and transparently upgraded after a
-        # successful login via legacyHashes below.
         passwordHash: BCRYPT
         # If a password check fails, AuthMe will also try to check with the following hash methods.
         # Use this setting when you change from one hash method to another.
@@ -254,10 +249,11 @@ settings:
         # legacyHashes:
         # - 'SHA1'
         legacyHashes:
-            - 'SHA256'
+        - 'SHA256'
         # Salt length for the SALTED2MD5 MD5(MD5(password)+salt)
         doubleMD5SaltLength: 8
-        # BCRYPT cost is managed by deploy/templates/game-runtime-hardening.json.
+        # Number of rounds to use if passwordHash is set to PBKDF2. Default is 10000
+        pbkdf2Rounds: 10000
         # Prevent unsafe passwords from being used; put them in lowercase!
         # You should always set 'help' as unsafePassword due to possible conflicts.
         # unsafePasswords:

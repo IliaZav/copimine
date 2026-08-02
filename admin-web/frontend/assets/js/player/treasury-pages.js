@@ -152,7 +152,7 @@ export function createPlayerTreasuryPages(deps) {
     const taxExemptionActive = Boolean(taxProfile?.taxExemption?.active);
     const taxExemptionUntil = number(taxProfile?.taxExemption?.expiresAt || tax?.exemptUntil || 0);
     const selectedPinState = usingTreasury
-      ? (treasuryPin.visiblePin ? "Настроен" : "Не задан")
+      ? (treasuryPin.set ? "Настроен" : "Не задан")
       : bankPinState(pin);
     const currentBalance = selectedAccount.balance || bank.account?.balance || 0;
 
@@ -195,11 +195,11 @@ export function createPlayerTreasuryPages(deps) {
             "PIN",
             selectedPinState,
             usingTreasury
-              ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задай PIN для казны")
+              ? (treasuryPin.set ? "PIN хранится только как хэш" : "Задай PIN для казны")
               : (pin.locked
                 ? `Заблокирован до ${dt(pin.lockedUntil)}`
                 : (tempPin.code ? `Временный PIN до ${dt(tempPin.expiresAt)}` : "Нужен для переводов")),
-            usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : bankPinStateTone(pin)
+            usingTreasury ? (treasuryPin.set ? "good" : "warn") : bankPinStateTone(pin)
           )}
           ${metric("Minecraft", state.user.minecraftName || "—", "Привязан", "good")}
         </section>
@@ -218,9 +218,9 @@ export function createPlayerTreasuryPages(deps) {
         ${safetyRail([
           ["Счёт", usingTreasury ? "Доступен президенту и администраторам" : "Сайт, банкомат и игровые оплаты", "good"],
           ["PIN", usingTreasury
-            ? (treasuryPin.visiblePin ? `PIN казны: ${treasuryPin.visiblePin}` : "Задайте PIN казны")
+            ? (treasuryPin.set ? "PIN задан; восстановление недоступно" : "Задайте PIN казны")
             : (tempPin.code ? "Сейчас действует временный PIN" : (pin.set ? "PIN уже задан" : "Задайте PIN")),
-            usingTreasury ? (treasuryPin.visiblePin ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
+            usingTreasury ? (treasuryPin.set ? "good" : "warn") : (tempPin.code ? "warn" : (pin.set ? "good" : "warn"))],
           ["Блокировка", usingTreasury
             ? "Ограничение по ошибкам действует и для казны"
             : (pin.locked ? `PIN заблокирован до ${dt(pin.lockedUntil)}` : "После ошибок PIN временно блокируется"),
@@ -237,11 +237,10 @@ export function createPlayerTreasuryPages(deps) {
           ${panel(
             usingTreasury ? "PIN казны" : "PIN счёта",
             usingTreasury
-              ? "PIN казны виден президенту и администраторам."
+              ? "PIN казны нельзя посмотреть; его можно только проверить или заменить после проверки текущего PIN."
               : (tempPin.code ? "Сначала введи временный PIN." : "PIN нужен для переводов."),
             `
               <div class="bank-form-card">
-                ${usingTreasury ? `<div class="notice full">Текущий PIN казны: <strong>${esc(treasuryPin.visiblePin || "не задан")}</strong></div>` : ""}
                 <div class="bank-form-grid">
                   <label class="field-stack">
                     <span>Текущий PIN</span>

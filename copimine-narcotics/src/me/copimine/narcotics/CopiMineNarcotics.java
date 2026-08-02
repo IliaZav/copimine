@@ -110,7 +110,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         configService.reload();
         database = new NarcoticsDatabase(this, configService);
         database.start();
-        itemFactory = new NarcoticItemFactory(this, configService);
+        itemFactory = new NarcoticItemFactory(this, configService, database);
         pendingRefundKey = new NamespacedKey(this, "pending_refund_id");
         pendingOutputKey = new NamespacedKey(this, "pending_brewing_output_id");
         recipeService = new NarcoticsRecipeService(configService, itemFactory);
@@ -242,7 +242,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             if (reservedInstanceId == null || reservedInstanceId.isBlank()) {
                 consumeInFlight.remove(player.getUniqueId());
                 consumeCooldownUntil.remove(player.getUniqueId());
-                player.sendMessage(ChatColor.RED + "Narcotic instance metadata is missing; obtain a new item.");
+                player.sendMessage(ChatColor.RED + "У предмета отсутствует служебная метка экземпляра. Получите новый предмет.");
                 return;
             }
             String reservedNarcoticId = official.id();
@@ -270,11 +270,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                     consumeInFlight.remove(current.getUniqueId());
                     return;
                 }
-                consumeReservations.remove(player.getUniqueId(), reservedInstanceId);
-                consumeReservationNarcotics.remove(player.getUniqueId(), reservedNarcoticId);
-                consumeReservationQuantities.remove(player.getUniqueId(), reservedQuantity);
-                consumeInFlight.remove(player.getUniqueId());
-                consumeCooldownUntil.remove(player.getUniqueId());
                 getLogger().log(java.util.logging.Level.WARNING, "Failed to persist narcotic consumption for " + player.getUniqueId(), error);
                 // Resolve the durable marker before allowing the item to be
                 // used again. A failed future can be an acknowledgement loss
@@ -282,7 +277,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 // for STATE_COMMITTED rows, while RESERVED rows are released
                 // without creating a refund or duplicate.
                 Bukkit.getScheduler().runTaskLater(this, () -> recoverDurableConsumptions(player), 2L);
-                player.sendMessage(ChatColor.RED + "Не удалось сохранить использование; предмет не списан.");
+                player.sendMessage(ChatColor.YELLOW + "Результат операции проверяется. Предмет временно заблокирован.");
             }));
             return;
         }
@@ -767,7 +762,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                         NarcoticDefinition definition = row.narcoticId() == null
                                 ? null
                                 : configService.items().get(row.narcoticId().toLowerCase(Locale.ROOT));
-                        if (definition == null || row.amount() <= 0 || row.amount() > 64) {
+                        if (definition == null || row.amount() != 1) {
                             // A removed recipe must not turn an arbitrary row
                             // into a different item.  It is safe to close the
                             // malformed output because no physical item was
@@ -1157,15 +1152,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         String rawId = args[2].toLowerCase(Locale.ROOT);
         if ("all".equals(rawId)) {
-            int dropped = 0;
+            int queued = 0;
             for (NarcoticDefinition definition : configService.items().values()) {
-                dropped += deliverOfficialItem(target, definition);
+                queued += deliverOfficialItem(target, definition);
             }
             sender.sendMessage(message("all_given", target.getName()));
-            if (dropped > 0) {
-                sender.sendMessage(ChatColor.YELLOW + "Часть предметов была выброшена рядом с игроком: " + dropped);
+            if (queued > 0) {
+                sender.sendMessage(ChatColor.YELLOW + "Часть предметов поставлена в безопасную очередь выдачи: " + queued);
             }
-            database.auditAsync(sender.getName(), "give_all", "target=" + target.getName() + ",dropped=" + dropped);
+            database.auditAsync(sender.getName(), "give_all", "target=" + target.getName() + ",queued=" + queued);
             return true;
         }
         NarcoticDefinition definition = configService.items().get(rawId);
@@ -1173,12 +1168,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(message("unknown_item"));
             return true;
         }
-        int dropped = deliverOfficialItem(target, definition);
+        int queued = deliverOfficialItem(target, definition);
         sender.sendMessage(message("item_given", definition.plainDisplayName(), target.getName()));
-        if (dropped > 0) {
-            sender.sendMessage(ChatColor.YELLOW + "Предмет не влез в инвентарь и был выброшен рядом с игроком.");
+        if (queued > 0) {
+            sender.sendMessage(ChatColor.YELLOW + "Предмет не влез в инвентарь и поставлен в безопасную очередь выдачи.");
         }
-        database.auditAsync(sender.getName(), "give", "target=" + target.getName() + ",item=" + definition.id() + ",dropped=" + dropped);
+        database.auditAsync(sender.getName(), "give", "target=" + target.getName() + ",item=" + definition.id() + ",queued=" + queued);
         return true;
     }
 
@@ -1931,11 +1926,19 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (leftovers.isEmpty()) {
             return 0;
         }
-        for (ItemStack leftover : leftovers.values()) {
-            target.getWorld().dropItemNaturally(target.getLocation(), leftover);
-        }
+        int dropped=leftovers.values().stream().mapToInt(ItemStack::getAmount).sum();
+        // Never call dropItemNaturally for an administrator delivery: a world
+        // drop can be stolen or disappear.  Queue the exact item in the
+        // durable mailbox instead and report the retained quantity.
+        database.queuePendingBrewingOutput(target.getUniqueId(), definition.id(), 1)
+                .exceptionally(error -> {
+                    getLogger().log(java.util.logging.Level.SEVERE,
+                            "Unable to queue narcotic admin delivery for " + target.getUniqueId()
+                                    + " dropped=" + dropped, error);
+                    return null;
+                });
         target.updateInventory();
-        return leftovers.size();
+        return 1;
     }
 
     private Integer parseBoundedInt(CommandSender sender, String raw, String label, int min, int max, boolean allowZero) {

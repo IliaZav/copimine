@@ -297,7 +297,7 @@ export function createAdminCommercePages(deps) {
             ["Счет казны", treasury.account?.account_id || treasury.account?.accountId || "—"],
             ["Владелец казны", treasury.ownerName || "—"],
             ["Баланс казны", formatAr(treasury.account?.balance || 0)],
-            ["PIN казны", treasury.pin?.visiblePin || "не задан"],
+            ["PIN казны", treasury.pin?.set ? "Задан; хранится только как хэш" : "не задан"],
             ["Каталог donation", `${donationItems.length} предметов · версия ${donationCatalog.catalogVersion || 0}`],
             ["Последнее обновление каталога", dt(donationCatalog.updatedAt || 0)],
           ])}

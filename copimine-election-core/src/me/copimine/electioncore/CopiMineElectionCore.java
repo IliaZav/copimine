@@ -128,6 +128,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -171,7 +173,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     /** Serializes candidate toggles and the save action for one administrator. */
     private final Map<UUID, CompletableFuture<Void>> rpCandidateActionQueues = new ConcurrentHashMap<>();
     /** Debounce protected-block clicks before any database-backed menu load. */
-    private final Map<UUID, Long> protectedInteractAt = new ConcurrentHashMap<>();
+    private final Map<String, Long> protectedInteractAt = new ConcurrentHashMap<>();
     /**
      * Durable-in-process delivery queue.  The logical key is the identity of
      * the entitlement, not a list position: retries must replace/retain the
@@ -202,6 +204,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     /** Read-only president identity used by event handlers; refreshed off the Bukkit thread. */
     private final AtomicReference<PresidentCache> presidentCache = new AtomicReference<>(PresidentCache.empty());
     private final ElectionStateMachine electionStateMachine = new ElectionStateMachine();
+    /** Bounded executor for service calls that may wait on JDBC. */
+    private final ExecutorService databaseExecutor = Executors.newFixedThreadPool(4, runnable -> {
+        Thread thread = new Thread(runnable, "copimine-election-db-service");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private NamespacedKey itemTypeKey;
     /** Compatibility keys used by the former AdminPlus election runtime. */
@@ -291,6 +299,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         officialRestore.clear();
         officialRestoreInFlight.clear();
         taxPaymentInFlight.clear();
+        databaseExecutor.shutdownNow();
         databaseReady.set(false);
         if (databaseRetryTask != null) {
             databaseRetryTask.cancel();
@@ -351,6 +360,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     public void onQuit(PlayerQuitEvent event) {
         UUID playerId = event.getPlayer().getUniqueId();
         protectedInteractAt.remove(playerId);
+        protectedInteractAt.keySet().removeIf(key -> key.startsWith(playerId + "|"));
         prompts.remove(playerId);
         rpCandidateSelections.remove(playerId);
         rpCandidateSelectionCampaigns.remove(playerId);
@@ -431,10 +441,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         event.setCancelled(true);
         if (!databaseReady.get()) {
-            player.sendActionBar(color("&eElection data is loading. Please try again in a second."));
+            player.sendActionBar(color("&eДанные выборов ещё загружаются. Повторите через секунду."));
             return;
         }
-        if (!allowProtectedInteract(player)) {
+        if (!allowProtectedInteract(player, BlockKey.from(clicked.getLocation()), protectedInfo.kind())) {
             return;
         }
         if ("TAX_OFFICE".equals(protectedInfo.kind())) {
@@ -550,7 +560,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 handleMenuAction(player, action, event.getClick(), holder);
             } catch (Exception error) {
                 if (isRpWorkflowAction(action, holder)) {
-                    sendRpActionError(player, error, "&cRP election action failed.");
+                    sendRpActionError(player, error, "&cНе удалось выполнить действие выборов.");
                     getLogger().warning("menu RP action " + action + ": " + safeError(error));
                     return;
                 }
@@ -886,7 +896,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             event.setCancelled(true);
         }
         BlockKey placedKey = BlockKey.from(event.getBlockPlaced().getLocation());
-        if (protectedBlocks.contains(placedKey)) {
+        boolean adminInactiveRepair = hasElectionAdmin(event.getPlayer())
+                && inactivePollingStationLocations.contains(placedKey);
+        if (protectedBlocks.contains(placedKey) && !adminInactiveRepair) {
             // A successful admin removal archives the station before clearing
             // the block.  If the protection cache is one tick behind (or a
             // previous release left a stale entry), do not cancel the repair
@@ -906,8 +918,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         // inactive so its votes/history survive.  Re-placing a block at the
         // same coordinates is the documented repair path; restore the
         // station asynchronously instead of requiring a second GUI action.
-        if (!event.isCancelled() && hasElectionAdmin(event.getPlayer())
-                && inactivePollingStationLocations.contains(placedKey)) {
+        if (adminInactiveRepair) {
             Block placed = event.getBlockPlaced();
             Material expected = inactivePollingStationMaterials.getOrDefault(placedKey, Material.LECTERN);
             if (placed.getType() != expected) {
@@ -915,6 +926,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 event.getPlayer().sendMessage(color("&cВосстановление участка возможно только блоком: &f" + expected.name()));
                 return;
             }
+            // An external protection listener may have cancelled this
+            // placement. The remembered station repair path is explicit,
+            // administrator-only, and material-bound.
+            event.setCancelled(false);
             // Capture Bukkit state before leaving the primary thread.  The
             // worker revalidates it against the persisted value as well.
             BlockLocationRef ref = new BlockLocationRef(
@@ -4013,18 +4028,53 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private boolean isDirectVotingOpen(Map<String, Object> station) {
-        if (station == null || intValue(station.get("active")) <= 0) {
-            return false;
+        return directVotingClosedReason(station).isBlank();
+    }
+
+    /**
+     * Explain the exact state that blocks a click.  A single generic message
+     * made normal DEBATES clicks look like a broken block and hid stale
+     * active/inactive rows.  The database is still the source of truth; this
+     * method only reads it on the election worker.
+     */
+    private String directVotingClosedReason(Map<String, Object> station) {
+        if (station == null) {
+            return "Участок больше не найден.";
+        }
+        if (intValue(station.get("active")) <= 0) {
+            return "Этот блок отключён. Администратор может восстановить его повторной установкой разрешённого блока.";
         }
         try (Connection connection = openConnection()) {
             ElectionContext context = requireActiveElectionContext(connection);
-            long deadline = scalarLong(connection, "SELECT COALESCE(NULLIF(voting_deadline_at,0),NULLIF(scheduled_end_at,0),0) FROM elections WHERE id=?", context.electionId());
-            return context.stage() == ElectionStage.VOTING
-                    && (deadline <= 0L || now() <= deadline)
-                    && context.electionId().equals(string(station.get("election_id")))
-                    && scalarLong(connection, "SELECT COUNT(*) FROM election_voting_blocks WHERE election_id=? AND active=1 AND id=?", context.electionId(), string(station.get("id"))) > 0;
+            String stationElectionId = string(station.get("election_id"));
+            if (!context.electionId().equals(stationElectionId)) {
+                return "Этот участок относится к другой кампании.";
+            }
+            if (context.stage() != ElectionStage.VOTING) {
+                return switch (context.stage()) {
+                    case DEBATES -> "Голосование ещё не открыто: сейчас идут дебаты.";
+                    case PREPARATION, APPLICATIONS, REVIEW -> "Голосование ещё не открыто: кампания находится на этапе подготовки.";
+                    case PRESIDENT_TERM -> "Кампания завершена: сейчас действует президентский срок.";
+                    case FINISHED -> "Эта кампания уже завершена.";
+                    default -> "Голосование сейчас недоступно.";
+                };
+            }
+            long deadline = scalarLong(connection,
+                    "SELECT COALESCE(NULLIF(voting_deadline_at,0),NULLIF(scheduled_end_at,0),0) FROM elections WHERE id=?",
+                    context.electionId());
+            if (deadline > 0L && now() > deadline) {
+                return "Срок голосования уже закончился.";
+            }
+            String stationId = string(station.get("id"));
+            if (scalarLong(connection,
+                    "SELECT COUNT(*) FROM election_voting_blocks WHERE election_id=? AND active=1 AND id=?",
+                    context.electionId(), stationId) <= 0L) {
+                return "Этот блок отключён для текущего голосования. Администратор может восстановить его повторной установкой разрешённого блока.";
+            }
+            return "";
         } catch (Exception error) {
-            return false;
+            getLogger().warning("direct voting state read failed: " + safeError(error));
+            return "Состояние голосования временно недоступно. Повторите попытку через несколько секунд.";
         }
     }
 
@@ -4092,18 +4142,31 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         runAsync(() -> {
             try {
                 Map<String, Object> station = stationById(stationId);
-                if (station == null || !isDirectVotingOpen(station)) {
+                if (!isDirectVotingOpen(station)) {
+                    String closedReason = directVotingClosedReason(station);
                     runSync(() -> {
                         if (player.isOnline()) {
-                            player.sendMessage(color("&eГолосование на этом блоке сейчас закрыто."));
+                            player.sendMessage(color("&e" + closedReason));
                         }
                     });
                     return;
                 }
                 int round;
+                boolean alreadyVoted;
                 try (Connection connection = openConnection()) {
                     ElectionContext context = requireActiveElectionContext(connection);
                     round = context.round();
+                    alreadyVoted = scalarLong(connection,
+                            "SELECT COUNT(*) FROM vote_participation WHERE election_id=? AND round_no=? AND voter_uuid=?",
+                            context.electionId(), round, voterUuid.toString()) > 0L;
+                }
+                if (alreadyVoted) {
+                    runSync(() -> {
+                        if (player.isOnline()) {
+                            player.sendMessage(color("&eТы уже проголосовал в этом туре. Повторный голос невозможен."));
+                        }
+                    });
+                    return;
                 }
                 List<Map<String, Object>> candidates = activeCandidates(string(station.get("election_id")), round);
                 runSync(() -> {
@@ -7537,16 +7600,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    private boolean allowProtectedInteract(Player player) {
-        if (player == null) {
+    private boolean allowProtectedInteract(Player player, BlockKey target, String actionType) {
+        if (player == null || target == null) {
             return false;
         }
         long current = System.currentTimeMillis();
-        long previous = protectedInteractAt.getOrDefault(player.getUniqueId(), 0L);
+        String key = player.getUniqueId() + "|" + first(actionType, "UNKNOWN") + "|"
+                + target.world() + ":" + target.x() + ":" + target.y() + ":" + target.z();
+        long previous = protectedInteractAt.getOrDefault(key, 0L);
         if (current - previous < 400L) {
             return false;
         }
-        protectedInteractAt.put(player.getUniqueId(), current);
+        protectedInteractAt.put(key, current);
         return true;
     }
 
@@ -7746,6 +7811,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                             true,
                             true,
                             true,
+                            true,
                             longValue(exemption.get("expires_at")),
                             taxPeriodHours(tax),
                             longValue(tax.get("amount"))
@@ -7757,6 +7823,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 long until = taxWindowStart(longValue(tax.get("created_at")), period, nowMillis) + period;
                 return new CopiMineEconomyCore.TaxStatus(
                         true,
+                        true,
                         paid >= longValue(tax.get("amount")),
                         false,
                         until,
@@ -7765,13 +7832,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 );
             } catch (Exception error) {
                 getLogger().warning("ATM tax status: " + safeError(error));
-                return CopiMineEconomyCore.TaxStatus.inactive();
+                return CopiMineEconomyCore.TaxStatus.unavailable();
             }
         }
 
         @Override
         public CompletableFuture<CopiMineEconomyCore.TaxStatus> statusAsync(UUID playerUuid) {
-            return CompletableFuture.supplyAsync(() -> status(playerUuid));
+            return CompletableFuture.supplyAsync(() -> status(playerUuid), databaseExecutor);
         }
 
         @Override
@@ -8633,7 +8700,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             // Retries of the same claim remain idempotent. A new purchase,
             // however, must extend the current subscription instead of
             // charging Donation while returning the old expiration unchanged.
-            if (existingActive && artifactInstanceId.equals(string(existing.get("artifact_instance_id")))) {
+            boolean sameArtifactInstance = existing != null
+                    && artifactInstanceId.equals(string(existing.get("artifact_instance_id")));
+            if (existingActive && sameArtifactInstance && idempotencyKey.equals(string(existing.get("idempotency_key")))) {
                 Map<String, Object> payload = new LinkedHashMap<>(existing);
                 payload.put("reused", true);
                 payload.put("source", TAX_CLOCK_EXEMPTION_SOURCE);
@@ -10029,6 +10098,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_payments_tax_player ON president_tax_payments(tax_id,player_uuid,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_payment_ops_status ON president_tax_payment_ops(status,updated_at DESC)");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_exemptions_player ON president_tax_exemptions(player_uuid)");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_exemptions_idempotency ON president_tax_exemptions(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_exemptions_active ON president_tax_exemptions(status,expires_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_blocks_coords ON protected_blocks(world,x,y,z,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");

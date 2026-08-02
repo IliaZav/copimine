@@ -15,12 +15,21 @@ DECLARE
     protected_name text;
     wipe_name text;
     protected_names constant text[] := ARRAY[
-        'site_accounts', 'cm_admin_users', 'cm_admin_sessions',
-        'cm_refresh_sessions', 'minecraft_account_links',
-        'whitelist_account_links', 'whitelist_requests',
-        'auth_users_imported', 'auth_migration_state', 'auth_whitelist_sync'
+        'site_accounts', 'player_web_accounts', 'password_hashes',
+        'bank_pin_hashes', 'bank_account_pins', 'cm_admin_users',
+        'cm_admin_sessions', 'cm_refresh_sessions', 'minecraft_account_links',
+        'cmv4_account_links', 'whitelist_account_links', 'whitelist_requests',
+        'auth_users_imported', 'auth_migration_state', 'auth_whitelist_sync',
+        'site_cms_entries'
     ];
     wipe_names constant text[] := ARRAY[
+        -- Identity-adjacent request/runtime rows and audit data.  Account rows,
+        -- password/PIN hashes and whitelist rows are protected above.
+        'admin_requests', 'login_sessions', 'one_time_link_codes',
+        'temporary_pin_resets', 'failed_pin_attempts', 'account_lockouts',
+        'pin_reset_audit', 'auth_login_checks', 'auth_login_limits',
+        'security_events', 'security_ip_alerts', 'auth_effects_disable_audit',
+        'player_profile_cache', 'player_last_seen', 'player_settings',
         -- New RP elections and their protected visuals.
         'votes', 'ballots', 'round_candidates', 'candidates',
         'candidate_applications', 'cik_chair_removal_requests',
@@ -37,25 +46,45 @@ DECLARE
         'cmv7_election_curators', 'cmv7_election_settings',
         'cmv7_election_applications', 'cmv7_election_candidates',
         'cmv7_election_votes', 'cmv731_elections', 'cmv731_rounds',
-        'cmv731_candidates', 'cmv731_votes',
+        'cmv731_candidates', 'cmv731_votes', 'election_phases',
+        'election_application_reviews', 'election_candidates',
+        'election_votes', 'election_ballots', 'election_results',
+        'election_audit', 'election_stations', 'election_presidents',
+        'election_sessions', 'elections', 'round_candidates', 'rounds',
+        'candidates', 'candidate_applications', 'ballots', 'votes',
+        'cik_chairs', 'cik_seals', 'polling_stations',
+        'election_settings', 'vote_participation',
         -- AR, Donation, ATM and shop state.  Catalog rows remain so the
         -- release can repopulate the same assortment after the reset.
         'cmv4_bank_ledger', 'cmv4_bank_transfers', 'cmv4_pending_ar_settlements',
-        'cmv4_bank_accounts', 'ar_accounts', 'ar_batches', 'ar_ledger',
+        'cmv4_bank_accounts', 'cmv4_players', 'cmv4_audit_events',
+        'ar_accounts', 'ar_batches', 'ar_ledger',
         'ar_operations', 'ar_transfers', 'ar_deposits', 'ar_withdrawals',
         'ar_admin_issues', 'ar_suspicious_items', 'ar_ground_expiration_log',
-        'ar_money_supply_snapshots', 'ar_atms', 'atm_events', 'atm_sessions',
-        'atm_audit', 'donation_accounts', 'donation_balance_ledger',
+        'ar_money_supply_snapshots', 'ar_transactions', 'ar_settlements',
+        'ar_idempotency', 'ar_operations', 'ar_atms', 'atm_events',
+        'atm_sessions', 'atm_audit', 'cmv8_ar_assets',
+        'cmv8_ar_deposit_intents', 'cmv8_pending_ar_settlements',
+        'cmv8_startup_checks', 'donation_accounts', 'donation_balance_ledger',
         'donation_payment_sessions', 'donation_purchases', 'donation_item_claims',
         'artifact_shops', 'artifact_purchases', 'artifact_item_instances',
         'artifact_pending_deliveries', 'artifact_repairs',
         'artifact_purchase_limit_resets', 'artifact_revenue_payouts',
         'artifact_audit_log', 'artifact_suspicious_events',
-        'artifact_repair_events',
+        'artifact_repair_events', 'artifact_purchases_idempotency',
+        'artifact_pending_delivery_refund',
         -- Temporary player/cauldron state is gameplay data and must not leak
         -- into a clean season.  Recipe/configuration tables stay intact.
         'narcotics_brewing_states', 'narcotics_player_overdose',
-        'narcotics_player_usage_window', 'narcotics_admin_audit'
+        'narcotics_player_usage_window', 'narcotics_admin_audit',
+        'narcotics_pending_refunds', 'narcotics_pending_outputs',
+        'narcotics_consumption_reservations', 'narcotics_issued_instances',
+        -- World-bound visuals, operational journals and old plugin state.
+        'protected_blocks', 'protected_block_visuals', 'text_display_links',
+        'plugin_events', 'bridge_events', 'status_channel_snapshots',
+        'discord_notifications_log', 'discord_status_state', 'admin_actions',
+        'site_audit', 'moderation_actions', 'prank_audit', 'smoke_results',
+        'system_checks', 'repair_actions', 'cmv8_startup_checks'
     ];
 BEGIN
     FOREACH protected_name IN ARRAY protected_names LOOP

@@ -221,8 +221,8 @@ DB_WRITE_PROTECTED_TABLE_PATTERNS: tuple[tuple[str, str], ...] = (
     ("round_candidates", "кандидаты тура обновляются только election runtime"),
     ("donation_accounts", "донат-баланс меняется только через EconomyCore и безопасные admin endpoints"),
     ("donation_balance_ledger", "журнал донат-баланса является финансовым аудитом"),
-    ("donation_payment_sessions", "сессии оплаты создаются только через mock donation workflow"),
-    ("donation_purchases", "донат-покупки создаются только через mock donation workflow"),
+    ("donation_payment_sessions", "сессии оплаты создаются только через авторизованный платёжный workflow"),
+    ("donation_purchases", "донат-покупки создаются только через авторизованный платёжный workflow"),
     ("donation_item_claims", "выдача донатных предметов ведётся только через claims workflow"),
     ("cmv7_ar_", "АР-экономика защищена от ручных правок баланса, активов и транзакций"),
     ("cmv7_audit", "аудит является неизменяемым журналом"),
@@ -1340,16 +1340,28 @@ async def copimine_http_exception_handler(request: Request, exc: StarletteHTTPEx
         if fallback is not None:
             return fallback
     detail = exc.detail if isinstance(exc.detail, (dict, list, str)) else "HTTP error"
-    return JSONResponse({"detail": detail}, status_code=exc.status_code)
+    correlation_id = str(getattr(request.state, "correlation_id", "") or uuid.uuid4())
+    return JSONResponse(
+        {"detail": detail, "correlationId": correlation_id},
+        status_code=exc.status_code,
+        headers={"X-Correlation-ID": correlation_id},
+    )
 
 
 @app.exception_handler(Exception)
-async def copimine_unhandled_exception_handler(request: Request, _: Exception) -> Response:
+async def copimine_unhandled_exception_handler(request: Request, error: Exception) -> Response:
+    correlation_id = str(getattr(request.state, "correlation_id", "") or uuid.uuid4())
+    LOGGER.exception("Unhandled request error correlation_id=%s", correlation_id, exc_info=error)
     if not request.url.path.startswith("/api") and wants_frontend_html(request):
         fallback = frontend_file_response("error.html", 500)
         if fallback is not None:
+            fallback.headers["X-Correlation-ID"] = correlation_id
             return fallback
-    return JSONResponse({"detail": "Internal server error"}, status_code=500)
+    return JSONResponse(
+        {"detail": "Internal server error", "correlationId": correlation_id},
+        status_code=500,
+        headers={"X-Correlation-ID": correlation_id},
+    )
 
 
 @app.on_event("startup")
@@ -1358,6 +1370,10 @@ async def on_startup() -> None:
     _STARTUP_REPORT = run_startup_checks()
     if len(SECRET_KEY) < 32 or SECRET_KEY == "CHANGE_ME":
         raise RuntimeError("SECRET_KEY must be configured explicitly and contain at least 32 characters")
+    if STARTUP_STRICT and AUTH_STORAGE_MODE != "postgresql":
+        raise RuntimeError("Strict CopiMine startup requires PostgreSQL auth/data storage; SQLite is local development only")
+    if STARTUP_STRICT and DONATION_TOPUP_ENABLED and not YOOKASSA_SETTINGS.enabled:
+        raise RuntimeError("DONATION_TOPUP_ENABLED requires a configured real YooKassa provider in strict mode")
     if STARTUP_STRICT and not _STARTUP_REPORT.get("ok", False):
         failed = [
             f"{item.get('key')}: {item.get('summary')}"
@@ -1386,6 +1402,8 @@ async def on_shutdown() -> None:
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next: Callable[..., Any]) -> Response:
+    requested_correlation_id = str(request.headers.get("x-correlation-id") or "").strip()
+    request.state.correlation_id = requested_correlation_id if re.fullmatch(r"[A-Za-z0-9._:-]{8,96}", requested_correlation_id) else str(uuid.uuid4())
     request_path = normalized_request_path(request)
     if request_path.startswith("/api/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
         if not is_plugin_key_request(request):
@@ -1407,6 +1425,7 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
         response.headers["Expires"] = "0"
         response.headers.setdefault("Vary", "Origin, Sec-Fetch-Site")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Correlation-ID", request.state.correlation_id)
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
@@ -2107,7 +2126,6 @@ def _ensure_v4_schema(conn: Any) -> None:
             minecraft_uuid TEXT PRIMARY KEY,
             site_account_id TEXT NOT NULL DEFAULT '',
             pin_hash TEXT NOT NULL,
-            pin_sealed TEXT NOT NULL DEFAULT '',
             must_change INTEGER NOT NULL DEFAULT 0,
             created_at BIGINT NOT NULL DEFAULT 0,
             updated_at BIGINT NOT NULL DEFAULT 0
@@ -2119,7 +2137,6 @@ def _ensure_v4_schema(conn: Any) -> None:
         CREATE TABLE IF NOT EXISTS bank_account_pins(
             account_id TEXT PRIMARY KEY,
             pin_hash TEXT NOT NULL,
-            pin_sealed TEXT NOT NULL DEFAULT '',
             must_change INTEGER NOT NULL DEFAULT 0,
             created_at BIGINT NOT NULL DEFAULT 0,
             updated_at BIGINT NOT NULL DEFAULT 0,
@@ -2455,6 +2472,17 @@ def _ensure_v4_schema(conn: Any) -> None:
             created_at BIGINT NOT NULL DEFAULT 0,
             active INTEGER NOT NULL DEFAULT 1,
             last_result INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_login_limits(
+            lock_key TEXT PRIMARY KEY,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            window_started_at BIGINT NOT NULL DEFAULT 0,
+            locked_until BIGINT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0
         )
         """
     )
@@ -3074,7 +3102,6 @@ def _ensure_v4_schema(conn: Any) -> None:
         """
     )
     conn.execute("ALTER TABLE temporary_pin_resets ADD COLUMN IF NOT EXISTS delivery_blob TEXT NOT NULL DEFAULT ''")
-    conn.execute("ALTER TABLE bank_pin_hashes ADD COLUMN IF NOT EXISTS pin_sealed TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS amount_rub BIGINT NOT NULL DEFAULT 0")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS donation_units BIGINT NOT NULL DEFAULT 0")
@@ -3269,6 +3296,30 @@ def admin_plugin_db_location(path: str | Path) -> str:
     return safe_location(Path(path))
 
 
+def drop_legacy_recoverable_pin_columns(conn: Any) -> None:
+    """Remove the pre-hardening reversible PIN copies from both PIN tables.
+
+    The operation is idempotent and deliberately runs before the schema-ready
+    flag is set.  A failed drop therefore fails closed instead of allowing a
+    worker to continue while an old plaintext-recoverable column remains.
+    """
+    for table in ("bank_pin_hashes", "bank_account_pins"):
+        if auth_storage_backend() == "sqlite":
+            columns = {
+                str(row_get(row, "name", "")).lower()
+                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if "pin_sealed" in columns:
+                conn.execute(f"ALTER TABLE {table} DROP COLUMN pin_sealed")
+            continue
+        present = conn.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=%s AND column_name=%s LIMIT 1",
+            (table, "pin_sealed"),
+        ).fetchone()
+        if present:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN pin_sealed")
+
+
 def ensure_v4_schema(conn: Any) -> None:
     """Apply the v4 schema once per backend process.
 
@@ -3284,6 +3335,7 @@ def ensure_v4_schema(conn: Any) -> None:
         if V4_SCHEMA_READY:
             return
         _ensure_v4_schema(conn)
+        drop_legacy_recoverable_pin_columns(conn)
         V4_SCHEMA_READY = True
 
 
@@ -3876,6 +3928,31 @@ def login_key(request: Request, username: str) -> str:
 def register_failed_login(request: Request, username: str) -> None:
     key = login_key(request, username)
     current = now_ts()
+    try:
+        with auth_conn() as conn:
+            suffix = " FOR UPDATE" if is_pg_conn(conn) else ""
+            row = conn.execute(
+                f"SELECT failed_count,window_started_at,locked_until FROM auth_login_limits WHERE lock_key=%s{suffix}",
+                (key,),
+            ).fetchone()
+            window_started = int(row_get(row, "window_started_at", 0) or 0) if row else current
+            failed_count = int(row_get(row, "failed_count", 0) or 0) if row else 0
+            if window_started <= 0 or current - window_started >= LOGIN_LOCK_SECONDS:
+                window_started = current
+                failed_count = 0
+            failed_count += 1
+            locked_until = current + LOGIN_LOCK_SECONDS if failed_count >= LOGIN_MAX_ATTEMPTS else 0
+            conn.execute(
+                "INSERT INTO auth_login_limits(lock_key,failed_count,window_started_at,locked_until,updated_at) VALUES(%s,%s,%s,%s,%s) "
+                "ON CONFLICT(lock_key) DO UPDATE SET failed_count=excluded.failed_count,window_started_at=excluded.window_started_at,locked_until=excluded.locked_until,updated_at=excluded.updated_at",
+                (key, failed_count, window_started, locked_until, current),
+            )
+            conn.commit()
+            return
+    except Exception as error:
+        if STARTUP_STRICT:
+            raise HTTPException(status_code=503, detail="Сервис входа временно недоступен; повторите попытку позже") from error
+        LOGGER.warning("Persistent login rate limit unavailable; using process-local fallback: %s", error)
     attempts = [x for x in FAILED_LOGINS.get(key, []) if current - x < LOGIN_LOCK_SECONDS]
     attempts.append(current)
     FAILED_LOGINS[key] = attempts
@@ -3885,13 +3962,32 @@ def register_failed_login(request: Request, username: str) -> None:
 
 def clear_failed_login(request: Request, username: str) -> None:
     key = login_key(request, username)
+    try:
+        with auth_conn() as conn:
+            conn.execute("DELETE FROM auth_login_limits WHERE lock_key=%s", (key,))
+            conn.commit()
+    except Exception as error:
+        if STARTUP_STRICT:
+            raise HTTPException(status_code=503, detail="Сервис входа временно недоступен; повторите попытку позже") from error
+        LOGGER.warning("Persistent login rate-limit clear failed: %s", error)
     FAILED_LOGINS.pop(key, None)
     LOCKED_UNTIL.pop(key, None)
 
 
 def assert_not_locked(request: Request, username: str) -> None:
     key = login_key(request, username)
-    until = LOCKED_UNTIL.get(key, 0)
+    try:
+        with auth_conn() as conn:
+            row = conn.execute(
+                "SELECT locked_until FROM auth_login_limits WHERE lock_key=%s LIMIT 1",
+                (key,),
+            ).fetchone()
+            until = int(row_get(row, "locked_until", 0) or 0) if row else 0
+    except Exception as error:
+        if STARTUP_STRICT:
+            raise HTTPException(status_code=503, detail="Сервис входа временно недоступен; повторите попытку позже") from error
+        LOGGER.warning("Persistent login rate-limit read failed: %s", error)
+        until = LOCKED_UNTIL.get(key, 0)
     if until > now_ts():
         raise HTTPException(status_code=429, detail=f"Слишком много попыток входа. Повтори через {until - now_ts()} сек.")
 
@@ -4651,17 +4747,17 @@ def ensure_player_bank_account(conn: Any, minecraft_uuid: str, minecraft_name: s
     return bank
 
 
-def sync_player_account_pin(conn: Any, minecraft_uuid: str, pin_hash: str, pin_sealed: str, actor: str = "") -> None:
+def sync_player_account_pin(conn: Any, minecraft_uuid: str, pin_hash: str, actor: str = "") -> None:
     """Mirror a personal PIN into the legacy account-PIN table for old clients."""
     if not minecraft_uuid:
         return
     conn.execute(
         """
-        INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by)
-        VALUES(%s,%s,%s,0,%s,%s,%s)
-        ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,pin_sealed=excluded.pin_sealed,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by
+        INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by)
+        VALUES(%s,%s,0,%s,%s,%s)
+        ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by
         """,
-        (f"ar:{minecraft_uuid}", pin_hash, pin_sealed, now_ts(), now_ts(), actor),
+        (f"ar:{minecraft_uuid}", pin_hash, now_ts(), now_ts(), actor),
     )
 
 
@@ -4757,45 +4853,6 @@ def reveal_temporary_pin(minecraft_uuid: str, delivery_blob: str) -> str:
     return pin if re.fullmatch(r"\d{4,8}", pin or "") else ""
 
 
-def persistent_pin_secret() -> bytes:
-    return hashlib.sha256((SECRET_KEY + ":copimine-bank-pin:v1").encode("utf-8")).digest()
-
-
-def seal_persistent_pin(pin_key: str, pin: str) -> str:
-    nonce = secrets.token_bytes(16)
-    purpose = b"copimine-bank-pin:v1:" + str(pin_key or "").encode("utf-8")
-    mask = hmac.new(persistent_pin_secret(), purpose + nonce, hashlib.sha256).digest()
-    raw = pin.encode("utf-8")
-    cipher = bytes(raw[i] ^ mask[i % len(mask)] for i in range(len(raw)))
-    body = nonce + cipher
-    sig = hmac.new(persistent_pin_secret(), body + purpose, hashlib.sha256).digest()
-    return _b64(body + sig)
-
-
-def reveal_persistent_pin(pin_key: str, sealed: str) -> str:
-    if not sealed:
-        return ""
-    try:
-        raw = _unb64(sealed)
-    except Exception:
-        return ""
-    if len(raw) < 48:
-        return ""
-    nonce = raw[:16]
-    cipher = raw[16:-32]
-    sig = raw[-32:]
-    purpose = b"copimine-bank-pin:v1:" + str(pin_key or "").encode("utf-8")
-    expected = hmac.new(persistent_pin_secret(), nonce + cipher + purpose, hashlib.sha256).digest()
-    if not hmac.compare_digest(sig, expected):
-        return ""
-    mask = hmac.new(persistent_pin_secret(), purpose + nonce, hashlib.sha256).digest()
-    try:
-        pin = bytes(cipher[i] ^ mask[i % len(mask)] for i in range(len(cipher))).decode("utf-8")
-    except Exception:
-        return ""
-    return pin if re.fullmatch(r"\d{4,8}", pin or "") else ""
-
-
 def expire_temporary_pin_resets(conn: Any, minecraft_uuid: str = "") -> None:
     current = now_ts()
     if minecraft_uuid:
@@ -4848,8 +4905,13 @@ def active_temporary_pin_reset(conn: Any, site_account_id: str, minecraft_uuid: 
     }
     if reveal:
         code = reveal_temporary_pin(minecraft_uuid, str(row["delivery_blob"] or ""))
-        if code:
+        claim = conn.execute(
+            "UPDATE temporary_pin_resets SET used_at=%s,delivery_blob='' WHERE id=%s AND used_at=0",
+            (now_ts(), str(row["id"] or "")),
+        )
+        if code and int(getattr(claim, "rowcount", 0) or 0) == 1:
             result["code"] = code
+            result["consumed"] = True
     return result
 
 
@@ -4989,8 +5051,8 @@ def verify_bank_pin(conn: Any, account: dict[str, Any], pin: str) -> None:
     if fallback_row and (not row or not verify_password_hash(str(row["pin_hash"] or ""), pin)):
         now = now_ts()
         conn.execute(
-            "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at) VALUES(%s,%s,%s,%s,0,%s,%s) ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,pin_sealed=excluded.pin_sealed,must_change=0,updated_at=excluded.updated_at",
-            (minecraft_uuid, str(account.get("id") or ""), str(fallback_row["pin_hash"] or ""), seal_persistent_pin(f"personal:{minecraft_uuid}", pin), now, now),
+            "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at) VALUES(%s,%s,%s,0,%s,%s) ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at",
+            (minecraft_uuid, str(account.get("id") or ""), str(fallback_row["pin_hash"] or ""), now, now),
         )
     clear_bank_pin_lockout(conn, str(account.get("minecraft_uuid") or ""))
 
@@ -5030,14 +5092,22 @@ def verify_account_pin(conn: Any, account_id: str, pin: str) -> None:
     clear_account_pin_lockout(conn, account_id)
 
 
-def visible_personal_pin(conn: Any, minecraft_uuid: str) -> str:
-    row = conn.execute("SELECT pin_sealed FROM bank_pin_hashes WHERE minecraft_uuid=%s", (minecraft_uuid,)).fetchone()
-    return reveal_persistent_pin(f"personal:{minecraft_uuid}", str(row_get(row, "pin_sealed", "") or ""))
-
-
-def visible_account_pin(conn: Any, account_id: str) -> str:
-    row = conn.execute("SELECT pin_sealed FROM bank_account_pins WHERE account_id=%s", (account_id,)).fetchone()
-    return reveal_persistent_pin(f"account:{account_id}", str(row_get(row, "pin_sealed", "") or ""))
+def public_pin_status(payload: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Return only non-secret PIN state suitable for a public API response."""
+    if not payload:
+        return {}
+    allowed = {
+        "set",
+        "mustChange",
+        "updatedAt",
+        "lockedUntil",
+        "locked",
+        "status",
+        "temporaryPending",
+        "temporaryIssuedAt",
+        "temporaryExpiresAt",
+    }
+    return {key: payload[key] for key in allowed if key in payload}
 
 
 def resolve_bank_recipient(conn: Any, recipient: str) -> tuple[str, str]:
@@ -5131,7 +5201,7 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
             """,
             (bank["account_id"], max(1, min(limit, 200))),
         ).fetchall()
-        pin = bank_pin_status(conn, str(account.get("id") or ""), str(account.get("minecraft_uuid") or ""))
+        pin = public_pin_status(bank_pin_status(conn, str(account.get("id") or ""), str(account.get("minecraft_uuid") or "")))
         temp_reset = active_temporary_pin_reset(conn, str(account.get("id") or ""), str(account.get("minecraft_uuid") or ""), reveal=True)
         can_treasury = has_treasury_access(conn, account)
         treasury_account = {}
@@ -5153,8 +5223,6 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
             ).fetchall()]
             treasury_pin = {
                 "set": bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone()),
-                # Never return the treasury PIN in a regular player response.
-                "visiblePin": "",
                 "status": "configured",
             }
         conn.commit()
@@ -5209,18 +5277,18 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
             current = conn.execute("SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone()
             if current:
                 verify_account_pin(conn, TREASURY_ACCOUNT_ID, data.old_pin or "")
+            pin_hash = make_password_hash(new_pin)
             conn.execute(
                 """
-                INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by)
-                VALUES(%s,%s,%s,0,%s,%s,%s)
+                INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by)
+                VALUES(%s,%s,0,%s,%s,%s)
                 ON CONFLICT(account_id) DO UPDATE SET
                     pin_hash=excluded.pin_hash,
-                    pin_sealed=excluded.pin_sealed,
                     must_change=0,
                     updated_at=excluded.updated_at,
                     updated_by=excluded.updated_by
                 """,
-                (TREASURY_ACCOUNT_ID, make_password_hash(new_pin), seal_persistent_pin(f"account:{TREASURY_ACCOUNT_ID}", new_pin), now, now, account.get("username") or ""),
+                (TREASURY_ACCOUNT_ID, pin_hash, now, now, account.get("username") or ""),
             )
             clear_account_pin_lockout(conn, TREASURY_ACCOUNT_ID)
             conn.execute(
@@ -5235,24 +5303,23 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
                     record_failed_bank_pin(conn, account, "site-pin-change")
                     conn.commit()
                     raise HTTPException(status_code=403, detail="Old PIN is invalid")
+            pin_hash = make_password_hash(new_pin)
             conn.execute(
                 """
-                INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-                VALUES(%s,%s,%s,%s,0,%s,%s)
+                INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at)
+                VALUES(%s,%s,%s,0,%s,%s)
                 ON CONFLICT(minecraft_uuid) DO UPDATE SET
                     site_account_id=excluded.site_account_id,
                     pin_hash=excluded.pin_hash,
-                    pin_sealed=excluded.pin_sealed,
                     must_change=0,
                     updated_at=excluded.updated_at
                 """,
-                (account.get("minecraft_uuid") or "", account.get("id") or "", make_password_hash(new_pin), seal_persistent_pin(f"personal:{account.get('minecraft_uuid') or ''}", new_pin), now, now),
+                (account.get("minecraft_uuid") or "", account.get("id") or "", pin_hash, now, now),
             )
             sync_player_account_pin(
                 conn,
                 str(account.get("minecraft_uuid") or ""),
-                make_password_hash(new_pin),
-                seal_persistent_pin(f"personal:{account.get('minecraft_uuid') or ''}", new_pin),
+                pin_hash,
                 str(account.get("username") or ""),
             )
             conn.execute(
@@ -5298,8 +5365,7 @@ def player_site_bank_profile_sync(minecraft_uuid: str, minecraft_name: str) -> d
         ).fetchone()
         donation = dict(donation_row) if donation_row else {}
         live_balance = live_plugin_ar_balance_sync(minecraft_uuid, minecraft_name)
-        pin = bank_pin_status(conn, str(site.get("id") or ""), minecraft_uuid)
-        pin["visiblePin"] = visible_personal_pin(conn, minecraft_uuid)
+        pin = public_pin_status(bank_pin_status(conn, str(site.get("id") or ""), minecraft_uuid))
         conn.commit()
     return {
         "siteAccount": {
@@ -5432,16 +5498,15 @@ def reset_player_bank_pin_sync(player: str, actor: str) -> dict[str, Any]:
         site = dict(site_row)
         conn.execute(
             """
-            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-            VALUES(%s,%s,%s,%s,1,%s,%s)
+            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at)
+            VALUES(%s,%s,%s,1,%s,%s)
             ON CONFLICT(minecraft_uuid) DO UPDATE SET
                 site_account_id=excluded.site_account_id,
                 pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
                 must_change=1,
                 updated_at=excluded.updated_at
             """,
-            (uuid, site["id"], pin_hash, seal_persistent_pin(f"personal:{uuid}", temp_pin), now, now),
+            (uuid, site["id"], pin_hash, now, now),
         )
         clear_bank_pin_lockout(conn, uuid)
         clear_temporary_pin_resets(conn, uuid, now)
@@ -5478,59 +5543,8 @@ def reset_player_bank_pin_sync(player: str, actor: str) -> dict[str, Any]:
 
 
 def randomize_player_bank_pin_sync(player: str, actor: str) -> dict[str, Any]:
-    uuid = find_player_uuid(player) or ""
-    if not uuid:
-        raise HTTPException(status_code=404, detail="Player was not found")
-    minecraft_name = uuid_to_name().get(uuid, player)
-    new_pin = generate_temporary_pin()
-    now = donation_now_ms()
-    with auth_conn() as conn:
-        ensure_v4_schema(conn)
-        site_row = conn.execute(
-            """
-            SELECT id,username,minecraft_uuid,minecraft_name
-            FROM site_accounts
-            WHERE minecraft_uuid=%s AND enabled=1
-            ORDER BY updated_at DESC,created_at DESC
-            LIMIT 1
-            """,
-            (uuid,),
-        ).fetchone()
-        if not site_row:
-            raise HTTPException(status_code=409, detail="У игрока нет активного site account")
-        site = dict(site_row)
-        conn.execute(
-            """
-            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-            VALUES(%s,%s,%s,%s,0,%s,%s)
-            ON CONFLICT(minecraft_uuid) DO UPDATE SET
-                site_account_id=excluded.site_account_id,
-                pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
-                must_change=0,
-                updated_at=excluded.updated_at
-            """,
-            (uuid, site["id"], make_password_hash(new_pin), seal_persistent_pin(f"personal:{uuid}", new_pin), now, now),
-        )
-        clear_bank_pin_lockout(conn, uuid)
-        clear_temporary_pin_resets(conn, uuid, now)
-        conn.execute(
-            "INSERT INTO pin_reset_audit(minecraft_uuid,actor,created_at,details) VALUES(%s,%s,%s,%s)",
-            (uuid, actor, now, "randomized_permanent_pin"),
-        )
-        conn.execute(
-            "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PIN_RANDOMIZED',%s,'admin-web')",
-            (now, actor, f"minecraft_uuid={uuid}"),
-        )
-        conn.commit()
-    return {
-        "ok": True,
-        "minecraftUuid": uuid,
-        "minecraftName": minecraft_name,
-        "pin": new_pin,
-        "siteAccountId": str(site.get("id") or ""),
-        "siteUsername": str(site.get("username") or ""),
-    }
+    """Issue a one-time temporary PIN; never create a permanent admin PIN."""
+    return reset_player_bank_pin_sync(player, actor)
 
 
 def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn) -> dict[str, Any]:
@@ -5553,24 +5567,23 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
             (uuid,),
         ).fetchone()
         site = dict(site_row) if site_row else {}
+        pin_hash = make_password_hash(new_pin)
         conn.execute(
             """
-            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-            VALUES(%s,%s,%s,%s,0,%s,%s)
+            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at)
+            VALUES(%s,%s,%s,0,%s,%s)
             ON CONFLICT(minecraft_uuid) DO UPDATE SET
                 site_account_id=excluded.site_account_id,
                 pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
                 must_change=0,
                 updated_at=excluded.updated_at
             """,
-            (uuid, site.get("id") or "", make_password_hash(new_pin), seal_persistent_pin(f"personal:{uuid}", new_pin), now, now),
+            (uuid, site.get("id") or "", pin_hash, now, now),
         )
         sync_player_account_pin(
             conn,
             uuid,
-            make_password_hash(new_pin),
-            seal_persistent_pin(f"personal:{uuid}", new_pin),
+            pin_hash,
             actor,
         )
         clear_bank_pin_lockout(conn, uuid)
@@ -5584,10 +5597,10 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
             (now, actor, f"minecraft_uuid={uuid}"),
         )
         verify_row = conn.execute(
-            "SELECT pin_hash,pin_sealed,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s",
+            "SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s",
             (uuid,),
         ).fetchone()
-        if not verify_row or not verify_password_hash(str(verify_row["pin_hash"] or ""), new_pin) or not str(verify_row["pin_sealed"] or ""):
+        if not verify_row or not verify_password_hash(str(verify_row["pin_hash"] or ""), new_pin):
             conn.rollback()
             raise HTTPException(status_code=500, detail="PIN не сохранился в банковском хранилище")
         conn.commit()
@@ -5595,7 +5608,6 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
         "ok": True,
         "minecraftUuid": uuid,
         "minecraftName": minecraft_name,
-        "pin": new_pin,
         "siteAccountId": str(site.get("id") or ""),
         "siteUsername": str(site.get("username") or ""),
         "pinVerified": True,
@@ -5608,7 +5620,6 @@ def treasury_bank_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         if not has_treasury_access(conn, account):
             raise HTTPException(status_code=403, detail="Treasury account is not available")
         treasury = ensure_treasury_bank_account(conn)
-        visible_pin = visible_account_pin(conn, TREASURY_ACCOUNT_ID)
         pin_set = bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone())
         ledger = [dict(x) for x in conn.execute(
             """
@@ -5628,7 +5639,7 @@ def treasury_bank_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         "account": treasury,
         "ownerUuid": owner_uuid,
         "ownerName": owner_name,
-        "pin": {"set": pin_set, "visiblePin": visible_pin, "status": "configured"},
+        "pin": {"set": pin_set, "status": "configured"},
         "ledger": ledger,
     }
 
@@ -5637,7 +5648,6 @@ def admin_treasury_bank_profile_sync(actor: str) -> dict[str, Any]:
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         treasury = ensure_treasury_bank_account(conn)
-        visible_pin = visible_account_pin(conn, TREASURY_ACCOUNT_ID)
         pin_set = bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone())
         owner_uuid, owner_name = current_treasury_owner(conn)
         ledger = [dict(x) for x in conn.execute(
@@ -5655,7 +5665,7 @@ def admin_treasury_bank_profile_sync(actor: str) -> dict[str, Any]:
         "account": treasury,
         "ownerUuid": owner_uuid,
         "ownerName": owner_name,
-        "pin": {"set": pin_set, "visiblePin": visible_pin, "status": "configured"},
+        "pin": {"set": pin_set, "status": "configured"},
         "ledger": ledger,
         "actor": actor,
     }
@@ -5667,18 +5677,18 @@ def admin_set_treasury_pin_sync(actor: str, data: PlayerPinSetIn) -> dict[str, A
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         ensure_treasury_bank_account(conn)
+        pin_hash = make_password_hash(new_pin)
         conn.execute(
             """
-            INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by)
-            VALUES(%s,%s,%s,0,%s,%s,%s)
+            INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by)
+            VALUES(%s,%s,0,%s,%s,%s)
             ON CONFLICT(account_id) DO UPDATE SET
                 pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
                 must_change=0,
                 updated_at=excluded.updated_at,
                 updated_by=excluded.updated_by
             """,
-            (TREASURY_ACCOUNT_ID, make_password_hash(new_pin), seal_persistent_pin(f"account:{TREASURY_ACCOUNT_ID}", new_pin), now, now, actor),
+            (TREASURY_ACCOUNT_ID, pin_hash, now, now, actor),
         )
         clear_account_pin_lockout(conn, TREASURY_ACCOUNT_ID)
         conn.execute(
@@ -5686,7 +5696,7 @@ def admin_set_treasury_pin_sync(actor: str, data: PlayerPinSetIn) -> dict[str, A
             (now, actor, TREASURY_ACCOUNT_ID),
         )
         conn.commit()
-    return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "pin": new_pin}
+    return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "pinVerified": True}
 
 
 def admin_reset_treasury_sync(actor: str) -> dict[str, Any]:
@@ -12180,10 +12190,7 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
     adv = advancement_summary(uuid)
     profile_meta = player_site_bank_profile_sync(uuid, name)
     if not full_access:
-        profile_pin = dict(profile_meta.get("pin") or {})
-        profile_pin["visiblePin"] = ""
-        profile_pin["temporaryPin"] = {}
-        profile_meta["pin"] = profile_pin
+        profile_meta["pin"] = public_pin_status(profile_meta.get("pin"))
     invsum = inventory_summary(nbt) if nbt else {"arInInventory": 0, "arInEnderChest": 0}
     live_inventory = plugin_inventory_live_sync(name, 10)
     inventory_history = inventory_history_sync(name, 16)
@@ -12482,10 +12489,7 @@ async def player_profile(player: str, context: dict[str, Any] = Depends(require_
     adv = await bg(advancement_summary, uuid)
     profile_meta = await bg(player_site_bank_profile_sync, uuid, name)
     if not bool(context.get("fullAccess")):
-        profile_pin = dict(profile_meta.get("pin") or {})
-        profile_pin["visiblePin"] = ""
-        profile_pin["temporaryPin"] = {}
-        profile_meta["pin"] = profile_pin
+        profile_meta["pin"] = public_pin_status(profile_meta.get("pin"))
     invsum = inventory_summary(nbt) if nbt else {"arInInventory": 0, "arInEnderChest": 0}
     return {
         "uuid": uuid,
@@ -12641,16 +12645,30 @@ async def player_bank_pin_reset(player: str, request: Request, username: str = D
 async def player_bank_pin_randomize(player: str, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
     require_sensitive_confirm(request, "PLAYER_BANK_PIN_RANDOMIZE")
     result = await bg(randomize_player_bank_pin_sync, player, username)
-    audit_event(username, "player.bank_pin_randomize", target=player, details={"minecraftUuid": result.get("minecraftUuid")})
+    delivered = await deliver_temporary_pin_in_game(str(result.get("minecraftName") or player), str(result.get("temporaryPin") or ""))
+    audit_event(
+        username,
+        "player.bank_pin_randomize",
+        target=player,
+        details={"minecraftUuid": result.get("minecraftUuid"), "expiresAt": result.get("expiresAt"), "deliveredInGame": delivered},
+    )
     append_panel_event(
         "admin-panel",
         "player_bank_pin_randomize",
         actor=username,
         target=player,
-        metadata={"minecraftUuid": result.get("minecraftUuid")},
+        metadata={"minecraftUuid": result.get("minecraftUuid"), "expiresAt": result.get("expiresAt"), "deliveredInGame": delivered},
         tags=["player", "security", "bank"],
     )
-    return result
+    return {
+        "ok": True,
+        "minecraftUuid": result.get("minecraftUuid"),
+        "minecraftName": result.get("minecraftName"),
+        "siteAccountId": result.get("siteAccountId"),
+        "siteUsername": result.get("siteUsername"),
+        "expiresAt": result.get("expiresAt"),
+        "deliveredInGame": delivered,
+    }
 
 
 @app.post("/api/players/{player}/bank-pin/set")
@@ -15280,6 +15298,8 @@ def yookassa_http_error(error: YooKassaGatewayError) -> HTTPException:
 def create_donation_session_sync(player_uuid: str, player_name: str, amount: int, actor: str, source: str, idempotency_key: str) -> dict[str, Any]:
     if not pg_ready():
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    if STARTUP_STRICT and (not DONATION_TOPUP_ENABLED or not YOOKASSA_SETTINGS.enabled):
+        raise HTTPException(status_code=503, detail="Пополнение донат-баланса временно отключено: реальный платёжный провайдер не настроен")
     player_uuid = str(player_uuid or "").strip()
     if not player_uuid:
         raise HTTPException(status_code=409, detail="Minecraft account is not linked")

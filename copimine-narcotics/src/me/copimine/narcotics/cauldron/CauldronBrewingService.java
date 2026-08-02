@@ -257,14 +257,14 @@ public final class CauldronBrewingService {
                     }
                     cache.remove(key, current);
                     spawnQueuedParticles(block, current.ingredients().size(), true);
-                    if (stale && current.ownerUuid() != null) {
-                        queueIngredientRefunds(current.ownerUuid(), current.ingredients(), key + ":stale");
-                    } else if (configService.dropIngredientsOnBreakOrWaterLoss() && block.getWorld() != null) {
-                        for (ItemStack drop : recipeService.ingredientDrops(current.ingredients())) {
-                            block.getWorld().dropItemNaturally(dropLocation, drop);
-                        }
-                    } else if (current.ownerUuid() != null) {
-                        queueIngredientRefunds(current.ownerUuid(), current.ingredients(), key + ":break");
+                    if (current.ownerUuid() != null) {
+                        // A world drop is not a durable delivery: a restart,
+                        // hopper or another player can consume it before the
+                        // owner receives the refund. Always use the mailbox,
+                        // including when the old config requested drops.
+                        queueIngredientRefunds(current.ownerUuid(), current.ingredients(), key + (stale ? ":stale" : ":break"));
+                    } else {
+                        plugin.getLogger().severe("Brewing state " + key + " has no owner; ingredient refund requires manual review.");
                     }
                 }
             }));
@@ -353,10 +353,9 @@ public final class CauldronBrewingService {
                             // Claim it through the durable mailbox rather than
                             // dropping an untracked item in a crash window.
                             plugin.requestPendingBrewingOutputDelivery(ownerUuid);
-                        } else if (block.getWorld() != null) {
-                            block.getWorld().dropItemNaturally(
-                                    block.getLocation().add(0.5D, 1.0D, 0.5D),
-                                    itemFactory.createOfficialItem(definition, 1));
+                        } else {
+                            plugin.getLogger().severe("Completed brewing output " + definition.id()
+                                    + " has no owner; durable delivery requires manual review.");
                         }
                         if (block.getWorld() != null) {
                             particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH,
@@ -430,11 +429,8 @@ public final class CauldronBrewingService {
     private void refundFailedIngredient(Block block, BlockKey key, List<IngredientEntry> frozen,
                                         UUID ownerUuid, ItemStack consumed) {
         if (ownerUuid == null) {
-            if (consumed != null && block.getWorld() != null) {
-                ItemStack dropped = consumed.clone();
-                dropped.setAmount(Math.max(1, dropped.getAmount()));
-                block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), dropped);
-            }
+            plugin.getLogger().severe("Failed brewing persistence at " + key
+                    + " has no owner; consumed ingredient requires manual review.");
             return;
         }
         database.queuePendingRefund(ownerUuid, "INGREDIENT:" + frozen.getLast().serialize(), 1)
@@ -444,7 +440,7 @@ public final class CauldronBrewingService {
                     }
                     org.bukkit.entity.Player online = Bukkit.getPlayer(ownerUuid);
                     if (online != null && online.isOnline()) {
-                        online.sendMessage("&cBrewing was not saved. The ingredient was queued for safe return.");
+                        online.sendMessage("§cВарка не сохранена. Ингредиент поставлен в безопасную очередь возврата.");
                     }
                 }));
     }

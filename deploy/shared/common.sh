@@ -259,10 +259,11 @@ if tls_enabled == "1":
     values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
 else:
     values["AUTH_COOKIE_SECURE"] = "0"
-    if values.get("ALLOW_INSECURE_HTTP_AUTH", "").strip() in {"", "CHANGE_ME"}:
-        # No-TLS installations remain safe by default. Operators who knowingly
-        # run the panel on a trusted LAN must explicitly set this to 1.
-        values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
+    # Public HTTP never receives credentials or authenticated cookies.  The
+    # only HTTP login exception is an unproxied loopback request, enforced by
+    # the backend; do not preserve a legacy opt-in that suggests public HTTP
+    # authentication is safe.
+    values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
 if values.get("ALLOW_INSECURE_HTTP_AUTH", "") not in {"0", "1"}:
     raise SystemExit("ALLOW_INSECURE_HTTP_AUTH must be 0 or 1")
 if values.get("RESOURCE_PACK_PUBLIC_URL", "").strip() in {"", "CHANGE_ME"}:
@@ -306,7 +307,7 @@ for line in lines:
 
 tls = values.get("COPIMINE_TLS_ENABLED", "0").strip() == "1"
 updates = {
-    "ALLOW_INSECURE_HTTP_AUTH": "0" if tls else values.get("ALLOW_INSECURE_HTTP_AUTH", "0"),
+    "ALLOW_INSECURE_HTTP_AUTH": "0",
     "AUTH_COOKIE_SECURE": "1" if tls else values.get("AUTH_COOKIE_SECURE", "0"),
 }
 if updates["ALLOW_INSECURE_HTTP_AUTH"] not in {"0", "1"}:
@@ -836,6 +837,11 @@ copimine_install_system_files() {
     tr -d '\r' < "$source" | sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" > "/etc/systemd/system/$unit.service"
     chmod 0644 "/etc/systemd/system/$unit.service"
   done
+  for unit in copimine-backup.service copimine-backup.timer; do
+    source="$COPIMINE_ADMIN_DIR/deploy/$unit"
+    tr -d '\r' < "$source" > "/etc/systemd/system/$unit"
+    chmod 0644 "/etc/systemd/system/$unit"
+  done
   tr -d '\r' < "$COPIMINE_ADMIN_DIR/deploy/copimine-game-hardening.service" > /etc/systemd/system/copimine-game-hardening.service
   chmod 0644 /etc/systemd/system/copimine-game-hardening.service
   # The web panel runs as the application user.  Allow only the explicit
@@ -855,6 +861,8 @@ EOF
   # Recreate the install symlink when the unit's WantedBy target changes
   # between releases; a plain enable would retain an obsolete boot target.
   systemctl reenable copimine-game-hardening.service >/dev/null
+  systemctl enable copimine-backup.timer >/dev/null
+  systemctl restart copimine-backup.timer
 }
 
 copimine_write_runtime_metadata() {
@@ -997,6 +1005,7 @@ PY
 
 copimine_backup_snapshot() {
   local backup_name="${1:-copimine-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+  [[ "$backup_name" =~ ^[A-Za-z0-9._-]+\.tar\.gz$ ]] || copimine_fail "Unsafe backup filename: $backup_name"
   local backup_path="$COPIMINE_BACKUP_DIR/$backup_name"
   mkdir -p "$COPIMINE_BACKUP_DIR"
   chmod 700 "$COPIMINE_BACKUP_DIR"
@@ -1010,6 +1019,57 @@ copimine_backup_snapshot() {
   sha256sum "$backup_path" | awk '{print $1}' > "${backup_path}.sha256"
   chmod 600 "${backup_path}.sha256"
   printf '%s\n' "$backup_path"
+}
+
+copimine_backup_database() {
+  local backup_stem="$1"
+  [[ "$backup_stem" =~ ^[A-Za-z0-9._-]+$ ]] || copimine_fail "Unsafe database backup name: $backup_stem"
+  local pg_host pg_port pg_user pg_db pg_password backup_path
+  pg_host="$(copimine_env_value POSTGRES_HOST)"
+  pg_port="$(copimine_env_value POSTGRES_PORT)"
+  pg_user="$(copimine_env_value POSTGRES_USER)"
+  pg_db="$(copimine_env_value POSTGRES_DB)"
+  pg_password="$(copimine_env_value POSTGRES_PASSWORD)"
+  pg_host="${pg_host:-127.0.0.1}"
+  pg_port="${pg_port:-5432}"
+  [[ "$pg_user" =~ ^[A-Za-z_][A-Za-z0-9_]{0,48}$ ]] || copimine_fail "POSTGRES_USER must be a PostgreSQL identifier"
+  [[ "$pg_db" =~ ^[A-Za-z_][A-Za-z0-9_]{0,40}$ ]] || copimine_fail "POSTGRES_DB must be a PostgreSQL identifier"
+  [[ -n "$pg_password" && "$pg_password" != "CHANGE_ME" ]] || copimine_fail "POSTGRES_PASSWORD is missing in $COPIMINE_ENV_FILE"
+  backup_path="$COPIMINE_BACKUP_DIR/${backup_stem}.dump"
+  PGPASSWORD="$pg_password" pg_dump \
+    --format=custom \
+    --no-owner \
+    --no-acl \
+    --file="$backup_path" \
+    --host="$pg_host" \
+    --port="$pg_port" \
+    --username="$pg_user" \
+    "$pg_db"
+  [[ -s "$backup_path" ]] || copimine_fail "PostgreSQL backup is empty: $backup_path"
+  chmod 600 "$backup_path"
+  sha256sum "$backup_path" | awk '{print $1}' > "${backup_path}.sha256"
+  chmod 600 "${backup_path}.sha256"
+  printf '%s\n' "$backup_path"
+}
+
+copimine_prune_daily_backups() {
+  local keep="${1:-3}" archive stem suffix
+  [[ "$keep" =~ ^[0-9]+$ ]] || copimine_fail "Backup retention must be numeric: $keep"
+  local archives=()
+  while IFS= read -r archive; do
+    [[ -n "$archive" ]] && archives+=("$archive")
+  done < <(find "$COPIMINE_BACKUP_DIR" -maxdepth 1 -type f -name 'copimine-daily-*.tar.gz' -printf '%f\n' | sort -r)
+  if (( ${#archives[@]} <= keep )); then
+    return 0
+  fi
+  for archive in "${archives[@]:keep}"; do
+    stem="${archive%.tar.gz}"
+    [[ "$stem" =~ ^copimine-daily-[0-9]{8}-[0-9]{6}$ ]] || copimine_fail "Refusing to prune unexpected backup: $archive"
+    for suffix in '.tar.gz' '.tar.gz.sha256' '.dump' '.dump.sha256' '.manifest'; do
+      rm -f -- "$COPIMINE_BACKUP_DIR/${stem}${suffix}"
+    done
+    copimine_log "Pruned old daily backup: $stem"
+  done
 }
 
 copimine_wipe_worlds() {

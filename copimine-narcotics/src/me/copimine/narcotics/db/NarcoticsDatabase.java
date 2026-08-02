@@ -189,6 +189,28 @@ public final class NarcoticsDatabase {
         }
     }
 
+    /** Register a cryptographically issued physical instance before it can be consumed. */
+    public CompletableFuture<Void> registerIssuedInstance(String instanceId, String narcoticId) {
+        if (instanceId == null || instanceId.isBlank() || narcoticId == null || narcoticId.isBlank()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid narcotic issuance."));
+        }
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO narcotics_issued_instances(instance_id,narcotic_id,status,issued_at,updated_at)
+                    VALUES (?,?, 'ACTIVE', ?, ?)
+                    ON CONFLICT (instance_id) DO NOTHING
+                    """)) {
+                long now = Instant.now().getEpochSecond();
+                statement.setString(1, instanceId);
+                statement.setString(2, narcoticId);
+                statement.setLong(3, now);
+                statement.setLong(4, now);
+                statement.executeUpdate();
+            }
+            return null;
+        }));
+    }
+
     public void shutdown() {
         if (executor != null) {
             executor.shutdown();
@@ -420,6 +442,18 @@ public final class NarcoticsDatabase {
                         throw new IllegalStateException("Consumption reservation is missing or already committed.");
                     }
                 }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        UPDATE narcotics_issued_instances
+                        SET status='CONSUMED',updated_at=?
+                        WHERE instance_id=? AND narcotic_id=? AND status='ACTIVE'
+                        """)) {
+                    statement.setLong(1, now);
+                    statement.setString(2, reservationInstanceId);
+                    statement.setString(3, state.lastItemId());
+                    if (statement.executeUpdate() != 1) {
+                        throw new IllegalStateException("Issued narcotic instance is missing or already consumed.");
+                    }
+                }
             }
             return null;
         }));
@@ -510,6 +544,21 @@ public final class NarcoticsDatabase {
                 insert.setLong(7, now);
                 insert.executeUpdate();
             }
+            try (PreparedStatement verifyIssued = connection.prepareStatement("""
+                    SELECT narcotic_id,status
+                    FROM narcotics_issued_instances
+                    WHERE instance_id=?
+                    FOR UPDATE
+                    """)) {
+                verifyIssued.setString(1, instanceId);
+                try (ResultSet rs = verifyIssued.executeQuery()) {
+                    if (!rs.next()
+                            || !narcoticId.equalsIgnoreCase(rs.getString(1))
+                            || !"ACTIVE".equalsIgnoreCase(rs.getString(2))) {
+                        throw new IllegalStateException("Narcotic instance is not registered or is already consumed.");
+                    }
+                }
+            }
             try (PreparedStatement verify = connection.prepareStatement("""
                     SELECT player_uuid,narcotic_id,status,quantity_before
                     FROM narcotics_consumption_reservations
@@ -596,6 +645,7 @@ public final class NarcoticsDatabase {
                     "DELETE FROM narcotics_item_texture_migrations",
                     "DELETE FROM narcotics_pending_refunds",
                     "DELETE FROM narcotics_pending_outputs",
+                    "DELETE FROM narcotics_issued_instances",
                     "DELETE FROM narcotics_consumption_reservations"
             )) {
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -648,6 +698,33 @@ public final class NarcoticsDatabase {
             }
         });
         return persisted;
+    }
+
+    /** Queue an administrator-issued product in the same durable mailbox used
+     * by completed brews.  A full inventory must never cause an item to be
+     * dropped into the world without an owner or retry record. */
+    public CompletableFuture<Void> queuePendingBrewingOutput(UUID playerUuid, String narcoticId, int amount) {
+        if (playerUuid == null || narcoticId == null || narcoticId.isBlank() || amount != 1) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid pending narcotic output."));
+        }
+        String outputId = UUID.randomUUID().toString();
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO narcotics_pending_outputs(id,player_uuid,narcotic_id,amount,status,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?)
+                    """)) {
+                long now = Instant.now().getEpochSecond();
+                statement.setString(1, outputId);
+                statement.setString(2, playerUuid.toString());
+                statement.setString(3, narcoticId);
+                statement.setInt(4, amount);
+                statement.setString(5, "PENDING");
+                statement.setLong(6, now);
+                statement.setLong(7, now);
+                statement.executeUpdate();
+            }
+            return null;
+        }));
     }
 
     public CompletableFuture<List<PendingRefund>> reservePendingRefunds(UUID playerUuid, int limit) {
@@ -969,11 +1046,21 @@ public final class NarcoticsDatabase {
                   updated_at BIGINT NOT NULL DEFAULT 0
                 )
                 """);
+        sql.add("""
+                CREATE TABLE IF NOT EXISTS narcotics_issued_instances (
+                  instance_id TEXT PRIMARY KEY,
+                  narcotic_id TEXT NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'ACTIVE',
+                  issued_at BIGINT NOT NULL DEFAULT 0,
+                  updated_at BIGINT NOT NULL DEFAULT 0
+                )
+                """);
         sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'RESERVED'");
         sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS quantity_before INTEGER NOT NULL DEFAULT 1");
         sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
         sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_consumption_reservations_player ON narcotics_consumption_reservations(player_uuid,status,created_at)");
+        sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_issued_instances_status ON narcotics_issued_instances(status,updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_refunds_player ON narcotics_pending_refunds(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_outputs_player ON narcotics_pending_outputs(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_brewing_updated ON narcotics_brewing_states(updated_at)");

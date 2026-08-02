@@ -15,7 +15,7 @@ items:
     visual_effect_id: INVERTED_SCREEN
     lore:
       - "&7Официальный артефакт CopiMine"
-      - "&7Иногда вызывает хаотичный фирменный эффект."
+      - "&7Гарантированно вызывает хаотичный фирменный эффект."
 
   - id: smena_bez_perekura_pickaxe
     category: TOOL

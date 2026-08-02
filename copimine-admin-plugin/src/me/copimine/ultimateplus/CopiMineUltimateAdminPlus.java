@@ -694,24 +694,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if("cik_seal".equals(officialType)) return;
         if(isTemporaryApplicationBook(e.getItem())) return;
         Block clicked=e.getClickedBlock();
-        // The RP station lookup belongs to ElectionCore.  In the migrated
-        // runtime do not even touch the legacy SQLite/Postgres query from the
-        // Bukkit thread: it used to block every right-click on a protected
-        // block and occasionally surfaced the generic "bug found" screen.
+        // ElectionCore owns RP station interaction after the migration.  The
+        // old listener is kept only as an explicit compatibility fallback for
+        // installations that opt back into the legacy runtime; the normal
+        // path must return here so ElectionCore can open its current GUI.
         if(clicked!=null&&!legacyElectionRuntimeDisabled()&&isPollingStationBlock(e.getClickedBlock())){
-            // A sealed physical ballot is deposited by the station right
-            // click itself.  Keep this branch before the generic legacy GUI
-            // so a valid ballot can never fall through to a bug screen.
-            if(isBallotItem(e.getItem())&&isSealedBallot(e.getItem())){
-                e.setCancelled(true);
-                try{
-                    depositSealedBallotAtStation(p,e.getItem(),pollingStationId(e.getClickedBlock()));
-                }catch(Exception ex){
-                    warn(p,"Не удалось принять бюллетень. Подробности записаны в лог.");
-                    getLogger().warning("sealed ballot deposit: "+ex);
-                }
-                return;
-            }
             handleLegacyPollingStationInteract(p,e,e.getClickedBlock());
             return;
         }

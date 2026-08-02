@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$file = "D:\Desktop\Copimine\opt\copimine\copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java"
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
+$file = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
 $text = Get-Content $file -Raw
 
 $onInteract = [regex]::Match($text, '(?s)public void onInteract\(PlayerInteractEvent e\)\{.*?\n    \}')

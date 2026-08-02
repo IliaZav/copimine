@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$path = "D:\Desktop\Copimine\opt\copimine\admin-web\backend\main.py"
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
+$path = Join-Path $root 'admin-web\backend\main.py'
 $text = Get-Content -Raw -Encoding UTF8 $path
 
 $required = @(

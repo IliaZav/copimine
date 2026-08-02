@@ -1,8 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$workspace = Split-Path -Parent (Split-Path -Parent $root)
-$report = Join-Path $workspace "docs\COPIMINE_OPTIMIZATION_REPORT_2026-06-11.md"
+$report = Join-Path $root "docs\COPIMINE_OPTIMIZATION_REPORT_2026-06-11.md"
 $text = (Get-Content -Raw -Encoding UTF8 -LiteralPath $report) -replace "`r", ""
 $errors = New-Object System.Collections.Generic.List[string]
 

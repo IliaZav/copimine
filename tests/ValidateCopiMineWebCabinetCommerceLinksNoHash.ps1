@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$root = "D:/Desktop/Copimine/opt/copimine"
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $siteRenderJs = Join-Path $root "admin-web/frontend/assets/js/public/site-render.js"
 $donationPagesJs = Join-Path $root "admin-web/frontend/assets/js/player/donation-pages.js"
 

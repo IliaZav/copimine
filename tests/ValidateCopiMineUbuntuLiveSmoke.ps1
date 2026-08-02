@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $scriptPath = Join-Path $root "deploy\ubuntu\verify.sh"
 $readme = Join-Path $root "admin-web\README_RU.md"
-$guide = Join-Path (Split-Path -Parent (Split-Path -Parent $root)) "COPIMINE_TRANSFER_GUIDE.txt"
+$guide = Join-Path $root "COPIMINE_TRANSFER_GUIDE.txt"
 $errors = New-Object System.Collections.Generic.List[string]
 
 foreach ($path in @($scriptPath, $readme, $guide)) {

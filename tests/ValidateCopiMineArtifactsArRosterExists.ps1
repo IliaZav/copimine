@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$itemsFile = "D:\Desktop\Copimine\opt\copimine\copimine-artifacts\items.yml"
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
+$itemsFile = Join-Path $root 'copimine-artifacts\items.yml'
 $content = Get-Content -Raw $itemsFile
 
 $requiredIds = @(

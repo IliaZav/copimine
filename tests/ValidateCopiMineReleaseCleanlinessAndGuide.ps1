@@ -1,12 +1,11 @@
 ﻿$ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$workspaceRoot = Split-Path -Parent (Split-Path -Parent $root)
 $sourceRoot = Join-Path $root 'copimine-admin-plugin'
 $source = Join-Path $sourceRoot 'src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
 $pluginYml = Join-Path $sourceRoot 'plugin.yml'
 $plugins = Join-Path $root 'minecraft\server\plugins'
-$guide = Join-Path $workspaceRoot 'COPIMINE_TRANSFER_GUIDE.txt'
+$guide = Join-Path $root 'COPIMINE_TRANSFER_GUIDE.txt'
 $index = Join-Path $root 'admin-web\frontend\index.html'
 $style = Join-Path $root 'admin-web\frontend\assets\style.css'
 

@@ -1,14 +1,18 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$env:COPIMINE_REPO_ROOT = $repoRoot
 
 $script = @'
 from pathlib import Path
+import os
 import sys
 
+repo_root = Path(os.environ["COPIMINE_REPO_ROOT"])
 scan_roots = [
-    Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\backend"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\frontend"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\admin-web\docs"),
+    repo_root / "admin-web" / "backend",
+    repo_root / "admin-web" / "frontend",
+    repo_root / "admin-web" / "docs",
 ]
 extensions = {".py", ".js", ".css", ".html", ".md", ".yml", ".yaml"}
 skip_parts = {"backups", "__pycache__", ".venv"}

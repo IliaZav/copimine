@@ -1,8 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$workspace = Split-Path -Parent (Split-Path -Parent $root)
-$guide = Join-Path $workspace "COPIMINE_TRANSFER_GUIDE.txt"
+$guide = Join-Path $root "COPIMINE_TRANSFER_GUIDE.txt"
 $adminService = Join-Path $root "admin-web\deploy\copimine-admin.service"
 $botService = Join-Path $root "admin-web\deploy\copimine-discord-bot.service"
 $installScript = Join-Path $root "deploy\ubuntu\install.sh"

@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$javaFile = "D:\Desktop\Copimine\opt\copimine\copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java"
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
+$javaFile = Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'
 $content = Get-Content -Raw $javaFile
 
 $requiredEffectIds = @(

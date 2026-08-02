@@ -200,6 +200,39 @@ cleanup_legacy_artifacts() {
     echo "[cleanup] removed legacy opt backup root: $resolved"
   done
 
+  # The upload directory is a staging area, not a backup archive.  Keep the
+  # newest complete release archive for a manual rollback and remove older
+  # archives plus their exact sidecars/bootstrap files and split parts.
+  local upload_archive upload_stem keep_upload_archive keep_upload_stem
+  local -a upload_archives=()
+  while IFS= read -r upload_archive; do
+    [[ -n "$upload_archive" ]] && upload_archives+=("$upload_archive")
+  done < <(find "$upload_root" -mindepth 1 -maxdepth 1 -type f -name 'copimine-opt-full-*.tar.gz' -printf '%f\n' 2>/dev/null | sort -r)
+  keep_upload_archive="${upload_archives[0]:-}"
+  keep_upload_stem="${keep_upload_archive%.tar.gz}"
+  for upload_archive in "${upload_archives[@]:1}"; do
+    [[ "$upload_archive" =~ ^copimine-opt-full-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\.tar\.gz$ ]] || {
+      echo "[cleanup] refusing unexpected upload archive: $upload_archive" >&2
+      return 1
+    }
+    upload_stem="${upload_archive%.tar.gz}"
+    for target in "$upload_archive" "${upload_archive}.sha256" "${upload_stem}.tar.bootstrap.json"; do
+      rm -f -- "$upload_root/$target"
+    done
+    find "$upload_root" -mindepth 1 -maxdepth 1 -type f -name "${upload_stem}.part-[0-9][0-9]" -delete
+    echo "[cleanup] removed old upload release: $upload_stem"
+  done
+  if [[ -n "$keep_upload_stem" ]]; then
+    [[ "$keep_upload_archive" =~ ^copimine-opt-full-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\.tar\.gz$ ]] || {
+      echo "[cleanup] refusing unexpected newest upload archive: $keep_upload_archive" >&2
+      return 1
+    }
+    find "$upload_root" -mindepth 1 -maxdepth 1 -type f -name "${keep_upload_stem}.part-[0-9][0-9]" -delete
+    echo "[cleanup] upload release retention enforced: keep=$keep_upload_archive"
+  else
+    echo '[cleanup] upload release retention: no complete archive found'
+  fi
+
   # Every normal release replacement leaves a top-level rollback directory.
   # Retain only the three newest exact timestamped copies.  The live project
   # is /opt/copimine and can never match this allowlist.

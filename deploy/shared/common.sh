@@ -17,6 +17,8 @@ COPIMINE_BACKUP_DIR="${COPIMINE_BACKUP_DIR:-/opt/copimine-backups}"
 COPIMINE_RUNTIME_METADATA="${COPIMINE_RUNTIME_METADATA:-$COPIMINE_ROOT/deploy/runtime_metadata.json}"
 COPIMINE_RELEASE_MANIFEST="${COPIMINE_RELEASE_MANIFEST:-$COPIMINE_ROOT/deploy/release_manifest.json}"
 COPIMINE_INSTALLER_MANIFEST="${COPIMINE_INSTALLER_MANIFEST:-$COPIMINE_ROOT/deploy/installer_manifest.json}"
+COPIMINE_TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
+COPIMINE_PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-$COPIMINE_ROOT/deploy/shared/verify_payload_manifest.py}"
 COPIMINE_CLEAN_WORLD_STATE_SQL="${COPIMINE_CLEAN_WORLD_STATE_SQL:-$COPIMINE_ROOT/db/runtime/clean_world_state.sql}"
 COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-18080.conf}"
 COPIMINE_NGINX_TLS_TEMPLATE="${COPIMINE_NGINX_TLS_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-https.conf}"
@@ -1029,11 +1031,21 @@ if errors:
 PY
   local signed_manifest="$COPIMINE_ROOT/deploy/release_manifest.json"
   local signed_signature="$COPIMINE_ROOT/deploy/release_manifest.sig"
-  local signed_allowed="$COPIMINE_ROOT/deploy/release-signing.allowed"
+  # deploy/release-signing.allowed remains in the archive for compatibility,
+  # but it is not a trust anchor.  The key allowlist must be provisioned on
+  # the host out of band and be root-owned/non-writable by other users.
+  local signed_allowed="$COPIMINE_TRUSTED_SIGNING_ALLOWED"
   copimine_require_path "$signed_manifest"
   copimine_require_path "$signed_signature"
   copimine_require_path "$signed_allowed"
   command -v ssh-keygen >/dev/null 2>&1 || copimine_fail "ssh-keygen is required to verify the release manifest signature"
+  [[ -f "$signed_allowed" ]] || copimine_fail "Trusted release signing allowlist is not a regular file: $signed_allowed"
+  [[ "$(stat -c '%U' "$signed_allowed" 2>/dev/null || true)" == "root" ]] \
+    || copimine_fail "Trusted release signing allowlist must be owned by root: $signed_allowed"
+  local trusted_mode
+  trusted_mode="$(stat -c '%a' "$signed_allowed" 2>/dev/null || true)"
+  [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] || copimine_fail "Trusted release signing allowlist has invalid permissions: $signed_allowed"
+  (( (8#$trusted_mode & 8#022) == 0 )) || copimine_fail "Trusted release signing allowlist is group/world writable: $signed_allowed"
   ssh-keygen -Y verify -f "$signed_allowed" -I release -n copimine-release -s "$signed_signature" < "$signed_manifest" >/dev/null \
     || copimine_fail "Release manifest signature verification failed"
 }
@@ -1042,13 +1054,22 @@ copimine_backup_snapshot() {
   local backup_name="${1:-copimine-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
   [[ "$backup_name" =~ ^[A-Za-z0-9._-]+\.tar\.gz$ ]] || copimine_fail "Unsafe backup filename: $backup_name"
   local backup_path="$COPIMINE_BACKUP_DIR/$backup_name"
+  local root_name="$(basename "$COPIMINE_ROOT")"
   mkdir -p "$COPIMINE_BACKUP_DIR"
   chmod 700 "$COPIMINE_BACKUP_DIR"
   (
     umask 077
+    # Runtime credentials and mutable private data have dedicated recovery
+    # paths. Never place them in a cleartext project snapshot.
     tar -C /opt -czf "$backup_path" \
-      "$(basename "$COPIMINE_ROOT")" \
-      "$(basename "$COPIMINE_SECRETS_DIR")"
+      --exclude="$root_name/admin-web/.env" \
+      --exclude="$root_name/admin-web/data" \
+      --exclude="$root_name/admin-web/backups" \
+      --exclude="$root_name/minecraft/server/logs" \
+      --exclude="$root_name/minecraft/server/world" \
+      --exclude="$root_name/minecraft/server/world_*" \
+      --exclude="$root_name/minecraft/server/CopiMine*" \
+      "$root_name"
   )
   chmod 600 "$backup_path"
   sha256sum "$backup_path" | awk '{print $1}' > "${backup_path}.sha256"

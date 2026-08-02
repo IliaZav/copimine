@@ -58,6 +58,11 @@ fi
 mv "$stage_root/$(basename "$COPIMINE_ROOT")" "$COPIMINE_ROOT"
 if [[ -d "$stage_root/$(basename "$COPIMINE_SECRETS_DIR")" ]]; then
   mv "$stage_root/$(basename "$COPIMINE_SECRETS_DIR")" "$COPIMINE_SECRETS_DIR"
+elif [[ -d "$old_secrets" ]]; then
+  # Redacted project snapshots intentionally omit protected secrets. Keep the
+  # live secret store when restoring such a snapshot instead of leaving the
+  # services without their database and session keys.
+  mv "$old_secrets" "$COPIMINE_SECRETS_DIR"
 fi
 chmod 700 "$COPIMINE_SECRETS_DIR"
 copimine_start_services

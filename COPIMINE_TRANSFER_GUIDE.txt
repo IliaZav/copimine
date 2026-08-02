@@ -35,3 +35,13 @@ the percentage, while a failed or blocked required check keeps the release from
 being ready. Treat `100%` as permission to continue with the documented live
 smoke tests, not as permission to skip the backup, rollback, gameplay and
 donation-recovery checks above.
+
+## Release signing trust
+
+The Ubuntu and Windows installers verify `release_manifest.sig` against a
+host-provisioned signing allowlist, not against the copy shipped inside the
+archive. Provision the public key out of band as root at
+`/etc/copimine/release-signing.allowed` on Ubuntu or
+`%ProgramData%\CopiMine\release-signing.allowed` on Windows before accepting a
+release. The archive copy is retained only for manifest metadata and is never
+used as the trust anchor.

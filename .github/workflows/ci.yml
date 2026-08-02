@@ -111,7 +111,11 @@ jobs:
           $version = '3.9.9'
           $archive = Join-Path $env:RUNNER_TEMP "apache-maven-$version-bin.zip"
           $root = Join-Path $env:RUNNER_TEMP "apache-maven-$version"
-          Invoke-WebRequest -Uri "https://archive.apache.org/dist/maven/maven-3/$version/binaries/apache-maven-$version-bin.zip" -OutFile $archive
+          $uri = "https://archive.apache.org/dist/maven/maven-3/$version/binaries/apache-maven-$version-bin.zip"
+          $expectedSha512 = '8beac8d11ef208f1e2a8df0682b9448a9a363d2ad13ca74af43705549e72e74c9378823bf689287801cbbfc2f6ea9596201d19ccacfdfb682ee8a2ff4c4418ba'
+          Invoke-WebRequest -Uri $uri -OutFile $archive
+          $actualSha512 = (Get-FileHash -Algorithm SHA512 -LiteralPath $archive).Hash.ToLowerInvariant()
+          if ($actualSha512 -ne $expectedSha512) { throw "Maven SHA512 mismatch. Expected=$expectedSha512 Actual=$actualSha512" }
           if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
           Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP -Force
           $mavenBin = Join-Path $root 'bin'

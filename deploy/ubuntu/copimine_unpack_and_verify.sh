@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 TS="$(date +%Y%m%d-%H%M%S)"
 
@@ -8,6 +9,8 @@ PROJECT_ROOT="${PROJECT_ROOT:-/opt/copimine}"
 SECRETS_ROOT="${SECRETS_ROOT:-/opt/copimine-secrets}"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt/copimine-backups}"
 LOG_FILE="${LOG_FILE:-/var/log/copimine-unpack.log}"
+TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
+PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-$SCRIPT_DIR/verify_payload_manifest.py}"
 TMP_ROOT=""
 EXTRACT_ROOT=""
 PAYLOAD_ROOT=""
@@ -137,15 +140,20 @@ if archive.endswith((".tar.gz", ".tgz")):
         for member in bundle.getmembers():
             if not safe_name(member.name):
                 raise SystemExit(f"Unsafe archive member path: {member.name!r}")
-            if (member.issym() or member.islnk()) and not safe_name(member.linkname):
-                raise SystemExit(f"Unsafe archive link: {member.name!r}")
+            if not (member.isfile() or member.isdir()):
+                raise SystemExit(f"Archive member is not a regular file or directory: {member.name!r}")
+            if member.issym() or member.islnk():
+                raise SystemExit(f"Archive links are not allowed: {member.name!r}")
 elif archive.endswith(".zip"):
     with zipfile.ZipFile(archive) as bundle:
         for member in bundle.infolist():
             if not safe_name(member.filename):
                 raise SystemExit(f"Unsafe archive member path: {member.filename!r}")
-            if stat.S_ISLNK(member.external_attr >> 16):
-                raise SystemExit(f"Archive symlinks are not allowed: {member.filename!r}")
+            mode = (member.external_attr >> 16) & 0xFFFF
+            if mode and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise SystemExit(f"Archive member is not a regular file or directory: {member.filename!r}")
+            if stat.S_ISLNK(mode):
+                raise SystemExit(f"Archive links are not allowed: {member.filename!r}")
 else:
     raise SystemExit("Unsupported archive extension")
 PY
@@ -312,12 +320,22 @@ verify_release_signature() {
   log "[5b/16] Verify signed release manifest"
   local manifest="$PAYLOAD_ROOT/deploy/release_manifest.json"
   local signature="$PAYLOAD_ROOT/deploy/release_manifest.sig"
-  local allowed="$PAYLOAD_ROOT/deploy/release-signing.allowed"
+  local allowed="$TRUSTED_SIGNING_ALLOWED"
   require_file "$manifest"
   require_file "$signature"
   require_file "$allowed"
+  [[ -f "$allowed" ]] || die "Trusted release signing allowlist is not a regular file: $allowed"
+  [[ "$(stat -c '%U' "$allowed" 2>/dev/null || true)" == "root" ]] \
+    || die "Trusted release signing allowlist must be owned by root: $allowed"
+  local trusted_mode
+  trusted_mode="$(stat -c '%a' "$allowed" 2>/dev/null || true)"
+  [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] || die "Trusted release signing allowlist has invalid permissions: $allowed"
+  (( (8#$trusted_mode & 8#022) == 0 )) || die "Trusted release signing allowlist is group/world writable: $allowed"
   ssh-keygen -Y verify -f "$allowed" -I release -n copimine-release -s "$signature" < "$manifest" >/dev/null \
     || die "Release manifest signature verification failed."
+  require_file "$PAYLOAD_VERIFIER"
+  python3 "$PAYLOAD_VERIFIER" "$PAYLOAD_ROOT" "$manifest" \
+    || die "Signed release payload inventory verification failed."
   log "Release manifest signature verified."
 }
 

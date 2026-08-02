@@ -84,6 +84,7 @@ $deployVerify = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
 $deployUnpack = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
 $deployReplace = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
 $deployCommon = Join-Path $ProjectRoot "deploy\shared\common.sh"
+$deployPayloadVerifier = Join-Path $ProjectRoot "deploy\shared\verify_payload_manifest.py"
 $deployGameHardening = Join-Path $ProjectRoot "deploy\ubuntu\apply_game_hardening.sh"
 $gameHardeningRuntime = Join-Path $ProjectRoot "deploy\shared\harden_game_runtime.py"
 $gameHardeningPolicy = Join-Path $ProjectRoot "deploy\templates\game-runtime-hardening.json"
@@ -192,6 +193,16 @@ function Invoke-Checked {
 function Get-Sha256Lower {
     param([Parameter(Mandatory = $true)][string]$LiteralPath)
     return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
+}
+
+function Get-RelativePathCompat {
+    param([Parameter(Mandatory = $true)][string]$BasePath, [Parameter(Mandatory = $true)][string]$ChildPath)
+    $base = (Resolve-Path -LiteralPath $BasePath).Path.TrimEnd('\') + '\'
+    $child = (Resolve-Path -LiteralPath $ChildPath).Path
+    if (-not $child.StartsWith($base, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside release payload: $ChildPath"
+    }
+    return $child.Substring($base.Length).Replace('\', '/')
 }
 
 function Write-Checksums {
@@ -440,6 +451,7 @@ $sbomDescriptor = [ordered]@{
     manifestSignature = [ordered]@{
         path = "deploy/release_manifest.sig"
         allowedSigners = "deploy/release-signing.allowed"
+        trustedHostPath = "/etc/copimine/release-signing.allowed"
         namespace = "copimine-release"
         identity = "release"
         algorithm = "ssh-ed25519"
@@ -578,14 +590,6 @@ Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content $releaseManifestJ
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content $installerManifestJson
 Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json') -Content $releaseManifestJson
 Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\installer_manifest.json') -Content $installerManifestJson
-Invoke-Checked -FilePath "powershell" -Arguments @(
-    "-ExecutionPolicy", "Bypass",
-    "-File", $signReleaseScript,
-    "-ManifestPath", (Join-Path $payloadRoot 'deploy\release_manifest.json'),
-    "-SigningKeyPath", $SigningKeyPath,
-    "-SignaturePath", (Join-Path $payloadRoot 'deploy\release_manifest.sig')
-)
-Copy-Item -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.sig') -Destination $releaseSignaturePath -Force
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"
 New-Item -ItemType Directory -Force -Path $runtimeDbDir | Out-Null
@@ -605,6 +609,39 @@ if ($DbDumpPath) {
     }
     Copy-Item -LiteralPath $DbDumpPath -Destination (Join-Path $runtimeDbDir "copimine.dump") -Force
 }
+
+$payloadInventoryExcluded = @(
+    'deploy/release_manifest.json',
+    'deploy/release_manifest.sig',
+    'deploy/release-signing.allowed'
+)
+$payloadFiles = @(
+    Get-ChildItem -LiteralPath $payloadRoot -Recurse -File | ForEach-Object {
+        $relative = Get-RelativePathCompat -BasePath $payloadRoot -ChildPath $_.FullName
+        if ($payloadInventoryExcluded -notcontains $relative) {
+            [ordered]@{
+                path = $relative
+                sizeBytes = [int64]$_.Length
+                sha256 = Get-Sha256Lower -LiteralPath $_.FullName
+            }
+        }
+    }
+)
+if ($payloadFiles.Count -eq 0) {
+    throw 'Release payload inventory is empty.'
+}
+$releaseManifest.payloadFiles = $payloadFiles
+$releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 20
+Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content $releaseManifestJson
+Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json') -Content $releaseManifestJson
+Invoke-Checked -FilePath "powershell" -Arguments @(
+    "-ExecutionPolicy", "Bypass",
+    "-File", $signReleaseScript,
+    "-ManifestPath", (Join-Path $payloadRoot 'deploy\release_manifest.json'),
+    "-SigningKeyPath", $SigningKeyPath,
+    "-SignaturePath", (Join-Path $payloadRoot 'deploy\release_manifest.sig')
+)
+Copy-Item -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.sig') -Destination $releaseSignaturePath -Force
 
 Write-Host "[8/9] Create tar.gz release archive"
 $archiveName = "copimine-opt-full-$timestamp.tar.gz"
@@ -631,6 +668,7 @@ $deployVerifyCopy = Join-Path $ReleaseDir "copimine_verify.sh"
 $deployUnpackCopy = Join-Path $ReleaseDir "copimine_unpack_and_verify.sh"
 $deployReplaceCopy = Join-Path $ReleaseDir "copimine_full_replace.sh"
 $deployCommonCopy = Join-Path $ReleaseDir "copimine_common.sh"
+$deployPayloadVerifierCopy = Join-Path $ReleaseDir "verify_payload_manifest.py"
 $uploadScriptCopy = Join-Path $ReleaseDir "upload_release.ps1"
 Copy-LfShellFile -Source $deployInstall -Destination $deployInstallCopy
 Copy-LfShellFile -Source $deployInstallRelease -Destination $deployInstallReleaseCopy
@@ -639,6 +677,7 @@ Copy-LfShellFile -Source $deployVerify -Destination $deployVerifyCopy
 Copy-LfShellFile -Source $deployUnpack -Destination $deployUnpackCopy
 Copy-LfShellFile -Source $deployReplace -Destination $deployReplaceCopy
 Copy-LfShellFile -Source $deployCommon -Destination $deployCommonCopy
+Copy-Item -LiteralPath $deployPayloadVerifier -Destination $deployPayloadVerifierCopy -Force
 Copy-Item -LiteralPath $uploadScript -Destination $uploadScriptCopy -Force
 
 $archiveSha256 = Get-Sha256Lower -LiteralPath $archivePath
@@ -668,6 +707,7 @@ $bootstrapManifest = [ordered]@{
         unpackAndVerify = [System.IO.Path]::GetFileName($deployUnpackCopy)
         fullReplace = [System.IO.Path]::GetFileName($deployReplaceCopy)
         sharedCommon = [System.IO.Path]::GetFileName($deployCommonCopy)
+        payloadVerifier = [System.IO.Path]::GetFileName($deployPayloadVerifierCopy)
         uploadWindows = [System.IO.Path]::GetFileName($uploadScriptCopy)
     }
 }

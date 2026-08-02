@@ -30,6 +30,8 @@ ARCHIVE_PATH="${1:-}"
 DB_DUMP_PATH="${2:-}"
 CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
 LOG_FILE="${LOG_FILE:-/var/log/copimine-installer.log}"
+TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
+PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-$SCRIPT_DIR/verify_payload_manifest.py}"
 TMP_ROOT=""
 EXTRACT_ROOT=""
 PAYLOAD_ROOT=""
@@ -319,12 +321,22 @@ verify_release_signature() {
   log "[5b/14] Verify signed release manifest"
   local manifest="$PAYLOAD_ROOT/deploy/release_manifest.json"
   local signature="$PAYLOAD_ROOT/deploy/release_manifest.sig"
-  local allowed="$PAYLOAD_ROOT/deploy/release-signing.allowed"
+  local allowed="$TRUSTED_SIGNING_ALLOWED"
   require_file "$manifest"
   require_file "$signature"
   require_file "$allowed"
+  [[ -f "$allowed" ]] || fail "Trusted release signing allowlist is not a regular file: $allowed"
+  [[ "$(stat -c '%U' "$allowed" 2>/dev/null || true)" == "root" ]] \
+    || fail "Trusted release signing allowlist must be owned by root: $allowed"
+  local trusted_mode
+  trusted_mode="$(stat -c '%a' "$allowed" 2>/dev/null || true)"
+  [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] || fail "Trusted release signing allowlist has invalid permissions: $allowed"
+  (( (8#$trusted_mode & 8#022) == 0 )) || fail "Trusted release signing allowlist is group/world writable: $allowed"
   ssh-keygen -Y verify -f "$allowed" -I release -n copimine-release -s "$signature" < "$manifest" >/dev/null \
     || fail "Release manifest signature verification failed."
+  require_file "$PAYLOAD_VERIFIER"
+  python3 "$PAYLOAD_VERIFIER" "$PAYLOAD_ROOT" "$manifest" \
+    || fail "Signed release payload inventory verification failed."
   log "Release manifest signature verified."
 }
 

@@ -269,6 +269,58 @@ try {
         $clientSha1 = Get-Sha1 $clientJar
         $clientSha256 = Get-Sha256 $clientJar
 
+        $payloadInventoryExcluded = @('deploy/release_manifest.json', 'deploy/release_manifest.sig', 'deploy/release-signing.allowed')
+        $payloadEntries = @($releaseManifest.payloadFiles)
+        $expectedPayload = @{}
+        if ($payloadEntries.Count -eq 0) {
+            $errors.Add('release_manifest payloadFiles inventory is missing or empty.')
+        }
+        foreach ($entry in $payloadEntries) {
+            $relative = ([string]$entry.path).Replace('\', '/')
+            if (-not $relative -or $relative.StartsWith('/') -or $relative.Contains('../') -or $relative -match '^[A-Za-z]:') {
+                $errors.Add("release_manifest payloadFiles contains an unsafe path: $relative")
+                continue
+            }
+            if ($payloadInventoryExcluded -contains $relative) {
+                $errors.Add("release_manifest payloadFiles must not contain excluded file: $relative")
+                continue
+            }
+            if ($expectedPayload.ContainsKey($relative)) {
+                $errors.Add("release_manifest payloadFiles contains a duplicate path: $relative")
+                continue
+            }
+            $checksum = ([string]$entry.sha256).ToLowerInvariant()
+            if ($checksum -notmatch '^[0-9a-f]{64}$') {
+                $errors.Add("release_manifest payloadFiles has an invalid SHA256: $relative")
+                continue
+            }
+            $expectedPayload[$relative] = @{ sha256 = $checksum; sizeBytes = [int64]$entry.sizeBytes }
+        }
+        $actualPayload = @{}
+        foreach ($file in (Get-ChildItem -LiteralPath $payloadRoot -Force -Recurse -File -ErrorAction SilentlyContinue)) {
+            if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                $errors.Add("Release payload contains a reparse point: $($file.FullName)")
+                continue
+            }
+            $relative = (Get-RelativePathCompat $payloadRoot $file.FullName).Replace('\', '/')
+            if ($payloadInventoryExcluded -contains $relative) { continue }
+            $actualPayload[$relative] = $file
+        }
+        foreach ($relative in $expectedPayload.Keys) {
+            if (-not $actualPayload.ContainsKey($relative)) {
+                $errors.Add("Signed release payload file is missing: $relative")
+                continue
+            }
+            $file = $actualPayload[$relative]
+            Require-Equal ([string]$expectedPayload[$relative].sizeBytes) ([string][int64]$file.Length) "Signed payload size mismatch: $relative" $errors
+            Require-Equal $expectedPayload[$relative].sha256 (Get-Sha256 $file.FullName) "Signed payload SHA256 mismatch: $relative" $errors
+        }
+        foreach ($relative in $actualPayload.Keys) {
+            if (-not $expectedPayload.ContainsKey($relative)) {
+                $errors.Add("Unsigned file found in release payload: $relative")
+            }
+        }
+
         Require-Equal $modpackSha1 (Get-Utf8Trimmed $modpackSha1Path).ToLowerInvariant() "Modpack SHA1 sidecar mismatch." $errors
         Require-Equal $modpackSha256 (Get-Utf8Trimmed $modpackSha256Path).ToLowerInvariant() "Modpack SHA256 sidecar mismatch." $errors
         Require-Equal $resourcePackSha1 (Get-Utf8Trimmed $resourcePackSha1Path).ToLowerInvariant() "Resource pack SHA1 sidecar mismatch." $errors

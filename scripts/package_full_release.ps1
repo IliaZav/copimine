@@ -550,8 +550,17 @@ $installerManifest.deploy.scripts.gameRuntimeHardening.runtimeScript.sha256 = Ge
 $installerManifest.deploy.scripts.gameRuntimeHardening.policy.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\templates\game-runtime-hardening.json')
 $installerManifest.deploy.scripts.gameRuntimeHardening.voicechatTemplate.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\templates\voicechat-server.properties')
 $installerManifest.deploy.scripts.gameRuntimeHardening.systemdUnit.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'admin-web\deploy\copimine-game-hardening.service')
+$stagedSbomGeneratorSha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\shared\generate_sbom.py')
+$stagedSbomScannerSha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\shared\scan_release_strings.py')
+$releaseManifest.security.sbom.generator.sha256 = $stagedSbomGeneratorSha256
+$releaseManifest.security.sbom.scanner.sha256 = $stagedSbomScannerSha256
+$installerManifest.security.sbom.generator.sha256 = $stagedSbomGeneratorSha256
+$installerManifest.security.sbom.scanner.sha256 = $stagedSbomScannerSha256
+$releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 16
 $installerManifestJson = $installerManifest | ConvertTo-Json -Depth 16
+Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content $releaseManifestJson
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content $installerManifestJson
+Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json') -Content $releaseManifestJson
 Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\installer_manifest.json') -Content $installerManifestJson
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"

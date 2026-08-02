@@ -78,13 +78,23 @@ def artifact_paths(root: Path) -> list[str]:
     for candidate in [root / "minecraft" / "server" / "purpur.jar"]:
         if candidate.is_file():
             paths.add(posix_relative(root, candidate))
-    for directory in (
-        root / "minecraft" / "server" / "plugins",
-        root / "minecraft" / "server" / "libraries",
+    plugin_directory = root / "minecraft" / "server" / "plugins"
+    if plugin_directory.is_dir():
+        # The package allowlist contains top-level server plugins. Nested
+        # Paper remaps and plugin-private libraries are runtime cache, not
+        # release inputs, and must not leak into the SBOM inventory.
+        paths.update(
+            posix_relative(root, candidate)
+            for candidate in plugin_directory.glob("*.jar")
+            if candidate.is_file()
+        )
+    for relative in (
+        "minecraft/server/libraries/org/postgresql/postgresql/42.7.5/postgresql-42.7.5.jar",
+        "minecraft/server/libraries/org/checkerframework/checker-qual/3.48.3/checker-qual-3.48.3.jar",
     ):
-        if directory.is_dir():
-            for candidate in directory.rglob("*.jar"):
-                paths.add(posix_relative(root, candidate))
+        candidate = root.joinpath(*PurePosixPath(relative).parts)
+        if candidate.is_file():
+            paths.add(relative)
     return sorted(paths)
 
 

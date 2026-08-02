@@ -115,7 +115,7 @@ links each remediation to the repaired checkout and release evidence.
 | P1-12 | Confirmed | Repair success is emitted only after `completeRepair` commits. | V |
 | P1-13 | Confirmed | Pending AR remains provisional until `DELIVERED`; uncertain ACK becomes recovery/manual review. | V |
 | P1-14 | Confirmed | Tax exemption and donation claim use one idempotent transaction/claim identity. | V |
-| P1-15 | Partial | CI now runs Python behavior/regression checks, 653 validators, compilation and provenance checks; full third-party/Paper/browser behavior still needs hosted integration runners. | P, V, R |
+| P1-15 | Partial | CI now runs Python behavior/regression checks, 654 validators, compilation and provenance checks; full third-party/Paper/browser behavior still needs hosted integration runners. | P, V, R |
 
 ## REL — reproducible release and deployment controls
 
@@ -286,7 +286,7 @@ links each remediation to the repaired checkout and release evidence.
 | WEB-25 | Confirmed | RCON commands are complete-token validated and reject control/newline/semicolon injection. | V |
 | WEB-26 | Confirmed | Destructive admin actions use actor/action/target/version-bound short-lived confirmation. | V |
 | WEB-27 | Confirmed | Role revocation invalidates sessions and refresh sessions. | V, P |
-| WEB-28 | Partial | Browser/contract coverage exists, but a complete Playwright matrix was not run in this environment. | V |
+| WEB-28 | Partial | A focused Playwright Chromium smoke covered public pages, downloads and invalid login with no page errors or failed requests; a complete authenticated/admin Playwright matrix was not run in this environment. | V |
 | WEB-29 | Confirmed | 500 responses expose a correlation ID while logs retain safe diagnostics. | V, P, S |
 | WEB-30 | Partial | Production-critical seams are guarded and reviewed; `main.py` remains a large module and was not split solely for appearance. | V, P |
 

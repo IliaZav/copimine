@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-02T11:58:03.3423749Z",
-    "gitCommit":  "368d125cd1ab3f6c38886b7bf89aa7e1a5065668",
+    "generatedAtUtc":  "2026-08-02T12:01:02.8897498Z",
+    "gitCommit":  "1ca6a371e34c880c1a098f9f0d90e7afa84276c2",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,8 +11,8 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "768eeb278f08d6595c2ee91e3e449db2c4776811",
-                    "sha256":  "92b7039ee28715c09e4a3f39c7194ec7ec29d41ee4db7923bf5f7938933875b0",
+                    "sha1":  "2fc4a5463adbeb0eaac152923ca8b5c772e9ace0",
+                    "sha256":  "74c830ac1269cc1c9ca17ce2c0ac6cfbb5c2ad8f833ddec90e32143b35464180",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "6afc56e8cc1cc95c093e21a3f9dd5ba06ce81628b32b99fb72b9ff389d3d5ed4"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "368d125cd1ab3f6c38886b7bf89aa7e1a5065668",
+                      "sourceCommit":  "1ca6a371e34c880c1a098f9f0d90e7afa84276c2",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,15 +50,15 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "2216cd55440e62a718e055db9cbcd91f619a4b4d0444333af62562f304d2f592",
+                                  "sha256":  "c9a183f78dec177deb0802067feee40f348a75ff1a1b8bcd9847a7d6b588c554",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
-                                                    "sha256":  "e4a41955957d0007c3a0189587c2b63d171c8e2815b85c4c93c7f722bf243782"
+                                                    "sha256":  "96b3e4ddfa18a586e541414d715f56fe45aed95537cae8c0693ca37a0411b9ae"
                                                 },
                                   "scanner":  {
                                                   "path":  "deploy/shared/scan_release_strings.py",
-                                                  "sha256":  "3320a33559de399e99cdd7771fda9c4aa5aa59e7d6be7a55c6be08ac2a28d375"
+                                                  "sha256":  "b14b9ec9d54d9509f6c9e00e046e4a3828990bb2cb5f675ad881fed61613d894"
                                               }
                               }
                  }

@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "CopiMine release SBOM",
-  "documentNamespace": "https://copimine.ru/spdx/368d125cd1ab3f6c38886b7bf89aa7e1a5065668",
+  "documentNamespace": "https://copimine.ru/spdx/1ca6a371e34c880c1a098f9f0d90e7afa84276c2",
   "creationInfo": {
-    "created": "2026-08-02T11:58:03.914028Z",
+    "created": "2026-08-02T12:01:03.171244Z",
     "creators": [
       "Tool: CopiMine generate_sbom.py"
     ]
@@ -14,7 +14,7 @@
     {
       "SPDXID": "SPDXRef-Package-CopiMine",
       "name": "CopiMine release",
-      "versionInfo": "368d125cd1ab3f6c38886b7bf89aa7e1a5065668",
+      "versionInfo": "1ca6a371e34c880c1a098f9f0d90e7afa84276c2",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": true,
       "licenseConcluded": "NOASSERTION",
@@ -155,1326 +155,6 @@
   "files": [
     {
       "SPDXID": "SPDXRef-File-0001",
-      "fileName": "minecraft/server/libraries/com/destroystokyo/paper/paper-mojangapi/1.21.1-R0.1-SNAPSHOT/paper-mojangapi-1.21.1-R0.1-SNAPSHOT.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e79091b6420b9389bc1d838490b68e144011103ea467c8b7cf4de6ad7e0ada03"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0002",
-      "fileName": "minecraft/server/libraries/com/github/carleslc/Simple-YAML/Simple-Configuration/1.8.4/Simple-Configuration-1.8.4.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "86882deb5f810571027415ed33a0465840e444e3fc1e2f6d0abcaac845ab4769"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0003",
-      "fileName": "minecraft/server/libraries/com/github/carleslc/Simple-YAML/Simple-Yaml/1.8.4/Simple-Yaml-1.8.4.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "7eacf7ff031d8679dd6add3e4b52809f2db342d847e8e1b12b9cb7c61bb45b11"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0004",
-      "fileName": "minecraft/server/libraries/com/github/oshi/oshi-core/6.4.10/oshi-core-6.4.10.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "fef001a7a13515c273f30915915580782afbc45273cc07aa15994e51563ef310"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0005",
-      "fileName": "minecraft/server/libraries/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0006",
-      "fileName": "minecraft/server/libraries/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "4241c14a7727c34feea6507ec801318a3d4a90f070e4525681079fb94ee4c593"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0007",
-      "fileName": "minecraft/server/libraries/com/google/errorprone/error_prone_annotations/2.18.0/error_prone_annotations-2.18.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "9e6814cb71816988a4fd1b07a993a8f21bb7058d522c162b1de849e19bea54ae"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0008",
-      "fileName": "minecraft/server/libraries/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "a171ee4c734dd2da837e4b16be9df4661afab72a41adaf31eb84dfdaf936ca26"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0009",
-      "fileName": "minecraft/server/libraries/com/google/guava/guava/32.1.2-jre/guava-32.1.2-jre.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "bc65dea7cfd9e4dacf8419d8af0e741655857d27885bb35d943d7187fc3a8fce"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0010",
-      "fileName": "minecraft/server/libraries/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0011",
-      "fileName": "minecraft/server/libraries/com/google/protobuf/protobuf-java/3.25.1/protobuf-java-3.25.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "48a8e58a1a8f82eff141a7a388d38dfe77d7a48d5e57c9066ee37f19147e20df"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0012",
-      "fileName": "minecraft/server/libraries/com/googlecode/json-simple/json-simple/1.1.1/json-simple-1.1.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "4e69696892b88b41c55d49ab2fdcc21eead92bf54acc588c0050596c3b75199c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0013",
-      "fileName": "minecraft/server/libraries/com/lmax/disruptor/3.4.4/disruptor-3.4.4.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1524ed31f13bcabee1b6146e67be30c6317cb94fcd0c7c2f7c7a1f3e82087c51"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0014",
-      "fileName": "minecraft/server/libraries/com/mojang/authlib/6.0.54/authlib-6.0.54.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "319ea7b53b5e52f62ad3e2b81e9db7f0751240edac548bd74f5f19e35dc21a3b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0015",
-      "fileName": "minecraft/server/libraries/com/mojang/brigadier/1.3.10/brigadier-1.3.10.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "c8ee4136e474ac7723ca2b432ec8d1a2bc88ef7d1ec57c314ba9e33cdc83dd75"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0016",
-      "fileName": "minecraft/server/libraries/com/mojang/datafixerupper/8.0.16/datafixerupper-8.0.16.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ffc138bc2596c291781b0d5e211ccac51f0f2345f27fc2742f335cedf7e2870d"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0017",
-      "fileName": "minecraft/server/libraries/com/mojang/logging/1.2.7/logging-1.2.7.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "3dc3190204bac5f4184d8405bfe1f724f73a6a15a0d3f36ec7f69e6872c1a76c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0018",
-      "fileName": "minecraft/server/libraries/com/mysql/mysql-connector-j/8.4.0/mysql-connector-j-8.4.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d77962877d010777cff997015da90ee689f0f4bb76848340e1488f2b83332af5"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0019",
-      "fileName": "minecraft/server/libraries/com/velocitypowered/velocity-native/3.3.0-SNAPSHOT/velocity-native-3.3.0-SNAPSHOT.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "016a94555a7ba68dafa73312580d4e2b5538b2231e586baea90c9d1e053de57b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0020",
-      "fileName": "minecraft/server/libraries/commons-codec/commons-codec/1.16.0/commons-codec-1.16.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "56595fb20b0b85bc91d0d503dad50bb7f1b9afc0eed5dffa6cbb25929000484d"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0021",
-      "fileName": "minecraft/server/libraries/commons-io/commons-io/2.15.1/commons-io-2.15.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "a58af12ee1b68cfd2ebb0c27caef164f084381a00ec81a48cc275fd7ea54e154"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0022",
-      "fileName": "minecraft/server/libraries/commons-lang/commons-lang/2.6/commons-lang-2.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "50f11b09f877c294d56f24463f47d28f929cf5044f648661c0f0cfbae9a2f49c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0023",
-      "fileName": "minecraft/server/libraries/dev/omega24/upnp4j/1.0/upnp4j-1.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6b2d82f9eeb0b9cc6786f4f3b442fa4d359a68fc9361b65a2d091dcc29bf549a"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0024",
-      "fileName": "minecraft/server/libraries/io/leangen/geantyref/geantyref/1.3.16/geantyref-1.3.16.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "7f1d591092d5142b6aaa7cf59f94c4c74d57dbeef03b2f8262949f8f36bac6e3"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0025",
-      "fileName": "minecraft/server/libraries/io/netty/netty-buffer/4.1.97.Final/netty-buffer-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "a4393f5b395486cc74d0325c9b41311abb9513ba0fd7ef8cf46e9345c3bffbea"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0026",
-      "fileName": "minecraft/server/libraries/io/netty/netty-codec-haproxy/4.1.97.Final/netty-codec-haproxy-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "994d8cd2ae5b7d68d69836016cf9d13e906bd427fc446888fe21b5ef960485fb"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0027",
-      "fileName": "minecraft/server/libraries/io/netty/netty-codec/4.1.97.Final/netty-codec-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "bcc96737a0f912fcf031cf8c45ebda352a90a40437db0832caad3d5a63618b38"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0028",
-      "fileName": "minecraft/server/libraries/io/netty/netty-common/4.1.97.Final/netty-common-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "a8aca0c8e9347acc75c885ecc749195d9775369aa520b9276f2d1128210a6c17"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0029",
-      "fileName": "minecraft/server/libraries/io/netty/netty-handler/4.1.97.Final/netty-handler-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "bd4771d19149cbc9c7464ed2d58035d79cdfed7adb59d38718b0d8e7a3dcc2de"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0030",
-      "fileName": "minecraft/server/libraries/io/netty/netty-resolver/4.1.97.Final/netty-resolver-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "38a018c6d9fb2cb11b72881354782b45080bbd20b9a0ad6cde28b80d431ed0b1"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0031",
-      "fileName": "minecraft/server/libraries/io/netty/netty-transport-classes-epoll/4.1.97.Final/netty-transport-classes-epoll-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ee65fa17fe65f18fd22269f92bddad85bfb3a263cf65eba01e116a2f30b86ff5"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0032",
-      "fileName": "minecraft/server/libraries/io/netty/netty-transport-native-epoll/4.1.97.Final/netty-transport-native-epoll-4.1.97.Final-linux-aarch_64.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "93b5fe8f3829dcb5e033d8d40d59159366ff4cf8266c903bbd6a4aeed9e59bac"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0033",
-      "fileName": "minecraft/server/libraries/io/netty/netty-transport-native-epoll/4.1.97.Final/netty-transport-native-epoll-4.1.97.Final-linux-x86_64.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1e83fc9f82e5415cdbb688c6a5c6bbbd7d198e9fdd6fdf64b3dc5d54dd1acfd0"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0034",
-      "fileName": "minecraft/server/libraries/io/netty/netty-transport-native-unix-common/4.1.97.Final/netty-transport-native-unix-common-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "412fe140257c2dda5a5e15bee911298bd61928d03ee6be4db588e82c196c5dc6"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0035",
-      "fileName": "minecraft/server/libraries/io/netty/netty-transport/4.1.97.Final/netty-transport-4.1.97.Final.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "197fd2d6c6b4afe677d9e95bf2e36b49a0bcabdfce0583683fb73f29a3f5a407"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0036",
-      "fileName": "minecraft/server/libraries/io/papermc/asm-utils/0.0.3/asm-utils-0.0.3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "0e0b9b519ef36f86b44067ea1ed559751b18bb7b5ee8844bc243375961728f11"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0037",
-      "fileName": "minecraft/server/libraries/io/papermc/reflection-rewriter-proxy-generator/0.0.3/reflection-rewriter-proxy-generator-0.0.3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "c972ba1ae0669702b5795fb4bc79ac8741702b315c1c200ab546e470973a9690"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0038",
-      "fileName": "minecraft/server/libraries/io/papermc/reflection-rewriter-runtime/0.0.3/reflection-rewriter-runtime-0.0.3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "61e066c3eb6f164ef65a73af4dcd95d3a0caeefea261606be6f9034a715ee8e5"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0039",
-      "fileName": "minecraft/server/libraries/io/papermc/reflection-rewriter/0.0.3/reflection-rewriter-0.0.3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "dc7dca499eb485d47abe179176d63efc7121d7249d3d9625f8bd2e7a1642a4d9"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0040",
-      "fileName": "minecraft/server/libraries/io/sentry/sentry/5.4.0/sentry-5.4.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "67e14eee65fe155b6b7179a15836e847bf3f5de2ed445f320f043d7941e007e7"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0041",
-      "fileName": "minecraft/server/libraries/it/unimi/dsi/fastutil/8.5.12/fastutil-8.5.12.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "b5543ee08d062d551cf0a5c9bc0fb70588b0382079029ba48941fa9c9be8a5d4"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0042",
-      "fileName": "minecraft/server/libraries/javax/inject/javax.inject/1/javax.inject-1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0043",
-      "fileName": "minecraft/server/libraries/me/lucko/spark-api/0.1-20240720.200737-2/spark-api-0.1-20240720.200737-2.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "f99a3ba0cd3df1aee7b8f285fe7967a28d9c0cea37fa6621b643da919dcfb819"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0044",
-      "fileName": "minecraft/server/libraries/me/lucko/spark-paper/1.10.105-SNAPSHOT/spark-paper-1.10.105-SNAPSHOT.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "08cb8e88d6ea84b940fee46f0262bd4852b7ce59eab95ca127b8b555fa37397b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0045",
-      "fileName": "minecraft/server/libraries/net/java/dev/jna/jna-platform/5.14.0/jna-platform-5.14.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ae4caceb3840730c2537f9b7fb55a01baba580286b4122951488bcee558c2449"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0046",
-      "fileName": "minecraft/server/libraries/net/java/dev/jna/jna/5.14.0/jna-5.14.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "34ed1e1f27fa896bca50dbc4e99cf3732967cec387a7a0d5e3486c09673fe8c6"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0047",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-api/4.17.0/adventure-api-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "15c8c2eb1a69d8b1bc914f554353da8ee7cf074c05c8074da9898aee5c70d0d8"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0048",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-key/4.17.0/adventure-key-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "8e5cf570612d6ccedf943ac1716a449de2dd5a90207b7de6f73c0236935b766e"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0049",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-text-logger-slf4j/4.17.0/adventure-text-logger-slf4j-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d3e39084845e030de1e14c1859919f8e7a29341282b364ee9b188a8f2f03992b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0050",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-text-minimessage/4.17.0/adventure-text-minimessage-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "8372a9e9bc0c0ae21d60e6ce6e284a81c6c96d1ec398f808825015c6f60252f5"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0051",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-text-serializer-ansi/4.17.0/adventure-text-serializer-ansi-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d0dcd946dc2dc858621a31914643f3c06817d4c38ad52c235ec147e565d8e24c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0052",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-text-serializer-gson/4.17.0/adventure-text-serializer-gson-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6227d6bfd2d6ae6d121d3dcda590d33ff8373cea6589485df3f7b75b09e7d210"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0053",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-text-serializer-json/4.17.0/adventure-text-serializer-json-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6c91d3e23b064d76ab7c154ebe940f552232ae178b95d21b50dfdcfec2925d96"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0054",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-text-serializer-legacy/4.17.0/adventure-text-serializer-legacy-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "9d4955542e40eb5b41dbed172b2826acf1cbe3405e002f3360eb2ea578d536ba"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0055",
-      "fileName": "minecraft/server/libraries/net/kyori/adventure-text-serializer-plain/4.17.0/adventure-text-serializer-plain-4.17.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "226d4a3d2c42b7727df11a02a698c6c64475384705dd12bf02c7f69744799c2e"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0056",
-      "fileName": "minecraft/server/libraries/net/kyori/ansi/1.0.3/ansi-1.0.3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "26239e8fd349d6a166d7c73623518b44dbac819b80530546724cb20ee5e38243"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0057",
-      "fileName": "minecraft/server/libraries/net/kyori/examination-api/1.3.0/examination-api-1.3.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "c9237ffecb05428f6eff86216246ac70ce0b47b04c08ea7ca35020fde57f8492"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0058",
-      "fileName": "minecraft/server/libraries/net/kyori/examination-string/1.3.0/examination-string-1.3.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "7d01fc25a4bb3af0e1662685455f4541fbf4626216ea5846e455c1491e156b8c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0059",
-      "fileName": "minecraft/server/libraries/net/kyori/option/1.0.0/option-1.0.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2bde5a7a2d73fa1166a0f1663a22c3af7d2768ffc4fea331774c3c0f62225d11"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0060",
-      "fileName": "minecraft/server/libraries/net/md-5/bungeecord-chat/1.20-R0.2-deprecated+build.18/bungeecord-chat-1.20-R0.2-deprecated+build.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "5e61313bb35aae1b2be33276ab442f6e0d56258ff13297750d6ad9484d1a4fd6"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0061",
-      "fileName": "minecraft/server/libraries/net/minecrell/terminalconsoleappender/1.3.0/terminalconsoleappender-1.3.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1afea1bca095068f7f4483f061feed94753be34233ddb0df9ec380fc14d5a985"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0062",
-      "fileName": "minecraft/server/libraries/net/neoforged/AutoRenamingTool/2.0.3/AutoRenamingTool-2.0.3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d27484a148dc5ab6fcd4d2f9465d4ce68f7459c724df570ddc45e760cdcb788e"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0063",
-      "fileName": "minecraft/server/libraries/net/neoforged/installertools/cli-utils/2.1.4/cli-utils-2.1.4.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "4b488975fd59a833b0239c2adf8996ab8f77e8d76a2e6ae9919692df3125dd37"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0064",
-      "fileName": "minecraft/server/libraries/net/neoforged/javadoctor/gson-io/2.0.17/gson-io-2.0.17.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "de40a10adb58105e84864dff41e3ef490d87411afa390d86a940c74a6bf69821"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0065",
-      "fileName": "minecraft/server/libraries/net/neoforged/javadoctor/spec/2.0.17/spec-2.0.17.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "67d6fdde98770e91e82303fde1ce5560f12081b733da07bfa7bac71968a93dff"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0066",
-      "fileName": "minecraft/server/libraries/net/neoforged/srgutils/1.0.9/srgutils-1.0.9.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d46c7bf9939b47d13a9b34e236869898cd27eefb7dab7bb830787b32793e8575"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0067",
-      "fileName": "minecraft/server/libraries/net/sf/jopt-simple/jopt-simple/6.0-alpha-3/jopt-simple-6.0-alpha-3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d440ceb839d6adb5cfa81aa321813d60255e68a3e9ca564c91126599310abde5"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0068",
-      "fileName": "minecraft/server/libraries/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "7b96bf3ee68949abb5bc465559ac270e0551596fa34523fddf890ec418dde13c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0069",
-      "fileName": "minecraft/server/libraries/org/apache/httpcomponents/httpclient/4.5.14/httpclient-4.5.14.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0070",
-      "fileName": "minecraft/server/libraries/org/apache/httpcomponents/httpcore/4.4.16/httpcore-4.4.16.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6c9b3dd142a09dc468e23ad39aad6f75a0f2b85125104469f026e52a474e464f"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0071",
-      "fileName": "minecraft/server/libraries/org/apache/logging/log4j/log4j-api/2.22.1/log4j-api-2.22.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "5d7beae7ff15d8516d6517121d7f12a79a6ac180df64b5fcec55d5be21056e53"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0072",
-      "fileName": "minecraft/server/libraries/org/apache/logging/log4j/log4j-core/2.22.1/log4j-core-2.22.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "46dccecac556623d8e2ce8648496824a82951d139062a4e61148aff1a25ed18d"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0073",
-      "fileName": "minecraft/server/libraries/org/apache/logging/log4j/log4j-iostreams/2.22.1/log4j-iostreams-2.22.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ecf583f2c73042a1d60f9a59937bda70b2a9146f6aa502db0926fca10e940af6"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0074",
-      "fileName": "minecraft/server/libraries/org/apache/logging/log4j/log4j-slf4j2-impl/2.22.1/log4j-slf4j2-impl-2.22.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1920cd69d8682c7ef249bb407a3d0685723aa1785867cf4c53258da6bf14da97"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0075",
-      "fileName": "minecraft/server/libraries/org/apache/maven/maven-artifact/3.9.6/maven-artifact-3.9.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ad7a0fb408f8e47585ccc0d0011e0b501d93bfc9888d369bbd4a043d19475073"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0076",
-      "fileName": "minecraft/server/libraries/org/apache/maven/maven-builder-support/3.9.6/maven-builder-support-3.9.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e1f4d2784459ce8a34b9dae1829a1999b569e483e21ee9faa7368691e729296e"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0077",
-      "fileName": "minecraft/server/libraries/org/apache/maven/maven-model-builder/3.9.6/maven-model-builder-3.9.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "5f96dafbc411ee4b1e8426368d0d31d05ab5a4dace69808143142a0017598721"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0078",
-      "fileName": "minecraft/server/libraries/org/apache/maven/maven-model/3.9.6/maven-model-3.9.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "4f8f07fdb6b8701fa89a23a2edf830808fd65892d90cce40c0e6df7c8f2fcb62"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0079",
-      "fileName": "minecraft/server/libraries/org/apache/maven/maven-repository-metadata/3.9.6/maven-repository-metadata-3.9.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e047a67b204c434994253e2ab5bdff5fe8cb7ada9316ac3e754c39f900ea847b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0080",
-      "fileName": "minecraft/server/libraries/org/apache/maven/maven-resolver-provider/3.9.6/maven-resolver-provider-3.9.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "73b00b244b7b9e285654a45e765892bf5d369da77d42b5b4b5429122ed198a33"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0081",
-      "fileName": "minecraft/server/libraries/org/apache/maven/resolver/maven-resolver-api/1.9.18/maven-resolver-api-1.9.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ebfb9e1dfeea3c2017905184581e007874b4eaac9d28bfffcfe5133d70ac6339"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0082",
-      "fileName": "minecraft/server/libraries/org/apache/maven/resolver/maven-resolver-connector-basic/1.9.18/maven-resolver-connector-basic-1.9.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "f88d97d0f18571a675e73b45d6a9384b00322c9fae514ad6761d65b729a4e82a"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0083",
-      "fileName": "minecraft/server/libraries/org/apache/maven/resolver/maven-resolver-impl/1.9.18/maven-resolver-impl-1.9.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6bb9c90d007098004749c867da2eaf5785fc1139907718749c1097bdb2929bf8"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0084",
-      "fileName": "minecraft/server/libraries/org/apache/maven/resolver/maven-resolver-named-locks/1.9.18/maven-resolver-named-locks-1.9.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "098de7bbc5b0b26c3eff74ac30ffba6680fdab9bf4aebab95c3f5e2fe9eaeea8"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0085",
-      "fileName": "minecraft/server/libraries/org/apache/maven/resolver/maven-resolver-spi/1.9.18/maven-resolver-spi-1.9.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d364fce9a17b0e0b073c26efa92af95b29c00c42943dced4a1168a7923fd3fe1"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0086",
-      "fileName": "minecraft/server/libraries/org/apache/maven/resolver/maven-resolver-transport-http/1.9.18/maven-resolver-transport-http-1.9.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1fa02272da7a604718f22e2bc9775f14350487548ffc30a2ffaae1c2d1d1a58a"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0087",
-      "fileName": "minecraft/server/libraries/org/apache/maven/resolver/maven-resolver-util/1.9.18/maven-resolver-util-1.9.18.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2eb0ea667bc489384478231dda7516407d4b5b22a138077229871de9362a7ae2"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0088",
-      "fileName": "minecraft/server/libraries/org/checkerframework/checker-qual/3.33.0/checker-qual-3.33.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e316255bbfcd9fe50d165314b85abb2b33cb2a66a93c491db648e498a82c2de1"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0089",
       "fileName": "minecraft/server/libraries/org/checkerframework/checker-qual/3.48.3/checker-qual-3.48.3.jar",
       "checksums": [
         {
@@ -1489,247 +169,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0090",
-      "fileName": "minecraft/server/libraries/org/codehaus/plexus/plexus-interpolation/1.26/plexus-interpolation-1.26.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "b3b5412ce17889103ea564bcdfcf9fb3dfa540344ffeac6b538a73c9d7182662"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0091",
-      "fileName": "minecraft/server/libraries/org/codehaus/plexus/plexus-utils/3.5.1/plexus-utils-3.5.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "86e0255d4c879c61b4833ed7f13124e8bb679df47debb127326e7db7dd49a07b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0092",
-      "fileName": "minecraft/server/libraries/org/eclipse/sisu/org.eclipse.sisu.inject/0.9.0.M2/org.eclipse.sisu.inject-0.9.0.M2.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "9b62bcfc352a2ec87da8b01e37c952a54d358bbb1af3f212648aeafe7ab2dbb5"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0093",
-      "fileName": "minecraft/server/libraries/org/fusesource/jansi/jansi/2.4.0/jansi-2.4.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6cd91991323dd7b2fb28ca93d7ac12af5a86a2f53279e2b35827b30313fd0b9f"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0094",
-      "fileName": "minecraft/server/libraries/org/jline/jline-reader/3.20.0/jline-reader-3.20.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "acd1c94d1e228aa7b7962f69b21ed3a9fd828eb3a63e4baf9086954e626af1f0"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0095",
-      "fileName": "minecraft/server/libraries/org/jline/jline-terminal-jansi/3.21.0/jline-terminal-jansi-3.21.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "dc7a0b2f1577623048c514615ca14dd81e3220fc97ff1ea44b7d230ad830beec"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0096",
-      "fileName": "minecraft/server/libraries/org/jline/jline-terminal/3.21.0/jline-terminal-3.21.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "3a05a1602f9d51428908879350f2cf5be87fcefced2f56c6e88d9d76f41a73fe"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0097",
-      "fileName": "minecraft/server/libraries/org/joml/joml/1.10.5/joml-1.10.5.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "cac9f22f83a7aa33eebda73c16ff5261e3cb4911b6bafcf4c79ea486099d0c9a"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0098",
-      "fileName": "minecraft/server/libraries/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0099",
-      "fileName": "minecraft/server/libraries/org/lz4/lz4-java/1.8.0/lz4-java-1.8.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d74a3334fb35195009b338a951f918203d6bbca3d1d359033dc33edd1cadc9ef"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0100",
-      "fileName": "minecraft/server/libraries/org/mozilla/rhino-engine/1.7.14/rhino-engine-1.7.14.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "961ed9bb342419d6cbf9a2064508c359e9a25cd636182030584b1b742c3f9928"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0101",
-      "fileName": "minecraft/server/libraries/org/mozilla/rhino-runtime/1.7.14/rhino-runtime-1.7.14.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "8708d7502734391957d93773fff77914397b69f4302e6ef5a641164c6e9c971d"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0102",
-      "fileName": "minecraft/server/libraries/org/mozilla/rhino/1.7.14/rhino-1.7.14.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "c9290b0d801bf0dbbbc44338e0f769b7650a0c5d04e6bb1aeb85775c0211b003"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0103",
-      "fileName": "minecraft/server/libraries/org/ow2/asm/asm-commons/9.7.1/asm-commons-9.7.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "9a579b54d292ad9be171d4313fd4739c635592c2b5ac3a459bbd1049cddec6a0"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0104",
-      "fileName": "minecraft/server/libraries/org/ow2/asm/asm-tree/9.7.1/asm-tree-9.7.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "9929881f59eb6b840e86d54570c77b59ce721d104e6dfd7a40978991c2d3b41f"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0105",
-      "fileName": "minecraft/server/libraries/org/ow2/asm/asm/9.7.1/asm-9.7.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "8cadd43ac5eb6d09de05faecca38b917a040bb9139c7edeb4cc81c740b713281"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0106",
+      "SPDXID": "SPDXRef-File-0002",
       "fileName": "minecraft/server/libraries/org/postgresql/postgresql/42.7.5/postgresql-42.7.5.jar",
       "checksums": [
         {
@@ -1744,427 +184,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0107",
-      "fileName": "minecraft/server/libraries/org/slf4j/jcl-over-slf4j/1.7.36/jcl-over-slf4j-1.7.36.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ab57ca8fd223772c17365d121f59e94ecbf0ae59d08c03a3cb5b81071c019195"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0108",
-      "fileName": "minecraft/server/libraries/org/slf4j/slf4j-api/2.0.9/slf4j-api-2.0.9.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "0818930dc8d7debb403204611691da58e49d42c50b6ffcfdce02dadb7c3c2b6c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0109",
-      "fileName": "minecraft/server/libraries/org/spongepowered/configurate-core/4.2.0-SNAPSHOT/configurate-core-4.2.0-SNAPSHOT.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "cec46194b1e819e5266c7a8658f61d650437371fac6989d425c6f8743f3c0454"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0110",
-      "fileName": "minecraft/server/libraries/org/spongepowered/configurate-yaml/4.2.0-SNAPSHOT/configurate-yaml-4.2.0-SNAPSHOT.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "128bb25516462607c8cfa4cbe29639302c9814439201cd695caa052aaa13be27"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0111",
-      "fileName": "minecraft/server/libraries/org/xerial/sqlite-jdbc/3.46.0.0/sqlite-jdbc-3.46.0.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e697df15be3f95219d80773c5f1002030e33e932adda186c1c86fd51df6691a9"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0112",
-      "fileName": "minecraft/server/libraries/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0113",
-      "fileName": "minecraft/server/plugins/.paper-remapped/AuthEffects.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "a84300e4fef5c6b815e539a9ee07fa9afe62c5a6b15b209bca1cf93e826a77ce"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0114",
-      "fileName": "minecraft/server/plugins/.paper-remapped/AuthMe-5.6.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "78634aabc76916a443ac86b199d7c35bde4958745d837e3f7e27bd4dbe98bf79"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0115",
-      "fileName": "minecraft/server/plugins/.paper-remapped/ClearLag.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ae925b5d600f3b4636b845259e3076ed1ca3bd5597b36880bb937964e8176754"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0116",
-      "fileName": "minecraft/server/plugins/.paper-remapped/CopiMineArtifacts.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "28529ee5bed5b73f4239a19a2b15d10d74c99e028773f910ccd44843b7a39c6a"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0117",
-      "fileName": "minecraft/server/plugins/.paper-remapped/CopiMineEconomyCore.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "675d8edc5765447f08d9f88d23c94076cec38930b453ad65411424bdfbcc114e"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0118",
-      "fileName": "minecraft/server/plugins/.paper-remapped/CopiMineElectionCore.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2d68862809b978698efad85b6ce8e5e9446779b60e1d73daf40956db8b157abe"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0119",
-      "fileName": "minecraft/server/plugins/.paper-remapped/CopiMineNarcotics.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "7c1f3d65ef6c3caf258074b07103d4077613350390747b6bd967c42e6007c68d"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0120",
-      "fileName": "minecraft/server/plugins/.paper-remapped/CopiMineUltimateAdminPlus.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6f4a05f8c57c7b703eb11a91d35ad54e6dbc0ca1519e7fef4207145bb1a32438"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0121",
-      "fileName": "minecraft/server/plugins/.paper-remapped/CopiMineWorldCore.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e517458d2cad8c011d726426db1fe7177478b49e578d508e8de0125b6ee57e61"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0122",
-      "fileName": "minecraft/server/plugins/.paper-remapped/EntityClearer.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2bbe01820e82d0e187ab27b461751cf2d7721da1ad9a6307d4646dfcfc2d4e8b"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0123",
-      "fileName": "minecraft/server/plugins/.paper-remapped/FarmControl-1.3.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d7f97305324b9e569cbe44f3d1126e9ede09f5de4972fdcbff09535207427aaf"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0124",
-      "fileName": "minecraft/server/plugins/.paper-remapped/GSit-3.5.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e769052922d071ca15240bb4df5618c495054bd1a10dd9668c0666fcadea66e8"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0125",
-      "fileName": "minecraft/server/plugins/.paper-remapped/ImageFrame.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "db8adbb61806bc448a114b1d5234f5fd8decdd59c67c0768a2b3814eb149ecb0"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0126",
-      "fileName": "minecraft/server/plugins/.paper-remapped/PlaceholderAPI-2.12.3.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "774473a888d6f45f04162c67c9104329f94f5cdc6a3f16aca5a7aa0451f25036"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0127",
-      "fileName": "minecraft/server/plugins/.paper-remapped/SeeMore-1.0.2.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "7e694c00f61a0f3267e2a08b0a04e6b60709c920f15e6a54e1f0e3ae6cb6a621"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0128",
-      "fileName": "minecraft/server/plugins/.paper-remapped/TAB.v6.0.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1ca0b4be055a305c6a56926f3e19eafc7761153c6d6c69389d2c154adf13773c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0129",
-      "fileName": "minecraft/server/plugins/.paper-remapped/Vault.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "27a80debcf2ea197cc3d17755d851af23e9bcaf8e7a1f2e56bf773a56c636728"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0130",
-      "fileName": "minecraft/server/plugins/.paper-remapped/emotecraft-2.4.12-bukkit.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "345c114a5c81af3108fc5931520e7c82b57a2423356daf058f02618d98009ddf"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0131",
-      "fileName": "minecraft/server/plugins/.paper-remapped/remap-classpath/3D05580CC50B33F4D2510BF4D4B86A29C916C24233313D2FC61542765F688077.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "16980484f1ca9fa6b2c45d5de1288f3e165587ee20f9b270b81c934b890573c9"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0132",
-      "fileName": "minecraft/server/plugins/.paper-remapped/voicechat-bukkit-2.6.11.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "20ec17f2759ada8b79872f8928fb058868f62356d7321ef745b2b0672d8e918c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0133",
-      "fileName": "minecraft/server/plugins/.paper-remapped/worldedit-bukkit-7.3.9.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "a7a43b996b304f91bce1a651d170dc2f2e402305dbf73c7c7e8bd7191d4e2110"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0134",
-      "fileName": "minecraft/server/plugins/.paper-remapped/worldguard-bukkit-7.0.12-dist.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "026674628b05e3792bcd12857f357297ae0f8aa185bac70592269a765d8a5202"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0135",
+      "SPDXID": "SPDXRef-File-0003",
       "fileName": "minecraft/server/plugins/AuthEffects.jar",
       "checksums": [
         {
@@ -2179,7 +199,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0136",
+      "SPDXID": "SPDXRef-File-0004",
       "fileName": "minecraft/server/plugins/AuthMe-5.6.0.jar",
       "checksums": [
         {
@@ -2194,7 +214,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0137",
+      "SPDXID": "SPDXRef-File-0005",
       "fileName": "minecraft/server/plugins/Chunky-Bukkit-1.4.40.jar",
       "checksums": [
         {
@@ -2209,7 +229,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0138",
+      "SPDXID": "SPDXRef-File-0006",
       "fileName": "minecraft/server/plugins/ClearLag.jar",
       "checksums": [
         {
@@ -2224,7 +244,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0139",
+      "SPDXID": "SPDXRef-File-0007",
       "fileName": "minecraft/server/plugins/CopiMineArtifacts.jar",
       "checksums": [
         {
@@ -2239,7 +259,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0140",
+      "SPDXID": "SPDXRef-File-0008",
       "fileName": "minecraft/server/plugins/CopiMineEconomyCore.jar",
       "checksums": [
         {
@@ -2254,7 +274,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0141",
+      "SPDXID": "SPDXRef-File-0009",
       "fileName": "minecraft/server/plugins/CopiMineElectionCore.jar",
       "checksums": [
         {
@@ -2269,7 +289,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0142",
+      "SPDXID": "SPDXRef-File-0010",
       "fileName": "minecraft/server/plugins/CopiMineNarcotics.jar",
       "checksums": [
         {
@@ -2284,7 +304,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0143",
+      "SPDXID": "SPDXRef-File-0011",
       "fileName": "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar",
       "checksums": [
         {
@@ -2299,7 +319,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0144",
+      "SPDXID": "SPDXRef-File-0012",
       "fileName": "minecraft/server/plugins/CopiMineWorldCore.jar",
       "checksums": [
         {
@@ -2314,7 +334,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0145",
+      "SPDXID": "SPDXRef-File-0013",
       "fileName": "minecraft/server/plugins/CoreProtect-CE-23.0.jar",
       "checksums": [
         {
@@ -2329,7 +349,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0146",
+      "SPDXID": "SPDXRef-File-0014",
       "fileName": "minecraft/server/plugins/EntityClearer.jar",
       "checksums": [
         {
@@ -2344,7 +364,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0147",
+      "SPDXID": "SPDXRef-File-0015",
       "fileName": "minecraft/server/plugins/EssentialsX-2.22.0.jar",
       "checksums": [
         {
@@ -2359,7 +379,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0148",
+      "SPDXID": "SPDXRef-File-0016",
       "fileName": "minecraft/server/plugins/EssentialsXChat-2.22.0.jar",
       "checksums": [
         {
@@ -2374,7 +394,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0149",
+      "SPDXID": "SPDXRef-File-0017",
       "fileName": "minecraft/server/plugins/EssentialsXSpawn-2.22.0.jar",
       "checksums": [
         {
@@ -2389,7 +409,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0150",
+      "SPDXID": "SPDXRef-File-0018",
       "fileName": "minecraft/server/plugins/FarmControl-1.3.0.jar",
       "checksums": [
         {
@@ -2404,7 +424,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0151",
+      "SPDXID": "SPDXRef-File-0019",
       "fileName": "minecraft/server/plugins/GSit-3.5.1.jar",
       "checksums": [
         {
@@ -2419,7 +439,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0152",
+      "SPDXID": "SPDXRef-File-0020",
       "fileName": "minecraft/server/plugins/GrimAC.jar",
       "checksums": [
         {
@@ -2434,7 +454,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0153",
+      "SPDXID": "SPDXRef-File-0021",
       "fileName": "minecraft/server/plugins/ImageFrame.jar",
       "checksums": [
         {
@@ -2449,7 +469,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0154",
+      "SPDXID": "SPDXRef-File-0022",
       "fileName": "minecraft/server/plugins/LuckPerms-Bukkit-5.5.42.jar",
       "checksums": [
         {
@@ -2464,367 +484,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0155",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/adventure-4.21.1-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "97eba806f3d919eb7d6f2302e01946c276d7739339908c5446b6a6a677aadd6f"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0156",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/adventure-4.21.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "910265674814c5d4d1464b244f8dea8b2da4a6df6ceb9e0bbc1d27aa808fe981"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0157",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/adventure-platform-4.21.1-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "288c377cd204833677a5d400c42959e6b8dc1a029191e0a1416f3c909ec9f341"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0158",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/adventure-platform-4.21.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2a4f089043156bd21305f0b7ca872971742267d0b037d5717968ca503f08d27d"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0159",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/adventure-platform-bukkit-4.21.1-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "154af3b82866a83384d0a59cb39def4cc60746c8bdab951bca58ab83cfc08615"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0160",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/adventure-platform-bukkit-4.21.1.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "35f7f00677d3fcc73a569b264dc6973ef724bfd4f8bcf243f3769db740bcbdaa"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0161",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/asm-9.8.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "876eab6a83daecad5ca67eb9fcabb063c97b5aeb8cf1fca7a989ecde17522051"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0162",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/asm-commons-9.8.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "3301a1c1cb4c59fcc5292648dac1d7c5aed4c0f067dfbe88873b8cdfe77404f4"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0163",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/bytebuddy-1.15.11-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "8a2b484522dd98d5405117eba13c19eb393d54601914be1d0111be7731e1c3af"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0164",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/bytebuddy-1.15.11.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "fa08998aae1e7bdae83bde0712c50e8444d71c0e0c196bb2247ade8d4ad0eb90"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0165",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/caffeine-3.2.0-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "c782f9581d99583c59e3f9166047bf64bf2a37742c45074079da74ca8ec9d376"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0166",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/caffeine-3.2.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ec411dfdf0c03f25218648ce89861630b71680e5858a9a7278ebac8e55cab3d7"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0167",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/commodore-2.2-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "323d68c6936a5569657d4823e373c04111c0ac07fbd5d1b85ed17a6b73969457"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0168",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/commodore-2.2.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "86667703f49ff0bbeb4fde5bb93945370744059dfa5fd2acf1228e4b56fb7f6f"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0169",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/commodore-file-1.0-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "fbfbc72a07bc2147cb85aeb6f78f5b4643fffb911f09d06f461de9076a2856a3"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0170",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/commodore-file-1.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "57dfbe772a7d45bcc3e032ced91f6ea45f19f2fe5259ab325fca1ca98440328c"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0171",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/event-3.0.0-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "a26a9b787537a3a171d1c08da8cc1d2413096a63235ea23e30b101f1b671c12d"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0172",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/event-3.0.0.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ca3bdd4dd03292d97788511014b1c2dea630c2deff0db09ded973c4384a521a8"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0173",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/h2-driver-2.1.214.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "d623cdc0f61d218cf549a8d09f1c391ff91096116b22e2475475fce4fbe72bd0"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0174",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/jar-relocator-1.7.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6f7d1184e17a90788797e3b9b2e34b87ff9e02bd623851052d78709071c3bb82"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0175",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/okhttp-3.14.9-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "0b8dacfdf713ec301318ba3045f374b805bff9bb1e8221d9b69b617e8db81ac9"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0176",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/okhttp-3.14.9.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2570fab55515cbf881d7a4ceef49fc515490bc027057e666776a2832465aeca0"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0177",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/okio-1.17.6-remapped.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "4e5cb4a017019d885f52417c4b8e20024b15c5a15c957531b7bcdfb9d28d9f00"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0178",
-      "fileName": "minecraft/server/plugins/LuckPerms/libs/okio-1.17.6.jar",
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "8e88b055523cc80613dfb844d598740e10ada62f4bd98304cdd140c5854cc3b6"
-        }
-      ],
-      "licenseConcluded": "NOASSERTION",
-      "licenseInfoInFiles": [
-        "NOASSERTION"
-      ],
-      "copyrightText": "NOASSERTION"
-    },
-    {
-      "SPDXID": "SPDXRef-File-0179",
+      "SPDXID": "SPDXRef-File-0023",
       "fileName": "minecraft/server/plugins/PlaceholderAPI-2.12.3.jar",
       "checksums": [
         {
@@ -2839,7 +499,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0180",
+      "SPDXID": "SPDXRef-File-0024",
       "fileName": "minecraft/server/plugins/ProtocolLib.jar",
       "checksums": [
         {
@@ -2854,7 +514,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0181",
+      "SPDXID": "SPDXRef-File-0025",
       "fileName": "minecraft/server/plugins/SeeMore-1.0.2.jar",
       "checksums": [
         {
@@ -2869,7 +529,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0182",
+      "SPDXID": "SPDXRef-File-0026",
       "fileName": "minecraft/server/plugins/TAB.v6.0.1.jar",
       "checksums": [
         {
@@ -2884,7 +544,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0183",
+      "SPDXID": "SPDXRef-File-0027",
       "fileName": "minecraft/server/plugins/Vault.jar",
       "checksums": [
         {
@@ -2899,7 +559,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0184",
+      "SPDXID": "SPDXRef-File-0028",
       "fileName": "minecraft/server/plugins/emotecraft-2.4.12-bukkit.jar",
       "checksums": [
         {
@@ -2914,7 +574,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0185",
+      "SPDXID": "SPDXRef-File-0029",
       "fileName": "minecraft/server/plugins/voicechat-bukkit-2.6.11.jar",
       "checksums": [
         {
@@ -2929,7 +589,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0186",
+      "SPDXID": "SPDXRef-File-0030",
       "fileName": "minecraft/server/plugins/worldedit-bukkit-7.3.9.jar",
       "checksums": [
         {
@@ -2944,7 +604,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0187",
+      "SPDXID": "SPDXRef-File-0031",
       "fileName": "minecraft/server/plugins/worldguard-bukkit-7.0.12-dist.jar",
       "checksums": [
         {
@@ -2959,7 +619,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0188",
+      "SPDXID": "SPDXRef-File-0032",
       "fileName": "minecraft/server/purpur.jar",
       "checksums": [
         {
@@ -2974,7 +634,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0189",
+      "SPDXID": "SPDXRef-File-0033",
       "fileName": "resourcepacks/build/CopiMineResourcePack.zip",
       "checksums": [
         {
@@ -2989,12 +649,12 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0190",
+      "SPDXID": "SPDXRef-File-0034",
       "fileName": "thirdparty/CopiMineMods.zip",
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "92b7039ee28715c09e4a3f39c7194ec7ec29d41ee4db7923bf5f7938933875b0"
+          "checksumValue": "74c830ac1269cc1c9ca17ce2c0ac6cfbb5c2ad8f833ddec90e32143b35464180"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -3004,7 +664,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0191",
+      "SPDXID": "SPDXRef-File-0035",
       "fileName": "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
       "checksums": [
         {
@@ -3019,7 +679,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0192",
+      "SPDXID": "SPDXRef-File-0036",
       "fileName": "thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
       "checksums": [
         {
@@ -3034,7 +694,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0193",
+      "SPDXID": "SPDXRef-File-0037",
       "fileName": "thirdparty/client-mods/fabric-api-0.116.11+1.21.1.jar",
       "checksums": [
         {
@@ -3049,7 +709,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0194",
+      "SPDXID": "SPDXRef-File-0038",
       "fileName": "thirdparty/client-mods/iris-fabric-1.8.8+mc1.21.1.jar",
       "checksums": [
         {
@@ -3064,7 +724,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0195",
+      "SPDXID": "SPDXRef-File-0039",
       "fileName": "thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar",
       "checksums": [
         {
@@ -3079,7 +739,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0196",
+      "SPDXID": "SPDXRef-File-0040",
       "fileName": "thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar",
       "checksums": [
         {
@@ -3094,7 +754,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0197",
+      "SPDXID": "SPDXRef-File-0041",
       "fileName": "thirdparty/server-plugins/CoreProtect-CE-23.0.jar",
       "checksums": [
         {
@@ -3109,7 +769,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0198",
+      "SPDXID": "SPDXRef-File-0042",
       "fileName": "thirdparty/server-plugins/emotecraft-2.4.12-bukkit.jar",
       "checksums": [
         {
@@ -3334,786 +994,6 @@
       "spdxElementId": "SPDXRef-Package-CopiMine",
       "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-File-0042"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0043"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0044"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0045"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0046"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0047"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0048"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0049"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0050"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0051"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0052"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0053"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0054"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0055"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0056"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0057"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0058"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0059"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0060"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0061"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0062"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0063"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0064"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0065"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0066"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0067"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0068"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0069"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0070"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0071"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0072"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0073"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0074"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0075"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0076"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0077"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0078"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0079"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0080"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0081"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0082"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0083"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0084"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0085"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0086"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0087"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0088"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0089"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0090"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0091"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0092"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0093"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0094"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0095"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0096"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0097"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0098"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0099"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0100"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0101"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0102"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0103"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0104"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0105"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0106"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0107"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0108"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0109"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0110"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0111"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0112"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0113"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0114"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0115"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0116"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0117"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0118"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0119"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0120"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0121"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0122"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0123"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0124"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0125"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0126"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0127"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0128"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0129"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0130"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0131"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0132"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0133"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0134"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0135"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0136"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0137"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0138"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0139"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0140"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0141"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0142"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0143"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0144"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0145"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0146"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0147"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0148"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0149"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0150"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0151"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0152"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0153"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0154"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0155"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0156"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0157"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0158"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0159"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0160"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0161"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0162"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0163"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0164"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0165"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0166"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0167"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0168"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0169"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0170"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0171"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0172"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0173"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0174"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0175"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0176"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0177"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0178"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0179"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0180"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0181"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0182"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0183"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0184"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0185"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0186"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0187"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0188"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0189"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0190"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0191"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0192"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0193"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0194"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0195"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0196"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0197"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-CopiMine",
-      "relationshipType": "CONTAINS",
-      "relatedSpdxElement": "SPDXRef-File-0198"
     }
   ]
 }

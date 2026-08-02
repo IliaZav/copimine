@@ -158,7 +158,8 @@ cleanup_legacy_artifacts() {
 
   # This mode is intentionally explicit and separate from a normal release
   # install.  It is for the one-time server opening cleanup requested by the
-  # operator; it never walks an arbitrary home or /opt tree.
+  # operator; it only touches the explicit home allowlist, the inventoried
+  # legacy roots below, and exact timestamped rollback directories.
   for target in \
     "$home_root/copimine-preserved-before-wipe-20260515-220317" \
     "$home_root/nginx-backup-resourcepack-20260621-164420" \
@@ -173,6 +174,56 @@ cleanup_legacy_artifacts() {
     rm -rf -- "$resolved"
     echo "[cleanup] removed legacy home artifact: $resolved"
   done
+
+  # These roots are historical backup stores from before the managed daily
+  # backup service.  Keep the active /opt/copimine-backups root untouched;
+  # only remove the exact, previously inventoried legacy roots below.
+  local -a legacy_opt_roots=(
+    '/opt/copimine-db-backups'
+    '/opt/copimine-full-backups'
+    '/opt/copimine.backup-20260611-192047'
+    '/opt/copimine.backup.2026-06-28-210147'
+    '/opt/copimine.backup-before-fixed-20260612-061503'
+    '/opt/copimine-old-before-replace-20260606-074851'
+    '/opt/copimine-old-before-replace-20260607-001732'
+    '/opt/copimine-preserve-20260607-001732'
+  )
+  for target in "${legacy_opt_roots[@]}"; do
+    [[ -e "$target" || -L "$target" ]] || continue
+    resolved="$(readlink -f -- "$target" 2>/dev/null || true)"
+    case "$resolved" in
+      /opt/copimine-db-backups|/opt/copimine-full-backups|/opt/copimine.backup-20260611-192047|/opt/copimine.backup.2026-06-28-210147|/opt/copimine.backup-before-fixed-20260612-061503|/opt/copimine-old-before-replace-20260606-074851|/opt/copimine-old-before-replace-20260607-001732|/opt/copimine-preserve-20260607-001732) ;;
+      *) echo "[cleanup] refusing unexpected legacy root: $target -> $resolved" >&2; return 1 ;;
+    esac
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed legacy opt backup root: $resolved"
+  done
+
+  # Every normal release replacement leaves a top-level rollback directory.
+  # Retain only the three newest exact timestamped copies.  The live project
+  # is /opt/copimine and can never match this allowlist.
+  local runtime_keep=3 runtime_name runtime_path
+  local -a runtime_backups=()
+  while IFS= read -r runtime_name; do
+    [[ -n "$runtime_name" ]] && runtime_backups+=("$runtime_name")
+  done < <(find /opt -mindepth 1 -maxdepth 1 -type d -name 'copimine.old-*' -printf '%f\n' 2>/dev/null | sort -r)
+  if (( ${#runtime_backups[@]} > runtime_keep )); then
+    for runtime_name in "${runtime_backups[@]:runtime_keep}"; do
+      [[ "$runtime_name" =~ ^copimine\.old-[0-9]{8}-[0-9]{6}$ ]] || {
+        echo "[cleanup] refusing unexpected runtime backup: $runtime_name" >&2
+        return 1
+      }
+      runtime_path="/opt/$runtime_name"
+      resolved="$(readlink -f -- "$runtime_path" 2>/dev/null || true)"
+      [[ "$resolved" == "$runtime_path" ]] || {
+        echo "[cleanup] refusing runtime backup symlink: $runtime_path -> $resolved" >&2
+        return 1
+      }
+      rm -rf -- "$resolved"
+      echo "[cleanup] pruned old runtime backup: $resolved"
+    done
+  fi
+  echo "[cleanup] runtime backup retention enforced: keep=$runtime_keep"
 
   # Keep the most recent pre-wipe dump for recovery from the destructive
   # opening reset.  Daily backups are pruned by backup.sh and its timer.

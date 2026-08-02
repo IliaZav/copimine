@@ -169,11 +169,16 @@ def main() -> None:
             "MC_WORLD_DIR": str(world),
             "MC_LOG_FILE": str(base / "logs" / "latest.log"),
             "SECRET_KEY": "x" * 64,
-            "ADMIN_PUBLIC_BASE_URL": "http://127.0.0.1:18080",
-            # Authenticated sessions are HTTPS-only.  Use an HTTPS test base
-            # URL so the smoke test exercises the same cookie/transport rules
-            # as production instead of relying on the removed HTTP bypass.
-            "ALLOW_INSECURE_HTTP_AUTH": "1",
+            # Authenticated sessions are HTTPS-only.  Keep the isolated smoke
+            # environment aligned with production so every client exercises
+            # the same cookie/transport rules.
+            "ADMIN_PUBLIC_BASE_URL": "https://testserver",
+            "ALLOW_INSECURE_HTTP_AUTH": "0",
+            # A hosted runner may expose database-related environment
+            # variables.  The smoke test owns its storage choice and must not
+            # accidentally switch to a real PostgreSQL/cart path.
+            "POSTGRES_PASSWORD": "",
+            "PGPASSWORD": "",
             "COPIMINE_AUTH_STORAGE": "sqlite",
             "COPIMINE_AUTH_DB": str(data_dir / "auth.sqlite3"),
             "DATABASE_URL": f"sqlite:///{(data_dir / 'auth.sqlite3').as_posix()}",
@@ -342,7 +347,7 @@ def main() -> None:
             rr = c.get("/api/reports", headers=h)
             assert rr.status_code == 200 and rr.json()["count"] == 1, rr.text
             if appmod.pg_ready():
-                with TestClient(appmod.app) as player_client:
+                with TestClient(appmod.app, base_url="https://testserver") as player_client:
                     registered = player_client.post("/api/player/register", json={
                         "username": "shopcartuser",
                         "password": "CartPassword123!",

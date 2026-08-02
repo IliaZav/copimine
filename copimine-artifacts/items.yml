@@ -215,7 +215,7 @@ items:
 donation-catalog:
   catalog-version: 1
   updated-at: 1782345600
-  website-base-url: "http://copimine.ru:18080"
+  website-base-url: "https://copimine.ru"
   items:
     - item-id: batin_remen_sudnogo_dnya
       display-name: "&6Батин Ремень Судного Дня"

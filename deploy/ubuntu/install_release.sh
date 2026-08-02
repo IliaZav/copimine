@@ -558,7 +558,7 @@ import sys
 env_path, properties_path = map(Path, sys.argv[1:3])
 resourcepack_version = sys.argv[3]
 lines = env_path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
-panel = 'http://copimine.ru:18080'
+panel = 'https://copimine.ru'
 for line in lines:
     if line.startswith('PUBLIC_PANEL_URL='):
         panel = line.split('=', 1)[1].strip().strip('"').strip("'").rstrip('/')

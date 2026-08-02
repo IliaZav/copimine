@@ -1,9 +1,9 @@
 {
-    "generatedAtUtc":  "2026-08-02T15:33:46.9490653Z",
-    "gitCommit":  "72f96e3ed80154414df79eee9da805efb5038062",
+    "generatedAtUtc":  "2026-08-02T16:46:29.5984351Z",
+    "gitCommit":  "ac1db7e7658ca6144a4254c3f9545a7f295b9336",
     "sourceTreeDirty":  false,
     "sourceArtifacts":  {
-                            "gitCommit":  "72f96e3ed80154414df79eee9da805efb5038062",
+                            "gitCommit":  "ac1db7e7658ca6144a4254c3f9545a7f295b9336",
                             "serverPlugins":  {
                                                   "minecraft/server/plugins/AuthEffects.jar":  "c81435063bb43cd9a4b9e1d4b7333c1b28745f5709cccb0304218bcb74e2c81c",
                                                   "minecraft/server/plugins/CopiMineArtifacts.jar":  "6d23e971a64ae9861a683ed23ff9c87c508df24fc207f67004ec87b9386600b5",
@@ -22,8 +22,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "fe984bad197dfb0fd6a1a92da3c29f73630359c7",
-                                      "sha256":  "fa017b4119601505736940a963ea705d9817e1cd2a7511bdd0e2f8304a28097e"
+                                      "sha1":  "5be2f98e8ece9b50b790bda8ac07915f35a160bc",
+                                      "sha256":  "91d874747c6ebef5c9e932f9f5c7106258dbc3be3e527935d72385e1b46bf705"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -76,7 +76,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "7840d4c3824bc2a81df2e7e0c288a01a022082b069194120de2377df85afbbdc"
+                                             "sha256":  "dc4026118f7af070f2e324dc00b84c8f4b7d7d94dc690763286e279f0e973b38"
                                          }
                  },
     "serverProperties":  {
@@ -90,7 +90,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "ba95eb432480882198c0915b84a2284a93bf9dfb16972d4491afa3057b55008d",
+                                  "sha256":  "427fa685a8b7ac0f0e0cc7fe5a86ff0b032ef827f9e3dff637f1d9f341ff13ec",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

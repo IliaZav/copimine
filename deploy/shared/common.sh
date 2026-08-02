@@ -240,8 +240,8 @@ values.update({
     "POSTGRES_PASSWORD": postgres_password,
     "DATABASE_URL": f"postgresql://copimine:{postgres_password}@127.0.0.1:5432/copimine",
     "COPIMINE_ENV_FILE": "/opt/copimine/admin-web/.env",
-    "ADMIN_PUBLIC_BASE_URL": values.get("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080"),
-    "PUBLIC_PANEL_URL": values.get("PUBLIC_PANEL_URL", "http://copimine.ru:18080"),
+    "ADMIN_PUBLIC_BASE_URL": values.get("ADMIN_PUBLIC_BASE_URL", "https://copimine.ru"),
+    "PUBLIC_PANEL_URL": values.get("PUBLIC_PANEL_URL", "https://copimine.ru"),
     "BACKEND_INTERNAL_BASE_URL": values.get("BACKEND_INTERNAL_BASE_URL", "http://127.0.0.1:8090"),
     "MINECRAFT_SERVICE": values.get("MINECRAFT_SERVICE", "copimine-minecraft"),
     "RCON_HOST": values.get("RCON_HOST", "127.0.0.1"),
@@ -650,7 +650,7 @@ copimine_sync_server_properties() {
   if [[ ! "$resourcepack_url" =~ ^https?:// ]]; then
     public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
     public_panel_url="${public_panel_url//\\/}"
-    [[ "$public_panel_url" =~ ^https?:// ]] || public_panel_url="http://admin.copimine.ru:18080"
+    [[ "$public_panel_url" =~ ^https?:// ]] || public_panel_url="https://copimine.ru"
     resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip?v=${resourcepack_sha1:0:12}"
   fi
   [[ "$resourcepack_url" =~ ^https?:// ]] || copimine_fail "RESOURCE_PACK_PUBLIC_URL must use http:// or https://"
@@ -693,7 +693,7 @@ copimine_sync_runtime_urls() {
   public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
   public_panel_url="${public_panel_url//\\/}"
   if [[ ! "$public_panel_url" =~ ^https?:// ]]; then
-    public_panel_url="http://admin.copimine.ru:18080"
+    public_panel_url="https://copimine.ru"
   fi
   resourcepack_sha1="$(sha1sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" 2>/dev/null | awk '{print $1}' || true)"
   if [[ "$resourcepack_sha1" =~ ^[0-9a-fA-F]{40}$ ]]; then

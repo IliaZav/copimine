@@ -18,7 +18,7 @@ performance:
 
 donation:
   # The installer synchronizes the active server copy from PUBLIC_PANEL_URL.
-  website-base-url: "http://copimine.ru:18080"
+  website-base-url: "https://copimine.ru"
   # Public donation top-up is temporarily disabled; existing balances remain spendable.
   topup-enabled: false
   purchase-path-template: "/#donation-shop?item={item_id}"

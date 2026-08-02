@@ -132,7 +132,7 @@ DONATION_SESSION_TTL_MS = DONATION_SESSION_TTL_SECONDS * 1000
 DONATION_EPOCH_MS_THRESHOLD = 100_000_000_000
 MANAGED_RESOURCEPACK_URL = os.getenv(
     "COPIMINE_RESOURCEPACK_URL",
-    "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip",
+    "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip",
 ).strip()
 MANAGED_RESOURCEPACK_ZIP = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
 MANAGED_RESOURCEPACK_SHA1_FILE = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.sha1"
@@ -281,7 +281,7 @@ AUTH_STORAGE_MODE = (
 LOGGER = logging.getLogger("copimine.admin")
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cm_session")
 AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "cm_refresh")
-ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080").rstrip("/")
+ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "https://copimine.ru").rstrip("/")
 AUTH_COOKIE_SECURE_RAW = os.getenv("AUTH_COOKIE_SECURE", "").strip().lower()
 AUTH_COOKIE_SECURE = (
     AUTH_COOKIE_SECURE_RAW in {"1", "true", "yes", "on"}

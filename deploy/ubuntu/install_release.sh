@@ -379,9 +379,32 @@ PY
 }
 
 verify_runtime() {
-  local expected_sha actual_sha expected_modpack actual_modpack properties_sha
+  local expected_sha actual_sha expected_modpack actual_modpack properties_sha service_timeout
+  wait_for_runtime_service() {
+    local service="$1" timeout="$2" elapsed=0
+    while (( elapsed < timeout )); do
+      if systemctl is-active --quiet "$service"; then
+        return 0
+      fi
+      sleep 2
+      elapsed=$((elapsed + 2))
+    done
+    return 1
+  }
   for service in copimine-admin copimine-minecraft nginx; do
-    systemctl is-active --quiet "$service" || { echo "Service is not active: $service" >&2; return 1; }
+    service_timeout=90
+    if [[ "$service" == "copimine-minecraft" ]]; then
+      # A fresh world can take several minutes to generate before systemd and
+      # the post-wipe restart settle.  Do not report a healthy release as
+      # failed merely because the second Java start is still activating.
+      service_timeout="${COPIMINE_MINECRAFT_START_TIMEOUT_SECONDS:-360}"
+    fi
+    if ! wait_for_runtime_service "$service" "$service_timeout"; then
+      echo "Service is not active after ${service_timeout}s: $service" >&2
+      systemctl --no-pager --full status "$service" || true
+      journalctl -u "$service" -n 120 --no-pager || true
+      return 1
+    fi
     echo "[verify] service active: $service"
   done
   expected_sha="$(sha1sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"

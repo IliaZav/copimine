@@ -51,7 +51,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force
 Remove-Item -LiteralPath $tempJar -Force -ErrorAction SilentlyContinue
-jar --create --file $tempJar -C $classes .
+jar --create --file $tempJar --date=2020-01-01T00:00:00Z -C $classes .
 if ($LASTEXITCODE -ne 0) {
   throw "jar packaging failed for CopiMineEconomyCore with exit code $LASTEXITCODE."
 }

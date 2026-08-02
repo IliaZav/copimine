@@ -52,7 +52,7 @@ Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Pa
 Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Path $classes 'config.yml') -Force
 
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue
-jar --create --file $jar -C $classes .
+jar --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
 if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineWorldCore." }
 
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force

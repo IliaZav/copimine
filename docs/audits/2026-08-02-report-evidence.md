@@ -5,11 +5,11 @@ remediation seam and the evidence available for the release.
 
 Evidence codes:
 
-- **V** — `tests/RunCopiMineValidators.ps1`: 653/653 passed.
+- **V** — `tests/RunCopiMineValidators.ps1`: 654/654 passed.
 - **P** — Python compile, backend security regression and runtime-hardening self-test passed.
 - **E** — election/station focused validators passed.
-- **R** — full release package validation passed; the latest signed local
-  archive SHA-256 is `913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5`.
+- **R** — full release package validation passed; the deployed signed archive
+  SHA-256 is `56d72c9a0c676cc821510ddc6a326c47be60824799b1511fe0d04095e2a33fd6`.
 - **S** — production health/runtime/service checks passed on the target server.
 - **D** — production PostgreSQL exact row-count audit after the clean-state reset.
 - **M** — production Minecraft log and AuthMe configuration check after restart.
@@ -27,26 +27,68 @@ Evidence code `C` denotes the hosted GitHub Actions run and its two successful
 jobs.
 
 The final release supersedes the historical values in the original evidence
-legend above. GitHub Actions run `30761283460` passed both jobs. The deployed
-archive is `copimine-opt-full-2026-08-02-204748.tar.gz` with SHA-256
-`913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5` and
-release source commit `51d4b9094280afc51e0a428b4269a57ca42c1352`.
+legend above. GitHub Actions run `30761283460` passed both jobs, and the local
+validator suite now passes `654/654`. The deployed archive is
+`copimine-opt-full-2026-08-02-233841.tar.gz` with SHA-256
+`56d72c9a0c676cc821510ddc6a326c47be60824799b1511fe0d04095e2a33fd6` and
+release source commit `b984e4e1f95658b8042824f7b44ba24a444fb7b1`.
+The current pushed Git tip is `d7ed11d`; its post-release change only adds
+allowlisted cleanup of the verifier's exact staging `__pycache__` path, and
+that helper was copied to the server and executed successfully.
 
 Production Nginx listens on ports 80 and 443; HTTP redirects to
-`https://copimine.ru/`. The HTTPS domain smoke returned root/health/downloads
-and resource-pack `200`, health `12/12` with zero failures and warnings, and
-protected runtime `401`. Valid JSON login requests with the domain and static
-IP Origins reached credential validation (`401` for deliberately invalid
-credentials); an unrelated Origin was rejected with `403`. Cloudflare DNS
-resolves `copimine.ru` and `www` to `90.188.115.155`.
+`https://copimine.ru/`, while all public pages, downloads, admin routes and
+personal cabinet routes are served through the HTTPS virtual host. The HTTPS
+smoke returned root, health, public status, downloads and resource-pack `200`,
+health `12/12` with zero failures and warnings, and protected runtime `401`.
+HSTS, CSP and `nosniff` headers are present. Valid JSON login requests with
+the domain and configured static-IP Origins reached credential validation
+(`401` for deliberately invalid credentials); an unrelated Origin was
+rejected with `403`, confirming the reported Origin error is fixed. Cloudflare
+DNS resolves `copimine.ru` and `www` to `90.188.115.155`.
 
 The clean-state database audit preserved 5 site accounts, 3 Minecraft account
-links, 3 whitelist account links and 18 whitelist-file entries. Elections,
-candidates, votes, voting blocks, polling stations, protected blocks/visuals,
-AR assets, placed AR blocks, narcotics instances, donation claims and the
-treasury balance are zero. The backup timer is active at daily 03:30 with
-`Persistent=yes` and retention enforcement of three copies; cleanup left three
-runtime rollback directories and the latest pre-wipe recovery snapshot.
+links, 3 whitelist account links and 18 whitelist-file entries; `ops.json`
+still contains 7 operator entries. Elections, candidates, votes, voting
+blocks, polling stations, protected blocks/visuals, AR assets, placed AR
+blocks, narcotics instances, donation claims and the treasury balance are
+zero. The backup timer is active with `Persistent=yes` and daily scheduling;
+the release helper enforces three daily copies and cleanup left three runtime
+rollback directories plus the latest pre-wipe recovery snapshot.
+
+The plot/station path now has one owner: the normal click is resolved by
+ElectionCore, legacy polling is not active in the normal path, and an active
+station click proceeds through ballot deposit/citizen information/station
+hub. A closed-election message is returned only when the current station or
+round is actually closed. Station removal archives the row and deactivates
+the coordinate protection, text display and visual overlay together, then
+refreshes the protection cache, so the former station block can be placed on
+again. The source contracts and election focused validators cover creation,
+click dispatch, deletion and reactivation; a real player session remains an
+explicit manual test limit below.
+
+## Security review addendum
+
+The repository security pass reviewed 20 candidate classes from the standard
+discovery run and exercised the resulting fixes. The release now uses a
+root-owned external signing allowlist and external payload verifier; the
+signed payload inventories all regular files and rejects symlink, hardlink,
+device and other special archive members. Windows rollback validates the same
+trust anchors, redacted backups exclude secrets/private runtime state, and
+Maven/Gradle bootstrap downloads are hash-pinned. Runtime access requires
+authenticated HTTPS except for direct, non-proxied loopback requests; refresh
+and recovery-code claims are conditional/atomic; public status and skin
+proxy work is rate-limited and bounded; resource-pack paths, upload leaf
+names and RCON input are validated; RCON binds to loopback; cauldron state
+has a hard runtime cap and striped locks; and the installer accepts a
+protected runtime `401` while requiring public health `200`.
+
+The separate deep-scan workflow could not be completed because the installed
+security orchestration exposed the older subagent protocol while that skill
+requires the newer protocol. This is recorded as a tooling limitation, not
+silently reported as a completed deep scan. The standard discovery, candidate
+review and executable release checks were completed; the remaining evidence
+limits are listed below.
 
 ## P0/P1 — money, items, authentication and truthful completion
 
@@ -72,7 +114,7 @@ runtime rollback directories and the latest pre-wipe recovery snapshot.
 
 | ID | Status | Remediation | Evidence |
 |---|---|---|---|
-| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; the deployed archive records source `51d4b9094280afc51e0a428b4269a57ca42c1352`, archive SHA-256 `913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5`, and the follow-up Git commit contains the release metadata. | R, S |
+| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; the deployed archive records source `b984e4e1f95658b8042824f7b44ba24a444fb7b1`, archive SHA-256 `56d72c9a0c676cc821510ddc6a326c47be60824799b1511fe0d04095e2a33fd6`, and the follow-up Git commit contains the release metadata. | R, S |
 | REL-2 | Confirmed | `.github/workflows/ci.yml` gates Python, validators, Java builds and clean provenance; hosted Actions run `30761283460` passed both jobs after fixing the empty PowerShell-array check. | C, V |
 | REL-3 | Partial | First-party JARs are rebuilt from source during packaging and their SHA-256 values are recorded; legacy committed binary outputs remain in the repository for deployment compatibility. | R |
 | REL-4 | Partial | Two clean first-party rebuilds are byte-for-byte reproducible and the result is hash-validated; an independent second host/builder was not available. | R |
@@ -300,20 +342,21 @@ runtime rollback directories and the latest pre-wipe recovery snapshot.
 ## Live release result
 
 - Git branch: `agent/deep-election-artifacts-audit`; latest pushed commit:
-  `1298ac4` (`Fix clean checkout verification for releases`). GitHub Actions
-  run `30761283460` is green.
+  `d7ed11d` (`Clean verifier cache during release retention`).
 - The installed release archive is
-  `copimine-opt-full-2026-08-02-204748.tar.gz`, SHA-256
-  `913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5`, with
-  release source commit `51d4b9094280afc51e0a428b4269a57ca42c1352`.
+  `copimine-opt-full-2026-08-02-233841.tar.gz`, SHA-256
+  `56d72c9a0c676cc821510ddc6a326c47be60824799b1511fe0d04095e2a33fd6`, with
+  release source commit `b984e4e1f95658b8042824f7b44ba24a444fb7b1`.
 - Nginx listens on `0.0.0.0:80` and `0.0.0.0:443`; port 80 redirects to
   `https://copimine.ru/`. Public DNS queried through Cloudflare resolves
   `copimine.ru` and its `www` alias to `90.188.115.155`. The certificate is
   issued for the domain, so direct `https://90.188.115.155` is not the normal
-  client URL and may fail hostname verification.
-- Live HTTPS smoke: root `200`, `/api/health` `200` with `12/12` checks,
-  `0` failures and `0` warnings, protected `/api/runtime` `401`, modpack
-  `200`/`16,488,659` bytes/SHA-256 `df5579a77d485d53d11ae01d08dcd3193a9960a559eb1ac995aab9007b0c2574`,
+  client URL and may fail hostname verification. The admin Uvicorn listener
+  remains on `127.0.0.1:8090`, so it is not exposed as an unauthenticated
+  public backend port; public administration still goes through HTTPS Nginx.
+- Live HTTPS smoke: root and `/api/health` `200` with `12/12` checks,
+  `/api/public/status` `200`, protected `/api/runtime` `401`, modpack
+  `200`/`16,488,659` bytes/SHA-256 `81d7ea79a74c1738324e5c9e820b5d31d73e817f9ce8a8c496963121f894777d`,
   resource pack `200`/`562,504` bytes/SHA-1
   `4a3bca348c0df826ef884f5c2cdaaa192c6b4dfa`. Login with valid JSON and
   allowed Origins reaches credential validation (`401` for deliberately
@@ -328,12 +371,12 @@ runtime rollback directories and the latest pre-wipe recovery snapshot.
   placed AR blocks, donation claims and treasury balance are all `0`.
   The whitelist file retains `18` entries. Schema, catalog, audit and service
   metadata remain intentionally for operation and traceability.
-- Backup timer is active with daily `03:30`, `Persistent=yes`, randomized
+- Backup timer is active with daily scheduling, `Persistent=yes`, randomized
   delay and retention enforcement of three daily copies. Legacy cleanup kept
   exactly three newest runtime rollback directories and the latest pre-wipe
-  recovery snapshot. Temporary upload parts, obsolete release archive and
-  diagnostic files were removed; the current verified archive and recovery
-  helpers remain.
+  recovery snapshot. Temporary upload parts, obsolete release archives,
+  verifier cache and diagnostic staging files were removed; the current
+  verified archive and recovery helpers remain.
 
 ## Remaining limits, not silently marked as fixed
 

@@ -13,4 +13,10 @@ if ($installer -notmatch 'game-wipe-\*') {
 if ($installer -notmatch 'local daily_keep=3') {
   throw 'Legacy cleanup must apply the three-daily-backup retention policy.'
 }
+if ($installer -notmatch 'copimine\.broken-\*' -or $installer -notmatch 'copimine\.failed-\*') {
+  throw 'Legacy cleanup must remove the inventoried failed replacement roots.'
+}
+if ($installer -notmatch 'copimine_unpack_tmp') {
+  throw 'Legacy cleanup must remove the stale unpack temporary root.'
+}
 Write-Output 'ValidateCopiMineLegacyCleanup passed.'

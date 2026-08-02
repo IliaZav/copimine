@@ -188,7 +188,14 @@ def assert_public_health_has_no_runtime_diagnostics(main) -> None:
     assert "never-public" not in serialized, payload
     transport = payload.get("transport", {})
     assert transport.get("authenticatedSessions") == "https-required", payload
-    assert transport.get("http") == "public-only", payload
+    assert transport.get("http") == "redirects-to-https", payload
+    original_public_url = main.ADMIN_PUBLIC_BASE_URL
+    main.ADMIN_PUBLIC_BASE_URL = "http://panel.example.test"
+    try:
+        assert main.public_auth_transport_state()["http"] == "public-only"
+    finally:
+        main.ADMIN_PUBLIC_BASE_URL = original_public_url
+    assert main.public_auth_transport_state()["http"] == "redirects-to-https"
 
 
 def assert_http_does_not_issue_reusable_auth_cookies(main) -> None:

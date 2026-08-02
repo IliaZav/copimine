@@ -200,6 +200,28 @@ cleanup_legacy_artifacts() {
     echo "[cleanup] removed legacy opt backup root: $resolved"
   done
 
+  # Older failed replacements used separate .broken/.failed roots and one
+  # un-timestamped copimine.old directory. They are not rollback candidates:
+  # the managed retention block below keeps only the three newest exact
+  # copimine.old-YYYYMMDD-HHMMSS directories. Remove only these explicit
+  # top-level names, never a wildcard below an arbitrary path.
+  local stale_root stale_name
+  while IFS= read -r stale_root; do
+    [[ -n "$stale_root" ]] || continue
+    stale_name="$(basename -- "$stale_root")"
+    case "$stale_name" in
+      copimine.broken-*|copimine.failed-*|copimine.old|copimine_unpack_tmp) ;;
+      *) echo "[cleanup] refusing unexpected stale release root: $stale_root" >&2; return 1 ;;
+    esac
+    resolved="$(readlink -f -- "$stale_root" 2>/dev/null || true)"
+    [[ "$resolved" == "/opt/$stale_name" ]] || {
+      echo "[cleanup] refusing stale release symlink: $stale_root -> $resolved" >&2
+      return 1
+    }
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed stale release root: $resolved"
+  done < <(find /opt -mindepth 1 -maxdepth 1 -type d \( -name 'copimine.broken-*' -o -name 'copimine.failed-*' -o -name 'copimine.old' -o -name 'copimine_unpack_tmp' \) -print 2>/dev/null | sort)
+
   # The upload directory is a staging area, not a backup archive.  Keep the
   # newest complete release archive for a manual rollback and remove older
   # archives plus their exact sidecars/bootstrap files and split parts.

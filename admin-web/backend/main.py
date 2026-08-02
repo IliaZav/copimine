@@ -17571,6 +17571,12 @@ def public_health_projection(report: Mapping[str, Any] | dict[str, Any]) -> dict
 
 
 def public_auth_transport_state() -> dict[str, Any]:
+    if ADMIN_PUBLIC_BASE_URL.lower().startswith("https://"):
+        return {
+            "http": "redirects-to-https",
+            "authenticatedSessions": "https-required",
+            "warning": "HTTP requests are redirected to HTTPS; login cookies require HTTPS.",
+        }
     return {
         "http": "public-only",
         "authenticatedSessions": "https-required",

@@ -46,28 +46,30 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           $ErrorActionPreference = 'Stop'
-          Get-ChildItem tests -Filter 'test_*.py' -File | ForEach-Object {
-            Write-Host "RUN Python contract: $($_.Name)"
-            python $_.FullName
-            if ($LASTEXITCODE -ne 0) { throw "Python contract failed: $($_.Name)" }
-            Write-Host "PASS Python contract: $($_.Name)"
+          function Invoke-PythonCheck {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][string[]]$Arguments
+            )
+            Write-Host "RUN $Label"
+            & python @Arguments
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -ne 0) {
+              Write-Output "::error title=Python check failed::$Label (exit code $exitCode)"
+              if ($env:GITHUB_STEP_SUMMARY) {
+                Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "### Python check failed`n`n- **$Label** (exit code $exitCode)"
+              }
+              throw "$Label failed with exit code $exitCode."
+            }
+            Write-Host "PASS $Label"
           }
-          Write-Host 'RUN security self-test'
-          python admin-web/scripts/security_selftest.py
-          if ($LASTEXITCODE -ne 0) { throw 'Backend security self-test failed.' }
-          Write-Host 'PASS security self-test'
-          Write-Host 'RUN backend security regression'
-          python admin-web/scripts/backend_security_regression_test.py
-          if ($LASTEXITCODE -ne 0) { throw 'Backend security regression test failed.' }
-          Write-Host 'PASS backend security regression'
-          Write-Host 'RUN backend smoke test'
-          python admin-web/scripts/backend_smoketest.py
-          if ($LASTEXITCODE -ne 0) { throw 'Backend smoke test failed.' }
-          Write-Host 'PASS backend smoke test'
-          Write-Host 'RUN backend compileall'
-          python -m compileall -q admin-web/backend
-          if ($LASTEXITCODE -ne 0) { throw 'Backend compileall failed.' }
-          Write-Host 'PASS backend compileall'
+          Get-ChildItem tests -Filter 'test_*.py' -File | ForEach-Object {
+            Invoke-PythonCheck -Label "Python contract: $($_.Name)" -Arguments @($_.FullName)
+          }
+          Invoke-PythonCheck -Label 'security self-test' -Arguments @('admin-web/scripts/security_selftest.py')
+          Invoke-PythonCheck -Label 'backend security regression' -Arguments @('admin-web/scripts/backend_security_regression_test.py')
+          Invoke-PythonCheck -Label 'backend smoke test' -Arguments @('admin-web/scripts/backend_smoketest.py')
+          Invoke-PythonCheck -Label 'backend compileall' -Arguments @('-m', 'compileall', '-q', 'admin-web/backend')
       - name: Run PowerShell validators
         shell: pwsh
         run: |
@@ -122,6 +124,13 @@ jobs:
           $expectedSha1 = (Get-Content -Raw -LiteralPath $paperSha1).Trim().Split()[0].ToLowerInvariant()
           $actualSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $paperJar).Hash.ToLowerInvariant()
           if ($expectedSha1 -ne $actualSha1) { throw "Paper API SHA1 mismatch. Expected=$expectedSha1 Actual=$actualSha1" }
+          $placeholderJar = Join-Path $env:RUNNER_TEMP 'PlaceholderAPI-2.12.3.jar'
+          Invoke-WebRequest -Uri 'https://github.com/PlaceholderAPI/PlaceholderAPI/releases/download/2.12.3/PlaceholderAPI-2.12.3.jar' -OutFile $placeholderJar
+          $placeholderSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $placeholderJar).Hash.ToLowerInvariant()
+          if ($placeholderSha1 -ne 'c8ff2d014f159757b0c978a2f49ba7e56c5df467') { throw "PlaceholderAPI SHA1 mismatch: $placeholderSha1" }
+          $pluginDir = Join-Path $env:GITHUB_WORKSPACE 'minecraft/server/plugins'
+          New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
+          Copy-Item -LiteralPath $placeholderJar -Destination (Join-Path $pluginDir 'PlaceholderAPI-2.12.3.jar') -Force
           $dependencyPom = Join-Path $env:RUNNER_TEMP 'copimine-paper-compile-dependencies.pom'
           @'
           <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">

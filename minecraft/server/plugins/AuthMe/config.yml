@@ -254,7 +254,7 @@ settings:
         # legacyHashes:
         # - 'SHA1'
         legacyHashes:
-        - 'SHA256'
+            - 'SHA256'
         # Salt length for the SALTED2MD5 MD5(MD5(password)+salt)
         doubleMD5SaltLength: 8
         # BCRYPT cost is managed by deploy/templates/game-runtime-hardening.json.

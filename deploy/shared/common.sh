@@ -28,6 +28,10 @@ COPIMINE_VOICECHAT_TEMPLATE="${COPIMINE_VOICECHAT_TEMPLATE:-$COPIMINE_ROOT/deplo
 COPIMINE_TLS_ENABLED="${COPIMINE_TLS_ENABLED:-}"
 COPIMINE_TLS_CERT_PATH="${COPIMINE_TLS_CERT_PATH:-}"
 COPIMINE_TLS_KEY_PATH="${COPIMINE_TLS_KEY_PATH:-}"
+# When a separate public nginx vhost terminates TLS and relays to the local
+# 18080 listener, keep the backend nginx configuration relay-only.  This
+# avoids binding a second 443 listener from the application package.
+COPIMINE_PUBLIC_TLS_EXTERNAL="${COPIMINE_PUBLIC_TLS_EXTERNAL:-}"
 COPIMINE_SERVER_NAMES="${COPIMINE_SERVER_NAMES:-}"
 COPIMINE_DATABASE_RESTORE_ACTIVE_DB="${COPIMINE_DATABASE_RESTORE_ACTIVE_DB:-}"
 COPIMINE_DATABASE_RESTORE_BACKUP_DB="${COPIMINE_DATABASE_RESTORE_BACKUP_DB:-}"
@@ -82,11 +86,13 @@ PY
 }
 
 copimine_verify_public_endpoints() {
-  local admin_url public_url tls_enabled public_host http_health_url
+  local admin_url public_url tls_enabled public_tls_external public_host http_health_url
   admin_url="$(copimine_env_value ADMIN_PUBLIC_BASE_URL)"
   public_url="$(copimine_env_value PUBLIC_PANEL_URL)"
   tls_enabled="${COPIMINE_TLS_ENABLED:-$(copimine_env_value COPIMINE_TLS_ENABLED)}"
   tls_enabled="${tls_enabled:-0}"
+  public_tls_external="${COPIMINE_PUBLIC_TLS_EXTERNAL:-$(copimine_env_value COPIMINE_PUBLIC_TLS_EXTERNAL)}"
+  public_tls_external="${public_tls_external:-0}"
   [[ "$admin_url" =~ ^https?:// ]] || copimine_fail "ADMIN_PUBLIC_BASE_URL must use http:// or https://"
   [[ "$public_url" =~ ^https?:// ]] || copimine_fail "PUBLIC_PANEL_URL must use http:// or https://"
 
@@ -96,12 +102,21 @@ copimine_verify_public_endpoints() {
 
   if [[ "$tls_enabled" == "1" ]]; then
     public_host="$(copimine_url_host "$public_url")"
-    http_health_url="http://${public_host}:18080/api/health"
-    # TLS mode keeps the legacy HTTP listener for game downloads and status;
-    # verify it explicitly so both configured transports stay usable.
-    copimine_http_wait "$http_health_url" "$public_host" 90 || copimine_fail "HTTP compatibility endpoint failed: $http_health_url"
-    copimine_http_wait "http://${public_host}:18080/downloads/CopiMineMods.zip" "$public_host" 90 || copimine_fail "HTTP modpack compatibility endpoint failed"
-    copimine_http_wait "http://${public_host}:18080/resourcepacks/CopiMineResourcePack.zip" "$public_host" 90 || copimine_fail "HTTP resourcepack compatibility endpoint failed"
+    if [[ "$public_tls_external" == "1" ]]; then
+      # The relay is intentionally loopback-only when another nginx vhost
+      # owns the public TLS socket.  Test it locally with the public Host.
+      http_health_url="http://127.0.0.1:18080/api/health"
+      copimine_http_wait "$http_health_url" "$public_host" 90 || copimine_fail "local HTTP relay failed: $http_health_url"
+      copimine_http_wait "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "$public_host" 90 || copimine_fail "local HTTP modpack relay failed"
+      copimine_http_wait "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "$public_host" 90 || copimine_fail "local HTTP resourcepack relay failed"
+    else
+      http_health_url="http://${public_host}:18080/api/health"
+      # TLS mode without an external vhost keeps the legacy public HTTP
+      # listener for game downloads and status.
+      copimine_http_wait "$http_health_url" "$public_host" 90 || copimine_fail "HTTP compatibility endpoint failed: $http_health_url"
+      copimine_http_wait "http://${public_host}:18080/downloads/CopiMineMods.zip" "$public_host" 90 || copimine_fail "HTTP modpack compatibility endpoint failed"
+      copimine_http_wait "http://${public_host}:18080/resourcepacks/CopiMineResourcePack.zip" "$public_host" 90 || copimine_fail "HTTP resourcepack compatibility endpoint failed"
+    fi
   fi
 }
 
@@ -236,6 +251,7 @@ values.update({
     "COPIMINE_TLS_ENABLED": values.get("COPIMINE_TLS_ENABLED", "0"),
     "COPIMINE_TLS_CERT_PATH": values.get("COPIMINE_TLS_CERT_PATH", ""),
     "COPIMINE_TLS_KEY_PATH": values.get("COPIMINE_TLS_KEY_PATH", ""),
+    "COPIMINE_PUBLIC_TLS_EXTERNAL": values.get("COPIMINE_PUBLIC_TLS_EXTERNAL", "0"),
 })
 for url_key in ("ADMIN_PUBLIC_BASE_URL", "PUBLIC_PANEL_URL"):
     parsed = urlparse(values[url_key])
@@ -254,6 +270,9 @@ if tls_enabled == "0" and admin_is_https:
     raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
 if tls_enabled == "0" and panel_is_https:
     raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
+external_tls = values.get("COPIMINE_PUBLIC_TLS_EXTERNAL", "0").strip()
+if external_tls not in {"0", "1"}:
+    raise SystemExit("COPIMINE_PUBLIC_TLS_EXTERNAL must be 0 or 1")
 if tls_enabled == "1":
     values["AUTH_COOKIE_SECURE"] = "1"
     values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
@@ -775,9 +794,12 @@ copimine_write_modpack_hashes() {
 }
 
 copimine_render_nginx_config() {
-  local template tls_enabled cert_path key_path server_names
+  local template tls_enabled external_tls cert_path key_path server_names
   tls_enabled="${COPIMINE_TLS_ENABLED:-$(copimine_env_value COPIMINE_TLS_ENABLED)}"
   tls_enabled="${tls_enabled:-0}"
+  external_tls="${COPIMINE_PUBLIC_TLS_EXTERNAL:-$(copimine_env_value COPIMINE_PUBLIC_TLS_EXTERNAL)}"
+  external_tls="${external_tls:-0}"
+  [[ "$external_tls" == "0" || "$external_tls" == "1" ]] || copimine_fail "COPIMINE_PUBLIC_TLS_EXTERNAL must be 0 or 1"
   server_names="${COPIMINE_SERVER_NAMES:-$(copimine_env_value NGINX_SERVER_NAMES)}"
   server_names="${server_names:-admin.copimine.ru copimine.ru www.copimine.ru}"
   template="$COPIMINE_NGINX_TEMPLATE"
@@ -787,7 +809,11 @@ copimine_render_nginx_config() {
     0)
       ;;
     1)
-      template="$COPIMINE_NGINX_TLS_TEMPLATE"
+      if [[ "$external_tls" == "1" ]]; then
+        template="$COPIMINE_NGINX_TEMPLATE"
+      else
+        template="$COPIMINE_NGINX_TLS_TEMPLATE"
+      fi
       cert_path="${COPIMINE_TLS_CERT_PATH:-$(copimine_env_value COPIMINE_TLS_CERT_PATH)}"
       key_path="${COPIMINE_TLS_KEY_PATH:-$(copimine_env_value COPIMINE_TLS_KEY_PATH)}"
       [[ -n "$cert_path" && -f "$cert_path" ]] || copimine_fail "COPIMINE_TLS_CERT_PATH must point to a readable certificate when TLS is enabled"

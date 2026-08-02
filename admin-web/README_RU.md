@@ -57,7 +57,12 @@ chmod 600 .env
 ```bash
 cd /opt/copimine/admin-web
 . .venv/bin/activate
-uvicorn backend.main:app --host 127.0.0.1 --port 8090 --proxy-headers
+uvicorn backend.main:app --host 127.0.0.1 --port 8090
+
+Не добавляйте `--proxy-headers`: приложение принимает forwarded-заголовки
+только после проверки loopback-соединения с nginx. Uvicorn с этим флагом
+подменяет адрес TCP-клиента публичным адресом посетителя и ломает проверки
+Origin и TLS.
 ```
 
 Systemd unit:

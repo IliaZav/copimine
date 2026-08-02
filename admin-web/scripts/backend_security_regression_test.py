@@ -313,6 +313,44 @@ def assert_untrusted_forwarded_origin_is_not_accepted(main) -> None:
     assert not main.origin_allowed(request, "https://attacker.example.test")
 
 
+def assert_trusted_reverse_proxy_origin_is_accepted(main) -> None:
+    from starlette.requests import Request
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/auth/login",
+            "raw_path": b"/api/auth/login",
+            "query_string": b"",
+            "headers": [
+                (b"host", b"127.0.0.1:8090"),
+                (b"x-forwarded-host", b"copimine.ru"),
+                (b"x-forwarded-proto", b"https"),
+            ],
+            # This is the state produced when uvicorn is run without
+            # --proxy-headers: nginx is the actual TCP peer.
+            "client": ("127.0.0.1", 54321),
+            "server": ("127.0.0.1", 8090),
+        }
+    )
+    assert main.origin_allowed(request, "https://copimine.ru")
+
+    port_forwarded = Request(
+        {
+            **request.scope,
+            "headers": [
+                (b"host", b"127.0.0.1:8090"),
+                (b"x-forwarded-host", b"copimine.ru:4443"),
+                (b"x-forwarded-proto", b"https"),
+            ],
+        }
+    )
+    assert main.origin_allowed(port_forwarded, "https://copimine.ru:4443")
+    assert not main.origin_allowed(request, "https://attacker.example.test")
+
+
 def assert_reverse_proxy_http_is_not_mistaken_for_a_local_login(main) -> None:
     from starlette.requests import Request
 
@@ -683,6 +721,7 @@ def main() -> None:
         assert_live_http_transport_denies_public_login(main_module)
         assert_http_auth_setting_follows_public_url(main_module)
         assert_untrusted_forwarded_origin_is_not_accepted(main_module)
+        assert_trusted_reverse_proxy_origin_is_accepted(main_module)
         assert_reverse_proxy_http_is_not_mistaken_for_a_local_login(main_module)
         assert_automatic_whitelist_cannot_be_approved_into_identity_ownership(main_module)
         assert_registration_does_not_claim_an_existing_minecraft_identity(main_module)

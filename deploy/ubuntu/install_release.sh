@@ -19,7 +19,7 @@ WIPE_WORLDS=0
 RESET_GAMEPLAY=0
 RESET_TREASURY=0
 
-usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n' "$0" "$0" "$0" >&2; }
+usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n       sudo bash %s --configure-https [primary-host]\n' "$0" "$0" "$0" "$0" >&2; }
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
 
 cleanup_zabbix() {
@@ -352,6 +352,172 @@ NGINX
   [[ -f "$backup_path" ]] && echo "[http] previous public config saved at $backup_path"
 }
 
+configure_https_public() {
+  local primary_host="${2:-copimine.ru}"
+  local cert_path="${COPIMINE_TLS_CERT_PATH:-/etc/letsencrypt/live/copimine.ru/fullchain.pem}"
+  local key_path="${COPIMINE_TLS_KEY_PATH:-/etc/letsencrypt/live/copimine.ru/privkey.pem}"
+  local server_names='copimine.ru www.copimine.ru 90.188.115.155'
+  local env_file="$PROJECT_ROOT/admin-web/.env"
+  local config='/etc/nginx/sites-available/copimine-public'
+  local enabled='/etc/nginx/sites-enabled/copimine-public'
+  local backup_root='/opt/copimine-backups'
+  local backup_path="${backup_root}/https-public-before-reconfigure-$(date +%Y%m%d-%H%M%S)"
+  local env_user env_group resource_sha1 resource_version
+
+  [[ "$primary_host" =~ ^[A-Za-z0-9.-]+$ ]] || { echo '[https] invalid primary hostname' >&2; return 2; }
+  [[ -s "$cert_path" ]] || { echo "[https] certificate is missing or empty: $cert_path" >&2; return 1; }
+  [[ -s "$key_path" ]] || { echo "[https] private key is missing or empty: $key_path" >&2; return 1; }
+  [[ -f "$env_file" ]] || { echo "[https] runtime environment is missing: $env_file" >&2; return 1; }
+  command -v nginx >/dev/null 2>&1 || { echo '[https] nginx is required' >&2; return 1; }
+
+  mkdir -p "$backup_root"
+  chmod 700 "$backup_root"
+  if [[ -f "$config" ]]; then
+    cp -a -- "$config" "$backup_path"
+    chmod 600 "$backup_path"
+  fi
+
+  resource_sha1="$(sha1sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" 2>/dev/null | awk '{print $1}' || true)"
+  if [[ "$resource_sha1" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    resource_version="${resource_sha1:0:12}"
+  else
+    resource_version='runtime'
+  fi
+
+  # Update only transport/public-origin keys. Secrets, accounts and all other
+  # runtime settings remain untouched.
+  COPIMINE_HTTPS_PRIMARY="$primary_host" \
+  COPIMINE_HTTPS_CERT="$cert_path" \
+  COPIMINE_HTTPS_KEY="$key_path" \
+  COPIMINE_HTTPS_NAMES="$server_names" \
+  COPIMINE_HTTPS_RESOURCE_VERSION="$resource_version" \
+    python3 - "$env_file" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+primary = os.environ["COPIMINE_HTTPS_PRIMARY"]
+cert = os.environ["COPIMINE_HTTPS_CERT"]
+key = os.environ["COPIMINE_HTTPS_KEY"]
+server_names = os.environ["COPIMINE_HTTPS_NAMES"].split()
+resource_version = os.environ["COPIMINE_HTTPS_RESOURCE_VERSION"]
+values = {}
+for raw in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+    if "=" in raw and not raw.lstrip().startswith("#"):
+        name, value = raw.split("=", 1)
+        values[name.strip()] = value.strip().strip('"').strip("'")
+
+values.update(
+    {
+        "ADMIN_PUBLIC_BASE_URL": f"https://{primary}",
+        "PUBLIC_PANEL_URL": f"https://{primary}",
+        "RESOURCE_PACK_PUBLIC_URL": f"https://{primary}/resourcepacks/CopiMineResourcePack.zip?v={resource_version}",
+        "COPIMINE_TLS_ENABLED": "1",
+        "COPIMINE_TLS_CERT_PATH": cert,
+        "COPIMINE_TLS_KEY_PATH": key,
+        "COPIMINE_PUBLIC_TLS_EXTERNAL": "1",
+        "AUTH_COOKIE_SECURE": "1",
+        "ALLOW_INSECURE_HTTP_AUTH": "0",
+        "NGINX_SERVER_NAMES": " ".join(server_names),
+    }
+)
+origins = [item.strip() for item in values.get("ALLOWED_ORIGINS", "").split(",") if item.strip()]
+for name in server_names:
+    origin = f"https://{name}"
+    if origin not in origins:
+        origins.append(origin)
+values["ALLOWED_ORIGINS"] = ",".join(origins)
+
+ordered = [f"{name}={values[name]}" for name in sorted(values)]
+temporary = path.with_name(".env.https-tmp")
+temporary.write_text("\n".join(ordered).rstrip() + "\n", encoding="utf-8")
+temporary.chmod(0o600)
+temporary.replace(path)
+PY
+
+  env_user="$(stat -c '%U' "$env_file" 2>/dev/null || true)"
+  env_group="$(stat -c '%G' "$env_file" 2>/dev/null || true)"
+  [[ -n "$env_user" && "$env_user" != 'root' ]] || env_user='qwerty'
+  [[ -n "$env_group" && "$env_group" != 'root' ]] || env_group="$env_user"
+  chown "$env_user:$env_group" "$env_file"
+  chmod 600 "$env_file"
+
+  cat >"$config" <<'NGINX'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name __COPIMINE_PUBLIC_SERVER_NAMES__;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name __COPIMINE_PUBLIC_SERVER_NAMES__;
+    client_max_body_size 8m;
+
+    ssl_certificate __COPIMINE_PUBLIC_CERT__;
+    ssl_certificate_key __COPIMINE_PUBLIC_KEY__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "same-origin" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+}
+NGINX
+  COPIMINE_PUBLIC_SERVER_NAMES="$server_names" \
+  COPIMINE_PUBLIC_CERT="$cert_path" \
+  COPIMINE_PUBLIC_KEY="$key_path" \
+    python3 - "$config" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+for marker, value in {
+    "__COPIMINE_PUBLIC_SERVER_NAMES__": os.environ["COPIMINE_PUBLIC_SERVER_NAMES"],
+    "__COPIMINE_PUBLIC_CERT__": os.environ["COPIMINE_PUBLIC_CERT"],
+    "__COPIMINE_PUBLIC_KEY__": os.environ["COPIMINE_PUBLIC_KEY"],
+}.items():
+    text = text.replace(marker, value)
+if "__COPIMINE_PUBLIC_" in text:
+    raise SystemExit("unresolved HTTPS nginx marker")
+path.write_text(text, encoding="utf-8")
+PY
+  ln -sfn "$config" "$enabled"
+  nginx -t
+  systemctl restart copimine-admin.service
+  systemctl reload nginx.service
+  systemctl is-active --quiet copimine-admin.service || { echo '[https] admin service is not active' >&2; return 1; }
+  systemctl is-active --quiet nginx.service || { echo '[https] nginx is not active' >&2; return 1; }
+  echo '[https] nginx now terminates TLS on public port 443 and redirects port 80'
+  echo "[https] public origin: https://$primary_host"
+  echo "[https] static-IP route: https://90.188.115.155 (certificate must cover the requested hostname)"
+  [[ -f "$backup_path" ]] && echo "[https] previous public config saved at $backup_path"
+}
+
 refresh_resource_pack_url() {
   local env_file="$PROJECT_ROOT/admin-web/.env"
   local properties="$PROJECT_ROOT/minecraft/server/server.properties"
@@ -474,6 +640,10 @@ if [[ "$ARCHIVE_PATH" == "--cleanup-legacy" ]]; then
 fi
 if [[ "$ARCHIVE_PATH" == "--configure-http-only" ]]; then
   configure_http_only_public
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--configure-https" ]]; then
+  configure_https_public "$@"
   exit $?
 fi
 if [[ "$ARCHIVE_PATH" == "--refresh-resource-pack-url" ]]; then

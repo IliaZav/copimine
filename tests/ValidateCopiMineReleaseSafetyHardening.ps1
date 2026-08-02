@@ -35,6 +35,10 @@ $prepareEmotecraftPs1 = Read-Utf8 'scripts/thirdparty/prepare_emotecraft.ps1'
 $envExample = Read-Utf8 'admin-web/.env.example'
 $imageFrameConfig = Read-Utf8 'minecraft/server/plugins/ImageFrame/config.yml'
 $main = Read-Utf8 'admin-web/backend/main.py'
+$installer = Read-Utf8 'deploy/ubuntu/install_release.sh'
+$adminService = Read-Utf8 'admin-web/deploy/copimine-admin.service'
+$nginxHttpRelay = Read-Utf8 'admin-web/deploy/nginx-copimine-admin-18080.conf'
+$nginxTlsRelay = Read-Utf8 'admin-web/deploy/nginx-copimine-admin-https.conf'
 
 Require-Contains $common 'COPIMINE_APP_USER:-copimine' 'Common deployment default must match the dedicated copimine service account.'
 Require-Contains $common 'copimine_ensure_app_user()' 'Installer must create the dedicated service account on a clean Ubuntu host.'
@@ -105,6 +109,14 @@ Require-Contains $main 'is_reserved_admin_username(new_username)' 'Player userna
 Require-NotContains $main 'visiblePin' 'Player bank responses must never expose the treasury PIN.'
 Require-NotContains $main 'visible_account_pin' 'Authorized treasury views must use hash verification rather than PIN recovery.'
 Require-NotContains $main "VALUES(%s,%s,%s,%s,%s,'AUTO_APPROVED'" 'Registration must not auto-approve whitelist requests.'
+Require-NotContains $adminService '--proxy-headers' 'Uvicorn must not rewrite the trusted loopback proxy peer into the public client address.'
+Require-Contains $adminService '--port 8090' 'Admin service must keep the backend bound to the loopback port.'
+Require-Contains $nginxHttpRelay 'listen 127.0.0.1:18080 default_server;' 'HTTP relay must not be reachable directly from the public network.'
+Require-Contains $nginxTlsRelay 'listen 127.0.0.1:18080 default_server;' 'TLS relay must not be reachable directly from the public network.'
+Require-Contains $nginxTlsRelay 'proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;' 'TLS relay must preserve the outer public transport.'
+Require-Contains $installer '--configure-https' 'Release installer must provide the guarded HTTPS reconfiguration path.'
+Require-Contains $installer 'listen 443 ssl http2 default_server;' 'HTTPS reconfiguration must own the public 443 listener.'
+Require-Contains $installer 'COPIMINE_PUBLIC_TLS_EXTERNAL' 'HTTPS reconfiguration must persist external TLS termination for later upgrades.'
 
 if ($errors.Count -gt 0) {
     throw ("Release safety hardening validation failed:`n - " + ($errors -join "`n - "))

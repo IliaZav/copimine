@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-02T09:06:38.1775786Z",
-    "gitCommit":  "72f1a08c0075dd816560d4889f2fe38936e21424",
+    "generatedAtUtc":  "2026-08-02T09:46:09.0797622Z",
+    "gitCommit":  "1f5f1022fb6625701587c4ce82c074d3ce05bbcc",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,8 +11,8 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "50bcdaa5d6908a7fe25f1f0686d5b2712392ac9b",
-                    "sha256":  "82e874d0466f9446d107f969b74edfbbcc9241f8760dfba1e9de4d8aa89381ba",
+                    "sha1":  "1af6229f43322f1f4759d1857a5d61e203901350",
+                    "sha256":  "621057c19edacc7eded5e15e9bf678db173da5be6652c7f11a9331ac98e60575",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -21,16 +21,16 @@
                       "sha256":  "19df801c80f93adac92cf10503d3b7e168a5f84703538999cfc763cc1b9c3694"
                   },
     "serverPlugins":  {
-                          "minecraft/server/plugins/AuthEffects.jar":  "9c8bb90cc94a98f0af13f3c7d914c3f2fdbaab016aa7d521e59cde6ddf726221",
-                          "minecraft/server/plugins/CopiMineArtifacts.jar":  "619cd4b44fd8049ac2e8283c9bf22d3528205d70979dcdeb5ac71a4d912077ab",
-                          "minecraft/server/plugins/CopiMineEconomyCore.jar":  "7d1f43ccf0124ea478713c5629b1e13d2285efdc62d4d7c1617ca4978c88b514",
-                          "minecraft/server/plugins/CopiMineElectionCore.jar":  "6379b6f855a62d3f653bfd6376109242013a217ae592a9c2cb050353adf613da",
-                          "minecraft/server/plugins/CopiMineNarcotics.jar":  "89271f10c3897625f259916b9ad1856b81cdcfc31a8973c157cc1e3aec96dee3",
-                          "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar":  "c2a210605139bbecaa9063924e2b2034df1750afb20274e409682b0d9857f9ac",
-                          "minecraft/server/plugins/CopiMineWorldCore.jar":  "d011f63d10630d61a29cc123e340168fad9a67d6101a96eb56e0160f01c2caeb"
+                          "minecraft/server/plugins/AuthEffects.jar":  "1a740e7cbf21aea43aa04e254556f4e17d00d09dc3b615d836fc0d723202c233",
+                          "minecraft/server/plugins/CopiMineArtifacts.jar":  "3172e542c9475ff2bf88225b5a3c279bc408db4699a16dc779d4c288df7537c9",
+                          "minecraft/server/plugins/CopiMineEconomyCore.jar":  "6dd1e5424cc02bc6873ef5cca4ebb5638498532f40fce68c2821143ed896cb8b",
+                          "minecraft/server/plugins/CopiMineElectionCore.jar":  "19a5556e730758c632fb546f3163df2678f23c5ef27acdc75cd5bf3fbbb7072d",
+                          "minecraft/server/plugins/CopiMineNarcotics.jar":  "f1bfac49fab2d7b7e4636d5a18dcec89014a8c5d32e9dc1ee14fc14f83696263",
+                          "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar":  "50eb93d571e6a0e2325cc2e739d1e2cf6672f2c1c0f4671010b347d2cacb8f2d",
+                          "minecraft/server/plugins/CopiMineWorldCore.jar":  "5ec538ceaeeb79e96bbdaff49046522a519d689126f10f595fdbf681cc1b39f5"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "72f1a08c0075dd816560d4889f2fe38936e21424",
+                      "sourceCommit":  "1f5f1022fb6625701587c4ce82c074d3ce05bbcc",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",

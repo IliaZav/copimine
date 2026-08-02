@@ -585,7 +585,7 @@ Invoke-Checked -FilePath "powershell" -Arguments @(
     "-SigningKeyPath", $SigningKeyPath,
     "-SignaturePath", (Join-Path $payloadRoot 'deploy\release_manifest.sig')
 )
-Copy-Item -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json.sig') -Destination $releaseSignaturePath -Force
+Copy-Item -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.sig') -Destination $releaseSignaturePath -Force
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"
 New-Item -ItemType Directory -Force -Path $runtimeDbDir | Out-Null

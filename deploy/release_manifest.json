@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-02T17:09:59.6485875Z",
-    "gitCommit":  "930cfe7aa5d19117b3bc0ddd7bdf63d8ae11226b",
+    "generatedAtUtc":  "2026-08-02T17:48:22.1638310Z",
+    "gitCommit":  "51d4b9094280afc51e0a428b4269a57ca42c1352",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,8 +11,8 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "fee738f51cb83069bad9b3193ff45fffcb3e936f",
-                    "sha256":  "c1ecfa9ef1e5b9d981809734c78836041828e6ac3e7b58f08943c586646b4797",
+                    "sha1":  "276a7abe40e62101614e3451bb1242d9a80eb570",
+                    "sha256":  "df5579a77d485d53d11ae01d08dcd3193a9960a559eb1ac995aab9007b0c2574",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -26,11 +26,11 @@
                           "minecraft/server/plugins/CopiMineEconomyCore.jar":  "36b3e44b2e19d39cd6590418ca9052e7f7e7f2eaf7d7a4bc946e575fa896b1c6",
                           "minecraft/server/plugins/CopiMineElectionCore.jar":  "3ed5721742d85f2cdc6c31116987f6d75e877fb037a1fd36f415cf238d4a6f30",
                           "minecraft/server/plugins/CopiMineNarcotics.jar":  "b33a1c9e042f2cab58d2a79c5a60fce5e552ae4875e51d86b8a04e874ddd8173",
-                          "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar":  "554e25be0d072afbd35dff2d1ee567a4f2725fc58cd412ebe126ca3f9cac2a5f",
+                          "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar":  "e3852b901693df9e7ffa5590dd0f9da9d1bf500bd05e9428f6d85e4655cc145b",
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "6afc56e8cc1cc95c093e21a3f9dd5ba06ce81628b32b99fb72b9ff389d3d5ed4"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "930cfe7aa5d19117b3bc0ddd7bdf63d8ae11226b",
+                      "sourceCommit":  "51d4b9094280afc51e0a428b4269a57ca42c1352",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "a29d15f91ae5f4a329b7fb6b0a1a6307c5f46cfbaa471b80e1932b7b51878c5d",
+                                  "sha256":  "aed69dde1a20076d942b223c376f3faf49c7048c78e9ac7a3e1a920befd3b355",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

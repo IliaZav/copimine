@@ -84,7 +84,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ((git status --porcelain) -ne '') { throw 'CI checkout is not clean.' }
+          $status = @(git status --porcelain)
+          if ($status.Count -ne 0) {
+            $status | ForEach-Object { Write-Output "::error title=CI checkout is dirty::$_" }
+            throw 'CI checkout is not clean.'
+          }
           $sha = (git rev-parse HEAD).Trim()
           Write-Host "Verifying source SHA $sha"
           if ($sha.Length -ne 40) { throw 'Unexpected source SHA length.' }

@@ -268,6 +268,57 @@ cleanup_legacy_artifacts() {
   echo "[cleanup] legacy artifact cleanup complete; retained pre-wipe backup: ${keep_game_wipe:-none}"
 }
 
+configure_http_only_public() {
+  local config='/etc/nginx/sites-available/copimine-public'
+  local enabled='/etc/nginx/sites-enabled/copimine-public'
+  local backup_root='/opt/copimine-backups'
+  local backup_path="${backup_root}/http-public-before-http-only-$(date +%Y%m%d-%H%M%S)"
+
+  command -v nginx >/dev/null 2>&1 || { echo '[http] nginx is required' >&2; return 1; }
+  mkdir -p "$backup_root"
+  chmod 700 "$backup_root"
+  if [[ -f "$config" ]]; then
+    cp -a -- "$config" "$backup_path"
+    chmod 600 "$backup_path"
+  fi
+
+  cat >"$config" <<'NGINX'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    server_name copimine.ru www.copimine.ru;
+    client_max_body_size 8m;
+
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "same-origin" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+}
+NGINX
+  ln -sfn "$config" "$enabled"
+  nginx -t
+  systemctl reload nginx.service
+  systemctl is-active --quiet nginx.service || { echo '[http] nginx is not active' >&2; return 1; }
+  echo '[http] public port 80 enabled; public 443 configuration disabled.'
+  [[ -f "$backup_path" ]] && echo "[http] previous public config saved at $backup_path"
+}
+
 refresh_resource_pack_url() {
   local env_file="$PROJECT_ROOT/admin-web/.env"
   local properties="$PROJECT_ROOT/minecraft/server/server.properties"
@@ -386,6 +437,10 @@ if [[ "$ARCHIVE_PATH" == "--cleanup-external-services" ]]; then
 fi
 if [[ "$ARCHIVE_PATH" == "--cleanup-legacy" ]]; then
   cleanup_legacy_artifacts
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--configure-http-only" ]]; then
+  configure_http_only_public
   exit $?
 fi
 if [[ "$ARCHIVE_PATH" == "--refresh-resource-pack-url" ]]; then

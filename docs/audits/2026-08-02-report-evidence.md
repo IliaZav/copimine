@@ -9,7 +9,7 @@ Evidence codes:
 - **P** — Python compile, backend security regression and runtime-hardening self-test passed.
 - **E** — election/station focused validators passed.
 - **R** — full release package validation passed; the latest signed local
-  archive SHA-256 is `bc75e60246a65045a6fada2afff386b4489b3f7de39da3b2328657fd93d04082`.
+  archive SHA-256 is `059ee2b3f9492becceb6414fb59714ec50c28ffc7235664b15e8175e9fb68f75`.
 - **S** — production health/runtime/service checks passed on the target server.
 - **D** — production PostgreSQL exact row-count audit after the clean-state reset.
 - **M** — production Minecraft log and AuthMe configuration check after restart.
@@ -45,7 +45,7 @@ check.
 
 | ID | Status | Remediation | Evidence |
 |---|---|---|---|
-| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; the last installed runtime is source `c7b903a860e0841eb415dccab23ba9f1866705b1`, while the pending HTTP-only archive is source `8446dd457f6cd76ff350bd9df90a978e1b06e3f0`. | R, S |
+| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; the last installed runtime is source `c7b903a860e0841eb415dccab23ba9f1866705b1`, while the final pending archive is source `f63e7ed4948be918e194dcd44429848b2905bc6f`. | R, S |
 | REL-2 | Partial | `.github/workflows/ci.yml` is wired to push/PR branches and gates Python, validators, builds and clean provenance; hosted Actions run was not queried from this environment. | V |
 | REL-3 | Partial | First-party JARs are rebuilt from source during packaging and their SHA-256 values are recorded; legacy committed binary outputs remain in the repository for deployment compatibility. | R |
 | REL-4 | Partial | Two clean first-party rebuilds are byte-for-byte reproducible and the result is hash-validated; an independent second host/builder was not available. | R |
@@ -273,10 +273,12 @@ check.
 ## Live release result
 
 - Git branch: `agent/deep-election-artifacts-audit`.
-- Latest Git commit: `e121554` (signed HTTP-only release metadata); the last
-  installed production archive is `5f227bb9c9c49c1d2090b94c67ae9b83b9351bd05a6dc4c44f26544c6f456c01`.
-  Archive `bc75e60246a65045a6fada2afff386b4489b3f7de39da3b2328657fd93d04082`
-  is built and validated locally and awaits SSH recovery for installation.
+- Latest release metadata commit: `3138440`; the last installed production
+  archive is `5f227bb9c9c49c1d2090b94c67ae9b83b9351bd05a6dc4c44f26544c6f456c01`.
+  Final archive `059ee2b3f9492becceb6414fb59714ec50c28ffc7235664b15e8175e9fb68f75`
+  is built, signed and validated locally; its four upload parts are ready,
+  but the target currently times out on both SSH 2222 and HTTP, so installation
+  cannot be truthfully marked complete.
 - Production at the last successful live check: all required services active;
   `/api/health` reports 12/12 checks, 0 failures and 0 warnings; HTTP root,
   health, runtime, download and resource-pack return `200`; public login

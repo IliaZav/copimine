@@ -32,9 +32,10 @@ validator suite now passes `654/654`. The deployed archive is
 `copimine-opt-full-2026-08-02-233841.tar.gz` with SHA-256
 `56d72c9a0c676cc821510ddc6a326c47be60824799b1511fe0d04095e2a33fd6` and
 release source commit `b984e4e1f95658b8042824f7b44ba24a444fb7b1`.
-The current pushed Git tip is `f08c6ec`; its predecessor `d7ed11d` added
-allowlisted cleanup of the verifier's exact staging `__pycache__` path, and
-that helper was copied to the server and executed successfully.
+The pushed branch includes `d7ed11d` (allowlisted cleanup of the verifier's
+exact staging `__pycache__` path) and `f08c6ec` (preserved canonical security
+artifacts); the cleanup helper was copied to the server and executed
+successfully. This document is part of the same pushed audit series.
 
 Production Nginx listens on ports 80 and 443; HTTP redirects to
 `https://copimine.ru/`, while all public pages, downloads, admin routes and
@@ -347,8 +348,9 @@ links each remediation to the repaired checkout and release evidence.
 
 ## Live release result
 
-- Git branch: `agent/deep-election-artifacts-audit`; latest pushed commit:
-  `f08c6ec` (`Preserve completed security scan artifacts`).
+- Git branch: `agent/deep-election-artifacts-audit`; operational release and
+  audit commits are pushed to GitHub, including the release metadata, cleanup
+  helper, and completed security artifacts.
 - The installed release archive is
   `copimine-opt-full-2026-08-02-233841.tar.gz`, SHA-256
   `56d72c9a0c676cc821510ddc6a326c47be60824799b1511fe0d04095e2a33fd6`, with

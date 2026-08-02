@@ -582,7 +582,8 @@ Invoke-Checked -FilePath "powershell" -Arguments @(
     "-ExecutionPolicy", "Bypass",
     "-File", $signReleaseScript,
     "-ManifestPath", (Join-Path $payloadRoot 'deploy\release_manifest.json'),
-    "-SigningKeyPath", $SigningKeyPath
+    "-SigningKeyPath", $SigningKeyPath,
+    "-SignaturePath", (Join-Path $payloadRoot 'deploy\release_manifest.sig')
 )
 Copy-Item -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json.sig') -Destination $releaseSignaturePath -Force
 

@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-02T12:01:02.8897498Z",
-    "gitCommit":  "1ca6a371e34c880c1a098f9f0d90e7afa84276c2",
+    "generatedAtUtc":  "2026-08-02T12:07:50.2167739Z",
+    "gitCommit":  "a32e943ecb6040edb03227e27a80108b4b1fa186",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,8 +11,8 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "2fc4a5463adbeb0eaac152923ca8b5c772e9ace0",
-                    "sha256":  "74c830ac1269cc1c9ca17ce2c0ac6cfbb5c2ad8f833ddec90e32143b35464180",
+                    "sha1":  "43c6f95a2d8742d0baaad53023f48c171af66e92",
+                    "sha256":  "d1ecbf232400939ce425731d2b8868f03ef7041aeb090cc6e4ca82bf0d462ba7",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "6afc56e8cc1cc95c093e21a3f9dd5ba06ce81628b32b99fb72b9ff389d3d5ed4"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "1ca6a371e34c880c1a098f9f0d90e7afa84276c2",
+                      "sourceCommit":  "a32e943ecb6040edb03227e27a80108b4b1fa186",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "c9a183f78dec177deb0802067feee40f348a75ff1a1b8bcd9847a7d6b588c554",
+                                  "sha256":  "e392b9956089186125f2d6a858ae5e6ed53f99cb7b5844186f5eff083527dcd8",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -59,7 +59,21 @@
                                   "scanner":  {
                                                   "path":  "deploy/shared/scan_release_strings.py",
                                                   "sha256":  "b14b9ec9d54d9509f6c9e00e046e4a3828990bb2cb5f675ad881fed61613d894"
-                                              }
-                              }
+                                              },
+                                  "manifestSignature":  {
+                                                            "path":  "deploy/release_manifest.sig",
+                                                            "allowedSigners":  "deploy/release-signing.allowed",
+                                                            "namespace":  "copimine-release",
+                                                            "identity":  "release",
+                                                            "algorithm":  "ssh-ed25519"
+                                                        }
+                              },
+                     "manifestSignature":  {
+                                               "path":  "deploy/release_manifest.sig",
+                                               "allowedSigners":  "deploy/release-signing.allowed",
+                                               "namespace":  "copimine-release",
+                                               "identity":  "release",
+                                               "algorithm":  "ssh-ed25519"
+                                           }
                  }
 }

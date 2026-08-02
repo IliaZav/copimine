@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$ManifestPath,
-    [Parameter(Mandatory = $true)][string]$SigningKeyPath
+    [Parameter(Mandatory = $true)][string]$SigningKeyPath,
+    [string]$SignaturePath = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,7 +16,11 @@ if (-not (Test-Path -LiteralPath $SigningKeyPath -PathType Leaf)) {
     throw "Release signing key not found: $SigningKeyPath"
 }
 
-$signaturePath = "$ManifestPath.sig"
+$generatedSignaturePath = "$ManifestPath.sig"
+$signaturePath = if ($SignaturePath) { $SignaturePath } else { $generatedSignaturePath }
+if (Test-Path -LiteralPath $generatedSignaturePath) {
+    Remove-Item -LiteralPath $generatedSignaturePath -Force
+}
 if (Test-Path -LiteralPath $signaturePath) {
     Remove-Item -LiteralPath $signaturePath -Force
 }
@@ -23,6 +28,9 @@ if (Test-Path -LiteralPath $signaturePath) {
 & ssh-keygen -Y sign -f $SigningKeyPath -n copimine-release $ManifestPath
 if ($LASTEXITCODE -ne 0) {
     throw "ssh-keygen failed to sign the release manifest (exit code $LASTEXITCODE)."
+}
+if ($signaturePath -ne $generatedSignaturePath) {
+    Move-Item -LiteralPath $generatedSignaturePath -Destination $signaturePath -Force
 }
 if (-not (Test-Path -LiteralPath $signaturePath -PathType Leaf)) {
     throw "ssh-keygen did not produce the expected signature: $signaturePath"

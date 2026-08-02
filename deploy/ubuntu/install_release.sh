@@ -151,6 +151,56 @@ EOF
   echo "[cleanup] backups retained at $backup_root"
 }
 
+cleanup_legacy_artifacts() {
+  local home_root='/home/qwerty'
+  local upload_root="$home_root/copimine-upload"
+  local target resolved base
+
+  # This mode is intentionally explicit and separate from a normal release
+  # install.  It is for the one-time server opening cleanup requested by the
+  # operator; it never walks an arbitrary home or /opt tree.
+  for target in \
+    "$home_root/copimine-preserved-before-wipe-20260515-220317" \
+    "$home_root/nginx-backup-resourcepack-20260621-164420" \
+    "$upload_root/backups"; do
+    [[ -e "$target" || -L "$target" ]] || continue
+    resolved="$(readlink -f -- "$target" 2>/dev/null || true)"
+    case "$resolved" in
+      "$home_root"/*) ;;
+      *) echo "[cleanup] refusing legacy target outside $home_root: $target -> $resolved" >&2; return 1 ;;
+    esac
+    [[ "$resolved" != "$home_root" ]] || { echo '[cleanup] refusing home root' >&2; return 1; }
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed legacy home artifact: $resolved"
+  done
+
+  # Keep the most recent pre-wipe dump for recovery from the destructive
+  # opening reset.  Daily backups are pruned by backup.sh and its timer.
+  local -a game_wipes=()
+  while IFS= read -r target; do
+    [[ -n "$target" ]] && game_wipes+=("$target")
+  done < <(find /opt/copimine-backups -mindepth 1 -maxdepth 1 -type d -name 'game-wipe-*' -printf '%f\n' 2>/dev/null | sort -r)
+  local keep_game_wipe="${game_wipes[0]:-}"
+  while IFS= read -r target; do
+    [[ -n "$target" ]] || continue
+    base="$(basename -- "$target")"
+    case "$base" in
+      copimine-daily-*) continue ;;
+      game-wipe-*) [[ "$base" == "$keep_game_wipe" ]] && continue ;;
+    esac
+    resolved="$(readlink -f -- "$target" 2>/dev/null || true)"
+    case "$resolved" in
+      /opt/copimine-backups/*) ;;
+      *) echo "[cleanup] refusing backup target outside /opt/copimine-backups: $target -> $resolved" >&2; return 1 ;;
+    esac
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed legacy backup: $resolved"
+  done < <(find /opt/copimine-backups -mindepth 1 -maxdepth 1 -printf '%p\n' 2>/dev/null | sort)
+
+  copimine_prune_daily_backups 3
+  echo "[cleanup] legacy artifact cleanup complete; retained pre-wipe backup: ${keep_game_wipe:-none}"
+}
+
 refresh_resource_pack_url() {
   local env_file="$PROJECT_ROOT/admin-web/.env"
   local properties="$PROJECT_ROOT/minecraft/server/server.properties"
@@ -265,6 +315,10 @@ if [[ "$ARCHIVE_PATH" == "--cleanup-zabbix" ]]; then
 fi
 if [[ "$ARCHIVE_PATH" == "--cleanup-external-services" ]]; then
   cleanup_external_services
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--cleanup-legacy" ]]; then
+  cleanup_legacy_artifacts
   exit $?
 fi
 if [[ "$ARCHIVE_PATH" == "--refresh-resource-pack-url" ]]; then

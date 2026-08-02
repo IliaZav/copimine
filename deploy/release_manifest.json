@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-01T05:16:39.5321171Z",
-    "gitCommit":  "5b13391",
+    "generatedAtUtc":  "2026-08-02T01:38:13.9416358Z",
+    "gitCommit":  "d2505b9f93e8ad62c80b5b24c62afb05df956856",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,14 +11,36 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "2162959ba3f7829c5e12c14c291414de336e25b1",
-                    "sha256":  "26c1b9a909b4acd261ceaa835138ba3acbec3d66ed34cbc3a2e5b230675f6581",
+                    "sha1":  "c27057ed81b6d592578eccb92d533015a3b0747f",
+                    "sha256":  "fee8db9192f7190cd5376ab12da7f7920e4280fbf0dfd587f1bd1120c9cb9aee",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
                       "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
                       "sha1":  "b50462eb9aeb186c6e96503442a7f69e1990616c",
                       "sha256":  "19df801c80f93adac92cf10503d3b7e168a5f84703538999cfc763cc1b9c3694"
+                  },
+    "serverPlugins":  {
+                          "minecraft/server/plugins/AuthEffects.jar":  "3b24776501feaf829c2767de322eecd7dcbf023c65714ad0792d847663dfb8a0",
+                          "minecraft/server/plugins/CopiMineArtifacts.jar":  "d5f17881f4611a7ce442c2eec729399f84da3ba62a347ebb30834540aa1445d6",
+                          "minecraft/server/plugins/CopiMineEconomyCore.jar":  "a3be6a95ed5eed48cce5a9d18100ace79d4e37fb623b060c1f126e60f637947b",
+                          "minecraft/server/plugins/CopiMineElectionCore.jar":  "85263bee1f1dcb435117bea8783d99daef8e5e23dd81514d9c1c1c73f02fd7b2",
+                          "minecraft/server/plugins/CopiMineNarcotics.jar":  "a4f2264297dd12ab6be8049d120022e0bf34f5067ef6b834e13e93749cb70536",
+                          "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar":  "811eb547eac3d997ff4464c789d50ce51ea5dc064bbd004d95cf47b160b288f9",
+                          "minecraft/server/plugins/CopiMineWorldCore.jar":  "419484e103b4fc35ce9db4d306a2e421bd1829eba11dbb721b5e10ded2411f8f"
+                      },
+    "javaBuild":  {
+                      "sourceCommit":  "d2505b9f93e8ad62c80b5b24c62afb05df956856",
+                      "scripts":  [
+                                      "build-plugin.ps1",
+                                      "build-plugin.ps1",
+                                      "build-plugin.ps1",
+                                      "build-plugin.ps1",
+                                      "build-plugin.ps1",
+                                      "build-plugin.ps1",
+                                      "build-plugin.ps1"
+                                  ],
+                      "note":  "Every first-party server plugin in serverPlugins was compiled during this packaging run."
                   },
     "database":  {
                      "bundledDump":  false,

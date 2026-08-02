@@ -24,6 +24,9 @@ def test_election_restore_queue_keeps_each_item_until_inventory_accepts_it():
     assert "Map<String, ItemStack>" in ELECTION
     assert "officialRestore.computeIfAbsent(playerUuid, key -> new ConcurrentHashMap<>())" in ELECTION
     assert "leftovers" in ELECTION
+    assert "playerInventorySurfaces" in ELECTION
+    assert "getArmorContents()" in ELECTION
+    assert "getItemInOffHand()" in ELECTION
     assert "pendingOfficialRestore" not in ELECTION[ELECTION.index("private void addOrQueueOfficialItem"):ELECTION.index("private String officialRestoreKey")]
     assert "queueOfficialRestore(player.getUniqueId()" in ELECTION
 
@@ -68,7 +71,14 @@ def test_election_web_snapshot_is_atomic_and_votes_are_split_from_voter_identity
 def test_election_official_items_cannot_move_to_any_external_storage_or_be_cloned():
     assert "PlayerArmorStandManipulateEvent" in ELECTION
     assert "InventoryCreativeEvent" in ELECTION
-    assert "isProtectedOfficialItem(event.getCursor())" in ELECTION
+    assert "EntityPickupItemEvent" in ELECTION
+    assert "InventoryPickupItemEvent" in ELECTION
+    assert "BlockDispenseEvent" in ELECTION
+    assert "ownerUuid.isBlank()" in ELECTION
+    assert "isElectionOwnedItem(event.getCursor())" in ELECTION
+    assert "isApplicationBook" in ELECTION
+    assert "legacyElectionTypeKey" in ELECTION and "copimineelectionflow" in ELECTION
+    assert "electionItemOwner" in ELECTION
     assert "top.getHolder() instanceof Player" in ELECTION
     assert "InventoryType.ENDER_CHEST" in ELECTION
     assert "isExternalOfficialStorage(view, event.getRawSlot())" in ELECTION

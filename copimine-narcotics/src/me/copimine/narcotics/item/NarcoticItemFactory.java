@@ -25,6 +25,7 @@ public final class NarcoticItemFactory {
     private final NamespacedKey versionKey;
     private final NamespacedKey officialKey;
     private final NamespacedKey instanceIdKey;
+    private final NamespacedKey ownerUuidKey;
 
     public NarcoticItemFactory(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
         this.plugin = plugin;
@@ -34,6 +35,7 @@ public final class NarcoticItemFactory {
         versionKey = new NamespacedKey(plugin, "narcotic_version");
         officialKey = new NamespacedKey(plugin, "official");
         instanceIdKey = new NamespacedKey(plugin, "narcotic_instance_id");
+        ownerUuidKey = new NamespacedKey(plugin, "narcotic_owner_uuid");
     }
 
     public void reload(NarcoticsConfigService configService) {
@@ -41,6 +43,11 @@ public final class NarcoticItemFactory {
     }
 
     public ItemStack createOfficialItem(NarcoticDefinition definition, int amount) {
+        return createOfficialItem(definition, amount, null);
+    }
+
+    /** Create a server-issued narcotic bound to its entitlement owner. */
+    public ItemStack createOfficialItem(NarcoticDefinition definition, int amount, UUID ownerUuid) {
         Material base = definition.material() == null ? Material.PAPER : definition.material();
         if (base == Material.AIR) {
             base = definition.fallbackMaterial() == null ? Material.PAPER : definition.fallbackMaterial();
@@ -64,8 +71,39 @@ public final class NarcoticItemFactory {
         // is not a security signature (Creative events are still cancelled),
         // but it lets audits and recovery distinguish physical instances.
         meta.getPersistentDataContainer().set(instanceIdKey, PersistentDataType.STRING, UUID.randomUUID().toString());
+        if (ownerUuid != null) {
+            meta.getPersistentDataContainer().set(ownerUuidKey, PersistentDataType.STRING, ownerUuid.toString());
+        }
         stack.setItemMeta(meta);
         return stack;
+    }
+
+    /** Return the owner embedded by the issuing path, or null for legacy items. */
+    public UUID ownerUuid(ItemStack stack) {
+        if (stack == null || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+            return null;
+        }
+        String raw = stack.getItemMeta().getPersistentDataContainer().get(ownerUuidKey, PersistentDataType.STRING);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    /** Bind legacy official stacks exactly once when a known player owns them. */
+    public boolean bindOwnerIfMissing(ItemStack stack, UUID ownerUuid) {
+        if (stack == null || stack.getType() == Material.AIR || ownerUuid == null || !isOfficialCandidate(stack)
+                || ownerUuid(stack) != null || stack.getItemMeta() == null) {
+            return false;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        meta.getPersistentDataContainer().set(ownerUuidKey, PersistentDataType.STRING, ownerUuid.toString());
+        stack.setItemMeta(meta);
+        return true;
     }
 
     public NarcoticDefinition resolveOfficial(ItemStack stack) {
@@ -133,6 +171,105 @@ public final class NarcoticItemFactory {
             player.getInventory().setItemInMainHand(stack);
         }
         player.updateInventory();
+    }
+
+    /** Remove one item from the exact server-issued stack after persistence succeeds. */
+    public boolean consumeOneExact(Player player, String instanceId, String narcoticId) {
+        if (player == null || instanceId == null || instanceId.isBlank()) {
+            return false;
+        }
+        ItemStack cursor = player.getItemOnCursor();
+        if (matchesExact(cursor, instanceId, narcoticId)) {
+            if (cursor.getAmount() <= 1) {
+                player.setItemOnCursor(new ItemStack(Material.AIR));
+            } else {
+                cursor.setAmount(cursor.getAmount() - 1);
+                player.setItemOnCursor(cursor);
+            }
+            player.updateInventory();
+            return true;
+        }
+        PlayerInventoryView view = new PlayerInventoryView(player);
+        for (int slot = 0; slot < view.size(); slot++) {
+            ItemStack candidate = view.get(slot);
+            if (!matchesExact(candidate, instanceId, narcoticId)) {
+                continue;
+            }
+            if (candidate.getAmount() <= 1) {
+                view.set(slot, new ItemStack(Material.AIR));
+            } else {
+                candidate.setAmount(candidate.getAmount() - 1);
+                view.set(slot, candidate);
+            }
+            player.updateInventory();
+            return true;
+        }
+        return false;
+    }
+
+    /** Count the exact issued instance currently held by the player. */
+    public int exactQuantity(Player player, String instanceId, String narcoticId) {
+        if (player == null || instanceId == null || instanceId.isBlank()) {
+            return 0;
+        }
+        int quantity = 0;
+        ItemStack cursor = player.getItemOnCursor();
+        if (matchesExact(cursor, instanceId, narcoticId)) {
+            quantity += Math.max(0, cursor.getAmount());
+        }
+        PlayerInventoryView view = new PlayerInventoryView(player);
+        for (int slot = 0; slot < view.size(); slot++) {
+            ItemStack candidate = view.get(slot);
+            if (matchesExact(candidate, instanceId, narcoticId)) {
+                long next = (long) quantity + Math.max(0, candidate.getAmount());
+                quantity = (int) Math.min(Integer.MAX_VALUE, next);
+            }
+        }
+        return quantity;
+    }
+
+    private boolean matchesExact(ItemStack stack, String instanceId, String narcoticId) {
+        if (stack == null || stack.getType() == Material.AIR || !stack.hasItemMeta()) {
+            return false;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        String candidateId = meta.getPersistentDataContainer().get(instanceIdKey, PersistentDataType.STRING);
+        String candidateNarcotic = meta.getPersistentDataContainer().get(narcoticIdKey, PersistentDataType.STRING);
+        return instanceId.equals(candidateId)
+                && (narcoticId == null || narcoticId.equalsIgnoreCase(candidateNarcotic));
+    }
+
+    public String instanceId(ItemStack stack) {
+        if (stack == null || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+            return "";
+        }
+        return stack.getItemMeta().getPersistentDataContainer().getOrDefault(instanceIdKey, PersistentDataType.STRING, "");
+    }
+
+    private static final class PlayerInventoryView {
+        private final Player player;
+
+        private PlayerInventoryView(Player player) {
+            this.player = player;
+        }
+
+        private int size() {
+            return player.getInventory().getSize() + 1;
+        }
+
+        private ItemStack get(int slot) {
+            return slot == player.getInventory().getSize()
+                    ? player.getInventory().getItemInOffHand()
+                    : player.getInventory().getItem(slot);
+        }
+
+        private void set(int slot, ItemStack item) {
+            if (slot == player.getInventory().getSize()) {
+                player.getInventory().setItemInOffHand(item);
+            } else {
+                player.getInventory().setItem(slot, item);
+            }
+        }
     }
 
     /** Restore exactly one ingredient after a failed asynchronous state write. */

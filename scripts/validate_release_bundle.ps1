@@ -272,6 +272,25 @@ try {
         Require-Equal $resourcePackSha1 ([string]$releaseManifest.resourcePack.sha1) "release_manifest resourcePack.sha1 mismatch." $errors
         Require-Equal $resourcePackSha256 ([string]$releaseManifest.resourcePack.sha256) "release_manifest resourcePack.sha256 mismatch." $errors
         Require-Equal $clientSha1 ([string]$releaseManifest.clientMod.sha1) "release_manifest clientMod.sha1 mismatch." $errors
+        if ([string]$releaseManifest.gitCommit -notmatch '^[0-9a-f]{40}$') {
+            $errors.Add("release_manifest gitCommit must be the full 40-character source SHA.")
+        }
+        if ([string]$installerManifest.sourceArtifacts.gitCommit -ne [string]$releaseManifest.gitCommit) {
+            $errors.Add("installer_manifest sourceArtifacts.gitCommit does not match release_manifest gitCommit.")
+        }
+        $serverPluginProperties = @($releaseManifest.serverPlugins.PSObject.Properties)
+        if ($serverPluginProperties.Count -lt 7) {
+            $errors.Add("release_manifest must contain SHA256 entries for all first-party server plugins.")
+        }
+        foreach ($property in $serverPluginProperties) {
+            $relativePlugin = ([string]$property.Name) -replace '/', '\\'
+            $pluginPath = Join-Path $payloadRoot $relativePlugin
+            if (-not (Test-Path -LiteralPath $pluginPath -PathType Leaf)) {
+                $errors.Add("First-party server plugin missing from release payload: $($property.Name)")
+                continue
+            }
+            Require-Equal (Get-Sha256 $pluginPath) ([string]$property.Value) "Server plugin SHA256 mismatch: $($property.Name)" $errors
+        }
 
         Require-Equal $modpackSha1 ([string]$snapshot.sha1) "modpack_snapshot sha1 mismatch." $errors
         Require-Equal $modpackSha256 ([string]$snapshot.sha256) "modpack_snapshot sha256 mismatch." $errors

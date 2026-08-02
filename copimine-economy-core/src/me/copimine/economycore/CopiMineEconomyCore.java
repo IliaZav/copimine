@@ -8,9 +8,13 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.Container;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Item;
+import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -27,8 +31,14 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.ItemDespawnEvent;
+import org.bukkit.event.entity.ItemMergeEvent;
+import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -36,6 +46,9 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
+import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -48,6 +61,8 @@ import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.BundleMeta;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.NamespacedKey;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
@@ -59,9 +74,12 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.sql.Connection;
@@ -127,8 +145,22 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private DbSettings db;
     private ThreadPoolExecutor dbExecutor;
     private SimpleConnectionPool connectionPool;
+    /**
+     * PostgreSQL/schema work is deliberately initialized off the Bukkit
+     * thread.  Services are registered immediately so dependants can resolve
+     * the bridge, but every JDBC workflow is queued behind this startup task.
+     */
+    private final AtomicBoolean databaseReady = new AtomicBoolean(false);
+    private final AtomicBoolean databaseInitializing = new AtomicBoolean(false);
+    private final AtomicBoolean startupFailed = new AtomicBoolean(false);
+    private volatile String startupError = "DATABASE_STARTING";
+    private volatile CompletableFuture<Void> databaseStartupFuture = CompletableFuture.completedFuture(null);
+    private Path pendingArSettlementJournalPath;
+    private final Object pendingArSettlementJournalLock = new Object();
     private final Map<UUID, AtmPinSession> atmPinSessions = new ConcurrentHashMap<>();
     private final Map<UUID, TaxStatusCache> taxStatusCache = new ConcurrentHashMap<>();
+    /** Read-only president/treasury role cache; event handlers never query JDBC. */
+    private final Map<UUID, Boolean> treasuryAccessCache = new ConcurrentHashMap<>();
     private final Set<UUID> atmPinRefreshBypass = ConcurrentHashMap.newKeySet();
     private final Set<BlockKey> activeAtmBlocks = ConcurrentHashMap.newKeySet();
     private final Map<BlockKey, String> atmIdsByBlock = new ConcurrentHashMap<>();
@@ -316,6 +348,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private record BlockKey(String world, int x, int y, int z) {}
     private record PendingArSettlement(String id, UUID playerUuid, String playerName, long amount, String settlementType, String reason) {}
+    private record PendingArReservation(String token, List<String> ids) {}
     private record ArFragment(int slot, ItemStack snapshot) {}
 
     @Override
@@ -327,28 +360,24 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         officialArSerialKey = new NamespacedKey(this, "ar_serial");
         officialArSignatureKey = new NamespacedKey(this, "ar_signature");
         officialArSigningSecret = loadOrCreateArSigningSecret();
+        pendingArSettlementJournalPath = getDataFolder().toPath().resolve("pending-ar-settlements.tsv");
+        try {
+            Files.createDirectories(pendingArSettlementJournalPath.getParent());
+        } catch (Exception error) {
+            getLogger().warning("Unable to prepare pending AR settlement journal: " + safeError(error));
+        }
         int dbThreads = Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors()));
         dbExecutor = new ThreadPoolExecutor(dbThreads, dbThreads, 30L, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(512), task -> {
-            Thread thread = new Thread(task, "copimine-economy-db");
-            thread.setDaemon(true);
-            return thread;
-        }, new ThreadPoolExecutor.AbortPolicy());
-        try {
-            Class.forName("org.postgresql.Driver");
-            db = loadDbSettings();
-            connectionPool = new SimpleConnectionPool(db, Math.max(2, Math.min(8, dbThreads + 2)));
-            ensureSchema();
-            int interruptedSettlements = quarantineInterruptedPendingArSettlements();
-            if (interruptedSettlements > 0) {
-                getLogger().warning("Quarantined " + interruptedSettlements + " interrupted pending AR delivery record(s) for manual review.");
-            }
-            loadAtmCache();
-        } catch (Exception error) {
-            getLogger().severe("CopiMineEconomyCore PostgreSQL init failed: " + safeError(error));
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
+                    Thread thread = new Thread(task, "copimine-economy-db");
+                    thread.setDaemon(true);
+                    return thread;
+                }, new ThreadPoolExecutor.AbortPolicy());
+        databaseReady.set(false);
+        startupFailed.set(false);
+        databaseInitializing.set(true);
+        startupError = "DATABASE_STARTING";
+        databaseStartupFuture = new CompletableFuture<>();
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getServicesManager().register(EconomyService.class, economyService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(BankService.class, bankService, this, ServicePriority.Normal);
@@ -359,6 +388,63 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         getServer().getServicesManager().register(DonationBalanceService.class, donationBalanceService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(DonationPaymentService.class, donationPaymentService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(DonationPurchaseService.class, donationPurchaseService, this, ServicePriority.Normal);
+        startDatabaseInitializationAsync(dbThreads);
+    }
+
+    /**
+     * Load the environment, create the bounded connection pool and run schema
+     * migrations on the economy executor.  This keeps plugin startup
+     * responsive even when PostgreSQL is slow or temporarily unavailable.
+     */
+    private void startDatabaseInitializationAsync(int dbThreads) {
+        try {
+            dbExecutor.execute(() -> {
+                try {
+                    Class.forName("org.postgresql.Driver");
+                    DbSettings loaded = loadDbSettings();
+                    db = loaded;
+                    connectionPool = new SimpleConnectionPool(loaded, Math.max(2, Math.min(8, dbThreads + 2)));
+                    ensureSchema();
+                    int interruptedSettlements = quarantineInterruptedPendingArSettlements();
+                    if (interruptedSettlements > 0) {
+                        getLogger().warning("Quarantined " + interruptedSettlements + " interrupted pending AR delivery record(s) for manual review.");
+                    }
+                    loadAtmCache();
+                    flushPendingArSettlementJournal();
+                    startupError = "";
+                    databaseReady.set(true);
+                    databaseInitializing.set(false);
+                    databaseStartupFuture.complete(null);
+                    Bukkit.getScheduler().runTask(this, this::startReadyTasks);
+                    getLogger().info("CopiMineEconomyCore PostgreSQL is ready.");
+                } catch (Exception error) {
+                    startupError = safeError(error);
+                    startupFailed.set(true);
+                    databaseInitializing.set(false);
+                    databaseStartupFuture.completeExceptionally(error);
+                    getLogger().severe("CopiMineEconomyCore PostgreSQL init failed: " + startupError);
+                    Bukkit.getScheduler().runTask(this, () -> {
+                        if (isEnabled()) {
+                            getServer().getPluginManager().disablePlugin(this);
+                        }
+                    });
+                }
+            });
+        } catch (RejectedExecutionException rejected) {
+            startupError = "DATABASE_EXECUTOR_REJECTED";
+            startupFailed.set(true);
+            databaseInitializing.set(false);
+            databaseStartupFuture.completeExceptionally(rejected);
+            getLogger().severe("CopiMineEconomyCore PostgreSQL init could not be scheduled.");
+            getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    /** Starts Bukkit-only tasks after the asynchronous database bootstrap. */
+    private void startReadyTasks() {
+        if (!isEnabled() || !databaseReady.get() || startupFailed.get()) {
+            return;
+        }
         Bukkit.getScheduler().runTaskLater(this, () -> {
             try {
                 repairProtectedBlockVisuals();
@@ -366,13 +452,21 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 getLogger().warning("ATM visual repair: " + safeError(error));
             }
         }, 20L);
-        Bukkit.getScheduler().runTaskLater(this, () -> Bukkit.getOnlinePlayers().forEach(player -> processPendingArSettlements(player, false)), 40L);
+        Bukkit.getScheduler().runTaskLater(this,
+                () -> Bukkit.getOnlinePlayers().forEach(player -> processPendingArSettlements(player, false)), 40L);
         Bukkit.getScheduler().runTaskTimer(this, this::refreshOpenTaxButtons, 20L, 20L);
         atmAnchorGuardTask = Bukkit.getScheduler().runTaskTimer(this, this::guardAtmAnchors, 40L, 40L);
+        Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> refreshTreasuryAccessAsync(), 20L, 100L);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            refreshTreasuryAccessAsync(player.getUniqueId());
+        }
     }
 
     @Override
     public void onDisable() {
+        databaseReady.set(false);
+        databaseInitializing.set(false);
+        databaseStartupFuture.completeExceptionally(new IllegalStateException("CopiMineEconomyCore is shutting down."));
         Bukkit.getServicesManager().unregisterAll(this);
         if (atmAnchorGuardTask != null) {
             atmAnchorGuardTask.cancel();
@@ -395,6 +489,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             connectionPool = null;
         }
         taxStatusCache.clear();
+        treasuryAccessCache.clear();
     }
 
     public EconomyService economyService() {
@@ -687,9 +782,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 ? null : event.getClickedInventory().getItem(event.getSlot());
         ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
                 ? player.getInventory().getItem(event.getHotbarButton()) : null;
-        if (isOfficialAr(event.getCursor()) || isOfficialAr(event.getCurrentItem())
-                || isOfficialAr(clicked) || isOfficialAr(hotbar)
-                || isOfficialAr(player.getInventory().getItemInOffHand())) {
+        if (containsOfficialAr(event.getCursor()) || containsOfficialAr(event.getCurrentItem())
+                || containsOfficialAr(clicked) || containsOfficialAr(hotbar)
+                || containsOfficialAr(player.getInventory().getItemInOffHand())) {
             event.setCancelled(true);
             player.updateInventory();
         }
@@ -708,7 +803,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArInventoryDrag(InventoryDragEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player) || !isOfficialAr(event.getOldCursor())) {
+        if (!(event.getWhoClicked() instanceof Player player) || !containsOfficialAr(event.getOldCursor())) {
             return;
         }
         if (event.getRawSlots().stream().anyMatch(slot -> slot < event.getView().getTopInventory().getSize())) {
@@ -719,16 +814,107 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArInventoryMove(InventoryMoveItemEvent event) {
-        if (isOfficialAr(event.getItem())) {
+        if (containsOfficialAr(event.getItem())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArInventoryPickup(InventoryPickupItemEvent event) {
-        if (isOfficialAr(event.getItem().getItemStack())) {
+        if (containsOfficialAr(event.getItem().getItemStack())) {
             event.setCancelled(true);
         }
+    }
+
+    /**
+     * EconomyCore is the sole owner of the physical lifecycle of certified AR.
+     * AdminPlus must not retag, delete, merge or otherwise mutate these stacks.
+     * Player pickup/drop remains allowed, while every non-player transport and
+     * destructive entity path is fail-closed so an item cannot disappear
+     * without a ledger operation.
+     */
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArPickup(EntityPickupItemEvent event) {
+        if (!containsOfficialAr(event.getItem().getItemStack())) {
+            return;
+        }
+        if (!(event.getEntity() instanceof Player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArDrop(PlayerDropItemEvent event) {
+        // Dropping is a supported player action.  The item is still signed and
+        // all destructive/automated paths below remain owned by this plugin.
+        if (containsOfficialAr(event.getItemDrop().getItemStack())) {
+            normalizeOfficialArEntity(event.getItemDrop());
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Item item && containsOfficialAr(item.getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArDespawn(ItemDespawnEvent event) {
+        if (containsOfficialAr(event.getEntity().getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArMerge(ItemMergeEvent event) {
+        if (containsOfficialAr(event.getEntity().getItemStack())
+                || containsOfficialAr(event.getTarget().getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArSpawn(ItemSpawnEvent event) {
+        if (containsOfficialAr(event.getEntity().getItemStack())) {
+            normalizeOfficialArEntity(event.getEntity());
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArSmelt(FurnaceSmeltEvent event) {
+        if (isOfficialAr(event.getSource())) {
+            event.setCancelled(true);
+            event.setResult(new ItemStack(Material.AIR));
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArEntityInteract(PlayerInteractEntityEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+        ItemStack hand = event.getPlayer().getInventory().getItemInMainHand();
+        if (containsOfficialAr(hand)
+                && (event.getRightClicked() instanceof ItemFrame
+                || event.getRightClicked() instanceof ArmorStand)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArArmorStand(PlayerArmorStandManipulateEvent event) {
+        if (containsOfficialAr(event.getPlayerItem()) || containsOfficialAr(event.getArmorStandItem())) {
+            event.setCancelled(true);
+        }
+    }
+
+    private void normalizeOfficialArEntity(Item item) {
+        if (item == null || !isOfficialAr(item.getItemStack())) {
+            return;
+        }
+        item.setCanMobPickup(false);
+        item.setUnlimitedLifetime(true);
     }
 
     private boolean officialArTouchesContainer(InventoryClickEvent event) {
@@ -736,18 +922,51 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (top == null || top.getType() == org.bukkit.event.inventory.InventoryType.PLAYER) {
             return false;
         }
-        if (event.getRawSlot() < top.getSize() && isOfficialAr(event.getCurrentItem())) {
+        // Check the clicked stack regardless of whether it came from the top
+        // inventory or the player's bottom inventory.  In particular,
+        // SHIFT-clicking an AR stack from the player inventory would otherwise
+        // bypass the top-slot check and move it into a chest/hopper.
+        if (containsOfficialAr(event.getCurrentItem())) {
             return true;
         }
-        if (isOfficialAr(event.getCursor())) {
+        if (containsOfficialAr(event.getCursor())) {
             return true;
         }
         if (event.getClick() == ClickType.NUMBER_KEY) {
-            ItemStack hotbar = event.getWhoClicked().getInventory().getItem(event.getHotbarButton());
-            return isOfficialAr(hotbar);
+            int hotbarSlot = event.getHotbarButton();
+            ItemStack hotbar = hotbarSlot >= 0 && hotbarSlot < 9
+                    ? event.getWhoClicked().getInventory().getItem(hotbarSlot) : null;
+            return containsOfficialAr(hotbar);
         }
         if (event.getClick() == ClickType.SWAP_OFFHAND) {
-            return isOfficialAr(event.getWhoClicked().getInventory().getItemInOffHand());
+            return containsOfficialAr(event.getWhoClicked().getInventory().getItemInOffHand());
+        }
+        if (event.getClick() == ClickType.DOUBLE_CLICK) {
+            // Double-click collection can pull matching stacks from both
+            // inventories even when the clicked slot itself is empty.
+            return java.util.Arrays.stream(top.getContents()).anyMatch(this::containsOfficialAr)
+                    || java.util.Arrays.stream(event.getWhoClicked().getInventory().getContents()).anyMatch(this::containsOfficialAr)
+                    || containsOfficialAr(event.getWhoClicked().getInventory().getItemInOffHand());
+        }
+        return false;
+    }
+
+    private boolean containsOfficialAr(ItemStack stack) {
+        if (stack == null || stack.getType().isAir()) {
+            return false;
+        }
+        if (isOfficialAr(stack)) {
+            return true;
+        }
+        if (!stack.hasItemMeta() || stack.getItemMeta() == null) {
+            return false;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        if (meta instanceof BundleMeta bundle && bundle.hasItems()) {
+            return bundle.getItems().stream().anyMatch(this::containsOfficialAr);
+        }
+        if (meta instanceof BlockStateMeta stateMeta && stateMeta.getBlockState() instanceof Container container) {
+            return java.util.Arrays.stream(container.getInventory().getContents()).anyMatch(this::containsOfficialAr);
         }
         return false;
     }
@@ -1512,7 +1731,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return;
             }
             if (!"TRANSFER".equals(session.action())) {
-                completeWithdrawOnMainThread(player, session.amount());
+                completeWithdrawOnMainThread(player, session.amount(), first(result.txId, ""));
             }
             player.sendMessage(color("&aОперация выполнена."));
             openBankAtmAccount(player, session.atmId(), scope);
@@ -1630,31 +1849,35 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     }
                     List<String> ids = rows.stream().map(PendingArSettlement::id).toList();
                     dbFuture("pending ar settlements reserve", () -> reservePendingArSettlements(ids))
-                            .whenComplete((reserved, reserveError) -> Bukkit.getScheduler().runTask(this, () -> {
+                            .whenComplete((reservation, reserveError) -> Bukkit.getScheduler().runTask(this, () -> {
                                 if (reserveError != null) {
                                     getLogger().warning("pending AR settlements reserve: " + safeError(reserveError));
                                     return;
                                 }
+                                PendingArReservation safeReservation = reservation == null
+                                        ? new PendingArReservation("", List.of()) : reservation;
+                                List<String> reservedIds = safeReservation.ids();
                                 if (!player.isOnline()) {
-                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(ids));
+                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(reservedIds, safeReservation.token()));
                                     return;
                                 }
-                                if (reserved == null || reserved != ids.size()) {
+                                if (reservedIds.size() != ids.size()) {
                                     // Another join/retry may have reserved the
                                     // same rows. Do not release the entire id
                                     // list here: that would make the first
                                     // worker's DELIVERING rows PENDING again
                                     // and allow a duplicate physical issue.
+                                    dbAsync("pending ar settlements release partial", () -> releasePendingArSettlements(reservedIds, safeReservation.token()));
                                     return;
                                 }
                                 if (arCapacity(player.getInventory()) < totalAmount || !issueOfficialArAmount(player, totalAmount, "pending-ar-settlement", false)) {
-                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(ids));
+                                    dbAsync("pending ar settlements release", () -> releasePendingArSettlements(reservedIds, safeReservation.token()));
                                     if (notifyNoSpace) {
                                         player.sendMessage(color("&eОсвободи место в инвентаре и открой банкомат снова, чтобы забрать ожидающий AR."));
                                     }
                                     return;
                                 }
-                                dbAsync("pending ar settlements delivered", () -> markPendingArSettlementsDelivered(ids));
+                                dbAsync("pending ar settlements delivered", () -> markPendingArSettlementsDelivered(reservedIds, safeReservation.token()));
                                 player.sendMessage(color("&aВыдан ожидающий официальный AR: &f" + totalAmount + " AR"));
                             }));
                 }));
@@ -1680,25 +1903,28 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         });
     }
 
-    private int reservePendingArSettlements(List<String> ids) throws Exception {
+    private PendingArReservation reservePendingArSettlements(List<String> ids) throws Exception {
         if (ids == null || ids.isEmpty()) {
-            return 0;
+            return new PendingArReservation("", List.of());
         }
+        String token = UUID.randomUUID().toString();
         return tx(connection -> {
-            int reserved = 0;
+            List<String> reserved = new ArrayList<>();
             long updatedAt = now();
             for (String id : ids) {
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "UPDATE cmv4_pending_ar_settlements SET status=?,updated_at=? WHERE id=? AND status=?")) {
-                    bind(statement, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_PENDING);
-                    reserved += statement.executeUpdate();
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token=?,updated_at=? WHERE id=? AND status=?")) {
+                    bind(statement, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, token, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_PENDING);
+                    if (statement.executeUpdate() == 1) {
+                        reserved.add(id);
+                    }
                 }
             }
-            return reserved;
+            return new PendingArReservation(token, List.copyOf(reserved));
         });
     }
 
-    private void markPendingArSettlementsDelivered(List<String> ids) throws Exception {
+    private void markPendingArSettlementsDelivered(List<String> ids, String token) throws Exception {
         if (ids == null || ids.isEmpty()) {
             return;
         }
@@ -1706,14 +1932,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             long updatedAt = now();
             for (String id : ids) {
                 update(connection,
-                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivered_at=?,updated_at=? WHERE id=? AND status=?",
-                        PENDING_AR_SETTLEMENT_STATUS_DELIVERED, updatedAt, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING);
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token='',delivered_at=?,updated_at=? WHERE id=? AND status=? AND delivery_token=?",
+                        PENDING_AR_SETTLEMENT_STATUS_DELIVERED, updatedAt, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, first(token, ""));
             }
             return null;
         });
     }
 
-    private void releasePendingArSettlements(List<String> ids) throws Exception {
+    private void releasePendingArSettlements(List<String> ids, String token) throws Exception {
         if (ids == null || ids.isEmpty()) {
             return;
         }
@@ -1721,8 +1947,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             long updatedAt = now();
             for (String id : ids) {
                 update(connection,
-                        "UPDATE cmv4_pending_ar_settlements SET status=?,updated_at=? WHERE id=? AND status=?",
-                        PENDING_AR_SETTLEMENT_STATUS_PENDING, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING);
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token='',updated_at=? WHERE id=? AND status=? AND delivery_token=?",
+                        PENDING_AR_SETTLEMENT_STATUS_PENDING, updatedAt, id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, first(token, ""));
             }
             return null;
         });
@@ -1735,20 +1961,182 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         String normalizedType = first(settlementType, PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY);
         String normalizedReason = first(reason, "");
         String idempotencyKey = "pending-ar-" + sha256Hex(playerUuid + "|" + normalizedType + "|" + amount + "|" + normalizedReason);
-        dbAsync("queue pending ar settlement", () -> update(
-                "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
-                UUID.randomUUID().toString(),
-                playerUuid.toString(),
-                first(playerName, ""),
-                amount,
-                normalizedType,
-                PENDING_AR_SETTLEMENT_STATUS_PENDING,
-                normalizedReason,
-                idempotencyKey,
-                now(),
-                now()
-        ));
+        // Persist a local intent before handing the insert to the bounded DB
+        // executor.  If the executor is full, PostgreSQL is down, or the
+        // process is killed between the debit and the insert, the journal is
+        // replayed on the next startup and the idempotency key prevents a
+        // duplicate settlement.
+        if (!appendPendingArSettlementJournal(idempotencyKey, playerUuid, playerName, amount, normalizedType, normalizedReason)) {
+            getLogger().severe("Unable to durably journal pending AR settlement " + idempotencyKey + ". Manual review is required.");
+            return;
+        }
+        dbAsync("queue pending ar settlement", () -> {
+            update(
+                    "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                    UUID.randomUUID().toString(),
+                    playerUuid.toString(),
+                    first(playerName, ""),
+                    amount,
+                    normalizedType,
+                    PENDING_AR_SETTLEMENT_STATUS_PENDING,
+                    normalizedReason,
+                    idempotencyKey,
+                    now(),
+                    now()
+            );
+            removePendingArSettlementJournalEntry(idempotencyKey);
+        });
     }
+
+    private boolean appendPendingArSettlementJournal(String idempotencyKey, UUID playerUuid, String playerName,
+                                                     long amount, String settlementType, String reason) {
+        Path target = pendingArSettlementJournalPath;
+        if (target == null) {
+            return false;
+        }
+        String line = String.join("\t",
+                first(idempotencyKey, ""),
+                playerUuid.toString(),
+                encodeJournalValue(playerName),
+                Long.toString(amount),
+                encodeJournalValue(settlementType),
+                encodeJournalValue(reason)) + "\n";
+        synchronized (pendingArSettlementJournalLock) {
+            try {
+                Files.createDirectories(target.getParent());
+                try (FileChannel channel = FileChannel.open(target,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+                    ByteBuffer buffer = StandardCharsets.UTF_8.encode(line);
+                    while (buffer.hasRemaining()) {
+                        channel.write(buffer);
+                    }
+                    channel.force(true);
+                }
+                return true;
+            } catch (Exception error) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Pending AR settlement journal append failed", error);
+                return false;
+            }
+        }
+    }
+
+    private void flushPendingArSettlementJournal() throws Exception {
+        synchronized (pendingArSettlementJournalLock) {
+            Path target = pendingArSettlementJournalPath;
+            if (target == null || !Files.isRegularFile(target)) {
+                return;
+            }
+            List<String> lines = Files.readAllLines(target, StandardCharsets.UTF_8);
+            if (lines.isEmpty()) {
+                return;
+            }
+            Map<String, PendingArJournalRow> rows = new LinkedHashMap<>();
+            for (String line : lines) {
+            String[] parts = line.split("\\t", -1);
+            if (parts.length != 6) {
+                getLogger().warning("Ignoring malformed pending AR settlement journal row.");
+                continue;
+            }
+            try {
+                UUID uuid = UUID.fromString(parts[1]);
+                long amount = Long.parseLong(parts[3]);
+                if (amount <= 0 || amount > Integer.MAX_VALUE) {
+                    continue;
+                }
+                rows.put(parts[0], new PendingArJournalRow(parts[0], uuid, decodeJournalValue(parts[2]), amount,
+                        decodeJournalValue(parts[4]), decodeJournalValue(parts[5])));
+            } catch (Exception ignored) {
+                getLogger().warning("Ignoring invalid pending AR settlement journal row.");
+            }
+            }
+            if (rows.isEmpty()) {
+                rewritePendingArSettlementJournal(List.of());
+                return;
+            }
+            tx(connection -> {
+                for (PendingArJournalRow row : rows.values()) {
+                    update(connection,
+                            "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                            UUID.randomUUID().toString(), row.playerUuid().toString(), first(row.playerName(), ""), row.amount(),
+                            first(row.settlementType(), PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY),
+                            PENDING_AR_SETTLEMENT_STATUS_PENDING, first(row.reason(), ""), row.idempotencyKey(), now(), now());
+                }
+                return null;
+            });
+            // Keep the lock through replay and compaction so a concurrent
+            // failed delivery cannot append a line that startup erases.
+            rewritePendingArSettlementJournal(List.of());
+            getLogger().info("Replayed " + rows.size() + " pending AR settlement journal row(s).");
+        }
+    }
+
+    private void removePendingArSettlementJournalEntry(String idempotencyKey) throws Exception {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || pendingArSettlementJournalPath == null) {
+            return;
+        }
+        synchronized (pendingArSettlementJournalLock) {
+            Path target = pendingArSettlementJournalPath;
+            if (!Files.isRegularFile(target)) {
+                return;
+            }
+            List<String> keep = new ArrayList<>();
+            for (String line : Files.readAllLines(target, StandardCharsets.UTF_8)) {
+                String[] parts = line.split("\\t", -1);
+                if (parts.length == 0 || !idempotencyKey.equals(parts[0])) {
+                    keep.add(line);
+                }
+            }
+            rewritePendingArSettlementJournal(keep);
+        }
+    }
+
+    private void rewritePendingArSettlementJournal(List<String> lines) throws Exception {
+        Path target = pendingArSettlementJournalPath;
+        if (target == null) {
+            return;
+        }
+        synchronized (pendingArSettlementJournalLock) {
+            Files.createDirectories(target.getParent());
+            Path temporary = Files.createTempFile(target.getParent(), target.getFileName().toString() + ".", ".tmp");
+            try {
+                String text = lines == null || lines.isEmpty() ? "" : String.join("\n", lines) + "\n";
+                byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+                try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                    ByteBuffer buffer = ByteBuffer.wrap(bytes);
+                    while (buffer.hasRemaining()) {
+                        channel.write(buffer);
+                    }
+                    channel.force(true);
+                }
+                try {
+                    Files.move(temporary, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                    Files.move(temporary, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(temporary);
+            }
+        }
+    }
+
+    private String encodeJournalValue(String value) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(first(value, "").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String decodeJournalValue(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        try {
+            return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    private record PendingArJournalRow(String idempotencyKey, UUID playerUuid, String playerName, long amount,
+                                       String settlementType, String reason) {}
 
     private String sha256Hex(String value) {
         try {
@@ -1795,11 +2183,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return true;
     }
 
-    private void completeWithdrawOnMainThread(Player player, long amount) {
+    private void completeWithdrawOnMainThread(Player player, long amount, String transactionId) {
         if (!issueOfficialArAmount(player, amount, "bank-withdraw", false)) {
             queuePendingArSettlement(player.getUniqueId(), player.getName(), amount,
                     PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY,
-                    "bank-withdraw,reason=inventory_full");
+                    "bank-withdraw,reason=inventory_full,tx="
+                            + (transactionId == null || transactionId.isBlank() ? UUID.randomUUID() : transactionId));
             player.sendMessage(color("&eБанк списал AR, но инвентарь заполнен. Сумма помещена в безопасную очередь выдачи."));
         }
     }
@@ -2608,11 +2997,33 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (hasEconomyAdmin(player)) {
             return true;
         }
-        try {
-            return scalarLong("SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'", player.getUniqueId().toString()) > 0;
-        } catch (Exception error) {
-            return false;
+        // The menu/event path is always Bukkit's main thread.  Do not perform
+        // a blocking president_terms lookup here; the bounded async refresh
+        // below makes the role decision available without freezing clicks.
+        return treasuryAccessCache.getOrDefault(player.getUniqueId(), false);
+    }
+
+    private void refreshTreasuryAccessAsync() {
+        if (!databaseReady.get() || dbExecutor == null || dbExecutor.isShutdown()) {
+            return;
         }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            refreshTreasuryAccessAsync(player.getUniqueId());
+        }
+    }
+
+    private void refreshTreasuryAccessAsync(UUID playerUuid) {
+        if (playerUuid == null || !databaseReady.get()) {
+            return;
+        }
+        dbFuture("treasury role refresh", () -> scalarLong(
+                "SELECT COUNT(*) FROM president_terms WHERE president_uuid=? AND status='ACTIVE'",
+                playerUuid.toString()) > 0L).whenComplete((allowed, error) -> {
+            if (error != null) {
+                return;
+            }
+            treasuryAccessCache.put(playerUuid, Boolean.TRUE.equals(allowed));
+        });
     }
 
     private TxnResult creditAccount(String accountId, String ownerUuid, String ownerName, long amount, String idempotencyKey, String action, String details) {
@@ -3134,8 +3545,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS donation_payment_sessions(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL DEFAULT '',player_name TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT 'MOCK_SBP',amount BIGINT NOT NULL DEFAULT 0,amount_rub BIGINT NOT NULL DEFAULT 0,donation_units BIGINT NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'RUB',status TEXT NOT NULL DEFAULT 'CREATED',qr_payload TEXT NOT NULL DEFAULT '',qr_image_path TEXT NOT NULL DEFAULT '',callback_payload_json TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,expires_at BIGINT NOT NULL DEFAULT 0,paid_at BIGINT NOT NULL DEFAULT 0,cancelled_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_purchases(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',item_id TEXT NOT NULL,price BIGINT NOT NULL DEFAULT 0,price_donation BIGINT NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'CREATED',source TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE TABLE IF NOT EXISTS donation_item_claims(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,item_id TEXT NOT NULL,amount BIGINT NOT NULL DEFAULT 1,status TEXT NOT NULL DEFAULT 'UNCLAIMED',claimed_at BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,purchase_id TEXT NOT NULL DEFAULT '',actor TEXT NOT NULL DEFAULT '')");
-            update(connection, "CREATE TABLE IF NOT EXISTS cmv4_pending_ar_settlements(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0 CHECK(amount>0),settlement_type TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,delivered_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv4_pending_ar_settlements(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0 CHECK(amount>0),settlement_type TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',delivery_token TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,delivered_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS delivery_token TEXT NOT NULL DEFAULT ''");
             update(connection, "CREATE TABLE IF NOT EXISTS protected_block_visuals(id TEXT PRIMARY KEY,kind TEXT NOT NULL,linked_id TEXT NOT NULL,world TEXT NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,z INTEGER NOT NULL,entity_uuid TEXT NOT NULL DEFAULT '',base_material TEXT NOT NULL DEFAULT 'PAPER',custom_model_data INTEGER NOT NULL DEFAULT 0,model_id TEXT NOT NULL DEFAULT '',offset_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,offset_z DOUBLE PRECISION NOT NULL DEFAULT 0.5,scale_x DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_y DOUBLE PRECISION NOT NULL DEFAULT 1.01,scale_z DOUBLE PRECISION NOT NULL DEFAULT 1.01,yaw DOUBLE PRECISION NOT NULL DEFAULT 0,pitch DOUBLE PRECISION NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS amount_rub BIGINT NOT NULL DEFAULT 0");
@@ -3192,7 +3604,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private int quarantineInterruptedPendingArSettlements() throws Exception {
         return tx(connection -> updateCount(connection,
-                "UPDATE cmv4_pending_ar_settlements SET status='DELIVERY_REVIEW',reason=CASE WHEN reason='' THEN 'interrupted_after_reservation' ELSE reason || ';interrupted_after_reservation' END,updated_at=? WHERE status='DELIVERING'",
+                "UPDATE cmv4_pending_ar_settlements SET status='DELIVERY_REVIEW',delivery_token='',reason=CASE WHEN reason='' THEN 'interrupted_after_reservation' ELSE reason || ';interrupted_after_reservation' END,updated_at=? WHERE status='DELIVERING'",
                 now()));
     }
 
@@ -3309,10 +3721,20 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private Connection openConnection() throws Exception {
-        Connection connection = connectionPool == null ? DriverManager.getConnection(db.jdbcUrl(), db.user(), db.password()) : connectionPool.acquire();
+        if (!databaseReady.get() && !databaseInitializing.get()) {
+            throw new IllegalStateException("CopiMineEconomyCore database is unavailable: " + first(startupError, "DATABASE_UNAVAILABLE"));
+        }
+        DbSettings settings = db;
+        if (settings == null) {
+            throw new IllegalStateException("CopiMineEconomyCore database is still starting.");
+        }
+        SimpleConnectionPool pool = connectionPool;
+        Connection connection = pool == null
+                ? DriverManager.getConnection(settings.jdbcUrl(), settings.user(), settings.password())
+                : pool.acquire();
         try (Statement statement = connection.createStatement()) {
-            statement.execute("CREATE SCHEMA IF NOT EXISTS " + db.schemaIdent());
-            statement.execute("SET search_path TO " + db.schemaIdent());
+            statement.execute("CREATE SCHEMA IF NOT EXISTS " + settings.schemaIdent());
+            statement.execute("SET search_path TO " + settings.schemaIdent());
             statement.execute("SET statement_timeout TO 15000");
             statement.execute("SET idle_in_transaction_session_timeout TO 30000");
         } catch (Exception error) {
@@ -3421,11 +3843,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private void dbAsync(String label, SqlVoid body) {
         if (dbExecutor == null || dbExecutor.isShutdown()) {
-            try {
-                body.run();
-            } catch (Exception error) {
-                getLogger().warning(label + ": " + safeError(error));
+            // Never fall back to JDBC on the Bukkit thread.  During startup
+            // and shutdown the operation is retried by the owning workflow
+            // (or recovered from its idempotency/review row).
+            getLogger().warning(label + ": database executor is not ready; operation was not scheduled.");
+            return;
+        }
+        CompletableFuture<Void> startup = databaseStartupFuture;
+        if (!databaseReady.get()) {
+            if (startupFailed.get()) {
+                getLogger().warning(label + ": database startup failed; operation was not scheduled.");
+                return;
             }
+            startup.whenComplete((ignored, error) -> {
+                if (error != null) {
+                    getLogger().warning(label + ": database startup failed; operation was not scheduled.");
+                    return;
+                }
+                dbAsync(label, body);
+            });
             return;
         }
         try {
@@ -3443,27 +3879,32 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private <T> CompletableFuture<T> dbFuture(String label, SqlSupplier<T> body) {
         if (dbExecutor == null || dbExecutor.isShutdown()) {
-            try {
-                return CompletableFuture.completedFuture(body.get());
-            } catch (Exception error) {
-                CompletableFuture<T> failed = new CompletableFuture<>();
-                failed.completeExceptionally(error);
-                return failed;
-            }
-        }
-        try {
-            return CompletableFuture.supplyAsync(() -> {
-                try {
-                    return body.get();
-                } catch (Exception error) {
-                    throw new CompletionException(new IllegalStateException(label + ": " + safeError(error), error));
-                }
-            }, dbExecutor);
-        } catch (RejectedExecutionException rejected) {
             CompletableFuture<T> failed = new CompletableFuture<>();
-            failed.completeExceptionally(new IllegalStateException(label + ": database queue is full."));
+            failed.completeExceptionally(new IllegalStateException(label + ": database executor is not ready."));
             return failed;
         }
+        CompletableFuture<Void> startup = databaseStartupFuture;
+        CompletableFuture<T> scheduled = startup.thenCompose(ignored -> {
+            if (!databaseReady.get()) {
+                CompletableFuture<T> failed = new CompletableFuture<>();
+                failed.completeExceptionally(new IllegalStateException(label + ": database is unavailable."));
+                return failed;
+            }
+            try {
+                return CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return body.get();
+                    } catch (Exception error) {
+                        throw new CompletionException(new IllegalStateException(label + ": " + safeError(error), error));
+                    }
+                }, dbExecutor);
+            } catch (RejectedExecutionException rejected) {
+                CompletableFuture<T> failed = new CompletableFuture<>();
+                failed.completeExceptionally(new IllegalStateException(label + ": database queue is full."));
+                return failed;
+            }
+        });
+        return scheduled;
     }
 
     private void requireAsyncBankContext(String operation) {
@@ -4780,12 +5221,22 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         @Override
         public Health health(UUID playerUuid, String context) {
+            if (!databaseReady.get()) {
+                return new Health(false, false, false, 0L, first(context, "health"),
+                        first(startupError, startupFailed.get() ? "DATABASE_UNAVAILABLE" : "DATABASE_STARTING"));
+            }
             try {
+                // A cached/empty PIN status is not proof that PostgreSQL is
+                // healthy. Perform a bounded pool ping so callers never get
+                // a false green readiness result after a DB outage.
+                try (Connection connection = openConnection(); Statement statement = connection.createStatement()) {
+                    statement.execute("SELECT 1");
+                }
                 PinStatus pin = pinStatus(playerUuid);
                 long balance = playerUuid == null ? 0L : bankService.balance(playerUuid, "");
                 return new Health(true, true, pin.configured && !pin.mustChange && pin.lockedSeconds <= 0, balance, first(context, "health"), "");
             } catch (Exception error) {
-                return new Health(false, true, false, 0L, first(context, "health"), safeError(error));
+                return new Health(false, false, false, 0L, first(context, "health"), safeError(error));
             }
         }
     }
@@ -5032,6 +5483,19 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     return new TxnResult(true, "OK", "Committed.", after, txId);
                 });
             } catch (Exception error) {
+                // The connection may have failed after PostgreSQL committed
+                // the ledger row.  Replay by the idempotency key before
+                // reporting an error; otherwise Artifacts could compensate a
+                // debit that actually succeeded and create a duplicate.
+                try {
+                    TxnResult replay = tx(connection -> replayArtifactStyleTxn(
+                            connection, txKey, accountId, uuid, signedAmount, detailText));
+                    if (replay != null) {
+                        return replay;
+                    }
+                } catch (Exception replayError) {
+                    getLogger().warning("artifact bridge replay failed key=" + txKey + ": " + safeError(replayError));
+                }
                 return new TxnResult(false, "BANK_ERROR", safeError(error), 0L, "");
             }
         }

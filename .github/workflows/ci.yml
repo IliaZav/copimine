@@ -1,0 +1,98 @@
+name: CopiMine verification
+
+on:
+  push:
+    branches: [main, 'codex/**', 'agent/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-contract:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install backend test dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check -r admin-web/requirements.txt
+      - name: Run Python contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem tests -Filter 'test_*.py' -File | ForEach-Object {
+            python $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Python contract failed: $($_.Name)" }
+          }
+          python admin-web/scripts/security_selftest.py
+          if ($LASTEXITCODE -ne 0) { throw 'Backend security self-test failed.' }
+          python admin-web/scripts/backend_security_regression_test.py
+          if ($LASTEXITCODE -ne 0) { throw 'Backend security regression test failed.' }
+          python admin-web/scripts/backend_smoketest.py
+          if ($LASTEXITCODE -ne 0) { throw 'Backend smoke test failed.' }
+          python -m compileall -q admin-web/backend
+      - name: Run PowerShell validators
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\RunCopiMineValidators.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }
+      - name: Verify clean release provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git status --porcelain) -ne '') { throw 'CI checkout is not clean.' }
+          $sha = (git rev-parse HEAD).Trim()
+          Write-Host "Verifying source SHA $sha"
+          if ($sha.Length -ne 40) { throw 'Unexpected source SHA length.' }
+
+  java-plugins:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Resolve Paper API
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paper = Get-ChildItem minecraft/server -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $paper) {
+            $paper = Get-ChildItem "$env:USERPROFILE\.m2\repository" -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $paper) {
+            mvn -q dependency:get '-DrepoUrl=https://repo.papermc.io/repository/maven-public/' '-Dartifact=io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper API.' }
+            $paper = Get-ChildItem "$env:USERPROFILE\.m2\repository" -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $paper) { throw 'Paper API jar is not available in the checkout or Maven cache.' }
+          "PAPER_API_JAR=$($paper.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Compile first-party plugins
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($dir in @('copimine-economy-core','copimine-election-core','copimine-artifacts','copimine-narcotics','copimine-world-core','copimine-admin-plugin','minecraft/server/plugins/AuthEffects')) {
+            & powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'build-plugin.ps1')
+            if ($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
+          }

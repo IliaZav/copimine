@@ -29,7 +29,7 @@ function Resolve-GitRoot {
 }
 
 $gitRoot = Resolve-GitRoot -StartPath $ProjectRoot
-$sourceCommitBeforeBuild = (git -C $gitRoot rev-parse --short HEAD).Trim()
+$sourceCommitBeforeBuild = (git -C $gitRoot rev-parse HEAD).Trim()
 $sourceTreeDirtyBeforeBuild = -not [string]::IsNullOrWhiteSpace((git -C $gitRoot status --short --untracked-files=no))
 if ($sourceTreeDirtyBeforeBuild) {
     # Windows may materialize tracked text files as CRLF even though the Git
@@ -88,6 +88,25 @@ $resourcePackDownloadUrl = if ($ResourcePackDownloadUrl) {
 } else {
     "http://copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
 }
+
+$pluginBuildScripts = @(
+    (Join-Path $ProjectRoot 'copimine-economy-core\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-election-core\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-artifacts\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-narcotics\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-world-core\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-admin-plugin\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'minecraft\server\plugins\AuthEffects\build-plugin.ps1')
+)
+$firstPartyServerJars = @(
+    'minecraft/server/plugins/AuthEffects.jar',
+    'minecraft/server/plugins/CopiMineArtifacts.jar',
+    'minecraft/server/plugins/CopiMineEconomyCore.jar',
+    'minecraft/server/plugins/CopiMineElectionCore.jar',
+    'minecraft/server/plugins/CopiMineNarcotics.jar',
+    'minecraft/server/plugins/CopiMineUltimateAdminPlus.jar',
+    'minecraft/server/plugins/CopiMineWorldCore.jar'
+)
 $modpackDownloadUrl = "/downloads/CopiMineMods.zip"
 if ($resourcePackDownloadUrl -notmatch '^https?://[^/]+(?:/.*)?$') {
     throw 'ResourcePackDownloadUrl must be an absolute http:// or https:// URL.'
@@ -197,20 +216,28 @@ function Remove-PayloadPath {
     }
 }
 
-Write-Host "[1/8] Build CopiMineClient"
+Write-Host "[1/9] Build first-party server plugins from the checked-out source"
+foreach ($pluginBuildScript in $pluginBuildScripts) {
+    if (-not (Test-Path -LiteralPath $pluginBuildScript)) {
+        throw "Missing plugin build script: $pluginBuildScript"
+    }
+    Invoke-Checked -FilePath "powershell" -Arguments @("-ExecutionPolicy", "Bypass", "-File", $pluginBuildScript)
+}
+
+Write-Host "[2/9] Build CopiMineClient"
 Invoke-Checked -FilePath "powershell" -Arguments @("-ExecutionPolicy", "Bypass", "-File", $clientBuildScript)
 if (-not (Test-Path -LiteralPath $clientJar)) {
     throw "Missing built client jar: $clientJar"
 }
 
-Write-Host "[2/8] Sync client jar into site modpack inputs"
+Write-Host "[3/9] Sync client jar into site modpack inputs"
 Copy-Item -LiteralPath $clientJar -Destination $thirdpartyClientJar -Force
 $thirdpartySha256 = Write-Checksums
 
-Write-Host "[3/8] Build site modpack archive"
+Write-Host "[4/9] Build site modpack archive"
 Invoke-Checked -FilePath "powershell" -Arguments @("-ExecutionPolicy", "Bypass", "-File", $buildModpackScript, "-ProjectRoot", $ProjectRoot)
 
-Write-Host "[4/8] Build managed resource pack"
+Write-Host "[5/9] Build managed resource pack"
 Invoke-Checked -FilePath "python" -Arguments @($resourcepackScript)
 
 if (-not (Test-Path -LiteralPath $resourcepackZip)) {
@@ -231,7 +258,7 @@ Update-ServerProperties -LiteralPath $serverPropertiesPath -ResourcePackUrl $res
 $commit = $sourceCommitBeforeBuild
 $gitDirty = $sourceTreeDirtyBeforeBuild
 
-Write-Host "[5/8] Update release manifests"
+Write-Host "[6/9] Update release manifests"
 $thirdpartyManifest = Get-Content -Raw -Encoding UTF8 $thirdpartyManifestPath | ConvertFrom-Json
 $thirdpartyManifest.clientArchive.sha1 = $modpackSha1
 $thirdpartyManifest.clientArchive | Add-Member -NotePropertyName sha256 -NotePropertyValue $modpackSha256 -Force
@@ -252,6 +279,15 @@ foreach ($artifact in $thirdpartyManifest.artifacts.serverPlugins) {
     }
 }
 Write-Utf8NoBomFile -LiteralPath $thirdpartyManifestPath -Content ($thirdpartyManifest | ConvertTo-Json -Depth 16)
+
+$serverPluginHashes = [ordered]@{}
+foreach ($relative in $firstPartyServerJars) {
+    $full = Join-Path $ProjectRoot ($relative -replace '/', '\\')
+    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+        throw "First-party server plugin was not built: $relative"
+    }
+    $serverPluginHashes[$relative] = Get-Sha256Lower -LiteralPath $full
+}
 
 $releaseManifest = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
@@ -275,6 +311,12 @@ $releaseManifest = [ordered]@{
         sha1 = $clientSha1
         sha256 = $clientSha256
     }
+    serverPlugins = $serverPluginHashes
+    javaBuild = [ordered]@{
+        sourceCommit = $commit
+        scripts = $pluginBuildScripts | ForEach-Object { Split-Path $_ -Leaf }
+        note = "Every first-party server plugin in serverPlugins was compiled during this packaging run."
+    }
     database = [ordered]@{
         bundledDump = [bool](($DbDumpPath) -and (Test-Path -LiteralPath $DbDumpPath))
         dumpPathInsideArchive = "db/runtime/copimine.dump"
@@ -287,6 +329,10 @@ $installerManifest = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
     gitCommit = $commit
     sourceTreeDirty = $gitDirty
+    sourceArtifacts = [ordered]@{
+        gitCommit = $commit
+        serverPlugins = $serverPluginHashes
+    }
     artifacts = [ordered]@{
         resourcePack = [ordered]@{
             path = "resourcepacks/build/CopiMineResourcePack.zip"
@@ -363,7 +409,7 @@ $installerManifest = [ordered]@{
 }
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerManifest | ConvertTo-Json -Depth 16)
 
-Write-Host "[6/8] Stage Linux replacement payload"
+Write-Host "[7/9] Stage Linux replacement payload"
 $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-release-" + [guid]::NewGuid().ToString())
 $payloadRoot = Join-Path $stageRoot "copimine"
 $trackedTreeTar = Join-Path $stageRoot 'tracked-tree.tar'
@@ -501,7 +547,7 @@ if ($DbDumpPath) {
     Copy-Item -LiteralPath $DbDumpPath -Destination (Join-Path $runtimeDbDir "copimine.dump") -Force
 }
 
-Write-Host "[7/8] Create tar.gz release archive"
+Write-Host "[8/9] Create tar.gz release archive"
 $archiveName = "copimine-opt-full-$timestamp.tar.gz"
 $archivePath = Join-Path $ReleaseDir $archiveName
 if (Test-Path -LiteralPath $archivePath) {
@@ -518,7 +564,7 @@ try {
     Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "[8/8] Finalize release metadata and validate bundle"
+Write-Host "[9/9] Finalize release metadata and validate bundle"
 $deployInstallCopy = Join-Path $ReleaseDir "copimine_install.sh"
 $deployInstallReleaseCopy = Join-Path $ReleaseDir "copimine_install_release.sh"
 $deployUpdateCopy = Join-Path $ReleaseDir "copimine_update.sh"

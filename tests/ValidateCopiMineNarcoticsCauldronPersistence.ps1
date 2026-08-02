@@ -3,7 +3,7 @@ $errors = New-ErrorList
 $service = Read-Utf8 (Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\cauldron\CauldronBrewingService.java')
 $factory = Read-Utf8 (Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\item\NarcoticItemFactory.java')
 Require-Contains $service 'queuePendingRefund' 'Cauldron persistence failure must queue the consumed ingredient for durable return.'
-Require-Contains $service 'deleteBrewingState' 'Cauldron persistence failure must remove the failed in-memory state.'
+Require-Contains $service 'tombstoneBrewingState' 'Cauldron persistence failure must remove the failed in-memory state with an exact-version tombstone.'
 Require-Contains $service 'saveBrewingState(key, version, frozen)' 'Cauldron state must be persisted before accepting the next state.'
 Require-Contains $service 'database save failed' 'Cauldron persistence failures need a clear diagnostic.'
 Require-Contains $factory 'restoreOne' 'Narcotic item factory must provide a safe single-item restore.'

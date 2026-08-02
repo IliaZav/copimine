@@ -170,8 +170,9 @@ def main() -> None:
             "MC_LOG_FILE": str(base / "logs" / "latest.log"),
             "SECRET_KEY": "x" * 64,
             "ADMIN_PUBLIC_BASE_URL": "http://127.0.0.1:18080",
-            # The smoke test intentionally models a trusted local HTTP setup.
-            # Production public sessions stay HTTPS-only unless this opt-in is set.
+            # Authenticated sessions are HTTPS-only.  Use an HTTPS test base
+            # URL so the smoke test exercises the same cookie/transport rules
+            # as production instead of relying on the removed HTTP bypass.
             "ALLOW_INSECURE_HTTP_AUTH": "1",
             "COPIMINE_AUTH_STORAGE": "sqlite",
             "COPIMINE_AUTH_DB": str(data_dir / "auth.sqlite3"),
@@ -209,7 +210,7 @@ def main() -> None:
 
         appmod.run_systemctl = fake_systemctl
         from fastapi.testclient import TestClient
-        with TestClient(appmod.app) as c:
+        with TestClient(appmod.app, base_url="https://testserver") as c:
             assert c.get("/api/health").status_code == 200
             if (
                 os.getenv("COPIMINE_AUTH_STORAGE", "").strip().lower() != "sqlite"

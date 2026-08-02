@@ -81,6 +81,31 @@ public final class CauldronBrewingService {
                         if (updatedAtMillis > 0L && updatedAtMillis < 10_000_000_000L) {
                             updatedAtMillis *= 1000L;
                         }
+                        if (updatedAtMillis > 0L && nowMillis - updatedAtMillis >= STALE_BREW_STATE_MILLIS) {
+                            // A state that survived a restart longer than the
+                            // safety window is no longer trusted as a live
+                            // cauldron transaction. Tombstone it first, then
+                            // queue exactly one ingredient refund.
+                            UUID staleOwner = parseOwner(loaded.ownerUuid());
+                            database.tombstoneBrewingState(entry.getKey(), loaded.version()).whenComplete((applied, error) -> {
+                                if (error != null) {
+                                    plugin.getLogger().warning("Unable to tombstone stale brewing state " + entry.getKey() + ": " + error.getMessage());
+                                    return;
+                                }
+                                if (!Boolean.TRUE.equals(applied)) {
+                                    // A newer state won the race.  Its
+                                    // ingredients remain owned by that state;
+                                    // never issue a refund for the old row.
+                                    return;
+                                }
+                                if (staleOwner != null && !loaded.ingredients().isEmpty()) {
+                                    for (IngredientEntry ingredient : loaded.ingredients()) {
+                                        database.queuePendingRefund(staleOwner, "INGREDIENT:" + ingredient.serialize(), 1);
+                                    }
+                                }
+                            });
+                            continue;
+                        }
                         CauldronState restored = new CauldronState(List.copyOf(loaded.ingredients()), loaded.version(), updatedAtMillis, parseOwner(loaded.ownerUuid()));
                         cache.merge(entry.getKey(), restored, (current, candidate) -> current.version() >= candidate.version() ? current : candidate);
                         restoredCount++;
@@ -221,10 +246,10 @@ public final class CauldronBrewingService {
             if (pending == null || pending.ingredients().isEmpty()) {
                 return;
             }
-            database.deleteBrewingState(key, pending.version() + 1L).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+            database.tombstoneBrewingState(key, pending.version()).whenComplete((applied, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
                 synchronized (lockFor(key)) {
                     CauldronState current = cache.get(key);
-                    if (error != null || current == null || current.version() != pending.version()) {
+                    if (error != null || !Boolean.TRUE.equals(applied) || current == null || current.version() != pending.version()) {
                         if (error != null) {
                             plugin.getLogger().warning("Brewing state delete failed for " + key + ": " + error.getMessage());
                         }
@@ -302,10 +327,10 @@ public final class CauldronBrewingService {
     }
 
     private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix, org.bukkit.entity.Player initiator) {
-        database.deleteBrewingState(key, version).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
-            synchronized (lockFor(key)) {
-                CauldronState current = cache.get(key);
-                if (error != null || current == null || current.version() != version) {
+            database.tombstoneBrewingState(key, version).whenComplete((applied, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                synchronized (lockFor(key)) {
+                    CauldronState current = cache.get(key);
+                if (error != null || !Boolean.TRUE.equals(applied) || current == null || current.version() != version) {
                     if (error != null) {
                         plugin.getLogger().warning("Brewing completion tombstone failed for " + key + ": " + error.getMessage());
                     }
@@ -359,11 +384,11 @@ public final class CauldronBrewingService {
                         // PostgreSQL but its acknowledgement was lost, an
                         // early refund would duplicate the ingredient on the
                         // next restart.
-                        database.deleteBrewingState(key, version + 1L).whenComplete((deleted, deleteError) ->
+                        database.tombstoneBrewingState(key, version).whenComplete((deleted, deleteError) ->
                                 Bukkit.getScheduler().runTask(plugin, () -> {
                                     synchronized (lockFor(key)) {
                                         CauldronState stillCurrent = cache.get(key);
-                                        if (deleteError != null || stillCurrent == null
+                                        if (deleteError != null || !Boolean.TRUE.equals(deleted) || stillCurrent == null
                                                 || stillCurrent.version() != version
                                                 || !stillCurrent.ingredients().equals(frozen)) {
                                             if (deleteError != null) {
@@ -407,10 +432,10 @@ public final class CauldronBrewingService {
     }
 
     private void clearState(Block block, BlockKey key, long version) {
-        database.deleteBrewingState(key, version).whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+        database.tombstoneBrewingState(key, version).whenComplete((applied, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
             synchronized (lockFor(key)) {
                 CauldronState current = cache.get(key);
-                if (error != null || current == null || current.version() != version) {
+                if (error != null || !Boolean.TRUE.equals(applied) || current == null || current.version() != version) {
                     if (error != null) {
                         plugin.getLogger().warning("Brewing state tombstone failed for " + key + ": " + error.getMessage());
                     }

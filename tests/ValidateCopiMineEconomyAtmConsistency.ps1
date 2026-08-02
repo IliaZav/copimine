@@ -21,8 +21,14 @@ if (-not $asyncCreate.Success -or $asyncCreate.Value -notmatch 'ON CONFLICT \(wo
 }
 
 $settlements = [regex]::Match($source, '(?s)private void processPendingArSettlements\(Player player, boolean notifyNoSpace\).*?(?=\r?\n\s*private List<PendingArSettlement> loadPendingArSettlements)')
-if (-not $settlements.Success -or $settlements.Value -notmatch '(?s)if \(!player\.isOnline\(\)\) \{\s*dbAsync\("pending ar settlements release", \(\) -> releasePendingArSettlements\(ids\)\);\s*return;') {
-    $errors.Add('If a player disconnects after pending AR is reserved but before issuance, the settlement must be returned to PENDING instead of being stranded in DELIVERING.')
+if (-not $settlements.Success -or $settlements.Value -notmatch '(?s)if \(!player\.isOnline\(\)\) \{\s*dbAsync\("pending ar settlements release", \(\) -> releasePendingArSettlements\(reservedIds, safeReservation\.token\(\)\)\);\s*return;') {
+    $errors.Add('If a player disconnects after pending AR is reserved but before issuance, only the token-owned settlement rows must be returned to PENDING.')
+}
+
+foreach ($marker in @('delivery_token', 'PendingArReservation', 'reservedIds.size() != ids.size()', 'releasePendingArSettlements(reservedIds, safeReservation.token())')) {
+    if ($source -notmatch [regex]::Escape($marker)) {
+        $errors.Add("Pending AR delivery must use token-scoped reservations (missing: $marker).")
+    }
 }
 
 if ($source -notmatch [regex]::Escape('quarantineInterruptedPendingArSettlements()')) {

@@ -758,7 +758,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             Location safe = access.redirectToSafeSpawn() ? safeSpawn(target) : findSafeLocation(target, target.getSpawnLocation());
             if (safe == null) {
                 getLogger().warning("WorldCore could not find a safe redirect location in world " + target.getName() + " for " + player.getName());
-                player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё Р±РµР·РѕРїР°СЃРЅСѓСЋ С‚РѕС‡РєСѓ РґР»СЏ РїРµСЂРµРјРµС‰РµРЅРёСЏ."));
+                player.sendMessage(color("&cНе удалось найти безопасную точку для перемещения."));
                 return;
             }
             if (player.teleport(safe)) {

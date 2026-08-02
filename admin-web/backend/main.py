@@ -290,24 +290,20 @@ AUTH_COOKIE_SECURE = (
 
 
 def resolve_http_auth_setting(raw_value: Optional[str], public_base_url: str) -> bool:
-    """Resolve HTTP login from an explicit opt-in only.
+    """Parse the explicit compatibility flag without enabling public HTTP.
 
-    Public pages, downloads and health remain available over HTTP, but admin
-    credentials must never be accepted there merely because the configured URL
-    is HTTP. Operators may explicitly set ``ALLOW_INSECURE_HTTP_AUTH=1`` for a
-    temporary trusted-network installation.
+    The flag is retained for local HTTP smoke/development environments and for
+    HTTPS deployments during migration.  ``auth_transport_is_allowed`` still
+    requires a direct loopback request when the effective transport is HTTP,
+    so setting it cannot reopen a public plaintext login endpoint.
     """
     raw = str(raw_value or "").strip().lower()
-    if raw:
-        return raw in {"1", "true", "yes", "on"}
-    # A public HTTP URL is not an authentication opt-in.  Public pages and
-    # downloads remain available; only explicit ALLOW_INSECURE_HTTP_AUTH=1 may
-    # permit credentials over non-TLS transport.
-    return False
+    return raw in {"1", "true", "yes", "on"}
 
 
 # Public HTTP remains available for the site, files and status endpoints. Admin
-# login over HTTP is always an explicit opt-in; HTTPS/loopback are unaffected.
+# login over a public HTTP connection is never enabled; HTTPS/loopback are
+# unaffected.
 ALLOW_INSECURE_HTTP_AUTH = resolve_http_auth_setting(os.getenv("ALLOW_INSECURE_HTTP_AUTH"), ADMIN_PUBLIC_BASE_URL)
 AUTH_BEARER_FALLBACK_ENABLED = os.getenv("AUTH_BEARER_FALLBACK_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "cm_csrf")
@@ -1526,7 +1522,10 @@ def request_is_direct_loopback(request: Request) -> bool:
 
 
 def auth_transport_is_allowed(request: Request) -> bool:
-    return request_transport_is_secure(request) or request_is_direct_loopback(request) or ALLOW_INSECURE_HTTP_AUTH
+    # Only TLS or an unproxied loopback request may create/refresh an admin
+    # session.  Public HTTP remains available for anonymous pages, downloads
+    # and health checks, but never for credentials or cookies.
+    return request_transport_is_secure(request) or request_is_direct_loopback(request)
 
 
 def require_secure_auth_transport(request: Request) -> None:
@@ -1535,7 +1534,7 @@ def require_secure_auth_transport(request: Request) -> None:
     raise HTTPException(
         status_code=426,
         detail="Для входа через публичную сеть нужен HTTPS. HTTP оставлен для публичных страниц и загрузок; "
-        "в доверенной локальной сети администратор может временно включить ALLOW_INSECURE_HTTP_AUTH=1.",
+        "локальный вход разрешён только из непрооксированного loopback-запроса.",
     )
 
 
@@ -17517,12 +17516,6 @@ def public_health_projection(report: Mapping[str, Any] | dict[str, Any]) -> dict
 
 
 def public_auth_transport_state() -> dict[str, Any]:
-    if ALLOW_INSECURE_HTTP_AUTH:
-        return {
-            "http": "authenticated-opt-in",
-            "authenticatedSessions": "insecure-http-opt-in",
-            "warning": "HTTP authentication is explicitly enabled; use HTTPS for public access.",
-        }
     return {
         "http": "public-only",
         "authenticatedSessions": "https-required",

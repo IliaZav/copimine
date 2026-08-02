@@ -7,8 +7,11 @@ import me.copimine.narcotics.use.OverdoseService;
 import me.copimine.narcotics.util.BlockKey;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -61,8 +64,24 @@ public final class NarcoticsDatabase {
     private final Map<Thread, Long> activeWriteGeneration = new ConcurrentHashMap<>();
     private final Object refundJournalLock = new Object();
     private Path refundJournal;
+    private final Object auditJournalLock = new Object();
+    private Path auditJournal;
+    private final Object brewingJournalLock = new Object();
+    private Path brewingJournal;
 
-    public record PendingRefund(String id, String playerUuid, String narcoticId, int amount) {}
+    public record PendingRefund(String id, String playerUuid, String narcoticId, int amount, String sourceInstanceId) {}
+
+    /**
+     * Durable two-phase marker for a physical narcotic consumption.
+     *
+     * The player inventory is owned by the Bukkit thread while the overdose
+     * state is committed by the PostgreSQL worker.  Keeping the marker in the
+     * same database transaction as the state write means a restart cannot
+     * turn a successful state update into a reusable physical item (or refund
+     * the same item twice).
+     */
+    public record ConsumptionReservation(String instanceId, String playerUuid, String narcoticId,
+                                         String status, int quantityBefore) {}
 
     public NarcoticsDatabase(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
         this.plugin = plugin;
@@ -90,6 +109,8 @@ public final class NarcoticsDatabase {
             );
             dbSettings = loadDbSettings();
             refundJournal = plugin.getDataFolder().toPath().resolve("pending-refunds.journal");
+            auditJournal = plugin.getDataFolder().toPath().resolve("admin-audit.journal");
+            brewingJournal = plugin.getDataFolder().toPath().resolve("brewing-state.journal");
             Files.createDirectories(refundJournal.getParent());
             CompletableFuture<Void> ready = new CompletableFuture<>();
             schemaReady = ready;
@@ -98,6 +119,8 @@ public final class NarcoticsDatabase {
                     try {
                         ensureSchema();
                         replayRefundJournal();
+                        replayAuditJournal();
+                        replayBrewingJournal();
                         ready.complete(null);
                     } catch (Exception error) {
                         ready.completeExceptionally(error);
@@ -177,33 +200,19 @@ public final class NarcoticsDatabase {
     }
 
     public CompletableFuture<Void> saveBrewingState(BlockKey key, long version, List<IngredientEntry> ingredients, UUID ownerUuid) {
+        List<IngredientEntry> snapshot = ingredients == null ? List.of() : List.copyOf(ingredients);
+        String journalKey = brewingJournalKey(key, version);
+        if (!appendBrewingJournal(key, version, snapshot, ownerUuid)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Brewing state journal is unavailable."));
+        }
         return runAsync(() -> tx(connection -> {
-            try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO narcotics_brewing_states(world_name,x,y,z,ingredients_csv,state_payload,state_version,deleted,updated_at,owner_uuid)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)
-                    ON CONFLICT (world_name,x,y,z)
-                    DO UPDATE SET ingredients_csv=EXCLUDED.ingredients_csv,
-                                  state_payload=EXCLUDED.state_payload,
-                                  state_version=EXCLUDED.state_version,
-                                  deleted=EXCLUDED.deleted,
-                                  updated_at=EXCLUDED.updated_at,
-                                  owner_uuid=EXCLUDED.owner_uuid
-                    WHERE narcotics_brewing_states.state_version < EXCLUDED.state_version
-                    """)) {
-                statement.setString(1, key.world());
-                statement.setInt(2, key.x());
-                statement.setInt(3, key.y());
-                statement.setInt(4, key.z());
-                statement.setString(5, joinLegacyCsv(ingredients));
-                statement.setString(6, joinStatePayload(ingredients));
-                statement.setLong(7, version);
-                statement.setBoolean(8, false);
-                statement.setLong(9, Instant.now().toEpochMilli());
-                statement.setString(10, ownerUuid == null ? "" : ownerUuid.toString());
-                statement.executeUpdate();
-            }
+            persistBrewingState(connection, key, version, snapshot, ownerUuid);
             return null;
-        }));
+        })).whenComplete((ignored, error) -> {
+            if (error == null) {
+                removeBrewingJournal(journalKey);
+            }
+        });
     }
 
     public CompletableFuture<Void> deleteBrewingState(BlockKey key, long version) {
@@ -274,7 +283,26 @@ public final class NarcoticsDatabase {
     }
 
     public CompletableFuture<Void> savePlayerState(OverdoseService.PlayerState state) {
+        return savePlayerState(state, null);
+    }
+
+    /**
+     * Save overdose state and atomically advance a consumption reservation.
+     *
+     * The reservation is optional for administrative/state-repair writes.  A
+     * normal player consumption supplies its exact item instance id; if the
+     * reservation is missing or belongs to another player the transaction is
+     * rejected, so the state can never be committed without a durable marker.
+     */
+    public CompletableFuture<Void> savePlayerState(OverdoseService.PlayerState state, String reservationInstanceId) {
+        if (state == null || state.playerUuid() == null) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Player state is required."));
+        }
+        if (reservationInstanceId != null && reservationInstanceId.isBlank()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Consumption reservation id is blank."));
+        }
         return runAsync(() -> tx(connection -> {
+            long now = Instant.now().getEpochSecond();
             try (PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO narcotics_player_overdose(player_uuid,current_scale,last_consumed_at,overdose_until,inverted_movement_until,last_item_id,state_version,updated_at)
                     VALUES (?,?,?,?,?,?,?,?)
@@ -295,7 +323,7 @@ public final class NarcoticsDatabase {
                 statement.setLong(5, state.invertedMovementUntil());
                 statement.setString(6, state.lastItemId());
                 statement.setLong(7, state.stateVersion());
-                statement.setLong(8, Instant.now().getEpochSecond());
+                statement.setLong(8, now);
                 statement.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement("""
@@ -311,8 +339,153 @@ public final class NarcoticsDatabase {
                 statement.setString(1, state.playerUuid().toString());
                 statement.setLong(2, state.lastConsumedAt());
                 statement.setString(3, state.lastItemId());
-                statement.setLong(4, Instant.now().getEpochSecond());
+                statement.setLong(4, now);
                 statement.setLong(5, state.stateVersion());
+                statement.executeUpdate();
+            }
+            if (reservationInstanceId != null) {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        UPDATE narcotics_consumption_reservations
+                        SET status='STATE_COMMITTED',updated_at=?
+                        WHERE instance_id=? AND player_uuid=? AND status='RESERVED'
+                        """)) {
+                    statement.setLong(1, now);
+                    statement.setString(2, reservationInstanceId);
+                    statement.setString(3, state.playerUuid().toString());
+                    if (statement.executeUpdate() != 1) {
+                        throw new IllegalStateException("Consumption reservation is missing or already committed.");
+                    }
+                }
+            }
+            return null;
+        }));
+    }
+
+    /**
+     * Tombstone only the exact state version the caller observed.  Returning
+     * the affected-row flag is important: a concurrent cauldron update must
+     * not be mistaken for a successful delete, otherwise its ingredients
+     * could be refunded a second time.
+     */
+    public CompletableFuture<Boolean> tombstoneBrewingState(BlockKey key, long expectedVersion) {
+        if (key == null || expectedVersion < 0L) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid brewing tombstone."));
+        }
+        return supplyAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    UPDATE narcotics_brewing_states
+                    SET ingredients_csv='',state_payload='',state_version=state_version+1,
+                        deleted=TRUE,updated_at=?,owner_uuid=''
+                    WHERE world_name=? AND x=? AND y=? AND z=?
+                      AND state_version=? AND deleted=FALSE
+                    """)) {
+                statement.setLong(1, Instant.now().toEpochMilli());
+                statement.setString(2, key.world());
+                statement.setInt(3, key.x());
+                statement.setInt(4, key.y());
+                statement.setInt(5, key.z());
+                statement.setLong(6, expectedVersion);
+                return statement.executeUpdate() == 1;
+            }
+        }));
+    }
+
+    /** Reserve an exact issued item before an asynchronous state write starts. */
+    public CompletableFuture<Void> reserveConsumption(UUID playerUuid, String instanceId, String narcoticId) {
+        return reserveConsumption(playerUuid, instanceId, narcoticId, 1);
+    }
+
+    /** Reserve an exact issued item and remember its pre-consumption quantity.
+     * The quantity lets crash recovery distinguish an interrupted removal from
+     * a removal that already happened on a stack sharing the same instance id.
+     */
+    public CompletableFuture<Void> reserveConsumption(UUID playerUuid, String instanceId, String narcoticId,
+                                                       int quantityBefore) {
+        if (playerUuid == null || instanceId == null || instanceId.isBlank()
+                || narcoticId == null || narcoticId.isBlank() || quantityBefore < 1) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid consumption reservation."));
+        }
+        return runAsync(() -> tx(connection -> {
+            long now = Instant.now().getEpochSecond();
+            try (PreparedStatement insert = connection.prepareStatement("""
+                    INSERT INTO narcotics_consumption_reservations(instance_id,player_uuid,narcotic_id,status,quantity_before,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?)
+                    ON CONFLICT (instance_id) DO NOTHING
+                    """)) {
+                insert.setString(1, instanceId);
+                insert.setString(2, playerUuid.toString());
+                insert.setString(3, narcoticId);
+                insert.setString(4, "RESERVED");
+                insert.setInt(5, quantityBefore);
+                insert.setLong(6, now);
+                insert.setLong(7, now);
+                insert.executeUpdate();
+            }
+            try (PreparedStatement verify = connection.prepareStatement("""
+                    SELECT player_uuid,narcotic_id,status,quantity_before
+                    FROM narcotics_consumption_reservations
+                    WHERE instance_id=?
+                    FOR UPDATE
+                    """)) {
+                verify.setString(1, instanceId);
+                try (ResultSet rs = verify.executeQuery()) {
+                    if (!rs.next()
+                            || !playerUuid.toString().equals(rs.getString(1))
+                            || !narcoticId.equalsIgnoreCase(rs.getString(2))
+                            || !"RESERVED".equalsIgnoreCase(rs.getString(3))
+                            || rs.getInt(4) != quantityBefore) {
+                        throw new IllegalStateException("Consumption item is already reserved or committed.");
+                    }
+                }
+            }
+            return null;
+        }));
+    }
+
+    public CompletableFuture<List<ConsumptionReservation>> loadConsumptionReservations(UUID playerUuid, int limit) {
+        if (playerUuid == null) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        return supplyAsync(() -> {
+            List<ConsumptionReservation> reservations = new ArrayList<>();
+            try (Connection connection = openConnection();
+                 PreparedStatement statement = connection.prepareStatement("""
+                          SELECT instance_id,player_uuid,narcotic_id,status,quantity_before
+                         FROM narcotics_consumption_reservations
+                         WHERE player_uuid=? AND status IN ('RESERVED','STATE_COMMITTED')
+                         ORDER BY created_at ASC
+                         LIMIT ?
+                         """)) {
+                statement.setString(1, playerUuid.toString());
+                statement.setInt(2, Math.max(1, Math.min(limit, 32)));
+                try (ResultSet rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        reservations.add(new ConsumptionReservation(
+                                rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                                Math.max(1, rs.getInt(5))));
+                    }
+                }
+            }
+            return List.copyOf(reservations);
+        });
+    }
+
+    public CompletableFuture<Void> completeConsumptionReservation(String instanceId) {
+        return deleteConsumptionReservation(instanceId);
+    }
+
+    public CompletableFuture<Void> releaseConsumptionReservation(String instanceId) {
+        return deleteConsumptionReservation(instanceId);
+    }
+
+    private CompletableFuture<Void> deleteConsumptionReservation(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "DELETE FROM narcotics_consumption_reservations WHERE instance_id=?")) {
+                statement.setString(1, instanceId);
                 statement.executeUpdate();
             }
             return null;
@@ -324,6 +497,11 @@ public final class NarcoticsDatabase {
             return CompletableFuture.failedFuture(new IllegalStateException("Narcotics reset is already in progress."));
         }
         long resetGeneration = writeGeneration.incrementAndGet();
+        // A confirmed administrative reset intentionally invalidates local
+        // write-ahead rows as well as PostgreSQL rows; otherwise a journal
+        // replay after restart could resurrect the state the reset removed.
+        clearBrewingJournal();
+        clearRefundJournal();
         CompletableFuture<Void> reset = runAsyncInternal(() -> tx(connection -> {
             for (String sql : List.of(
                     "DELETE FROM narcotics_brewing_states",
@@ -331,7 +509,9 @@ public final class NarcoticsDatabase {
                     "DELETE FROM narcotics_player_usage_window",
                     "DELETE FROM narcotics_config_values",
                     "DELETE FROM narcotics_admin_audit",
-                    "DELETE FROM narcotics_item_texture_migrations"
+                    "DELETE FROM narcotics_item_texture_migrations",
+                    "DELETE FROM narcotics_pending_refunds",
+                    "DELETE FROM narcotics_consumption_reservations"
             )) {
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     statement.executeUpdate();
@@ -343,36 +523,83 @@ public final class NarcoticsDatabase {
         return reset;
     }
 
+    private void clearRefundJournal() {
+        synchronized (refundJournalLock) {
+            if (refundJournal == null) {
+                return;
+            }
+            try {
+                Files.deleteIfExists(refundJournal);
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to clear narcotics refund journal during reset", error);
+            }
+        }
+    }
+
     public CompletableFuture<Void> queuePendingRefund(UUID playerUuid, String narcoticId, int amount) {
+        return queuePendingRefund(playerUuid, narcoticId, amount, "");
+    }
+
+    /**
+     * Queue a refund for one physical instance.  sourceInstanceId is optional
+     * for cauldron ingredients, but when present it is unique per issued
+     * narcotic and makes duplicate Paper removal callbacks idempotent.
+     */
+    public CompletableFuture<Void> queuePendingRefund(UUID playerUuid, String narcoticId, int amount,
+                                                       String sourceInstanceId) {
         if (playerUuid == null || narcoticId == null || narcoticId.isBlank() || amount <= 0) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid narcotics refund."));
         }
+        if (resetBarrier.getAcquire()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Narcotics reset is in progress."));
+        }
+        String source = sourceInstanceId == null ? "" : sourceInstanceId.trim();
         String refundId = UUID.randomUUID().toString();
+        // Write-ahead first.  A loss event may be followed by Paper removing an
+        // entity before PostgreSQL acknowledges the insert; the journal is the
+        // durable source of truth for that gap and is replayed transactionally
+        // on startup/next recovery pass.
+        try {
+            appendRefundJournal(refundId, playerUuid, narcoticId, amount, source);
+        } catch (Exception journalError) {
+            plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                    "Unable to persist narcotics refund journal", journalError);
+            return CompletableFuture.failedFuture(journalError);
+        }
         CompletableFuture<Void> persisted = runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")) {
+                    "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,source_instance_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING")) {
                 long now = Instant.now().getEpochSecond();
                 statement.setString(1, refundId);
                 statement.setString(2, playerUuid.toString());
                 statement.setString(3, narcoticId);
                 statement.setInt(4, amount);
-                statement.setString(5, "PENDING");
-                statement.setLong(6, now);
+                statement.setString(5, source);
+                statement.setString(6, "PENDING");
                 statement.setLong(7, now);
+                statement.setLong(8, now);
                 statement.executeUpdate();
             }
             return null;
         }));
         persisted.whenComplete((ignored, error) -> {
             if (error != null) {
-                try {
-                    appendRefundJournal(refundId, playerUuid, narcoticId, amount);
-                } catch (Exception journalError) {
-                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Unable to persist narcotics refund journal", journalError);
-                }
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Narcotics refund DB insert deferred; durable journal retained", error);
+                flushPendingRefundJournal();
             }
         });
-        return persisted;
+        // Once the journal append succeeded, the physical item is safe to
+        // quarantine even if PostgreSQL is temporarily down.  Callers should
+        // not keep a second physical copy based on a transient DB exception;
+        // replay will materialize the pending row later.
+        return persisted.handle((ignored, error) -> null);
+    }
+
+    /** Retry importing the durable refund journal without requiring a restart. */
+    public CompletableFuture<Void> flushPendingRefundJournal() {
+        return runAsync(this::replayRefundJournal);
     }
 
     public CompletableFuture<List<PendingRefund>> reservePendingRefunds(UUID playerUuid, int limit) {
@@ -391,12 +618,12 @@ public final class NarcoticsDatabase {
                 reset.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT id,player_uuid,narcotic_id,amount FROM narcotics_pending_refunds WHERE player_uuid=? AND status='PENDING' ORDER BY created_at ASC LIMIT ? FOR UPDATE")) {
+                        "SELECT id,player_uuid,narcotic_id,amount,source_instance_id FROM narcotics_pending_refunds WHERE player_uuid=? AND status='PENDING' ORDER BY created_at ASC LIMIT ? FOR UPDATE")) {
                 statement.setString(1, playerUuid.toString());
                 statement.setInt(2, Math.max(1, Math.min(limit, 32)));
                 try (ResultSet rs = statement.executeQuery()) {
                     while (rs.next()) {
-                        result.add(new PendingRefund(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)));
+                        result.add(new PendingRefund(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getString(5)));
                         ids.add(rs.getString(1));
                     }
                 }
@@ -456,6 +683,15 @@ public final class NarcoticsDatabase {
             if (error != null) {
                 plugin.getLogger().log(java.util.logging.Level.WARNING,
                         "Narcotics audit write failed for action " + action, error);
+                try {
+                    appendAuditJournal(actor, action, details);
+                } catch (Exception journalError) {
+                    // Keep the event visible even if the local journal is
+                    // unavailable; callers deliberately do not block gameplay
+                    // on audit persistence, but an audit must never vanish.
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                            "Narcotics audit fallback journal write failed for action " + action, journalError);
+                }
             }
         });
     }
@@ -565,12 +801,31 @@ public final class NarcoticsDatabase {
                   player_uuid TEXT NOT NULL,
                   narcotic_id TEXT NOT NULL,
                   amount INTEGER NOT NULL,
+                  source_instance_id TEXT NOT NULL DEFAULT '',
                   status TEXT NOT NULL DEFAULT 'PENDING',
                   created_at BIGINT NOT NULL DEFAULT 0,
                   updated_at BIGINT NOT NULL DEFAULT 0
                 )
                 """);
+        sql.add("ALTER TABLE narcotics_pending_refunds ADD COLUMN IF NOT EXISTS source_instance_id TEXT NOT NULL DEFAULT ''");
+        sql.add("""
+                CREATE TABLE IF NOT EXISTS narcotics_consumption_reservations (
+                  instance_id TEXT PRIMARY KEY,
+                  player_uuid TEXT NOT NULL,
+                  narcotic_id TEXT NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'RESERVED',
+                  quantity_before INTEGER NOT NULL DEFAULT 1,
+                  created_at BIGINT NOT NULL DEFAULT 0,
+                  updated_at BIGINT NOT NULL DEFAULT 0
+                )
+                """);
+        sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'RESERVED'");
+        sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS quantity_before INTEGER NOT NULL DEFAULT 1");
+        sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
+        sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0");
+        sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_consumption_reservations_player ON narcotics_consumption_reservations(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_refunds_player ON narcotics_pending_refunds(player_uuid,status,created_at)");
+        sql.add("CREATE UNIQUE INDEX IF NOT EXISTS uq_narcotics_pending_refund_source ON narcotics_pending_refunds(player_uuid,source_instance_id) WHERE source_instance_id <> ''");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_brewing_updated ON narcotics_brewing_states(updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_admin_audit_created ON narcotics_admin_audit(created_at)");
         return sql;
@@ -836,12 +1091,186 @@ public final class NarcoticsDatabase {
         createdConnections.set(0);
     }
 
-    private void appendRefundJournal(String id, UUID playerUuid, String narcoticId, int amount) throws Exception {
+    private void persistBrewingState(Connection connection, BlockKey key, long version,
+                                     List<IngredientEntry> ingredients, UUID ownerUuid) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO narcotics_brewing_states(world_name,x,y,z,ingredients_csv,state_payload,state_version,deleted,updated_at,owner_uuid)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT (world_name,x,y,z)
+                DO UPDATE SET ingredients_csv=EXCLUDED.ingredients_csv,
+                              state_payload=EXCLUDED.state_payload,
+                              state_version=EXCLUDED.state_version,
+                              deleted=EXCLUDED.deleted,
+                              updated_at=EXCLUDED.updated_at,
+                              owner_uuid=EXCLUDED.owner_uuid
+                WHERE narcotics_brewing_states.state_version < EXCLUDED.state_version
+                """)) {
+            statement.setString(1, key.world());
+            statement.setInt(2, key.x());
+            statement.setInt(3, key.y());
+            statement.setInt(4, key.z());
+            statement.setString(5, joinLegacyCsv(ingredients));
+            statement.setString(6, joinStatePayload(ingredients));
+            statement.setLong(7, version);
+            statement.setBoolean(8, false);
+            statement.setLong(9, Instant.now().toEpochMilli());
+            statement.setString(10, ownerUuid == null ? "" : ownerUuid.toString());
+            statement.executeUpdate();
+        }
+    }
+
+    private String brewingJournalKey(BlockKey key, long version) {
+        return key.world() + "\t" + key.x() + "\t" + key.y() + "\t" + key.z() + "\t" + version;
+    }
+
+    private boolean appendBrewingJournal(BlockKey key, long version, List<IngredientEntry> ingredients, UUID ownerUuid) {
+        if (brewingJournal == null || key == null || version < 0L) {
+            return false;
+        }
+        String line = String.join("\t",
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key.world().getBytes(StandardCharsets.UTF_8)),
+                Integer.toString(key.x()), Integer.toString(key.y()), Integer.toString(key.z()), Long.toString(version),
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        (ownerUuid == null ? "" : ownerUuid.toString()).getBytes(StandardCharsets.UTF_8)),
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        joinStatePayload(ingredients).getBytes(StandardCharsets.UTF_8))) + System.lineSeparator();
+        synchronized (brewingJournalLock) {
+            try {
+                Files.createDirectories(brewingJournal.getParent());
+                try (FileChannel channel = FileChannel.open(brewingJournal,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+                    ByteBuffer buffer = StandardCharsets.UTF_8.encode(line);
+                    while (buffer.hasRemaining()) {
+                        channel.write(buffer);
+                    }
+                    channel.force(true);
+                }
+                return true;
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Brewing state journal append failed", error);
+                return false;
+            }
+        }
+    }
+
+    private void removeBrewingJournal(String journalKey) {
+        if (brewingJournal == null || journalKey == null) {
+            return;
+        }
+        synchronized (brewingJournalLock) {
+            try {
+                if (!Files.isRegularFile(brewingJournal)) {
+                    return;
+                }
+                List<String> keep = new ArrayList<>();
+                for (String line : Files.readAllLines(brewingJournal, StandardCharsets.UTF_8)) {
+                    String[] fields = line.split("\\t", 7);
+                    if (fields.length != 7) {
+                        keep.add(line);
+                        continue;
+                    }
+                    String key = new String(java.util.Base64.getUrlDecoder().decode(fields[0]), StandardCharsets.UTF_8)
+                            + "\t" + fields[1] + "\t" + fields[2] + "\t" + fields[3] + "\t" + fields[4];
+                    if (!journalKey.equals(key)) {
+                        keep.add(line);
+                    }
+                }
+                rewriteBrewingJournal(keep);
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to compact brewing state journal", error);
+            }
+        }
+    }
+
+    private void rewriteBrewingJournal(List<String> lines) throws Exception {
+        if (brewingJournal == null) {
+            return;
+        }
+        Files.createDirectories(brewingJournal.getParent());
+        Path temporary = Files.createTempFile(brewingJournal.getParent(), brewingJournal.getFileName().toString() + ".", ".tmp");
+        try {
+            String text = lines == null || lines.isEmpty() ? "" : String.join(System.lineSeparator(), lines) + System.lineSeparator();
+            Files.writeString(temporary, text, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+            Files.move(temporary, brewingJournal, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private void clearBrewingJournal() {
+        synchronized (brewingJournalLock) {
+            try {
+                if (brewingJournal != null) {
+                    Files.deleteIfExists(brewingJournal);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to clear brewing state journal", error);
+            }
+        }
+    }
+
+    private void replayBrewingJournal() {
+        synchronized (brewingJournalLock) {
+            if (brewingJournal == null || !Files.isRegularFile(brewingJournal)) {
+                return;
+            }
+            List<String> pending;
+            try {
+                pending = Files.readAllLines(brewingJournal, StandardCharsets.UTF_8);
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to read brewing state journal", error);
+                return;
+            }
+            List<String> remaining = new ArrayList<>();
+            for (String line : pending) {
+                String[] fields = line.split("\\t", 7);
+                if (fields.length != 7) {
+                    remaining.add(line);
+                    continue;
+                }
+                try {
+                    String world = new String(java.util.Base64.getUrlDecoder().decode(fields[0]), StandardCharsets.UTF_8);
+                    BlockKey key = new BlockKey(world, Integer.parseInt(fields[1]), Integer.parseInt(fields[2]), Integer.parseInt(fields[3]));
+                    long version = Long.parseLong(fields[4]);
+                    String owner = new String(java.util.Base64.getUrlDecoder().decode(fields[5]), StandardCharsets.UTF_8);
+                    String payload = new String(java.util.Base64.getUrlDecoder().decode(fields[6]), StandardCharsets.UTF_8);
+                    List<IngredientEntry> entries = parseEntriesPayload(payload, "");
+                    UUID ownerUuid = owner.isBlank() ? null : UUID.fromString(owner);
+                    tx(connection -> {
+                        persistBrewingState(connection, key, version, entries, ownerUuid);
+                        return null;
+                    });
+                } catch (Exception error) {
+                    remaining.add(line);
+                    plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to replay brewing state journal row", error);
+                }
+            }
+            try {
+                if (remaining.isEmpty()) {
+                    Files.deleteIfExists(brewingJournal);
+                } else {
+                    rewriteBrewingJournal(remaining);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to compact brewing state journal", error);
+            }
+        }
+    }
+
+    private void appendRefundJournal(String id, UUID playerUuid, String narcoticId, int amount,
+                                     String sourceInstanceId) throws Exception {
         if (refundJournal == null) {
             throw new IllegalStateException("Refund journal is not initialized.");
         }
         String line = id + "\t" + playerUuid + "\t" + java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(narcoticId.getBytes(StandardCharsets.UTF_8)) + "\t" + amount + System.lineSeparator();
+                .encodeToString(narcoticId.getBytes(StandardCharsets.UTF_8)) + "\t" + amount + "\t"
+                + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        (sourceInstanceId == null ? "" : sourceInstanceId).getBytes(StandardCharsets.UTF_8))
+                + System.lineSeparator();
         synchronized (refundJournalLock) {
             Files.writeString(refundJournal, line, StandardCharsets.UTF_8,
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE,
@@ -849,6 +1278,102 @@ public final class NarcoticsDatabase {
             try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(refundJournal,
                     java.nio.file.StandardOpenOption.WRITE)) {
                 channel.force(true);
+            }
+        }
+    }
+
+    private void appendAuditJournal(String actor, String action, String details) throws Exception {
+        if (auditJournal == null) {
+            throw new IllegalStateException("Audit journal is not initialized.");
+        }
+        String id = UUID.randomUUID().toString();
+        String line = id + "\t" + encodeJournalField(actor) + "\t" + encodeJournalField(action)
+                + "\t" + encodeJournalField(details) + "\t" + Instant.now().getEpochSecond()
+                + System.lineSeparator();
+        synchronized (auditJournalLock) {
+            Files.writeString(auditJournal, line, StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE,
+                    java.nio.file.StandardOpenOption.APPEND);
+            try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(auditJournal,
+                    java.nio.file.StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+        }
+    }
+
+    private String encodeJournalField(String value) {
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                first(value).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String decodeJournalField(String value) {
+        return new String(java.util.Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+    }
+
+    private void replayAuditJournal() {
+        synchronized (auditJournalLock) {
+            if (auditJournal == null || !Files.isRegularFile(auditJournal)) {
+                return;
+            }
+            List<String> pending;
+            try {
+                pending = Files.readAllLines(auditJournal, StandardCharsets.UTF_8);
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to read narcotics audit journal", error);
+                return;
+            }
+            if (pending.isEmpty()) {
+                return;
+            }
+            List<String> remaining = new ArrayList<>();
+            for (String line : pending) {
+                String[] fields = line.split("\\t", 5);
+                if (fields.length != 5) {
+                    remaining.add(line);
+                    continue;
+                }
+                try {
+                    long createdAt = Long.parseLong(fields[4].trim());
+                    String actor = decodeJournalField(fields[1]);
+                    String action = decodeJournalField(fields[2]);
+                    String details = decodeJournalField(fields[3]);
+                    tx(connection -> {
+                        try (PreparedStatement statement = connection.prepareStatement("""
+                                INSERT INTO narcotics_admin_audit(id,actor,action,details,created_at)
+                                VALUES (?,?,?,?,?) ON CONFLICT (id) DO NOTHING
+                                """)) {
+                            statement.setString(1, fields[0]);
+                            statement.setString(2, actor);
+                            statement.setString(3, action);
+                            statement.setString(4, details);
+                            statement.setLong(5, createdAt);
+                            statement.executeUpdate();
+                        }
+                        return null;
+                    });
+                } catch (Exception error) {
+                    remaining.add(line);
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "Unable to replay narcotics audit journal row", error);
+                }
+            }
+            try {
+                if (remaining.isEmpty()) {
+                    Files.deleteIfExists(auditJournal);
+                } else {
+                    Path temporary = auditJournal.resolveSibling(auditJournal.getFileName() + ".tmp");
+                    Files.write(temporary, remaining, StandardCharsets.UTF_8,
+                            java.nio.file.StandardOpenOption.CREATE,
+                            java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+                    try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(temporary,
+                            java.nio.file.StandardOpenOption.WRITE)) {
+                        channel.force(true);
+                    }
+                    Files.move(temporary, auditJournal, StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.ATOMIC_MOVE);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to compact narcotics audit journal", error);
             }
         }
     }
@@ -870,8 +1395,8 @@ public final class NarcoticsDatabase {
             }
             List<String> remaining = new ArrayList<>();
             for (String line : pending) {
-                String[] fields = line.split("\\t", 4);
-                if (fields.length != 4) {
+                String[] fields = line.split("\\t", -1);
+                if (fields.length != 4 && fields.length != 5) {
                     remaining.add(line);
                     plugin.getLogger().warning("Keeping malformed narcotics refund journal row for manual recovery.");
                     continue;
@@ -880,17 +1405,21 @@ public final class NarcoticsDatabase {
                     UUID playerUuid = UUID.fromString(fields[1]);
                     String narcoticId = new String(java.util.Base64.getUrlDecoder().decode(fields[2]), StandardCharsets.UTF_8);
                     int amount = Integer.parseInt(fields[3].trim());
+                    String sourceInstanceId = fields.length == 5 && !fields[4].isBlank()
+                            ? new String(java.util.Base64.getUrlDecoder().decode(fields[4]), StandardCharsets.UTF_8)
+                            : "";
                     tx(connection -> {
                         try (PreparedStatement statement = connection.prepareStatement(
-                                "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING")) {
+                                "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,source_instance_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING")) {
                             long now = Instant.now().getEpochSecond();
                             statement.setString(1, fields[0]);
                             statement.setString(2, playerUuid.toString());
                             statement.setString(3, narcoticId);
                             statement.setInt(4, amount);
-                            statement.setString(5, "PENDING");
-                            statement.setLong(6, now);
+                            statement.setString(5, sourceInstanceId);
+                            statement.setString(6, "PENDING");
                             statement.setLong(7, now);
+                            statement.setLong(8, now);
                             statement.executeUpdate();
                         }
                         return null;

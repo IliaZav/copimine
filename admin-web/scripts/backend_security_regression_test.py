@@ -225,14 +225,17 @@ def assert_http_does_not_issue_reusable_auth_cookies(main) -> None:
         assert "secure" in lowered and "httponly" in lowered and "samesite=lax" in lowered, cookie
     assert "max-age=31536000" in secure_response.headers.get("strict-transport-security", "").lower(), secure_response.headers
 
+    # A configuration flag must not reopen public HTTP authentication.  Plain
+    # HTTP is intentionally limited to anonymous pages/downloads; credentials
+    # and session cookies require TLS (or an unproxied loopback request).
     original_opt_in = main.ALLOW_INSECURE_HTTP_AUTH
     main.ALLOW_INSECURE_HTTP_AUTH = True
     try:
         with TestClient(main.app) as client:
             opt_in_response = client.post("/api/auth/login", json={"username": "AdminUser", "password": password})
-        assert opt_in_response.status_code == 200, opt_in_response.text
-        assert "secure" not in opt_in_response.headers.get("set-cookie", "").lower(), opt_in_response.headers
-        assert main.public_auth_transport_state()["authenticatedSessions"] == "insecure-http-opt-in"
+        assert opt_in_response.status_code == 426, opt_in_response.text
+        assert main.AUTH_COOKIE_NAME not in opt_in_response.headers.get("set-cookie", ""), opt_in_response.headers
+        assert main.public_auth_transport_state()["authenticatedSessions"] == "https-required"
     finally:
         main.ALLOW_INSECURE_HTTP_AUTH = original_opt_in
 

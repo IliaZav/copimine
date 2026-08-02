@@ -46,6 +46,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     private final Set<UUID> authenticated = ConcurrentHashMap.newKeySet();
     private final Set<UUID> ownSlowness = ConcurrentHashMap.newKeySet();
     private final Map<UUID, PotionEffect> previousSlowness = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> ownSlownessAppliedAtMillis = new ConcurrentHashMap<>();
     private volatile Method authApiGetter;
     private volatile Method authApiIsAuthenticated;
     private volatile Object authApi;
@@ -80,6 +81,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         authenticated.clear();
         ownSlowness.clear();
         previousSlowness.clear();
+        ownSlownessAppliedAtMillis.clear();
         Bukkit.getScheduler().cancelTasks(this);
         getLogger().info("AuthEffects disabled.");
     }
@@ -133,6 +135,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         authenticated.remove(uuid);
         ownSlowness.remove(uuid);
         previousSlowness.remove(uuid);
+        ownSlownessAppliedAtMillis.remove(uuid);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -340,6 +343,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
                     false,
                     true
             ));
+            ownSlownessAppliedAtMillis.put(uuid, System.currentTimeMillis());
         }
 
         if (firstApplication) {
@@ -362,14 +366,23 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             return;
         }
         PotionEffect current = player.getPotionEffect(PotionEffectType.SLOWNESS);
-        if (current != null && current.getAmplifier() == SLOWNESS_AMPLIFIER
-                && current.getDuration() <= EFFECT_DURATION_TICKS) {
+        Long appliedAt = ownSlownessAppliedAtMillis.remove(uuid);
+        if (current != null && appliedAt != null && current.getAmplifier() == SLOWNESS_AMPLIFIER
+                && isOurSlownessDuration(current.getDuration(), appliedAt)) {
             player.removePotionEffect(PotionEffectType.SLOWNESS);
         }
         PotionEffect previous = previousSlowness.remove(uuid);
         if (previous != null && player.getPotionEffect(PotionEffectType.SLOWNESS) == null) {
             player.addPotionEffect(previous);
         }
+    }
+
+    private boolean isOurSlownessDuration(int durationTicks, long appliedAtMillis) {
+        long elapsedTicks = Math.max(0L, (System.currentTimeMillis() - appliedAtMillis) / 50L);
+        long expected = Math.max(0L, EFFECT_DURATION_TICKS - elapsedTicks);
+        // Allow scheduler jitter, but do not remove an unrelated slowness
+        // effect that happens to share our amplifier.
+        return Math.abs(durationTicks - expected) <= 40L;
     }
 
     private void playSuccessEffect(Player player) {

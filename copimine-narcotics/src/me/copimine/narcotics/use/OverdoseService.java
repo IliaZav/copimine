@@ -123,6 +123,16 @@ public final class OverdoseService {
     }
 
     public CompletableFuture<Void> consume(Player player, NarcoticDefinition definition) {
+        return consume(player, definition, null);
+    }
+
+    /**
+     * Persist a consumption together with its durable physical-item
+     * reservation.  The reservation id is null for administrative/test calls;
+     * player interactions always provide one so a restart cannot replay the
+     * same issued item after the state write succeeds.
+     */
+    public CompletableFuture<Void> consume(Player player, NarcoticDefinition definition, String reservationInstanceId) {
         if (player == null || definition == null) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Player and narcotic definition are required."));
         }
@@ -136,7 +146,7 @@ public final class OverdoseService {
         // universal applyOverdose(player, definition, ...) plan before the
         // normal applyZhuzevo(player, definition, ...) plan is considered.
         ConsumptionPlan plan = prepareConsumption(player, definition, state, now);
-        return database.savePlayerState(plan.state()).thenCompose(ignored -> {
+        return database.savePlayerState(plan.state(), reservationInstanceId).thenCompose(ignored -> {
             states.put(playerUuid, plan.state());
             CompletableFuture<Void> applied = new CompletableFuture<>();
             Bukkit.getScheduler().runTask(plugin, () -> {
@@ -146,7 +156,13 @@ public final class OverdoseService {
                     }
                     applied.complete(null);
                 } catch (Throwable error) {
-                    applied.completeExceptionally(error);
+                    // The PostgreSQL state was already committed before the
+                    // visual/potion phase.  Treat a client-side effect error
+                    // as non-fatal so the caller still consumes the reserved
+                    // physical item instead of releasing a committed marker.
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "Narcotics visual/effect application failed after state commit", error);
+                    applied.complete(null);
                 }
             });
             return applied;

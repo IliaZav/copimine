@@ -897,8 +897,14 @@ verify_runtime() {
   properties_sha="$(sed -n 's/^resource-pack-sha1=//p' "$PROJECT_ROOT/minecraft/server/server.properties" | tr -d '\r\n')"
   [[ "$properties_sha" == "$expected_sha" ]] || { echo "server.properties resource-pack-sha1 mismatch: $properties_sha" >&2; return 1; }
   echo '[verify] server.properties resource-pack requirement and SHA1 OK'
-  curl -fsS --max-time 15 http://127.0.0.1:18080/api/runtime >/dev/null
-  echo '[verify] HTTP runtime endpoint OK'
+  curl -fsS --max-time 15 http://127.0.0.1:18080/api/health >/dev/null
+  local runtime_status
+  runtime_status="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/runtime || true)"
+  case "$runtime_status" in
+    401|403) echo "[verify] HTTP runtime endpoint is protected (status $runtime_status)" ;;
+    200) echo '[verify] HTTP runtime endpoint allowed direct loopback access' ;;
+    *) echo "Unexpected /api/runtime status: $runtime_status" >&2; return 1 ;;
+  esac
 }
 
 reset_treasury() {

@@ -1,18 +1,18 @@
 {
-    "generatedAtUtc":  "2026-08-02T14:14:06.6669378Z",
-    "gitCommit":  "f63e7ed4948be918e194dcd44429848b2905bc6f",
+    "generatedAtUtc":  "2026-08-02T14:49:16.4660091Z",
+    "gitCommit":  "5eddf3cc5d46a6f2f55e95d416b4079d29b226bd",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
                          "path":  "resourcepacks/build/CopiMineResourcePack.zip",
                          "sha1":  "4a3bca348c0df826ef884f5c2cdaaa192c6b4dfa",
                          "sha256":  "01a88d04e61c67f82e102d1595a44b282b5edacdcab11e0dc9f4133949875759",
-                         "downloadUrl":  "http://copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
+                         "downloadUrl":  "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "31ec2fa353596ecededdedb38f0b459b7997d653",
-                    "sha256":  "0b3e5a2a1fa365d27fb5938eaa8916a0dfe2956d8204a7ef90ebfa0aaf976f22",
+                    "sha1":  "9ea9e8d5cff3f922557b0685e6fc2ed4ba12abe3",
+                    "sha256":  "4eb8d41d01ec40c61a62b64dc72507bec9336615beefea184fa4c0d54a4d2959",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "6afc56e8cc1cc95c093e21a3f9dd5ba06ce81628b32b99fb72b9ff389d3d5ed4"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "f63e7ed4948be918e194dcd44429848b2905bc6f",
+                      "sourceCommit":  "5eddf3cc5d46a6f2f55e95d416b4079d29b226bd",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "16371abeaa3f98a37b8bba72bc8941c839cccf64f9ae6dc7a465be51a89b4000",
+                                  "sha256":  "659ce9b057627e267f5d95bea87551698cda5e8d445eb8c0f8451c12da3d226c",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

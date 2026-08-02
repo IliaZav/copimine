@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-02T14:49:16.4660091Z",
-    "gitCommit":  "5eddf3cc5d46a6f2f55e95d416b4079d29b226bd",
+    "generatedAtUtc":  "2026-08-02T15:30:51.7870620Z",
+    "gitCommit":  "97c771b7c32a1740632541138e084f6c503693c1",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,8 +11,8 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "9ea9e8d5cff3f922557b0685e6fc2ed4ba12abe3",
-                    "sha256":  "4eb8d41d01ec40c61a62b64dc72507bec9336615beefea184fa4c0d54a4d2959",
+                    "sha1":  "55fbc083b33ce36c67ceb9ea16cbfecc9ee05c47",
+                    "sha256":  "9fb9b3ef52a37dc8625b3737a67c491f4684fd3b2dc1e670a6d1eb8c14d5f052",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "6afc56e8cc1cc95c093e21a3f9dd5ba06ce81628b32b99fb72b9ff389d3d5ed4"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "5eddf3cc5d46a6f2f55e95d416b4079d29b226bd",
+                      "sourceCommit":  "97c771b7c32a1740632541138e084f6c503693c1",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "659ce9b057627e267f5d95bea87551698cda5e8d445eb8c0f8451c12da3d226c",
+                                  "sha256":  "c0c4f1d1b4894cd6033b20a2fd1e210feb46f276a53e0592bbe3d4b2ad59a340",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

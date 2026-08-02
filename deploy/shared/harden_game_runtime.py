@@ -196,7 +196,23 @@ def replace_list(lines: list[str], parent_path: list[str], key: str, values: lis
     content.extend(f"{' ' * (replacement_indent + 2)}- {scalar(value)}" for value in values)
     if matches:
         indent, index = min(matches)
-        end = block_end(lines, index, indent, parent_end)
+        # AuthMe/ConfigMe has historically emitted some sequence values at the
+        # same indentation as their key (``legacyHashes:\n- SHA256``).  The
+        # normal mapping block scanner stops at that dash, leaving the old
+        # malformed item behind after a policy replacement.  Consume both
+        # canonical and legacy sequence indentation while replacing a managed
+        # list so a previously invalid config is repaired in-place.
+        end = index + 1
+        while end < parent_end:
+            stripped = lines[end].strip()
+            if not stripped or stripped.startswith("#"):
+                end += 1
+                continue
+            line_indent = indentation(lines[end])
+            if line_indent > indent or (line_indent == indent and stripped.startswith("-")):
+                end += 1
+                continue
+            break
         content = [f"{' ' * indent}{key}:"]
         content.extend(f"{' ' * (indent + 2)}- {scalar(value)}" for value in values)
         lines[index:end] = content
@@ -422,6 +438,7 @@ def self_test() -> None:
     script_root = Path(__file__).resolve().parent.parent
     policy_path = script_root / "templates" / "game-runtime-hardening.json"
     voice_template = script_root / "templates" / "voicechat-server.properties"
+    policy = load_policy(policy_path)
     with tempfile.TemporaryDirectory(prefix="copimine-game-hardening-") as temporary:
         root = Path(temporary)
         server = root / "minecraft" / "server"
@@ -491,6 +508,23 @@ def self_test() -> None:
             raise PolicyError("ImageFrame embedded upload service was not disabled and loopback-bound")
         if "passwordHash: \"BCRYPT\"" not in auth_text or "minPasswordLength: 12" not in auth_text or "preserveMe: true" not in auth_text or "geoIpDatabase:\n        enabled: false" not in auth_text:
             raise PolicyError("AuthMe policy did not preserve unrelated configuration while hardening passwords")
+
+        malformed_auth = root / "malformed-authme.yml"
+        write_text(
+            malformed_auth,
+            "ExternalBoardOptions:\n  bCryptLog2Round: 10\n"
+            "settings:\n    preserveMe: true\n    security:\n"
+            "        minPasswordLength: 5\n        passwordHash: SHA256\n"
+            "        legacyHashes:\n        - 'SHA256'\n"
+            "Protection:\n    geoIpDatabase:\n        enabled: true\n",
+        )
+        sync_authme(malformed_auth, policy["authme"])
+        malformed_lines = read_text(malformed_auth).splitlines()
+        legacy_index = malformed_lines.index("        legacyHashes:")
+        if legacy_index + 1 >= len(malformed_lines) or malformed_lines[legacy_index + 1] != '          - "SHA256"':
+            raise PolicyError("AuthMe policy did not repair a same-indentation legacy list item")
+        if any(line == "        - 'SHA256'" for line in malformed_lines):
+            raise PolicyError("AuthMe policy left the malformed legacy list item behind")
         try:
             validate_voicechat(server / "server.properties", voice_config, "0", "")
         except PolicyError:

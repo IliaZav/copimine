@@ -249,7 +249,7 @@ settings:
         # legacyHashes:
         # - 'SHA1'
         legacyHashes:
-        - 'SHA256'
+          - 'SHA256'
         # Salt length for the SALTED2MD5 MD5(MD5(password)+salt)
         doubleMD5SaltLength: 8
         # Number of rounds to use if passwordHash is set to PBKDF2. Default is 10000
@@ -261,13 +261,13 @@ settings:
         # - 'password'
         # - 'help'
         unsafePasswords:
-        - '123456'
-        - password
-        - qwerty
-        - '12345'
-        - '54321'
-        - '123456789'
-        - help
+          - '123456'
+          - password
+          - qwerty
+          - '12345'
+          - '54321'
+          - '123456789'
+          - help
     registration:
         # Enable registration on the server?
         enabled: true

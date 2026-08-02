@@ -197,7 +197,22 @@ cleanup_legacy_artifacts() {
     echo "[cleanup] removed legacy backup: $resolved"
   done < <(find /opt/copimine-backups -mindepth 1 -maxdepth 1 -printf '%p\n' 2>/dev/null | sort)
 
-  copimine_prune_daily_backups 3
+  local daily_keep=3 archive stem suffix
+  local -a daily_archives=()
+  while IFS= read -r archive; do
+    [[ -n "$archive" ]] && daily_archives+=("$archive")
+  done < <(find /opt/copimine-backups -mindepth 1 -maxdepth 1 -type f -name 'copimine-daily-*.tar.gz' -printf '%f\n' 2>/dev/null | sort -r)
+  if (( ${#daily_archives[@]} > daily_keep )); then
+    for archive in "${daily_archives[@]:daily_keep}"; do
+      stem="${archive%.tar.gz}"
+      [[ "$stem" =~ ^copimine-daily-[0-9]{8}-[0-9]{6}$ ]] || { echo "[cleanup] refusing unexpected daily backup: $archive" >&2; return 1; }
+      for suffix in '.tar.gz' '.tar.gz.sha256' '.dump' '.dump.sha256' '.manifest'; do
+        rm -f -- "/opt/copimine-backups/${stem}${suffix}"
+      done
+      echo "[cleanup] pruned old daily backup: $stem"
+    done
+  fi
+  echo "[cleanup] daily backup retention enforced: keep=$daily_keep"
   echo "[cleanup] legacy artifact cleanup complete; retained pre-wipe backup: ${keep_game_wipe:-none}"
 }
 

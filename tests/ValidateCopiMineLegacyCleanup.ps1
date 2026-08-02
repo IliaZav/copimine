@@ -10,7 +10,7 @@ if ($installer -notmatch "home_root='/home/qwerty'") {
 if ($installer -notmatch 'game-wipe-\*') {
   throw 'Legacy cleanup must preserve the newest pre-wipe backup.'
 }
-if ($installer -notmatch 'copimine_prune_daily_backups 3') {
+if ($installer -notmatch 'local daily_keep=3') {
   throw 'Legacy cleanup must apply the three-daily-backup retention policy.'
 }
 Write-Output 'ValidateCopiMineLegacyCleanup passed.'

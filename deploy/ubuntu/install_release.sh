@@ -328,6 +328,20 @@ cleanup_legacy_artifacts() {
     echo '[cleanup] upload release retention: no complete archive found'
   fi
 
+  # The payload verifier may create a root-owned Python bytecode cache in the
+  # upload staging directory.  It is never part of a release or a rollback;
+  # remove only this exact cache path after validating its resolved location.
+  local verifier_cache="$upload_root/__pycache__"
+  if [[ -e "$verifier_cache" || -L "$verifier_cache" ]]; then
+    resolved="$(readlink -f -- "$verifier_cache" 2>/dev/null || true)"
+    [[ "$resolved" == "$verifier_cache" ]] || {
+      echo "[cleanup] refusing unexpected verifier cache: $verifier_cache -> $resolved" >&2
+      return 1
+    }
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed verifier cache: $resolved"
+  fi
+
   # Every normal release replacement leaves a top-level rollback directory.
   # Retain only the three newest exact timestamped copies.  The live project
   # is /opt/copimine and can never match this allowlist.

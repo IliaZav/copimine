@@ -25,15 +25,23 @@ usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-w
 configure_release_trust() {
   local source_path="${2:-$SCRIPT_DIR/release-signing.allowed}"
   local verifier_source="${3:-$SCRIPT_DIR/verify_payload_manifest.py}"
+  local unpack_source="${4:-$SCRIPT_DIR/copimine_unpack_and_verify.sh}"
+  local replace_source="${5:-$SCRIPT_DIR/copimine_full_replace.sh}"
+  local common_source="${6:-$SCRIPT_DIR/common.sh}"
   local target_path='/etc/copimine/release-signing.allowed'
   local verifier_target='/etc/copimine/verify_payload_manifest.py'
-  local script_root source_real
-  local verifier_real
+  local script_root source_real verifier_real unpack_real replace_real common_real
   script_root="$(realpath -e -- "$SCRIPT_DIR")"
   source_real="$(realpath -e -- "$source_path" 2>/dev/null || true)"
   verifier_real="$(realpath -e -- "$verifier_source" 2>/dev/null || true)"
+  unpack_real="$(realpath -e -- "$unpack_source" 2>/dev/null || true)"
+  replace_real="$(realpath -e -- "$replace_source" 2>/dev/null || true)"
+  common_real="$(realpath -e -- "$common_source" 2>/dev/null || true)"
   [[ -n "$source_real" && -f "$source_real" ]] || { echo "[trust] allowlist is missing: $source_path" >&2; return 1; }
   [[ -n "$verifier_real" && -f "$verifier_real" ]] || { echo "[trust] payload verifier is missing: $verifier_source" >&2; return 1; }
+  [[ -n "$unpack_real" && -f "$unpack_real" ]] || { echo "[trust] unpack helper is missing: $unpack_source" >&2; return 1; }
+  [[ -n "$replace_real" && -f "$replace_real" ]] || { echo "[trust] replacement helper is missing: $replace_source" >&2; return 1; }
+  [[ -n "$common_real" && -f "$common_real" ]] || { echo "[trust] shared helper is missing: $common_source" >&2; return 1; }
   [[ "$source_real" == "$script_root"/* ]] || {
     echo '[trust] allowlist source must be inside the controlled upload directory' >&2
     return 1
@@ -42,6 +50,12 @@ configure_release_trust() {
     echo '[trust] payload verifier source must be inside the controlled upload directory' >&2
     return 1
   }
+  for helper in "$unpack_real" "$replace_real" "$common_real"; do
+    [[ "$helper" == "$script_root"/* ]] || {
+      echo '[trust] bootstrap helper source must be inside the controlled upload directory' >&2
+      return 1
+    }
+  done
   mapfile -t trust_lines < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$source_real")
   [[ "${#trust_lines[@]}" -eq 1 ]] || { echo '[trust] allowlist must contain exactly one non-comment key' >&2; return 1; }
   [[ "${trust_lines[0]}" =~ ^[[:space:]]*release[[:space:]]+ssh-ed25519[[:space:]]+[A-Za-z0-9+/]+={0,2}([[:space:]]+[^[:space:]]*)?[[:space:]]*$ ]] || {
@@ -52,6 +66,10 @@ configure_release_trust() {
   install -o root -g root -m 0644 -- "$source_real" "$target_path"
   python3 -m py_compile "$verifier_real"
   install -o root -g root -m 0644 -- "$verifier_real" "$verifier_target"
+  install -d -m 0755 "$PROJECT_ROOT/deploy/ubuntu" "$PROJECT_ROOT/deploy/shared"
+  install -o root -g root -m 0755 -- "$unpack_real" "$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh"
+  install -o root -g root -m 0755 -- "$replace_real" "$PROJECT_ROOT/deploy/ubuntu/copimine_full_replace.sh"
+  install -o root -g root -m 0755 -- "$common_real" "$PROJECT_ROOT/deploy/shared/common.sh"
   [[ "$(stat -c '%U:%G %a' "$target_path")" == 'root:root 644' ]] || {
     echo '[trust] installed allowlist has unsafe ownership or mode' >&2
     return 1
@@ -60,8 +78,21 @@ configure_release_trust() {
     echo '[trust] installed payload verifier has unsafe ownership or mode' >&2
     return 1
   }
+  [[ "$(stat -c '%U:%G %a' "$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh")" == 'root:root 755' ]] || {
+    echo '[trust] installed unpack helper has unsafe ownership or mode' >&2
+    return 1
+  }
+  [[ "$(stat -c '%U:%G %a' "$PROJECT_ROOT/deploy/ubuntu/copimine_full_replace.sh")" == 'root:root 755' ]] || {
+    echo '[trust] installed replacement helper has unsafe ownership or mode' >&2
+    return 1
+  }
+  [[ "$(stat -c '%U:%G %a' "$PROJECT_ROOT/deploy/shared/common.sh")" == 'root:root 755' ]] || {
+    echo '[trust] installed shared helper has unsafe ownership or mode' >&2
+    return 1
+  }
   echo "[trust] release signing allowlist installed: $target_path"
   echo "[trust] payload verifier installed: $verifier_target"
+  echo "[trust] bootstrap helpers installed under: $PROJECT_ROOT/deploy"
 }
 
 cleanup_zabbix() {

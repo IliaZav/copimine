@@ -65,7 +65,12 @@ foreach ($test in $tests) {
 
 Write-Host "VALIDATOR_SUMMARY total=$($tests.Count) passed=$passed failed=$($failures.Count) skipped=$skippedCount"
 if ($failures.Count -gt 0) {
-  $failures | ForEach-Object { Write-Host "FAIL $_" }
+  $failures | ForEach-Object {
+    Write-Host "FAIL $_"
+    if ($env:GITHUB_ACTIONS -eq 'true') {
+      Write-Output "::error title=CopiMine validator failed::$($_)"
+    }
+  }
   exit 1
 }
 

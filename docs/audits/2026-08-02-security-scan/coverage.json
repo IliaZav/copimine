@@ -1,0 +1,83 @@
+{
+  "completeness": "partial",
+  "deferred": [
+    {
+      "id": "security-workbench-protocol-handoff",
+      "paths": [
+        "."
+      ],
+      "reason": "The installed orchestration exposed the older subagent protocol; the workbench stopped at 608/3038 rows and the deep-scan variant requires a newer protocol.",
+      "surfaceIds": [
+        "remaining-worklist"
+      ]
+    }
+  ],
+  "documentType": "codex-security.coverage",
+  "excludePaths": [],
+  "explicitExclusions": [],
+  "includePaths": [
+    "."
+  ],
+  "inventoryStrategy": "repository",
+  "mode": "repository",
+  "openQuestions": [
+    {
+      "followUpPrompt": "Re-run the repository-wide Codex Security scan for copimine-main at 2796c062b18ebfaf32e402ff57373c0e4594bd89 and verify the HTTPS, release trust and polling-station controls.",
+      "question": "Run a fresh native standard/deep scan on current Git tip 2796c06 when the security worker protocol is upgraded."
+    }
+  ],
+  "scanId": "b6e00335-922b-4315-a4f2-93c997c05770",
+  "schemaVersion": "1.0",
+  "surfaces": [
+    {
+      "disposition": "reported",
+      "id": "web-auth",
+      "label": "Website and authentication",
+      "notes": "Historical candidates were validated against the repaired backend and live HTTPS smoke.",
+      "receiptRefs": [
+        "artifacts/02_discovery/candidate_ledger.jsonl"
+      ],
+      "riskArea": "public HTTPS, sessions, Origin and API resource usage"
+    },
+    {
+      "disposition": "reported",
+      "id": "release-integrity",
+      "label": "Release and deployment integrity",
+      "notes": "Trust anchors, payload inventory and backup redaction were repaired and verified.",
+      "receiptRefs": [
+        "artifacts/02_discovery/candidate_ledger.jsonl"
+      ],
+      "riskArea": "signed payloads, archives, rollback and backup handling"
+    },
+    {
+      "disposition": "reported",
+      "id": "build-supply-chain",
+      "label": "Build and bootstrap supply chain",
+      "notes": "Bootstrap digests are pinned.",
+      "receiptRefs": [
+        "artifacts/02_discovery/candidate_ledger.jsonl"
+      ],
+      "riskArea": "Maven and Gradle distribution integrity"
+    },
+    {
+      "disposition": "reported",
+      "id": "minecraft-runtime",
+      "label": "Minecraft plugin runtime",
+      "notes": "Runtime hardening self-tests and plugin validators passed.",
+      "receiptRefs": [
+        "artifacts/02_discovery/candidate_ledger.jsonl"
+      ],
+      "riskArea": "RCON, cauldron state and public event paths"
+    },
+    {
+      "disposition": "needs_follow_up",
+      "id": "remaining-worklist",
+      "label": "Security worklist coverage",
+      "notes": "The native workbench reported 608 of 3038 discovery rows closed before the protocol handoff stopped.",
+      "receiptRefs": [
+        "artifacts/02_discovery/in_scope_files.txt"
+      ],
+      "riskArea": "orchestration coverage"
+    }
+  ]
+}

@@ -90,6 +90,12 @@ silently reported as a completed deep scan. The standard discovery, candidate
 review and executable release checks were completed; the remaining evidence
 limits are listed below.
 
+The completed standard Codex Security report is preserved in
+`docs/audits/2026-08-02-security-scan-report.md`, with canonical JSON and SARIF
+under `docs/audits/2026-08-02-security-scan/`. It records 20 historical
+findings (9 high, 11 medium) for the pre-remediation revision and explicitly
+links each remediation to the repaired checkout and release evidence.
+
 ## P0/P1 — money, items, authentication and truthful completion
 
 | ID | Status | Remediation | Evidence |

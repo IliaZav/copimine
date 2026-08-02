@@ -1,0 +1,1974 @@
+{
+  "documentType": "codex-security.findings",
+  "findings": [
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The /api/runtime handler skips require_panel_admin whenever is_loopback_request returns true, but that helper checks only request.client.host. The public TLS Nginx location proxies every path to 127.0.0.1:8090, so an Internet request is observed by the backend as loopback and receives the runtime response. The response combines startup and managed-runtime data including absolute project, app, and environment-file paths plus release and artifact metadata.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "The current route, loopback predicate, deployment proxy, and response builders provide source evidence that the older report row remains unresolved.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-e7f3cad5174decc9",
+        "ledgerRowId": "candidate-e7f3cad5174decc9"
+      },
+      "findingId": "csf_c3fd53ded16b67960dd19828",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:81a7eb2910a47ab3bb6037527918b8248d0b7feade646ef82cda0a29f9e64362"
+      },
+      "identity": {
+        "anchor": "public-reverse-proxy-requests-can-read-api-runtime-without-panel-authentication"
+      },
+      "locations": [
+        {
+          "endLine": 17612,
+          "path": "admin-web/backend/main.py",
+          "role": "entrypoint",
+          "startLine": 17599
+        },
+        {
+          "endLine": 4236,
+          "path": "admin-web/backend/main.py",
+          "role": "root_control",
+          "startLine": 4230
+        },
+        {
+          "endLine": 59,
+          "path": "admin-web/deploy/nginx-copimine-admin-https.conf",
+          "role": "concrete_implementation",
+          "startLine": 51
+        },
+        {
+          "endLine": 198,
+          "path": "admin-web/backend/deploy_runtime.py",
+          "role": "sink",
+          "startLine": 183
+        },
+        {
+          "endLine": 248,
+          "path": "admin-web/backend/startup_checks.py",
+          "role": "evidence",
+          "startLine": 212
+        }
+      ],
+      "occurrenceId": "occ_61b332ad8389c50178bf29a5",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Require panel authentication for public requests and permit the runtime exception only for direct, unproxied loopback requests.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The /api/runtime handler skips require_panel_admin whenever is_loopback_request returns true, but that helper checks only request.client.host. The public TLS Nginx location proxies every path to 127.0.0.1:8090, so an Internet request is observed by the backend as loopback and receives the runtime response. The response combines startup and managed-runtime data including absolute project, app, and environment-file paths plus release and artifact metadata."
+      },
+      "ruleId": "cwe-200-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The /api/runtime handler skips require_panel_admin whenever is_loopback_request returns true, but that helper checks only request.client.host. The public TLS Nginx location proxies every path to 127.0.0.1:8090, so an Internet request is observed by the backend as loopback and receives the runtime response. The response combines startup and managed-runtime data including absolute project, app, and environment-file paths plus release and artifact metadata.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-200",
+          "CWE-862"
+        ]
+      },
+      "title": "Public reverse-proxy requests can read /api/runtime without panel authentication.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The /api/runtime handler skips require_panel_admin whenever is_loopback_request returns true, but that helper checks only request.client.host. The public TLS Nginx location proxies every path to 127.0.0.1:8090, so an Internet request is observed by the backend as loopback and receives the runtime response. The response combines startup and managed-runtime data including absolute project, app, and environment-file paths plus release and artifact metadata.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The player refresh endpoint invokes rotate_auth_pair_from_refresh_sync. That function verifies the old token by reading its row, commits a new token through make_refresh_token/save_refresh_session, and only afterward revokes the old row through a separate transaction. There is no row lock, conditional used-state update, or transaction spanning verification, issuance, and revocation, so concurrent requests can both pass the old-row checks and receive valid replacement sessions.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "Player refresh entrypoint.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-97114a96e7faf0d8",
+        "ledgerRowId": "candidate-97114a96e7faf0d8"
+      },
+      "findingId": "csf_c25844400de05d51e2c91e8d",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:f1546be49d3c1755f33c5954c16258d85529e20dc1c9ed9daeba7fee01603062"
+      },
+      "identity": {
+        "anchor": "concurrent-player-refresh-requests-can-both-redeem-one-refresh-token"
+      },
+      "locations": [
+        {
+          "endLine": 11764,
+          "path": "admin-web/backend/main.py",
+          "role": "entrypoint",
+          "startLine": 11750
+        },
+        {
+          "endLine": 4305,
+          "path": "admin-web/backend/main.py",
+          "role": "root_control",
+          "startLine": 4284
+        },
+        {
+          "endLine": 3767,
+          "path": "admin-web/backend/main.py",
+          "role": "sink",
+          "startLine": 3735
+        },
+        {
+          "endLine": 3789,
+          "path": "admin-web/backend/main.py",
+          "role": "sink",
+          "startLine": 3780
+        }
+      ],
+      "occurrenceId": "occ_a562cbdd9c08ca1341401278",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Redeem refresh sessions with one conditional atomic state transition so only one concurrent request can claim the old token.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The player refresh endpoint invokes rotate_auth_pair_from_refresh_sync. That function verifies the old token by reading its row, commits a new token through make_refresh_token/save_refresh_session, and only afterward revokes the old row through a separate transaction. There is no row lock, conditional used-state update, or transaction spanning verification, issuance, and revocation, so concurrent requests can both pass the old-row checks and receive valid replacement sessions."
+      },
+      "ruleId": "cwe-362-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 5.5,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The player refresh endpoint invokes rotate_auth_pair_from_refresh_sync. That function verifies the old token by reading its row, commits a new token through make_refresh_token/save_refresh_session, and only afterward revokes the old row through a separate transaction. There is no row lock, conditional used-state update, or transaction spanning verification, issuance, and revocation, so concurrent requests can both pass the old-row checks and receive valid replacement sessions.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-362",
+          "CWE-367"
+        ]
+      },
+      "title": "Concurrent player refresh requests can both redeem one refresh token.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The player refresh endpoint invokes rotate_auth_pair_from_refresh_sync. That function verifies the old token by reading its row, commits a new token through make_refresh_token/save_refresh_session, and only afterward revokes the old row through a separate transaction. There is no row lock, conditional used-state update, or transaction spanning verification, issuance, and revocation, so concurrent requests can both pass the old-row checks and receive valid replacement sessions.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The admin refresh endpoint uses the same rotate_auth_pair_from_refresh_sync flow. The old refresh session is read and accepted before a new admin token is inserted and committed, while revocation of the old jti happens afterward in another transaction. Without a lock or atomic conditional transition, simultaneous requests can both pass verification and receive valid replacement admin sessions.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "Admin refresh entrypoint; separate from the player refresh path because the audience and authorization branch differ.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-f02a72d8dc0018b5",
+        "ledgerRowId": "candidate-f02a72d8dc0018b5"
+      },
+      "findingId": "csf_c90e86f860ffd96af678b8ce",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:aac0fe66130a9d827e742d8c2f08f7dde9ce8f76775ff5bf2ed2e4863e965d4f"
+      },
+      "identity": {
+        "anchor": "concurrent-admin-refresh-requests-can-both-redeem-one-refresh-token"
+      },
+      "locations": [
+        {
+          "endLine": 11405,
+          "path": "admin-web/backend/main.py",
+          "role": "entrypoint",
+          "startLine": 11391
+        },
+        {
+          "endLine": 4288,
+          "path": "admin-web/backend/main.py",
+          "role": "root_control",
+          "startLine": 4284
+        },
+        {
+          "endLine": 4333,
+          "path": "admin-web/backend/main.py",
+          "role": "root_control",
+          "startLine": 4317
+        },
+        {
+          "endLine": 3767,
+          "path": "admin-web/backend/main.py",
+          "role": "sink",
+          "startLine": 3735
+        },
+        {
+          "endLine": 3789,
+          "path": "admin-web/backend/main.py",
+          "role": "sink",
+          "startLine": 3780
+        }
+      ],
+      "occurrenceId": "occ_baf075d6a48e4da265874ed3",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Redeem refresh sessions with one conditional atomic state transition so only one concurrent request can claim the old token.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The admin refresh endpoint uses the same rotate_auth_pair_from_refresh_sync flow. The old refresh session is read and accepted before a new admin token is inserted and committed, while revocation of the old jti happens afterward in another transaction. Without a lock or atomic conditional transition, simultaneous requests can both pass verification and receive valid replacement admin sessions."
+      },
+      "ruleId": "cwe-362-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 5.5,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The admin refresh endpoint uses the same rotate_auth_pair_from_refresh_sync flow. The old refresh session is read and accepted before a new admin token is inserted and committed, while revocation of the old jti happens afterward in another transaction. Without a lock or atomic conditional transition, simultaneous requests can both pass verification and receive valid replacement admin sessions.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-362",
+          "CWE-367"
+        ]
+      },
+      "title": "Concurrent admin refresh requests can both redeem one refresh token.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The admin refresh endpoint uses the same rotate_auth_pair_from_refresh_sync flow. The old refresh session is read and accepted before a new admin token is inserted and committed, while revocation of the old jti happens afterward in another transaction. Without a lock or atomic conditional transition, simultaneous requests can both pass verification and receive valid replacement admin sessions.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The public status route has no route-level rate limit or server-side cache and sends every request to public_site_status_sync through the threadpool. Each call performs a TCP probe, optionally performs an RCON list command with a four-second socket timeout, and then queries election and treasury state. The public Nginx location exposes the route without a request-rate control, allowing repeated anonymous calls to occupy threadpool and database/network resources.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "The expensive work is behind a public read-only endpoint; the issue is resource exhaustion rather than unauthorized state change.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-88dbe2924296a21c",
+        "ledgerRowId": "candidate-88dbe2924296a21c"
+      },
+      "findingId": "csf_ce11a8c0a682c646efe10d31",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:faec7aaf1ffe8f92778187a6a465d6ba1890ae49644fd00a3fda568fe090e332"
+      },
+      "identity": {
+        "anchor": "unauthenticated-api-public-status-can-exhaust-backend-workers-with-repeated-bloc"
+      },
+      "locations": [
+        {
+          "endLine": 11502,
+          "path": "admin-web/backend/main.py",
+          "role": "entrypoint",
+          "startLine": 11500
+        },
+        {
+          "endLine": 9757,
+          "path": "admin-web/backend/main.py",
+          "role": "sink",
+          "startLine": 9715
+        },
+        {
+          "endLine": 6587,
+          "path": "admin-web/backend/main.py",
+          "role": "root_control",
+          "startLine": 6586
+        },
+        {
+          "endLine": 6645,
+          "path": "admin-web/backend/main.py",
+          "role": "sink",
+          "startLine": 6591
+        },
+        {
+          "endLine": 6658,
+          "path": "admin-web/backend/main.py",
+          "role": "sink",
+          "startLine": 6652
+        },
+        {
+          "endLine": 63,
+          "path": "admin-web/deploy/nginx-copimine-admin-https.conf",
+          "role": "concrete_implementation",
+          "startLine": 51
+        }
+      ],
+      "occurrenceId": "occ_c5b6bb64ffb5f67e9b7267ab",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Add bounded server-side caching and per-client rate limits around public expensive work and outbound image fetches.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The public status route has no route-level rate limit or server-side cache and sends every request to public_site_status_sync through the threadpool. Each call performs a TCP probe, optionally performs an RCON list command with a four-second socket timeout, and then queries election and treasury state. The public Nginx location exposes the route without a request-rate control, allowing repeated anonymous calls to occupy threadpool and database/network resources."
+      },
+      "ruleId": "cwe-400-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 6.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The public status route has no route-level rate limit or server-side cache and sends every request to public_site_status_sync through the threadpool. Each call performs a TCP probe, optionally performs an RCON list command with a four-second socket timeout, and then queries election and treasury state. The public Nginx location exposes the route without a request-rate control, allowing repeated anonymous calls to occupy threadpool and database/network resources.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-400"
+        ]
+      },
+      "title": "Unauthenticated /api/public/status can exhaust backend workers with repeated blocking probes.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The public status route has no route-level rate limit or server-side cache and sends every request to public_site_status_sync through the threadpool. Each call performs a TCP probe, optionally performs an RCON list command with a four-second socket timeout, and then queries election and treasury state. The public Nginx location exposes the route without a request-rate control, allowing repeated anonymous calls to occupy threadpool and database/network resources.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The public route accepts any syntactically valid 32-36 character UUID and does not apply check_rate_limit or a server-side cache. Every request creates a new async HTTP client and can wait up to eight seconds while trying two external image services with redirects enabled. An attacker can submit many distinct UUIDs to create outbound connections and hold request resources even when no image exists.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "The fixed upstream host list limits SSRF impact, but the public handler has no request budget or backend cache.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-0b18cb0c7b86580a",
+        "ledgerRowId": "candidate-0b18cb0c7b86580a"
+      },
+      "findingId": "csf_b167e2be51e77046791e54f8",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:1ca2a733215fd9f3f99c9ef3c04ca9bffcf0509984731aababa51c88167d085e"
+      },
+      "identity": {
+        "anchor": "the-public-president-skin-proxy-permits-unbounded-outbound-image-requests-for-ar"
+      },
+      "locations": [
+        {
+          "endLine": 11553,
+          "path": "admin-web/backend/main.py",
+          "role": "entrypoint",
+          "startLine": 11525
+        },
+        {
+          "endLine": 63,
+          "path": "admin-web/deploy/nginx-copimine-admin-https.conf",
+          "role": "concrete_implementation",
+          "startLine": 51
+        }
+      ],
+      "occurrenceId": "occ_3669c32acf442c38366422b6",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Add bounded server-side caching and per-client rate limits around public expensive work and outbound image fetches.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The public route accepts any syntactically valid 32-36 character UUID and does not apply check_rate_limit or a server-side cache. Every request creates a new async HTTP client and can wait up to eight seconds while trying two external image services with redirects enabled. An attacker can submit many distinct UUIDs to create outbound connections and hold request resources even when no image exists."
+      },
+      "ruleId": "cwe-400-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 6.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The public route accepts any syntactically valid 32-36 character UUID and does not apply check_rate_limit or a server-side cache. Every request creates a new async HTTP client and can wait up to eight seconds while trying two external image services with redirects enabled. An attacker can submit many distinct UUIDs to create outbound connections and hold request resources even when no image exists.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-400"
+        ]
+      },
+      "title": "The public president skin proxy permits unbounded outbound image requests for arbitrary UUIDs.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The public route accepts any syntactically valid 32-36 character UUID and does not apply check_rate_limit or a server-side cache. Every request creates a new async HTTP client and can wait up to eight seconds while trying two external image services with redirects enabled. An attacker can submit many distinct UUIDs to create outbound connections and hold request resources even when no image exists.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "Resolve-RequiredPath only checks that each local helper path exists and resolves it; it does not constrain the leaf name. The RenameScript here-string interpolates each Split-Path -Leaf result directly inside single-quoted Bash arguments, and Invoke-Ssh sends that text to the remote shell. A local helper filename containing an apostrophe and shell syntax can terminate the quoted argument and inject commands executed as the configured SSH user during remote filename normalization.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "This requires control of a local helper path or a compromised build artifact name, but the resulting command executes on the release host under the upload SSH account.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-d06e5ef06c4067c5",
+        "ledgerRowId": "candidate-d06e5ef06c4067c5"
+      },
+      "findingId": "csf_8051438b89d4d01206fbcd29",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:4f6a4f4fea2bc47e581d1d12ac9eaef089152b999017b9eccf8f559fa169e30f"
+      },
+      "identity": {
+        "anchor": "windows-release-upload-can-inject-shell-commands-through-helper-file-names"
+      },
+      "locations": [
+        {
+          "endLine": 36,
+          "path": "scripts/windows/upload_release.ps1",
+          "role": "source",
+          "startLine": 29
+        },
+        {
+          "endLine": 63,
+          "path": "scripts/windows/upload_release.ps1",
+          "role": "entrypoint/wrapper",
+          "startLine": 54
+        },
+        {
+          "endLine": 157,
+          "path": "scripts/windows/upload_release.ps1",
+          "role": "source",
+          "startLine": 149
+        },
+        {
+          "endLine": 253,
+          "path": "scripts/windows/upload_release.ps1",
+          "role": "sink",
+          "startLine": 242
+        }
+      ],
+      "occurrenceId": "occ_e0332cf5e23e771786684cf2",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Validate upload leaf names against a strict allowlist before interpolating them into helper commands.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "Resolve-RequiredPath only checks that each local helper path exists and resolves it; it does not constrain the leaf name. The RenameScript here-string interpolates each Split-Path -Leaf result directly inside single-quoted Bash arguments, and Invoke-Ssh sends that text to the remote shell. A local helper filename containing an apostrophe and shell syntax can terminate the quoted argument and inject commands executed as the configured SSH user during remote filename normalization."
+      },
+      "ruleId": "cwe-78-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 5.5,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "Resolve-RequiredPath only checks that each local helper path exists and resolves it; it does not constrain the leaf name. The RenameScript here-string interpolates each Split-Path -Leaf result directly inside single-quoted Bash arguments, and Invoke-Ssh sends that text to the remote shell. A local helper filename containing an apostrophe and shell syntax can terminate the quoted argument and inject commands executed as the configured SSH user during remote filename normalization.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-78"
+        ]
+      },
+      "title": "Windows release upload can inject shell commands through helper file names.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "Resolve-RequiredPath only checks that each local helper path exists and resolves it; it does not constrain the leaf name. The RenameScript here-string interpolates each Split-Path -Leaf result directly inside single-quoted Bash arguments, and Invoke-Ssh sends that text to the remote shell. A local helper filename containing an apostrophe and shell syntax can terminate the quoted argument and inject commands executed as the configured SSH user during remote filename normalization.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "asset_path splits the namespace but performs no absolute-path or dot-segment validation before appending Path(relative + suffix) to the root. build_stage takes model and texture references from models_manifest.json, and directional animation generation uses the resulting paths for reads, mkdir, PNG writes, and JSON writes. A malicious release/build manifest can use namespace or relative values containing absolute components or .. to traverse outside STAGE during the resource-pack build.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "The input is a release/build manifest rather than a public HTTP parameter; the affected sink is the local build and artifact-generation process.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-e28ade7f52a4ae91",
+        "ledgerRowId": "candidate-e28ade7f52a4ae91"
+      },
+      "findingId": "csf_ca6dcf45adb05b7fd87bff42",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:11384980e9525809e0b75ca917aeba48f8c50ec7bbf7950298cb135b4f646c6a"
+      },
+      "identity": {
+        "anchor": "resource-pack-manifest-references-can-escape-the-build-stage-and-read-or-overwri"
+      },
+      "locations": [
+        {
+          "endLine": 165,
+          "path": "resourcepacks/build-resourcepack.py",
+          "role": "sink",
+          "startLine": 163
+        },
+        {
+          "endLine": 272,
+          "path": "resourcepacks/build-resourcepack.py",
+          "role": "entrypoint",
+          "startLine": 259
+        },
+        {
+          "endLine": 408,
+          "path": "resourcepacks/build-resourcepack.py",
+          "role": "sink",
+          "startLine": 379
+        },
+        {
+          "endLine": 438,
+          "path": "resourcepacks/build-resourcepack.py",
+          "role": "sink",
+          "startLine": 436
+        }
+      ],
+      "occurrenceId": "occ_f1f033ea4fcde511f8052710",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Reject absolute, traversal, backslash and invalid asset paths before resolving them inside the build root.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "asset_path splits the namespace but performs no absolute-path or dot-segment validation before appending Path(relative + suffix) to the root. build_stage takes model and texture references from models_manifest.json, and directional animation generation uses the resulting paths for reads, mkdir, PNG writes, and JSON writes. A malicious release/build manifest can use namespace or relative values containing absolute components or .. to traverse outside STAGE during the resource-pack build."
+      },
+      "ruleId": "cwe-22-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 5.5,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "asset_path splits the namespace but performs no absolute-path or dot-segment validation before appending Path(relative + suffix) to the root. build_stage takes model and texture references from models_manifest.json, and directional animation generation uses the resulting paths for reads, mkdir, PNG writes, and JSON writes. A malicious release/build manifest can use namespace or relative values containing absolute components or .. to traverse outside STAGE during the resource-pack build.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-22"
+        ]
+      },
+      "title": "Resource-pack manifest references can escape the build stage and read or overwrite workspace files.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "asset_path splits the namespace but performs no absolute-path or dot-segment validation before appending Path(relative + suffix) to the root. build_stage takes model and texture references from models_manifest.json, and directional animation generation uses the resulting paths for reads, mkdir, PNG writes, and JSON writes. A malicious release/build manifest can use namespace or relative values containing absolute components or .. to traverse outside STAGE during the resource-pack build.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "confirm_player_recovery_code_sync selects a matching code with status='PENDING', then updates that row to USED without a row lock or a status='PENDING' predicate. Two concurrent confirmations can both observe the same pending code, both change the account password and whitelist link, and both return successfully; the endpoint then issues an authentication pair for each request.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "The code is protected by HTTPS and an IP rate limit, but those controls do not serialize two valid concurrent requests using the same recovery secret.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-f4eb60740a648165",
+        "ledgerRowId": "candidate-f4eb60740a648165"
+      },
+      "findingId": "csf_1bb551eb2addefe178525564",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:f4c7199426db8f56347da135ce889315a7248c05ce9ebec1af5a8b5422bf7580"
+      },
+      "identity": {
+        "anchor": "recovery-code-confirmation-is-not-an-atomic-one-time-redemption"
+      },
+      "locations": [
+        {
+          "endLine": 11747,
+          "path": "admin-web/backend/main.py",
+          "role": "entrypoint",
+          "startLine": 11730
+        },
+        {
+          "endLine": 6537,
+          "path": "admin-web/backend/main.py",
+          "role": "root_control",
+          "startLine": 6495
+        }
+      ],
+      "occurrenceId": "occ_9b0ee6990d114c17e1efba72",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Consume recovery codes with a conditional single-use update keyed by the stored hash and active status.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "confirm_player_recovery_code_sync selects a matching code with status='PENDING', then updates that row to USED without a row lock or a status='PENDING' predicate. Two concurrent confirmations can both observe the same pending code, both change the account password and whitelist link, and both return successfully; the endpoint then issues an authentication pair for each request."
+      },
+      "ruleId": "cwe-362-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 5.5,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "confirm_player_recovery_code_sync selects a matching code with status='PENDING', then updates that row to USED without a row lock or a status='PENDING' predicate. Two concurrent confirmations can both observe the same pending code, both change the account password and whitelist link, and both return successfully; the endpoint then issues an authentication pair for each request.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-362",
+          "CWE-367"
+        ]
+      },
+      "title": "Recovery-code confirmation is not an atomic one-time redemption.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "confirm_player_recovery_code_sync selects a matching code with status='PENDING', then updates that row to USED without a row lock or a status='PENDING' predicate. Two concurrent confirmations can both observe the same pending code, both change the account password and whitelist link, and both return successfully; the endpoint then issues an authentication pair for each request.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The installer requires only an archive-relative SHA256 sidecar, then reads release_manifest.json, release_manifest.sig, and release-signing.allowed from PAYLOAD_ROOT and passes the archive-supplied allowed-signers file to ssh-keygen -Y verify. No external or pinned public-key trust anchor is consulted. A party able to provide or replace the archive can include a new allowed-signers file and matching signature; the sidecar then authenticates only that attacker-supplied archive before the script stages, swaps, and starts the release.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "An attacker reaches the affected path under the preconditions described by the discovery record.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-948d5994f902dba4",
+        "ledgerRowId": "candidate-948d5994f902dba4"
+      },
+      "findingId": "csf_a3df0daab02b1199948f536e",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:d7a75f34e5d084173dd3829bfb75d4cf5d17a31ecaae3b00b71f1b0c79852a6e"
+      },
+      "identity": {
+        "anchor": "ubuntu-full-replace",
+        "instance": "ubuntu-full-replace"
+      },
+      "locations": [
+        {
+          "endLine": 275,
+          "path": "deploy/ubuntu/copimine_full_replace.sh",
+          "role": "root_control",
+          "startLine": 237
+        },
+        {
+          "endLine": 328,
+          "path": "deploy/ubuntu/copimine_full_replace.sh",
+          "role": "evidence",
+          "startLine": 318
+        },
+        {
+          "endLine": 697,
+          "path": "deploy/ubuntu/copimine_full_replace.sh",
+          "role": "sink",
+          "startLine": 686
+        },
+        {
+          "endLine": 68,
+          "path": "deploy/release_manifest.json",
+          "role": "evidence",
+          "startLine": 63
+        }
+      ],
+      "occurrenceId": "occ_05f83ce3d28cd211fde5cce9",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Verify the signing key and payload manifest against root-owned external trust anchors, not files supplied by the archive.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The installer requires only an archive-relative SHA256 sidecar, then reads release_manifest.json, release_manifest.sig, and release-signing.allowed from PAYLOAD_ROOT and passes the archive-supplied allowed-signers file to ssh-keygen -Y verify. No external or pinned public-key trust anchor is consulted. A party able to provide or replace the archive can include a new allowed-signers file and matching signature; the sidecar then authenticates only that attacker-supplied archive before the script stages, swaps, and starts the release."
+      },
+      "ruleId": "cwe-345-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The installer requires only an archive-relative SHA256 sidecar, then reads release_manifest.json, release_manifest.sig, and release-signing.allowed from PAYLOAD_ROOT and passes the archive-supplied allowed-signers file to ssh-keygen -Y verify. No external or pinned public-key trust anchor is consulted. A party able to provide or replace the archive can include a new allowed-signers file and matching signature; the sidecar then authenticates only that attacker-supplied archive before the script stages, swaps, and starts the release.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-345",
+          "CWE-347"
+        ]
+      },
+      "title": "Ubuntu full replacement trusts the release archive to supply the public key used to verify its own manifest",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The installer requires only an archive-relative SHA256 sidecar, then reads release_manifest.json, release_manifest.sig, and release-signing.allowed from PAYLOAD_ROOT and passes the archive-supplied allowed-signers file to ssh-keygen -Y verify. No external or pinned public-key trust anchor is consulted. A party able to provide or replace the archive can include a new allowed-signers file and matching signature; the sidecar then authenticates only that attacker-supplied archive before the script stages, swaps, and starts the release.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The rollback entrypoint accepts a caller-selected ZIP and validates only a SHA256 sidecar located beside it. Assert-SafeZip checks path and entry types but no manifest signature, trusted release key, or expected release identity. Expand-Archive then moves the archive's copimine tree over the target root and restarts services, so an attacker who can supply the archive and sidecar can install arbitrary server or web code.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "An attacker reaches the affected path under the preconditions described by the discovery record.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-a22d7d8f24516776",
+        "ledgerRowId": "candidate-a22d7d8f24516776"
+      },
+      "findingId": "csf_2bcb2780a906729498ea0fc1",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:8d1ec72063a0beb8b90e67f4ee32b5496b66ea16f16406c7a81078689ce27e5c"
+      },
+      "identity": {
+        "anchor": "windows-rollback",
+        "instance": "windows-rollback"
+      },
+      "locations": [
+        {
+          "endLine": 4,
+          "path": "deploy/windows/rollback.sh",
+          "role": "entrypoint",
+          "startLine": 1
+        },
+        {
+          "endLine": 16,
+          "path": "deploy/windows/rollback.ps1",
+          "role": "root_control",
+          "startLine": 10
+        },
+        {
+          "endLine": 61,
+          "path": "deploy/windows/rollback.ps1",
+          "role": "root_control",
+          "startLine": 42
+        },
+        {
+          "endLine": 82,
+          "path": "deploy/windows/rollback.ps1",
+          "role": "sink",
+          "startLine": 71
+        }
+      ],
+      "occurrenceId": "occ_e2e426cd390e5911a7365788",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Apply the corresponding fail-closed boundary and cover it with a release validator and runtime smoke check.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The rollback entrypoint accepts a caller-selected ZIP and validates only a SHA256 sidecar located beside it. Assert-SafeZip checks path and entry types but no manifest signature, trusted release key, or expected release identity. Expand-Archive then moves the archive's copimine tree over the target root and restarts services, so an attacker who can supply the archive and sidecar can install arbitrary server or web code."
+      },
+      "ruleId": "cwe-347-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The rollback entrypoint accepts a caller-selected ZIP and validates only a SHA256 sidecar located beside it. Assert-SafeZip checks path and entry types but no manifest signature, trusted release key, or expected release identity. Expand-Archive then moves the archive's copimine tree over the target root and restarts services, so an attacker who can supply the archive and sidecar can install arbitrary server or web code.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-347",
+          "CWE-494"
+        ]
+      },
+      "title": "Windows rollback installs any sidecar-matching ZIP without verifying a release signature",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The rollback entrypoint accepts a caller-selected ZIP and validates only a SHA256 sidecar located beside it. Assert-SafeZip checks path and entry types but no manifest signature, trusted release key, or expected release identity. Expand-Archive then moves the archive's copimine tree over the target root and restarts services, so an attacker who can supply the archive and sidecar can install arbitrary server or web code.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The default backup destination is a release backup directory, and Get-ChildItem -Force enumerates every project-root entry before Copy-Item -Recurse stages it for Compress-Archive. This includes hidden .env and password files when present, as well as runtime data and logs. The output is a cleartext ZIP with only a SHA256 sidecar; no redaction, encryption, or separate secret handling is applied, so possession of the backup exposes stored credentials and session material.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "An attacker reaches the affected path under the preconditions described by the discovery record.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-c654afae61ac6b48",
+        "ledgerRowId": "candidate-c654afae61ac6b48"
+      },
+      "findingId": "csf_23f4594fade413717b5391cf",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:7088dec0843b069ffc863ffbc368ce4b594e539c5bea9540de3f87eb5e8f2902"
+      },
+      "identity": {
+        "anchor": "windows-backup",
+        "instance": "windows-backup"
+      },
+      "locations": [
+        {
+          "endLine": 7,
+          "path": "deploy/windows/backup.ps1",
+          "role": "evidence",
+          "startLine": 3
+        },
+        {
+          "endLine": 15,
+          "path": "deploy/windows/backup.ps1",
+          "role": "sink",
+          "startLine": 11
+        }
+      ],
+      "occurrenceId": "occ_7ec685707a9c5395700e7153",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Redact secrets and mutable private runtime state from portable backups and keep recovery data in dedicated protected procedures.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The default backup destination is a release backup directory, and Get-ChildItem -Force enumerates every project-root entry before Copy-Item -Recurse stages it for Compress-Archive. This includes hidden .env and password files when present, as well as runtime data and logs. The output is a cleartext ZIP with only a SHA256 sidecar; no redaction, encryption, or separate secret handling is applied, so possession of the backup exposes stored credentials and session material."
+      },
+      "ruleId": "cwe-200-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The default backup destination is a release backup directory, and Get-ChildItem -Force enumerates every project-root entry before Copy-Item -Recurse stages it for Compress-Archive. This includes hidden .env and password files when present, as well as runtime data and logs. The output is a cleartext ZIP with only a SHA256 sidecar; no redaction, encryption, or separate secret handling is applied, so possession of the backup exposes stored credentials and session material.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-200",
+          "CWE-922"
+        ]
+      },
+      "title": "Windows backup archives the entire project root, including hidden runtime secrets, into an unencrypted ZIP",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The default backup destination is a release backup directory, and Get-ChildItem -Force enumerates every project-root entry before Copy-Item -Recurse stages it for Compress-Archive. This includes hidden .env and password files when present, as well as runtime data and logs. The output is a cleartext ZIP with only a SHA256 sidecar; no redaction, encryption, or separate secret handling is applied, so possession of the backup exposes stored credentials and session material.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The workflow downloads the fixed-version Maven ZIP with Invoke-WebRequest, extracts it, and only checks that mvn.cmd exists before adding its bin directory to GITHUB_PATH. It then invokes mvn dependency:go-offline and uses Maven during first-party plugin compilation. No SHA256, signature, or independently trusted digest is checked, so compromise of the download origin or artifact can execute code in the GitHub runner and influence build outputs.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "An attacker reaches the affected path under the preconditions described by the discovery record.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-0b30e35daf94a203",
+        "ledgerRowId": "candidate-0b30e35daf94a203"
+      },
+      "findingId": "csf_f2c1e2aac987c24e8f0f8262",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:153a5db132581b8540f8d8f09fd096c71ca9685aeb2ab56c6f29c8115348a4a3"
+      },
+      "identity": {
+        "anchor": "github-actions-maven",
+        "instance": "github-actions-maven"
+      },
+      "locations": [
+        {
+          "endLine": 119,
+          "path": ".github/workflows/ci.yml",
+          "role": "source",
+          "startLine": 110
+        },
+        {
+          "endLine": 165,
+          "path": ".github/workflows/ci.yml",
+          "role": "evidence",
+          "startLine": 120
+        }
+      ],
+      "occurrenceId": "occ_56c9213e126f8b7f0c343c05",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Pin the bootstrap distribution URL to a verified cryptographic digest before execution.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The workflow downloads the fixed-version Maven ZIP with Invoke-WebRequest, extracts it, and only checks that mvn.cmd exists before adding its bin directory to GITHUB_PATH. It then invokes mvn dependency:go-offline and uses Maven during first-party plugin compilation. No SHA256, signature, or independently trusted digest is checked, so compromise of the download origin or artifact can execute code in the GitHub runner and influence build outputs."
+      },
+      "ruleId": "cwe-494-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The workflow downloads the fixed-version Maven ZIP with Invoke-WebRequest, extracts it, and only checks that mvn.cmd exists before adding its bin directory to GITHUB_PATH. It then invokes mvn dependency:go-offline and uses Maven during first-party plugin compilation. No SHA256, signature, or independently trusted digest is checked, so compromise of the download origin or artifact can execute code in the GitHub runner and influence build outputs.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-494",
+          "CWE-829"
+        ]
+      },
+      "title": "CI executes a Maven distribution downloaded without a cryptographic integrity pin",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The workflow downloads the fixed-version Maven ZIP with Invoke-WebRequest, extracts it, and only checks that mvn.cmd exists before adding its bin directory to GITHUB_PATH. It then invokes mvn dependency:go-offline and uses Maven during first-party plugin compilation. No SHA256, signature, or independently trusted digest is checked, so compromise of the download origin or artifact can execute code in the GitHub runner and influence build outputs.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The caller supplies the archive and either an argument or sidecar for its SHA256; no trusted key material is consulted during that check. After extraction, verify_release_signature reads both release_manifest.json and release-signing.allowed from PAYLOAD_ROOT and verifies the signature against that pair, then install_payload copies the entire payload into the live project tree. A replacement archive plus matching sidecar can therefore carry a new public key and matching signature for arbitrary backend, plugin, or deployment code and pass the purported signature gate before root installation.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "An attacker reaches the affected path under the preconditions described by the discovery record.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-f177e01037157a64",
+        "ledgerRowId": "candidate-f177e01037157a64"
+      },
+      "findingId": "csf_56b6ef6ce78dc5ac8424d949",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:2c70af5e9af65bdcf0a4148f6aa276f44fa3837fc66d85a2f0eddb3496f38a31"
+      },
+      "identity": {
+        "anchor": "the-privileged-ubuntu-release-installer-verifies-the-manifest-with-a-release-sig"
+      },
+      "locations": [
+        {
+          "endLine": 265,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "entrypoint",
+          "startLine": 238
+        },
+        {
+          "endLine": 320,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "root_control",
+          "startLine": 313
+        },
+        {
+          "endLine": 390,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "sink",
+          "startLine": 378
+        },
+        {
+          "endLine": 713,
+          "path": "deploy/ubuntu/install_release.sh",
+          "role": "evidence",
+          "startLine": 701
+        }
+      ],
+      "occurrenceId": "occ_615056cba4698ac83be05a12",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Apply the corresponding fail-closed boundary and cover it with a release validator and runtime smoke check.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The caller supplies the archive and either an argument or sidecar for its SHA256; no trusted key material is consulted during that check. After extraction, verify_release_signature reads both release_manifest.json and release-signing.allowed from PAYLOAD_ROOT and verifies the signature against that pair, then install_payload copies the entire payload into the live project tree. A replacement archive plus matching sidecar can therefore carry a new public key and matching signature for arbitrary backend, plugin, or deployment code and pass the purported signature gate before root installation."
+      },
+      "ruleId": "cwe-347-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The caller supplies the archive and either an argument or sidecar for its SHA256; no trusted key material is consulted during that check. After extraction, verify_release_signature reads both release_manifest.json and release-signing.allowed from PAYLOAD_ROOT and verifies the signature against that pair, then install_payload copies the entire payload into the live project tree. A replacement archive plus matching sidecar can therefore carry a new public key and matching signature for arbitrary backend, plugin, or deployment code and pass the purported signature gate before root installation.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-347",
+          "CWE-494"
+        ]
+      },
+      "title": "The privileged Ubuntu release installer verifies the manifest with a release-signing allowlist loaded from the untrusted archive itself.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The caller supplies the archive and either an argument or sidecar for its SHA256; no trusted key material is consulted during that check. After extraction, verify_release_signature reads both release_manifest.json and release-signing.allowed from PAYLOAD_ROOT and verifies the signature against that pair, then install_payload copies the entire payload into the live project tree. A replacement archive plus matching sidecar can therefore carry a new public key and matching signature for arbitrary backend, plugin, or deployment code and pass the purported signature gate before root installation.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The manifest carries hashes for selected downloads and first-party serverPlugins, but the installer swaps in every file under PAYLOAD_ROOT and its runtime validation only compiles the backend, tests two ZIPs, and checks that plugin JARs can be listed. The shared release contract compares only modpack, resource-pack, and client-mod hashes and never iterates serverPlugins or the application/deploy tree. An attacker who can alter the archive while preserving the signed manifest can replace server plugins, backend files, or deployment/systemd inputs without invalidating the checked signature.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "An attacker reaches the affected path under the preconditions described by the discovery record.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-cf77ddd407b0d737",
+        "ledgerRowId": "candidate-cf77ddd407b0d737"
+      },
+      "findingId": "csf_cc3ddb54f1ee04e349f290df",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:8cdcd62f4fe567782f0ce0f7466beb360300fd0e8e7ee8c231791698da3a789f"
+      },
+      "identity": {
+        "anchor": "the-signed-release-manifest-does-not-authenticate-the-full-payload-that-the-ubun"
+      },
+      "locations": [
+        {
+          "endLine": 320,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "root_control",
+          "startLine": 311
+        },
+        {
+          "endLine": 390,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "sink",
+          "startLine": 378
+        },
+        {
+          "endLine": 611,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "concrete_implementation",
+          "startLine": 584
+        },
+        {
+          "endLine": 1015,
+          "path": "deploy/shared/common.sh",
+          "role": "evidence",
+          "startLine": 983
+        },
+        {
+          "endLine": 30,
+          "path": "deploy/release_manifest.json",
+          "role": "evidence",
+          "startLine": 23
+        }
+      ],
+      "occurrenceId": "occ_4abd3bcb74ca58198c5f561e",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Authenticate every installed payload file and reject non-regular archive members, including symlinks and hardlinks.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The manifest carries hashes for selected downloads and first-party serverPlugins, but the installer swaps in every file under PAYLOAD_ROOT and its runtime validation only compiles the backend, tests two ZIPs, and checks that plugin JARs can be listed. The shared release contract compares only modpack, resource-pack, and client-mod hashes and never iterates serverPlugins or the application/deploy tree. An attacker who can alter the archive while preserving the signed manifest can replace server plugins, backend files, or deployment/systemd inputs without invalidating the checked signature."
+      },
+      "ruleId": "cwe-345-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The manifest carries hashes for selected downloads and first-party serverPlugins, but the installer swaps in every file under PAYLOAD_ROOT and its runtime validation only compiles the backend, tests two ZIPs, and checks that plugin JARs can be listed. The shared release contract compares only modpack, resource-pack, and client-mod hashes and never iterates serverPlugins or the application/deploy tree. An attacker who can alter the archive while preserving the signed manifest can replace server plugins, backend files, or deployment/systemd inputs without invalidating the checked signature.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-345",
+          "CWE-494"
+        ]
+      },
+      "title": "The signed release manifest does not authenticate the full payload that the Ubuntu installer installs.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The manifest carries hashes for selected downloads and first-party serverPlugins, but the installer swaps in every file under PAYLOAD_ROOT and its runtime validation only compiles the backend, tests two ZIPs, and checks that plugin JARs can be listed. The shared release contract compares only modpack, resource-pack, and client-mod hashes and never iterates serverPlugins or the application/deploy tree. An attacker who can alter the archive while preserving the signed manifest can replace server plugins, backend files, or deployment/systemd inputs without invalidating the checked signature.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The inline validator checks tar member names and only rejects links whose targets are unsafe; it does not require tar members to be regular files/directories and therefore permits FIFOs, device nodes, and other special entries. The next step extracts with tar as root and cp -a copies the whole payload into the replacement tree. Such an archive can hang first-install environment creation, cause validation/startup failures, or leave special nodes in the deployed tree; deploy/shared/validate_archive.py explicitly rejects non-regular members and links, but this installer does not call it.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "An attacker reaches the affected path under the preconditions described by the discovery record.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-f349b2435ba896d1",
+        "ledgerRowId": "candidate-f349b2435ba896d1"
+      },
+      "findingId": "csf_8ed746e3d5574a55c5cb4c65",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:2b280edfaecd7f30f1903eb66224f919b79f5f24e18dc59f9db1f27fb5d2b505"
+      },
+      "identity": {
+        "anchor": "the-privileged-ubuntu-unpacker-accepts-non-regular-tar-members-even-though-it-ha"
+      },
+      "locations": [
+        {
+          "endLine": 148,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "root_control",
+          "startLine": 120
+        },
+        {
+          "endLine": 289,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "sink",
+          "startLine": 280
+        },
+        {
+          "endLine": 390,
+          "path": "deploy/ubuntu/copimine_unpack_and_verify.sh",
+          "role": "sink",
+          "startLine": 378
+        },
+        {
+          "endLine": 54,
+          "path": "deploy/shared/validate_archive.py",
+          "role": "evidence",
+          "startLine": 28
+        }
+      ],
+      "occurrenceId": "occ_3fc0529df08d721f26dc1dbf",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Apply the corresponding fail-closed boundary and cover it with a release validator and runtime smoke check.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The inline validator checks tar member names and only rejects links whose targets are unsafe; it does not require tar members to be regular files/directories and therefore permits FIFOs, device nodes, and other special entries. The next step extracts with tar as root and cp -a copies the whole payload into the replacement tree. Such an archive can hang first-install environment creation, cause validation/startup failures, or leave special nodes in the deployed tree; deploy/shared/validate_archive.py explicitly rejects non-regular members and links, but this installer does not call it."
+      },
+      "ruleId": "cwe-20-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 6.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The inline validator checks tar member names and only rejects links whose targets are unsafe; it does not require tar members to be regular files/directories and therefore permits FIFOs, device nodes, and other special entries. The next step extracts with tar as root and cp -a copies the whole payload into the replacement tree. Such an archive can hang first-install environment creation, cause validation/startup failures, or leave special nodes in the deployed tree; deploy/shared/validate_archive.py explicitly rejects non-regular members and links, but this installer does not call it.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-20",
+          "CWE-400"
+        ]
+      },
+      "title": "The privileged Ubuntu unpacker accepts non-regular tar members even though it has a stronger archive validator available.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The inline validator checks tar member names and only rejects links whose targets are unsafe; it does not require tar members to be regular files/directories and therefore permits FIFOs, device nodes, and other special entries. The next step extracts with tar as root and cp -a copies the whole payload into the replacement tree. Such an archive can hang first-install environment creation, cause validation/startup failures, or leave special nodes in the deployed tree; deploy/shared/validate_archive.py explicitly rejects non-regular members and links, but this installer does not call it.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "When the local Gradle executable is absent, build-client.ps1 downloads the fixed-version ZIP from services.gradle.org with Invoke-WebRequest, expands the cached ZIP, and invokes its gradle.bat build. No SHA-256, signature, or other authenticity check is performed before execution. package_full_release.ps1 invokes this script while building the client artifact, so a compromised or substituted distribution can execute build logic and influence the release client JAR.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "Developer/release build supply-chain path; the downloaded Gradle distribution is executable code and the resulting client JAR is packaged for release.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-2858bf2e75713e97",
+        "ledgerRowId": "candidate-2858bf2e75713e97"
+      },
+      "findingId": "csf_b7b60959195df59dfc3c82df",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:9535a25da7aea674485c97a44a2e6a136f4d272d307df41450f4dc96ea726527"
+      },
+      "identity": {
+        "anchor": "the-client-release-build-downloads-the-gradle-distribution-without-an-integrity-"
+      },
+      "locations": [
+        {
+          "endLine": 15,
+          "path": "CopiMineClient/build-client.ps1",
+          "role": "source",
+          "startLine": 11
+        },
+        {
+          "endLine": 21,
+          "path": "CopiMineClient/build-client.ps1",
+          "role": "sink",
+          "startLine": 18
+        },
+        {
+          "endLine": 253,
+          "path": "scripts/package_full_release.ps1",
+          "role": "entrypoint",
+          "startLine": 250
+        }
+      ],
+      "occurrenceId": "occ_5359b1c0e0271624e4683081",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Pin the bootstrap distribution URL to a verified cryptographic digest before execution.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "When the local Gradle executable is absent, build-client.ps1 downloads the fixed-version ZIP from services.gradle.org with Invoke-WebRequest, expands the cached ZIP, and invokes its gradle.bat build. No SHA-256, signature, or other authenticity check is performed before execution. package_full_release.ps1 invokes this script while building the client artifact, so a compromised or substituted distribution can execute build logic and influence the release client JAR."
+      },
+      "ruleId": "cwe-494-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "When the local Gradle executable is absent, build-client.ps1 downloads the fixed-version ZIP from services.gradle.org with Invoke-WebRequest, expands the cached ZIP, and invokes its gradle.bat build. No SHA-256, signature, or other authenticity check is performed before execution. package_full_release.ps1 invokes this script while building the client artifact, so a compromised or substituted distribution can execute build logic and influence the release client JAR.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-494"
+        ]
+      },
+      "title": "The client release build downloads the Gradle distribution without an integrity pin and immediately executes it.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "When the local Gradle executable is absent, build-client.ps1 downloads the fixed-version ZIP from services.gradle.org with Invoke-WebRequest, expands the cached ZIP, and invokes its gradle.bat build. No SHA-256, signature, or other authenticity check is performed before execution. package_full_release.ps1 invokes this script while building the client artifact, so a compromised or substituted distribution can execute build logic and influence the release client JAR.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "MAX_CACHED_STATES is enforced while loading persisted rows, but queueIngredients unconditionally cache.puts every new BlockKey and has no runtime size check or eviction. A normal player reaches tryAddIngredient from the RIGHT_CLICK_BLOCK handler and can use distinct supported cauldrons and ingredients; integrity cleanup only examines a bounded snapshot per sweep, so stale entries are not an admission control. Each pending state is also persisted, allowing sustained distinct activity to consume heap, database rows, and bounded asynchronous work.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "Narcotics cauldron state cache; separate from the permanent per-key lock-map leak.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-51c36a16e2bc8503",
+        "ledgerRowId": "candidate-51c36a16e2bc8503"
+      },
+      "findingId": "csf_7b374c0825d3600b297bd23f",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:2aadc4b6b4853eec092823212e25a2c106118f94abb24fda0ca3422a6f52901a"
+      },
+      "identity": {
+        "anchor": "public-cauldron-brewing-can-grow-the-live-pending-state-cache-beyond-its-nominal"
+      },
+      "locations": [
+        {
+          "endLine": 42,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java",
+          "role": "evidence",
+          "startLine": 31
+        },
+        {
+          "endLine": 115,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java",
+          "role": "evidence",
+          "startLine": 61
+        },
+        {
+          "endLine": 426,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java",
+          "role": "evidence",
+          "startLine": 386
+        },
+        {
+          "endLine": 302,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java",
+          "role": "entrypoint",
+          "startLine": 285
+        }
+      ],
+      "occurrenceId": "occ_200a33204e662e6750846b72",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Enforce a hard runtime cap before accepting new state and use bounded lock storage with cleanup.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "MAX_CACHED_STATES is enforced while loading persisted rows, but queueIngredients unconditionally cache.puts every new BlockKey and has no runtime size check or eviction. A normal player reaches tryAddIngredient from the RIGHT_CLICK_BLOCK handler and can use distinct supported cauldrons and ingredients; integrity cleanup only examines a bounded snapshot per sweep, so stale entries are not an admission control. Each pending state is also persisted, allowing sustained distinct activity to consume heap, database rows, and bounded asynchronous work."
+      },
+      "ruleId": "cwe-400-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 6.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "MAX_CACHED_STATES is enforced while loading persisted rows, but queueIngredients unconditionally cache.puts every new BlockKey and has no runtime size check or eviction. A normal player reaches tryAddIngredient from the RIGHT_CLICK_BLOCK handler and can use distinct supported cauldrons and ingredients; integrity cleanup only examines a bounded snapshot per sweep, so stale entries are not an admission control. Each pending state is also persisted, allowing sustained distinct activity to consume heap, database rows, and bounded asynchronous work.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-400",
+          "CWE-770"
+        ]
+      },
+      "title": "Public cauldron brewing can grow the live pending-state cache beyond its nominal 10,000-state bound.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "MAX_CACHED_STATES is enforced while loading persisted rows, but queueIngredients unconditionally cache.puts every new BlockKey and has no runtime size check or eviction. A normal player reaches tryAddIngredient from the RIGHT_CLICK_BLOCK handler and can use distinct supported cauldrons and ingredients; integrity cleanup only examines a bounded snapshot per sweep, so stale entries are not an admission control. Each pending state is also persisted, allowing sustained distinct activity to consume heap, database rows, and bounded asynchronous work.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "onBreak invokes handleCauldronBroken for every non-cancelled block break, not only cauldrons. handleCauldronBroken calls lockFor before checking whether a cached state exists; lockFor uses computeIfAbsent on the locks map. Break, completion, and failure paths remove cache entries but never remove locks, and the map is cleared only by clearCache or shutdown. A player traversing and breaking unique blocks can therefore grow this map for the server lifetime and exhaust heap.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "Separate sink from cache growth: this path needs only ordinary block breaks and is not bounded by brewing-state persistence.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-3d822547fd9b2b2e",
+        "ledgerRowId": "candidate-3d822547fd9b2b2e"
+      },
+      "findingId": "csf_72c5c44d1b3ef580fb3e8f05",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:066fd36ce9f4ba38bccbb2d8c599c078a67ab01481ca229736f26b46ce32c1a2"
+      },
+      "identity": {
+        "anchor": "the-cauldron-service-permanently-retains-a-lock-object-for-every-unique-block-ke"
+      },
+      "locations": [
+        {
+          "endLine": 258,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java",
+          "role": "evidence",
+          "startLine": 238
+        },
+        {
+          "endLine": 317,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java",
+          "role": "evidence",
+          "startLine": 306
+        },
+        {
+          "endLine": 516,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java",
+          "role": "sink",
+          "startLine": 514
+        },
+        {
+          "endLine": 311,
+          "path": "copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java",
+          "role": "entrypoint",
+          "startLine": 305
+        }
+      ],
+      "occurrenceId": "occ_7626de4216081a3902fd9b7c",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Enforce a hard runtime cap before accepting new state and use bounded lock storage with cleanup.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "onBreak invokes handleCauldronBroken for every non-cancelled block break, not only cauldrons. handleCauldronBroken calls lockFor before checking whether a cached state exists; lockFor uses computeIfAbsent on the locks map. Break, completion, and failure paths remove cache entries but never remove locks, and the map is cleared only by clearCache or shutdown. A player traversing and breaking unique blocks can therefore grow this map for the server lifetime and exhaust heap."
+      },
+      "ruleId": "cwe-400-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 6.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "onBreak invokes handleCauldronBroken for every non-cancelled block break, not only cauldrons. handleCauldronBroken calls lockFor before checking whether a cached state exists; lockFor uses computeIfAbsent on the locks map. Break, completion, and failure paths remove cache entries but never remove locks, and the map is cleared only by clearCache or shutdown. A player traversing and breaking unique blocks can therefore grow this map for the server lifetime and exhaust heap.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-400",
+          "CWE-401"
+        ]
+      },
+      "title": "The cauldron service permanently retains a lock object for every unique block key touched by a player.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "onBreak invokes handleCauldronBroken for every non-cancelled block break, not only cauldrons. handleCauldronBroken calls lockFor before checking whether a cached state exists; lockFor uses computeIfAbsent on the locks map. Break, completion, and failure paths remove cache entries but never remove locks, and the map is cleared only by clearCache or shutdown. A player traversing and breaking unique blocks can therefore grow this map for the server lifetime and exhaust heap.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "server.properties enables RCON on port 25575, leaves server-ip blank, and the captured runtime log confirms RCON running on 0.0.0.0:25575. The deployment helper only copies RCON_PASSWORD into rcon.password; it never sets a loopback RCON bind or installs a firewall restriction. RCON carries the password and subsequent commands over a cleartext TCP protocol, so a reachable listener exposes the credential to interception or brute force and grants the full server command surface if authentication is obtained.",
+        "decision": "reportable",
+        "impact": "medium",
+        "likelihood": "medium",
+        "reachability": "The web panel's RCON_HOST=127.0.0.1 default constrains only the panel client; it does not constrain the Minecraft listener.",
+        "severity": "medium",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-7694817bb23bcf0b",
+        "ledgerRowId": "candidate-7694817bb23bcf0b"
+      },
+      "findingId": "csf_f43ff32c9a4a2478b06a688c",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:50500acf32835c1a25e687b0b7a332e90741b407566a9c0b8453964344d956ae"
+      },
+      "identity": {
+        "anchor": "the-deployed-minecraft-rcon-listener-is-exposed-on-all-interfaces-without-transp"
+      },
+      "locations": [
+        {
+          "endLine": 14,
+          "path": "minecraft/server/server.properties",
+          "role": "evidence",
+          "startLine": 14
+        },
+        {
+          "endLine": 46,
+          "path": "minecraft/server/server.properties",
+          "role": "root_control",
+          "startLine": 45
+        },
+        {
+          "endLine": 53,
+          "path": "minecraft/server/server.properties",
+          "role": "evidence",
+          "startLine": 53
+        },
+        {
+          "endLine": 284,
+          "path": "minecraft/server/logs/latest.log",
+          "role": "evidence",
+          "startLine": 284
+        },
+        {
+          "endLine": 641,
+          "path": "deploy/shared/common.sh",
+          "role": "evidence",
+          "startLine": 611
+        }
+      ],
+      "occurrenceId": "occ_3defff32981e1410f8e52d0f",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Bind RCON to loopback and keep command validation fail-closed for every production listener.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "server.properties enables RCON on port 25575, leaves server-ip blank, and the captured runtime log confirms RCON running on 0.0.0.0:25575. The deployment helper only copies RCON_PASSWORD into rcon.password; it never sets a loopback RCON bind or installs a firewall restriction. RCON carries the password and subsequent commands over a cleartext TCP protocol, so a reachable listener exposes the credential to interception or brute force and grants the full server command surface if authentication is obtained."
+      },
+      "ruleId": "cwe-319-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "medium",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 5.5,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "server.properties enables RCON on port 25575, leaves server-ip blank, and the captured runtime log confirms RCON running on 0.0.0.0:25575. The deployment helper only copies RCON_PASSWORD into rcon.password; it never sets a loopback RCON bind or installs a firewall restriction. RCON carries the password and subsequent commands over a cleartext TCP protocol, so a reachable listener exposes the credential to interception or brute force and grants the full server command surface if authentication is obtained.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-319",
+          "CWE-668"
+        ]
+      },
+      "title": "The deployed Minecraft RCON listener is exposed on all interfaces without transport protection.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "server.properties enables RCON on port 25575, leaves server-ip blank, and the captured runtime log confirms RCON running on 0.0.0.0:25575. The deployment helper only copies RCON_PASSWORD into rcon.password; it never sets a loopback RCON bind or installs a firewall restriction. RCON carries the password and subsequent commands over a cleartext TCP protocol, so a reachable listener exposes the credential to interception or brute force and grants the full server command surface if authentication is obtained.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    },
+    {
+      "attackPath": {
+        "change_conditions": "Severity is reduced only when the repaired release and its deployment trust/configuration remain in force.",
+        "counterevidence": "The repaired checkout contains a targeted fix and associated regression coverage.",
+        "dataflow": "The installer unconditionally calls enable_offline_voicechat after preflight. That function rewrites the production .env with COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=1 and a hardcoded claim that the owner accepted public voice chat, without command-line confirmation or independent operator attestation. The managed voice-chat template binds UDP to *, while server.properties uses online-mode=false; the runtime log records that voice chat is running in offline mode and its encryption is not secure. This release path can therefore turn on identity-spoofable and insecure public voice sessions even when the example configuration says the flag must remain disabled until the limitation is assessed.",
+        "decision": "reportable",
+        "impact": "high",
+        "likelihood": "medium",
+        "reachability": "The hardening script rejects offline mode plus public bind when the flag is 0, but the installer sets that flag to 1 before the hardening step on every install or upgrade.",
+        "severity": "high",
+        "severity_rationale": "The vulnerable source path reaches an authentication, release-integrity, resource-exhaustion or secret-protection boundary without the required control."
+      },
+      "confidence": {
+        "level": "high",
+        "rationale": "The candidate includes direct entrypoint, control and sink locations plus a concrete source explanation."
+      },
+      "extensions": {
+        "candidateId": "candidate-55b43c6e59fa6585",
+        "ledgerRowId": "candidate-55b43c6e59fa6585"
+      },
+      "findingId": "csf_057123195634d920c1408fc6",
+      "fingerprints": {
+        "algorithm": "codex-security/v1",
+        "primary": "codex-security/v1:sha256:96190a81f07de5e20fe4176d08ce3bb1ec3303904bdc4288b20fa81c47c36f3e"
+      },
+      "identity": {
+        "anchor": "the-ubuntu-release-installer-silently-enables-the-insecure-offline-mode-public-v"
+      },
+      "locations": [
+        {
+          "endLine": 904,
+          "path": "deploy/ubuntu/install_release.sh",
+          "role": "evidence",
+          "startLine": 863
+        },
+        {
+          "endLine": 1013,
+          "path": "deploy/ubuntu/install_release.sh",
+          "role": "evidence",
+          "startLine": 1011
+        },
+        {
+          "endLine": 5,
+          "path": "deploy/templates/voicechat-server.properties",
+          "role": "evidence",
+          "startLine": 1
+        },
+        {
+          "endLine": 38,
+          "path": "minecraft/server/server.properties",
+          "role": "root_control",
+          "startLine": 38
+        },
+        {
+          "endLine": 302,
+          "path": "minecraft/server/logs/latest.log",
+          "role": "evidence",
+          "startLine": 301
+        }
+      ],
+      "occurrenceId": "occ_55d28bf30a21cd2b349aee40",
+      "preventiveControls": [
+        "Signed release manifest and full payload inventory",
+        "Fail-closed runtime authentication and bounded public work"
+      ],
+      "provenance": {
+        "source": "codex-security-standard-discovery-and-followup"
+      },
+      "remediation": "Keep the offline public voice-chat exception disabled unless an operator has explicitly enabled and reviewed it.",
+      "remediationTests": [
+        "tests/RunCopiMineValidators.ps1: 654/654 passed",
+        "Live HTTPS and deployment smoke checks passed where applicable"
+      ],
+      "rootCause": {
+        "evidenceRefs": [],
+        "summary": "The installer unconditionally calls enable_offline_voicechat after preflight. That function rewrites the production .env with COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=1 and a hardcoded claim that the owner accepted public voice chat, without command-line confirmation or independent operator attestation. The managed voice-chat template binds UDP to *, while server.properties uses online-mode=false; the runtime log records that voice chat is running in offline mode and its encryption is not secure. This release path can therefore turn on identity-spoofable and insecure public voice sessions even when the example configuration says the flag must remain disabled until the limitation is assessed."
+      },
+      "ruleId": "cwe-287-control",
+      "severity": {
+        "changeConditions": "The finding is closed for the deployed release only after the signed repaired bundle and runtime configuration remain installed.",
+        "level": "high",
+        "rationale": "Historical source evidence shows the security boundary was missing on the scanned revision.",
+        "score": 8.0,
+        "scoringSystem": "internal-source-review"
+      },
+      "summary": "The installer unconditionally calls enable_offline_voicechat after preflight. That function rewrites the production .env with COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=1 and a hardcoded claim that the owner accepted public voice chat, without command-line confirmation or independent operator attestation. The managed voice-chat template binds UDP to *, while server.properties uses online-mode=false; the runtime log records that voice chat is running in offline mode and its encryption is not secure. This release path can therefore turn on identity-spoofable and insecure public voice sessions even when the example configuration says the flag must remain disabled until the limitation is assessed.",
+      "taxonomy": {
+        "category": "security-control",
+        "cwe": [
+          "CWE-287",
+          "CWE-345"
+        ]
+      },
+      "title": "The Ubuntu release installer silently enables the insecure offline-mode public voice-chat exception and bypasses its fail-closed gate.",
+      "validation": {
+        "confidence": "high",
+        "confidence_rationale": "The discovery record identifies the entrypoint, broken control and sink; later targeted validators and live checks cover the repaired control.",
+        "counterevidence_or_proof_gap": "The control is fixed in later commits; this scan records the historical vulnerability at its scanned revision.",
+        "disposition": "reportable",
+        "evidence": "The installer unconditionally calls enable_offline_voicechat after preflight. That function rewrites the production .env with COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=1 and a hardcoded claim that the owner accepted public voice chat, without command-line confirmation or independent operator attestation. The managed voice-chat template binds UDP to *, while server.properties uses online-mode=false; the runtime log records that voice chat is running in offline mode and its encryption is not secure. This release path can therefore turn on identity-spoofable and insecure public voice sessions even when the example configuration says the flag must remain disabled until the limitation is assessed.",
+        "method": "Direct source trace on the immutable scanned revision, followed by targeted regression checks on the repaired checkout.",
+        "remaining_uncertainty": "A real hostile production request or Minecraft player session was not used for every candidate.",
+        "rubric": "A candidate is reportable when the source trace reaches a security-sensitive sink without the required control on the scanned revision."
+      }
+    }
+  ],
+  "scanId": "b6e00335-922b-4315-a4f2-93c997c05770",
+  "schemaVersion": "1.0"
+}

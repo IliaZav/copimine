@@ -32,6 +32,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check -r admin-web/requirements.txt
+      - name: Run dependency vulnerability gate
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check -r requirements-security.txt
+          python -m pip_audit -r admin-web/requirements.txt --strict
       - name: Run Python contract tests
         shell: pwsh
         run: |

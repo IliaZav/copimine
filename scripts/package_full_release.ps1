@@ -65,6 +65,9 @@ $modpackSnapshotPath = Join-Path $ProjectRoot "admin-web\frontend\assets\public-
 $thirdpartyManifestPath = Join-Path $ProjectRoot "thirdparty\thirdparty_manifest.json"
 $releaseManifestPath = Join-Path $ProjectRoot "deploy\release_manifest.json"
 $installerManifestPath = Join-Path $ProjectRoot "deploy\installer_manifest.json"
+$sbomPath = Join-Path $ProjectRoot "deploy\sbom.spdx.json"
+$generateSbomScript = Join-Path $ProjectRoot "deploy\shared\generate_sbom.py"
+$scanReleaseScript = Join-Path $ProjectRoot "deploy\shared\scan_release_strings.py"
 $deployInstall = Join-Path $ProjectRoot "deploy\ubuntu\install.sh"
 $deployInstallRelease = Join-Path $ProjectRoot "deploy\ubuntu\install_release.sh"
 $deployUpdate = Join-Path $ProjectRoot "deploy\ubuntu\update.sh"
@@ -409,6 +412,28 @@ $installerManifest = [ordered]@{
 }
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerManifest | ConvertTo-Json -Depth 16)
 
+Write-Host "[6/9] Generate SPDX release inventory"
+Invoke-Checked -FilePath "python" -Arguments @($generateSbomScript, "--root", $ProjectRoot, "--output", $sbomPath)
+Invoke-Checked -FilePath "python" -Arguments @($scanReleaseScript, "--root", $ProjectRoot, "--sbom", $sbomPath)
+$sbomSha256 = Get-Sha256Lower -LiteralPath $sbomPath
+$sbomDescriptor = [ordered]@{
+    path = "deploy/sbom.spdx.json"
+    sha256 = $sbomSha256
+    format = "SPDX-2.3"
+    generator = [ordered]@{
+        path = "deploy/shared/generate_sbom.py"
+        sha256 = (Get-Sha256Lower -LiteralPath $generateSbomScript)
+    }
+    scanner = [ordered]@{
+        path = "deploy/shared/scan_release_strings.py"
+        sha256 = (Get-Sha256Lower -LiteralPath $scanReleaseScript)
+    }
+}
+$releaseManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor })
+Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content ($releaseManifest | ConvertTo-Json -Depth 16)
+$installerManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor })
+Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerManifest | ConvertTo-Json -Depth 16)
+
 Write-Host "[7/9] Stage Linux replacement payload"
 $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-release-" + [guid]::NewGuid().ToString())
 $payloadRoot = Join-Path $stageRoot "copimine"
@@ -431,6 +456,7 @@ $generatedReleaseFiles = @(
     'admin-web\frontend\assets\public-data\modpack_snapshot.json',
     'deploy\installer_manifest.json',
     'deploy\release_manifest.json',
+    'deploy\sbom.spdx.json',
     'minecraft\server\server.properties',
     'minecraft\server\pufferfish.yml',
     'minecraft\server\plugins\EntityClearer\config.yml',

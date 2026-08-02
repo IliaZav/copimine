@@ -19,18 +19,27 @@ WIPE_WORLDS=0
 RESET_GAMEPLAY=0
 RESET_TREASURY=0
 
-usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n       sudo bash %s --configure-https [primary-host]\n       sudo bash %s --configure-release-trust [allowlist-path]\n' "$0" "$0" "$0" "$0" "$0" >&2; }
+usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n       sudo bash %s --configure-https [primary-host]\n       sudo bash %s --configure-release-trust [allowlist-path] [verifier-path]\n' "$0" "$0" "$0" "$0" "$0" >&2; }
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
 
 configure_release_trust() {
   local source_path="${2:-$SCRIPT_DIR/release-signing.allowed}"
+  local verifier_source="${3:-$SCRIPT_DIR/verify_payload_manifest.py}"
   local target_path='/etc/copimine/release-signing.allowed'
+  local verifier_target='/etc/copimine/verify_payload_manifest.py'
   local script_root source_real
+  local verifier_real
   script_root="$(realpath -e -- "$SCRIPT_DIR")"
   source_real="$(realpath -e -- "$source_path" 2>/dev/null || true)"
+  verifier_real="$(realpath -e -- "$verifier_source" 2>/dev/null || true)"
   [[ -n "$source_real" && -f "$source_real" ]] || { echo "[trust] allowlist is missing: $source_path" >&2; return 1; }
+  [[ -n "$verifier_real" && -f "$verifier_real" ]] || { echo "[trust] payload verifier is missing: $verifier_source" >&2; return 1; }
   [[ "$source_real" == "$script_root"/* ]] || {
     echo '[trust] allowlist source must be inside the controlled upload directory' >&2
+    return 1
+  }
+  [[ "$verifier_real" == "$script_root"/* ]] || {
+    echo '[trust] payload verifier source must be inside the controlled upload directory' >&2
     return 1
   }
   mapfile -t trust_lines < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$source_real")
@@ -41,11 +50,18 @@ configure_release_trust() {
   }
   install -d -m 0755 /etc/copimine
   install -o root -g root -m 0644 -- "$source_real" "$target_path"
+  python3 -m py_compile "$verifier_real"
+  install -o root -g root -m 0644 -- "$verifier_real" "$verifier_target"
   [[ "$(stat -c '%U:%G %a' "$target_path")" == 'root:root 644' ]] || {
     echo '[trust] installed allowlist has unsafe ownership or mode' >&2
     return 1
   }
+  [[ "$(stat -c '%U:%G %a' "$verifier_target")" == 'root:root 644' ]] || {
+    echo '[trust] installed payload verifier has unsafe ownership or mode' >&2
+    return 1
+  }
   echo "[trust] release signing allowlist installed: $target_path"
+  echo "[trust] payload verifier installed: $verifier_target"
 }
 
 cleanup_zabbix() {

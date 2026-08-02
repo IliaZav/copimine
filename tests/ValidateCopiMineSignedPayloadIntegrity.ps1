@@ -22,7 +22,7 @@ foreach ($needle in @('/etc/copimine/release-signing.allowed', 'root-owned', 'gr
     if (-not $common.Contains($needle)) { $errors.Add("Shared release verification is missing: $needle") }
 }
 $ubuntuInstaller = Read-Utf8 (Join-Path $root 'deploy\ubuntu\install_release.sh')
-if (-not $ubuntuInstaller.Contains('--configure-release-trust') -or -not $ubuntuInstaller.Contains('install -o root -g root -m 0644')) {
+if (-not $ubuntuInstaller.Contains('--configure-release-trust') -or -not $ubuntuInstaller.Contains('/etc/copimine/verify_payload_manifest.py') -or -not $ubuntuInstaller.Contains('install -o root -g root -m 0644')) {
     $errors.Add('Ubuntu installer is missing explicit root-owned release trust provisioning.')
 }
 

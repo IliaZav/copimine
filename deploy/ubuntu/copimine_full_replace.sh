@@ -31,7 +31,10 @@ DB_DUMP_PATH="${2:-}"
 CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
 LOG_FILE="${LOG_FILE:-/var/log/copimine-installer.log}"
 TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
-PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-$SCRIPT_DIR/verify_payload_manifest.py}"
+# The payload verifier is a bootstrap trust anchor too. Never resolve it from
+# the archive or from the mutable project tree before the signed payload has
+# been accepted.
+PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-/etc/copimine/verify_payload_manifest.py}"
 TMP_ROOT=""
 EXTRACT_ROOT=""
 PAYLOAD_ROOT=""

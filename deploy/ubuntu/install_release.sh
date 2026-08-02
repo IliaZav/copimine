@@ -187,12 +187,13 @@ cleanup_legacy_artifacts() {
     '/opt/copimine-old-before-replace-20260606-074851'
     '/opt/copimine-old-before-replace-20260607-001732'
     '/opt/copimine-preserve-20260607-001732'
+    '/opt/copimine.old-2026-06-29-182416'
   )
   for target in "${legacy_opt_roots[@]}"; do
     [[ -e "$target" || -L "$target" ]] || continue
     resolved="$(readlink -f -- "$target" 2>/dev/null || true)"
     case "$resolved" in
-      /opt/copimine-db-backups|/opt/copimine-full-backups|/opt/copimine.backup-20260611-192047|/opt/copimine.backup.2026-06-28-210147|/opt/copimine.backup-before-fixed-20260612-061503|/opt/copimine-old-before-replace-20260606-074851|/opt/copimine-old-before-replace-20260607-001732|/opt/copimine-preserve-20260607-001732) ;;
+      /opt/copimine-db-backups|/opt/copimine-full-backups|/opt/copimine.backup-20260611-192047|/opt/copimine.backup.2026-06-28-210147|/opt/copimine.backup-before-fixed-20260612-061503|/opt/copimine-old-before-replace-20260606-074851|/opt/copimine-old-before-replace-20260607-001732|/opt/copimine-preserve-20260607-001732|/opt/copimine.old-2026-06-29-182416) ;;
       *) echo "[cleanup] refusing unexpected legacy root: $target -> $resolved" >&2; return 1 ;;
     esac
     rm -rf -- "$resolved"

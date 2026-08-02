@@ -37,8 +37,9 @@ Require-Contains $unpack 'copimine-game-hardening' 'Unpack-and-verify must start
 Require-Contains $envExample 'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT=0' 'The insecure offline voice-chat exception must be disabled by default.'
 Require-Contains $envExample 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON=' 'The operator exception reason must be documented in the environment template.'
 $installScript = Read-Utf8 (Join-Path $root 'deploy\ubuntu\install_release.sh')
-Require-Contains $installScript 'value = ''"'' + value' 'Offline voice-chat reason must be quoted when written to shell-readable .env files.'
+Require-NotContains $installScript 'enable_offline_voicechat' 'The installer must not silently enable the offline public voice-chat exception.'
 Require-Regex $serverProperties '(?m)^online-mode=false$' 'This hardening must not silently change the server online-mode policy.'
+Require-Regex $serverProperties '(?m)^rcon\.ip=127\.0\.0\.1$' 'RCON must be bound to loopback because the protocol has no transport encryption.'
 
 if (Test-Path -LiteralPath $service) {
     $serviceText = Read-Utf8 $service

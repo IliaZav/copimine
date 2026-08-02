@@ -622,6 +622,7 @@ rcon_password = os.environ["COPIMINE_RCON_PASSWORD"]
 lines = path.read_text(encoding="utf-8").splitlines()
 updates = {
     "rcon.password": rcon_password,
+    "rcon.ip": "127.0.0.1",
 }
 seen = set()
 output = []

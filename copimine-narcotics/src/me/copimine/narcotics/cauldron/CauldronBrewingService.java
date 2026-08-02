@@ -39,7 +39,11 @@ public final class CauldronBrewingService {
     private NarcoticsRecipeService recipeService;
     private NarcoticItemFactory itemFactory;
     private final Map<BlockKey, CauldronState> cache = new ConcurrentHashMap<>();
-    private final Map<BlockKey, Object> locks = new ConcurrentHashMap<>();
+    // A per-block lock map grows forever when players break arbitrary blocks.
+    // Fixed stripes preserve the required serialization without retaining every
+    // historical world coordinate in memory.
+    private final Object[] lockStripes = new Object[256];
+    private final Object cacheAdmissionLock = new Object();
     private volatile boolean cacheReady = false;
     private int integrityCursor = 0;
 
@@ -49,6 +53,9 @@ public final class CauldronBrewingService {
         this.database = database;
         this.recipeService = recipeService;
         this.itemFactory = itemFactory;
+        for (int index = 0; index < lockStripes.length; index++) {
+            lockStripes[index] = new Object();
+        }
     }
 
     public void reload(NarcoticsConfigService configService, NarcoticsRecipeService recipeService, NarcoticItemFactory itemFactory) {
@@ -213,10 +220,10 @@ public final class CauldronBrewingService {
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
             long nextVersion = base.version() + 1L;
-            itemFactory.consumeOne(player, stack);
 
             NarcoticDefinition exact = recipeService.matchExact(current);
             if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null) {
+                itemFactory.consumeOne(player, stack);
                 finishBrewing(block, key, exact, nextVersion, current.size(), false, player);
                 return true;
             }
@@ -226,11 +233,13 @@ public final class CauldronBrewingService {
                 return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
             }
             if (recipeService.containsUnrecognizedIngredient(current)) {
+                itemFactory.consumeOne(player, stack);
                 return finishWrongMix(block, key, nextVersion, current.size(), player);
             }
             if (canStillBecomeRecipe && current.size() < maximumRecipeSize) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
             }
+            itemFactory.consumeOne(player, stack);
             return finishWrongMix(block, key, nextVersion, current.size(), player);
         }
     }
@@ -241,6 +250,11 @@ public final class CauldronBrewingService {
 
     private void handleCauldronBroken(Block block, Location dropLocation, boolean stale) {
         BlockKey key = BlockKey.of(block);
+        // BlockBreakEvent is emitted for every block in the world. Do not even
+        // acquire a lock when there is no pending brew at this coordinate.
+        if (!cache.containsKey(key)) {
+            return;
+        }
         synchronized (lockFor(key)) {
             CauldronState pending = cache.get(key);
             if (pending == null || pending.ingredients().isEmpty()) {
@@ -305,14 +319,12 @@ public final class CauldronBrewingService {
 
     public void clearCache() {
         cache.clear();
-        locks.clear();
         integrityCursor = 0;
     }
 
     public void shutdown() {
         cacheReady = false;
         cache.clear();
-        locks.clear();
         integrityCursor = 0;
     }
 
@@ -386,7 +398,21 @@ public final class CauldronBrewingService {
     private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis, org.bukkit.entity.Player player, ItemStack consumed) {
         List<IngredientEntry> frozen = List.copyOf(current);
         UUID ownerUuid = player == null ? null : player.getUniqueId();
-        cache.put(key, new CauldronState(frozen, version, nowMillis, ownerUuid));
+        synchronized (cacheAdmissionLock) {
+            if (!cache.containsKey(key) && cache.size() >= MAX_CACHED_STATES) {
+                if (player != null) {
+                    player.sendMessage("§eВарка временно недоступна: достигнут лимит активных котлов. Попробуйте позже.");
+                }
+                plugin.getLogger().warning("Brewing state cache reached its safety limit; rejecting a new cauldron at " + key + ".");
+                return false;
+            }
+            // Admission and consumption are one main-thread operation. This
+            // prevents a full-cache rejection from consuming an ingredient.
+            if (player != null && consumed != null) {
+                itemFactory.consumeOne(player, consumed);
+            }
+            cache.put(key, new CauldronState(frozen, version, nowMillis, ownerUuid));
+        }
         CompletableFuture<Void> persisted = ownerUuid == null
                 ? database.saveBrewingState(key, version, frozen)
                 : database.saveBrewingState(key, version, frozen, ownerUuid);
@@ -512,7 +538,7 @@ public final class CauldronBrewingService {
     }
 
     private Object lockFor(BlockKey key) {
-        return locks.computeIfAbsent(key, ignored -> new Object());
+        return lockStripes[Math.floorMod(key.hashCode(), lockStripes.length)];
     }
 
     private void queueIngredientRefunds(UUID ownerUuid, List<IngredientEntry> ingredients, String reason) {

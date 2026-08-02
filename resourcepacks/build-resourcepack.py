@@ -6,7 +6,7 @@ import re
 import shutil
 import struct
 import zlib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 try:
@@ -162,7 +162,25 @@ def update_server_properties_sha1(sha1: str) -> None:
 
 def asset_path(root: Path, kind: str, asset_ref: str, suffix: str) -> Path:
     namespace, relative = asset_ref.split(":", 1) if ":" in asset_ref else ("copimine", asset_ref)
-    return root / "assets" / namespace / kind / Path(relative + suffix)
+    namespace = str(namespace or "").strip().lower()
+    relative = str(relative or "").replace("\\", "/")
+    if not re.fullmatch(r"[a-z0-9_.-]+", namespace):
+        raise ValueError(f"Invalid resource namespace: {namespace!r}")
+    relative_path = PurePosixPath(relative)
+    if (
+        not relative
+        or relative_path.is_absolute()
+        or ".." in relative_path.parts
+        or "." in relative_path.parts
+        or any(not part for part in relative_path.parts)
+    ):
+        raise ValueError(f"Unsafe resource asset path: {asset_ref!r}")
+    candidate = root / "assets" / namespace / kind / Path(*relative_path.parts[:-1], relative_path.name + suffix)
+    resolved_root = root.resolve()
+    resolved_candidate = candidate.resolve()
+    if resolved_candidate != resolved_root and resolved_root not in resolved_candidate.parents:
+        raise ValueError(f"Resource asset path escapes build stage: {asset_ref!r}")
+    return candidate
 
 
 def validate_source_tree() -> None:

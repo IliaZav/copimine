@@ -19,8 +19,34 @@ WIPE_WORLDS=0
 RESET_GAMEPLAY=0
 RESET_TREASURY=0
 
-usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n       sudo bash %s --configure-https [primary-host]\n' "$0" "$0" "$0" "$0" >&2; }
+usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n       sudo bash %s --configure-https [primary-host]\n       sudo bash %s --configure-release-trust [allowlist-path]\n' "$0" "$0" "$0" "$0" "$0" >&2; }
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
+
+configure_release_trust() {
+  local source_path="${2:-$SCRIPT_DIR/release-signing.allowed}"
+  local target_path='/etc/copimine/release-signing.allowed'
+  local script_root source_real
+  script_root="$(realpath -e -- "$SCRIPT_DIR")"
+  source_real="$(realpath -e -- "$source_path" 2>/dev/null || true)"
+  [[ -n "$source_real" && -f "$source_real" ]] || { echo "[trust] allowlist is missing: $source_path" >&2; return 1; }
+  [[ "$source_real" == "$script_root"/* ]] || {
+    echo '[trust] allowlist source must be inside the controlled upload directory' >&2
+    return 1
+  }
+  mapfile -t trust_lines < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$source_real")
+  [[ "${#trust_lines[@]}" -eq 1 ]] || { echo '[trust] allowlist must contain exactly one non-comment key' >&2; return 1; }
+  [[ "${trust_lines[0]}" =~ ^[[:space:]]*release[[:space:]]+ssh-ed25519[[:space:]]+[A-Za-z0-9+/]+={0,2}([[:space:]]+[^[:space:]]*)?[[:space:]]*$ ]] || {
+    echo '[trust] allowlist must contain a release ssh-ed25519 key' >&2
+    return 1
+  }
+  install -d -m 0755 /etc/copimine
+  install -o root -g root -m 0644 -- "$source_real" "$target_path"
+  [[ "$(stat -c '%U:%G %a' "$target_path")" == 'root:root 644' ]] || {
+    echo '[trust] installed allowlist has unsafe ownership or mode' >&2
+    return 1
+  }
+  echo "[trust] release signing allowlist installed: $target_path"
+}
 
 cleanup_zabbix() {
   echo '[zabbix] stopping services'
@@ -660,6 +686,10 @@ if [[ "$ARCHIVE_PATH" == "--cleanup-legacy" ]]; then
   cleanup_legacy_artifacts
   exit $?
 fi
+if [[ "$ARCHIVE_PATH" == "--configure-release-trust" ]]; then
+  configure_release_trust "$@"
+  exit $?
+fi
 if [[ "$ARCHIVE_PATH" == "--configure-http-only" ]]; then
   configure_http_only_public
   exit $?
@@ -860,49 +890,6 @@ SQL
   echo "[treasury] reset from ${before} AR to 0 AR; audit transaction ${tx_id}"
 }
 
-enable_offline_voicechat() {
-  local env_file="$PROJECT_ROOT/admin-web/.env"
-  [[ -f "$env_file" ]] || return 0
-  # The server is intentionally running offline-mode. The owner explicitly
-  # accepted public voice chat, so persist the required exception before the
-  # hardening step runs.
-  python3 - "$env_file" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-updates = {
-    'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT': '1',
-    'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
-        'Offline mode is enabled; public voice chat was explicitly accepted by the server owner.',
-}
-
-lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
-out, seen = [], set()
-for line in lines:
-    key = line.split('=', 1)[0].strip() if '=' in line else ''
-    if key in updates:
-        value = updates[key]
-        if key == 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
-            value = '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
-        out.append(f'{key}={value}')
-        seen.add(key)
-    else:
-        out.append(line)
-for key, value in updates.items():
-    if key not in seen:
-        if key == 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
-            value = '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
-        out.append(f'{key}={value}')
-tmp = path.with_name('.env.voicechat-tmp')
-tmp.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
-tmp.chmod(0o600)
-tmp.replace(path)
-PY
-  chmod 600 "$env_file"
-  echo '[preflight] Offline voice-chat exception enabled by explicit deployment request.'
-}
-
 remove_retired_frontend() {
   local frontend_root="$PROJECT_ROOT/admin-web/frontend"
   # The modern cabinet is the only supported admin surface.  These files are
@@ -1009,7 +996,9 @@ normalize_runtime_env_owner() {
 }
 
 preflight
-enable_offline_voicechat
+# Never silently enable the offline-mode voice-chat exception during an
+# upgrade. The existing .env value is operator state and the shared runtime
+# hardening gate fails closed when it is absent or undocumented.
 normalize_runtime_env_owner
 
 if [[ "$WIPE_DB" == "1" ]]; then

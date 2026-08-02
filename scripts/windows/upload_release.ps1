@@ -239,6 +239,25 @@ $RemoteManifest = "$RemoteDir/$ManifestRemoteName"
 $RemoteBootstrap = "$RemoteDir/$BootstrapRemoteName"
 $BootstrapLeaf = if ($BootstrapManifestPath) { Split-Path -Leaf $BootstrapManifestPath } else { "" }
 
+foreach ($candidate in @(
+    @{ Path = $InstallerPath; Label = 'Ubuntu full replace script' },
+    @{ Path = $InstallReleaseScriptPath; Label = 'Ubuntu release entrypoint' },
+    @{ Path = $UnpackScriptPath; Label = 'Ubuntu unpack script' },
+    @{ Path = $CommonScriptPath; Label = 'Shared deploy helper' },
+    @{ Path = $PayloadVerifierPath; Label = 'Signed payload verifier' },
+    @{ Path = $VerifyScriptPath; Label = 'Ubuntu verify script' },
+    @{ Path = $ReleaseManifestPath; Label = 'Release manifest' },
+    @{ Path = $ReadmeLocal; Label = 'Upload README' }
+)) {
+    $leaf = Split-Path -Leaf ([string]$candidate.Path)
+    if ($leaf -notmatch '^[A-Za-z0-9._-]+$') {
+        Fail "$($candidate.Label) filename contains unsafe shell characters: $leaf"
+    }
+}
+if ($BootstrapLeaf -and $BootstrapLeaf -notmatch '^[A-Za-z0-9._-]+$') {
+    Fail "Bootstrap manifest filename contains unsafe shell characters: $BootstrapLeaf"
+}
+
 $RenameScript = @"
 set -e
 cd '$RemoteDir'

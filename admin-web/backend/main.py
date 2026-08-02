@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import copy
 from contextvars import ContextVar
 import csv
 import gzip
@@ -148,6 +149,13 @@ OWNER_ONLY_SERVER_PROPERTY_KEYS = {
     "enable-command-block",
 }
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
+PUBLIC_STATUS_CACHE_LOCK = threading.RLock()
+PUBLIC_STATUS_CACHE: tuple[float, dict[str, Any]] = (0.0, {})
+PUBLIC_STATUS_CACHE_TTL_SECONDS = max(2, int(os.getenv("PUBLIC_STATUS_CACHE_TTL_SECONDS", "10")))
+PUBLIC_SKIN_CACHE_LOCK = threading.RLock()
+PUBLIC_SKIN_CACHE: dict[str, tuple[float, bytes, str]] = {}
+PUBLIC_SKIN_CACHE_TTL_SECONDS = max(60, int(os.getenv("PUBLIC_SKIN_CACHE_TTL_SECONDS", "600")))
+PUBLIC_SKIN_CACHE_MAX_ENTRIES = max(16, int(os.getenv("PUBLIC_SKIN_CACHE_MAX_ENTRIES", "256")))
 PLUGIN_REGISTRY_MANIFEST = APP_ROOT / "backend" / "plugin_registry_manifest.json"
 APP_VERSION = "2.2.0"
 STARTUP_STRICT = os.getenv("COPIMINE_STARTUP_STRICT", "1").lower() in {"1", "true", "yes", "on"}
@@ -3881,6 +3889,51 @@ def verify_refresh_token(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
         raise HTTPException(status_code=401, detail="Refresh-сессия недействительна или истекла") from exc
 
 
+def claim_refresh_session(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Atomically consume a refresh token before issuing its replacement.
+
+    Rotation used to read a live row, issue a replacement in another
+    transaction, and revoke the old row afterward. Two concurrent requests
+    could therefore both pass the read. A conditional UPDATE is the single
+    redemption gate: exactly one request can change the pending row.
+    """
+    try:
+        payload = decode_signed_token(token)
+        if str(payload.get("typ") or "") != "refresh":
+            raise ValueError("wrong token type")
+        jti = str(payload.get("jti") or "")
+        token_hash = sha256_hex(token)
+        now = now_ts()
+        marker = f"rotation:{secrets.token_urlsafe(12)}"
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            updated = conn.execute(
+                """
+                UPDATE cm_refresh_sessions
+                SET revoked_at=%s, replaced_by=%s
+                WHERE jti=%s
+                  AND token_hash=%s
+                  AND revoked_at=0
+                  AND replaced_by=''
+                  AND expires_at>%s
+                """,
+                (now, marker, jti, token_hash, now),
+            )
+            if int(getattr(updated, "rowcount", 0) or 0) != 1:
+                conn.rollback()
+                raise ValueError("refresh session already consumed or invalid")
+            row = conn.execute("SELECT * FROM cm_refresh_sessions WHERE jti=%s", (jti,)).fetchone()
+            if not row:
+                conn.rollback()
+                raise ValueError("refresh session missing")
+            conn.commit()
+        return payload, dict(row)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Refresh-сессия недействительна или истекла") from exc
+
+
 def minecraft_access_lists() -> dict[str, Any]:
     ops_raw = read_json(MC_SERVER_DIR / "ops.json", [])
     whitelist_raw = read_json(MC_SERVER_DIR / "whitelist.json", [])
@@ -4282,7 +4335,16 @@ def issue_player_auth_pair(
 
 
 def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Request], audience: str) -> dict[str, Any]:
-    payload, row = verify_refresh_token(refresh_token)
+    try:
+        presented_payload = decode_signed_token(refresh_token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Refresh-сессия недействительна или истекла") from exc
+    presented_role = str(presented_payload.get("role") or "")
+    if audience == "player" and presented_role != "player":
+        raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к кабинету игрока")
+    if audience != "player" and presented_role == "player":
+        raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к админ-панели")
+    payload, row = claim_refresh_session(refresh_token)
     role = str(payload.get("role") or "")
     subject = str(payload.get("sub") or "")
     family_id = str(payload.get("family") or row.get("family_id") or "")
@@ -6505,16 +6567,30 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
         account = player_account_by_minecraft_name(conn, minecraft_name)
         if not account:
             raise HTTPException(status_code=404, detail="Аккаунт для этого Minecraft-ника не найден")
-        rows = conn.execute(
-            "SELECT * FROM one_time_link_codes WHERE site_account_id=%s AND status='PENDING' AND expires_at>%s ORDER BY created_at DESC LIMIT 8",
-            (account["id"], now),
-        ).fetchall()
-        row = next((candidate for candidate in rows if hmac.compare_digest(str(candidate["code_hash"] or ""), code_hash)), None)
+        row = conn.execute(
+            """
+            SELECT * FROM one_time_link_codes
+            WHERE site_account_id=%s AND code_hash=%s AND status='PENDING' AND expires_at>%s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (account["id"], code_hash, now),
+        ).fetchone()
         if not row:
             raise HTTPException(status_code=403, detail="Неверный или просроченный код восстановления")
         minecraft_uuid = str(account.get("minecraft_uuid") or row["minecraft_uuid"] or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
         updated_at = now_ts()
-        conn.execute("UPDATE one_time_link_codes SET status='USED',used_at=%s WHERE id=%s", (now, row["id"]))
+        claimed = conn.execute(
+            """
+            UPDATE one_time_link_codes
+            SET status='USED',used_at=%s
+            WHERE id=%s AND code_hash=%s AND status='PENDING' AND expires_at>%s
+            """,
+            (now, row["id"], code_hash, now),
+        )
+        if int(getattr(claimed, "rowcount", 0) or 0) != 1:
+            conn.rollback()
+            raise HTTPException(status_code=403, detail="Код восстановления уже использован или истёк")
         conn.execute(
             "UPDATE site_accounts SET password_hash=%s,minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
             (make_password_hash(new_password), minecraft_uuid, minecraft_name, updated_at, account["id"]),
@@ -9713,6 +9789,18 @@ def public_site_config_sync() -> dict[str, Any]:
 
 
 def public_site_status_sync() -> dict[str, Any]:
+    global PUBLIC_STATUS_CACHE
+    now = time.time()
+    with PUBLIC_STATUS_CACHE_LOCK:
+        cached_at, cached = PUBLIC_STATUS_CACHE
+        if cached and now - cached_at < PUBLIC_STATUS_CACHE_TTL_SECONDS:
+            return copy.deepcopy(cached)
+        fresh = _public_site_status_uncached()
+        PUBLIC_STATUS_CACHE = (now, copy.deepcopy(fresh))
+        return fresh
+
+
+def _public_site_status_uncached() -> dict[str, Any]:
     online, latency = tcp_online(MC_HOST, MC_PORT)
     players_online = 0
     player_cap = 0
@@ -11498,7 +11586,8 @@ async def public_cms() -> dict[str, Any]:
 
 
 @app.get("/api/public/status")
-async def public_status() -> dict[str, Any]:
+async def public_status(request: Request) -> dict[str, Any]:
+    check_rate_limit(request, "public-status", limit=30, window_seconds=60)
     return {"ok": True, "data": await bg(public_site_status_sync)}
 
 
@@ -11523,12 +11612,21 @@ async def public_president() -> dict[str, Any]:
 
 
 @app.get("/api/public/president/skin/body")
-async def public_president_skin_body(uuid: str = Query(default="")) -> Response:
+async def public_president_skin_body(request: Request, uuid: str = Query(default="")) -> Response:
+    check_rate_limit(request, "public-president-skin", limit=20, window_seconds=60)
     safe_uuid = str(uuid or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f-]{32,36}", safe_uuid):
         raise HTTPException(status_code=404, detail="Президентский скин недоступен")
     if httpx is None:
         raise HTTPException(status_code=503, detail="Skin proxy is unavailable")
+    now = time.time()
+    with PUBLIC_SKIN_CACHE_LOCK:
+        cached = PUBLIC_SKIN_CACHE.get(safe_uuid)
+        if cached and now - cached[0] < PUBLIC_SKIN_CACHE_TTL_SECONDS:
+            return Response(content=cached[1], media_type=cached[2], headers={"Cache-Control": "public, max-age=600"})
+        for key, value in list(PUBLIC_SKIN_CACHE.items()):
+            if now - value[0] >= PUBLIC_SKIN_CACHE_TTL_SECONDS:
+                PUBLIC_SKIN_CACHE.pop(key, None)
     urls = [
         f"https://crafatar.com/renders/body/{safe_uuid}?overlay=true&scale=6",
         f"https://mc-heads.net/body/{safe_uuid}/right",
@@ -11545,6 +11643,13 @@ async def public_president_skin_body(uuid: str = Query(default="")) -> Response:
             content_type = remote.headers.get("content-type", "image/png")
             if "image" not in content_type:
                 continue
+            if len(remote.content) > 2 * 1024 * 1024:
+                continue
+            with PUBLIC_SKIN_CACHE_LOCK:
+                if len(PUBLIC_SKIN_CACHE) >= PUBLIC_SKIN_CACHE_MAX_ENTRIES:
+                    oldest = min(PUBLIC_SKIN_CACHE, key=lambda key: PUBLIC_SKIN_CACHE[key][0])
+                    PUBLIC_SKIN_CACHE.pop(oldest, None)
+                PUBLIC_SKIN_CACHE[safe_uuid] = (time.time(), remote.content, content_type)
             return Response(
                 content=remote.content,
                 media_type=content_type,
@@ -17598,7 +17703,11 @@ async def health() -> dict[str, Any]:
 
 @app.get("/api/runtime")
 async def runtime(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
-    if not is_loopback_request(request):
+    # Nginx reaches Uvicorn over loopback too.  Only a direct local request
+    # without forwarded proxy headers may use the operator-only bypass;
+    # public TLS requests must still authenticate even when their TCP peer is
+    # 127.0.0.1.
+    if not request_is_direct_loopback(request):
         require_panel_admin(request, authorization)
     report = _STARTUP_REPORT or run_startup_checks()
     snapshot = managed_runtime_snapshot(PROJECT_ROOT, APP_ROOT)

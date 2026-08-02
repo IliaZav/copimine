@@ -307,6 +307,13 @@ def sync_runtime(server_dir: Path, policy_path: Path, voice_template: Path) -> N
     policy = load_policy(policy_path)
     if not voice_template.is_file():
         raise PolicyError(f"Missing voice-chat template: {voice_template}")
+    server_properties = server_dir / "server.properties"
+    if not server_properties.is_file():
+        raise PolicyError(f"Missing Minecraft server.properties: {server_properties}")
+    # RCON has no transport encryption. It is an installation-only control
+    # channel and must never be exposed on the public Minecraft interface.
+    set_property(server_properties, "rcon.ip", "127.0.0.1")
+    validate_rcon_loopback(server_properties)
     plugins = server_dir / "plugins"
     imageframe_jars = plugin_jars(plugins, "ImageFrame")
     if not imageframe_jars:
@@ -336,6 +343,35 @@ def properties(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip()
     return values
+
+
+def set_property(path: Path, key: str, value: str) -> None:
+    """Set one server.properties key while preserving unrelated settings."""
+    lines = read_text(path).splitlines() if path.exists() else []
+    replacement = f"{key}={value}"
+    replaced = False
+    output: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in line:
+            current_key = line.split("=", 1)[0].strip()
+            if current_key == key:
+                if not replaced:
+                    output.append(replacement)
+                    replaced = True
+                continue
+        output.append(line)
+    if not replaced:
+        output.append(replacement)
+    write_text(path, "\n".join(output) + "\n")
+
+
+def validate_rcon_loopback(server_properties: Path) -> None:
+    bind = properties(server_properties).get("rcon.ip", "").strip().lower()
+    if bind not in {"127.0.0.1", "::1", "[::1]", "localhost"}:
+        raise PolicyError(
+            "server.properties rcon.ip must be loopback-only; refusing a publicly reachable cleartext RCON endpoint"
+        )
 
 
 def is_public_bind(value: str, server_ip: str) -> bool:
@@ -394,6 +430,7 @@ def receive_rcon(sock: socket.socket) -> tuple[int, int, str]:
 def apply_luckperms_imageframe(server_properties: Path, password: str, timeout_seconds: int, admin_group: str) -> None:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", admin_group):
         raise PolicyError("COPIMINE_IMAGEFRAME_ADMIN_GROUP contains unsupported characters")
+    validate_rcon_loopback(server_properties)
     try:
         rcon_port = int(properties(server_properties).get("rcon.port", "25575"))
     except ValueError as error:
@@ -480,7 +517,7 @@ def self_test() -> None:
         # materializes defaults at first boot, while the bootstrap below owns the
         # security-critical values before that first boot.
         write_plugin_jar(plugins / "AuthMe-5.6.0.jar", {"plugin.yml": "name: AuthMe\n"})
-        write_text(server / "server.properties", "online-mode=false\nrcon.port=25575\n")
+        write_text(server / "server.properties", "online-mode=false\nrcon.port=25575\nrcon.ip=0.0.0.0\n")
         write_text(
             image_config,
             bundled_imageframe_config,
@@ -493,6 +530,8 @@ def self_test() -> None:
             auth_file.write("Protection:\n    geoIpDatabase:\n        enabled: true\n")
         write_text(voice_config, "bind_address=*\n")
         sync_runtime(server, policy_path, voice_template)
+        if properties(server / "server.properties").get("rcon.ip") != "127.0.0.1":
+            raise PolicyError("RCON hardening did not force a loopback bind")
         image_text = read_text(image_config)
         auth_text = read_text(auth_config)
         if (
@@ -535,10 +574,12 @@ def self_test() -> None:
 
         fresh_server = root / "fresh-install" / "minecraft" / "server"
         fresh_plugins = fresh_server / "plugins"
-        write_text(fresh_server / "server.properties", "online-mode=true\nrcon.port=25575\n")
+        write_text(fresh_server / "server.properties", "online-mode=true\nrcon.port=25575\nrcon.ip=0.0.0.0\n")
         write_plugin_jar(fresh_plugins / "ImageFrame.jar", {"config.yml": bundled_imageframe_config})
         write_plugin_jar(fresh_plugins / "AuthMe-5.6.0.jar", {"plugin.yml": "name: AuthMe\n"})
         sync_runtime(fresh_server, policy_path, voice_template)
+        if properties(fresh_server / "server.properties").get("rcon.ip") != "127.0.0.1":
+            raise PolicyError("Fresh-install RCON hardening did not force a loopback bind")
         fresh_image_text = read_text(fresh_plugins / "ImageFrame" / "config.yml")
         fresh_auth_text = read_text(fresh_plugins / "AuthMe" / "config.yml")
         if "JarDefault: preserved" not in fresh_image_text:

@@ -5,11 +5,11 @@ remediation seam and the evidence available for the release.
 
 Evidence codes:
 
-- **V** — `tests/RunCopiMineValidators.ps1`: 651/651 passed.
+- **V** — `tests/RunCopiMineValidators.ps1`: 653/653 passed.
 - **P** — Python compile, backend security regression and runtime-hardening self-test passed.
 - **E** — election/station focused validators passed.
-- **R** — full release package validation passed; archive SHA-256 was
-  `892819c914fedf367af18944ea57e66665defe4e0ad10c4f1e98241f47e86a76`.
+- **R** — full release package validation passed; the latest signed local
+  archive SHA-256 is `bc75e60246a65045a6fada2afff386b4489b3f7de39da3b2328657fd93d04082`.
 - **S** — production health/runtime/service checks passed on the target server.
 - **D** — production PostgreSQL exact row-count audit after the clean-state reset.
 - **M** — production Minecraft log and AuthMe configuration check after restart.
@@ -39,23 +39,23 @@ check.
 | P1-12 | Confirmed | Repair success is emitted only after `completeRepair` commits. | V |
 | P1-13 | Confirmed | Pending AR remains provisional until `DELIVERED`; uncertain ACK becomes recovery/manual review. | V |
 | P1-14 | Confirmed | Tax exemption and donation claim use one idempotent transaction/claim identity. | V |
-| P1-15 | Partial | CI now runs Python behavior/regression checks, 651 validators, compilation and provenance checks; full third-party/Paper/browser behavior still needs hosted integration runners. | P, V, R |
+| P1-15 | Partial | CI now runs Python behavior/regression checks, 653 validators, compilation and provenance checks; full third-party/Paper/browser behavior still needs hosted integration runners. | P, V, R |
 
 ## REL — reproducible release and deployment controls
 
 | ID | Status | Remediation | Evidence |
 |---|---|---|---|
-| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; production reports `f1625404f36a328baef62b913ee670ead9225694`. | R, S |
+| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; the last installed runtime is source `c7b903a860e0841eb415dccab23ba9f1866705b1`, while the pending HTTP-only archive is source `8446dd457f6cd76ff350bd9df90a978e1b06e3f0`. | R, S |
 | REL-2 | Partial | `.github/workflows/ci.yml` is wired to push/PR branches and gates Python, validators, builds and clean provenance; hosted Actions run was not queried from this environment. | V |
 | REL-3 | Partial | First-party JARs are rebuilt from source during packaging and their SHA-256 values are recorded; legacy committed binary outputs remain in the repository for deployment compatibility. | R |
-| REL-4 | Partial | The release build is source-first and hash-validated; an independent second-builder byte-for-byte comparison was not run. | R |
-| REL-5 | Partial | Release manifests and third-party manifests enumerate artifacts and hashes; a formal SPDX/CycloneDX SBOM is not yet generated. | R |
-| REL-6 | Partial | Release manifests are hash-bound and copied to production; cryptographic signing/key verification of the manifest is not configured. | R, S |
-| REL-7 | Partial | Dependencies are pinned and builds pass; an external vulnerability database gate was not available in this run. | P, R |
+| REL-4 | Partial | Two clean first-party rebuilds are byte-for-byte reproducible and the result is hash-validated; an independent second host/builder was not available. | R |
+| REL-5 | Confirmed | A formal SPDX 2.3 SBOM is generated, hash-validated and included in the release bundle. | R |
+| REL-6 | Confirmed | The release manifest has a detached OpenSSH Ed25519 signature; the allowlisted public key is verified by both bundle validation and installer preflight. | R, S |
+| REL-7 | Confirmed | Pinned Python dependencies pass the strict `pip-audit` gate on the production Python 3.13 target. | P, R |
 | REL-8 | Confirmed | Ordered PostgreSQL migrations and schema readiness are applied during install; production migration plan completed successfully. | R, S, D |
 | REL-9 | Partial | Replacement keeps a previous release backup and has rollback scripts; a destructive rollback rehearsal was not performed on the live server. | R, B |
 | REL-10 | Partial | Installer gates service activation, health and artifact hashes; there is no separate traffic canary environment. | R, S |
-| REL-11 | Partial | Encoding/secrets/release validators run; a complete binary-string scan over every third-party JAR was not independently performed. | V, R |
+| REL-11 | Confirmed | The release SBOM scanner checks all 42 packaged binary artifacts for private-key, cloud/payment-token and leaked-PIN markers. | V, R |
 | REL-12 | Partial | Focused behavioral/self-test checks were added beside legacy contract validators; mutation testing of every string assertion was not run. | P, V |
 | REL-13 | Unverified | No mutation-testing engine was available in the deployment environment. | — |
 | REL-14 | Partial | Third-party plugin presence, hashes, startup and compatibility checks are part of release verification; their internal behavior is outside source ownership. | R, M |
@@ -186,7 +186,7 @@ check.
 | WEB-1 | Confirmed | PIN storage and verification use one-way hashes only. | P, V, D |
 | WEB-2 | Confirmed | `visiblePin`/persistent PIN fields are absent from API responses. | V, P |
 | WEB-3 | Confirmed | Admin randomization returns only one-time in-game delivery/recovery state, never the permanent PIN. | V |
-| WEB-4 | Confirmed | Public HTTP serves pages/downloads, but public login/session auth returns `426`; direct unproxied loopback HTTP is the only exception. | V, S |
+| WEB-4 | Confirmed | The public gateway now serves port 80 directly: pages/health/downloads return `200`; public login/session auth returns `426`; direct unproxied loopback HTTP is the only authentication exception. The public 443 listener is disabled until TLS is deliberately introduced. | V, S |
 | WEB-5 | Confirmed | Auth cookies are `Secure` on authenticated transport and refresh tokens are HttpOnly. | V, P |
 | WEB-6 | Confirmed | Login limits are persisted in PostgreSQL `auth_login_limits`, worker-safe across processes. | V, D |
 | WEB-7 | Confirmed | Production requires a stable configured secret and rejects generated fallback. | V, S |
@@ -273,12 +273,15 @@ check.
 ## Live release result
 
 - Git branch: `agent/deep-election-artifacts-audit`.
-- Latest Git commit: `5eeb78d` (release artifacts); production release manifest source
-  commit: `f162540` (AuthMe repair source commit).
-- Production: all required services active; `/api/health` reports 12/12 checks,
-  0 failures and 0 warnings; public HTTP root/download return `200`; public
-  login/refresh return `426`; direct loopback login reaches normal auth and
-  returns `401` for invalid credentials.
+- Latest Git commit: `e121554` (signed HTTP-only release metadata); the last
+  installed production archive is `5f227bb9c9c49c1d2090b94c67ae9b83b9351bd05a6dc4c44f26544c6f456c01`.
+  Archive `bc75e60246a65045a6fada2afff386b4489b3f7de39da3b2328657fd93d04082`
+  is built and validated locally and awaits SSH recovery for installation.
+- Production at the last successful live check: all required services active;
+  `/api/health` reports 12/12 checks, 0 failures and 0 warnings; HTTP root,
+  health, runtime, download and resource-pack return `200`; public login
+  returns `426`; direct loopback login returns `401` for invalid credentials;
+  the public nginx listener is HTTP-only with no port 443 listener.
 - AuthMe/AuthEffects: enabled after the YAML repair; no current
   `invalid YAML`, `NoClassDefFoundError` or `ClassNotFoundException` in the
   current Minecraft log. Essentials compatibility, GrimAC no-provider and
@@ -289,6 +292,7 @@ check.
   narcotics, donation, polling-station, protected-block and player gameplay
   rows are `0`. Catalog/schema/audit/system metadata remain intentionally for
   service operation and traceability.
-- Backup timer is active with the next run scheduled daily; legacy cleanup
-  retained the newest pre-wipe recovery dump and enforced daily retention of
-  three. Root disk after cleanup: `455G` total, `123G` used, `313G` available.
+- Backup timer is active with a daily 03:30 schedule, `Persistent=yes` and
+  retention enforcement of three daily copies; legacy cleanup retained
+  `game-wipe-20260802-155857` and exactly three newest runtime rollback copies.
+  Root disk after cleanup: `455G` total, `38G` used, `398G` available (9%).

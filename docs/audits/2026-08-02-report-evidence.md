@@ -9,7 +9,7 @@ Evidence codes:
 - **P** — Python compile, backend security regression and runtime-hardening self-test passed.
 - **E** — election/station focused validators passed.
 - **R** — full release package validation passed; the latest signed local
-  archive SHA-256 is `059ee2b3f9492becceb6414fb59714ec50c28ffc7235664b15e8175e9fb68f75`.
+  archive SHA-256 is `913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5`.
 - **S** — production health/runtime/service checks passed on the target server.
 - **D** — production PostgreSQL exact row-count audit after the clean-state reset.
 - **M** — production Minecraft log and AuthMe configuration check after restart.
@@ -20,6 +20,33 @@ check passed. `Partial` means the structural guard exists but a separate
 third-party, hosted-CI, browser-E2E, mutation, or concurrency rehearsal is
 still needed for absolute proof; it is not presented as a failed production
 check.
+
+## Final verification addendum
+
+Evidence code `C` denotes the hosted GitHub Actions run and its two successful
+jobs.
+
+The final release supersedes the historical values in the original evidence
+legend above. GitHub Actions run `30761283460` passed both jobs. The deployed
+archive is `copimine-opt-full-2026-08-02-204748.tar.gz` with SHA-256
+`913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5` and
+release source commit `51d4b9094280afc51e0a428b4269a57ca42c1352`.
+
+Production Nginx listens on ports 80 and 443; HTTP redirects to
+`https://copimine.ru/`. The HTTPS domain smoke returned root/health/downloads
+and resource-pack `200`, health `12/12` with zero failures and warnings, and
+protected runtime `401`. Valid JSON login requests with the domain and static
+IP Origins reached credential validation (`401` for deliberately invalid
+credentials); an unrelated Origin was rejected with `403`. Cloudflare DNS
+resolves `copimine.ru` and `www` to `90.188.115.155`.
+
+The clean-state database audit preserved 5 site accounts, 3 Minecraft account
+links, 3 whitelist account links and 18 whitelist-file entries. Elections,
+candidates, votes, voting blocks, polling stations, protected blocks/visuals,
+AR assets, placed AR blocks, narcotics instances, donation claims and the
+treasury balance are zero. The backup timer is active at daily 03:30 with
+`Persistent=yes` and retention enforcement of three copies; cleanup left three
+runtime rollback directories and the latest pre-wipe recovery snapshot.
 
 ## P0/P1 — money, items, authentication and truthful completion
 
@@ -45,8 +72,8 @@ check.
 
 | ID | Status | Remediation | Evidence |
 |---|---|---|---|
-| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; the last installed runtime is source `c7b903a860e0841eb415dccab23ba9f1866705b1`, while the final pending archive is source `f63e7ed4948be918e194dcd44429848b2905bc6f`. | R, S |
-| REL-2 | Partial | `.github/workflows/ci.yml` is wired to push/PR branches and gates Python, validators, builds and clean provenance; hosted Actions run was not queried from this environment. | V |
+| REL-1 | Confirmed | Packaging captures the exact source commit in release/installer manifests and validates a clean source tree; the deployed archive records source `51d4b9094280afc51e0a428b4269a57ca42c1352`, archive SHA-256 `913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5`, and the follow-up Git commit contains the release metadata. | R, S |
+| REL-2 | Confirmed | `.github/workflows/ci.yml` gates Python, validators, Java builds and clean provenance; hosted Actions run `30761283460` passed both jobs after fixing the empty PowerShell-array check. | C, V |
 | REL-3 | Partial | First-party JARs are rebuilt from source during packaging and their SHA-256 values are recorded; legacy committed binary outputs remain in the repository for deployment compatibility. | R |
 | REL-4 | Partial | Two clean first-party rebuilds are byte-for-byte reproducible and the result is hash-validated; an independent second host/builder was not available. | R |
 | REL-5 | Confirmed | A formal SPDX 2.3 SBOM is generated, hash-validated and included in the release bundle. | R |
@@ -186,7 +213,7 @@ check.
 | WEB-1 | Confirmed | PIN storage and verification use one-way hashes only. | P, V, D |
 | WEB-2 | Confirmed | `visiblePin`/persistent PIN fields are absent from API responses. | V, P |
 | WEB-3 | Confirmed | Admin randomization returns only one-time in-game delivery/recovery state, never the permanent PIN. | V |
-| WEB-4 | Confirmed | The public gateway now serves port 80 directly: pages/health/downloads return `200`; public login/session auth returns `426`; direct unproxied loopback HTTP is the only authentication exception. The public 443 listener is disabled until TLS is deliberately introduced. | V, S |
+| WEB-4 | Confirmed | Nginx now redirects public HTTP port 80 to HTTPS and terminates TLS on public port 443. Domain root, health, modpack and resource-pack return `200`; protected runtime returns `401`; state-changing login accepts `https://copimine.ru` and the configured static-IP Origin, while an unrelated Origin returns `403`. | V, S |
 | WEB-5 | Confirmed | Auth cookies are `Secure` on authenticated transport and refresh tokens are HttpOnly. | V, P |
 | WEB-6 | Confirmed | Login limits are persisted in PostgreSQL `auth_login_limits`, worker-safe across processes. | V, D |
 | WEB-7 | Confirmed | Production requires a stable configured secret and rejects generated fallback. | V, S |
@@ -272,29 +299,52 @@ check.
 
 ## Live release result
 
-- Git branch: `agent/deep-election-artifacts-audit`.
-- Latest release metadata commit: `3138440`; the last installed production
-  archive is `5f227bb9c9c49c1d2090b94c67ae9b83b9351bd05a6dc4c44f26544c6f456c01`.
-  Final archive `059ee2b3f9492becceb6414fb59714ec50c28ffc7235664b15e8175e9fb68f75`
-  is built, signed and validated locally; its four upload parts are ready,
-  but the target currently times out on both SSH 2222 and HTTP, so installation
-  cannot be truthfully marked complete.
-- Production at the last successful live check: all required services active;
-  `/api/health` reports 12/12 checks, 0 failures and 0 warnings; HTTP root,
-  health, runtime, download and resource-pack return `200`; public login
-  returns `426`; direct loopback login returns `401` for invalid credentials;
-  the public nginx listener is HTTP-only with no port 443 listener.
-- AuthMe/AuthEffects: enabled after the YAML repair; no current
-  `invalid YAML`, `NoClassDefFoundError` or `ClassNotFoundException` in the
-  current Minecraft log. Essentials compatibility, GrimAC no-provider and
-  PlaceholderAPI network timeout messages are third-party/non-blocking
-  warnings recorded separately in the final report.
-- Clean-state DB audit: site accounts `5`, admin users `4`, Minecraft account
-  links `3`, whitelist account links `3`; election, bank/economy, AR,
-  narcotics, donation, polling-station, protected-block and player gameplay
-  rows are `0`. Catalog/schema/audit/system metadata remain intentionally for
-  service operation and traceability.
-- Backup timer is active with a daily 03:30 schedule, `Persistent=yes` and
-  retention enforcement of three daily copies; legacy cleanup retained
-  `game-wipe-20260802-155857` and exactly three newest runtime rollback copies.
-  Root disk after cleanup: `455G` total, `38G` used, `398G` available (9%).
+- Git branch: `agent/deep-election-artifacts-audit`; latest pushed commit:
+  `1298ac4` (`Fix clean checkout verification for releases`). GitHub Actions
+  run `30761283460` is green.
+- The installed release archive is
+  `copimine-opt-full-2026-08-02-204748.tar.gz`, SHA-256
+  `913e34f95cbfa1f29293f3fb5be291b204c633d191df81f3269a1dfe542683c5`, with
+  release source commit `51d4b9094280afc51e0a428b4269a57ca42c1352`.
+- Nginx listens on `0.0.0.0:80` and `0.0.0.0:443`; port 80 redirects to
+  `https://copimine.ru/`. Public DNS queried through Cloudflare resolves
+  `copimine.ru` and its `www` alias to `90.188.115.155`. The certificate is
+  issued for the domain, so direct `https://90.188.115.155` is not the normal
+  client URL and may fail hostname verification.
+- Live HTTPS smoke: root `200`, `/api/health` `200` with `12/12` checks,
+  `0` failures and `0` warnings, protected `/api/runtime` `401`, modpack
+  `200`/`16,488,659` bytes/SHA-256 `df5579a77d485d53d11ae01d08dcd3193a9960a559eb1ac995aab9007b0c2574`,
+  resource pack `200`/`562,504` bytes/SHA-1
+  `4a3bca348c0df826ef884f5c2cdaaa192c6b4dfa`. Login with valid JSON and
+  allowed Origins reaches credential validation (`401` for deliberately
+  invalid credentials); an untrusted Origin is rejected with `403`.
+- Required services are active: admin web, Minecraft, Discord bot/bridge,
+  game hardening, Nginx, PostgreSQL and the backup timer. AuthMe/AuthEffects
+  remain enabled with no current YAML/class-loading failures in the checked
+  Minecraft log.
+- Clean-state DB audit: site accounts `5`, Minecraft account links `3`,
+  whitelist account links `3`; elections, candidates, votes, voting blocks,
+  polling stations, protected blocks/visuals, AR assets, narcotics instances,
+  placed AR blocks, donation claims and treasury balance are all `0`.
+  The whitelist file retains `18` entries. Schema, catalog, audit and service
+  metadata remain intentionally for operation and traceability.
+- Backup timer is active with daily `03:30`, `Persistent=yes`, randomized
+  delay and retention enforcement of three daily copies. Legacy cleanup kept
+  exactly three newest runtime rollback directories and the latest pre-wipe
+  recovery snapshot. Temporary upload parts, obsolete release archive and
+  diagnostic files were removed; the current verified archive and recovery
+  helpers remain.
+
+## Remaining limits, not silently marked as fixed
+
+The `Partial`/`Unverified` rows are explicit test-scope limits rather than
+known production failures: REL-4 has no independent second builder, REL-9 has
+no destructive live rollback rehearsal, REL-12/REL-13 have no full mutation
+testing run, ECO-4/ECO-19/ECO-22 and NARC-22/NARC-23 lack long-running or
+failure-injection rehearsals, ELEC-20 lacks a real 20-way live concurrency
+run, WEB-9/WEB-22/WEB-23 lack extended pool/outbox failure injection, WEB-28
+lacks a complete Playwright matrix, WEB-30 remains a large legacy module,
+AUTH-5/AUTH-6 lack a real player-session adversarial smoke, ADMIN-1 remains a
+large legacy plugin, and ITEM-6/ITEM-7/ITEM-8 lack exhaustive live or golden
+screenshot matrices. These are called out so the release report does not
+claim evidence that was not actually collected.

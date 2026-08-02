@@ -42,19 +42,32 @@ jobs:
           python -m pip_audit -r admin-web/requirements.txt --strict
       - name: Run Python contract tests
         shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
           $ErrorActionPreference = 'Stop'
           Get-ChildItem tests -Filter 'test_*.py' -File | ForEach-Object {
+            Write-Host "RUN Python contract: $($_.Name)"
             python $_.FullName
             if ($LASTEXITCODE -ne 0) { throw "Python contract failed: $($_.Name)" }
+            Write-Host "PASS Python contract: $($_.Name)"
           }
+          Write-Host 'RUN security self-test'
           python admin-web/scripts/security_selftest.py
           if ($LASTEXITCODE -ne 0) { throw 'Backend security self-test failed.' }
+          Write-Host 'PASS security self-test'
+          Write-Host 'RUN backend security regression'
           python admin-web/scripts/backend_security_regression_test.py
           if ($LASTEXITCODE -ne 0) { throw 'Backend security regression test failed.' }
+          Write-Host 'PASS backend security regression'
+          Write-Host 'RUN backend smoke test'
           python admin-web/scripts/backend_smoketest.py
           if ($LASTEXITCODE -ne 0) { throw 'Backend smoke test failed.' }
+          Write-Host 'PASS backend smoke test'
+          Write-Host 'RUN backend compileall'
           python -m compileall -q admin-web/backend
+          if ($LASTEXITCODE -ne 0) { throw 'Backend compileall failed.' }
+          Write-Host 'PASS backend compileall'
       - name: Run PowerShell validators
         shell: pwsh
         run: |
@@ -94,21 +107,46 @@ jobs:
           $mavenBin = Join-Path $root 'bin'
           if (-not (Test-Path -LiteralPath (Join-Path $mavenBin 'mvn.cmd'))) { throw 'Maven installation is incomplete.' }
           $mavenBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Resolve Paper API
+      - name: Prepare pinned Paper API and compile dependencies
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $paper = Get-ChildItem minecraft/server -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $paper) {
-            $paper = Get-ChildItem "$env:USERPROFILE\.m2\repository" -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $paper) {
-            mvn -q -B dependency:get '-Dtransitive=true' '-DrepoUrl=https://repo.papermc.io/repository/maven-public/' '-Dartifact=io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper API.' }
-            $paper = Get-ChildItem "$env:USERPROFILE\.m2\repository" -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $paper) { throw 'Paper API jar is not available in the checkout or Maven cache.' }
-          "PAPER_API_JAR=$($paper.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $paperBase = 'https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.1-R0.1-SNAPSHOT'
+          $paperBuild = '1.21.1-R0.1-20250328.161643-128'
+          $paperJar = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.jar"
+          $paperPom = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.pom"
+          $paperSha1 = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.jar.sha1"
+          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.jar" -OutFile $paperJar
+          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.pom" -OutFile $paperPom
+          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.jar.sha1" -OutFile $paperSha1
+          $expectedSha1 = (Get-Content -Raw -LiteralPath $paperSha1).Trim().Split()[0].ToLowerInvariant()
+          $actualSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $paperJar).Hash.ToLowerInvariant()
+          if ($expectedSha1 -ne $actualSha1) { throw "Paper API SHA1 mismatch. Expected=$expectedSha1 Actual=$actualSha1" }
+          $dependencyPom = Join-Path $env:RUNNER_TEMP 'copimine-paper-compile-dependencies.pom'
+          @'
+          <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>copimine</groupId>
+            <artifactId>paper-compile-dependencies</artifactId>
+            <version>1.0.0</version>
+            <repositories>
+              <repository><id>papermc</id><url>https://repo.papermc.io/repository/maven-public/</url></repository>
+            </repositories>
+            <dependencies>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-api</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-minimessage</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-gson</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-legacy</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-plain</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-logger-slf4j</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.md-5</groupId><artifactId>bungeecord-chat</artifactId><version>1.20-R0.2-deprecated+build.18</version></dependency>
+              <dependency><groupId>org.joml</groupId><artifactId>joml</artifactId><version>1.10.5</version></dependency>
+            </dependencies>
+          </project>
+          '@ | Set-Content -LiteralPath $dependencyPom -Encoding utf8
+          mvn -q -B -f $dependencyPom dependency:go-offline
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper compile dependencies.' }
+          "PAPER_API_JAR=$paperJar" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Compile first-party plugins
         shell: pwsh
         run: |

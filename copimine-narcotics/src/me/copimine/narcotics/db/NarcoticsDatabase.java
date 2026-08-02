@@ -62,14 +62,62 @@ public final class NarcoticsDatabase {
     private final AtomicInteger createdConnections = new AtomicInteger(0);
     private volatile int maxConnections = 2;
     private final Map<Thread, Long> activeWriteGeneration = new ConcurrentHashMap<>();
+    /**
+     * A cauldron's state writes must be ordered per block.  The Bukkit thread
+     * can persist version N-1 and complete version N in adjacent ticks while
+     * the database pool has multiple workers; a per-key tail prevents the
+     * completion CAS from overtaking the state save without serialising the
+     * whole database.
+     */
+    private final Map<BlockKey, CompletableFuture<Void>> brewingWriteTails = new ConcurrentHashMap<>();
     private final Object refundJournalLock = new Object();
     private Path refundJournal;
     private final Object auditJournalLock = new Object();
     private Path auditJournal;
     private final Object brewingJournalLock = new Object();
     private Path brewingJournal;
+    private final Object brewingCompletionJournalLock = new Object();
+    private Path brewingCompletionJournal;
+
+    /**
+     * shutdownNow() returns queued Runnables without executing them.  Keeping
+     * the future on the wrapper lets us fail those operations explicitly so
+     * refund/audit callbacks can append their durable journals.
+     */
+    private static final class QueuedTask implements Runnable {
+        private final Runnable delegate;
+        private final CompletableFuture<?> future;
+
+        private QueuedTask(Runnable delegate, CompletableFuture<?> future) {
+            this.delegate = delegate;
+            this.future = future;
+        }
+
+        @Override
+        public void run() {
+            delegate.run();
+        }
+
+        private void reject(Throwable error) {
+            future.completeExceptionally(error);
+        }
+    }
+
+    @FunctionalInterface
+    private interface BrewingWriteOperation<T> {
+        CompletableFuture<T> start();
+    }
 
     public record PendingRefund(String id, String playerUuid, String narcoticId, int amount) {}
+
+    /**
+     * Durable mailbox row for a product produced by a completed brew.  This is
+     * deliberately separate from the ingredient compensation table: narcotic
+     * products are never refunds for consumed/destroyed narcotics, they are a
+     * new output which must survive a crash between the tombstone and Bukkit
+     * inventory delivery.
+     */
+    public record PendingBrewingOutput(String id, String playerUuid, String narcoticId, int amount) {}
 
     /**
      * Durable two-phase marker for a physical narcotic consumption.
@@ -111,6 +159,7 @@ public final class NarcoticsDatabase {
             refundJournal = plugin.getDataFolder().toPath().resolve("pending-refunds.journal");
             auditJournal = plugin.getDataFolder().toPath().resolve("admin-audit.journal");
             brewingJournal = plugin.getDataFolder().toPath().resolve("brewing-state.journal");
+            brewingCompletionJournal = plugin.getDataFolder().toPath().resolve("brewing-completion.journal");
             Files.createDirectories(refundJournal.getParent());
             CompletableFuture<Void> ready = new CompletableFuture<>();
             schemaReady = ready;
@@ -121,6 +170,7 @@ public final class NarcoticsDatabase {
                         replayRefundJournal();
                         replayAuditJournal();
                         replayBrewingJournal();
+                        replayBrewingCompletionJournal();
                         ready.complete(null);
                     } catch (Exception error) {
                         ready.completeExceptionally(error);
@@ -144,15 +194,29 @@ public final class NarcoticsDatabase {
             executor.shutdown();
             try {
                 if (!executor.awaitTermination(5L, TimeUnit.SECONDS)) {
-                    executor.shutdownNow();
+                    rejectDroppedTasks(executor.shutdownNow());
                     executor.awaitTermination(2L, TimeUnit.SECONDS);
                 }
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                executor.shutdownNow();
+                rejectDroppedTasks(executor.shutdownNow());
             }
         }
         closePool();
+        brewingWriteTails.clear();
+    }
+
+    private void rejectDroppedTasks(List<Runnable> dropped) {
+        if (dropped == null || dropped.isEmpty()) {
+            return;
+        }
+        RejectedExecutionException error = new RejectedExecutionException(
+                "Narcotics database executor stopped before the task ran.");
+        for (Runnable task : dropped) {
+            if (task instanceof QueuedTask queued) {
+                queued.reject(error);
+            }
+        }
     }
 
     public boolean hasAsyncCapacity() {
@@ -205,10 +269,10 @@ public final class NarcoticsDatabase {
         if (!appendBrewingJournal(key, version, snapshot, ownerUuid)) {
             return CompletableFuture.failedFuture(new IllegalStateException("Brewing state journal is unavailable."));
         }
-        return runAsync(() -> tx(connection -> {
+        return enqueueBrewingWrite(key, () -> runAsync(() -> tx(connection -> {
             persistBrewingState(connection, key, version, snapshot, ownerUuid);
             return null;
-        })).whenComplete((ignored, error) -> {
+        }))).whenComplete((ignored, error) -> {
             if (error == null) {
                 removeBrewingJournal(journalKey);
             }
@@ -216,7 +280,7 @@ public final class NarcoticsDatabase {
     }
 
     public CompletableFuture<Void> deleteBrewingState(BlockKey key, long version) {
-        return runAsync(() -> tx(connection -> {
+        return enqueueBrewingWrite(key, () -> runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
                     """
                     INSERT INTO narcotics_brewing_states(world_name,x,y,z,ingredients_csv,state_payload,state_version,deleted,updated_at,owner_uuid)
@@ -243,7 +307,7 @@ public final class NarcoticsDatabase {
                 statement.executeUpdate();
             }
             return null;
-        }));
+        })));
     }
 
     public CompletableFuture<Void> clearBrewingStates() {
@@ -371,7 +435,7 @@ public final class NarcoticsDatabase {
         if (key == null || expectedVersion < 0L) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid brewing tombstone."));
         }
-        return supplyAsync(() -> tx(connection -> {
+        return enqueueBrewingWrite(key, () -> runAsyncResult(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
                     UPDATE narcotics_brewing_states
                     SET ingredients_csv='',state_payload='',state_version=state_version+1,
@@ -387,7 +451,32 @@ public final class NarcoticsDatabase {
                 statement.setLong(6, expectedVersion);
                 return statement.executeUpdate() == 1;
             }
-        }));
+        })));
+    }
+
+    /**
+     * Atomically close a finished brew and enqueue its product for the owner.
+     * The physical inventory delivery is intentionally performed later on the
+     * Bukkit thread; keeping the output row in the same transaction as the
+     * tombstone closes the crash window between consuming ingredients and
+     * dropping the finished item.
+     */
+    public CompletableFuture<Boolean> completeBrewingState(BlockKey key, long expectedVersion,
+                                                           UUID ownerUuid, String narcoticId) {
+        if (key == null || expectedVersion < 0L || narcoticId == null || narcoticId.isBlank()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid brewing completion."));
+        }
+        String journalKey = brewingCompletionJournalKey(key, expectedVersion, ownerUuid, narcoticId);
+        if (!appendBrewingCompletionJournal(key, expectedVersion, ownerUuid, narcoticId)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Brewing completion journal is unavailable."));
+        }
+        return enqueueBrewingWrite(key, () -> runAsyncResult(() -> tx(connection ->
+                completeBrewingStateTx(connection, key, expectedVersion, ownerUuid, narcoticId))))
+                .whenComplete((applied, error) -> {
+            if (error == null && Boolean.TRUE.equals(applied)) {
+                removeBrewingCompletionJournal(journalKey);
+            }
+        });
     }
 
     /** Reserve an exact issued item before an asynchronous state write starts. */
@@ -497,7 +586,6 @@ public final class NarcoticsDatabase {
             return CompletableFuture.failedFuture(new IllegalStateException("Narcotics reset is already in progress."));
         }
         long resetGeneration = writeGeneration.incrementAndGet();
-        clearBrewingJournal();
         CompletableFuture<Void> reset = runAsyncInternal(() -> tx(connection -> {
             for (String sql : List.of(
                     "DELETE FROM narcotics_brewing_states",
@@ -507,6 +595,7 @@ public final class NarcoticsDatabase {
                     "DELETE FROM narcotics_admin_audit",
                     "DELETE FROM narcotics_item_texture_migrations",
                     "DELETE FROM narcotics_pending_refunds",
+                    "DELETE FROM narcotics_pending_outputs",
                     "DELETE FROM narcotics_consumption_reservations"
             )) {
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -515,7 +604,14 @@ public final class NarcoticsDatabase {
             }
             return null;
         }), resetGeneration, true);
-        reset.whenComplete((ignored, error) -> resetBarrier.set(false));
+        reset.whenComplete((ignored, error) -> {
+            if (error == null) {
+                // The SQL wipe is durable; only now may local outbox rows be
+                // removed.  A failed reset must leave journals replayable.
+                clearDurableJournals();
+            }
+            resetBarrier.set(false);
+        });
         return reset;
     }
 
@@ -558,7 +654,7 @@ public final class NarcoticsDatabase {
         if (playerUuid == null) {
             return CompletableFuture.completedFuture(List.of());
         }
-        return supplyAsync(() -> tx(connection -> {
+        return runAsyncResult(() -> tx(connection -> {
             List<PendingRefund> result = new ArrayList<>();
             List<String> ids = new ArrayList<>();
             long staleBefore = Instant.now().getEpochSecond() - 60L;
@@ -609,6 +705,99 @@ public final class NarcoticsDatabase {
         return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
                     "UPDATE narcotics_pending_refunds SET status='PENDING',updated_at=? WHERE id=? AND status='DELIVERING'")) {
+                statement.setLong(1, Instant.now().getEpochSecond());
+                statement.setString(2, id);
+                statement.executeUpdate();
+            }
+            return null;
+        }));
+    }
+
+    /** Reserve durable brew outputs for one online owner. */
+    public CompletableFuture<List<PendingBrewingOutput>> reservePendingBrewingOutputs(UUID playerUuid, int limit) {
+        if (playerUuid == null) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        return runAsyncResult(() -> tx(connection -> {
+            List<PendingBrewingOutput> result = new ArrayList<>();
+            List<String> ids = new ArrayList<>();
+            long now = Instant.now().getEpochSecond();
+            long staleBefore = now - 60L;
+            try (PreparedStatement reset = connection.prepareStatement(
+                    "UPDATE narcotics_pending_outputs SET status='PENDING',updated_at=? WHERE player_uuid=? AND status='DELIVERING' AND updated_at<?")) {
+                reset.setLong(1, now);
+                reset.setString(2, playerUuid.toString());
+                reset.setLong(3, staleBefore);
+                reset.executeUpdate();
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT id,player_uuid,narcotic_id,amount FROM narcotics_pending_outputs WHERE player_uuid=? AND status='PENDING' ORDER BY created_at ASC LIMIT ? FOR UPDATE")) {
+                statement.setString(1, playerUuid.toString());
+                statement.setInt(2, Math.max(1, Math.min(limit, 32)));
+                try (ResultSet rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        result.add(new PendingBrewingOutput(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)));
+                        ids.add(rs.getString(1));
+                    }
+                }
+            }
+            for (String id : ids) {
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE narcotics_pending_outputs SET status='DELIVERING',updated_at=? WHERE id=? AND status='PENDING'")) {
+                    update.setLong(1, now);
+                    update.setString(2, id);
+                    update.executeUpdate();
+                }
+            }
+            return result;
+        }));
+    }
+
+    /** Read in-flight rows so a reconnect can recognize an item already added
+     * before the previous process crashed, without resetting a live claim. */
+    public CompletableFuture<List<PendingBrewingOutput>> loadDeliveringBrewingOutputs(UUID playerUuid, int limit) {
+        if (playerUuid == null) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        return supplyAsync(() -> {
+            List<PendingBrewingOutput> result = new ArrayList<>();
+            try (Connection connection = openConnection();
+                 PreparedStatement statement = connection.prepareStatement(
+                         "SELECT id,player_uuid,narcotic_id,amount FROM narcotics_pending_outputs WHERE player_uuid=? AND status='DELIVERING' ORDER BY created_at ASC LIMIT ?")) {
+                statement.setString(1, playerUuid.toString());
+                statement.setInt(2, Math.max(1, Math.min(limit, 32)));
+                try (ResultSet rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        result.add(new PendingBrewingOutput(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)));
+                    }
+                }
+            }
+            return result;
+        });
+    }
+
+    public CompletableFuture<Void> completePendingBrewingOutput(String id) {
+        if (id == null || id.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE narcotics_pending_outputs SET status='DELIVERED',updated_at=? WHERE id=? AND status='DELIVERING'")) {
+                statement.setLong(1, Instant.now().getEpochSecond());
+                statement.setString(2, id);
+                statement.executeUpdate();
+            }
+            return null;
+        }));
+    }
+
+    public CompletableFuture<Void> releasePendingBrewingOutput(String id) {
+        if (id == null || id.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE narcotics_pending_outputs SET status='PENDING',updated_at=? WHERE id=? AND status='DELIVERING'")) {
                 statement.setLong(1, Instant.now().getEpochSecond());
                 statement.setString(2, id);
                 statement.executeUpdate();
@@ -759,6 +948,17 @@ public final class NarcoticsDatabase {
                 )
                 """);
         sql.add("""
+                CREATE TABLE IF NOT EXISTS narcotics_pending_outputs (
+                  id TEXT PRIMARY KEY,
+                  player_uuid TEXT NOT NULL,
+                  narcotic_id TEXT NOT NULL,
+                  amount INTEGER NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'PENDING',
+                  created_at BIGINT NOT NULL DEFAULT 0,
+                  updated_at BIGINT NOT NULL DEFAULT 0
+                )
+                """);
+        sql.add("""
                 CREATE TABLE IF NOT EXISTS narcotics_consumption_reservations (
                   instance_id TEXT PRIMARY KEY,
                   player_uuid TEXT NOT NULL,
@@ -775,6 +975,7 @@ public final class NarcoticsDatabase {
         sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_consumption_reservations_player ON narcotics_consumption_reservations(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_refunds_player ON narcotics_pending_refunds(player_uuid,status,created_at)");
+        sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_outputs_player ON narcotics_pending_outputs(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_brewing_updated ON narcotics_brewing_states(updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_admin_audit_created ON narcotics_admin_audit(created_at)");
         return sql;
@@ -849,6 +1050,80 @@ public final class NarcoticsDatabase {
         return runAsyncInternal(work, writeGeneration.getAcquire(), false);
     }
 
+    /**
+     * Queue writes for one cauldron behind its previous write.  A failed
+     * predecessor is deliberately swallowed for ordering purposes: the next
+     * operation still gets a chance to observe/repair the durable row, while
+     * its own future reports its actual result to the caller.
+     */
+    private <T> CompletableFuture<T> enqueueBrewingWrite(BlockKey key, BrewingWriteOperation<T> operation) {
+        if (key == null || operation == null) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Brewing write is invalid."));
+        }
+        synchronized (brewingWriteTails) {
+            CompletableFuture<Void> previous = brewingWriteTails.getOrDefault(key, CompletableFuture.completedFuture(null));
+            CompletableFuture<T> next = previous.handle((ignored, error) -> null).thenCompose(ignored -> {
+                try {
+                    return operation.start();
+                } catch (Throwable failure) {
+                    return CompletableFuture.failedFuture(failure);
+                }
+            });
+            CompletableFuture<Void> tail = next.handle((ignored, error) -> null);
+            brewingWriteTails.put(key, tail);
+            tail.whenComplete((ignored, error) -> {
+                synchronized (brewingWriteTails) {
+                    brewingWriteTails.remove(key, tail);
+                }
+            });
+            return next;
+        }
+    }
+
+    /** Execute a transactional result-producing write under the same reset
+     * generation fence as void writes. */
+    private <T> CompletableFuture<T> runAsyncResult(SqlWork<T> work) {
+        CompletableFuture<T> future = new CompletableFuture<>();
+        ExecutorService currentExecutor = executor;
+        long generation = writeGeneration.getAcquire();
+        if (currentExecutor == null) {
+            future.completeExceptionally(new IllegalStateException("Narcotics database executor is unavailable."));
+            return future;
+        }
+        if (resetBarrier.getAcquire()) {
+            future.completeExceptionally(new IllegalStateException("Narcotics reset is in progress."));
+            return future;
+        }
+        schemaReady.whenComplete((ready, schemaError) -> {
+            if (schemaError != null) {
+                future.completeExceptionally(schemaError);
+                return;
+            }
+            if (resetBarrier.getAcquire() || writeGeneration.getAcquire() != generation) {
+                future.completeExceptionally(new IllegalStateException("Narcotics write fenced by reset."));
+                return;
+            }
+            try {
+                currentExecutor.execute(new QueuedTask(() -> {
+                    activeWriteGeneration.put(Thread.currentThread(), generation);
+                    try {
+                        if (writeGeneration.getAcquire() != generation) {
+                            throw new IllegalStateException("Narcotics write fenced by reset.");
+                        }
+                        future.complete(work.run());
+                    } catch (Exception error) {
+                        future.completeExceptionally(error);
+                    } finally {
+                        activeWriteGeneration.remove(Thread.currentThread());
+                    }
+                }, future));
+            } catch (RejectedExecutionException error) {
+                future.completeExceptionally(error);
+            }
+        });
+        return future;
+    }
+
     private CompletableFuture<Void> runAsyncInternal(SqlVoidWork work, long generation, boolean bypassReset) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         ExecutorService currentExecutor = executor;
@@ -866,7 +1141,7 @@ public final class NarcoticsDatabase {
                 return;
             }
             try {
-                currentExecutor.execute(() -> {
+                currentExecutor.execute(new QueuedTask(() -> {
                     activeWriteGeneration.put(Thread.currentThread(), generation);
                     try {
                         if (!bypassReset && writeGeneration.getAcquire() != generation) {
@@ -879,7 +1154,7 @@ public final class NarcoticsDatabase {
                     } finally {
                         activeWriteGeneration.remove(Thread.currentThread());
                     }
-                });
+                }, future));
             } catch (RejectedExecutionException error) {
                 future.completeExceptionally(error);
             }
@@ -901,7 +1176,7 @@ public final class NarcoticsDatabase {
                 return;
             }
             try {
-                currentExecutor.execute(() -> {
+                currentExecutor.execute(new QueuedTask(() -> {
                     try {
                         T result = work.run();
                         if (writeGeneration.getAcquire() != readGeneration) {
@@ -911,7 +1186,7 @@ public final class NarcoticsDatabase {
                     } catch (Exception error) {
                         future.completeExceptionally(error);
                     }
-                });
+                }, future));
             } catch (RejectedExecutionException error) {
                 future.completeExceptionally(error);
             }
@@ -1072,6 +1347,12 @@ public final class NarcoticsDatabase {
         return key.world() + "\t" + key.x() + "\t" + key.y() + "\t" + key.z() + "\t" + version;
     }
 
+    private String brewingCompletionJournalKey(BlockKey key, long expectedVersion,
+                                               UUID ownerUuid, String narcoticId) {
+        return key.world() + "\t" + key.x() + "\t" + key.y() + "\t" + key.z() + "\t"
+                + expectedVersion + "\t" + (ownerUuid == null ? "" : ownerUuid.toString()) + "\t" + narcoticId;
+    }
+
     private boolean appendBrewingJournal(BlockKey key, long version, List<IngredientEntry> ingredients, UUID ownerUuid) {
         if (brewingJournal == null || key == null || version < 0L) {
             return false;
@@ -1085,6 +1366,9 @@ public final class NarcoticsDatabase {
                         joinStatePayload(ingredients).getBytes(StandardCharsets.UTF_8))) + System.lineSeparator();
         synchronized (brewingJournalLock) {
             try {
+                if (resetBarrier.getAcquire()) {
+                    return false;
+                }
                 Files.createDirectories(brewingJournal.getParent());
                 try (FileChannel channel = FileChannel.open(brewingJournal,
                         StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
@@ -1150,6 +1434,97 @@ public final class NarcoticsDatabase {
         }
     }
 
+    private boolean appendBrewingCompletionJournal(BlockKey key, long expectedVersion,
+                                                   UUID ownerUuid, String narcoticId) {
+        if (brewingCompletionJournal == null || key == null || expectedVersion < 0L
+                || narcoticId == null || narcoticId.isBlank()) {
+            return false;
+        }
+        String line = String.join("\t",
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(key.world().getBytes(StandardCharsets.UTF_8)),
+                Integer.toString(key.x()), Integer.toString(key.y()), Integer.toString(key.z()),
+                Long.toString(expectedVersion),
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        (ownerUuid == null ? "" : ownerUuid.toString()).getBytes(StandardCharsets.UTF_8)),
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(narcoticId.getBytes(StandardCharsets.UTF_8)))
+                + System.lineSeparator();
+        synchronized (brewingCompletionJournalLock) {
+            try {
+                if (resetBarrier.getAcquire()) {
+                    return false;
+                }
+                Files.createDirectories(brewingCompletionJournal.getParent());
+                try (FileChannel channel = FileChannel.open(brewingCompletionJournal,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+                    ByteBuffer buffer = StandardCharsets.UTF_8.encode(line);
+                    while (buffer.hasRemaining()) {
+                        channel.write(buffer);
+                    }
+                    channel.force(true);
+                }
+                return true;
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Brewing completion journal append failed", error);
+                return false;
+            }
+        }
+    }
+
+    private void removeBrewingCompletionJournal(String journalKey) {
+        if (brewingCompletionJournal == null || journalKey == null) {
+            return;
+        }
+        synchronized (brewingCompletionJournalLock) {
+            try {
+                if (!Files.isRegularFile(brewingCompletionJournal)) {
+                    return;
+                }
+                List<String> keep = new ArrayList<>();
+                for (String line : Files.readAllLines(brewingCompletionJournal, StandardCharsets.UTF_8)) {
+                    String[] fields = line.split("\\t", 7);
+                    if (fields.length != 7) {
+                        keep.add(line);
+                        continue;
+                    }
+                    String key = new String(java.util.Base64.getUrlDecoder().decode(fields[0]), StandardCharsets.UTF_8)
+                            + "\t" + fields[1] + "\t" + fields[2] + "\t" + fields[3] + "\t" + fields[4]
+                            + "\t" + new String(java.util.Base64.getUrlDecoder().decode(fields[5]), StandardCharsets.UTF_8)
+                            + "\t" + new String(java.util.Base64.getUrlDecoder().decode(fields[6]), StandardCharsets.UTF_8);
+                    if (!journalKey.equals(key)) {
+                        keep.add(line);
+                    }
+                }
+                rewriteBrewingCompletionJournal(keep);
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to compact brewing completion journal", error);
+            }
+        }
+    }
+
+    private void rewriteBrewingCompletionJournal(List<String> lines) throws Exception {
+        if (brewingCompletionJournal == null) {
+            return;
+        }
+        Files.createDirectories(brewingCompletionJournal.getParent());
+        Path temporary = Files.createTempFile(brewingCompletionJournal.getParent(),
+                brewingCompletionJournal.getFileName().toString() + ".", ".tmp");
+        try {
+            String text = lines == null || lines.isEmpty() ? ""
+                    : String.join(System.lineSeparator(), lines) + System.lineSeparator();
+            Files.writeString(temporary, text, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+            Files.move(temporary, brewingCompletionJournal,
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
     private void clearBrewingJournal() {
         synchronized (brewingJournalLock) {
             try {
@@ -1158,6 +1533,40 @@ public final class NarcoticsDatabase {
                 }
             } catch (Exception error) {
                 plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to clear brewing state journal", error);
+            }
+        }
+    }
+
+    private void clearDurableJournals() {
+        clearBrewingJournal();
+        synchronized (brewingCompletionJournalLock) {
+            try {
+                if (brewingCompletionJournal != null) {
+                    Files.deleteIfExists(brewingCompletionJournal);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to clear narcotics completion journal after reset", error);
+            }
+        }
+        synchronized (refundJournalLock) {
+            try {
+                if (refundJournal != null) {
+                    Files.deleteIfExists(refundJournal);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to clear narcotics refund journal after reset", error);
+            }
+        }
+        synchronized (auditJournalLock) {
+            try {
+                if (auditJournal != null) {
+                    Files.deleteIfExists(auditJournal);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to clear narcotics audit journal after reset", error);
             }
         }
     }
@@ -1208,6 +1617,112 @@ public final class NarcoticsDatabase {
                 plugin.getLogger().log(java.util.logging.Level.WARNING, "Unable to compact brewing state journal", error);
             }
         }
+    }
+
+    private void replayBrewingCompletionJournal() {
+        synchronized (brewingCompletionJournalLock) {
+            if (brewingCompletionJournal == null || !Files.isRegularFile(brewingCompletionJournal)) {
+                return;
+            }
+            List<String> pending;
+            try {
+                pending = Files.readAllLines(brewingCompletionJournal, StandardCharsets.UTF_8);
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to read brewing completion journal", error);
+                return;
+            }
+            List<String> remaining = new ArrayList<>();
+            for (String line : pending) {
+                String[] fields = line.split("\\t", 7);
+                if (fields.length != 7) {
+                    remaining.add(line);
+                    continue;
+                }
+                try {
+                    String world = new String(java.util.Base64.getUrlDecoder().decode(fields[0]), StandardCharsets.UTF_8);
+                    BlockKey key = new BlockKey(world, Integer.parseInt(fields[1]), Integer.parseInt(fields[2]), Integer.parseInt(fields[3]));
+                    long expectedVersion = Long.parseLong(fields[4]);
+                    String owner = new String(java.util.Base64.getUrlDecoder().decode(fields[5]), StandardCharsets.UTF_8);
+                    String narcoticId = new String(java.util.Base64.getUrlDecoder().decode(fields[6]), StandardCharsets.UTF_8);
+                    UUID ownerUuid = owner.isBlank() ? null : UUID.fromString(owner);
+                    boolean applied = tx(connection -> completeBrewingStateTx(connection, key, expectedVersion, ownerUuid, narcoticId));
+                    if (!applied && !isBrewingCompletionResolved(key, expectedVersion)) {
+                        remaining.add(line);
+                    }
+                } catch (Exception error) {
+                    remaining.add(line);
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "Unable to replay brewing completion journal row", error);
+                }
+            }
+            try {
+                if (remaining.isEmpty()) {
+                    Files.deleteIfExists(brewingCompletionJournal);
+                } else {
+                    rewriteBrewingCompletionJournal(remaining);
+                }
+            } catch (Exception error) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to compact brewing completion journal", error);
+            }
+        }
+    }
+
+    private boolean isBrewingCompletionResolved(BlockKey key, long expectedVersion) throws Exception {
+        return tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT state_version,deleted FROM narcotics_brewing_states WHERE world_name=? AND x=? AND y=? AND z=?")) {
+                statement.setString(1, key.world());
+                statement.setInt(2, key.x());
+                statement.setInt(3, key.y());
+                statement.setInt(4, key.z());
+                try (ResultSet rs = statement.executeQuery()) {
+                    if (!rs.next()) {
+                        return true;
+                    }
+                    return rs.getBoolean(2) || rs.getLong(1) > expectedVersion;
+                }
+            }
+        });
+    }
+
+    private boolean completeBrewingStateTx(Connection connection, BlockKey key, long expectedVersion,
+                                           UUID ownerUuid, String narcoticId) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE narcotics_brewing_states
+                SET ingredients_csv='',state_payload='',state_version=state_version+1,
+                    deleted=TRUE,updated_at=?,owner_uuid=''
+                WHERE world_name=? AND x=? AND y=? AND z=?
+                  AND state_version=? AND deleted=FALSE
+                """)) {
+            statement.setLong(1, Instant.now().toEpochMilli());
+            statement.setString(2, key.world());
+            statement.setInt(3, key.x());
+            statement.setInt(4, key.y());
+            statement.setInt(5, key.z());
+            statement.setLong(6, expectedVersion);
+            if (statement.executeUpdate() != 1) {
+                return false;
+            }
+        }
+        if (ownerUuid != null) {
+            try (PreparedStatement output = connection.prepareStatement("""
+                    INSERT INTO narcotics_pending_outputs(id,player_uuid,narcotic_id,amount,status,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?)
+                    """)) {
+                long now = Instant.now().getEpochSecond();
+                output.setString(1, UUID.randomUUID().toString());
+                output.setString(2, ownerUuid.toString());
+                output.setString(3, narcoticId);
+                output.setInt(4, 1);
+                output.setString(5, "PENDING");
+                output.setLong(6, now);
+                output.setLong(7, now);
+                output.executeUpdate();
+            }
+        }
+        return true;
     }
 
     private void appendRefundJournal(String id, UUID playerUuid, String narcoticId, int amount) throws Exception {

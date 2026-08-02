@@ -327,30 +327,48 @@ public final class CauldronBrewingService {
     }
 
     private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix, org.bukkit.entity.Player initiator) {
-            database.tombstoneBrewingState(key, version).whenComplete((applied, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
-                synchronized (lockFor(key)) {
-                    CauldronState current = cache.get(key);
-                if (error != null || !Boolean.TRUE.equals(applied) || current == null || current.version() != version) {
-                    if (error != null) {
-                        plugin.getLogger().warning("Brewing completion tombstone failed for " + key + ": " + error.getMessage());
+        UUID ownerUuid = initiator == null ? null : initiator.getUniqueId();
+        // `version` is the in-memory version after the final ingredient.  The
+        // final ingredient is intentionally not persisted as a live state: the
+        // atomic completion CAS advances the durable previous version by one,
+        // so stale workers cannot tombstone a newer brew at this block.
+        long expectedStoredVersion = Math.max(0L, version - 1L);
+        database.completeBrewingState(key, expectedStoredVersion, ownerUuid, definition.id())
+                .whenComplete((applied, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    synchronized (lockFor(key)) {
+                        CauldronState current = cache.get(key);
+                        if (error != null || !Boolean.TRUE.equals(applied)
+                                || current == null || current.version() != version) {
+                            if (error != null) {
+                                plugin.getLogger().warning("Brewing completion tombstone failed for " + key + ": " + error.getMessage());
+                            }
+                            return;
+                        }
+                        cache.remove(key, current);
+                        if (wrongMix) {
+                            simulateWrongMixExplosion(block, initiator);
+                        }
+                        if (ownerUuid != null) {
+                            // The output row was committed with the tombstone.
+                            // Claim it through the durable mailbox rather than
+                            // dropping an untracked item in a crash window.
+                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
+                        } else if (block.getWorld() != null) {
+                            block.getWorld().dropItemNaturally(
+                                    block.getLocation().add(0.5D, 1.0D, 0.5D),
+                                    itemFactory.createOfficialItem(definition, 1));
+                        }
+                        if (block.getWorld() != null) {
+                            particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH,
+                                    "zhuzevo".equals(definition.id()) ? 24 : 12);
+                            spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
+                        }
+                        extinguishRig(block);
+                        if (configService.clearCauldronOnCompletion()) {
+                            block.setType(Material.CAULDRON, false);
+                        }
                     }
-                    return;
-                }
-                cache.remove(key, current);
-                if (wrongMix) {
-                    simulateWrongMixExplosion(block, initiator);
-                }
-                if (block.getWorld() != null) {
-                    block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), itemFactory.createOfficialItem(definition, 1));
-                    particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH, "zhuzevo".equals(definition.id()) ? 24 : 12);
-                    spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
-                }
-                extinguishRig(block);
-                if (configService.clearCauldronOnCompletion()) {
-                    block.setType(Material.CAULDRON, false);
-                }
-            }
-        }));
+                }));
     }
 
     private void simulateWrongMixExplosion(Block block, org.bukkit.entity.Player initiator) {

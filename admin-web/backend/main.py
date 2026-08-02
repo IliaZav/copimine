@@ -19,6 +19,7 @@ import sqlite3
 import struct
 import subprocess
 import threading
+import tempfile
 import time
 import uuid
 import zlib
@@ -6676,9 +6677,31 @@ def read_json(path: Path, default: Any) -> Any:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        # Persist the directory entry where supported so a power loss cannot
+        # leave a zero-length target after the atomic rename.
+        directory_flag = getattr(os, "O_DIRECTORY", 0)
+        try:
+            directory_fd = os.open(str(path.parent), os.O_RDONLY | directory_flag)
+        except OSError:
+            directory_fd = None
+        if directory_fd is not None:
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 SECRET_FIELD_RE = re.compile(r"(token|password|secret|api[_-]?key|rcon|session)", re.I)
@@ -8361,13 +8384,25 @@ def player_elections_sync(account: Mapping[str, Any] | dict[str, Any]) -> dict[s
             "GROUP BY rc.candidate_uuid ORDER BY votes DESC,candidate_name ASC",
             (eid, current_round),
         ).fetchall()
-        # Keep the voter identity query private to the player's own response;
-        # the admin detail payload never selects this column.
+        # ElectionCore deliberately stores an anonymous token in votes.  The
+        # player's participation identity is kept in a separate table, so
+        # querying the vote ledger directly would always report false after
+        # the privacy split (and would couple the web API to a secret ledger).
+        voted = False
         voter_column = "voter_" + "uuid"
-        voted = bool(player_uuid and conn.execute(
-            f"SELECT 1 FROM votes WHERE election_id=%s AND round_no=%s AND {voter_column}=%s LIMIT 1",
-            (eid, current_round, player_uuid),
-        ).fetchone())
+        if player_uuid and pg_table_exists(conn, "vote_participation"):
+            voted = bool(conn.execute(
+                f"SELECT 1 FROM vote_participation WHERE election_id=%s AND round_no=%s AND {voter_column}=%s LIMIT 1",
+                (eid, current_round, player_uuid),
+            ).fetchone())
+        elif player_uuid and pg_table_exists(conn, "votes"):
+            # Compatibility for databases upgraded before vote_participation
+            # was created.  Ignore anonymous tokens; only a legacy real UUID
+            # can safely be used as a self-only fallback.
+            voted = bool(conn.execute(
+                f"SELECT 1 FROM votes WHERE election_id=%s AND round_no=%s AND {voter_column}=%s AND {voter_column} NOT LIKE 'anonymous_voter:%%' LIMIT 1",
+                (eid, current_round, player_uuid),
+            ).fetchone())
         conn.commit()
     safe_app = None
     if application:

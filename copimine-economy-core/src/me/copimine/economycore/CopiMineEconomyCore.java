@@ -153,6 +153,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private final AtomicBoolean databaseReady = new AtomicBoolean(false);
     private final AtomicBoolean databaseInitializing = new AtomicBoolean(false);
     private final AtomicBoolean startupFailed = new AtomicBoolean(false);
+    private final AtomicBoolean schemaReady = new AtomicBoolean(false);
     private volatile String startupError = "DATABASE_STARTING";
     private volatile CompletableFuture<Void> databaseStartupFuture = CompletableFuture.completedFuture(null);
     private Path pendingArSettlementJournalPath;
@@ -376,6 +377,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         databaseReady.set(false);
         startupFailed.set(false);
         databaseInitializing.set(true);
+        schemaReady.set(false);
         startupError = "DATABASE_STARTING";
         databaseStartupFuture = new CompletableFuture<>();
         getServer().getPluginManager().registerEvents(this, this);
@@ -476,12 +478,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             dbExecutor.shutdown();
             try {
                 if (!dbExecutor.awaitTermination(5L, TimeUnit.SECONDS)) {
-                    dbExecutor.shutdownNow();
-                    dbExecutor.awaitTermination(2L, TimeUnit.SECONDS);
+                    List<Runnable> dropped = dbExecutor.shutdownNow();
+                    if (!dropped.isEmpty()) {
+                        // queuePendingArSettlement() writes a durable journal
+                        // before it submits its DB insert, so a dropped task
+                        // remains recoverable on the next startup.  Keep the
+                        // count visible instead of silently discarding queued
+                        // work while the connection pool is being closed.
+                        getLogger().warning("Economy DB executor forced down with " + dropped.size() + " queued task(s); durable settlement journal/recovery rows will be replayed on startup.");
+                    }
+                    if (!dbExecutor.awaitTermination(2L, TimeUnit.SECONDS)) {
+                        getLogger().warning("Economy DB executor is still running after forced shutdown.");
+                    }
                 }
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                dbExecutor.shutdownNow();
+                List<Runnable> dropped = dbExecutor.shutdownNow();
+                if (!dropped.isEmpty()) {
+                    getLogger().warning("Economy DB executor interrupted with " + dropped.size() + " queued task(s); settlement recovery remains journal-backed.");
+                }
             }
         }
         if (connectionPool != null) {
@@ -2168,15 +2183,26 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return false;
         }
         long remaining = amount;
+        List<String> issuedSerials = new ArrayList<>();
         while (remaining > 0) {
             int stackAmount = (int) Math.min(64L, remaining);
             ItemStack out = createOfficialArStack(stackAmount, player.getUniqueId().toString(), player.getName(), source);
             String serial = officialArSerial(out);
             Map<Integer, ItemStack> left = player.getInventory().addItem(out);
             if (!left.isEmpty()) {
+                // addItem() can partially succeed when another plugin changes
+                // inventory limits between the capacity check and the write.
+                // Roll back every stack issued by this attempt, not just the
+                // last serial; otherwise the bank debit is queued for the
+                // full amount while a prefix of that amount remains live.
                 removeOfficialArSerial(player.getInventory(), serial, stackAmount);
+                for (String issuedSerial : issuedSerials) {
+                    removeOfficialArSerial(player.getInventory(), issuedSerial, 64);
+                }
+                player.updateInventory();
                 return false;
             }
+            issuedSerials.add(serial);
             remaining -= stackAmount;
         }
         player.updateInventory();
@@ -3298,6 +3324,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (actor == null || amount <= 0L) {
                 return new TxnResult(false, "INVALID_REQUEST", "Некорректный запрос.", 0L, "");
             }
+            if (pin == null || pin.isBlank()) {
+                // The bridge is public to other plugins; never rely on the
+                // ATM GUI to enforce the PIN format. Fail closed before any
+                // treasury read or debit is attempted.
+                return new TxnResult(false, "PIN_REQUIRED", "PIN is required.", 0L, "");
+            }
             String accountId = treasuryAccountId();
             if (accountPinLockedSeconds(accountId) > 0L) {
                 return new TxnResult(false, "PIN_LOCKED", "PIN казны временно заблокирован.", 0L, "");
@@ -3315,7 +3347,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return tx(connection -> {
                 ensureTreasuryAccount(connection);
                 String txKey = first(idempotencyKey, "treasury-charge-" + UUID.randomUUID());
-                TxnResult replay = replayArtifactStyleTxn(connection, txKey, accountId, "", -amount, first(details, ""));
+                // The ledger row records the president/admin actor UUID.  Use
+                // the same identity for replay checks; passing an empty UUID
+                // turns a post-commit connection error into a false
+                // idempotency conflict and can queue a duplicate withdrawal.
+                TxnResult replay = replayArtifactStyleTxn(connection, txKey, accountId, actor.getUniqueId().toString(), -amount, first(details, ""));
                 if (replay != null) {
                     return replay;
                 }
@@ -3338,6 +3374,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return dbFuture("treasury transfer", () -> {
             if (actor == null || targetUuid == null || amount <= 0L) {
                 return new TxnResult(false, "INVALID_REQUEST", "Некорректный перевод.", 0L, "");
+            }
+            if (pin == null || pin.isBlank()) {
+                // Keep treasury transfers fail-closed as well; this method is
+                // reachable through the service bridge without the PIN pad.
+                return new TxnResult(false, "PIN_REQUIRED", "PIN is required.", 0L, "");
             }
             String accountId = treasuryAccountId();
             if (accountPinLockedSeconds(accountId) > 0L) {
@@ -3733,7 +3774,19 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 ? DriverManager.getConnection(settings.jdbcUrl(), settings.user(), settings.password())
                 : pool.acquire();
         try (Statement statement = connection.createStatement()) {
-            statement.execute("CREATE SCHEMA IF NOT EXISTS " + settings.schemaIdent());
+            // Schema creation is a startup migration, not a per-query
+            // operation.  Repeating CREATE SCHEMA on every pooled acquire
+            // adds DDL locks and latency to every ATM/bank click.  The one
+            // bootstrap connection still creates it before ensureSchema();
+            // all later connections only install their session settings.
+            if (!schemaReady.get()) {
+                synchronized (schemaReady) {
+                    if (!schemaReady.get()) {
+                        statement.execute("CREATE SCHEMA IF NOT EXISTS " + settings.schemaIdent());
+                        schemaReady.set(true);
+                    }
+                }
+            }
             statement.execute("SET search_path TO " + settings.schemaIdent());
             statement.execute("SET statement_timeout TO 15000");
             statement.execute("SET idle_in_transaction_session_timeout TO 30000");
@@ -5233,11 +5286,27 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     statement.execute("SELECT 1");
                 }
                 PinStatus pin = pinStatus(playerUuid);
-                long balance = playerUuid == null ? 0L : bankService.balance(playerUuid, "");
+                // BankService.balance() intentionally returns a safe zero to
+                // gameplay callers when a read fails.  Health must not use
+                // that fail-soft value as a green readiness signal: perform
+                // the same account/read operation here and let any SQL error
+                // mark PostgreSQL unhealthy.
+                long balance = playerUuid == null ? 0L : readBankBalanceForHealth(playerUuid);
                 return new Health(true, true, pin.configured && !pin.mustChange && pin.lockedSeconds <= 0, balance, first(context, "health"), "");
             } catch (Exception error) {
                 return new Health(false, false, false, 0L, first(context, "health"), safeError(error));
             }
+        }
+    }
+
+    private long readBankBalanceForHealth(UUID playerUuid) throws Exception {
+        if (playerUuid == null) {
+            return 0L;
+        }
+        try (Connection connection = openConnection()) {
+            ensureBankAccount(connection, playerUuid.toString(), "");
+            return scalarLong(connection, "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=?",
+                    bankAccountId(playerUuid.toString()));
         }
     }
 

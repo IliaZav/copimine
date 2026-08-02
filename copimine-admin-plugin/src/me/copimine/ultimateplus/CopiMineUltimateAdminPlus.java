@@ -3738,7 +3738,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private String officialTypeForStack(ItemStack stack){
         String type=first(electionItemString(stack,"type"),"");
-        if(type.equals("cik_seal")||type.equals("president_mandate"))return type;
+        if(type.equalsIgnoreCase("cik_seal")||type.equalsIgnoreCase("president_mandate"))return type.toLowerCase(Locale.ROOT);
         if(isPresidentMandate(stack))return"president_mandate";
         if(isElectionSeal(stack))return"cik_seal";
         return"";
@@ -3927,11 +3927,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private boolean hasCitizenVote(Player p,String eid)throws SQLException{return eid!=null&&(countRowsForPlayer("cmv731_votes",eid,p.getUniqueId().toString(),false,"voter_uuid","player_uuid")>0||countRowsForPlayer("votes",eid,p.getUniqueId().toString(),false,"voter_uuid","player_uuid")>0);}
     private long countRowsForPlayer(String table,String eid,String uuid,boolean unusedOnly,String... uuidCols)throws SQLException{if(!tableExists(table))return 0; List<String> c=cols(table); if(!c.contains("election_id"))return 0; List<String> wh=new ArrayList<>(); List<Object> args=new ArrayList<>(); args.add(eid); for(String col:uuidCols)if(c.contains(col.toLowerCase(Locale.ROOT))){wh.add(col+"=?"); args.add(uuid);} if(wh.isEmpty())return 0; String sql="SELECT COUNT(*) FROM "+table+" WHERE election_id=? AND ("+String.join(" OR ",wh)+")"; if(unusedOnly&&c.contains("used"))sql+=" AND COALESCE(used,0)=0"; return scalarLong(sql,args.toArray());}
     private String curatorRoleLabel(String role){return switch(role==null?"":role.toUpperCase(Locale.ROOT)){case"CIK_CHAIR"->"Председатель ЦИК";case"PRESIDENT_DELEGATE"->"Представитель президента";case"CURATOR"->"Член ЦИК";default->role==null||role.isBlank()?"Член ЦИК":role;};}
-    private boolean isBallotItem(ItemStack it){return "ballot".equals(electionItemString(it,"type"));}
+    private boolean isBallotItem(ItemStack it){return "ballot".equalsIgnoreCase(first(electionItemString(it,"type"),""));}
     private boolean isDelegatedElectionRuntimeItem(ItemStack it,String officialType){
         String type=first(electionItemString(it,"type"),"").toLowerCase(Locale.ROOT);
         String normalizedOfficialType=first(officialType,"").toLowerCase(Locale.ROOT);
-        return Set.of("ballot","cik_seal","president_mandate","application_book").contains(type)
+        return Set.of("ballot","cik_seal","president_mandate","application_book","temporary_application_book").contains(type)
             || Set.of("cik_seal","president_mandate").contains(normalizedOfficialType);
     }
 
@@ -4948,8 +4948,52 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     private boolean isApplicationBook(ItemStack it){if(it==null||it.getType()!=Material.WRITABLE_BOOK)return false; ItemMeta m=it.getItemMeta(); if(m==null)return false; String n=ChatColor.stripColor(m.getDisplayName()).toLowerCase(Locale.ROOT); return n.contains("заявка")&&n.contains("кандидат");}
     private NamespacedKey electionKey(String key){return new NamespacedKey("copimineelectionflow", key);}
+    /**
+     * ElectionCore uses its own plugin namespace and descriptive PDC names,
+     * while the old AdminPlus runtime used short aliases. Read both forms so
+     * the delegation guard sees current items before a legacy handler can
+     * cancel, mutate, or duplicate them.
+     */
+    private String electionCoreKeyName(String key){
+        if(key==null)return "";
+        return switch(key){
+            case "type" -> "item_type";
+            case "election" -> "election_id";
+            case "owner" -> "player_uuid";
+            case "selected_candidate" -> "confirmed_candidate_uuid";
+            case "selected_candidate_name" -> "confirmed_candidate_name";
+            case "station_hint" -> "station_id";
+            default -> key;
+        };
+    }
+    private NamespacedKey electionCoreKey(String key){return new NamespacedKey("copimineelectioncore", electionCoreKeyName(key));}
     private void tagElectionItem(ItemMeta meta,String type,String eid,String owner,String id){var d=meta.getPersistentDataContainer(); d.set(electionKey("type"),org.bukkit.persistence.PersistentDataType.STRING,type); d.set(electionKey("election"),org.bukkit.persistence.PersistentDataType.STRING,eid); d.set(electionKey("owner"),org.bukkit.persistence.PersistentDataType.STRING,owner); d.set(electionKey("id"),org.bukkit.persistence.PersistentDataType.STRING,id);}
-    private String electionItemString(ItemStack it,String key){if(it==null||it.getType()==Material.AIR)return null; ItemMeta meta=it.getItemMeta(); if(meta==null)return null; return meta.getPersistentDataContainer().get(electionKey(key),org.bukkit.persistence.PersistentDataType.STRING);}
+    private String electionItemString(ItemStack it,String key){
+        if(it==null||it.getType()==Material.AIR)return null;
+        ItemMeta meta=it.getItemMeta(); if(meta==null)return null;
+        PersistentDataContainer data=meta.getPersistentDataContainer();
+        String current=data.get(electionCoreKey(key),org.bukkit.persistence.PersistentDataType.STRING);
+        if(current!=null&&!current.isBlank())return "type".equals(key)?current.toLowerCase(Locale.ROOT):current;
+        // The legacy "id" alias is item-kind dependent in ElectionCore.
+        // Resolve the durable ID only after the type is known, preserving the
+        // exact entitlement identity used by restore/delegation.
+        if("id".equals(key)){
+            String type=data.get(electionCoreKey("type"),org.bukkit.persistence.PersistentDataType.STRING);
+            String idKey=switch(first(type,"").toUpperCase(Locale.ROOT)){
+                case "BALLOT" -> "ballot_id";
+                case "APPLICATION_BOOK","TEMPORARY_APPLICATION_BOOK" -> "application_id";
+                case "CIK_SEAL" -> "seal_id";
+                default -> "";
+            };
+            if(!idKey.isBlank()){
+                String id=data.get(new NamespacedKey("copimineelectioncore",idKey),org.bukkit.persistence.PersistentDataType.STRING);
+                if(id!=null&&!id.isBlank())return id;
+            }
+        }
+        String legacy=data.get(electionKey(key),org.bukkit.persistence.PersistentDataType.STRING);
+        if(legacy!=null&&!legacy.isBlank())return legacy;
+        return current;
+    }
     private void setElectionItemString(ItemMeta meta,String key,String value){if(meta!=null&&value!=null)meta.getPersistentDataContainer().set(electionKey(key),org.bukkit.persistence.PersistentDataType.STRING,value);}
     private boolean requireElectionItemOwner(Player p,ItemStack it,String expectedType){
         if(it==null||it.getType()==Material.AIR)return true;
@@ -5252,8 +5296,18 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(pending==null||pending.isEmpty())return;
         List<ItemStack> rest=new ArrayList<>();
         int restored=0;
+        int discardedNonRecoverable=0;
         for(ItemStack item:pending){
             if(item==null||item.getType()==Material.AIR)continue;
+            // AR is a ledger currency, not a recoverable custom item.  Older
+            // AdminPlus builds could leave a certified/legacy AR stack in
+            // this compatibility queue after a death; discard that stale
+            // entry instead of minting currency on respawn.  Current AR loss
+            // handling is owned by EconomyCore and never queues here.
+            if(economyCoreOwns(item)||isOfficialArItem(item)){
+                discardedNonRecoverable++;
+                continue;
+            }
             // A previous AdminPlus build could have left a delegated
             // election entitlement in this compatibility queue.  Do not
             // reissue it here: ElectionCore owns the durable queue and will
@@ -5266,6 +5320,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         if(rest.isEmpty())pendingOfficialReturns.remove(p.getUniqueId()); else pendingOfficialReturns.put(p.getUniqueId(),rest);
         p.updateInventory();
+        if(discardedNonRecoverable>0){
+            audit(p.getName(),"ULTRA7_NONRECOVERABLE_ITEM_DISCARDED","reason="+reason+" ar="+discardedNonRecoverable,true);
+        }
         if(restored>0){
             msg(p,"&aОфициальные предметы возвращены после "+reason+": &e"+restored);
             sound(p,"BLOCK_AMETHYST_BLOCK_CHIME",0.7f,1.2f);

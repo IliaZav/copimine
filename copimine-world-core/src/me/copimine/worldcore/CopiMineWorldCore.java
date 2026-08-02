@@ -13,6 +13,8 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -32,6 +34,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.io.File;
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -51,6 +55,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private final Set<UUID> warnedOutside = new LinkedHashSet<>();
     private final Map<UUID, String> blockedWorldWarnings = new HashMap<>();
     private final Map<String, BorderSnapshot> savedBorders = new HashMap<>();
+    /** Durable snapshot of vanilla borders replaced by this plugin. */
+    private File savedBordersFile;
     private final Set<UUID> trustedPluginTeleports = ConcurrentHashMap.newKeySet();
     private final Set<UUID> redirectInFlight = ConcurrentHashMap.newKeySet();
 
@@ -59,6 +65,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         saveDefaultConfig();
         reloadConfig();
         reloadLocalConfig();
+        savedBordersFile = new File(getDataFolder(), "border-snapshots.yml");
+        loadSavedBorders();
         PluginCommand command = getCommand("cmworld");
         if (command != null) {
             command.setExecutor(this);
@@ -608,6 +616,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             border.setSize(overworldLimit.radius() * 2.0D);
             applied++;
         }
+        persistSavedBorders();
         if (applied == 0) {
             return new OperationResult(false, "No configured overworld worlds are loaded.");
         }
@@ -622,6 +631,75 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             }
             entry.getValue().restore(world.getWorldBorder());
             savedBorders.remove(entry.getKey());
+        }
+        if (savedBorders.isEmpty() && savedBordersFile != null && savedBordersFile.isFile()) {
+            // The durable snapshot is no longer needed once every loaded
+            // world has been restored.  A crash before onDisable can leave
+            // this file behind; delete it only after the actual restore.
+            if (!savedBordersFile.delete() && savedBordersFile.isFile()) {
+                getLogger().warning("WorldCore could not remove restored border snapshot file.");
+            }
+        }
+    }
+
+    private void loadSavedBorders() {
+        if (savedBordersFile == null || !savedBordersFile.isFile()) {
+            return;
+        }
+        try {
+            FileConfiguration cfg = YamlConfiguration.loadConfiguration(savedBordersFile);
+            ConfigurationSection worlds = cfg.getConfigurationSection("worlds");
+            if (worlds == null) {
+                return;
+            }
+            for (String worldName : worlds.getKeys(false)) {
+                String path = "worlds." + worldName;
+                savedBorders.put(worldName, new BorderSnapshot(
+                        cfg.getDouble(path + ".center_x"),
+                        cfg.getDouble(path + ".center_z"),
+                        cfg.getDouble(path + ".size", 59_999_968D),
+                        cfg.getDouble(path + ".damage_buffer"),
+                        cfg.getDouble(path + ".damage_amount"),
+                        cfg.getInt(path + ".warning_distance"),
+                        cfg.getInt(path + ".warning_time")));
+            }
+        } catch (RuntimeException error) {
+            getLogger().warning("WorldCore could not read border snapshot: " + error.getMessage());
+        }
+    }
+
+    private void persistSavedBorders() {
+        if (savedBordersFile == null || savedBorders.isEmpty()) {
+            return;
+        }
+        try {
+            if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
+                throw new IOException("could not create plugin data directory");
+            }
+            YamlConfiguration cfg = new YamlConfiguration();
+            for (Map.Entry<String, BorderSnapshot> entry : savedBorders.entrySet()) {
+                String path = "worlds." + entry.getKey();
+                BorderSnapshot snap = entry.getValue();
+                cfg.set(path + ".center_x", snap.centerX());
+                cfg.set(path + ".center_z", snap.centerZ());
+                cfg.set(path + ".size", snap.size());
+                cfg.set(path + ".damage_buffer", snap.damageBuffer());
+                cfg.set(path + ".damage_amount", snap.damageAmount());
+                cfg.set(path + ".warning_distance", snap.warningDistance());
+                cfg.set(path + ".warning_time", snap.warningTime());
+            }
+            File tmp = new File(savedBordersFile.getParentFile(), savedBordersFile.getName() + ".tmp");
+            cfg.save(tmp);
+            if (!tmp.renameTo(savedBordersFile)) {
+                if (savedBordersFile.isFile() && !savedBordersFile.delete()) {
+                    throw new IOException("could not replace border snapshot");
+                }
+                if (!tmp.renameTo(savedBordersFile)) {
+                    throw new IOException("could not move border snapshot into place");
+                }
+            }
+        } catch (IOException | IllegalArgumentException error) {
+            getLogger().warning("WorldCore could not persist border snapshot: " + error.getMessage());
         }
     }
 
@@ -748,6 +826,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private void finishRedirect(Player player, WorldAccess access, String message, World target, Throwable preparationError) {
+        boolean retryScheduled = false;
         try {
             if (preparationError != null || player == null || !player.isOnline()) {
                 if (preparationError != null) {
@@ -766,7 +845,35 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 player.sendMessage(message);
             } else {
                 getLogger().warning("WorldCore could not redirect " + player.getName() + " from a closed world.");
+                // A protection plugin may cancel the first teleport event. A
+                // cancelled redirect must not silently leave the player in a
+                // closed world: retry once on the next tick at a freshly
+                // validated spawn location, then report failure explicitly.
+                retryScheduled = true;
+                Bukkit.getScheduler().runTask(this, () -> retryRedirectTeleport(player, target, message, safe));
             }
+        } finally {
+            if (player != null && !retryScheduled) {
+                redirectInFlight.remove(player.getUniqueId());
+            }
+        }
+    }
+
+    private void retryRedirectTeleport(Player player, World target, String message, Location firstTarget) {
+        try {
+            if (player == null || !player.isOnline()) {
+                return;
+            }
+            Location fallback = safeSpawn(target);
+            if (fallback == null) {
+                fallback = firstTarget;
+            }
+            if (fallback != null && player.teleport(fallback)) {
+                blockedWorldWarnings.remove(player.getUniqueId());
+                player.sendMessage(message);
+                return;
+            }
+            player.sendMessage(color("&cРќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРјРµСЃС‚РёС‚СЊ РІР°СЃ РёР· Р·Р°РєСЂС‹С‚РѕРіРѕ РјРёСЂР°.") );
         } finally {
             if (player != null) {
                 redirectInFlight.remove(player.getUniqueId());

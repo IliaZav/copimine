@@ -498,25 +498,56 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.shopAnchorGuardTask.cancel();
       }
 
-      if (this.dbExecutor != null) {
-         this.dbExecutor.shutdown();
-
-         try {
-            this.dbExecutor.awaitTermination(5L, TimeUnit.SECONDS);
-         } catch (InterruptedException var2) {
-            Thread.currentThread().interrupt();
-         }
-      }
-
+      // Drain the durable loss-journal writer before the database executor.
+      // After fsync its callback schedules reconciliation on dbExecutor; the
+      // reverse order would reject that callback and leave a shutdown-time
+      // race between a durable journal and a closed executor.
       if (this.donationJournalExecutor != null) {
          this.donationJournalExecutor.shutdown();
          try {
             if (!this.donationJournalExecutor.awaitTermination(3L, TimeUnit.SECONDS)) {
-               this.donationJournalExecutor.shutdownNow();
+               List<Runnable> dropped = this.donationJournalExecutor.shutdownNow();
+               if (!dropped.isEmpty()) {
+                  this.getLogger().warning("Artifact loss-journal writer dropped " + dropped.size() + " queued append(s); physical items were retained until their durability boundary.");
+               }
+               if (!this.donationJournalExecutor.awaitTermination(2L, TimeUnit.SECONDS)) {
+                  this.getLogger().warning("Artifact loss-journal writer is still running after forced shutdown; journal recovery remains durable before database close.");
+               }
             }
          } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            this.donationJournalExecutor.shutdownNow();
+            List<Runnable> dropped = this.donationJournalExecutor.shutdownNow();
+            if (!dropped.isEmpty()) {
+               this.getLogger().warning("Artifact loss-journal writer interrupted with " + dropped.size() + " queued append(s); physical items were retained until their durability boundary.");
+            }
+         }
+      }
+
+      if (this.dbExecutor != null) {
+         this.dbExecutor.shutdown();
+
+         try {
+            if (!this.dbExecutor.awaitTermination(5L, TimeUnit.SECONDS)) {
+               // A callback that is still using PostgreSQL must never outlive
+               // the pool close below.  Durable delivery/loss workflows keep
+               // their recovery row/journal before reaching this point, so
+               // cancelling the remaining best-effort tasks is safer than
+               // allowing them to race a closed pool during plugin disable.
+               this.getLogger().warning("Artifact database executor did not drain during shutdown; cancelling remaining tasks.");
+               List<Runnable> dropped = this.dbExecutor.shutdownNow();
+               if (!dropped.isEmpty()) {
+                  this.getLogger().warning("Artifact database executor dropped " + dropped.size() + " queued task(s); pending delivery/loss rows remain recovery-backed.");
+               }
+               if (!this.dbExecutor.awaitTermination(2L, TimeUnit.SECONDS)) {
+                  this.getLogger().warning("Artifact database executor is still running after forced shutdown.");
+               }
+            }
+         } catch (InterruptedException var2) {
+            Thread.currentThread().interrupt();
+            List<Runnable> dropped = this.dbExecutor.shutdownNow();
+            if (!dropped.isEmpty()) {
+               this.getLogger().warning("Artifact database executor interrupted with " + dropped.size() + " queued task(s); pending delivery/loss rows remain recovery-backed.");
+            }
          }
       }
 
@@ -1005,12 +1036,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.pgPool.release(var1);
       }
       this.loadTerminalInstanceCache();
+      // loadInstanceCache() is also used by /cmartifacts reload.  Preserve
+      // identities that are already durable in the loss journal even when
+      // their PostgreSQL status has not been reconciled yet; otherwise a
+      // stale dropped entity could be picked up during the restart window.
+      this.loadPendingDonationLossJournalIdentities();
    }
 
    private void loadTerminalInstanceCache() throws SQLException {
       Connection connection = this.pgPool.acquire();
       try (PreparedStatement statement = connection.prepareStatement(
-            "SELECT unique_item_id FROM artifact_item_instances WHERE status IN ('LOST_RECLAIMABLE','CONSUMED','REPLACED_AFTER_LOSS','DELETED_AS_INVALID')");
+           "SELECT unique_item_id FROM artifact_item_instances WHERE status IN ('LOST_RECLAIMABLE','CONSUMED','REPLACED_AFTER_LOSS','DELETED_AS_INVALID','DELIVERY_REVIEW')");
            ResultSet result = statement.executeQuery()) {
          while (result.next()) {
             String id = this.firstNonBlank(result.getString(1), "");
@@ -1764,11 +1800,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onInventoryMoveItem(InventoryMoveItemEvent var1) {
       OfficialDonationRef donation = this.rawDonationIdentity(var1.getItem());
       if (donation != null) {
-         // A hopper has no player UUID, so treat a donation item entering or
-         // leaving a block inventory as an unsafe foreign-storage path.  The
-         // owner can still keep the item in their own player inventory.
+         // A hopper has no player UUID.  Cancel the move for every official
+         // donation item, but do not journal it as a loss here: without an
+         // actor we cannot distinguish the owner from a foreign copy, and
+         // journaling would make an owner's legitimate item reclaimable just
+         // because a hopper touched it.  Foreign copies already present in a
+         // container are quarantined by the player click/open/sweep guards.
          var1.setCancelled(true);
-         this.quarantineForeignDonation(null, donation, "foreign-hopper-move");
          return;
       }
       String provisionalId = this.uniqueItemIdOf(var1.getItem());
@@ -1827,6 +1865,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (event == null || event.getPlayer() == null) {
          return;
       }
+      if (this.isProvisionalDonationItem(event.getItemInHand())) {
+         event.setCancelled(true);
+         event.getPlayer().updateInventory();
+         return;
+      }
       OfficialDonationRef ref = this.foreignDonationRef(event.getItemInHand(), event.getPlayer().getUniqueId());
       if (ref == null) {
          return;
@@ -1845,6 +1888,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
    public void onForeignDonationPickup(EntityPickupItemEvent event) {
       if (event == null || !(event.getEntity() instanceof Player player) || event.getItem() == null) {
+         return;
+      }
+      if (this.isProvisionalDonationItem(event.getItem().getItemStack())) {
+         event.setCancelled(true);
          return;
       }
       OfficialDonationRef terminal = this.rawDonationIdentity(event.getItem().getItemStack());
@@ -1880,6 +1927,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       if (this.isRepairLockedItem(event.getPlayer(), event.getItemDrop().getItemStack())) {
          event.setCancelled(true);
+         return;
+      }
+      if (this.isProvisionalDonationItem(event.getItemDrop().getItemStack())) {
+         event.setCancelled(true);
+         event.getPlayer().updateInventory();
          return;
       }
       OfficialDonationRef ref = this.foreignDonationRef(event.getItemDrop().getItemStack(), event.getPlayer().getUniqueId());
@@ -2225,9 +2277,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onPlayerItemBreak(PlayerItemBreakEvent var1) {
       CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getBrokenItem());
       if (var2 != null && var1.getPlayer().getUniqueId().equals(var2.ownerUuid())) {
-         // A durability break is terminal consumption, not a recoverable
-         // loss: journal it before DB work so the instance cannot mint a free
-         // replacement while still remaining auditable.
+         // A durability break is a recoverable loss. Journal it before any
+         // database work so the reclaim row is durable and the instance cannot
+         // mint a second replacement while the original is still present.
          if (!this.recordDonationLossOnce(var2, "break")) {
             this.getLogger().warning("Donation loss journal is unavailable during durability break handling.");
             return;
@@ -2240,6 +2292,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onDonationItemDespawn(ItemDespawnEvent var1) {
+      if (this.isProvisionalDonationItem(var1 == null || var1.getEntity() == null ? null : var1.getEntity().getItemStack())) {
+         // A provisional delivery is represented by a durable DELIVERING
+         // row. Keep its entity alive until recovery can prove the final
+         // state; vanilla despawn must not create an untracked loss path.
+         var1.setCancelled(true);
+         return;
+      }
       CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getEntity().getItemStack());
       if (var2 != null) {
          // Keep the entity alive until the bounded durable writer confirms
@@ -2266,6 +2325,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onDonationItemInsideBlock(EntityInsideBlockEvent event) {
       if (!(event.getEntity() instanceof Item item) || event.getBlock() == null
             || event.getBlock().getType() != Material.CACTUS) {
+         return;
+      }
+      if (this.isProvisionalDonationItem(item.getItemStack())) {
+         event.setCancelled(true);
          return;
       }
       OfficialDonationRef ref = this.officialDonationRef(item.getItemStack());
@@ -2329,6 +2392,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        // Other protection listeners should leave already-cancelled damage
        // alone; this handler only owns a real, uncancelled damage event.
       if (var1.getEntity() instanceof Item var2) {
+         if (this.isProvisionalDonationItem(var2.getItemStack())) {
+            var1.setCancelled(true);
+            return;
+         }
          CopiMineArtifacts.OfficialDonationRef var4 = this.officialDonationRef(var2.getItemStack());
          if (var4 != null && this.isPotentiallyDestructiveItemDamage(var1.getCause())) {
             // Treat every damage cause on a dropped official item as a loss.
@@ -3114,12 +3181,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       Path itemsPath = this.getDataFolder().toPath().resolve("items.yml");
       byte[] previousItemsConfig = null;
+      boolean catalogSyncAttempted = false;
       try {
          if (Files.exists(itemsPath)) {
             previousItemsConfig = Files.readAllBytes(itemsPath);
          }
          this.updateItemPriceInConfig(itemId, resolvedKind, price);
          this.loadCatalogFromConfig();
+         catalogSyncAttempted = true;
          this.syncCatalogToPostgres();
          this.audit(player.getName(), "set_price", itemId, "kind=" + resolvedKind + " price=" + price);
          player.sendMessage(
@@ -3133,6 +3202,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             try {
                this.writeAtomicBytes(itemsPath, previousItemsConfig);
                this.loadCatalogFromConfig();
+               // syncCatalogToPostgres() is transactional, but the following
+               // audit/notification can still fail after its commit.  Restore
+               // the database snapshot as well as the file/runtime catalog so
+               // /setprice is all-or-nothing across every source of truth.
+               if (catalogSyncAttempted) {
+                  try {
+                     this.syncCatalogToPostgres();
+                  } catch (Exception databaseRollbackError) {
+                     this.getLogger().log(Level.SEVERE, "Artifact setprice database rollback failed for " + itemId, databaseRollbackError);
+                  }
+               }
             } catch (Exception rollbackError) {
                this.getLogger().log(Level.SEVERE, "Artifact setprice rollback failed for " + itemId, rollbackError);
             }
@@ -8903,56 +8983,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private CopiMineArtifacts.OfficialDonationRef officialDonationRef(ItemStack var1) {
-      if (var1 != null && var1.getType() != Material.AIR && var1.hasItemMeta()) {
-         ItemMeta var2 = var1.getItemMeta();
-         if (var2 == null) {
-            return null;
-         } else {
-            PersistentDataContainer var3 = var2.getPersistentDataContainer();
-            String var4 = this.firstNonBlank((String)var3.get(this.keyItemType, PersistentDataType.STRING), "");
-            String var5 = this.firstNonBlank((String)var3.get(this.keySource, PersistentDataType.STRING), "");
-            if ("DONATION_SHOP_ITEM".equalsIgnoreCase(var4) && "DONATION_SHOP".equalsIgnoreCase(var5)) {
-               String var6 = this.firstNonBlank((String)var3.get(this.keyItemId, PersistentDataType.STRING), "").toLowerCase(Locale.ROOT);
-               String var7 = this.firstNonBlank((String)var3.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
-               String var8 = this.firstNonBlank((String)var3.get(this.keyOwnerUuid, PersistentDataType.STRING), "");
-               if (!var6.isBlank() && !var7.isBlank() && !var8.isBlank() && this.isDonationCatalogItem(var6)) {
-               CopiMineArtifacts.OfficialInstanceBinding var9 = this.instanceBindings.get(var7);
-               if (this.provisionalDonationInstanceIds.contains(var7)) {
-                  // Delivery rows are deliberately fail-closed until the
-                  // inventory write and DB transition are committed.
-                  return null;
-               }
-               boolean cachedBindingMatches = var9 != null
-                     && var6.equalsIgnoreCase(var9.itemId())
-                     && var8.equalsIgnoreCase(var9.ownerUuid())
-                     && var6.equalsIgnoreCase(this.firstNonBlank(this.instanceToItem.get(var7), ""));
-               // Loss events can arrive while the plugin is still rebuilding
-               // its in-memory cache after a restart. The PDC carries the
-               // durable identity; the journal's DB lookup remains the final
-               // owner/item/status validation before anything is reclaimable.
-               if (var9 != null && !cachedBindingMatches) {
-                  return null;
-               }
-               UUID var10;
-               try {
-                  var10 = UUID.fromString(var8);
-               } catch (IllegalArgumentException var12) {
-                  return null;
-               }
-
-               return new CopiMineArtifacts.OfficialDonationRef(
-                  var7, var6, var10, this.firstNonBlank((String)var3.get(this.keyPurchaseId, PersistentDataType.STRING), "")
-               );
-               } else {
-                  return null;
-               }
-            } else {
-               return null;
-            }
-         }
-      } else {
-         return null;
-      }
+      // Keep one authenticated identity parser for both active gameplay and
+      // loss events.  In particular, a retired/disabled catalog row must not
+      // make an already purchased physical donation invisible to death,
+      // cactus, creative or foreign-pickup handling.
+      return this.rawDonationIdentity(var1);
    }
 
    /**
@@ -8975,7 +9010,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       String uniqueId = this.firstNonBlank(pdc.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
       String ownerText = this.firstNonBlank(pdc.get(this.keyOwnerUuid, PersistentDataType.STRING), "");
       if (!"DONATION_SHOP_ITEM".equalsIgnoreCase(itemType) || !"DONATION_SHOP".equalsIgnoreCase(source)
-            || itemId.isBlank() || uniqueId.isBlank() || ownerText.isBlank() || !this.isDonationCatalogItem(itemId)) {
+            || itemId.isBlank() || uniqueId.isBlank() || ownerText.isBlank()) {
+         return null;
+      }
+      // The PDC source/type pair is only a hint.  The item id must still be a
+      // catalog entry owned by the donation shop; AR catalog entries and
+      // arbitrary NBT-tagged stacks can never enter the reclaim path.
+      if (!this.isDonationCatalogItem(itemId)) {
          return null;
       }
       UUID owner;
@@ -8996,6 +9037,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             || !owner.toString().equalsIgnoreCase(binding.ownerUuid())) {
          return null;
       }
+      // Delivery/reclaim writes are deliberately fail-closed until their
+      // physical inventory write and database transition are complete.  A
+      // provisional stack must not be consumed as an active item or journaled
+      // as a new loss while recovery is still deciding its final state.
+      if (this.provisionalDonationInstanceIds.contains(uniqueId)) {
+         return null;
+      }
+      // Catalog entries can be disabled/retired after a purchase.  The
+      // database binding (or terminal journal identity) remains the source
+      // of truth for ownership and loss quarantine; do not let a removed
+      // config row turn an old physical donation copy into an unguarded item.
       return new OfficialDonationRef(
             uniqueId,
             itemId,
@@ -9133,6 +9185,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             stack.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING), "");
    }
 
+   private boolean isProvisionalDonationItem(ItemStack stack) {
+      String uniqueId = this.uniqueItemIdOf(stack);
+      return !uniqueId.isBlank() && this.provisionalDonationInstanceIds.contains(uniqueId);
+   }
+
    private boolean isRepairLockedItem(Player player, ItemStack stack) {
       if (player == null || stack == null) {
          return false;
@@ -9196,7 +9253,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private boolean isOfficialDonationItem(ItemStack stack) {
-      return this.officialDonationRef(stack) != null || this.rawDonationIdentity(stack) != null;
+      return this.isProvisionalDonationItem(stack)
+            || this.officialDonationRef(stack) != null
+            || this.rawDonationIdentity(stack) != null;
    }
 
    private boolean hasBlockingDonationInstance(UUID var1, String var2) throws SQLException {
@@ -9589,7 +9648,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   /** A durability break consumes the physical instance; it must not mint a fresh full item. */
+   /**
+    * Legacy terminal-consumption helper retained for migrations and explicit
+    * administrative cleanup.  Normal destruction, including durability
+    * breaks, is routed through LOST_RECLAIMABLE instead so the owner can
+    * reclaim the paid donation.
+    */
    private void markDonationInstancesConsumed(UUID owner, Map<String, String> instances, String reason) throws SQLException {
       if (owner == null || instances == null || instances.isEmpty()) {
          return;
@@ -9799,12 +9863,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             String var4 = var3.toUpperCase(Locale.ROOT);
             if (Set.of("LOST_RECLAIMABLE", "REPLACED_AFTER_LOSS", "CONSUMED", "DELETED_AS_INVALID").contains(var4)) {
                return true;
-            } else if ("BREAK".equalsIgnoreCase(var1.reason())
-                  || "DURABILITY_BREAK".equalsIgnoreCase(var1.reason())
-                  || "DURABILITY-BREAK".equalsIgnoreCase(var1.reason())) {
-               this.markDonationInstancesConsumed(var2, Map.of(var1.uniqueItemId(), var1.itemId()), var1.reason());
-               return true;
             } else {
+               // Every physical destruction path is reclaimable.  In
+               // particular BREAK/DURABILITY_BREAK used to be marked
+               // CONSUMED, which made a paid custom donation disappear
+               // permanently after its durability reached zero.  AR and
+               // narcotics never reach this method because officialDonationRef
+               // authenticates only donation-instance identities.
                this.markDonationInstancesLost(var2, Map.of(var1.uniqueItemId(), var1.itemId()), var1.reason());
                return true;
             }
@@ -13857,6 +13922,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       private final Deque<Connection> idle = new ArrayDeque<>();
       private final int max;
       private int total;
+      private boolean closed;
 
       PgPool(CopiMineArtifacts.PgSettings var1, int var2) {
          this.settings = var1;
@@ -13864,6 +13930,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
 
       synchronized Connection acquire() throws SQLException {
+         if (this.closed) {
+            throw new SQLException("Artifact PostgreSQL pool is closed.");
+         }
          long deadline = System.currentTimeMillis() + 1500L;
 
          while (true) {
@@ -13906,6 +13975,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       synchronized void release(Connection var1) {
          if (var1 != null) {
+            if (this.closed) {
+               this.safeClose(var1);
+               this.total = Math.max(0, this.total - 1);
+               this.notifyAll();
+               return;
+            }
             try {
                if (this.usable(var1)) {
                   this.idle.push(var1);
@@ -13923,6 +13998,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
 
       synchronized void close() {
+         if (this.closed) {
+            return;
+         }
+         this.closed = true;
          for (Connection var2 : this.idle) {
             this.safeClose(var2);
          }

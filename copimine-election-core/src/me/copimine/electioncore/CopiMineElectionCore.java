@@ -212,6 +212,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private NamespacedKey stationIdKey;
     private NamespacedKey applicationIdKey;
     private NamespacedKey ballotIdKey;
+    private NamespacedKey confirmedCandidateUuidKey;
+    private NamespacedKey confirmedCandidateNameKey;
     private NamespacedKey roundKey;
     private NamespacedKey sealIdKey;
     private NamespacedKey playerUuidKey;
@@ -243,6 +245,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         stationIdKey = new NamespacedKey(this, "station_id");
         applicationIdKey = new NamespacedKey(this, "application_id");
         ballotIdKey = new NamespacedKey(this, "ballot_id");
+        confirmedCandidateUuidKey = new NamespacedKey(this, "confirmed_candidate_uuid");
+        confirmedCandidateNameKey = new NamespacedKey(this, "confirmed_candidate_name");
         roundKey = new NamespacedKey(this, "round_no");
         sealIdKey = new NamespacedKey(this, "seal_id");
         playerUuidKey = new NamespacedKey(this, "player_uuid");
@@ -1623,8 +1627,23 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (action.startsWith("apply:vote:confirm:")) {
             String[] parts = action.split(":");
             if (parts.length >= 5) {
-                confirmBallotChoice(player, parts[3], parts[4]);
+                String ballotId = parts[3];
+                String candidateUuid = parts[4];
+                UUID voterUuid = player.getUniqueId();
                 player.closeInventory();
+                player.sendActionBar(color("&7Записываю выбор..."));
+                runAsync(() -> {
+                    try {
+                        confirmBallotChoice(player, voterUuid, ballotId, candidateUuid);
+                    } catch (Exception error) {
+                        getLogger().log(Level.WARNING, "ballot confirmation failed", error);
+                        runSync(() -> {
+                            if (player.isOnline()) {
+                                sendRpActionError(player, error, "&cНе удалось подтвердить бюллетень.");
+                            }
+                        });
+                    }
+                });
             }
             return;
         }
@@ -4560,7 +4579,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (electionId.isBlank()) {
             throw new IllegalStateException("Сначала откройте новую RP-кампанию в разделе «Кампания».");
         }
-        Map<String, Object> campaign = queryOne("SELECT current_stage,status FROM elections WHERE id=? AND active=1", electionId);
+        Map<String, Object> campaign = queryOne("SELECT current_stage,status FROM elections WHERE id=? AND active=1 AND LOWER(COALESCE(notes,''))='rp-two-stage'", electionId);
         ElectionStage campaignStage = ElectionStage.safeValue(campaign == null ? "" : string(campaign.get("current_stage")));
         if (campaignStage == ElectionStage.PRESIDENT_TERM || campaignStage == ElectionStage.FINISHED) {
             throw new IllegalStateException("Нельзя добавлять блок в уже завершённую кампанию.");
@@ -5680,9 +5699,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    private void confirmBallotChoice(Player player, String ballotId, String candidateUuid) throws Exception {
-        if (candidateUuid.equals(player.getUniqueId().toString())) {
-            player.sendMessage(color("&cКандидат не может голосовать сам за себя."));
+    private void confirmBallotChoice(Player player, UUID voterUuid, String ballotId, String candidateUuid) throws Exception {
+        // The old synchronous guard was candidateUuid.equals(player.getUniqueId().toString());
+        // voterUuid is captured on the Bukkit thread before this async task.
+        if (voterUuid == null || candidateUuid.equals(voterUuid.toString())) {
+            runSync(() -> {
+                if (player.isOnline()) {
+                    player.sendMessage(color("&cКандидат не может голосовать сам за себя."));
+                }
+            });
             return;
         }
         long t = now();
@@ -5698,7 +5723,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (ballot == null) {
                 throw new IllegalStateException("Бюллетень не найден.");
             }
-            if (!Objects.equals(string(ballot.get("player_uuid")), player.getUniqueId().toString())) {
+            if (!Objects.equals(string(ballot.get("player_uuid")), voterUuid.toString())) {
                 throw new IllegalStateException("Чужой бюллетень использовать нельзя.");
             }
             if (!context.electionId().equals(string(ballot.get("election_id"))) || context.stage() != ElectionStage.VOTING) {
@@ -5726,16 +5751,25 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     || !"APPROVED".equalsIgnoreCase(string(candidate.get("application_status")))) {
                 throw new IllegalStateException("Кандидат больше недоступен в текущем туре.");
             }
-            update(connection, "UPDATE ballots SET status='CONFIRMED',confirmed_candidate_uuid=?,confirmed_candidate_name=?,confirmed_at=? WHERE id=?",
-                    candidateUuid, string(candidate.get("candidate_name")), t, ballotId);
+            // Keep the choice in the player's sealed physical ballot, not in
+            // the database row that still contains player_uuid.  Persisting
+            // both values here made a simple SELECT on ballots reveal who
+            // voted for which candidate before the ballot reached the station.
+            update(connection, "UPDATE ballots SET status='CONFIRMED',confirmed_candidate_uuid='',confirmed_candidate_name='',confirmed_at=? WHERE id=?",
+                    t, ballotId);
             electionIdRef.set(context.electionId());
             stationIdRef.set(string(ballot.get("station_id")));
             candidateNameRef.set(string(candidate.get("candidate_name")));
             roundRef.set(liveRound);
             return null;
         });
-        replacePlayerBallot(player, ballotId, electionIdRef.get(), stationIdRef.get(), roundRef.get(), candidateUuid, candidateNameRef.get());
-        player.sendMessage(color("&aГолос подтверждён. Теперь сдай бюллетень через свой участок."));
+        runSync(() -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            replacePlayerBallot(player, ballotId, electionIdRef.get(), stationIdRef.get(), roundRef.get(), candidateUuid, candidateNameRef.get());
+            player.sendMessage(color("&aГолос подтверждён. Теперь сдай бюллетень через свой участок."));
+        });
     }
 
     private void confirmDirectVoteDatabase(UUID voterUuid, String voterName, String stationId, String candidateUuid, AtomicReference<String> candidateNameRef) throws Exception {
@@ -5831,8 +5865,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         String ballotId = readString(item, ballotIdKey);
         String electionId = readString(item, electionIdKey);
         String stationId = readString(item, stationIdKey);
+        // The selected candidate lives only in the player's sealed item.  Do
+        // not read it back from ballots: that row still carries the issuer
+        // UUID while the ballot is in transit and would reintroduce a
+        // voter-to-choice correlation for database readers.
+        String sealedCandidateUuid = readString(item, confirmedCandidateUuidKey);
         int round = intValue(readString(item, roundKey));
-        if (ballotId.isBlank() || electionId.isBlank() || stationId.isBlank()) {
+        if (ballotId.isBlank() || electionId.isBlank() || stationId.isBlank() || sealedCandidateUuid.isBlank()) {
             player.sendMessage(color("&cБюллетень повреждён."));
             return;
         }
@@ -5844,7 +5883,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         tx(connection -> {
             ElectionContext context = requireActiveElectionContext(connection);
             Map<String, Object> lockedBallot = queryOne(connection,
-                    "SELECT status,election_id,round_no,player_uuid,station_id,confirmed_candidate_uuid,confirmed_candidate_name FROM ballots WHERE id=? FOR UPDATE",
+                    "SELECT status,election_id,round_no,player_uuid,station_id FROM ballots WHERE id=? FOR UPDATE",
                     ballotId);
             if (lockedBallot == null) {
                 throw new IllegalStateException("Бюллетень не найден.");
@@ -5873,7 +5912,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
             Map<String, Object> candidate = queryOne(connection,
                     "SELECT candidate_name FROM round_candidates WHERE election_id=? AND round_no=? AND candidate_uuid=? AND active=1 LIMIT 1",
-                    context.electionId(), liveRound, string(lockedBallot.get("confirmed_candidate_uuid")));
+                    context.electionId(), liveRound, sealedCandidateUuid);
             if (candidate == null) {
                 throw new IllegalStateException("Голосование уже закрыто. Этот бюллетень больше нельзя сдать.");
             }
@@ -5884,7 +5923,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "vote_" + UUID.randomUUID().toString().replace("-", ""), context.electionId(), liveRound,
                     "anonymous_ballot:" + UUID.randomUUID().toString().replace("-", ""),
                     "anonymous_voter:" + UUID.randomUUID().toString().replace("-", ""), "",
-                    string(lockedBallot.get("confirmed_candidate_uuid")), string(candidate.get("candidate_name")), clickedStationId, t);
+                    sealedCandidateUuid, string(candidate.get("candidate_name")), clickedStationId, t);
             // A ballot is the player's private workspace while it is being
             // filled.  Once deposited, retain only the operational station
             // and status on the ballot row; the vote ledger above remains the
@@ -6942,8 +6981,20 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return "";
         }
         String canonicalType = type.toUpperCase(Locale.ROOT);
-        if ("CIK_SEAL".equals(canonicalType)) {
-            return canonicalType + ":" + first(readString(stack, sealIdKey), readLegacyElectionId(stack));
+        // A type-only key is not enough for ballots/books: a player may have
+        // one item from each round (or two legacy items during migration).
+        // If the queue collapses those entries into BALLOT/APPLICATION_BOOK,
+        // one physical entitlement is silently lost after death.  Prefer the
+        // durable item id for every uniquely issued item and keep the old
+        // type-only fallback for malformed legacy stacks.
+        String itemId = switch (canonicalType) {
+            case "CIK_SEAL" -> first(readString(stack, sealIdKey), readLegacyElectionId(stack));
+            case "BALLOT" -> first(readString(stack, ballotIdKey), readLegacyElectionId(stack));
+            case "APPLICATION_BOOK" -> first(readString(stack, applicationIdKey), readLegacyElectionId(stack));
+            default -> "";
+        };
+        if (!itemId.isBlank()) {
+            return canonicalType + ":" + itemId;
         }
         return canonicalType;
     }
@@ -6956,8 +7007,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (logicalKey.isBlank()) {
             return;
         }
+        // Replace the exact logical entry, rather than putIfAbsent.  Bukkit's
+        // addItem can partially accept a stack; the remaining amount must
+        // replace the old queued amount or the next retry would re-deliver the
+        // pre-partial stack and duplicate items.
         officialRestore.computeIfAbsent(playerUuid, key -> new ConcurrentHashMap<>())
-                .putIfAbsent(logicalKey, stack.clone());
+                .put(logicalKey, stack.clone());
         scheduleOfficialRestoreQueueSave();
     }
 
@@ -7005,7 +7060,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 if (stack == null || stack.getType().isAir() || officialRestoreKey(stack).isBlank()) {
                     continue;
                 }
-                queued.putIfAbsent(logicalKey, stack.clone());
+                // Re-key old config entries written by pre-id queue releases.
+                // The serialized section key was type-only (BALLOT, etc.),
+                // while the current queue uses the physical item's durable id.
+                // Trust the stack metadata, never the stale YAML key.
+                queued.putIfAbsent(officialRestoreKey(stack), stack.clone());
             }
             if (queued.isEmpty()) {
                 officialRestore.remove(playerUuid);
@@ -7265,7 +7324,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     private void replacePlayerBallot(Player player, String ballotId, String electionId, String stationId, int round, String candidateUuid, String candidateName) {
         removeBallotFromInventory(player, ballotId);
-        player.getInventory().addItem(createBallotItem(ballotId, electionId, stationId, round, player.getUniqueId().toString(), player.getName(), true, candidateUuid, candidateName));
+        // Confirmation updates the durable ballot row before this synchronous
+        // inventory replacement.  A full inventory must not turn that state
+        // into a missing physical ballot: use the same exact-item queue as
+        // every other official entitlement and retry only the leftovers.
+        addOrQueueOfficialItem(player, createBallotItem(ballotId, electionId, stationId, round,
+                player.getUniqueId().toString(), player.getName(), true, candidateUuid, candidateName));
     }
 
     private boolean hasOfficialItem(Player player, String itemType, String itemId) {
@@ -9314,8 +9378,8 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         pdc.set(playerUuidKey, PersistentDataType.STRING, playerUuid);
         pdc.set(roundKey, PersistentDataType.STRING, Integer.toString(round));
         if (confirmed) {
-            pdc.set(new NamespacedKey(this, "confirmed_candidate_uuid"), PersistentDataType.STRING, candidateUuid);
-            pdc.set(new NamespacedKey(this, "confirmed_candidate_name"), PersistentDataType.STRING, candidateName);
+            pdc.set(confirmedCandidateUuidKey, PersistentDataType.STRING, candidateUuid);
+            pdc.set(confirmedCandidateNameKey, PersistentDataType.STRING, candidateName);
         }
         stack.setItemMeta(meta);
         return stack;
@@ -9489,7 +9553,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private boolean isConfirmedBallot(ItemStack stack) {
-        return isBallot(stack) && !readString(stack, new NamespacedKey(this, "confirmed_candidate_uuid")).isBlank();
+        return isBallot(stack) && !readString(stack, confirmedCandidateUuidKey).isBlank();
     }
 
     private String readString(ItemStack stack, NamespacedKey key) {

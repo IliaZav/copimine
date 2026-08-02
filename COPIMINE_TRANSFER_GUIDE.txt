@@ -24,3 +24,14 @@ accounts and whitelist during a normal update. For a clean gameplay test use
 launch, read `FIRST_RUN_ADMIN_GUIDE.md`, check `/api/health`, verify the
 startup-readiness panel and run the donation recovery matrix (death, void,
 cactus, explosion, creative deletion, foreign pickup and restart).
+
+## Project readiness percentage
+
+The readiness percentage shown by the release panel is a release-gate summary,
+not a claim that every possible player interaction has been exhaustively
+simulated. It is calculated from the required startup, database, artifact,
+transport, plugin and configuration checks: green required checks contribute to
+the percentage, while a failed or blocked required check keeps the release from
+being ready. Treat `100%` as permission to continue with the documented live
+smoke tests, not as permission to skip the backup, rollback, gameplay and
+donation-recovery checks above.

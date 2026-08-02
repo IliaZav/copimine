@@ -69,7 +69,7 @@ public final class NarcoticsDatabase {
     private final Object brewingJournalLock = new Object();
     private Path brewingJournal;
 
-    public record PendingRefund(String id, String playerUuid, String narcoticId, int amount, String sourceInstanceId) {}
+    public record PendingRefund(String id, String playerUuid, String narcoticId, int amount) {}
 
     /**
      * Durable two-phase marker for a physical narcotic consumption.
@@ -497,11 +497,7 @@ public final class NarcoticsDatabase {
             return CompletableFuture.failedFuture(new IllegalStateException("Narcotics reset is already in progress."));
         }
         long resetGeneration = writeGeneration.incrementAndGet();
-        // A confirmed administrative reset intentionally invalidates local
-        // write-ahead rows as well as PostgreSQL rows; otherwise a journal
-        // replay after restart could resurrect the state the reset removed.
         clearBrewingJournal();
-        clearRefundJournal();
         CompletableFuture<Void> reset = runAsyncInternal(() -> tx(connection -> {
             for (String sql : List.of(
                     "DELETE FROM narcotics_brewing_states",
@@ -523,83 +519,39 @@ public final class NarcoticsDatabase {
         return reset;
     }
 
-    private void clearRefundJournal() {
-        synchronized (refundJournalLock) {
-            if (refundJournal == null) {
-                return;
-            }
-            try {
-                Files.deleteIfExists(refundJournal);
-            } catch (Exception error) {
-                plugin.getLogger().log(java.util.logging.Level.WARNING,
-                        "Unable to clear narcotics refund journal during reset", error);
-            }
-        }
-    }
-
     public CompletableFuture<Void> queuePendingRefund(UUID playerUuid, String narcoticId, int amount) {
-        return queuePendingRefund(playerUuid, narcoticId, amount, "");
-    }
-
-    /**
-     * Queue a refund for one physical instance.  sourceInstanceId is optional
-     * for cauldron ingredients, but when present it is unique per issued
-     * narcotic and makes duplicate Paper removal callbacks idempotent.
-     */
-    public CompletableFuture<Void> queuePendingRefund(UUID playerUuid, String narcoticId, int amount,
-                                                       String sourceInstanceId) {
-        if (playerUuid == null || narcoticId == null || narcoticId.isBlank() || amount <= 0) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid narcotics refund."));
+        if (playerUuid == null || narcoticId == null || narcoticId.isBlank() || amount <= 0
+                || !narcoticId.startsWith("INGREDIENT:")) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "Only failed cauldron ingredients may be queued for compensation."));
         }
-        if (resetBarrier.getAcquire()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("Narcotics reset is in progress."));
-        }
-        String source = sourceInstanceId == null ? "" : sourceInstanceId.trim();
         String refundId = UUID.randomUUID().toString();
-        // Write-ahead first.  A loss event may be followed by Paper removing an
-        // entity before PostgreSQL acknowledges the insert; the journal is the
-        // durable source of truth for that gap and is replayed transactionally
-        // on startup/next recovery pass.
-        try {
-            appendRefundJournal(refundId, playerUuid, narcoticId, amount, source);
-        } catch (Exception journalError) {
-            plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "Unable to persist narcotics refund journal", journalError);
-            return CompletableFuture.failedFuture(journalError);
-        }
         CompletableFuture<Void> persisted = runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,source_instance_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING")) {
+                    "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")) {
                 long now = Instant.now().getEpochSecond();
                 statement.setString(1, refundId);
                 statement.setString(2, playerUuid.toString());
                 statement.setString(3, narcoticId);
                 statement.setInt(4, amount);
-                statement.setString(5, source);
-                statement.setString(6, "PENDING");
+                statement.setString(5, "PENDING");
+                statement.setLong(6, now);
                 statement.setLong(7, now);
-                statement.setLong(8, now);
                 statement.executeUpdate();
             }
             return null;
         }));
         persisted.whenComplete((ignored, error) -> {
             if (error != null) {
-                plugin.getLogger().log(java.util.logging.Level.WARNING,
-                        "Narcotics refund DB insert deferred; durable journal retained", error);
-                flushPendingRefundJournal();
+                try {
+                    appendRefundJournal(refundId, playerUuid, narcoticId, amount);
+                } catch (Exception journalError) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                            "Unable to persist narcotics refund journal", journalError);
+                }
             }
         });
-        // Once the journal append succeeded, the physical item is safe to
-        // quarantine even if PostgreSQL is temporarily down.  Callers should
-        // not keep a second physical copy based on a transient DB exception;
-        // replay will materialize the pending row later.
-        return persisted.handle((ignored, error) -> null);
-    }
-
-    /** Retry importing the durable refund journal without requiring a restart. */
-    public CompletableFuture<Void> flushPendingRefundJournal() {
-        return runAsync(this::replayRefundJournal);
+        return persisted;
     }
 
     public CompletableFuture<List<PendingRefund>> reservePendingRefunds(UUID playerUuid, int limit) {
@@ -618,12 +570,12 @@ public final class NarcoticsDatabase {
                 reset.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement(
-                        "SELECT id,player_uuid,narcotic_id,amount,source_instance_id FROM narcotics_pending_refunds WHERE player_uuid=? AND status='PENDING' ORDER BY created_at ASC LIMIT ? FOR UPDATE")) {
+                        "SELECT id,player_uuid,narcotic_id,amount FROM narcotics_pending_refunds WHERE player_uuid=? AND status='PENDING' ORDER BY created_at ASC LIMIT ? FOR UPDATE")) {
                 statement.setString(1, playerUuid.toString());
                 statement.setInt(2, Math.max(1, Math.min(limit, 32)));
                 try (ResultSet rs = statement.executeQuery()) {
                     while (rs.next()) {
-                        result.add(new PendingRefund(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getString(5)));
+                        result.add(new PendingRefund(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)));
                         ids.add(rs.getString(1));
                     }
                 }
@@ -801,13 +753,11 @@ public final class NarcoticsDatabase {
                   player_uuid TEXT NOT NULL,
                   narcotic_id TEXT NOT NULL,
                   amount INTEGER NOT NULL,
-                  source_instance_id TEXT NOT NULL DEFAULT '',
                   status TEXT NOT NULL DEFAULT 'PENDING',
                   created_at BIGINT NOT NULL DEFAULT 0,
                   updated_at BIGINT NOT NULL DEFAULT 0
                 )
                 """);
-        sql.add("ALTER TABLE narcotics_pending_refunds ADD COLUMN IF NOT EXISTS source_instance_id TEXT NOT NULL DEFAULT ''");
         sql.add("""
                 CREATE TABLE IF NOT EXISTS narcotics_consumption_reservations (
                   instance_id TEXT PRIMARY KEY,
@@ -825,7 +775,6 @@ public final class NarcoticsDatabase {
         sql.add("ALTER TABLE narcotics_consumption_reservations ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_consumption_reservations_player ON narcotics_consumption_reservations(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_refunds_player ON narcotics_pending_refunds(player_uuid,status,created_at)");
-        sql.add("CREATE UNIQUE INDEX IF NOT EXISTS uq_narcotics_pending_refund_source ON narcotics_pending_refunds(player_uuid,source_instance_id) WHERE source_instance_id <> ''");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_brewing_updated ON narcotics_brewing_states(updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_admin_audit_created ON narcotics_admin_audit(created_at)");
         return sql;
@@ -1261,15 +1210,12 @@ public final class NarcoticsDatabase {
         }
     }
 
-    private void appendRefundJournal(String id, UUID playerUuid, String narcoticId, int amount,
-                                     String sourceInstanceId) throws Exception {
+    private void appendRefundJournal(String id, UUID playerUuid, String narcoticId, int amount) throws Exception {
         if (refundJournal == null) {
             throw new IllegalStateException("Refund journal is not initialized.");
         }
         String line = id + "\t" + playerUuid + "\t" + java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(narcoticId.getBytes(StandardCharsets.UTF_8)) + "\t" + amount + "\t"
-                + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
-                        (sourceInstanceId == null ? "" : sourceInstanceId).getBytes(StandardCharsets.UTF_8))
+                .encodeToString(narcoticId.getBytes(StandardCharsets.UTF_8)) + "\t" + amount
                 + System.lineSeparator();
         synchronized (refundJournalLock) {
             Files.writeString(refundJournal, line, StandardCharsets.UTF_8,
@@ -1396,7 +1342,7 @@ public final class NarcoticsDatabase {
             List<String> remaining = new ArrayList<>();
             for (String line : pending) {
                 String[] fields = line.split("\\t", -1);
-                if (fields.length != 4 && fields.length != 5) {
+                if (fields.length != 4) {
                     remaining.add(line);
                     plugin.getLogger().warning("Keeping malformed narcotics refund journal row for manual recovery.");
                     continue;
@@ -1405,21 +1351,17 @@ public final class NarcoticsDatabase {
                     UUID playerUuid = UUID.fromString(fields[1]);
                     String narcoticId = new String(java.util.Base64.getUrlDecoder().decode(fields[2]), StandardCharsets.UTF_8);
                     int amount = Integer.parseInt(fields[3].trim());
-                    String sourceInstanceId = fields.length == 5 && !fields[4].isBlank()
-                            ? new String(java.util.Base64.getUrlDecoder().decode(fields[4]), StandardCharsets.UTF_8)
-                            : "";
                     tx(connection -> {
                         try (PreparedStatement statement = connection.prepareStatement(
-                                "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,source_instance_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING")) {
+                                "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT (id) DO NOTHING")) {
                             long now = Instant.now().getEpochSecond();
                             statement.setString(1, fields[0]);
                             statement.setString(2, playerUuid.toString());
                             statement.setString(3, narcoticId);
                             statement.setInt(4, amount);
-                            statement.setString(5, sourceInstanceId);
-                            statement.setString(6, "PENDING");
+                            statement.setString(5, "PENDING");
+                            statement.setLong(6, now);
                             statement.setLong(7, now);
-                            statement.setLong(8, now);
                             statement.executeUpdate();
                         }
                         return null;

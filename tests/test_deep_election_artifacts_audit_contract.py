@@ -160,8 +160,10 @@ def test_foreign_donation_pickup_is_quarantined_before_storage_or_duplication():
     assert "onDonationInventoryOpen" in ARTIFACTS
     assert "quarantineForeignDonation" in ARTIFACTS
     assert "recordDonationLossOnce(ref, reason)" in ARTIFACTS
-    assert "removeDonationInstanceFromOnlineInventories(ref.uniqueItemId())" in ARTIFACTS
-    assert "removeUniqueItemFromInventory(var1.getSource(), donation.uniqueItemId())" in ARTIFACTS
+    # Removal is intentionally deferred until the durable loss-journal writer
+    # completes; it then scrubs every online inventory/entity copy by ID.
+    assert "removeDonationInstanceFromOnlineInventories(uniqueId)" in ARTIFACTS
+    assert "removeUniqueItemFromInventory" in ARTIFACTS
     assert "event.getClick() == ClickType.NUMBER_KEY" in ARTIFACTS
     assert "event.getClick() == ClickType.SWAP_OFFHAND" in ARTIFACTS
     assert "getItem(event.getHotbarButton())" in ARTIFACTS
@@ -169,8 +171,10 @@ def test_foreign_donation_pickup_is_quarantined_before_storage_or_duplication():
     # drop handlers, so a DB/journal failure leaves the only copy intact.
     pickup = ARTIFACTS[ARTIFACTS.index("public void onForeignDonationPickup"):ARTIFACTS.index("public void onForeignDonationDrop")]
     drop = ARTIFACTS[ARTIFACTS.index("public void onForeignDonationDrop"):ARTIFACTS.index("public void onDonationInventoryOpen")]
-    assert "if (this.quarantineForeignDonation(player, ref, \"foreign-pickup\"))" in pickup
-    assert "if (this.quarantineForeignDonation(event.getPlayer(), ref, \"foreign-drop\"))" in drop
+    assert "event.setCancelled(true);" in pickup
+    assert "this.quarantineForeignDonation(player, ref, \"foreign-pickup\");" in pickup
+    assert "event.setCancelled(true);" in drop
+    assert "this.quarantineForeignDonation(event.getPlayer(), ref, \"foreign-drop\");" in drop
 
 
 def test_artifact_compass_is_explicit_teleport_item_with_fifteen_second_cooldown():

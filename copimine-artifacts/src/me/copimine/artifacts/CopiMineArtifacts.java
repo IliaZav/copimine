@@ -7978,15 +7978,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                });
                return;
             }
-            // AR purchases do not have a donation catalog row, but they still
-            // use the same durable loss journal and must be reclaimable after
-            // an in-world loss. Donation rows remain governed by their
-            // explicit LOSS_ONLY policy. A normal durability break is stored
-            // as CONSUMED and therefore never reaches this branch.
-            boolean reclaimAllowed = var4 == null
-               ? this.isArCatalogItem(var3.itemId()) && !this.isAdminOnlyCatalogItem(var3.itemId())
-               : "LOSS_ONLY".equalsIgnoreCase(this.firstNonBlank(var4.reclaimPolicy(), "LOSS_ONLY"));
-            if (!reclaimAllowed) {
+            if (var4 == null || !"LOSS_ONLY".equalsIgnoreCase(this.firstNonBlank(var4.reclaimPolicy(), "LOSS_ONLY"))) {
                this.runSync(() -> {
                   if (var1.isOnline()) {
                      var1.sendMessage(this.color("&cДля этого предмета бесплатный возврат после потери отключён."));
@@ -8923,13 +8915,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                String var6 = this.firstNonBlank((String)var3.get(this.keyItemId, PersistentDataType.STRING), "").toLowerCase(Locale.ROOT);
                String var7 = this.firstNonBlank((String)var3.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
                String var8 = this.firstNonBlank((String)var3.get(this.keyOwnerUuid, PersistentDataType.STRING), "");
-               boolean donationItem = this.isDonationCatalogItem(var6);
-               boolean arItem = this.isArCatalogItem(var6) && !this.isAdminOnlyCatalogItem(var6);
-               boolean expectedType = donationItem
-                     ? "DONATION_SHOP_ITEM".equalsIgnoreCase(var4) && "DONATION_SHOP".equalsIgnoreCase(var5)
-                     : arItem && ((var4.isBlank() && var5.isBlank())
-                           || ("AR_SHOP_ITEM".equalsIgnoreCase(var4) && "AR_SHOP".equalsIgnoreCase(var5)));
-               if (!var6.isBlank() && !var7.isBlank() && !var8.isBlank() && expectedType) {
+               if (!var6.isBlank() && !var7.isBlank() && !var8.isBlank() && this.isDonationCatalogItem(var6)) {
                CopiMineArtifacts.OfficialInstanceBinding var9 = this.instanceBindings.get(var7);
                if (this.provisionalDonationInstanceIds.contains(var7)) {
                   // Delivery rows are deliberately fail-closed until the
@@ -8988,13 +8974,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       String itemId = this.firstNonBlank(pdc.get(this.keyItemId, PersistentDataType.STRING), "").toLowerCase(Locale.ROOT);
       String uniqueId = this.firstNonBlank(pdc.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
       String ownerText = this.firstNonBlank(pdc.get(this.keyOwnerUuid, PersistentDataType.STRING), "");
-      boolean donationItem = this.isDonationCatalogItem(itemId);
-      boolean arItem = this.isArCatalogItem(itemId) && !this.isAdminOnlyCatalogItem(itemId);
-      boolean expectedType = donationItem
-            ? "DONATION_SHOP_ITEM".equalsIgnoreCase(itemType) && "DONATION_SHOP".equalsIgnoreCase(source)
-            : arItem && ((itemType.isBlank() && source.isBlank())
-                  || ("AR_SHOP_ITEM".equalsIgnoreCase(itemType) && "AR_SHOP".equalsIgnoreCase(source)));
-      if (!expectedType || itemId.isBlank() || uniqueId.isBlank() || ownerText.isBlank()) {
+      if (!"DONATION_SHOP_ITEM".equalsIgnoreCase(itemType) || !"DONATION_SHOP".equalsIgnoreCase(source)
+            || itemId.isBlank() || uniqueId.isBlank() || ownerText.isBlank() || !this.isDonationCatalogItem(itemId)) {
          return null;
       }
       UUID owner;

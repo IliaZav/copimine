@@ -271,6 +271,16 @@ def test_public_site_has_only_the_direct_https_443_listener():
     assert "Only HTTPS public access on port 443 is supported" in COMMON
 
 
+def test_release_retires_legacy_public_vhost_before_nginx_validation():
+    assert "/etc/nginx/sites-available/copimine-public" in COMMON
+    assert "/etc/nginx/sites-enabled/copimine-public" in COMMON
+    assert 'rm -f -- "$legacy_path"' in COMMON
+    assert "legacy_backup_root=\"/opt/copimine-backups/nginx-legacy-" in COMMON
+    assert "/etc/nginx/sites-available/copimine-admin.conf" in INSTALLER
+    assert "/etc/nginx/sites-enabled/copimine-admin.conf" in INSTALLER
+    assert "ports 80 and 18080 are disabled" in INSTALLER
+
+
 def test_atm_visual_has_a_visible_label_and_repairs_or_removes_it_with_the_atm():
     assert "import org.bukkit.entity.TextDisplay;" in ECONOMY
     assert 'display.setText(color("&eБанкомат"));' in ECONOMY

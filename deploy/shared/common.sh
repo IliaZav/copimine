@@ -853,7 +853,7 @@ PY
 }
 
 copimine_install_system_files() {
-  local unit source release_operator release_wrapper
+  local unit source release_operator release_wrapper legacy_path legacy_backup_root legacy_backup_created
   # The installer may rewrite .env through a root-owned temporary file during
   # preflight.  systemd starts the backend as the application user, so make
   # the ownership explicit immediately before installing/restarting units.
@@ -906,6 +906,28 @@ EOF
   chown root:root /etc/sudoers.d/copimine-codex
   chmod 0440 /etc/sudoers.d/copimine-codex
   visudo -cf /etc/sudoers.d/copimine-codex >/dev/null
+  # Releases before the direct-443 topology used a separate public vhost that
+  # owned ports 80/443 (and sometimes the 18080 relay).  Leaving that file
+  # enabled makes nginx reject the canonical admin vhost as a duplicate
+  # default_server.  Preserve the exact legacy files for rollback, then
+  # retire both the available file and its enabled symlink before validation.
+  legacy_backup_created=0
+  legacy_backup_root="/opt/copimine-backups/nginx-legacy-$(date +%Y%m%d-%H%M%S)"
+  for legacy_path in \
+    /etc/nginx/sites-available/copimine-public \
+    /etc/nginx/sites-enabled/copimine-public; do
+    if [[ -e "$legacy_path" || -L "$legacy_path" ]]; then
+      if (( legacy_backup_created == 0 )); then
+        install -d -o root -g root -m 0700 "$legacy_backup_root/available" "$legacy_backup_root/enabled"
+        legacy_backup_created=1
+      fi
+      case "$legacy_path" in
+        /etc/nginx/sites-available/*) cp -a -- "$legacy_path" "$legacy_backup_root/available/" ;;
+        /etc/nginx/sites-enabled/*) cp -a -- "$legacy_path" "$legacy_backup_root/enabled/" ;;
+      esac
+      rm -f -- "$legacy_path"
+    fi
+  done
   copimine_render_nginx_config
   ln -sfn "$COPIMINE_NGINX_AVAILABLE" "$COPIMINE_NGINX_ENABLED"
   rm -f /etc/nginx/sites-enabled/default

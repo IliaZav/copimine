@@ -425,8 +425,8 @@ configure_https_public() {
   local key_path="${COPIMINE_TLS_KEY_PATH:-/etc/letsencrypt/live/copimine.ru/privkey.pem}"
   local server_names='copimine.ru www.copimine.ru 90.188.115.155'
   local env_file="$PROJECT_ROOT/admin-web/.env"
-  local config='/etc/nginx/sites-available/copimine-public'
-  local enabled='/etc/nginx/sites-enabled/copimine-public'
+  local config='/etc/nginx/sites-available/copimine-admin.conf'
+  local enabled='/etc/nginx/sites-enabled/copimine-admin.conf'
   local backup_root='/opt/copimine-backups'
   local backup_path="${backup_root}/https-public-before-reconfigure-$(date +%Y%m%d-%H%M%S)"
   local env_user env_group resource_sha1 resource_version
@@ -566,13 +566,19 @@ if "__COPIMINE_PUBLIC_" in text:
     raise SystemExit("unresolved HTTPS nginx marker")
 path.write_text(text, encoding="utf-8")
 PY
+  # Keep the standalone HTTPS maintenance path consistent with the normal
+  # release installer: one canonical vhost on 443, with retired public and
+  # relay vhosts removed before nginx validates the configuration.
+  rm -f -- /etc/nginx/sites-enabled/copimine-public \
+    /etc/nginx/sites-available/copimine-public \
+    /etc/nginx/sites-enabled/default
   ln -sfn "$config" "$enabled"
   nginx -t
   systemctl restart copimine-admin.service
   systemctl reload nginx.service
   systemctl is-active --quiet copimine-admin.service || { echo '[https] admin service is not active' >&2; return 1; }
   systemctl is-active --quiet nginx.service || { echo '[https] nginx is not active' >&2; return 1; }
-  echo '[https] nginx now terminates TLS on public port 443 and redirects port 80'
+  echo '[https] nginx now terminates TLS directly on public port 443; ports 80 and 18080 are disabled'
   echo "[https] public origin: https://$primary_host"
   echo "[https] static-IP route: https://90.188.115.155 (certificate must cover the requested hostname)"
   [[ -f "$backup_path" ]] && echo "[https] previous public config saved at $backup_path"

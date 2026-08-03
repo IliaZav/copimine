@@ -961,6 +961,10 @@ copimine_harden_release_ownership() {
     "$COPIMINE_SERVER_DIR/bukkit.yml"
     "$COPIMINE_SERVER_DIR/commands.yml"
     "$COPIMINE_SERVER_DIR/spigot.yml"
+    "$COPIMINE_SERVER_DIR/paper.yml"
+    "$COPIMINE_SERVER_DIR/paper-world-defaults.yml"
+    "$COPIMINE_SERVER_DIR/pufferfish.yml"
+    "$COPIMINE_SERVER_DIR/purpur.yml"
     "$COPIMINE_SERVER_DIR/permissions.yml"
     "$COPIMINE_SERVER_DIR/help.yml"
     "$COPIMINE_SERVER_DIR/whitelist.json"
@@ -974,6 +978,7 @@ copimine_harden_release_ownership() {
     "$COPIMINE_SERVER_DIR/versions"
     "$COPIMINE_SERVER_DIR/emotes"
     "$COPIMINE_SERVER_DIR/logs"
+    "$COPIMINE_SERVER_DIR/crash-reports"
   )
   if [[ -d "$COPIMINE_SERVER_DIR" ]]; then
     # Paperclip creates cache/ and the configured world directories itself on

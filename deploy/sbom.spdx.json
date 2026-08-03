@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "CopiMine release SBOM",
-  "documentNamespace": "https://copimine.ru/spdx/87ce20892bb03161a944a58601b227de5274c3d4",
+  "documentNamespace": "https://copimine.ru/spdx/a2fcde840411ef145d212202b369d796de4c0c19",
   "creationInfo": {
-    "created": "2026-08-03T12:50:38.753629Z",
+    "created": "2026-08-03T14:04:51.389791Z",
     "creators": [
       "Tool: CopiMine generate_sbom.py"
     ]
@@ -14,7 +14,7 @@
     {
       "SPDXID": "SPDXRef-Package-CopiMine",
       "name": "CopiMine release",
-      "versionInfo": "87ce20892bb03161a944a58601b227de5274c3d4",
+      "versionInfo": "a2fcde840411ef145d212202b369d796de4c0c19",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": true,
       "licenseConcluded": "NOASSERTION",
@@ -249,7 +249,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "93874c45cca6293eb9f1fb5c5da85a644d9acb156aa0706500aaeef9c345a2e3"
+          "checksumValue": "aee62b65ccc2308a8450d6727e36bd877c615a65e864403bbcd89115039753e1"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -264,7 +264,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "207b507beafc78bd285d6353e0020ccb63efabc3469c9b7c6032173fa1698690"
+          "checksumValue": "666fa29fc12b64ea2d4c8dc6bd142c0f283cd62b788f68d7948a9f1e2655c592"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -294,7 +294,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "e6fb130f096663c26420018f31138e3f7aa879300d9dacce48ac74a59488e21d"
+          "checksumValue": "d603d1ac4fcb9377093f68287fe82e89237f5cba29d93fe000e3b0b3b538015c"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -309,7 +309,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "f4035f6157b8ccbfdac0c0e8aa327d96a33c1c21b5ebd39bc0460f28713f9056"
+          "checksumValue": "53636c6fe24444ce378c1071a66b10a50258c0367b57afc8b707750b0ccbc230"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -654,7 +654,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "ce9cafc75c39d2245a1ca14800ba67ff407e19581f032f09c0d35af7757e18d8"
+          "checksumValue": "46f88e73ac709eea4980a6d6c9a4181530c0c2566b24c715cea038ba4cad4997"
         }
       ],
       "licenseConcluded": "NOASSERTION",

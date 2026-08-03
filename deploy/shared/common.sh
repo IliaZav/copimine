@@ -455,6 +455,13 @@ copimine_fix_runtime_plugin_ownership() {
       chown -R "$runtime_user:$runtime_group" "$COPIMINE_SERVER_DIR/plugins/$plugin_dir"
     fi
   done
+  # The post-start policy synchronizes rcon.ip through an atomic write as
+  # root. Return server.properties to the Minecraft service user before the
+  # next restart, otherwise Paper can boot but cannot persist its settings.
+  if [[ -e "$COPIMINE_SERVER_PROPERTIES" ]]; then
+    chown "$runtime_user:$runtime_group" "$COPIMINE_SERVER_PROPERTIES"
+    chmod 0644 "$COPIMINE_SERVER_PROPERTIES"
+  fi
 }
 
 copimine_apply_post_start_game_hardening() {

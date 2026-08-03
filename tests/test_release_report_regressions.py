@@ -181,6 +181,7 @@ def test_deploy_handles_custom_level_name_worlds_and_fresh_paper_cache():
     assert '"$COPIMINE_SERVER_DIR/crash-reports"' in COMMON
     assert 'chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR"' in COMMON
     assert 'chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR/plugins"' in COMMON
+    assert 'chown "$runtime_user:$runtime_group" "$COPIMINE_SERVER_PROPERTIES"' in COMMON
     assert "copimine_harden_release_ownership" in COMMON[COMMON.index("copimine_refresh_release_artifacts"):]
     hardening_unit = (ROOT / "admin-web/deploy/copimine-game-hardening.service").read_text(encoding="utf-8")
     assert "TimeoutStartSec=960" in hardening_unit

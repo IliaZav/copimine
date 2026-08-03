@@ -466,7 +466,7 @@ copimine_apply_post_start_game_hardening() {
   COPIMINE_RCON_PASSWORD="$rcon_password" python3 "$COPIMINE_GAME_HARDENING_SCRIPT" apply-luckperms-imageframe \
     --server-properties "$COPIMINE_SERVER_PROPERTIES" \
     --password-env COPIMINE_RCON_PASSWORD \
-    --timeout-seconds "${COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-300}" \
+    --timeout-seconds "${COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-900}" \
     --admin-group "$admin_group"
   copimine_log "ImageFrame LuckPerms hardening policy applied."
 }
@@ -918,6 +918,27 @@ EOF
   systemctl restart copimine-backup.timer
 }
 
+copimine_configured_world_base() {
+  local properties="${1:-$COPIMINE_SERVER_PROPERTIES}"
+  local configured
+  [[ -f "$properties" ]] || return 1
+  configured="$(awk -F= '$1=="level-name" {print substr($0,index($0,"=")+1); exit}' "$properties" | tr -d '\r')"
+  [[ "$configured" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  printf '%s\n' "$configured"
+}
+
+copimine_runtime_world_names() {
+  local base
+  base="$(copimine_configured_world_base "${1:-$COPIMINE_SERVER_PROPERTIES}")" || return 1
+  printf '%s\n' \
+    "$base" \
+    "${base}_nether" \
+    "${base}_the_end" \
+    'world' \
+    'world_nether' \
+    'world_the_end'
+}
+
 copimine_harden_release_ownership() {
   # Code, deployment helpers and plugin JARs are immutable to the service
   # account. Only explicitly inventoried runtime state remains writable.
@@ -926,7 +947,7 @@ copimine_harden_release_ownership() {
   find "$COPIMINE_ROOT" -type f -exec chmod 0644 {} \;
   find "$COPIMINE_ROOT" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 0755 {} \;
 
-  local writable plugin_data
+  local writable plugin_data world_base world_name
   local -a writable_paths=(
     "$COPIMINE_ADMIN_DIR/.env"
     "$COPIMINE_ADMIN_DIR/data"
@@ -939,8 +960,16 @@ copimine_harden_release_ownership() {
     "$COPIMINE_SERVER_DIR/banned-players.json"
     "$COPIMINE_SERVER_DIR/banned-ips.json"
     "$COPIMINE_SERVER_DIR/usercache.json"
+    "$COPIMINE_SERVER_DIR/cache"
     "$COPIMINE_SERVER_DIR/logs"
   )
+  if [[ -d "$COPIMINE_SERVER_DIR" ]]; then
+    # Paperclip creates cache/ and the configured world directories itself on
+    # a fresh wipe. Keep only the runtime directory writable; static jars and
+    # configs remain root-owned below it.
+    chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR"
+    chmod 0755 "$COPIMINE_SERVER_DIR"
+  fi
   for writable in "${writable_paths[@]}"; do
     [[ -e "$writable" || -L "$writable" ]] || continue
     chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$writable"
@@ -952,9 +981,11 @@ copimine_harden_release_ownership() {
     done
   fi
   if [[ -d "$COPIMINE_SERVER_DIR" ]]; then
-    while IFS= read -r -d '' world_dir; do
-      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$world_dir"
-    done < <(find "$COPIMINE_SERVER_DIR" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+    world_base="$(copimine_configured_world_base)" || copimine_fail "Invalid or missing level-name in $COPIMINE_SERVER_PROPERTIES"
+    while IFS= read -r world_name; do
+      [[ -d "$COPIMINE_SERVER_DIR/$world_name" ]] || continue
+      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR/$world_name"
+    done < <(copimine_runtime_world_names)
   fi
   [[ -f "$COPIMINE_ADMIN_DIR/.env" ]] && chmod 0600 "$COPIMINE_ADMIN_DIR/.env"
   [[ -d "$COPIMINE_ADMIN_DIR/data" ]] && chmod 0700 "$COPIMINE_ADMIN_DIR/data"
@@ -1197,13 +1228,14 @@ copimine_prune_daily_backups() {
 }
 
 copimine_wipe_worlds() {
-  local world existing_seed
-  for world in world world_nether world_the_end; do
+  local world existing_seed world_base
+  world_base="$(copimine_configured_world_base)" || copimine_fail "Invalid or missing level-name in $COPIMINE_SERVER_PROPERTIES"
+  while IFS= read -r world; do
     if [[ -d "$COPIMINE_SERVER_DIR/$world" ]]; then
       rm -rf -- "$COPIMINE_SERVER_DIR/$world"
       copimine_log "Removed world directory: $COPIMINE_SERVER_DIR/$world"
     fi
-  done
+  done < <(copimine_runtime_world_names)
   # A world reset must regenerate the same seed, not silently switch to the
   # template default. Operators can still override it with KEEP_WORLD_SEED=0.
   if [[ "${KEEP_WORLD_SEED:-1}" == "1" && -f "$COPIMINE_SERVER_PROPERTIES" ]]; then

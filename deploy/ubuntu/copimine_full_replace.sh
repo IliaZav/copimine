@@ -152,6 +152,25 @@ require_dir() {
   [[ -d "$1" ]] || fail "Directory not found: $1"
 }
 
+configured_world_base() {
+  local server_dir="$1"
+  local configured
+  [[ -f "$server_dir/server.properties" ]] || return 1
+  configured="$(awk -F= '$1=="level-name" {print substr($0,index($0,"=")+1); exit}' "$server_dir/server.properties" | tr -d '\r')"
+  [[ "$configured" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  printf '%s\n' "$configured"
+}
+
+runtime_world_paths() {
+  local server_dir="$1"
+  local base world
+  base="$(configured_world_base "$server_dir")" || fail "Invalid or missing level-name in $server_dir/server.properties"
+  while IFS= read -r world; do
+    [[ -d "$server_dir/$world" ]] && printf '%s\0' "$server_dir/$world"
+  done < <(printf '%s\n' "$base" "${base}_nether" "${base}_the_end" world world_nether world_the_end)
+  find "$server_dir" -mindepth 1 -maxdepth 1 -type d -name 'paper-world*' -print0
+}
+
 load_shared_helpers() {
   local common_script="$PROJECT_ROOT/deploy/shared/common.sh"
   [[ -f "$common_script" ]] || fail "Missing shared deploy helpers: $common_script"
@@ -392,7 +411,7 @@ snapshot_runtime_state() {
       rel="${world_dir#"$PROJECT_ROOT/"}"
       mkdir -p "$PRESERVE_ROOT/$(dirname "$rel")"
       cp -a "$world_dir" "$PRESERVE_ROOT/$rel"
-    done < <(find "$PROJECT_ROOT/minecraft/server" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+    done < <(runtime_world_paths "$PROJECT_ROOT/minecraft/server")
   fi
 
   if [[ -d /etc/nginx/sites-available ]]; then
@@ -445,7 +464,7 @@ restore_runtime_state() {
       mkdir -p "$target_root/$(dirname "$rel")"
       rm -rf "$target_root/$rel"
       cp -a "$preserved_world" "$target_root/$rel"
-  done < <(find "$PRESERVE_ROOT/minecraft/server" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+  done < <(runtime_world_paths "$PRESERVE_ROOT/minecraft/server")
   fi
 }
 

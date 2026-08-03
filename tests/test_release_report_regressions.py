@@ -154,6 +154,22 @@ def test_release_reset_clears_game_issuance_state_but_keeps_bank_pin_rows():
         assert f"'{table}'" not in clean_tables
 
 
+def test_deploy_handles_custom_level_name_worlds_and_fresh_paper_cache():
+    for helper in (UNPACK, FULL_REPLACE):
+        assert "configured_world_base" in helper
+        assert "runtime_world_paths" in helper
+        assert '"${base}_nether"' in helper
+        assert '"${base}_the_end"' in helper
+        assert "runtime_world_paths \"$PROJECT_ROOT/minecraft/server\"" in helper or "runtime_world_paths \"$server_dir\"" in helper
+    assert "copimine_configured_world_base" in COMMON
+    assert "copimine_runtime_world_names" in COMMON
+    assert '"$COPIMINE_SERVER_DIR/cache"' in COMMON
+    assert 'chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR"' in COMMON
+    hardening_unit = (ROOT / "admin-web/deploy/copimine-game-hardening.service").read_text(encoding="utf-8")
+    assert "TimeoutStartSec=960" in hardening_unit
+    assert "COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-900" in COMMON
+
+
 def test_windows_release_helpers_target_the_current_ssh_endpoint():
     bat = (ROOT / "deploy/windows/send_copimine_release.bat").read_text(encoding="utf-8")
     ps1 = (ROOT / "deploy/windows/send_copimine_release.ps1").read_text(encoding="utf-8")

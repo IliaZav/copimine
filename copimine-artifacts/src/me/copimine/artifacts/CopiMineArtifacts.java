@@ -131,6 +131,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.inventory.BrewEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.event.inventory.PrepareGrindstoneEvent;
@@ -1432,11 +1433,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          // Run before every GUI/vanilla path, including clicks cancelled by a
          // protection plugin.  A foreign donation instance must never reach a
          // chest, shulker, hopper or any other block inventory.
-          if (var1.isCancelled()) {
+         if (this.quarantineForeignDonationClick(var1, var2)) {
+            return;
+         }
+         if (var1.isCancelled()) {
+            return;
+         }
+         if (this.shouldBlockOfficialArtifactInsertion(var1)) {
+            var1.setCancelled(true);
+            var2.updateInventory();
              return;
-          }
-          if (var1 instanceof InventoryCreativeEvent creative && this.blockCreativeOfficialCopy(creative)) {
-             return;
+         }
+         if (var1 instanceof InventoryCreativeEvent creative && this.blockCreativeOfficialCopy(creative)) {
+            return;
          }
          Inventory top = var1.getView().getTopInventory();
          // event.getView().getTopInventory()
@@ -1749,6 +1758,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (var1 != null && var1.getView() != null
             && var1.getView().getTopInventory().getHolder() instanceof CopiMineArtifacts.MenuHolder) {
          var1.setCancelled(true);
+         return;
+      }
+      if (this.shouldBlockOfficialArtifactDrag(var1)) {
+         var1.setCancelled(true);
+         if (var1.getWhoClicked() instanceof Player player) {
+            player.updateInventory();
+         }
       }
    }
 
@@ -10185,6 +10201,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private boolean isBlockedArtifactProcessingInventory(Inventory var1) {
       if (var1 == null) {
          return false;
+      } else if (var1.getType() == InventoryType.CRAFTING && var1.getHolder() instanceof Player) {
+         // The top inventory of a normal player inventory view is also
+         // reported as CRAFTING.  It is not an external processing surface:
+         // catalog items must remain freely movable in the player's own
+         // inventory, including cursor and hotbar swaps.
+         return false;
       } else {
          return switch (var1.getType()) {
             case CRAFTING, WORKBENCH, CRAFTER, FURNACE, BLAST_FURNACE, SMOKER, BREWING, SMITHING, ANVIL, GRINDSTONE, STONECUTTER, HOPPER, DROPPER, DISPENSER, LOOM, CARTOGRAPHY, ENCHANTING, MERCHANT, BEACON, COMPOSTER -> true;
@@ -10372,6 +10394,30 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       this.ensureAttackDamageAttribute(meta, item);
       stack.setItemMeta(meta);
+   }
+
+   private boolean shouldBlockOfficialArtifactDrag(InventoryDragEvent event) {
+      if (event == null || event.getView() == null) {
+         return false;
+      }
+      Inventory top = event.getView().getTopInventory();
+      if (!this.isBlockedArtifactProcessingInventory(top)) {
+         return false;
+      }
+      // A processing inventory that already contains an official item must
+      // not be allowed to consume it on a later drag operation.
+      if (this.containsOfficialArtifact(top)) {
+         return true;
+      }
+      if (!this.isOfficialArtifactItem(event.getOldCursor())) {
+         return false;
+      }
+      for (int rawSlot : event.getRawSlots()) {
+         if (rawSlot >= 0 && rawSlot < top.getSize()) {
+            return true;
+         }
+      }
+      return false;
    }
 
    private void ensureAttackDamageAttribute(ItemMeta meta, CopiMineArtifacts.CatalogItem item) {

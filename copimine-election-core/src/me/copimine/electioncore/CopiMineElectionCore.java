@@ -886,6 +886,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onOfficialDeath(PlayerDeathEvent event) {
+        // With keepInventory enabled Bukkit may leave the physical stack in
+        // the inventory while also exposing it in the death event.  Collapse
+        // legacy stacks before queuing any recovery copy, otherwise respawn
+        // reconciliation can preserve both the inventory and queued copies.
+        deduplicatePresidentMandates(event.getEntity());
         List<ItemStack> keep = new ArrayList<>();
         event.getDrops().removeIf(stack -> {
             // Application books are temporary workflow items, not durable

@@ -325,7 +325,7 @@ def test_artifacts_items_are_explicitly_delegated_before_adminplus_inventory_gua
     assert "artifactsCoreOwns(e.getOldCursor())" in drag
     assert "artifactsCoreOwns(e.getItem())" in move
     assert '"copimineartifacts"' in ADMIN
-    assert '"DONATION_SHOP_ITEM"' in ADMIN
+    assert '"artifact_unique_item_id"' in ADMIN
 
 
 def test_president_mandate_never_enters_adminplus_drop_or_death_recovery_queues():

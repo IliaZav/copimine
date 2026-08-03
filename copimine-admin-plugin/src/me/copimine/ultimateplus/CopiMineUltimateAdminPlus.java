@@ -4024,10 +4024,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     /**
-     * CopiMineArtifacts owns catalog items and deliberately exposes them as
-     * ordinary inventory objects.  This compatibility plugin must not apply
-     * the old official-item container restrictions to a donation/AR shop
-     * item, otherwise a purchased item can be moved only inside one slot.
+     * CopiMineArtifacts owns every authenticated catalog instance and
+     * deliberately exposes it as an ordinary inventory object.  The legacy
+     * protection layer must not restrict a catalog item merely because it has
+     * a custom model or a protected-item-looking material.
      */
     private boolean artifactsCoreOwns(ItemStack stack){
         if(stack==null||stack.getType()==Material.AIR)return false;
@@ -4035,13 +4035,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(meta==null)return false;
         PersistentDataContainer data=meta.getPersistentDataContainer();
         String itemId=data.get(new NamespacedKey("copimineartifacts","artifact_item_id"),PersistentDataType.STRING);
-        String type=data.get(new NamespacedKey("copimineartifacts","copimine_item_type"),PersistentDataType.STRING);
-        String source=data.get(new NamespacedKey("copimineartifacts","artifact_source"),PersistentDataType.STRING);
-        return itemId!=null&&!itemId.isBlank()
-                && ("DONATION_SHOP_ITEM".equalsIgnoreCase(first(type,""))
-                    || "AR_SHOP_ITEM".equalsIgnoreCase(first(type,"")))
-                && ("DONATION_SHOP".equalsIgnoreCase(first(source,""))
-                    || "AR_SHOP".equalsIgnoreCase(first(source,"")));
+        String uniqueId=data.get(new NamespacedKey("copimineartifacts","artifact_unique_item_id"),PersistentDataType.STRING);
+        return itemId!=null&&!itemId.isBlank()&&uniqueId!=null&&!uniqueId.isBlank();
     }
 
     private boolean artifactsCoreOwns(ItemStack... stacks){

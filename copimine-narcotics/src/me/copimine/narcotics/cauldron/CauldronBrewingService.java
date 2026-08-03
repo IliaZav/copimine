@@ -208,9 +208,6 @@ public final class CauldronBrewingService {
         if (block == null || block.getType() != Material.WATER_CAULDRON) {
             return false;
         }
-        if (!hasBrewingRig(block)) {
-            return false;
-        }
         if (!configService.requireFullWater()) {
             return true;
         }
@@ -343,8 +340,7 @@ public final class CauldronBrewingService {
         }
         boolean stillFull = block.getType() == Material.WATER_CAULDRON
                 && newState instanceof Levelled levelled
-                && (!configService.requireFullWater() || isFullWaterLevel(levelled))
-                && hasBrewingRig(block);
+                && (!configService.requireFullWater() || isFullWaterLevel(levelled));
         if (!stillFull) {
             handleCauldronBroken(block, block.getLocation().add(0.5D, 0.5D, 0.5D));
         }

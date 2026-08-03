@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-03T06:10:07.7777326Z",
-    "gitCommit":  "202590d5a6b0d7f819582a023999124092a52ffb",
+    "generatedAtUtc":  "2026-08-03T06:12:42.4445097Z",
+    "gitCommit":  "030f77e8266dc482b5012577660c9beaadc16d18",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -11,8 +11,8 @@
                      },
     "modpack":  {
                     "path":  "thirdparty/CopiMineMods.zip",
-                    "sha1":  "48934d1aac450fd3363ec5e55d5bc39fdbf3b6e7",
-                    "sha256":  "c71ea55be3e4f7dc47ea04cdff5980419c15ade966a39cf638309f513d41e77b",
+                    "sha1":  "1e5fb07af7ff5b8b868d6748e84d10ff3e50150d",
+                    "sha256":  "0ed00a478ae5bb6298c012f10ab910c7ef89f5107698e02fcc9788699e46d4b6",
                     "downloadUrl":  "/downloads/CopiMineMods.zip"
                 },
     "clientMod":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "202590d5a6b0d7f819582a023999124092a52ffb",
+                      "sourceCommit":  "030f77e8266dc482b5012577660c9beaadc16d18",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "c1c7ba7a411d1a81fb93f3825065213d4be1dc1abaf9b4916c8a85aa55474396",
+                                  "sha256":  "4091a3e6c3e1eed554a475c8dca20d32b3856bf1423852bde18d451580237888",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -8772,7 +8772,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  5799,
-                             "sha256":  "2a06f13cb91f875f385728f967c9e2c97d6df3938aa02c84b73c42f9839bb83d"
+                             "sha256":  "45e51d1000ab09b3ba0c8491240d44097b767e6f594f881cc0fedb97c0ecd001"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -10037,7 +10037,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "c6029895f0f3476b71784840383766b5a0b4afece9beada3c60c26c4a4da93bc"
+                             "sha256":  "e98a100557321f4d4a814b501d7230479f0f1b3bfb8d26f4b3220c3c169ad89d"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10047,7 +10047,7 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  30448,
-                             "sha256":  "c1c7ba7a411d1a81fb93f3825065213d4be1dc1abaf9b4916c8a85aa55474396"
+                             "sha256":  "4091a3e6c3e1eed554a475c8dca20d32b3856bf1423852bde18d451580237888"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
@@ -15527,17 +15527,17 @@
                          {
                              "path":  "thirdparty/CopiMineMods.sha1",
                              "sizeBytes":  42,
-                             "sha256":  "796650d034cfd7d6f382530540420c25cef43850b476f59087dd830707dcb3b4"
+                             "sha256":  "c6c100f476aa83630f98d29e1df72e56dc646e202ac968867faa3f66d7945b68"
                          },
                          {
                              "path":  "thirdparty/CopiMineMods.sha256",
                              "sizeBytes":  66,
-                             "sha256":  "02b5666be4cb2f69d74e24a0090acac03e4693f666f6782c4d92f59594ff7b64"
+                             "sha256":  "5de18258f9afda1c67bab6b14a2b7b3f597aa2e0ea9f96aa15bf85181fe25ecd"
                          },
                          {
                              "path":  "thirdparty/CopiMineMods.zip",
                              "sizeBytes":  16488659,
-                             "sha256":  "c71ea55be3e4f7dc47ea04cdff5980419c15ade966a39cf638309f513d41e77b"
+                             "sha256":  "0ed00a478ae5bb6298c012f10ab910c7ef89f5107698e02fcc9788699e46d4b6"
                          },
                          {
                              "path":  "thirdparty/modpack_manifest.json",
@@ -15552,7 +15552,7 @@
                          {
                              "path":  "thirdparty/thirdparty_manifest.json",
                              "sizeBytes":  6647,
-                             "sha256":  "3555e6fbfc733b352e1dbd9c8b8e1bc62b2755188667a908f513d98ef1c6103b"
+                             "sha256":  "23ccae4659607e2e1f763a8b395618590b1f78839d03b8bb77d013891f67704f"
                          },
                          {
                              "path":  "thirdparty/VOICE_CHAT_OFFICIAL_DOWNLOAD.txt",

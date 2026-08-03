@@ -377,6 +377,7 @@ public final class CauldronBrewingService {
         if (!completionInFlight.add(key)) {
             return false;
         }
+        ItemStack expectedIngredient = stack == null ? null : stack.clone();
         long expectedStoredVersion = Math.max(0L, version - 1L);
         database.prepareBrewingCompletionIntent(key, expectedStoredVersion, ownerUuid, definition.id(),
                         ingredient == null ? "" : ingredient.serialize())
@@ -397,7 +398,22 @@ public final class CauldronBrewingService {
                         // The completion intent is durable before this physical mutation.
                         cacheState(key, new CauldronState(List.copyOf(completedIngredients), version,
                                 System.currentTimeMillis(), ownerUuid));
-                        itemFactory.consumeOne(player, stack);
+                        if (!itemFactory.consumeOneExact(player, expectedIngredient)) {
+                            database.abortBrewingCompletionIntent(key, expectedStoredVersion, ownerUuid, definition.id())
+                                    .whenComplete((aborted, abortError) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                                        synchronized (lockFor(key)) {
+                                            completionInFlight.remove(key);
+                                            if (abortError != null || !Boolean.TRUE.equals(aborted)) {
+                                                plugin.getLogger().severe("Unable to abort brewing completion intent at " + key
+                                                        + ": " + (abortError == null ? "intent was not prepared" : abortError.getMessage()));
+                                            }
+                                            if (player != null) {
+                                                player.sendMessage("§cВарка отменена: исходный ингредиент больше не найден. Предмет не списан.");
+                                            }
+                                        }
+                                    }));
+                            return;
+                        }
                         finishBrewing(block, key, definition, version, ingredientCount, wrongMix, ownerUuid);
                     }
                 }));

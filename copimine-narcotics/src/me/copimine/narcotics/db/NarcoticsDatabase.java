@@ -548,6 +548,35 @@ public final class NarcoticsDatabase {
         })));
     }
 
+    /** Cancel a prepared completion when the physical ingredient is no longer present. */
+    public CompletableFuture<Boolean> abortBrewingCompletionIntent(BlockKey key, long expectedVersion,
+                                                                     UUID ownerUuid, String narcoticId) {
+        if (key == null || expectedVersion < 0L || narcoticId == null || narcoticId.isBlank()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid brewing completion abort."));
+        }
+        String journalKey = brewingCompletionJournalKey(key, expectedVersion, ownerUuid, narcoticId);
+        return enqueueBrewingWrite(key, () -> runAsyncResult(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    UPDATE narcotics_brewing_completion_intents
+                    SET status='ABORTED',updated_at=?
+                    WHERE world_name=? AND x=? AND y=? AND z=? AND state_version=?
+                      AND status='PREPARED'
+                    """)) {
+                statement.setLong(1, Instant.now().toEpochMilli());
+                statement.setString(2, key.world());
+                statement.setInt(3, key.x());
+                statement.setInt(4, key.y());
+                statement.setInt(5, key.z());
+                statement.setLong(6, expectedVersion);
+                return statement.executeUpdate() > 0;
+            }
+        }))).whenComplete((aborted, error) -> {
+            if (error == null && Boolean.TRUE.equals(aborted)) {
+                removeBrewingCompletionJournal(journalKey);
+            }
+        });
+    }
+
     /** Reserve one unit of a signed stack before an asynchronous state write starts. */
     public CompletableFuture<String> reserveConsumption(UUID playerUuid, String instanceId, String narcoticId) {
         return reserveConsumption(playerUuid, instanceId, narcoticId, 1);

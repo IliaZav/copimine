@@ -86,3 +86,14 @@ def test_brewing_accepts_any_full_vanilla_water_cauldron():
     assert "requireFullWater" in supported
     assert "hasBrewingRig" not in supported
     assert "hasBrewingRig" not in level_change
+
+
+def test_brewing_final_ingredient_cannot_consume_a_replaced_stack():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    factory = read("copimine-narcotics/src/me/copimine/narcotics/item/NarcoticItemFactory.java")
+    completion = between(service, "private boolean prepareFinalIngredient", "private void finishBrewing")
+    assert "ItemStack expectedIngredient = stack == null ? null : stack.clone()" in completion
+    assert "itemFactory.consumeOneExact(player, expectedIngredient)" in completion
+    assert "abortBrewingCompletionIntent" in completion
+    assert "public boolean consumeOneExact(Player player, ItemStack expected)" in factory
+    assert "candidate.isSimilar(expected)" in factory

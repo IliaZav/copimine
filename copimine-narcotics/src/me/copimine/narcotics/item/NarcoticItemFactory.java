@@ -193,6 +193,45 @@ public final class NarcoticItemFactory {
         player.updateInventory();
     }
 
+    /**
+     * Remove one unit from the exact item snapshot supplied before an
+     * asynchronous operation.  Never replace the current hand with a stale
+     * snapshot: the player may have moved or changed the ingredient while the
+     * database was persisting the operation.
+     */
+    public boolean consumeOneExact(Player player, ItemStack expected) {
+        if (player == null || expected == null || expected.getType() == Material.AIR) {
+            return false;
+        }
+        ItemStack cursor = player.getItemOnCursor();
+        if (cursor != null && cursor.isSimilar(expected)) {
+            if (cursor.getAmount() <= 1) {
+                player.setItemOnCursor(new ItemStack(Material.AIR));
+            } else {
+                cursor.setAmount(cursor.getAmount() - 1);
+                player.setItemOnCursor(cursor);
+            }
+            player.updateInventory();
+            return true;
+        }
+        PlayerInventoryView view = new PlayerInventoryView(player);
+        for (int slot = 0; slot < view.size(); slot++) {
+            ItemStack candidate = view.get(slot);
+            if (candidate == null || !candidate.isSimilar(expected)) {
+                continue;
+            }
+            if (candidate.getAmount() <= 1) {
+                view.set(slot, new ItemStack(Material.AIR));
+            } else {
+                candidate.setAmount(candidate.getAmount() - 1);
+                view.set(slot, candidate);
+            }
+            player.updateInventory();
+            return true;
+        }
+        return false;
+    }
+
     /** Remove one item from the exact server-issued stack after persistence succeeds. */
     public boolean consumeOneExact(Player player, String instanceId, String narcoticId) {
         if (player == null || instanceId == null || instanceId.isBlank()) {

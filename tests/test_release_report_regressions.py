@@ -161,7 +161,7 @@ def test_brewing_owner_is_preserved_and_final_ingredient_is_durable_before_consu
     assert "base.ownerUuid()" in NARCOTICS
     assert "nearby.damage" not in NARCOTICS
     final_section = NARCOTICS[NARCOTICS.index("NarcoticDefinition exact"):NARCOTICS.index("private boolean queueIngredients")]
-    assert final_section.index("prepareBrewingCompletionIntent") < final_section.index("consumeOne")
+    assert final_section.index("prepareBrewingCompletionIntent") < final_section.index("consumeOneExact")
 
 
 def test_failed_multi_ingredient_brew_refunds_every_consumed_ingredient():

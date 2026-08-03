@@ -2270,12 +2270,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onPlayerItemBreak(PlayerItemBreakEvent var1) {
       CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getBrokenItem());
       if (var2 != null && var1.getPlayer().getUniqueId().equals(var2.ownerUuid())) {
-         // This event is post-destruction on Paper.  Record the loss in the
-         // same durable reclaim journal as void/cactus/despawn, so a broken
-         // paid item is recoverable instead of silently disappearing.
-         if (this.recordDonationLossOnce(var2, "durability-break-after-event")) {
-            this.flushPendingDonationLossJournalAsync();
-         }
+         // This event is post-destruction on Paper.  Durability breaks are
+         // terminal, not reclaimable losses: never mint a replacement for an
+         // item that was intentionally exhausted.
+         this.markDonationInstanceBroken(var2, "durability-break-after-event");
       }
    }
 
@@ -2798,9 +2796,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       event.setCancelled(true);
-      if (this.recordDonationLossOnce(ref, "durability-break")) {
-         this.flushPendingDonationLossJournalAsync();
-      }
+      this.markDonationInstanceBroken(ref, "durability-break");
    }
 
    @EventHandler(
@@ -11703,11 +11699,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           || var1.hasPermission("copimine.artifacts.admin")
           || var1.hasPermission("copimine.admin")
           || var1.hasPermission("copimine.admin.ultra")
-          || var1.hasPermission("copimine.ultra.admin")
-          || var1.hasPermission("copimine.election.admin")
-          || var1.hasPermission("copimine.election.cik")
-          || var1.hasPermission("copimine.economy.admin")
-          || var1.hasPermission("copimine.players.admin");
+          || var1.hasPermission("copimine.ultra.admin");
    }
 
    private boolean isRestrictedJuniorArtifactsAdmin(Player var1) {

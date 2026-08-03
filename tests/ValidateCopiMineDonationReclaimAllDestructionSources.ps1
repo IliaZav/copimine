@@ -11,15 +11,14 @@ function Require-Regex([string]$pattern, [string]$message) {
   if ($source -notmatch $pattern) { throw $message }
 }
 
-# A durability break is still physical destruction of a premium item. It must
-# enter the same durable loss journal as void/cactus/explosion loss.
+# A durability break is an intentional terminal state, not a reclaimable loss.
 $breakHandler = [regex]::Match($source, '(?s)public void onPlayerItemBreak\(PlayerItemBreakEvent var1\).*?(?=\n\s*@EventHandler|\n\s*private |\z)')
 if (-not $breakHandler.Success) { throw 'PlayerItemBreakEvent handler was not found.' }
-if ($breakHandler.Value -notmatch 'recordDonationLossOnce') {
-  throw 'A durability break must be written to the loss journal before the item disappears.'
+if ($breakHandler.Value -notmatch 'markDonationInstanceBroken') {
+  throw 'A durability break must transition the durable item row to BROKEN.'
 }
-if ($breakHandler.Value -match '"BROKEN"') {
-  throw 'A destroyed donation item must remain reclaimable instead of becoming terminal BROKEN.'
+if ($breakHandler.Value -match 'recordDonationLossOnce') {
+  throw 'A durability break must not enter the reclaimable loss journal.'
 }
 
 # Paper can remove an item entity because it merged into another entity; the

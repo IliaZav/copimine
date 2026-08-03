@@ -186,10 +186,11 @@ def test_artifact_compass_is_explicit_teleport_item_with_fifteen_second_cooldown
 
 def test_artifact_permissions_and_world_mutations_are_closed():
     admin_block = ARTIFACTS[ARTIFACTS.index("private boolean isArtifactsAdmin"):ARTIFACTS.index("private boolean isRestrictedJuniorArtifactsAdmin")]
-    # The existing CIK/admin roles are trusted service roles for the shared
-    # admin hub.  Junior staff are still denied by the guard immediately
-    # before this role bridge is evaluated.
-    assert "copimine.election.cik" in admin_block
+    # Domain-specific roles must not cross-authorize the artifacts admin hub.
+    # Shared super-admin roles remain available, while CIK/economy/player
+    # permissions are evaluated only by their own plugins.
+    for permission in ("copimine.election.admin", "copimine.election.cik", "copimine.economy.admin", "copimine.players.admin"):
+        assert permission not in admin_block
     assert "isRestrictedJuniorArtifactsAdmin" in ARTIFACTS
     assert "EntityExplodeEvent" in ARTIFACTS
     assert "BlockExplodeEvent" in ARTIFACTS

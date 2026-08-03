@@ -37,13 +37,16 @@ def test_artifacts_does_not_inherit_other_domain_roles() -> None:
         assert permission not in admin_section
 
 
-def test_narcotics_identity_is_immutable_and_singleton() -> None:
+def test_narcotics_identity_is_fungible_and_signed() -> None:
     factory = NARCOTICS_FACTORY
-    assert "Math.max(1, amount)" not in factory
-    assert "new ItemStack(base, 1)" in factory
+    assert "NARCOTIC_STACK:" in factory
+    assert "int stackAmount = Math.max(1, Math.min(Math.max(1, base.getMaxStackSize()), amount))" in factory
+    assert "new ItemStack(base, 1)" not in factory
     resolver = factory[factory.index("public NarcoticDefinition resolveOfficial"):factory.index("public boolean isOfficialFinishedItem")]
     assert "setItemMeta" not in resolver
     assert "UUID.randomUUID" not in resolver
+    assert "stack.getAmount() != 1" not in resolver
+    assert "STACK_SIGNATURE_VERSION" in resolver
     assert "narcoticSignatureKey" in factory
 
 

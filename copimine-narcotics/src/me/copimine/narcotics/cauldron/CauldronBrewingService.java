@@ -523,7 +523,7 @@ public final class CauldronBrewingService {
                     + " has no owner; consumed ingredient requires manual review.");
             return;
         }
-        database.queuePendingRefund(ownerUuid, "INGREDIENT:" + frozen.getLast().serialize(), 1)
+        database.queuePendingIngredientRefunds(ownerUuid, frozen)
                 .whenComplete((queued, queueError) -> Bukkit.getScheduler().runTask(plugin, () -> {
                     if (queueError != null) {
                         plugin.getLogger().warning("Ingredient refund queue failed for " + key + ": " + queueError.getMessage());

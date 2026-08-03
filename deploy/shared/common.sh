@@ -20,7 +20,9 @@ COPIMINE_INSTALLER_MANIFEST="${COPIMINE_INSTALLER_MANIFEST:-$COPIMINE_ROOT/deplo
 COPIMINE_TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
 COPIMINE_PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-/etc/copimine/verify_payload_manifest.py}"
 COPIMINE_CLEAN_WORLD_STATE_SQL="${COPIMINE_CLEAN_WORLD_STATE_SQL:-$COPIMINE_ROOT/db/runtime/clean_world_state.sql}"
-COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-18080.conf}"
+# Public traffic is terminated directly by the bundled nginx listener on 443.
+# There is deliberately no plaintext or relay listener in the release.
+COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-https.conf}"
 COPIMINE_NGINX_TLS_TEMPLATE="${COPIMINE_NGINX_TLS_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-https.conf}"
 COPIMINE_NGINX_AVAILABLE="${COPIMINE_NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 COPIMINE_NGINX_ENABLED="${COPIMINE_NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
@@ -30,9 +32,6 @@ COPIMINE_VOICECHAT_TEMPLATE="${COPIMINE_VOICECHAT_TEMPLATE:-$COPIMINE_ROOT/deplo
 COPIMINE_TLS_ENABLED="${COPIMINE_TLS_ENABLED:-}"
 COPIMINE_TLS_CERT_PATH="${COPIMINE_TLS_CERT_PATH:-}"
 COPIMINE_TLS_KEY_PATH="${COPIMINE_TLS_KEY_PATH:-}"
-# When a separate public nginx vhost terminates TLS and relays to the local
-# 18080 listener, keep the backend nginx configuration relay-only.  This
-# avoids binding a second 443 listener from the application package.
 COPIMINE_PUBLIC_TLS_EXTERNAL="${COPIMINE_PUBLIC_TLS_EXTERNAL:-}"
 COPIMINE_SERVER_NAMES="${COPIMINE_SERVER_NAMES:-}"
 COPIMINE_DATABASE_RESTORE_ACTIVE_DB="${COPIMINE_DATABASE_RESTORE_ACTIVE_DB:-}"
@@ -88,37 +87,25 @@ PY
 }
 
 copimine_verify_public_endpoints() {
-  local admin_url public_url tls_enabled public_tls_external public_host http_health_url
+  local admin_url public_url tls_enabled public_host
   admin_url="$(copimine_env_value ADMIN_PUBLIC_BASE_URL)"
   public_url="$(copimine_env_value PUBLIC_PANEL_URL)"
   tls_enabled="${COPIMINE_TLS_ENABLED:-$(copimine_env_value COPIMINE_TLS_ENABLED)}"
   tls_enabled="${tls_enabled:-0}"
-  public_tls_external="${COPIMINE_PUBLIC_TLS_EXTERNAL:-$(copimine_env_value COPIMINE_PUBLIC_TLS_EXTERNAL)}"
-  public_tls_external="${public_tls_external:-0}"
-  [[ "$admin_url" =~ ^https?:// ]] || copimine_fail "ADMIN_PUBLIC_BASE_URL must use http:// or https://"
-  [[ "$public_url" =~ ^https?:// ]] || copimine_fail "PUBLIC_PANEL_URL must use http:// or https://"
+  [[ "$tls_enabled" == "1" ]] || copimine_fail "Only HTTPS public access on port 443 is supported"
+  [[ "$admin_url" =~ ^https:// ]] || copimine_fail "ADMIN_PUBLIC_BASE_URL must use https://"
+  [[ "$public_url" =~ ^https:// ]] || copimine_fail "PUBLIC_PANEL_URL must use https://"
 
   copimine_http_wait "${admin_url%/}/api/health" "" 90 || copimine_fail "public admin health endpoint failed: $admin_url"
   copimine_http_wait "${public_url%/}/downloads/CopiMineMods.zip" "" 90 || copimine_fail "public modpack endpoint failed: $public_url"
   copimine_http_wait "${public_url%/}/resourcepacks/CopiMineResourcePack.zip" "" 90 || copimine_fail "public resourcepack endpoint failed: $public_url"
 
-  if [[ "$tls_enabled" == "1" ]]; then
-    public_host="$(copimine_url_host "$public_url")"
-    if [[ "$public_tls_external" == "1" ]]; then
-      # The relay is intentionally loopback-only when another nginx vhost
-      # owns the public TLS socket.  Test it locally with the public Host.
-      http_health_url="http://127.0.0.1:18080/api/health"
-      copimine_http_wait "$http_health_url" "$public_host" 90 || copimine_fail "local HTTP relay failed: $http_health_url"
-      copimine_http_wait "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "$public_host" 90 || copimine_fail "local HTTP modpack relay failed"
-      copimine_http_wait "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "$public_host" 90 || copimine_fail "local HTTP resourcepack relay failed"
-    else
-      http_health_url="http://${public_host}:18080/api/health"
-      # TLS mode without an external vhost keeps the legacy public HTTP
-      # listener for game downloads and status.
-      copimine_http_wait "$http_health_url" "$public_host" 90 || copimine_fail "HTTP compatibility endpoint failed: $http_health_url"
-      copimine_http_wait "http://${public_host}:18080/downloads/CopiMineMods.zip" "$public_host" 90 || copimine_fail "HTTP modpack compatibility endpoint failed"
-      copimine_http_wait "http://${public_host}:18080/resourcepacks/CopiMineResourcePack.zip" "$public_host" 90 || copimine_fail "HTTP resourcepack compatibility endpoint failed"
-    fi
+  public_host="$(copimine_url_host "$public_url")"
+  if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+    copimine_fail "Plaintext/relay listener is still active on port 80 or 18080"
+  fi
+  if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:443$/ {found=1} END {exit found ? 0 : 1}'; then
+    copimine_fail "HTTPS listener on port 443 is not active"
   fi
 }
 
@@ -273,8 +260,8 @@ if tls_enabled == "0" and admin_is_https:
 if tls_enabled == "0" and panel_is_https:
     raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
 external_tls = values.get("COPIMINE_PUBLIC_TLS_EXTERNAL", "0").strip()
-if external_tls not in {"0", "1"}:
-    raise SystemExit("COPIMINE_PUBLIC_TLS_EXTERNAL must be 0 or 1")
+if external_tls != "0":
+    raise SystemExit("COPIMINE_PUBLIC_TLS_EXTERNAL is retired; nginx must terminate TLS directly on port 443")
 if tls_enabled == "1":
     values["AUTH_COOKIE_SECURE"] = "1"
     values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
@@ -809,21 +796,17 @@ copimine_render_nginx_config() {
   tls_enabled="${tls_enabled:-0}"
   external_tls="${COPIMINE_PUBLIC_TLS_EXTERNAL:-$(copimine_env_value COPIMINE_PUBLIC_TLS_EXTERNAL)}"
   external_tls="${external_tls:-0}"
-  [[ "$external_tls" == "0" || "$external_tls" == "1" ]] || copimine_fail "COPIMINE_PUBLIC_TLS_EXTERNAL must be 0 or 1"
+  [[ "$external_tls" == "0" ]] || copimine_fail "COPIMINE_PUBLIC_TLS_EXTERNAL is retired; use direct HTTPS on port 443"
   server_names="${COPIMINE_SERVER_NAMES:-$(copimine_env_value NGINX_SERVER_NAMES)}"
   server_names="${server_names:-admin.copimine.ru copimine.ru www.copimine.ru}"
-  template="$COPIMINE_NGINX_TEMPLATE"
+  template="$COPIMINE_NGINX_TLS_TEMPLATE"
   cert_path=""
   key_path=""
   case "$tls_enabled" in
     0)
+      copimine_fail "Plain HTTP public mode is retired; enable TLS for the 443-only release"
       ;;
     1)
-      if [[ "$external_tls" == "1" ]]; then
-        template="$COPIMINE_NGINX_TEMPLATE"
-      else
-        template="$COPIMINE_NGINX_TLS_TEMPLATE"
-      fi
       cert_path="${COPIMINE_TLS_CERT_PATH:-$(copimine_env_value COPIMINE_TLS_CERT_PATH)}"
       key_path="${COPIMINE_TLS_KEY_PATH:-$(copimine_env_value COPIMINE_TLS_KEY_PATH)}"
       [[ -n "$cert_path" && -f "$cert_path" ]] || copimine_fail "COPIMINE_TLS_CERT_PATH must point to a readable certificate when TLS is enabled"

@@ -770,29 +770,65 @@ public final class NarcoticsDatabase {
             return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "Only failed cauldron ingredients may be queued for compensation."));
         }
-        String refundId = UUID.randomUUID().toString();
+        return queuePendingRefundRows(playerUuid, List.of(new RefundRow(narcoticId, amount)));
+    }
+
+    /**
+     * Queue every ingredient from a failed multi-step cauldron mutation in one
+     * transaction.  A tombstone removes the persisted state as a whole, so a
+     * compensation that only records the last ingredient would permanently
+     * lose the earlier ingredients after an acknowledgement failure.
+     */
+    public CompletableFuture<Void> queuePendingIngredientRefunds(UUID playerUuid, List<IngredientEntry> ingredients) {
+        if (playerUuid == null || ingredients == null || ingredients.isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("At least one ingredient is required for compensation."));
+        }
+        List<RefundRow> rows = new ArrayList<>(ingredients.size());
+        for (IngredientEntry ingredient : ingredients) {
+            if (ingredient == null) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException("Ingredient compensation contains a null entry."));
+            }
+            rows.add(new RefundRow("INGREDIENT:" + ingredient.serialize(), 1));
+        }
+        return queuePendingRefundRows(playerUuid, rows);
+    }
+
+    private record RefundRow(String narcoticId, int amount) {}
+
+    private CompletableFuture<Void> queuePendingRefundRows(UUID playerUuid, List<RefundRow> rows) {
+        List<String> refundIds = new ArrayList<>(rows.size());
+        for (RefundRow row : rows) {
+            refundIds.add(UUID.randomUUID().toString());
+        }
         CompletableFuture<Void> persisted = runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO narcotics_pending_refunds(id,player_uuid,narcotic_id,amount,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")) {
                 long now = Instant.now().getEpochSecond();
-                statement.setString(1, refundId);
-                statement.setString(2, playerUuid.toString());
-                statement.setString(3, narcoticId);
-                statement.setInt(4, amount);
-                statement.setString(5, "PENDING");
-                statement.setLong(6, now);
-                statement.setLong(7, now);
-                statement.executeUpdate();
+                for (int index = 0; index < rows.size(); index++) {
+                    RefundRow row = rows.get(index);
+                    statement.setString(1, refundIds.get(index));
+                    statement.setString(2, playerUuid.toString());
+                    statement.setString(3, row.narcoticId());
+                    statement.setInt(4, row.amount());
+                    statement.setString(5, "PENDING");
+                    statement.setLong(6, now);
+                    statement.setLong(7, now);
+                    statement.addBatch();
+                }
+                statement.executeBatch();
             }
             return null;
         }));
         persisted.whenComplete((ignored, error) -> {
             if (error != null) {
-                try {
-                    appendRefundJournal(refundId, playerUuid, narcoticId, amount);
-                } catch (Exception journalError) {
-                    plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                            "Unable to persist narcotics refund journal", journalError);
+                for (int index = 0; index < rows.size(); index++) {
+                    RefundRow row = rows.get(index);
+                    try {
+                        appendRefundJournal(refundIds.get(index), playerUuid, row.narcoticId(), row.amount());
+                    } catch (Exception journalError) {
+                        plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                                "Unable to persist narcotics refund journal", journalError);
+                    }
                 }
             }
         });

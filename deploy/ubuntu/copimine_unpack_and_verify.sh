@@ -49,7 +49,7 @@ if [[ "$APP_USER" == "root" || -z "$APP_USER" ]]; then
 fi
 APP_GROUP="${APP_GROUP:-$APP_USER}"
 
-NGINX_TEMPLATE_REL="admin-web/deploy/nginx-copimine-admin-18080.conf"
+NGINX_TEMPLATE_REL="admin-web/deploy/nginx-copimine-admin-https.conf"
 NGINX_AVAILABLE="${NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 NGINX_ENABLED="${NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
 
@@ -699,14 +699,14 @@ restart_services() {
     systemctl stop nginx.service 2>/dev/null || true
     local elapsed=0
     while (( elapsed < 30 )); do
-      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
         break
       fi
       sleep 1
       elapsed=$((elapsed + 1))
     done
-    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
-      log 'ERROR: nginx port 18080 is still occupied after stop'
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      log 'ERROR: plaintext/relay nginx port 80 or 18080 is still occupied after stop'
       ss -ltnp || true
       return 1
     fi
@@ -715,6 +715,16 @@ restart_services() {
       log 'ERROR: failed to restart nginx'
       systemctl --no-pager --full status nginx.service || true
       journalctl -u nginx.service -n 160 --no-pager || true
+      return 1
+    fi
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      log 'ERROR: release still exposes a plaintext/relay nginx listener on port 80 or 18080'
+      ss -ltnp || true
+      return 1
+    fi
+    if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:443$/ {found=1} END {exit found ? 0 : 1}'; then
+      log 'ERROR: HTTPS nginx listener on port 443 is missing'
+      ss -ltnp || true
       return 1
     fi
   fi
@@ -776,13 +786,13 @@ verify_http() {
     die '/api/health failed'
   fi
   curl -fsS --max-time 10 http://127.0.0.1:8090/api/runtime >/dev/null || die "/api/runtime failed"
-  curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip >/dev/null || die "Modpack download route failed"
-  curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack download route failed"
+  curl -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || die "Modpack HTTPS download route failed"
+  curl -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack HTTPS route failed"
   local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
   tmp_modpack="$TMP_ROOT/CopiMineMods.zip"
   tmp_resourcepack="$TMP_ROOT/CopiMineResourcePack.zip"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip -o "$tmp_modpack" || die "Modpack payload download failed"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || die "Resource pack payload download failed"
+  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || die "Modpack HTTPS payload download failed"
+  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || die "Resource pack HTTPS payload download failed"
   local_modpack_sha="$(sha256sum "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
   remote_modpack_sha="$(sha256sum "$tmp_modpack" | awk '{print $1}')"
   [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || die "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"

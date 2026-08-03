@@ -21,6 +21,7 @@ INSTALLER = (ROOT / "deploy/ubuntu/install_release.sh").read_text(encoding="utf-
 UNPACK = (ROOT / "deploy/ubuntu/copimine_unpack_and_verify.sh").read_text(encoding="utf-8")
 FULL_REPLACE = (ROOT / "deploy/ubuntu/copimine_full_replace.sh").read_text(encoding="utf-8")
 COMMON = (ROOT / "deploy/shared/common.sh").read_text(encoding="utf-8")
+NGINX_HTTPS = (ROOT / "admin-web/deploy/nginx-copimine-admin-https.conf").read_text(encoding="utf-8")
 
 
 def test_ci_runs_the_entire_python_suite_with_real_pytest_and_junit_output():
@@ -120,6 +121,11 @@ def test_election_repair_never_overrides_an_external_protection_cancel():
     assert "event.getPlayer()" not in section[section.index("runTask"):]
 
 
+def test_election_boolean_active_flags_are_not_treated_as_zero():
+    assert "if (value instanceof Boolean booleanValue)" in ELECTION
+    assert "return booleanValue ? 1 : 0;" in ELECTION
+
+
 def test_election_station_removal_uses_persisted_material_and_preserves_replacements():
     removal = ELECTION[ELECTION.index("private void removePollingStation"):ELECTION.index("private void issueOrRefreshSeal")]
     assert "SELECT expected_material FROM election_voting_blocks WHERE id=?" in removal
@@ -138,6 +144,16 @@ def test_brewing_owner_is_preserved_and_final_ingredient_is_durable_before_consu
     assert "nearby.damage" not in NARCOTICS
     final_section = NARCOTICS[NARCOTICS.index("NarcoticDefinition exact"):NARCOTICS.index("private boolean queueIngredients")]
     assert final_section.index("prepareBrewingCompletionIntent") < final_section.index("consumeOne")
+
+
+def test_failed_multi_ingredient_brew_refunds_every_consumed_ingredient():
+    refund = NARCOTICS[NARCOTICS.index("private void refundFailedIngredient"):NARCOTICS.index("private void clearState")]
+    assert "frozen.getLast()" not in refund
+    assert "queuePendingIngredientRefunds(ownerUuid, frozen)" in refund
+    database = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java").read_text(encoding="utf-8")
+    assert "public CompletableFuture<Void> queuePendingIngredientRefunds" in database
+    assert "statement.addBatch()" in database
+    assert "for (int index = 0; index < rows.size(); index++)" in database
 
 
 def test_world_teleport_tokens_are_bound_and_border_replacement_is_atomic():
@@ -207,3 +223,16 @@ def test_windows_release_helpers_target_the_current_ssh_endpoint():
     for source in (bat, ps1, uploader):
         assert "90.188.115.155" in source
         assert "2222" in source
+
+
+def test_public_site_has_only_the_direct_https_443_listener():
+    assert "listen 443 ssl http2 default_server;" in NGINX_HTTPS
+    assert "proxy_pass http://127.0.0.1:8090;" in NGINX_HTTPS
+    assert "listen 80" not in NGINX_HTTPS
+    assert "18080" not in NGINX_HTTPS
+    for helper in (UNPACK, FULL_REPLACE):
+        assert "nginx-copimine-admin-https.conf" in helper
+        assert "https://copimine.ru/downloads/CopiMineMods.zip" in helper
+        assert "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip" in helper
+    assert "Plain HTTP public mode is retired" in COMMON
+    assert "Only HTTPS public access on port 443 is supported" in COMMON

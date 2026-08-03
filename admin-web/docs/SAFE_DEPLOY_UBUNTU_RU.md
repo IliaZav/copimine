@@ -5,7 +5,7 @@
 - веб-админка: `/opt/copimine/admin-web`
 - Minecraft сервер: `/opt/copimine/minecraft/server`
 - backend: `127.0.0.1:8090`
-- внешний nginx порт: `18080`
+- внешний nginx порт: `443` (HTTPS); порты `80` и `18080` не используются
 
 ## 1. Загрузить архив с Windows
 
@@ -87,7 +87,7 @@ sudo systemctl reload nginx
 
 ```bash
 curl -fsS http://127.0.0.1:8090/api/health
-curl -fsS http://127.0.0.1:18080/api/health
+curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/api/health
 systemctl status copimine-admin --no-pager -l
 systemctl status copimine-discord-bot --no-pager -l
 ```

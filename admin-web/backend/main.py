@@ -12104,7 +12104,7 @@ async def player_create_report(request: Request, data: PlayerSupportReportIn, ac
 @app.get("/api/status")
 async def status(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
     online, latency = await bg(tcp_online, MC_HOST, MC_PORT)
-    web_online, web_latency = await bg(tcp_online, "127.0.0.1", 18080)
+    web_online, web_latency = await bg(tcp_online, "127.0.0.1", 443)
     backend_online, backend_latency = await bg(tcp_online, "127.0.0.1", 8090)
     voice = await bg(udp_probe, MC_HOST, 24454)
     rcon_ok = False
@@ -12139,7 +12139,7 @@ async def status(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
         "ports": {
             "minecraftTcp25565": {"online": online, "latencyMs": latency},
             "voiceUdp24454": voice,
-            "adminHttp18080": {"online": web_online, "latencyMs": web_latency},
+            "adminHttps443": {"online": web_online, "latencyMs": web_latency},
             "backend8090": {"online": backend_online, "latencyMs": backend_latency},
         },
         "time": int(time.time()),

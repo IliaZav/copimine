@@ -87,7 +87,7 @@ SYSTEM_FILES=(
   "copimine-game-hardening.service:/etc/systemd/system/copimine-game-hardening.service"
 )
 
-NginxTemplateRelative="admin-web/deploy/nginx-copimine-admin-18080.conf"
+NginxTemplateRelative="admin-web/deploy/nginx-copimine-admin-https.conf"
 NginxAvailable="${NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 NginxEnabled="${NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
 
@@ -661,17 +661,23 @@ restart_services() {
     systemctl stop nginx.service 2>/dev/null || true
     local elapsed=0
     while (( elapsed < 30 )); do
-      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
         break
       fi
       sleep 1
       elapsed=$((elapsed + 1))
     done
-    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
-      fail 'nginx port 18080 is still occupied after stop'
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      fail 'plaintext/relay nginx port 80 or 18080 is still occupied after stop'
     fi
     systemctl enable nginx >/dev/null 2>&1 || true
     systemctl start nginx
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      fail 'release still exposes a plaintext/relay nginx listener on port 80 or 18080'
+    fi
+    if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:443$/ {found=1} END {exit found ? 0 : 1}'; then
+      fail 'HTTPS nginx listener on port 443 is missing'
+    fi
   fi
 }
 
@@ -707,13 +713,13 @@ verify_runtime() {
 
   http_check "http://127.0.0.1:8090/api/health" "" 90
   http_check "http://127.0.0.1:8090/api/runtime" "" 90
-  http_check "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "copimine.ru:18080" 90
-  http_check "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "copimine.ru:18080" 90
+  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || fail "Modpack HTTPS route failed"
+  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || fail "Resource pack HTTPS route failed"
   local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
   tmp_modpack="$(mktemp /tmp/copimine-fullreplace-modpack-XXXXXX.zip)"
   tmp_resourcepack="$(mktemp /tmp/copimine-fullreplace-resourcepack-XXXXXX.zip)"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip -o "$tmp_modpack" || fail "Modpack payload download failed"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || fail "Resource pack payload download failed"
+  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || fail "Modpack HTTPS payload download failed"
+  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || fail "Resource pack HTTPS payload download failed"
   local_modpack_sha="$(sha256_file "$PROJECT_ROOT/thirdparty/CopiMineMods.zip")"
   remote_modpack_sha="$(sha256_file "$tmp_modpack")"
   [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || fail "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"

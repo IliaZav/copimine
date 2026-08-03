@@ -10783,7 +10783,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (value instanceof Number number) {
             return number.intValue();
         }
-        return parseInt(String.valueOf(value), 0);
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue ? 1 : 0;
+        }
+        String text = String.valueOf(value).trim();
+        if ("true".equalsIgnoreCase(text)) {
+            return 1;
+        }
+        if ("false".equalsIgnoreCase(text)) {
+            return 0;
+        }
+        return parseInt(text, 0);
     }
 
     private long longValue(Object value) {

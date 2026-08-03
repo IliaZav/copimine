@@ -89,7 +89,7 @@ else
 fi
 
 if command -v curl >/dev/null 2>&1; then
-  curl -fsS --max-time 10 http://127.0.0.1:18080/api/runtime >"$OUT/http-runtime.json" 2>&1 || true
+  curl -fsS --max-time 10 http://127.0.0.1:8090/api/runtime >"$OUT/http-runtime.json" 2>&1 || true
 fi
 
 if [[ "$MODE" == "stdout" ]]; then

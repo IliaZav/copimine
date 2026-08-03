@@ -415,54 +415,8 @@ cleanup_legacy_artifacts() {
 }
 
 configure_http_only_public() {
-  local config='/etc/nginx/sites-available/copimine-public'
-  local enabled='/etc/nginx/sites-enabled/copimine-public'
-  local backup_root='/opt/copimine-backups'
-  local backup_path="${backup_root}/http-public-before-http-only-$(date +%Y%m%d-%H%M%S)"
-
-  command -v nginx >/dev/null 2>&1 || { echo '[http] nginx is required' >&2; return 1; }
-  mkdir -p "$backup_root"
-  chmod 700 "$backup_root"
-  if [[ -f "$config" ]]; then
-    cp -a -- "$config" "$backup_path"
-    chmod 600 "$backup_path"
-  fi
-
-  cat >"$config" <<'NGINX'
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-
-    server_name copimine.ru www.copimine.ru;
-    client_max_body_size 8m;
-
-    add_header X-Frame-Options "DENY" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "same-origin" always;
-
-    location / {
-        proxy_pass http://127.0.0.1:18080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Host $http_host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Port $server_port;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_connect_timeout 30s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-    }
-}
-NGINX
-  ln -sfn "$config" "$enabled"
-  nginx -t
-  systemctl reload nginx.service
-  systemctl is-active --quiet nginx.service || { echo '[http] nginx is not active' >&2; return 1; }
-  echo '[http] public port 80 enabled; public 443 configuration disabled.'
-  [[ -f "$backup_path" ]] && echo "[http] previous public config saved at $backup_path"
+  echo '[http] public HTTP mode is retired; the site is available only through HTTPS on port 443.' >&2
+  return 2
 }
 
 configure_https_public() {
@@ -529,7 +483,7 @@ values.update(
         "COPIMINE_TLS_ENABLED": "1",
         "COPIMINE_TLS_CERT_PATH": cert,
         "COPIMINE_TLS_KEY_PATH": key,
-        "COPIMINE_PUBLIC_TLS_EXTERNAL": "1",
+        "COPIMINE_PUBLIC_TLS_EXTERNAL": "0",
         "AUTH_COOKIE_SECURE": "1",
         "ALLOW_INSECURE_HTTP_AUTH": "0",
         "NGINX_SERVER_NAMES": " ".join(server_names),
@@ -558,13 +512,6 @@ PY
 
   cat >"$config" <<'NGINX'
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name __COPIMINE_PUBLIC_SERVER_NAMES__;
-    return 301 https://$host$request_uri;
-}
-
-server {
     listen 443 ssl http2 default_server;
     listen [::]:443 ssl http2 default_server;
     server_name __COPIMINE_PUBLIC_SERVER_NAMES__;
@@ -583,7 +530,7 @@ server {
     add_header Referrer-Policy "same-origin" always;
 
     location / {
-        proxy_pass http://127.0.0.1:18080;
+        proxy_pass http://127.0.0.1:8090;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -904,20 +851,20 @@ verify_runtime() {
     echo "[verify] service active: $service"
   done
   expected_sha="$(sha1sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
-  actual_sha="$(curl -fsS --max-time 30 http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip | sha1sum | awk '{print $1}')"
+  actual_sha="$(curl -kfsS --max-time 30 --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip | sha1sum | awk '{print $1}')"
   [[ "$expected_sha" == "$actual_sha" ]] || { echo "Resource pack SHA1 mismatch: local=$expected_sha served=$actual_sha" >&2; return 1; }
   echo "[verify] resource pack SHA1 OK: $actual_sha"
   expected_modpack="$(sha256sum "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
-  actual_modpack="$(curl -fsS --max-time 30 http://127.0.0.1:18080/downloads/CopiMineMods.zip | sha256sum | awk '{print $1}')"
+  actual_modpack="$(curl -kfsS --max-time 30 --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip | sha256sum | awk '{print $1}')"
   [[ "$expected_modpack" == "$actual_modpack" ]] || { echo "Modpack SHA256 mismatch: local=$expected_modpack served=$actual_modpack" >&2; return 1; }
   echo "[verify] modpack SHA256 OK: $actual_modpack"
   grep -q '^require-resource-pack=true$' "$PROJECT_ROOT/minecraft/server/server.properties" || { echo 'require-resource-pack=true is missing' >&2; return 1; }
   properties_sha="$(sed -n 's/^resource-pack-sha1=//p' "$PROJECT_ROOT/minecraft/server/server.properties" | tr -d '\r\n')"
   [[ "$properties_sha" == "$expected_sha" ]] || { echo "server.properties resource-pack-sha1 mismatch: $properties_sha" >&2; return 1; }
   echo '[verify] server.properties resource-pack requirement and SHA1 OK'
-  curl -fsS --max-time 15 http://127.0.0.1:18080/api/health >/dev/null
+  curl -kfsS --max-time 15 --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/api/health >/dev/null
   local runtime_status
-  runtime_status="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/runtime || true)"
+  runtime_status="$(curl -ksS --max-time 15 --resolve copimine.ru:443:127.0.0.1 -o /dev/null -w '%{http_code}' https://copimine.ru/api/runtime || true)"
   case "$runtime_status" in
     401|403) echo "[verify] HTTP runtime endpoint is protected (status $runtime_status)" ;;
     200) echo '[verify] HTTP runtime endpoint allowed direct loopback access' ;;

@@ -54,6 +54,18 @@ def test_release_verification_does_not_bootstrap_trust_from_upload_directory():
     assert "chown -R \"$COPIMINE_APP_USER:$COPIMINE_APP_GROUP\" \"$COPIMINE_ROOT\"" not in COMMON
 
 
+def test_ubuntu_replace_backups_redact_runtime_secrets_and_require_db_backup():
+    for helper in (UNPACK, FULL_REPLACE):
+        assert 'cp -a "$PROJECT_ROOT" "$backup_dir/copimine-pre-replace"' not in helper
+        assert 'copimine-pre-replace.tar.gz' in helper
+        assert '--exclude="$root_name/admin-web/.env"' in helper
+        assert '--exclude="$root_name/admin-web/data"' in helper
+        assert 'sha256sum "$backup_dir/copimine-pre-replace.tar.gz"' in helper
+    assert 'command -v pg_dump >/dev/null 2>&1 || die "pg_dump is required' in UNPACK
+    assert 'command -v pg_dump >/dev/null 2>&1 || fail "pg_dump is required' in FULL_REPLACE
+    assert 'WARNING: PostgreSQL backup skipped.' not in UNPACK
+
+
 def test_ar_deposit_credit_and_asset_lifecycle_share_one_transaction():
     assert "commitArDepositAtomically" in ECONOMY
     atomic = ECONOMY[ECONOMY.index("commitArDepositAtomically"):ECONOMY.index("private List<ArDepositIntent>")]

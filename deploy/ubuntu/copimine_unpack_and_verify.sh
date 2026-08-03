@@ -369,17 +369,38 @@ backup_current_release() {
   mkdir -p "$backup_dir"
   chmod 700 "$backup_dir"
   if [[ -d "$PROJECT_ROOT" ]]; then
-    cp -a "$PROJECT_ROOT" "$backup_dir/copimine-pre-replace"
+    local root_name="$(basename "$PROJECT_ROOT")"
+    # Do not duplicate .env or mutable runtime/player data into the readable
+    # project snapshot. Those protected paths are preserved separately and
+    # the database is backed up as its own mode-0600 dump below.
+    tar -C "$(dirname "$PROJECT_ROOT")" -czf "$backup_dir/copimine-pre-replace.tar.gz" \
+      --exclude="$root_name/admin-web/.env" \
+      --exclude="$root_name/admin-web/.env.*" \
+      --exclude="$root_name/admin-web/.postgres-password" \
+      --exclude="$root_name/admin-web/data" \
+      --exclude="$root_name/admin-web/backups" \
+      --exclude="$root_name/minecraft/server/logs" \
+      --exclude="$root_name/minecraft/server/world" \
+      --exclude="$root_name/minecraft/server/world_*" \
+      --exclude="$root_name/minecraft/server/CopiMine*" \
+      --exclude="$root_name/minecraft/server/paper-world*" \
+      "$root_name"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz"
+    sha256sum "$backup_dir/copimine-pre-replace.tar.gz" | awk '{print $1}' > "$backup_dir/copimine-pre-replace.tar.gz.sha256"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz.sha256"
   fi
   if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
     load_shared_helpers
+    command -v pg_dump >/dev/null 2>&1 || die "pg_dump is required to create the pre-replace database backup."
     local pg_password pg_user pg_db
     pg_password="$(copimine_env_value POSTGRES_PASSWORD)"
     pg_user="$(copimine_env_value POSTGRES_USER)"
     pg_db="$(copimine_env_value POSTGRES_DB)"
     if [[ -n "$pg_password" && -n "$pg_user" && -n "$pg_db" ]]; then
-      PGPASSWORD="$pg_password" pg_dump -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 || log "WARNING: PostgreSQL backup skipped."
-      [[ -f "$backup_dir/copimine-db.dump" ]] && chmod 600 "$backup_dir/copimine-db.dump"
+      PGPASSWORD="$pg_password" pg_dump -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 \
+        || die "PostgreSQL backup failed; refusing to replace the live release."
+      [[ -s "$backup_dir/copimine-db.dump" ]] || die "PostgreSQL backup file was not created."
+      chmod 600 "$backup_dir/copimine-db.dump"
     fi
   fi
   for relative in "${PRESERVE_PATHS[@]}"; do

@@ -372,10 +372,30 @@ snapshot_runtime_state() {
   chmod 700 "$BACKUP_ROOT" "$backup_dir"
 
   if [[ -d "$live_root" ]]; then
-    cp -a "$live_root" "$backup_dir/copimine-pre-replace"
+    local root_name="$(basename "$live_root")"
+    # Keep the rollback evidence useful without copying credentials and
+    # mutable player/world state into a cleartext project snapshot.  The
+    # protected .env/data paths are preserved separately in PRESERVE_ROOT and
+    # the database dump below; neither needs to be duplicated here.
+    tar -C "$(dirname "$live_root")" -czf "$backup_dir/copimine-pre-replace.tar.gz" \
+      --exclude="$root_name/admin-web/.env" \
+      --exclude="$root_name/admin-web/.env.*" \
+      --exclude="$root_name/admin-web/.postgres-password" \
+      --exclude="$root_name/admin-web/data" \
+      --exclude="$root_name/admin-web/backups" \
+      --exclude="$root_name/minecraft/server/logs" \
+      --exclude="$root_name/minecraft/server/world" \
+      --exclude="$root_name/minecraft/server/world_*" \
+      --exclude="$root_name/minecraft/server/CopiMine*" \
+      --exclude="$root_name/minecraft/server/paper-world*" \
+      "$root_name"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz"
+    sha256sum "$backup_dir/copimine-pre-replace.tar.gz" | awk '{print $1}' > "$backup_dir/copimine-pre-replace.tar.gz.sha256"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz.sha256"
   fi
 
-  if command -v pg_dump >/dev/null 2>&1; then
+  if [[ -f "$live_root/admin-web/.env" ]]; then
+    command -v pg_dump >/dev/null 2>&1 || fail "pg_dump is required to create the pre-replace database backup."
     local env_file="$live_root/admin-web/.env"
     local pg_password=""
     local pg_db="copimine"

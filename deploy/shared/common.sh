@@ -955,6 +955,14 @@ copimine_harden_release_ownership() {
     "$COPIMINE_ADMIN_DIR/.venv"
     "$COPIMINE_SERVER_DIR/eula.txt"
     "$COPIMINE_SERVER_DIR/server.properties"
+    # Paper/Bukkit update these root-level runtime configs during boot.  Keep
+    # them writable just like server.properties after a root-owned release
+    # payload has been unpacked.
+    "$COPIMINE_SERVER_DIR/bukkit.yml"
+    "$COPIMINE_SERVER_DIR/commands.yml"
+    "$COPIMINE_SERVER_DIR/spigot.yml"
+    "$COPIMINE_SERVER_DIR/permissions.yml"
+    "$COPIMINE_SERVER_DIR/help.yml"
     "$COPIMINE_SERVER_DIR/whitelist.json"
     "$COPIMINE_SERVER_DIR/ops.json"
     "$COPIMINE_SERVER_DIR/banned-players.json"
@@ -1035,6 +1043,10 @@ copimine_refresh_release_artifacts() {
   copimine_sync_game_runtime_hardening
   copimine_fix_runtime_plugin_ownership
   copimine_write_runtime_metadata
+  # The managed sync steps above use atomic writes and therefore can recreate
+  # files as root. Re-apply the runtime ownership policy after every such
+  # replacement so Paper never starts with an unreadable config file.
+  copimine_harden_release_ownership
 }
 
 copimine_validate_release_contract() {

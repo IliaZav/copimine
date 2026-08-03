@@ -83,8 +83,10 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     private final ConcurrentHashMap<UUID, Long> consumeCooldownUntil = new ConcurrentHashMap<>();
     private final Set<UUID> consumeInFlight = ConcurrentHashMap.newKeySet();
-    /** Exact instance reserved while the DB state is being committed. */
+    /** Fungible stack identity reserved while the DB state is being committed. */
     private final ConcurrentHashMap<UUID, String> consumeReservations = new ConcurrentHashMap<>();
+    /** A unique durable reservation id for each consumption operation. */
+    private final ConcurrentHashMap<UUID, String> consumeReservationIds = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, String> consumeReservationNarcotics = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Integer> consumeReservationQuantities = new ConcurrentHashMap<>();
     private NamespacedKey pendingRefundKey;
@@ -151,6 +153,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         consumeCooldownUntil.clear();
         consumeInFlight.clear();
         consumeReservations.clear();
+        consumeReservationIds.clear();
         consumeReservationNarcotics.clear();
         consumeReservationQuantities.clear();
         pendingOutputClaims.clear();
@@ -238,23 +241,27 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 player.sendMessage(ChatColor.YELLOW + "Предыдущая операция ещё сохраняется. Попробуйте через секунду.");
                 return;
             }
-            String reservedInstanceId = itemFactory.instanceId(inHand);
-            if (reservedInstanceId == null || reservedInstanceId.isBlank()) {
+            String reservedStackKey = itemFactory.instanceId(inHand);
+            if (reservedStackKey == null || reservedStackKey.isBlank()) {
                 consumeInFlight.remove(player.getUniqueId());
                 consumeCooldownUntil.remove(player.getUniqueId());
                 player.sendMessage(ChatColor.RED + "У предмета отсутствует служебная метка экземпляра. Получите новый предмет.");
                 return;
             }
             String reservedNarcoticId = official.id();
-            int reservedQuantity = Math.max(1, itemFactory.exactQuantity(player, reservedInstanceId, reservedNarcoticId));
-            consumeReservations.put(player.getUniqueId(), reservedInstanceId);
+            int reservedQuantity = Math.max(1, itemFactory.exactQuantity(player, reservedStackKey, reservedNarcoticId));
+            consumeReservations.put(player.getUniqueId(), reservedStackKey);
             consumeReservationNarcotics.put(player.getUniqueId(), reservedNarcoticId);
             consumeReservationQuantities.put(player.getUniqueId(), reservedQuantity);
             // Persist first; remove the exact issued stack only after the DB
             // acknowledgement so a failed write never deletes the item.
-            database.reserveConsumption(player.getUniqueId(), reservedInstanceId, reservedNarcoticId, reservedQuantity)
-                    .thenCompose(ignored -> overdoseService.consume(player, official, reservedInstanceId))
-                    .whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            database.reserveConsumption(player.getUniqueId(), reservedStackKey, reservedNarcoticId, reservedQuantity)
+                    .thenCompose(reservationId -> {
+                        consumeReservationIds.put(player.getUniqueId(), reservationId);
+                        return overdoseService.consume(player, official, reservationId)
+                                .thenApply(ignored -> reservationId);
+                    })
+                    .whenComplete((reservationId, error) -> Bukkit.getScheduler().runTask(this, () -> {
                 if (error == null) {
                     Player current = Bukkit.getPlayer(player.getUniqueId());
                     if (current == null || !current.isOnline()) {
@@ -263,8 +270,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                         // physical copy that can be consumed again.
                         return;
                     }
-                    completePhysicalConsumption(current, reservedInstanceId, reservedNarcoticId, reservedQuantity);
-                    consumeReservations.remove(current.getUniqueId(), reservedInstanceId);
+                    completePhysicalConsumption(current, reservationId, reservedStackKey, reservedNarcoticId, reservedQuantity);
+                    consumeReservations.remove(current.getUniqueId(), reservedStackKey);
+                    consumeReservationIds.remove(current.getUniqueId(), reservationId);
                     consumeReservationNarcotics.remove(current.getUniqueId(), reservedNarcoticId);
                     consumeReservationQuantities.remove(current.getUniqueId(), reservedQuantity);
                     consumeInFlight.remove(current.getUniqueId());
@@ -497,9 +505,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             }
         }, 80L * 20L);
         visualRuntime.clearTracking(event.getPlayer());
-        String reservedInstanceId = consumeReservations.get(event.getPlayer().getUniqueId());
-        if (reservedInstanceId != null) {
-            Bukkit.getScheduler().runTaskLater(this, () -> finalizeOfflineConsume(event.getPlayer(), reservedInstanceId), 1L);
+        String reservedStackKey = consumeReservations.get(event.getPlayer().getUniqueId());
+        if (reservedStackKey != null) {
+            Bukkit.getScheduler().runTaskLater(this, () -> finalizeOfflineConsume(event.getPlayer(), reservedStackKey), 1L);
         }
         Bukkit.getScheduler().runTaskLater(this, () -> recoverDurableConsumptions(event.getPlayer()), 2L);
     }
@@ -555,16 +563,21 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 && isPendingOutputItem(player, player.getInventory().getItemInOffHand());
     }
 
-    private void completePhysicalConsumption(Player player, String instanceId, String narcoticId, int quantityBefore) {
-        if (player == null || instanceId == null || instanceId.isBlank()) {
+    private void completePhysicalConsumption(Player player, String reservationId, String stackKey,
+                                             String narcoticId, int quantityBefore) {
+        if (player == null || reservationId == null || reservationId.isBlank()
+                || stackKey == null || stackKey.isBlank()) {
             return;
         }
-        int currentQuantity = itemFactory.exactQuantity(player, instanceId, narcoticId);
+        int currentQuantity = itemFactory.exactQuantity(player, stackKey, narcoticId);
+        // quantityBefore makes the physical side idempotent across a crash:
+        // if the stack is already one unit smaller, the Bukkit removal was
+        // completed and only the durable reservation cleanup remains.
         boolean removed = currentQuantity >= Math.max(1, quantityBefore)
-                && itemFactory.consumeOneExact(player, instanceId, narcoticId);
-        database.completeConsumptionReservation(instanceId).exceptionally(error -> {
+                && itemFactory.consumeOneExact(player, stackKey, narcoticId);
+        database.completeConsumptionReservation(reservationId).exceptionally(error -> {
             getLogger().log(java.util.logging.Level.WARNING,
-                    "Unable to finalize narcotic reservation " + instanceId, error);
+                    "Unable to finalize narcotic reservation " + reservationId, error);
             return null;
         });
         if (removed) {
@@ -577,20 +590,24 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
     }
 
-    private void finalizeOfflineConsume(Player player, String reservedInstanceId) {
-        if (player == null || !player.isOnline() || reservedInstanceId == null || reservedInstanceId.isBlank()) {
+    private void finalizeOfflineConsume(Player player, String reservedStackKey) {
+        if (player == null || !player.isOnline() || reservedStackKey == null || reservedStackKey.isBlank()) {
             return;
         }
         String current = consumeReservations.get(player.getUniqueId());
-        if (!reservedInstanceId.equals(current)) {
+        if (!reservedStackKey.equals(current)) {
             return;
         }
         // The durable DB state was committed before reconnect.  Remove the
         // exact instance if it is still present; never enqueue a second refund.
         String narcoticId = consumeReservationNarcotics.get(player.getUniqueId());
         int quantityBefore = Math.max(1, consumeReservationQuantities.getOrDefault(player.getUniqueId(), 1));
-        completePhysicalConsumption(player, reservedInstanceId, narcoticId, quantityBefore);
-        consumeReservations.remove(player.getUniqueId(), reservedInstanceId);
+        String reservationId = consumeReservationIds.get(player.getUniqueId());
+        completePhysicalConsumption(player, reservationId, reservedStackKey, narcoticId, quantityBefore);
+        consumeReservations.remove(player.getUniqueId(), reservedStackKey);
+        if (reservationId != null) {
+            consumeReservationIds.remove(player.getUniqueId(), reservationId);
+        }
         if (narcoticId != null) {
             consumeReservationNarcotics.remove(player.getUniqueId(), narcoticId);
         }
@@ -613,20 +630,23 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                         return;
                     }
                     for (NarcoticsDatabase.ConsumptionReservation row : rows) {
-                        if (row == null || row.instanceId() == null || row.instanceId().isBlank()) {
+                        if (row == null || row.reservationId() == null || row.reservationId().isBlank()
+                                || row.instanceId() == null || row.instanceId().isBlank()) {
                             continue;
                         }
                         if (!"STATE_COMMITTED".equalsIgnoreCase(row.status())) {
                             // A RESERVED row has no committed player state:
                             // release it and leave the physical item alone.
-                            database.releaseConsumptionReservation(row.instanceId());
+                            database.releaseConsumptionReservation(row.reservationId());
                             continue;
                         }
                         consumeReservations.put(player.getUniqueId(), row.instanceId());
+                        consumeReservationIds.put(player.getUniqueId(), row.reservationId());
                         consumeReservationNarcotics.put(player.getUniqueId(), row.narcoticId());
                         consumeReservationQuantities.put(player.getUniqueId(), row.quantityBefore());
-                        completePhysicalConsumption(player, row.instanceId(), row.narcoticId(), row.quantityBefore());
+                        completePhysicalConsumption(player, row.reservationId(), row.instanceId(), row.narcoticId(), row.quantityBefore());
                         consumeReservations.remove(player.getUniqueId(), row.instanceId());
+                        consumeReservationIds.remove(player.getUniqueId(), row.reservationId());
                         consumeReservationNarcotics.remove(player.getUniqueId(), row.narcoticId());
                         consumeReservationQuantities.remove(player.getUniqueId());
                         consumeInFlight.remove(player.getUniqueId());
@@ -762,11 +782,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                         NarcoticDefinition definition = row.narcoticId() == null
                                 ? null
                                 : configService.items().get(row.narcoticId().toLowerCase(Locale.ROOT));
-                        if (definition == null || row.amount() != 1) {
+                        if (definition == null || row.amount() < 1 || row.amount() > 64) {
                             // A removed recipe must not turn an arbitrary row
                             // into a different item.  It is safe to close the
                             // malformed output because no physical item was
-                            // ever issued from it.
+                            // ever issued from it. Valid output quantities are
+                            // delivered as one normal Minecraft stack.
                             database.completePendingBrewingOutput(row.id());
                             getLogger().warning("Discarded invalid pending brew output " + row.id());
                             continue;

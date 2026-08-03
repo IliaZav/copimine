@@ -40,7 +40,8 @@ public final class NarcoticItemFactory {
     private final NamespacedKey narcoticSignatureKey;
     private final NarcoticsDatabase database;
     private final byte[] signingSecret;
-    private static final int SIGNATURE_VERSION = 1;
+    private static final int LEGACY_SIGNATURE_VERSION = 1;
+    private static final int STACK_SIGNATURE_VERSION = 2;
 
     public NarcoticItemFactory(CopiMineNarcotics plugin, NarcoticsConfigService configService,
                                NarcoticsDatabase database) {
@@ -62,7 +63,11 @@ public final class NarcoticItemFactory {
     }
 
     public ItemStack createOfficialItem(NarcoticDefinition definition, int amount) {
-        return createOfficialItem(definition, amount, UUID.randomUUID().toString(), true);
+        if (definition == null) {
+            throw new IllegalArgumentException("Narcotic definition is required.");
+        }
+        int itemVersion = configService.narcoticVersion();
+        return createOfficialItem(definition, amount, stackIdentity(definition, itemVersion), true);
     }
 
     /** Rebuild a signed item while retaining an already authenticated identity. */
@@ -75,10 +80,8 @@ public final class NarcoticItemFactory {
         if (base == Material.AIR) {
             base = definition.fallbackMaterial() == null ? Material.PAPER : definition.fallbackMaterial();
         }
-        // A server-issued narcotic is intentionally non-stackable. A single
-        // cryptographic identity must never be copied to several physical
-        // units through ItemStack.amount.
-        ItemStack stack = new ItemStack(base, 1);
+        int stackAmount = Math.max(1, Math.min(Math.max(1, base.getMaxStackSize()), amount));
+        ItemStack stack = new ItemStack(base, stackAmount);
         ItemMeta meta = stack.getItemMeta();
         if (meta == null) {
             return stack;
@@ -98,9 +101,9 @@ public final class NarcoticItemFactory {
         // but it lets audits and recovery distinguish physical instances.
         int itemVersion = configService.narcoticVersion();
         meta.getPersistentDataContainer().set(instanceIdKey, PersistentDataType.STRING, instanceId);
-        meta.getPersistentDataContainer().set(signatureVersionKey, PersistentDataType.INTEGER, SIGNATURE_VERSION);
+        meta.getPersistentDataContainer().set(signatureVersionKey, PersistentDataType.INTEGER, STACK_SIGNATURE_VERSION);
         meta.getPersistentDataContainer().set(narcoticSignatureKey, PersistentDataType.STRING,
-                sign(instanceId, definition.id(), base, itemVersion));
+                sign(instanceId, definition.id(), base, itemVersion, STACK_SIGNATURE_VERSION));
         stack.setItemMeta(meta);
         if (registerIssued) {
             database.registerIssuedInstance(instanceId, definition.id());
@@ -116,7 +119,8 @@ public final class NarcoticItemFactory {
         String type = meta.getPersistentDataContainer().get(itemTypeKey, PersistentDataType.STRING);
         String id = meta.getPersistentDataContainer().get(narcoticIdKey, PersistentDataType.STRING);
         Integer version = meta.getPersistentDataContainer().get(versionKey, PersistentDataType.INTEGER);
-        if (stack.getAmount() != 1 || !"RP_NARCOTIC".equals(type) || id == null || !hasOfficialFlag(meta)) {
+        if (stack.getAmount() < 1 || stack.getAmount() > stack.getMaxStackSize()
+                || !"RP_NARCOTIC".equals(type) || id == null || !hasOfficialFlag(meta)) {
             return null;
         }
         NarcoticDefinition definition = configService.items().get(id);
@@ -127,12 +131,8 @@ public final class NarcoticItemFactory {
         Integer signatureVersion = meta.getPersistentDataContainer().get(signatureVersionKey, PersistentDataType.INTEGER);
         String signature = meta.getPersistentDataContainer().get(narcoticSignatureKey, PersistentDataType.STRING);
         if (instanceId == null || instanceId.isBlank() || signature == null || signature.isBlank()
-                || signatureVersion == null || signatureVersion != SIGNATURE_VERSION) {
-            return null;
-        }
-        try {
-            UUID.fromString(instanceId);
-        } catch (IllegalArgumentException invalidInstanceId) {
+                || signatureVersion == null
+                || (signatureVersion != STACK_SIGNATURE_VERSION && signatureVersion != LEGACY_SIGNATURE_VERSION)) {
             return null;
         }
         if (stack.getType() != definition.material()) {
@@ -149,7 +149,21 @@ public final class NarcoticItemFactory {
         if (meta.hasCustomModelData() && meta.getCustomModelData() != definition.customModelData()) {
             return null;
         }
-        String expected = sign(instanceId, definition.id(), stack.getType(), version);
+        boolean stackIdentity = stackIdentity(definition, version).equals(instanceId)
+                && signatureVersion == STACK_SIGNATURE_VERSION;
+        boolean legacyIdentity = signatureVersion == LEGACY_SIGNATURE_VERSION && stack.getAmount() == 1;
+        if (!stackIdentity && !legacyIdentity) {
+            return null;
+        }
+        if (legacyIdentity) {
+            try {
+                UUID.fromString(instanceId);
+            } catch (IllegalArgumentException invalidInstanceId) {
+                return null;
+            }
+        }
+        String expected = sign(instanceId, definition.id(), stack.getType(), version,
+                stackIdentity ? STACK_SIGNATURE_VERSION : LEGACY_SIGNATURE_VERSION);
         if (!MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), signature.getBytes(StandardCharsets.UTF_8))) {
             return null;
         }
@@ -303,7 +317,7 @@ public final class NarcoticItemFactory {
         ItemStack offHand = player.getInventory().getItemInOffHand();
         NarcoticDefinition offHandDefinition = resolveOfficial(offHand);
         if (offHandDefinition != null) {
-            player.getInventory().setItemInOffHand(createOfficialItem(offHandDefinition, 1, instanceId(offHand)));
+            player.getInventory().setItemInOffHand(createOfficialItem(offHandDefinition, offHand.getAmount()));
             updated++;
         }
         updated += migrateInventory(player.getEnderChest());
@@ -327,8 +341,7 @@ public final class NarcoticItemFactory {
             if (definition == null) {
                 continue;
             }
-            String currentInstanceId = instanceId(current);
-            inventory.setItem(index, createOfficialItem(definition, 1, currentInstanceId));
+            inventory.setItem(index, createOfficialItem(definition, current.getAmount()));
             updated++;
         }
         return updated;
@@ -364,16 +377,24 @@ public final class NarcoticItemFactory {
     }
 
     private String sign(String instanceId, String narcoticId, Material material, int version) {
+        return sign(instanceId, narcoticId, material, version, STACK_SIGNATURE_VERSION);
+    }
+
+    private String sign(String instanceId, String narcoticId, Material material, int version, int signatureVersion) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(signingSecret, "HmacSHA256"));
             String payload = instanceId + "|" + narcoticId + "|" + material.name() + "|" + version
-                    + "|signature-v" + SIGNATURE_VERSION;
+                    + "|signature-v" + signatureVersion;
             return Base64.getUrlEncoder().withoutPadding().encodeToString(
                     mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception error) {
             throw new IllegalStateException("Narcotic signing is unavailable; refusing to issue an item.", error);
         }
+    }
+
+    private String stackIdentity(NarcoticDefinition definition, int version) {
+        return "NARCOTIC_STACK:" + definition.id() + ":v" + version;
     }
 
     private byte[] loadSigningSecret(CopiMineNarcotics plugin) {

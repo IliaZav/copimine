@@ -132,7 +132,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private static final long PIN_LOCK_SECONDS = 900L;
     private static final long PIN_ATTEMPT_WINDOW_SECONDS = 900L;
     private static final int MODEL_ATM_TERMINAL = 12002;
-    private static final int OFFICIAL_AR_SIGNATURE_VERSION = 2;
+    private static final int LEGACY_AR_SIGNATURE_VERSION = 2;
+    private static final int OFFICIAL_AR_SIGNATURE_VERSION = 3;
+    private static final int OFFICIAL_AR_FUNGIBLE_SIGNATURE_VERSION = OFFICIAL_AR_SIGNATURE_VERSION;
+    private static final String AR_FUNGIBLE_SERIAL_PREFIX = "AR_FUNGIBLE:";
     // Preserve the legacy id for compatibility with existing rows and ledgers.
     private static final String TREASURY_ACCOUNT_ID = "PRESIDENT_BUDGET";
     private static final String TREASURY_ACCOUNT_LABEL = "Казна CopiMine";
@@ -1917,10 +1920,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (serial.isBlank()) {
             throw new IllegalStateException("AR deposit snapshot has no serial");
         }
-        try {
-            UUID.fromString(serial);
-        } catch (IllegalArgumentException invalidSerial) {
-            throw new IllegalStateException("AR deposit snapshot serial is invalid", invalidSerial);
+        if (!isFungibleArSerial(serial)) {
+            try {
+                UUID.fromString(serial);
+            } catch (IllegalArgumentException invalidSerial) {
+                throw new IllegalStateException("AR deposit snapshot serial is invalid", invalidSerial);
+            }
         }
         return new SerializedArFragment(fragment.slot(), serial, fragment.snapshot().getType(), fragment.snapshot().getAmount());
     }
@@ -1928,16 +1933,32 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private List<SerializedArFragment> serializeArFragments(List<ArFragment> fragments) throws Exception {
         List<SerializedArFragment> result = new ArrayList<>();
         Set<String> serials = new HashSet<>();
+        Map<String, SerializedArFragment> fungible = new LinkedHashMap<>();
         if (fragments == null) {
             return result;
         }
         for (ArFragment fragment : fragments) {
             SerializedArFragment serialized = serializeArFragment(fragment);
+            if (isFungibleArSerial(serialized.serial())) {
+                SerializedArFragment existing = fungible.get(serialized.serial());
+                if (existing == null) {
+                    fungible.put(serialized.serial(), serialized);
+                } else {
+                    long combined = (long) existing.amount() + serialized.amount();
+                    if (combined > Integer.MAX_VALUE) {
+                        throw new IllegalStateException("AR fungible snapshot is too large");
+                    }
+                    fungible.put(serialized.serial(), new SerializedArFragment(
+                            existing.slot(), existing.serial(), existing.material(), (int) combined));
+                }
+                continue;
+            }
             if (!serials.add(serialized.serial())) {
                 throw new IllegalStateException("Duplicate AR serial in one deposit snapshot");
             }
             result.add(serialized);
         }
+        result.addAll(fungible.values());
         return result;
     }
 
@@ -1971,10 +1992,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             Material material = Material.valueOf(parts[2]);
             int amount = Integer.parseInt(parts[3]);
             if (slot < 0 || amount <= 0 || (material != Material.DIAMOND_ORE && material != Material.DEEPSLATE_DIAMOND_ORE)
-                    || !serials.add(serial)) {
+                    || (!isFungibleArSerial(serial) && !serials.add(serial))) {
                 throw new IllegalStateException("AR deposit snapshot contains invalid data");
             }
-            UUID.fromString(serial);
+            if (!isFungibleArSerial(serial)) {
+                UUID.fromString(serial);
+            }
             fragments.add(new SerializedArFragment(slot, serial, material, amount));
         }
         return fragments;
@@ -2044,22 +2067,37 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
             long timestamp = now();
             for (SerializedArFragment fragment : fragments) {
+                boolean fungible = isFungibleArSerial(fragment.serial());
                 Map<String, Object> asset = queryOne(connection,
                         "SELECT denomination,material,signature_version,status FROM cmv8_ar_assets WHERE serial=? FOR UPDATE",
                         fragment.serial());
                 if (asset == null || asset.isEmpty()) {
+                    if (fungible) {
+                        throw new IllegalStateException("Fungible AR registry entry is missing");
+                    }
                     update(connection,
                             "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_at,deposited_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                            fragment.serial(), fragment.amount(), fragment.material().name(), OFFICIAL_AR_SIGNATURE_VERSION,
+                            fragment.serial(), fragment.amount(), fragment.material().name(), LEGACY_AR_SIGNATURE_VERSION,
                             AR_DEPOSIT_STATUS_DEPOSITED, timestamp, timestamp, timestamp);
                     continue;
                 }
-                if (intValue(asset.get("denomination")) != fragment.amount()
+                int expectedDenomination = fungible ? 1 : fragment.amount();
+                int expectedVersion = fungible ? OFFICIAL_AR_SIGNATURE_VERSION : LEGACY_AR_SIGNATURE_VERSION;
+                if (intValue(asset.get("denomination")) != expectedDenomination
                         || !fragment.material().name().equals(string(asset.get("material")))
-                        || intValue(asset.get("signature_version")) != OFFICIAL_AR_SIGNATURE_VERSION) {
+                        || intValue(asset.get("signature_version")) != expectedVersion) {
                     throw new IllegalStateException("AR serial registry metadata conflict");
                 }
                 String assetStatus = string(asset.get("status"));
+                if (fungible) {
+                    if (!"ACTIVE".equals(assetStatus)) {
+                        throw new IllegalStateException("Fungible AR registry is not active");
+                    }
+                    update(connection,
+                            "UPDATE cmv8_ar_assets SET updated_at=? WHERE serial=? AND status=?",
+                            timestamp, fragment.serial(), "ACTIVE");
+                    continue;
+                }
                 if (AR_DEPOSIT_STATUS_DEPOSITED.equals(assetStatus)) {
                     continue;
                 }
@@ -2114,6 +2152,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private ItemStack restoreSerializedArStack(SerializedArFragment fragment) {
         ItemStack restored = createOfficialArStack(fragment.material(), fragment.amount(), "", "", "deposit-restore", false);
+        if (isFungibleArSerial(fragment.serial())) {
+            return restored;
+        }
         ItemMeta meta = restored.getItemMeta();
         if (meta == null) {
             return restored;
@@ -2121,7 +2162,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(officialArSerialKey, PersistentDataType.STRING, fragment.serial());
         pdc.set(officialArDenominationKey, PersistentDataType.INTEGER, fragment.amount());
-        pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, OFFICIAL_AR_SIGNATURE_VERSION);
+        pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, LEGACY_AR_SIGNATURE_VERSION);
         pdc.set(officialArSignatureKey, PersistentDataType.STRING,
                 officialArSignature(fragment.serial(), fragment.material(), fragment.amount()));
         restored.setItemMeta(meta);
@@ -2754,7 +2795,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private ItemStack createOfficialArStack(Material material, int amount, String ownerUuid, String ownerName,
                                             String source, boolean registerAsset) {
         Material arMaterial = material == Material.DEEPSLATE_DIAMOND_ORE ? Material.DEEPSLATE_DIAMOND_ORE : Material.DIAMOND_ORE;
-        ItemStack stack = new ItemStack(arMaterial, Math.max(1, amount));
+        int stackAmount = Math.max(1, Math.min(arMaterial.getMaxStackSize(), amount));
+        ItemStack stack = new ItemStack(arMaterial, stackAmount);
         ItemMeta meta = stack.getItemMeta();
         if (meta == null) {
             return stack;
@@ -2767,12 +2809,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.remove(new NamespacedKey("copiminear", "owner_uuid"));
         pdc.remove(new NamespacedKey("copiminear", "owner_name"));
         pdc.remove(new NamespacedKey("copiminear", "source"));
-        String serial = UUID.randomUUID().toString();
-        int denomination = Math.max(1, amount);
+        String serial = arFungibleSerial(arMaterial);
+        int denomination = 1;
         pdc.set(officialArSerialKey, PersistentDataType.STRING, serial);
         pdc.set(officialArDenominationKey, PersistentDataType.INTEGER, denomination);
         pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, OFFICIAL_AR_SIGNATURE_VERSION);
-        pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArSignature(serial, arMaterial, denomination));
+        pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArFungibleSignature(arMaterial));
         stack.setItemMeta(meta);
         if (registerAsset) {
             registerArAssetAsync(serial, denomination, arMaterial);
@@ -2815,8 +2857,20 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         String signature = first(pdc.get(officialArSignatureKey, PersistentDataType.STRING), "");
         Integer denomination = pdc.get(officialArDenominationKey, PersistentDataType.INTEGER);
         Integer signatureVersion = pdc.get(officialArSignatureVersionKey, PersistentDataType.INTEGER);
-        if (serial.isBlank() || signature.isBlank() || denomination == null || denomination != stack.getAmount()
-                || signatureVersion == null || signatureVersion != OFFICIAL_AR_SIGNATURE_VERSION) {
+        if (serial.isBlank() || signature.isBlank() || denomination == null || signatureVersion == null) {
+            return false;
+        }
+        if (isFungibleArSerial(serial)) {
+            if (!arFungibleSerial(stack.getType()).equals(serial)
+                    || denomination != 1 || signatureVersion != OFFICIAL_AR_SIGNATURE_VERSION
+                    || stack.getAmount() < 1 || stack.getAmount() > stack.getMaxStackSize()) {
+                return false;
+            }
+            String expected = officialArFungibleSignature(stack.getType());
+            return !expected.isBlank() && MessageDigest.isEqual(
+                    expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII));
+        }
+        if (denomination != stack.getAmount() || signatureVersion != LEGACY_AR_SIGNATURE_VERSION) {
             return false;
         }
         try {
@@ -2827,6 +2881,38 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         String expected = officialArSignature(serial, stack.getType(), denomination);
         return !expected.isBlank() && MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    private String arFungibleSerial(Material material) {
+        Material normalized = material == Material.DEEPSLATE_DIAMOND_ORE
+                ? Material.DEEPSLATE_DIAMOND_ORE : Material.DIAMOND_ORE;
+        return AR_FUNGIBLE_SERIAL_PREFIX + normalized.name() + ":v" + OFFICIAL_AR_SIGNATURE_VERSION;
+    }
+
+    private boolean isFungibleArSerial(String serial) {
+        return serial != null
+                && (serial.equals(arFungibleSerial(Material.DIAMOND_ORE))
+                || serial.equals(arFungibleSerial(Material.DEEPSLATE_DIAMOND_ORE)));
+    }
+
+    private String officialArFungibleSignature(Material material) {
+        if (material == null || officialArSigningSecret == null) {
+            return "";
+        }
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(officialArSigningSecret, "HmacSHA256"));
+            byte[] digest = mac.doFinal((AR_FUNGIBLE_SERIAL_PREFIX + material.name()
+                    + "|certified|v" + OFFICIAL_AR_SIGNATURE_VERSION).getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte value : digest) {
+                hex.append(String.format(Locale.ROOT, "%02x", value));
+            }
+            return hex.toString();
+        } catch (Exception error) {
+            getLogger().warning("Fungible AR signature generation failed: " + safeError(error));
+            return "";
+        }
     }
 
     /**
@@ -4251,6 +4337,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS delivery_token TEXT NOT NULL DEFAULT ''");
             update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_assets(serial TEXT PRIMARY KEY,denomination INTEGER NOT NULL CHECK(denomination>0),material TEXT NOT NULL,signature_version INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'ACTIVE',issued_at BIGINT NOT NULL DEFAULT 0,deposited_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv8_ar_assets_status ON cmv8_ar_assets(status,updated_at)");
+            long arRegistryNow = now();
+            for (Material material : List.of(Material.DIAMOND_ORE, Material.DEEPSLATE_DIAMOND_ORE)) {
+                update(connection,
+                        "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_at,deposited_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(serial) DO NOTHING",
+                        arFungibleSerial(material), 1, material.name(), OFFICIAL_AR_SIGNATURE_VERSION,
+                        "ACTIVE", arRegistryNow, 0L, arRegistryNow);
+            }
             update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_deposit_intents(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',account_id TEXT NOT NULL,account_scope TEXT NOT NULL DEFAULT 'PERSONAL',atm_id TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL CHECK(amount>0),idempotency_key TEXT NOT NULL,snapshot TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'CREATED',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,committed_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv8_ar_deposit_intents_idempotency ON cmv8_ar_deposit_intents(idempotency_key)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv8_ar_deposit_intents_player_status ON cmv8_ar_deposit_intents(player_uuid,status,created_at ASC)");

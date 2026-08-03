@@ -522,12 +522,13 @@ public final class NarcoticsDatabase {
                     INSERT INTO narcotics_brewing_completion_intents
                         (intent_id,world_name,x,y,z,state_version,owner_uuid,narcotic_id,final_ingredient,status,created_at,updated_at)
                     VALUES (?,?,?,?,?,?,?,?,?,'PREPARED',?,?)
-                    ON CONFLICT (world_name,x,y,z,state_version) DO UPDATE
-                    SET owner_uuid=EXCLUDED.owner_uuid,
-                        narcotic_id=EXCLUDED.narcotic_id,
-                        final_ingredient=EXCLUDED.final_ingredient,
-                        updated_at=EXCLUDED.updated_at
-                    WHERE narcotics_brewing_completion_intents.status IN ('PREPARED','CONSUMED')
+                    -- Older installations may have this table without a
+                    -- location/version unique arbiter. A targeted ON
+                    -- CONFLICT then aborts the brew instead of returning a
+                    -- product. The per-cauldron Bukkit lock and journal make
+                    -- this intent idempotent, so generic DO NOTHING works
+                    -- with both old and new schemas.
+                    ON CONFLICT DO NOTHING
                     """)) {
                 long now = Instant.now().toEpochMilli();
                 statement.setString(1, UUID.randomUUID().toString());

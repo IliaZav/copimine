@@ -1066,6 +1066,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                                     warn(e.getPlayer(),"AR не выдан: предмет выпуска недоступен.");
                                     return;
                                 }
+                                if (!service.authorizeWorldDrop(official)) {
+                                    getLogger().warning("AR mining drop authorization failed; suppressing uncertified world item.");
+                                    return;
+                                }
                                 dropLocation.getWorld().dropItemNaturally(dropLocation,official);
                                 left-=stackAmount;
                             }

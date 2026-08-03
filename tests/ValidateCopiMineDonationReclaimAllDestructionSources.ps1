@@ -35,8 +35,13 @@ Require 'public void onOfficialBlockCook(BlockCookEvent event)' 'Official items 
 Require 'public void onOfficialBrew(BrewEvent event)' 'Official items must not be consumed by brewing.'
 Require 'case CRAFTING, WORKBENCH, CRAFTER, FURNACE, BLAST_FURNACE, SMOKER, BREWING, SMITHING, ANVIL, GRINDSTONE, STONECUTTER, HOPPER, DROPPER, DISPENSER, LOOM, CARTOGRAPHY, ENCHANTING, MERCHANT, BEACON, COMPOSTER' 'Consumptive inventories must be protected.'
 
-# Hopper/container processing must never consume an official item silently.
-Require 'var1.getSource()' 'Inventory move protection must inspect the source inventory as well as the destination.'
-Require 'isBlockedArtifactProcessingInventory(var1.getSource())' 'Official items must be blocked from being pulled out of processing inventories.'
+# Shop items are now ordinary items.  The old loss/reclaim handlers remain only
+# as migration-readable code, but every live path is disabled by this boundary.
+Require-Regex '(?s)private boolean customShopItemsAreVanilla\(\).*?return true;' 'The ordinary shop-item lifecycle boundary must be enabled.'
+$moveHandler = [regex]::Match($source, '(?s)public void onInventoryMoveItem\(InventoryMoveItemEvent var1\).*?(?=\n\s*\/\*|\n\s*@EventHandler|\z)')
+if (-not $moveHandler.Success -or $moveHandler.Value -notmatch 'Shop items intentionally follow vanilla hopper/container movement') {
+  throw 'Hopper movement must follow vanilla behavior for ordinary shop items.'
+}
+if ($moveHandler.Value -match 'setCancelled\(') { throw 'Ordinary shop-item hopper movement must not be cancelled.' }
 
 Write-Output 'Donation reclaim all-destruction-sources contract: PASS'

@@ -5322,7 +5322,10 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
                 (TREASURY_ACCOUNT_ID, max(1, min(limit, 200))),
             ).fetchall()]
             treasury_pin = {
-                "set": bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone()),
+                "set": bool(conn.execute(
+                    "SELECT 1 FROM bank_account_pins WHERE account_id=%s AND COALESCE(pin_hash,'')<>''",
+                    (TREASURY_ACCOUNT_ID,),
+                ).fetchone()),
                 "status": "configured",
             }
         conn.commit()
@@ -5375,7 +5378,10 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
                 raise HTTPException(status_code=403, detail="Treasury account is not available")
             ensure_treasury_bank_account(conn)
             current = conn.execute("SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone()
-            if current:
+            # A legacy bootstrap row may exist with an empty hash. Treat that
+            # as an unset PIN so the first treasury PIN can be created without
+            # requiring an impossible "old" value.
+            if current and str(row_get(current, "pin_hash", "") or "").strip():
                 verify_account_pin(conn, TREASURY_ACCOUNT_ID, data.old_pin or "")
             pin_hash = make_password_hash(new_pin)
             conn.execute(
@@ -5390,6 +5396,12 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
                 """,
                 (TREASURY_ACCOUNT_ID, pin_hash, now, now, account.get("username") or ""),
             )
+            stored = conn.execute(
+                "SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s",
+                (TREASURY_ACCOUNT_ID,),
+            ).fetchone()
+            if not stored or not str(row_get(stored, "pin_hash", "") or "").strip() or int(row_get(stored, "must_change", 0) or 0) != 0:
+                raise HTTPException(status_code=500, detail="Treasury PIN was not persisted")
             clear_account_pin_lockout(conn, TREASURY_ACCOUNT_ID)
             conn.execute(
                 "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'TREASURY_PIN_SET',%s,'site')",
@@ -5397,7 +5409,7 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
             )
         else:
             current = conn.execute("SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s", (account.get("minecraft_uuid") or "",)).fetchone()
-            if current:
+            if current and str(row_get(current, "pin_hash", "") or "").strip():
                 enforce_bank_pin_lockout(conn, str(account.get("minecraft_uuid") or ""))
                 if not data.old_pin or not verify_password_hash(str(current["pin_hash"] or ""), normalize_pin(data.old_pin)):
                     record_failed_bank_pin(conn, account, "site-pin-change")
@@ -5422,6 +5434,12 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
                 pin_hash,
                 str(account.get("username") or ""),
             )
+            stored = conn.execute(
+                "SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s",
+                (account.get("minecraft_uuid") or "",),
+            ).fetchone()
+            if not stored or not str(row_get(stored, "pin_hash", "") or "").strip() or int(row_get(stored, "must_change", 0) or 0) != 0:
+                raise HTTPException(status_code=500, detail="Personal PIN was not persisted")
             conn.execute(
                 "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PIN_SET','minecraft_uuid=' || %s,'site')",
                 (now, account.get("username") or "", account.get("minecraft_uuid") or ""),
@@ -5720,7 +5738,10 @@ def treasury_bank_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         if not has_treasury_access(conn, account):
             raise HTTPException(status_code=403, detail="Treasury account is not available")
         treasury = ensure_treasury_bank_account(conn)
-        pin_set = bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone())
+        pin_set = bool(conn.execute(
+            "SELECT 1 FROM bank_account_pins WHERE account_id=%s AND COALESCE(pin_hash,'')<>''",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone())
         ledger = [dict(x) for x in conn.execute(
             """
             SELECT l.tx_id,l.tx_type,l.amount,l.balance_after,l.counterparty_account_id,
@@ -5748,7 +5769,10 @@ def admin_treasury_bank_profile_sync(actor: str) -> dict[str, Any]:
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         treasury = ensure_treasury_bank_account(conn)
-        pin_set = bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone())
+        pin_set = bool(conn.execute(
+            "SELECT 1 FROM bank_account_pins WHERE account_id=%s AND COALESCE(pin_hash,'')<>''",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone())
         owner_uuid, owner_name = current_treasury_owner(conn)
         ledger = [dict(x) for x in conn.execute(
             """
@@ -5790,6 +5814,12 @@ def admin_set_treasury_pin_sync(actor: str, data: PlayerPinSetIn) -> dict[str, A
             """,
             (TREASURY_ACCOUNT_ID, pin_hash, now, now, actor),
         )
+        stored = conn.execute(
+            "SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone()
+        if not stored or not str(row_get(stored, "pin_hash", "") or "").strip() or int(row_get(stored, "must_change", 0) or 0) != 0:
+            raise HTTPException(status_code=500, detail="Treasury PIN was not persisted")
         clear_account_pin_lockout(conn, TREASURY_ACCOUNT_ID)
         conn.execute(
             "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'TREASURY_PIN_ADMIN_SET',%s,'admin-web')",

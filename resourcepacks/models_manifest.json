@@ -120,13 +120,6 @@
       "texture": "copimine:item/artifacts/mne_pohuy_ya_v_tanke_vest"
     },
     {
-      "id": "ne_segodnya_suka_shield",
-      "custom_model_data": 20006,
-      "base_material": "shield",
-      "model": "copimine:item/artifacts/ne_segodnya_suka_shield",
-      "texture": "copimine:item/artifacts/ne_segodnya_suka_shield"
-    },
-    {
       "id": "pohuy_na_debaffy_amulet",
       "custom_model_data": 20008,
       "base_material": "heart_of_the_sea",

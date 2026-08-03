@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 try:
-    from PIL import Image, ImageChops, ImageDraw
+    from PIL import Image
 except ModuleNotFoundError as exc:  # pragma: no cover - release environment check
     raise RuntimeError("Pillow is required to build directional compass/clock frames") from exc
 
@@ -216,11 +216,23 @@ def validate_catalog_mapping() -> None:
     if len(manifest_keys) != len(manifest_rows):
         raise ValueError("Duplicate (base_material, custom_model_data) in models_manifest.json")
     missing = []
+    custom_catalog_ids = set()
     for item in catalog_items:
         item_id = str(item.get("id") or item.get("item-id") or "")
         material = str(item.get("material") or item.get("base-material") or item.get("base_material") or "").upper()
         model_data = int(item.get("custom_model_data") or item.get("custom-model-data") or 0)
-        if not item_id or model_data <= 0:
+        custom_texture_allowed = item.get("custom_texture_mode_allowed", item.get("custom-texture-mode-allowed", True))
+        if isinstance(custom_texture_allowed, str):
+            custom_texture_allowed = custom_texture_allowed.strip().lower() not in {"false", "0", "no", "off"}
+        if not item_id:
+            missing.append("<unnamed>: item id is required")
+            continue
+        if not custom_texture_allowed and model_data == 0:
+            # Explicit vanilla items are intentionally absent from the custom
+            # texture mapping and must render through Minecraft's own model.
+            continue
+        custom_catalog_ids.add(item_id)
+        if model_data <= 0:
             missing.append(f"{item_id or '<unnamed>'}: custom model data must be positive")
             continue
         source = source_rows.get(item_id)
@@ -230,8 +242,8 @@ def validate_catalog_mapping() -> None:
             missing.append(f"{item_id}: source mapping does not match catalog material/model data")
         if (material, model_data) not in manifest_keys:
             missing.append(f"{item_id} ({material}, {model_data}): missing manifest override")
-    if len(source_rows) != len(catalog_items):
-        missing.append("item_texture_sources.json must contain exactly one row per catalog item")
+    if set(source_rows) != custom_catalog_ids:
+        missing.append("item_texture_sources.json must contain exactly one row per custom-textured catalog item")
     if missing:
         raise ValueError("Artifact texture mappings are invalid:\n - " + "\n - ".join(missing))
 
@@ -254,9 +266,13 @@ def read_catalog_items(path: Path) -> list[dict]:
                 continue
             if current is None:
                 continue
-            value = re.match(r"^\s+(material|base-material|custom_model_data|custom-model-data):\s*(.*?)\s*$", line)
+            value = re.match(r"^\s+(material|base-material|custom_model_data|custom-model-data|custom-texture-mode-allowed):\s*(.*?)\s*$", line)
             if value:
-                key = {"base-material": "base_material", "custom-model-data": "custom_model_data"}.get(value.group(1), value.group(1))
+                key = {
+                    "base-material": "base_material",
+                    "custom-model-data": "custom_model_data",
+                    "custom-texture-mode-allowed": "custom_texture_mode_allowed",
+                }.get(value.group(1), value.group(1))
                 current[key] = value.group(2).strip().strip('"\'')
         if current:
             rows.append(current)
@@ -268,8 +284,6 @@ def build_stage() -> None:
     if STAGE.exists():
         shutil.rmtree(STAGE)
     shutil.copytree(SRC, STAGE)
-    write_shield_icon()
-
     pack_png = STAGE / "pack.png"
     if not pack_png.exists():
         solid_png(pack_png, (87, 132, 52, 255), 32)
@@ -306,29 +320,17 @@ def build_stage() -> None:
                     "model": model_ref,
                 }
             )
-        # A custom shield must be listed before the vanilla blocking predicate:
-        # Minecraft uses the last matching override, so blocking has to win and
-        # keep the builtin entity renderer instead of falling back to the tiny
-        # inventory icon.  Compass/clock custom frames intentionally remain
-        # after their vanilla predicates so donation items use their own art.
-        if material == "shield":
-            overrides = custom_overrides + overrides
-        else:
-            overrides.extend(custom_overrides)
+        overrides.extend(custom_overrides)
         # Keep vanilla special-item rendering intact.  The vanilla clock and
-        # compass textures are selected by time/angle predicates, while the
-        # shield is a builtin entity model.  Replacing these roots with only a
-        # custom-model-data override makes ordinary items static or gives them
-        # a donation texture.
+        # compass textures are selected by time/angle predicates. The shield
+        # is deliberately absent from the manifest: vanilla shields
+        # must use Minecraft's builtin entity model without any override.
         if material == "clock":
             parent = "minecraft:item/generated"
             textures = {"layer0": "minecraft:item/clock_00"}
         elif material == "compass":
             parent = "minecraft:item/generated"
             textures = {"layer0": "minecraft:item/compass_16"}
-        elif material == "shield":
-            parent = "builtin/entity"
-            textures = {"particle": "minecraft:block/dark_oak_planks"}
         else:
             parent = "minecraft:item/generated"
             textures = {"layer0": f"minecraft:item/{material}"}
@@ -342,31 +344,6 @@ def build_stage() -> None:
         )
 
     normalize_stage_text_files()
-
-
-def write_shield_icon() -> None:
-    """Create a compact icon from the shield entity UV texture.
-
-    The supplied shield PNG is an entity UV sheet. Using it directly as an
-    item/generated layer renders the unfolded sheet in inventories. The game
-    model therefore receives a deterministic cropped front panel instead.
-    """
-    source = STAGE / "assets" / "copimine" / "textures" / "item" / "artifacts" / "ne_segodnya_suka_shield.png"
-    destination = source.with_name("ne_segodnya_suka_shield_icon.png")
-    with Image.open(source) as image:
-        source_image = image.convert("RGBA")
-        if source_image.width < 17 or source_image.height < 23:
-            raise ValueError(f"Unexpected shield texture size: {source_image.size}")
-        front = source_image.crop((3, 0, 15, 23)).resize((20, 27), Image.Resampling.NEAREST)
-        preview = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
-        preview.paste(front, (6, 2))
-        mask = Image.new("L", preview.size, 0)
-        ImageDraw.Draw(mask).polygon(
-            [(7, 2), (24, 2), (24, 20), (22, 25), (19, 28), (16, 30), (13, 28), (9, 25), (7, 20)],
-            fill=255,
-        )
-        preview.putalpha(ImageChops.multiply(preview.getchannel("A"), mask))
-        preview.save(destination, format="PNG", optimize=True)
 
 
 def vanilla_special_overrides(material: str) -> list[dict]:
@@ -389,8 +366,6 @@ def vanilla_special_overrides(material: str) -> list[dict]:
         models = ["clock", *[f"clock_{i:02d}" for i in range(1, 64)], "clock"]
         return [{"predicate": {"time": value}, "model": f"minecraft:item/{model}"}
                 for value, model in zip(values, models)]
-    if material == "shield":
-        return [{"predicate": {"blocking": 1}, "model": "minecraft:item/shield_blocking"}]
     return []
 
 

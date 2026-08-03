@@ -798,7 +798,15 @@ copimine_render_nginx_config() {
   tls_enabled="${tls_enabled:-0}"
   external_tls="${COPIMINE_PUBLIC_TLS_EXTERNAL:-$(copimine_env_value COPIMINE_PUBLIC_TLS_EXTERNAL)}"
   external_tls="${external_tls:-0}"
-  [[ "$external_tls" == "0" ]] || copimine_fail "COPIMINE_PUBLIC_TLS_EXTERNAL is retired; use direct HTTPS on port 443"
+  if [[ "$external_tls" == "1" ]]; then
+    # Older live releases stored the outer-relay flag in the process
+    # environment. Direct 443 is now the only supported topology; tolerate
+    # and normalize that legacy value during the upgrade.
+    copimine_log "Legacy COPIMINE_PUBLIC_TLS_EXTERNAL=1 detected; normalizing to direct HTTPS on 443."
+    external_tls="0"
+    COPIMINE_PUBLIC_TLS_EXTERNAL="0"
+  fi
+  [[ "$external_tls" == "0" ]] || copimine_fail "COPIMINE_PUBLIC_TLS_EXTERNAL must be 0 for direct HTTPS on port 443"
   server_names="${COPIMINE_SERVER_NAMES:-$(copimine_env_value NGINX_SERVER_NAMES)}"
   server_names="${server_names:-admin.copimine.ru copimine.ru www.copimine.ru}"
   template="$COPIMINE_NGINX_TLS_TEMPLATE"

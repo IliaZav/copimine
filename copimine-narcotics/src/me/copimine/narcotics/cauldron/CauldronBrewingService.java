@@ -149,6 +149,12 @@ public final class CauldronBrewingService {
             if (state == null) {
                 continue;
             }
+            // The final ingredient is handled by a durable one-shot
+            // transaction. Do not keep repainting the pending-brew particle
+            // loop while that transaction is in flight.
+            if (completionInFlight.contains(key)) {
+                continue;
+            }
             World world = plugin.getServer().getWorld(key.world());
             if (world == null || !world.isChunkLoaded(key.x() >> 4, key.z() >> 4)) {
                 enqueueIntegrityCheck(key);
@@ -182,6 +188,9 @@ public final class CauldronBrewingService {
         for (BlockKey key : Set.copyOf(indexed)) {
             CauldronState state = cache.get(key);
             if (state == null) {
+                continue;
+            }
+            if (completionInFlight.contains(key)) {
                 continue;
             }
             Block block = world.getBlockAt(key.x(), key.y(), key.z());
@@ -238,12 +247,6 @@ public final class CauldronBrewingService {
             long nowMillis = System.currentTimeMillis();
             CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis, player.getUniqueId()));
             UUID playerUuid = player == null ? null : player.getUniqueId();
-            if (base.ownerUuid() != null && !base.ownerUuid().equals(playerUuid)) {
-                if (player != null) {
-                    player.sendMessage("§eЭтот котёл уже используется другим игроком.");
-                }
-                return false;
-            }
             if (completionInFlight.contains(key)) {
                 if (player != null) {
                     player.sendMessage("§eЗавершение варки уже обрабатывается.");

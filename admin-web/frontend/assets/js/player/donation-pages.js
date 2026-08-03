@@ -111,9 +111,6 @@ export function createPlayerDonationPages(deps) {
           <span>Выдача</span>
           <code>только в игре через donation shop</code>
         </div>
-        <div class="action-strip artifact-buy-reclaim">
-          <button class="btn btn-secondary" data-click="setTab('donation-items')">Вернуть потерянный предмет</button>
-        </div>
       </article>
     `;
   }
@@ -266,7 +263,7 @@ export function createPlayerDonationPages(deps) {
       </section>
       <section class="layout-grid grid-2 artifact-workbench">
         ${donationPurchaseCard(rows, balance)}
-        ${panel("Порядок", "Покупка и возврат.", safetyRail([
+        ${panel("Порядок", "Покупка и выдача.", safetyRail([
           ["Покупка", "Donation списывается сразу после проверки PIN.", "good"],
           ["Выдача", "Предмет выдаётся в игре через donation shop.", "warn"],
           ["Баланс", "Для покупки используется уже зачисленный donation-баланс.", "neutral"],
@@ -283,10 +280,10 @@ export function createPlayerDonationPages(deps) {
           { key: "action_html", label: "Действие", render: (value) => value },
         ], { pageSize: 10 })}
       `)}
-      ${panel("Возврат", "Как работает выдача и возврат.", safetyRail([
+      ${panel("Выдача", "Как работает выдача предмета.", safetyRail([
         ["К выдаче", "После покупки появится запись на выдачу.", "good"],
         ["Забрать", "Забирать и проверять статус нужно в игре.", "warn"],
-        ["Возврат", "Утерянные donation-предметы обслуживаются отдельно.", "neutral"],
+        ["Потеря", "Потерянный или уничтоженный предмет не восстанавливается; его можно купить заново в рамках лимита.", "bad"],
       ]), `<button class="btn btn-secondary" data-click="setTab('donation-items')">Открыть мои donation-предметы</button>`)}
     `);
   }
@@ -309,7 +306,7 @@ export function createPlayerDonationPages(deps) {
       <section class="layout-grid grid-4">
         ${metric("Покупки", asArray(owned.claims).length, "Ожидают выдачи или уже завершены", asArray(owned.claims).length ? "warn" : "neutral")}
         ${metric("Активные", owned.summary?.active || 0, "Сейчас у игрока", (owned.summary?.active || 0) ? "good" : "neutral")}
-        ${metric("Можно вернуть", owned.summary?.reclaimable || 0, "Утерянные предметы", (owned.summary?.reclaimable || 0) ? "warn" : "neutral")}
+        ${metric("Потеряно", 0, "Потерянные предметы не восстанавливаются", "neutral")}
         ${metric("Ждут выдачи", owned.summary?.claimPending || 0, "Забираются в игре", (owned.summary?.claimPending || 0) ? "warn" : "good")}
       </section>
       ${panel("Покупки и выдача", "Купленные предметы и выдача.", table("player-donation-owned-claims", asArray(owned.claims), [
@@ -324,10 +321,10 @@ export function createPlayerDonationPages(deps) {
         { key: "display_name", label: "Предмет", render: (value, row) => `<strong>${esc(cleanText(value || row.item_id || "Предмет"))}</strong><br><span class="muted">${esc(row.item_id || "—")}</span>` },
         { key: "status", label: "Статус", render: (value) => pill(statusLabel(value || "pending"), artifactStatusTone(value)) },
       ], { pageSize: 12 }))}
-      ${panel("Возврат", "Как работает возврат утерянных предметов.", safetyRail([
+      ${panel("Жизненный цикл", "Предметы работают как обычные предметы.", safetyRail([
         ["Забрать в игре", "Если покупка ждёт выдачи, получай предмет через игровую лавку.", "good"],
-        ["Вернуть утерянное", "Бесплатный возврат доступен только для внешней потери предмета.", "warn"],
-        ["Сломано или израсходовано", "Такие предметы бесплатно не возвращаются.", "bad"],
+        ["Перемещение", "Предмет можно свободно переносить в инвентаре и хранилищах.", "good"],
+        ["Потеря или уничтожение", "Предмет исчезает окончательно; следующую копию можно купить по лимиту.", "bad"],
       ]), `<button class="btn btn-secondary" data-click="setTab('donation-shop')">Вернуться в donation-лавку</button>`)}
     `);
   }

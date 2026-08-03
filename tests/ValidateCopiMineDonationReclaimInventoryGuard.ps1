@@ -4,14 +4,16 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $artifacts = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java')
 $errors = New-Object System.Collections.Generic.List[string]
 
-if ($artifacts -notmatch '(?s)if \(this\.playerHasOfficialInstance\(var1, var6\.oldUniqueItemId\(\), var6\.itemId\(\), var1\.getUniqueId\(\)\)\).*?rollbackDonationReclaim') {
-  $errors.Add('Reclaim must re-check that the original official item is absent before adding a replacement.')
+if ($artifacts -notmatch '(?s)private boolean customShopItemsAreVanilla\(\).*?return true;') {
+  $errors.Add('Custom shop items must use the ordinary-item lifecycle boundary.')
 }
-if ($artifacts -notmatch '(?s)playerHasOfficialInstance\(.*?getArmorContents\(\)') {
-  $errors.Add('Reclaim inventory guard must include armor slots.')
+$reclaim = [regex]::Match($artifacts, '(?s)private void reclaimDonationItemSafe\(Player var1, String var2\).*')
+if (-not $reclaim.Success -or $reclaim.Value -notmatch '(?s)customShopItemsAreVanilla\(\).*?return;') {
+  $errors.Add('The reclaim action must be disabled after reclaim retirement.')
 }
-if ($artifacts -notmatch '(?s)INSERT INTO artifact_item_instances[\s\S]*?var7\.setString\(4, ""\)') {
-  $errors.Add('Replacement instances must be marked as reclaim records, not linked to the original purchase delivery.')
+$open = [regex]::Match($artifacts, '(?s)private void openDonationReclaim\(Player var1\).*')
+if (-not $open.Success -or $open.Value -notmatch '(?s)customShopItemsAreVanilla\(\).*?return;') {
+  $errors.Add('The reclaim screen must be disabled after reclaim retirement.')
 }
 
 if ($errors.Count -gt 0) {

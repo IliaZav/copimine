@@ -343,8 +343,8 @@ donation-catalog:
       proc-chance: 1.0
       max-stack: 1
       repairable: true
-      custom-texture-mode-allowed: true
-      custom-model-data: 20006
+      custom-texture-mode-allowed: false
+      custom-model-data: 0
       visual-effect-id: CHROMATIC_SHIFT
       lore:
         - "&7Щит для жёсткого ответа в ближнем бою."

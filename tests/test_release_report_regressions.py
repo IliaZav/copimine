@@ -9,10 +9,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+WEB_BACKEND = (ROOT / "admin-web/backend/main.py").read_text(encoding="utf-8")
 ECONOMY = (ROOT / "copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java").read_text(encoding="utf-8")
 ARTIFACTS = (ROOT / "copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java").read_text(encoding="utf-8")
 ELECTION = (ROOT / "copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java").read_text(encoding="utf-8")
 NARCOTICS = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java").read_text(encoding="utf-8")
+NARCOTICS_DB = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java").read_text(encoding="utf-8")
 WORLD = (ROOT / "copimine-world-core/src/me/copimine/worldcore/CopiMineWorldCore.java").read_text(encoding="utf-8")
 AUTH = (ROOT / "minecraft/server/plugins/AuthEffects/src/main/java/me/serverrp/autheffects/AuthEffectsPlugin.java").read_text(encoding="utf-8")
 ADMIN = (ROOT / "copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java").read_text(encoding="utf-8")
@@ -114,6 +116,22 @@ def test_personal_pin_is_verified_inside_the_same_mutation_transaction():
     assert style.index("verifyPersonalPinForMutation(") < style.index("INSERT INTO cmv4_bank_ledger")
 
 
+def test_ar_withdrawal_delivery_conflict_matches_the_partial_unique_index():
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_pending_ar_idempotency ON cmv4_pending_ar_settlements(idempotency_key) WHERE idempotency_key<>''" in ECONOMY
+    pending = ECONOMY[ECONOMY.index("cmv4_pending_ar_settlements"):]
+    assert "ON CONFLICT (idempotency_key) WHERE idempotency_key <> '' DO NOTHING" in pending
+    assert "ON CONFLICT(idempotency_key) DO NOTHING" not in pending
+
+
+def test_treasury_pin_status_and_first_setup_treat_empty_hash_as_unset():
+    assert "COALESCE(pin_hash,'')<>''" in WEB_BACKEND
+    setup = WEB_BACKEND[WEB_BACKEND.index("def set_player_pin_sync"):WEB_BACKEND.index("def player_site_bank_profile_sync")]
+    assert 'row_get(current, "pin_hash", "")' in setup
+    assert "Treasury PIN was not persisted" in setup
+    admin_setup = WEB_BACKEND[WEB_BACKEND.index("def admin_set_treasury_pin_sync"):WEB_BACKEND.index("def admin_reset_treasury_sync")]
+    assert "Treasury PIN was not persisted" in admin_setup
+
+
 def test_election_repair_never_overrides_an_external_protection_cancel():
     section = ELECTION[ELECTION.index("public void onBlockPlace"):ELECTION.index("public void onProtectedBreak")]
     assert "event.setCancelled(false)" not in section
@@ -150,10 +168,25 @@ def test_failed_multi_ingredient_brew_refunds_every_consumed_ingredient():
     refund = NARCOTICS[NARCOTICS.index("private void refundFailedIngredient"):NARCOTICS.index("private void clearState")]
     assert "frozen.getLast()" not in refund
     assert "queuePendingIngredientRefunds(ownerUuid, frozen)" in refund
-    database = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java").read_text(encoding="utf-8")
-    assert "public CompletableFuture<Void> queuePendingIngredientRefunds" in database
-    assert "statement.addBatch()" in database
-    assert "for (int index = 0; index < rows.size(); index++)" in database
+    assert "public CompletableFuture<Void> queuePendingIngredientRefunds" in NARCOTICS_DB
+    assert "statement.addBatch()" in NARCOTICS_DB
+    assert "for (int index = 0; index < rows.size(); index++)" in NARCOTICS_DB
+
+
+def test_brewing_is_order_agnostic_and_shared_between_players():
+    # Recipe matching is deliberately count-based, not positional.  The
+    # owner UUID remains a refund/delivery identity, not an access lock.
+    recipe = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/recipe/NarcoticsRecipeService.java").read_text(encoding="utf-8")
+    assert "matchesCounts(definition.recipeCounts(), counts(ingredientEntries))" in recipe
+    assert "base.ownerUuid() != null && !base.ownerUuid().equals(playerUuid)" not in NARCOTICS
+    assert "Этот котёл уже используется другим игроком" not in NARCOTICS
+
+
+def test_brewing_completion_survives_legacy_schema_and_stops_particle_loop():
+    completion = NARCOTICS_DB[NARCOTICS_DB.index("prepareBrewingCompletionIntent"):NARCOTICS_DB.index("/** Reserve one unit")]
+    assert "ON CONFLICT DO NOTHING" in completion
+    assert "ON CONFLICT (world_name,x,y,z,state_version) DO UPDATE" not in completion
+    assert "completionInFlight.contains(key)" in NARCOTICS
 
 
 def test_world_teleport_tokens_are_bound_and_border_replacement_is_atomic():
@@ -236,3 +269,18 @@ def test_public_site_has_only_the_direct_https_443_listener():
         assert "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip" in helper
     assert "Plain HTTP public mode is retired" in COMMON
     assert "Only HTTPS public access on port 443 is supported" in COMMON
+
+
+def test_atm_visual_has_a_visible_label_and_repairs_or_removes_it_with_the_atm():
+    assert "import org.bukkit.entity.TextDisplay;" in ECONOMY
+    assert 'display.setText(color("&eБанкомат"));' in ECONOMY
+    assert '"ATM_TITLE_DISPLAY"' in ECONOMY
+    assert "ensureAtmTitleDisplay(location, linkedId);" in ECONOMY
+    assert "cleanupAtmTitleDisplay(" in ECONOMY
+
+
+def test_artifact_shop_uses_the_treasury_when_no_president_is_active():
+    assert "return treasuryRevenueRecipient();" in ARTIFACTS
+    assert '"NO_ACTIVE_PRESIDENT"' in ARTIFACTS
+    assert "EMPTY_UUID," in ARTIFACTS
+    assert "PRESIDENT_BUDGET_ACCOUNT_ID" in ARTIFACTS

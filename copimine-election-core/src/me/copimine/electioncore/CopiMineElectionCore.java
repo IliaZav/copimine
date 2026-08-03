@@ -723,6 +723,25 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             Bukkit.getScheduler().runTask(this, event.getPlayer()::updateInventory);
             return;
         }
+        if (isPresidentMandate(dropped)) {
+            // Bukkit may have already created the entity and removed the
+            // stack from the client inventory by the time this event runs.
+            // Cancel the drop, remove that entity on the next tick, then
+            // reconcile the player's inventory to exactly one mandate.
+            event.setCancelled(true);
+            Player player = event.getPlayer();
+            Bukkit.getScheduler().runTask(this, () -> {
+                if (event.getItemDrop() != null && !event.getItemDrop().isDead()) {
+                    event.getItemDrop().remove();
+                }
+                deduplicatePresidentMandates(player);
+                if (isPresident(player) && !hasOfficialLogicalItem(player, "PRESIDENT_MANDATE")) {
+                    addOrQueueOfficialItem(player, dropped.clone());
+                }
+                player.updateInventory();
+            });
+            return;
+        }
         if (isProtectedOfficialItem(dropped)) {
             event.setCancelled(true);
         }
@@ -876,7 +895,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return true;
             }
             if (isProtectedOfficialItem(stack)) {
-                keep.add(stack.clone());
+                // A stacked/duplicated mandate must never turn into several
+                // queued restores. Keep one logical entitlement per death.
+                if (isPresidentMandate(stack) && keep.stream().anyMatch(this::isPresidentMandate)) {
+                    return true;
+                }
+                ItemStack preserved = stack.clone();
+                if (isPresidentMandate(preserved)) {
+                    preserved.setAmount(1);
+                }
+                keep.add(preserved);
                 return true;
             }
             return false;
@@ -7217,7 +7245,61 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return true;
             }
         }
+        Map<String, ItemStack> queued = officialRestore.get(player.getUniqueId());
+        if (queued != null) {
+            for (ItemStack stack : queued.values()) {
+                if (logicalKey.equals(officialRestoreKey(stack))) {
+                    return true;
+                }
+            }
+        }
         return false;
+    }
+
+    /** Keep one physical president mandate even after a legacy duplicate. */
+    private void deduplicatePresidentMandates(Player player) {
+        if (player == null || player.getInventory() == null) {
+            return;
+        }
+        PlayerInventory inventory = player.getInventory();
+        boolean retained = false;
+        for (int slot = 0; slot < inventory.getContents().length; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!isPresidentMandate(stack)) {
+                continue;
+            }
+            if (retained) {
+                inventory.setItem(slot, null);
+            } else {
+                stack.setAmount(1);
+                inventory.setItem(slot, stack);
+                retained = true;
+            }
+        }
+        ItemStack[] armor = inventory.getArmorContents();
+        for (int index = 0; index < armor.length; index++) {
+            ItemStack stack = armor[index];
+            if (!isPresidentMandate(stack)) {
+                continue;
+            }
+            if (retained) {
+                armor[index] = null;
+            } else {
+                stack.setAmount(1);
+                armor[index] = stack;
+                retained = true;
+            }
+        }
+        inventory.setArmorContents(armor);
+        ItemStack offhand = inventory.getItemInOffHand();
+        if (isPresidentMandate(offhand)) {
+            if (retained) {
+                inventory.setItemInOffHand(null);
+            } else {
+                offhand.setAmount(1);
+                inventory.setItemInOffHand(offhand);
+            }
+        }
     }
 
     /**
@@ -7297,6 +7379,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     officialRestoreInFlight.remove(playerUuid);
                     return;
                 }
+                deduplicatePresidentMandates(player);
                 // Drain death/full-inventory recovery before entitlement
                 // checks; otherwise a fresh mandate could be created first
                 // and the queued copy would become a duplicate.
@@ -7327,6 +7410,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 if (presidentResult && !presidentElectionIdResult.isBlank() && !hasOfficialLogicalItem(player, "PRESIDENT_MANDATE")) {
                     addOrQueueOfficialItem(player, createPresidentMandate(presidentElectionIdResult, playerUuid.toString(), playerName));
                 }
+                deduplicatePresidentMandates(player);
                 if (lookupSucceededResult) {
                     if (!presidentResult) {
                         removeOfficialItemsFromPlayer(player, "PRESIDENT_MANDATE");

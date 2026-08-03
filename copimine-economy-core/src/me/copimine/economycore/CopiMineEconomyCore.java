@@ -17,6 +17,7 @@ import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
@@ -178,6 +179,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     /** Read-only president/treasury role cache; event handlers never query JDBC. */
     private final Map<UUID, Boolean> treasuryAccessCache = new ConcurrentHashMap<>();
     private final Set<UUID> atmPinRefreshBypass = ConcurrentHashMap.newKeySet();
+    /** Short-lived permits for AR entities intentionally created by silk-touch mining. */
+    private final Map<String, Long> authorizedArWorldDropTokens = new ConcurrentHashMap<>();
+    private final SecureRandom worldDropTokenRandom = new SecureRandom();
     private final Set<BlockKey> activeAtmBlocks = ConcurrentHashMap.newKeySet();
     private final Map<BlockKey, String> atmIdsByBlock = new ConcurrentHashMap<>();
     private final Map<BlockKey, String> atmExpectedMaterials = new ConcurrentHashMap<>();
@@ -189,6 +193,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private NamespacedKey officialArSignatureKey;
     private NamespacedKey officialArDenominationKey;
     private NamespacedKey officialArSignatureVersionKey;
+    private NamespacedKey officialArWorldDropTokenKey;
     private byte[] officialArSigningSecret;
     private BukkitTask atmAnchorGuardTask;
 
@@ -251,6 +256,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         int countOfficialAr(Inventory inventory);
         CompletableFuture<Boolean> prepareIssuanceAsync(String issuanceKey, Material material, int amount, String source);
         ItemStack createPreparedStack(Material material, int amount, String source);
+        boolean authorizeWorldDrop(ItemStack stack);
         ItemStack normalizeStack(ItemStack stack);
         void normalizePlayer(Player player);
     }
@@ -396,6 +402,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         officialArSignatureKey = new NamespacedKey(this, "ar_signature");
         officialArDenominationKey = new NamespacedKey(this, "ar_denomination");
         officialArSignatureVersionKey = new NamespacedKey(this, "ar_signature_version");
+        officialArWorldDropTokenKey = new NamespacedKey(this, "ar_world_drop_token");
         officialArSigningSecret = loadOrCreateArSigningSecret();
         pendingArSettlementJournalPath = getDataFolder().toPath().resolve("pending-ar-settlements.tsv");
         try {
@@ -953,6 +960,13 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArSpawn(ItemSpawnEvent event) {
         if (containsOfficialAr(event.getEntity().getItemStack())) {
+            ItemMeta meta = event.getEntity().getItemStack().getItemMeta();
+            String token = meta == null ? "" : first(
+                    meta.getPersistentDataContainer().get(officialArWorldDropTokenKey, PersistentDataType.STRING), "");
+            Long expiresAt = token.isBlank() ? null : authorizedArWorldDropTokens.remove(token);
+            if (expiresAt != null && expiresAt >= now()) {
+                return;
+            }
             event.setCancelled(true);
             getLogger().warning("Blocked an official AR world spawn; certified AR must remain in inventories or mailbox delivery.");
         }
@@ -1322,7 +1336,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         String id = "atm_" + UUID.randomUUID().toString().replace("-", "");
         long t = now();
-        int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,expected_material,expected_model_id,expected_custom_model_data,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
+        int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,expected_material,expected_model_id,expected_custom_model_data,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT DO NOTHING",
                 id, block.getWorld().getName(), block.getX(), block.getY(), block.getZ(), block.getType().name(), "atm_terminal", MODEL_ATM_TERMINAL, player.getName(), t);
         if (created != 1) {
             return "&eНа этом блоке уже есть банкомат.";
@@ -1352,7 +1366,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         int z = block.getZ();
         Location location = block.getLocation();
         dbFuture("create atm", () -> {
-            int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,expected_material,expected_model_id,expected_custom_model_data,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING",
+            int created = updateCount("INSERT INTO ar_atms(id,world,x,y,z,expected_material,expected_model_id,expected_custom_model_data,name,active,created_by,created_at,archived_by,archived_at) VALUES(?,?,?,?,?,?,?,?,'Банкомат',1,?,?, '',0) ON CONFLICT DO NOTHING",
                     id, worldName, x, y, z, location.getBlock().getType().name(), "atm_terminal", MODEL_ATM_TERMINAL, player.getName(), t);
             if (created != 1) {
                 throw new IllegalStateException("ATM_EXISTS:");
@@ -2560,7 +2574,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         return dbFuture("queue pending ar settlement", () -> {
             update(
-                    "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                    "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT (idempotency_key) WHERE idempotency_key <> '' DO NOTHING",
                     UUID.randomUUID().toString(),
                     playerUuid.toString(),
                     first(playerName, ""),
@@ -2659,7 +2673,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             tx(connection -> {
                 for (PendingArJournalRow row : rows.values()) {
                     update(connection,
-                            "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                            "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT (idempotency_key) WHERE idempotency_key <> '' DO NOTHING",
                             UUID.randomUUID().toString(), row.playerUuid().toString(), first(row.playerName(), ""), row.amount(),
                             first(row.settlementType(), PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY),
                             PENDING_AR_SETTLEMENT_STATUS_PENDING, first(row.reason(), ""), row.idempotencyKey(), now(), now());
@@ -2856,7 +2870,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         long createdAt = now();
         update(connection,
-                "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT (idempotency_key) WHERE idempotency_key <> '' DO NOTHING",
                 "withdrawal-" + transactionId, playerUuid.toString(), first(playerName, ""), amount,
                 PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY, PENDING_AR_SETTLEMENT_STATUS_DEBITED,
                 first(details, "") + ";tx=" + transactionId, transactionId, createdAt, createdAt);
@@ -3272,6 +3286,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         Bukkit.getScheduler().runTask(this, () -> {
             try {
                 cleanupProtectedBlockVisualEntities(current, kind, linkedId);
+                if ("ATM".equals(kind)) {
+                    spawnAtmTitleDisplay(blockLocation, linkedId);
+                }
                 Location displayLocation = blockLocation.clone().add(0.5, 0.5, 0.5);
                 ItemStack visualItem = new ItemStack(baseMaterial);
                 ItemMeta meta = visualItem.getItemMeta();
@@ -3310,6 +3327,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     Bukkit.getScheduler().runTask(this, () -> {
                         try {
                             cleanupProtectedBlockVisualEntities(row, kind, linkedId);
+                            if ("ATM".equals(kind) && row != null) {
+                                World world = Bukkit.getWorld(string(row.get("world")));
+                                if (world != null) {
+                                    cleanupAtmTitleDisplay(new Location(world, intValue(row.get("x")), intValue(row.get("y")), intValue(row.get("z"))), linkedId);
+                                }
+                            }
                         } catch (Exception entityError) {
                             getLogger().warning("ATM visual cleanup entities: " + safeError(entityError));
                         }
@@ -3388,6 +3411,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 boolean valid = isOwnedProtectedVisualEntity(entity, "ATM", linkedId, "atm_terminal", MODEL_ATM_TERMINAL);
                 if (!valid) {
                     spawnOrReplaceProtectedBlockVisual(location, "ATM", linkedId, Material.PAPER, MODEL_ATM_TERMINAL, "atm_terminal");
+                } else {
+                    ensureAtmTitleDisplay(location, linkedId);
                 }
             } catch (Exception error) {
                 getLogger().warning("ATM visual repair row: " + safeError(error));
@@ -3710,6 +3735,53 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
         static PinVerification failed(String code, String message) {
             return new PinVerification(false, code, message);
+        }
+    }
+
+    private void spawnAtmTitleDisplay(Location base, String atmId) {
+        if (base == null || base.getWorld() == null || atmId == null || atmId.isBlank()) {
+            return;
+        }
+        cleanupAtmTitleDisplay(base, atmId);
+        Location location = base.clone().add(0.5D, 1.9D, 0.5D);
+        base.getWorld().spawn(location, TextDisplay.class, display -> {
+            display.setText(color("&eБанкомат"));
+            display.setBillboard(Display.Billboard.CENTER);
+            display.setAlignment(TextDisplay.TextAlignment.CENTER);
+            display.setShadowed(true);
+            display.setSeeThrough(false);
+            display.setPersistent(true);
+            display.getPersistentDataContainer().set(visualEntityTypeKey, PersistentDataType.STRING, "ATM_TITLE_DISPLAY");
+            display.getPersistentDataContainer().set(visualLinkedIdKey, PersistentDataType.STRING, atmId);
+        });
+    }
+
+    private void ensureAtmTitleDisplay(Location base, String atmId) {
+        if (base == null || base.getWorld() == null || atmId == null || atmId.isBlank()) {
+            return;
+        }
+        Location center = base.clone().add(0.5D, 1.9D, 0.5D);
+        for (Entity entity : base.getWorld().getNearbyEntities(center, 2.0D, 2.5D, 2.0D)) {
+            if (entity instanceof TextDisplay display
+                    && "ATM_TITLE_DISPLAY".equals(display.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
+                    && atmId.equalsIgnoreCase(display.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
+                return;
+            }
+        }
+        spawnAtmTitleDisplay(base, atmId);
+    }
+
+    private void cleanupAtmTitleDisplay(Location base, String atmId) {
+        if (base == null || base.getWorld() == null || atmId == null || atmId.isBlank()) {
+            return;
+        }
+        Location center = base.clone().add(0.5D, 1.9D, 0.5D);
+        for (Entity entity : base.getWorld().getNearbyEntities(center, 2.0D, 2.5D, 2.0D)) {
+            if (entity instanceof TextDisplay display
+                    && "ATM_TITLE_DISPLAY".equals(display.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
+                    && atmId.equalsIgnoreCase(display.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
+                display.remove();
+            }
         }
     }
 
@@ -6438,7 +6510,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
             long createdAt = now();
             update(connection,
-                    "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT(idempotency_key) DO NOTHING",
+                    "INSERT INTO cmv4_pending_ar_settlements(id,player_uuid,player_name,amount,settlement_type,status,reason,idempotency_key,created_at,updated_at,delivered_at) VALUES(?,?,?,?,?,?,?,?,?,?,0) ON CONFLICT (idempotency_key) WHERE idempotency_key <> '' DO NOTHING",
                     "withdrawal-" + transactionId, playerUuid.toString(), first(playerName, ""), amount,
                     PENDING_AR_SETTLEMENT_TYPE_WITHDRAW_DELIVERY, PENDING_AR_SETTLEMENT_STATUS_DEBITED,
                     first(details, "") + ";tx=" + transactionId, transactionId, createdAt, createdAt);
@@ -6529,6 +6601,21 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         @Override
         public ItemStack createPreparedStack(Material material, int amount, String source) {
             return createOfficialArStack(material, amount, "", "", first(source, "prepared-issuance"));
+        }
+
+        @Override
+        public boolean authorizeWorldDrop(ItemStack stack) {
+            if (!isOfficialAr(stack) || stack.getItemMeta() == null) {
+                return false;
+            }
+            ItemMeta meta = stack.getItemMeta();
+            byte[] tokenBytes = new byte[24];
+            worldDropTokenRandom.nextBytes(tokenBytes);
+            String token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
+            meta.getPersistentDataContainer().set(officialArWorldDropTokenKey, PersistentDataType.STRING, token);
+            stack.setItemMeta(meta);
+            authorizedArWorldDropTokens.put(token, now() + 30_000L);
+            return true;
         }
 
         @Override

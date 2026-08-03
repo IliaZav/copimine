@@ -961,6 +961,10 @@ copimine_harden_release_ownership() {
     "$COPIMINE_SERVER_DIR/banned-ips.json"
     "$COPIMINE_SERVER_DIR/usercache.json"
     "$COPIMINE_SERVER_DIR/cache"
+    "$COPIMINE_SERVER_DIR/config"
+    "$COPIMINE_SERVER_DIR/libraries"
+    "$COPIMINE_SERVER_DIR/versions"
+    "$COPIMINE_SERVER_DIR/emotes"
     "$COPIMINE_SERVER_DIR/logs"
   )
   if [[ -d "$COPIMINE_SERVER_DIR" ]]; then

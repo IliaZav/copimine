@@ -1,9 +1,9 @@
 {
-    "generatedAtUtc":  "2026-08-03T07:35:15.5015234Z",
-    "gitCommit":  "9fa7b74157bdb1954a16612c1117fe6041d1d810",
+    "generatedAtUtc":  "2026-08-03T08:52:45.1582196Z",
+    "gitCommit":  "4488c81cba5f137404be7ec84487141bbd879117",
     "sourceTreeDirty":  false,
     "sourceArtifacts":  {
-                            "gitCommit":  "9fa7b74157bdb1954a16612c1117fe6041d1d810",
+                            "gitCommit":  "4488c81cba5f137404be7ec84487141bbd879117",
                             "serverPlugins":  {
                                                   "minecraft/server/plugins/AuthEffects.jar":  "90ba4f8692b83b75b38d450c99a5642499db09325e5d4caaf16ea46fd0d90db9",
                                                   "minecraft/server/plugins/CopiMineArtifacts.jar":  "423e43a377693506532b5cf27922faf2fddb915b4963ad8550ae31711f0f4074",
@@ -22,8 +22,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "c9ed7433b5ba58e9043b30be738596b733c36fc1",
-                                      "sha256":  "ca55e7bb0722d366656bfe607f5564e12fc0ded8f7fb62fcb4661631e2d12f74"
+                                      "sha1":  "542042d09db5dc0be1bdf11b39cfde61171eeef4",
+                                      "sha256":  "640fcd2937d4f78b0b8b97bd6143e8e35567439fc0820f46fba0f5c77a1824fc"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -35,11 +35,11 @@
                    "scripts":  {
                                    "unpackAndVerify":  {
                                                            "path":  "deploy/ubuntu/copimine_unpack_and_verify.sh",
-                                                           "sha256":  "bc090cbd20d687f82aa1a769bfcbc0909427405390e5bae450f30671c145da06"
+                                                           "sha256":  "b99e880b38cf8942fbbcfe3b5c908b6632c62db15e196c4c665fb0e2df82b85c"
                                                        },
                                    "fullReplace":  {
                                                        "path":  "deploy/ubuntu/copimine_full_replace.sh",
-                                                       "sha256":  "ce9471416ff68d01bfd01a85837b70bdff341223bd601b03d78199368494e827"
+                                                       "sha256":  "bce0259bf241077e6cba229fd20f04baac735ed171298b6a99fefb75a4beebdb"
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
@@ -76,7 +76,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "f16db229bb929294c67e6b853f94c15e18667e41958cfbd9c6b7949d2bdce344"
+                                             "sha256":  "e2822dda7450ebfccffca6bb6fbe608eeb8d4f30c7294e4eed72a0e13a83265b"
                                          }
                  },
     "serverProperties":  {
@@ -90,7 +90,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "a09e0612157117b74664aa4b030d88053a3f9f87f20173db0accf7124b5c7449",
+                                  "sha256":  "f0d7f158c6c3688425e71a23c36f9e79b6b055d8864950daba1e98fd7c20ddaf",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

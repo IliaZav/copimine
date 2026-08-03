@@ -621,7 +621,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.saveResource("items.yml", false);
          } catch (IllegalArgumentException var5) {
             try {
-               Files.writeString(var1.toPath(), this.defaultItemsYaml(), StandardCharsets.UTF_8);
+               Files.writeString(var1.toPath(),
+                       this.defaultItemsYaml().replace("per_player_limit: 5", "per_player_limit: 1"),
+                       StandardCharsets.UTF_8);
             } catch (IOException var4) {
                throw new RuntimeException(var4);
    }
@@ -833,6 +835,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                throw new IllegalStateException("Invalid artifact catalog material for " + var6);
             }
 
+            String source = this.str(var16.get("source"));
+            int perPlayerLimit = "AR_SHOP".equalsIgnoreCase(source)
+               ? 1
+               : Math.max(0, this.parseInt(this.str(var16.get("per_player_limit")), 0));
             List<String> var9 = this.asStringList(var16.get("lore"));
             Object var10 = var16.containsKey("visual_effect_id") ? var16.get("visual_effect_id") : this.artifactVisualEffect(var6);
             CopiMineArtifacts.CatalogItem var11 = new CopiMineArtifacts.CatalogItem(
@@ -843,7 +849,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.str(var16.get("rarity")),
                this.parseLong(this.str(var16.get("price_ar")), 0L),
                Math.max(0, this.parseInt(this.str(var16.get("supply_limit")), 0)),
-               Math.max(0, this.parseInt(this.str(var16.get("per_player_limit")), 0)),
+               perPlayerLimit,
                this.parseInt(this.str(var16.get("cooldown_seconds")), 0),
                this.str(var16.get("effect")),
                this.parseInt(this.str(var16.get("custom_model_data")), this.artifactModelData(var6)),
@@ -4230,20 +4236,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.setAction(
             var5,
             var4,
-            36,
-            this.button(
-               Material.RECOVERY_COMPASS,
-               "&dВозврат потерянного предмета",
-               List.of(
-                  "&7Бесплатно возвращаются только действительно потерянные",
-                  "&7Потерянные донат-предметы, доступные к возврату."
-               )
-            ),
-          "donation:disabled"
-         );
-         this.setAction(
-            var5,
-            var4,
             45,
             this.button(
                Material.ARROW,
@@ -4483,20 +4475,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             ),
             "help"
          );
-      this.setAction(
-         var5,
-         var4,
-         36,
-         this.button(
-            Material.RECOVERY_COMPASS,
-            "&dВозврат потерянного предмета",
-            List.of(
-               "&7Бесплатно возвращаются только действительно потерянные",
-               "&7Потерянные донат-предметы, доступные к возврату."
-            )
-         ),
-         "donation:disabled"
-      );
       this.setAction(
          var5,
          var4,
@@ -5074,19 +5052,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             )
          ),
          "donation:owned"
-      );
-      this.setAction(
-         var3,
-         var2,
-         22,
-         this.button(
-            Material.RECOVERY_COMPASS,
-            "&dВернуть утерянные предметы",
-            List.of(
-               "&7Показывает только предметы, которые можно вернуть."
-            )
-         ),
-         "donation:disabled"
       );
       this.setAction(
          var3,

@@ -995,6 +995,21 @@ public final class NarcoticsDatabase {
         }));
     }
 
+    /** Claim a completed brew for physical delivery at its cauldron. */
+    public CompletableFuture<Boolean> claimPendingBrewingOutput(String id) {
+        if (id == null || id.isBlank()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return runAsyncResult(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE narcotics_pending_outputs SET status='DELIVERING',updated_at=? WHERE id=? AND status='PENDING'")) {
+                statement.setLong(1, Instant.now().getEpochSecond());
+                statement.setString(2, id);
+                return statement.executeUpdate() == 1;
+            }
+        }));
+    }
+
     /** Read in-flight rows so a reconnect can recognize an item already added
      * before the previous process crashed, without resetting a live claim. */
     public CompletableFuture<List<PendingBrewingOutput>> loadDeliveringBrewingOutputs(UUID playerUuid, int limit) {
@@ -1634,6 +1649,16 @@ public final class NarcoticsDatabase {
                 + expectedVersion + "\t" + (ownerUuid == null ? "" : ownerUuid.toString()) + "\t" + narcoticId;
     }
 
+    /** Stable id shared by the durable completion row and its physical drop. */
+    public String brewingOutputId(BlockKey key, long expectedVersion, UUID ownerUuid, String narcoticId) {
+        if (key == null || expectedVersion < 0L || narcoticId == null || narcoticId.isBlank()) {
+            throw new IllegalArgumentException("Invalid brewing output identity.");
+        }
+        return "brew-" + UUID.nameUUIDFromBytes(
+                brewingCompletionJournalKey(key, expectedVersion, ownerUuid, narcoticId)
+                        .getBytes(StandardCharsets.UTF_8));
+    }
+
     private boolean appendBrewingJournal(BlockKey key, long version, List<IngredientEntry> ingredients, UUID ownerUuid) {
         if (brewingJournal == null || key == null || version < 0L) {
             return false;
@@ -1999,21 +2024,22 @@ public final class NarcoticsDatabase {
                 return false;
             }
         }
-        if (ownerUuid != null) {
-            try (PreparedStatement output = connection.prepareStatement("""
-                    INSERT INTO narcotics_pending_outputs(id,player_uuid,narcotic_id,amount,status,created_at,updated_at)
-                    VALUES (?,?,?,?,?,?,?)
-                    """)) {
-                long now = Instant.now().getEpochSecond();
-                output.setString(1, UUID.randomUUID().toString());
-                output.setString(2, ownerUuid.toString());
-                output.setString(3, narcoticId);
-                output.setInt(4, 1);
-                output.setString(5, "PENDING");
-                output.setLong(6, now);
-                output.setLong(7, now);
-                output.executeUpdate();
-            }
+        try (PreparedStatement output = connection.prepareStatement("""
+                INSERT INTO narcotics_pending_outputs(id,player_uuid,narcotic_id,amount,status,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?)
+                """)) {
+            long now = Instant.now().getEpochSecond();
+            output.setString(1, brewingOutputId(key, expectedVersion, ownerUuid, narcoticId));
+            // The product is first delivered at the cauldron.  A blank owner
+            // keeps the row durable for ownerless/admin-triggered brews while
+            // still satisfying the legacy NOT NULL schema.
+            output.setString(2, ownerUuid == null ? "" : ownerUuid.toString());
+            output.setString(3, narcoticId);
+            output.setInt(4, 1);
+            output.setString(5, "PENDING");
+            output.setLong(6, now);
+            output.setLong(7, now);
+            output.executeUpdate();
         }
         try (PreparedStatement intent = connection.prepareStatement("""
                 UPDATE narcotics_brewing_completion_intents

@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,3 +98,87 @@ def test_brewing_final_ingredient_cannot_consume_a_replaced_stack():
     assert "abortBrewingCompletionIntent" in completion
     assert "public boolean consumeOneExact(Player player, ItemStack expected)" in factory
     assert "candidate.isSimilar(expected)" in factory
+
+
+def test_brewing_keeps_a_valid_three_of_four_prefix_pending():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+    assert "if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null)" in decision
+    assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current)" in decision
+    assert "if (canStillBecomeRecipe && current.size() < maximumRecipeSize)" in decision
+    assert "return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);" in decision
+
+    config = read("copimine-narcotics/config.yml")
+    chups = between(config, "  chups:", "    normal_effects:")
+    assert len(re.findall(r"^      - ", chups, flags=re.MULTILINE)) == 4
+
+
+def test_brewing_completion_physically_drops_both_success_and_wrong_mix_outputs():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    effects = between(service, "private void completeBrewingEffects", "private void simulateWrongMixExplosion")
+    plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
+    drop = between(plugin, "public Item dropCompletedBrewingOutput", "private void markPendingRefund")
+    assert "dropCompletedBrewingOutput" in effects
+    assert "simulateWrongMixExplosion(block)" in effects
+    assert "definition" in drop
+    assert "dropItemNaturally" in drop
+    assert "markPendingOutput" in drop
+
+
+def test_official_ar_can_move_in_personal_inventory_and_is_normalized_after_world_drop():
+    economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
+    click = between(economy, "private boolean officialArTouchesContainer", "private boolean containsOfficialAr")
+    drag = between(economy, "public void onOfficialArInventoryDrag", "public void onOfficialArInventoryMove")
+    spawn = between(economy, "public void onOfficialArSpawn", "public void onOfficialArSmelt")
+    drop = between(economy, "public void onOfficialArDrop", "public void onOfficialArDamage")
+    assert "InventoryType.CRAFTING" in click
+    assert "top.getHolder() instanceof Player" in click
+    assert "InventoryType.CRAFTING" in drag
+    assert "authorizeWorldDrop" in drop
+    assert "if (!officialArService.authorizeWorldDrop" in drop
+    assert "remove(officialArWorldDropTokenKey)" in spawn
+    assert "event.getEntity().setItemStack" in spawn
+
+
+def test_official_ar_is_authorized_on_player_death_instead_of_being_suppressed():
+    economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
+    assert "import org.bukkit.event.entity.PlayerDeathEvent;" in economy
+    start = economy.index("public void onOfficialArDeath(PlayerDeathEvent event)")
+    death = economy[start : start + 900]
+    assert "event.getDrops()" in death
+    assert "authorizeWorldDrop" in death
+
+
+def test_shop_hides_the_disabled_lost_item_recovery_entry_and_limits_regular_items_to_one():
+    artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
+    for start, end in (
+        ("private void openMain(Player var1, CopiMineArtifacts.Shop var2, boolean var3)", "private void openMainV2"),
+        ("private void openMainV2", "private void openDonationRoot"),
+        ("private void openDonationRoot", "private void openDonationReclaim"),
+    ):
+        menu = between(artifacts, start, end)
+        assert "RECOVERY_COMPASS" not in menu
+        assert "donation:disabled" not in menu
+
+    catalog = read("copimine-artifacts/items.yml")
+    blocks = re.split(r"(?=^  - id:)", catalog, flags=re.MULTILINE)
+    regular = [block for block in blocks if "source: AR_SHOP" in block]
+    assert regular
+    assert all(re.search(r"^    per_player_limit:\s*1\s*$", block, flags=re.MULTILINE) for block in regular)
+    assert 'defaultItemsYaml().replace("per_player_limit: 5", "per_player_limit: 1")' in artifacts
+    assert '"AR_SHOP".equalsIgnoreCase(source)' in artifacts
+    assert "int perPlayerLimit =" in artifacts
+
+
+def test_atm_title_is_spawned_above_the_block_not_inside_it():
+    economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
+    atm = between(economy, "private void spawnAtmTitleDisplay", "private void ensureAtmTitleDisplay")
+    match = re.search(r"Location location = base\.clone\(\)\.add\(0\.5D,\s*([0-9.]+)D,\s*0\.5D\)", atm)
+    assert match
+    assert float(match.group(1)) >= 1.0
+
+
+def test_resource_pack_preserves_the_vanilla_blue_stained_glass_pane_parent():
+    builder = read("resourcepacks/build-resourcepack.py")
+    assert 'if material == "blue_stained_glass_pane":' in builder
+    assert 'parent = "minecraft:block/blue_stained_glass_pane"' in builder

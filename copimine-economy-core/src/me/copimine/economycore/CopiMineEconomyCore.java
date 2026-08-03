@@ -38,6 +38,7 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.FurnaceSmeltEvent;
 import org.bukkit.event.inventory.InventoryCreativeEvent;
@@ -887,6 +888,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (!(event.getWhoClicked() instanceof Player player) || !containsOfficialAr(event.getOldCursor())) {
             return;
         }
+        Inventory top = event.getView().getTopInventory();
+        if (top != null && top.getType() == org.bukkit.event.inventory.InventoryType.CRAFTING
+                && (top.getHolder() instanceof Player || event.getWhoClicked() instanceof Player)) {
+            return;
+        }
         if (event.getRawSlots().stream().anyMatch(slot -> slot < event.getView().getTopInventory().getSize())) {
             event.setCancelled(true);
             player.updateInventory();
@@ -926,12 +932,24 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDrop(PlayerDropItemEvent event) {
-        // Certified AR is a bank instrument, not a world entity.  Refuse the
-        // drop instead of creating an unlimited-lifetime entity that can be
-        // copied, cleared by another plugin, or left on the ground forever.
         if (containsOfficialAr(event.getItemDrop().getItemStack())) {
-            event.setCancelled(true);
-            event.getPlayer().sendMessage(color("&eОфициальный AR нельзя выбрасывать. Внесите его через банкомат."));
+            // A player drop is an explicit cash hand-off. Authorize this
+            // single spawn and strip the one-shot token after it is accepted
+            // so the AR keeps its normal stack identity.
+            if (!officialArService.authorizeWorldDrop(event.getItemDrop().getItemStack())) {
+                event.setCancelled(true);
+                getLogger().warning("Blocked an official AR drop because its world authorization could not be issued.");
+            }
+        }
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOfficialArDeath(PlayerDeathEvent event) {
+        for (ItemStack stack : event.getDrops()) {
+            if (containsOfficialAr(stack) && !officialArService.authorizeWorldDrop(stack)) {
+                getLogger().warning("Official AR death drop could not be authorized for "
+                        + event.getEntity().getUniqueId());
+            }
         }
     }
 
@@ -965,6 +983,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     meta.getPersistentDataContainer().get(officialArWorldDropTokenKey, PersistentDataType.STRING), "");
             Long expiresAt = token.isBlank() ? null : authorizedArWorldDropTokens.remove(token);
             if (expiresAt != null && expiresAt >= now()) {
+                if (meta != null) {
+                    meta.getPersistentDataContainer().remove(officialArWorldDropTokenKey);
+                    ItemStack normalized = event.getEntity().getItemStack();
+                    normalized.setItemMeta(meta);
+                    event.getEntity().setItemStack(normalized);
+                }
                 return;
             }
             event.setCancelled(true);
@@ -1002,7 +1026,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     private boolean officialArTouchesContainer(InventoryClickEvent event) {
         Inventory top = event.getView().getTopInventory();
-        if (top == null || top.getType() == org.bukkit.event.inventory.InventoryType.PLAYER) {
+        if (top == null || top.getType() == org.bukkit.event.inventory.InventoryType.PLAYER
+                || (top.getType() == org.bukkit.event.inventory.InventoryType.CRAFTING
+                && (top.getHolder() instanceof Player || event.getWhoClicked() instanceof Player))) {
             return false;
         }
         // Check the clicked stack regardless of whether it came from the top
@@ -3746,7 +3772,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         // ArmorStand names are rendered by older clients and resource-pack
         // combinations that do not render TextDisplay entities reliably.
         // Spawn it low enough that the name itself sits directly above the ATM.
-        Location location = base.clone().add(0.5D, 0.35D, 0.5D);
+        Location location = base.clone().add(0.5D, 1.25D, 0.5D);
         base.getWorld().spawn(location, ArmorStand.class, stand -> {
             stand.setInvisible(true);
             stand.setMarker(true);

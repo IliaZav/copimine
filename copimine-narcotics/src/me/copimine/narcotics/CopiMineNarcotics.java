@@ -24,6 +24,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Item;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -733,6 +734,31 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         Player player = Bukkit.getPlayer(playerUuid);
         if (player != null && player.isOnline()) {
             processPendingBrewingOutputs(player);
+        }
+    }
+
+    /** Materialise a durable brew output at the cauldron on the Bukkit thread. */
+    public Item dropCompletedBrewingOutput(Location location, NarcoticDefinition definition, String outputId) {
+        if (location == null || location.getWorld() == null || definition == null
+                || outputId == null || outputId.isBlank() || itemFactory == null) {
+            return null;
+        }
+        ItemStack output = itemFactory.createOfficialItem(definition, 1);
+        markPendingOutput(output, outputId);
+        return location.getWorld().dropItemNaturally(location, output);
+    }
+
+    /** Remove the crash-recovery marker only after the durable row is closed. */
+    public void clearPendingBrewingOutputMarker(Item item, String outputId) {
+        if (item == null || item.isDead() || outputId == null || outputId.isBlank()) {
+            return;
+        }
+        ItemStack stack = item.getItemStack();
+        var meta = stack == null ? null : stack.getItemMeta();
+        if (meta != null && pendingOutputKey != null && hasPendingOutputMarker(stack, outputId)) {
+            meta.getPersistentDataContainer().remove(pendingOutputKey);
+            stack.setItemMeta(meta);
+            item.setItemStack(stack);
         }
     }
 

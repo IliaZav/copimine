@@ -331,6 +331,13 @@ def build_stage() -> None:
         elif material == "compass":
             parent = "minecraft:item/generated"
             textures = {"layer0": "minecraft:item/compass_16"}
+        elif material == "blue_stained_glass_pane":
+            # A stained-glass pane has no vanilla item-layer texture.  Its
+            # item model inherits the block pane geometry and textures; using
+            # item/generated here produces the missing-texture model shown by
+            # clients whenever the custom-model-data predicate is absent.
+            parent = "minecraft:block/blue_stained_glass_pane"
+            textures = {}
         else:
             parent = "minecraft:item/generated"
             textures = {"layer0": f"minecraft:item/{material}"}

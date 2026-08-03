@@ -18,6 +18,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Levelled;
+import org.bukkit.entity.Item;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
@@ -484,15 +485,54 @@ public final class CauldronBrewingService {
         if (wrongMix) {
             simulateWrongMixExplosion(block);
         }
-        if (ownerUuid != null) {
-            // The output row was committed with the tombstone. Claim it
-            // through the durable mailbox rather than dropping an untracked
-            // item in a crash window.
-            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
-        } else {
-            plugin.getLogger().severe("Completed brewing output " + definition.id()
-                    + " has no owner; durable delivery requires manual review.");
-        }
+        long expectedStoredVersion = Math.max(0L, version - 1L);
+        String outputId = database.brewingOutputId(key, expectedStoredVersion, ownerUuid, definition.id());
+        Location dropLocation = block.getLocation().add(0.5D, 0.7D, 0.5D);
+        // The completion transaction created the output row atomically with
+        // the cauldron tombstone. Claim that row before the Bukkit mutation,
+        // drop the certified item at the cauldron, then close the row. If the
+        // world is unavailable, the owner mailbox remains the safe fallback.
+        database.claimPendingBrewingOutput(outputId).whenComplete((claimed, claimError) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (claimError != null) {
+                        plugin.getLogger().warning("Unable to claim completed brewing output " + outputId
+                                + ": " + claimError.getMessage());
+                        if (ownerUuid != null) {
+                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
+                        }
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(claimed)) {
+                        // A reconnect recovery worker may already own this
+                        // row. It will finish the mailbox delivery idempotently.
+                        if (ownerUuid == null) {
+                            plugin.getLogger().warning("Completed ownerless brewing output " + outputId
+                                    + " was already claimed; manual review may be required.");
+                        }
+                        return;
+                    }
+                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
+                    if (dropped == null) {
+                        database.releasePendingBrewingOutput(outputId);
+                        if (ownerUuid != null) {
+                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
+                        } else {
+                            plugin.getLogger().severe("Completed brewing output " + definition.id()
+                                    + " could not be dropped and has no owner mailbox.");
+                        }
+                        return;
+                    }
+                    database.completePendingBrewingOutput(outputId).whenComplete((ignored, completeError) ->
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                if (completeError != null) {
+                                    plugin.getLogger().warning("Brewing output " + outputId
+                                            + " was dropped but could not be finalized: "
+                                            + completeError.getMessage());
+                                    return;
+                                }
+                                plugin.clearPendingBrewingOutputMarker(dropped, outputId);
+                            }));
+                }));
         if (block.getWorld() != null) {
             particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH,
                     "zhuzevo".equals(definition.id()) ? 24 : 12);

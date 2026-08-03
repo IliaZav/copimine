@@ -1,9 +1,9 @@
 {
-    "generatedAtUtc":  "2026-08-03T05:28:16.5627979Z",
-    "gitCommit":  "bf273162ceb597fe2086a4f65048515b79c49182",
+    "generatedAtUtc":  "2026-08-03T06:10:07.7950781Z",
+    "gitCommit":  "202590d5a6b0d7f819582a023999124092a52ffb",
     "sourceTreeDirty":  false,
     "sourceArtifacts":  {
-                            "gitCommit":  "bf273162ceb597fe2086a4f65048515b79c49182",
+                            "gitCommit":  "202590d5a6b0d7f819582a023999124092a52ffb",
                             "serverPlugins":  {
                                                   "minecraft/server/plugins/AuthEffects.jar":  "90ba4f8692b83b75b38d450c99a5642499db09325e5d4caaf16ea46fd0d90db9",
                                                   "minecraft/server/plugins/CopiMineArtifacts.jar":  "423e43a377693506532b5cf27922faf2fddb915b4963ad8550ae31711f0f4074",
@@ -22,8 +22,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "7c4dba5d435cd28f2e6ce1026b8ed04848fffcaf",
-                                      "sha256":  "0546bacc599555f559b47bca2dd3b40cc6da1b96a52b2c0f8998d05ababdd22d"
+                                      "sha1":  "48934d1aac450fd3363ec5e55d5bc39fdbf3b6e7",
+                                      "sha256":  "c71ea55be3e4f7dc47ea04cdff5980419c15ade966a39cf638309f513d41e77b"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -43,7 +43,7 @@
                                                    },
                                    "sharedCommon":  {
                                                         "path":  "deploy/shared/common.sh",
-                                                        "sha256":  "203141dc07699b875f866d273ab2a215f042c96fd2412387df489698d95b7cbd"
+                                                        "sha256":  "fc9bff5e55bf6b1923ab63072818160a0015aa9c7f4d9a9c4d132590c73f2432"
                                                     },
                                    "gameRuntimeHardening":  {
                                                                 "applyScript":  {
@@ -76,7 +76,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "c230914e617ebeb80134050a08e3dd7b210c489c21030f3d78dff11a96b892ed"
+                                             "sha256":  "2a06f13cb91f875f385728f967c9e2c97d6df3938aa02c84b73c42f9839bb83d"
                                          }
                  },
     "serverProperties":  {
@@ -90,7 +90,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "378267a2b328ddd71cf21d517b8eaac9d620168a9213ba96f0b6a1870a75b6f3",
+                                  "sha256":  "c1c7ba7a411d1a81fb93f3825065213d4be1dc1abaf9b4916c8a85aa55474396",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

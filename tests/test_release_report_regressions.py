@@ -281,6 +281,13 @@ def test_release_retires_legacy_public_vhost_before_nginx_validation():
     assert "ports 80 and 18080 are disabled" in INSTALLER
 
 
+def test_https_release_smoke_checks_bypass_retired_proxy_environment():
+    assert "curl --noproxy '*'" in COMMON
+    for helper in (UNPACK, FULL_REPLACE):
+        assert "curl --noproxy '*' -kfsS" in helper
+        assert "--resolve copimine.ru:443:127.0.0.1" in helper
+
+
 def test_atm_visual_has_a_visible_label_and_repairs_or_removes_it_with_the_atm():
     assert "import org.bukkit.entity.TextDisplay;" in ECONOMY
     assert 'display.setText(color("&eБанкомат"));' in ECONOMY

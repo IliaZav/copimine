@@ -786,13 +786,13 @@ verify_http() {
     die '/api/health failed'
   fi
   curl -fsS --max-time 10 http://127.0.0.1:8090/api/runtime >/dev/null || die "/api/runtime failed"
-  curl -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || die "Modpack HTTPS download route failed"
-  curl -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack HTTPS route failed"
+  curl --noproxy '*' -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || die "Modpack HTTPS download route failed"
+  curl --noproxy '*' -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack HTTPS route failed"
   local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
   tmp_modpack="$TMP_ROOT/CopiMineMods.zip"
   tmp_resourcepack="$TMP_ROOT/CopiMineResourcePack.zip"
-  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || die "Modpack HTTPS payload download failed"
-  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || die "Resource pack HTTPS payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || die "Modpack HTTPS payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || die "Resource pack HTTPS payload download failed"
   local_modpack_sha="$(sha256sum "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
   remote_modpack_sha="$(sha256sum "$tmp_modpack" | awk '{print $1}')"
   [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || die "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"

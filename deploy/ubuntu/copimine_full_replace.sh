@@ -713,13 +713,13 @@ verify_runtime() {
 
   http_check "http://127.0.0.1:8090/api/health" "" 90
   http_check "http://127.0.0.1:8090/api/runtime" "" 90
-  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || fail "Modpack HTTPS route failed"
-  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || fail "Resource pack HTTPS route failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || fail "Modpack HTTPS route failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || fail "Resource pack HTTPS route failed"
   local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
   tmp_modpack="$(mktemp /tmp/copimine-fullreplace-modpack-XXXXXX.zip)"
   tmp_resourcepack="$(mktemp /tmp/copimine-fullreplace-resourcepack-XXXXXX.zip)"
-  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || fail "Modpack HTTPS payload download failed"
-  curl -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || fail "Resource pack HTTPS payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || fail "Modpack HTTPS payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || fail "Resource pack HTTPS payload download failed"
   local_modpack_sha="$(sha256_file "$PROJECT_ROOT/thirdparty/CopiMineMods.zip")"
   remote_modpack_sha="$(sha256_file "$tmp_modpack")"
   [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || fail "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"

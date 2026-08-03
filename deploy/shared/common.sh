@@ -65,7 +65,10 @@ copimine_http_wait() {
   local extra=()
   [[ -n "$host_header" ]] && extra=(-H "Host: $host_header")
   while (( elapsed < timeout )); do
-    if curl -fsS "${extra[@]}" "$url" >/dev/null; then
+    # Deployment validation must reach the local direct-443 vhost itself.  A
+    # stale HTTPS_PROXY value from the retired 18080 relay must never route a
+    # release check through a dead listener.
+    if curl --noproxy '*' -fsS "${extra[@]}" "$url" >/dev/null; then
       return 0
     fi
     sleep 2

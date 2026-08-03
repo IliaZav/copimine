@@ -249,9 +249,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     public interface OfficialArService {
         boolean isOfficialAr(ItemStack stack);
         int countOfficialAr(Inventory inventory);
-        ItemStack createStack(Material material, int amount);
+        CompletableFuture<Boolean> prepareIssuanceAsync(String issuanceKey, Material material, int amount, String source);
+        ItemStack createPreparedStack(Material material, int amount, String source);
         ItemStack normalizeStack(ItemStack stack);
-        boolean removeAmount(Inventory inventory, int amount);
         void normalizePlayer(Player player);
     }
 
@@ -1271,9 +1271,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             button(holder, inventory, 11, Material.EMERALD_BLOCK, "&aБаланс", List.of("&7На счёте: &f" + data.get("balance") + " AR"), "");
             button(holder, inventory, 13, Material.GOLD_BLOCK, "&fБанкоматы", List.of("&7Активных банкоматов: &f" + data.get("atmCount")), "economy:atms");
             button(holder, inventory, 15, Material.ARROW, "&aНазад", List.of(), "nav:hub");
-            player.openInventory(inventory);
-        }));
-    }
+             player.openInventory(inventory);
+                     }));
+     }
 
     private void openBankAtms(Player player) throws Exception {
         if (!requireEconomyAdmin(player)) {
@@ -2202,7 +2202,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private ItemStack restoreSerializedArStack(SerializedArFragment fragment) {
-        ItemStack restored = createOfficialArStack(fragment.material(), fragment.amount(), "", "", "deposit-restore", false);
+        ItemStack restored = createOfficialArStack(fragment.material(), fragment.amount(), "", "", "deposit-restore");
         if (isFungibleArSerial(fragment.serial())) {
             return restored;
         }
@@ -2342,7 +2342,32 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     if (rows == null || rows.isEmpty() || !player.isOnline()) {
                         return;
                     }
-                    long totalAmount = rows.stream().mapToLong(PendingArSettlement::amount).sum();
+                    long calculatedTotalAmount = 0L;
+                    for (PendingArSettlement row : rows) {
+                        if (row.amount() <= 0L) {
+                            dbAsync("invalid pending ar settlement review", () -> markPendingArSettlementsReview(
+                                    List.of(row.id()), "", "invalid_amount"));
+                            getLogger().warning("Pending AR settlement has invalid amount: " + row.id());
+                            return;
+                        }
+                        try {
+                            calculatedTotalAmount = Math.addExact(calculatedTotalAmount, row.amount());
+                        } catch (ArithmeticException overflow) {
+                            dbAsync("oversized pending ar settlement review", () -> markPendingArSettlementsReview(
+                                    rows.stream().map(PendingArSettlement::id).toList(), "", "amount_overflow"));
+                            getLogger().warning("Pending AR settlements exceed the supported issuance amount.");
+                            return;
+                        }
+                    }
+                    if (calculatedTotalAmount > Integer.MAX_VALUE) {
+                        dbAsync("oversized pending ar issuance review", () -> markPendingArSettlementsReview(
+                                rows.stream().map(PendingArSettlement::id).toList(), "", "amount_overflow"));
+                        if (notifyNoSpace) {
+                            player.sendMessage(color("&eОжидающая выдача AR слишком велика для одной операции и отправлена на ручную проверку."));
+                        }
+                        return;
+                    }
+                    final long totalAmount = calculatedTotalAmount;
                     long capacity = arCapacity(player.getInventory());
                     if (capacity < totalAmount) {
                         if (notifyNoSpace) {
@@ -2373,7 +2398,18 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                                     dbAsync("pending ar settlements release partial", () -> releasePendingArSettlements(reservedIds, safeReservation.token()));
                                     return;
                                 }
-                                if (arCapacity(player.getInventory()) < totalAmount || !issueOfficialArAmount(player, totalAmount, "pending-ar-settlement", false)) {
+                                 prepareOfficialArIssuance("pending:" + String.join(",", reservedIds), Material.DIAMOND_ORE,
+                                                 Math.toIntExact(totalAmount), "pending-ar-settlement")
+                                         .whenComplete((prepared, preparationError) -> Bukkit.getScheduler().runTask(this, () -> {
+                                  if (preparationError != null || !Boolean.TRUE.equals(prepared)) {
+                                      dbAsync("pending ar issuance preparation review", () -> markPendingArSettlementsReview(reservedIds, safeReservation.token(), "issuance_prepare_failed"));
+                                      return;
+                                  }
+                                  if (!player.isOnline()) {
+                                     dbAsync("pending ar settlements release after issuance prepare", () -> releasePendingArSettlements(reservedIds, safeReservation.token()));
+                                     return;
+                                  }
+                                 if (arCapacity(player.getInventory()) < totalAmount || !issueOfficialArAmount(player, totalAmount, "pending-ar-settlement", false)) {
                                     dbAsync("pending ar settlements release", () -> releasePendingArSettlements(reservedIds, safeReservation.token()));
                                     if (notifyNoSpace) {
                                         player.sendMessage(color("&eОсвободи место в инвентаре и открой банкомат снова, чтобы забрать ожидающий AR."));
@@ -2391,9 +2427,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                                     }
                                     player.sendMessage(color("&aВыдан ожидающий официальный AR: &f" + totalAmount + " AR"));
                                 }));
-                            }));
-                }));
-    }
+                             }));
+                 }));
+                 }));
+     }
 
     private List<PendingArSettlement> loadPendingArSettlements(UUID playerUuid) throws Exception {
         return tx(connection -> {
@@ -2459,9 +2496,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             long updatedAt = now();
             for (String id : ids) {
                 update(connection,
-                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token='',reason=CASE WHEN reason='' THEN ? ELSE reason || ';' || ? END,updated_at=? WHERE id=? AND status=? AND delivery_token=?",
+                        "UPDATE cmv4_pending_ar_settlements SET status=?,delivery_token='',reason=CASE WHEN reason='' THEN ? ELSE reason || ';' || ? END,updated_at=? WHERE id=? AND ((status=? AND delivery_token=?) OR (status IN (?,?) AND ?=''))",
                         PENDING_AR_SETTLEMENT_STATUS_REVIEW, first(reason, "delivery_review"), first(reason, "delivery_review"), updatedAt,
-                        id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, first(token, ""));
+                        id, PENDING_AR_SETTLEMENT_STATUS_DELIVERING, first(token, ""),
+                        PENDING_AR_SETTLEMENT_STATUS_DEBITED, PENDING_AR_SETTLEMENT_STATUS_PENDING, first(token, ""));
             }
             return null;
         });
@@ -2736,7 +2774,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         List<String> issuedSerials = new ArrayList<>();
         while (remaining > 0) {
             int stackAmount = (int) Math.min(64L, remaining);
-            ItemStack out = createOfficialArStack(stackAmount, player.getUniqueId().toString(), player.getName(), source);
+            ItemStack out = new OfficialArServiceImpl().createPreparedStack(Material.DIAMOND_ORE, stackAmount, source);
             String serial = officialArSerial(out);
             Map<Integer, ItemStack> left = player.getInventory().addItem(out);
             if (!left.isEmpty()) {
@@ -2760,7 +2798,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void completeWithdrawOnMainThread(Player player, long amount, String transactionId, String atmId, String accountScope) {
-        if (player == null || !player.isOnline() || transactionId == null || transactionId.isBlank()) {
+        if (player == null || !player.isOnline() || transactionId == null || transactionId.isBlank()
+                || amount <= 0L || amount > Integer.MAX_VALUE) {
             if (player != null && player.isOnline()) {
                 player.sendMessage(color("&eВыдача AR не подтверждена. Операция отправлена на ручную проверку."));
             }
@@ -2774,6 +2813,17 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             }
             if (!player.isOnline()) {
                 dbAsync("withdrawal delivery release offline", () -> releasePendingArSettlements(reservation.ids(), reservation.token()));
+                return;
+            }
+            prepareOfficialArIssuance("withdrawal:" + transactionId, Material.DIAMOND_ORE, Math.toIntExact(amount), "bank-withdraw")
+                    .whenComplete((prepared, preparationError) -> Bukkit.getScheduler().runTask(this, () -> {
+            if (preparationError != null || !Boolean.TRUE.equals(prepared)) {
+                dbAsync("withdrawal issuance preparation review", () -> markPendingArSettlementsReview(reservation.ids(), reservation.token(), "issuance_prepare_failed"));
+                player.sendMessage(color("&eВыдача AR отложена: выпуск не подтверждён реестром."));
+                return;
+            }
+            if (!player.isOnline()) {
+                dbAsync("withdrawal delivery release after issuance prepare", () -> releasePendingArSettlements(reservation.ids(), reservation.token()));
                 return;
             }
             if (!issueOfficialArAmount(player, amount, "bank-withdraw", false)) {
@@ -2792,9 +2842,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 }
                 player.updateInventory();
                 player.sendMessage(color("&aОперация выполнена."));
-                openBankAtmAccount(player, first(atmId, ""), first(accountScope, "PERSONAL"));
-            }));
-        }));
+                 openBankAtmAccount(player, first(atmId, ""), first(accountScope, "PERSONAL"));
+             }));
+                    }));
+         }));
     }
 
     private void createWithdrawalDeliveryRow(Connection connection, UUID playerUuid, String playerName, long amount,
@@ -2811,16 +2862,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 first(details, "") + ";tx=" + transactionId, transactionId, createdAt, createdAt);
     }
 
-    private ItemStack createOfficialArStack(int amount, String ownerUuid, String ownerName, String source) {
-        return createOfficialArStack(Material.DIAMOND_ORE, amount, ownerUuid, ownerName, source);
-    }
-
-    private ItemStack createOfficialArStack(Material material, int amount, String ownerUuid, String ownerName, String source) {
-        return createOfficialArStack(material, amount, ownerUuid, ownerName, source, true);
-    }
-
     private ItemStack createOfficialArStack(Material material, int amount, String ownerUuid, String ownerName,
-                                            String source, boolean registerAsset) {
+                                            String source) {
         Material arMaterial = material == Material.DEEPSLATE_DIAMOND_ORE ? Material.DEEPSLATE_DIAMOND_ORE : Material.DIAMOND_ORE;
         int stackAmount = Math.max(1, Math.min(arMaterial.getMaxStackSize(), amount));
         ItemStack stack = new ItemStack(arMaterial, stackAmount);
@@ -2843,9 +2886,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, OFFICIAL_AR_SIGNATURE_VERSION);
         pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArFungibleSignature(arMaterial));
         stack.setItemMeta(meta);
-        if (registerAsset) {
-            registerArAssetAsync(serial, stackAmount, arMaterial);
-        }
         return stack;
     }
 
@@ -2942,20 +2982,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
     }
 
-    /**
-     * Record issuance without making the Bukkit thread wait for PostgreSQL.
-     * The registry is still authoritative at deposit time: a valid signed
-     * stack is inserted only inside the same transaction that consumes it,
-     * and the serial is then atomically moved from ACTIVE to DEPOSITED.
-     */
-    private void registerArAssetAsync(String serial, int issuedAmount, Material material) {
-        if (serial == null || serial.isBlank() || issuedAmount <= 0 || material == null) {
-            return;
-        }
-        dbAsync("register official AR asset", () -> update(
-                "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_units,issued_at,updated_at) VALUES(?,?,?,?,?,?,?,?) "
-                        + "ON CONFLICT(serial) DO UPDATE SET issued_units=cmv8_ar_assets.issued_units+excluded.issued_units,updated_at=excluded.updated_at",
-                serial, 1, material.name(), OFFICIAL_AR_SIGNATURE_VERSION, "ACTIVE", issuedAmount, now(), now()));
+    private CompletableFuture<Boolean> prepareOfficialArIssuance(String issuanceKey, Material material, int amount, String source) {
+        return new OfficialArServiceImpl().prepareIssuanceAsync(issuanceKey, material, amount, source);
     }
 
     private List<ItemStack> snapshotOfficialArStacks(Inventory inventory) {
@@ -3144,7 +3172,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private ItemStack normalizeOfficialArStack(ItemStack source, String reason) {
-        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason, false);
+        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason);
         String serial = officialArSerial(source);
         if (!serial.isBlank() && normalized.hasItemMeta()) {
             ItemMeta meta = normalized.getItemMeta();
@@ -4434,6 +4462,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "ALTER TABLE cmv8_ar_assets ADD COLUMN IF NOT EXISTS deposited_intent_id TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE cmv8_ar_assets ADD COLUMN IF NOT EXISTS deposited_account_id TEXT NOT NULL DEFAULT ''");
             update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_asset_movements(intent_id TEXT NOT NULL,serial TEXT NOT NULL,account_id TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>0),created_at BIGINT NOT NULL DEFAULT 0,PRIMARY KEY(intent_id,serial))");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_issuance_intents(idempotency_key TEXT PRIMARY KEY,serial TEXT NOT NULL,material TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>0),status TEXT NOT NULL DEFAULT 'PREPARED',source TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv8_ar_assets_status ON cmv8_ar_assets(status,updated_at)");
             long arRegistryNow = now();
             for (Material material : List.of(Material.DIAMOND_ORE, Material.DEEPSLATE_DIAMOND_ORE)) {
@@ -6465,8 +6494,41 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
 
         @Override
-        public ItemStack createStack(Material material, int amount) {
-            return createOfficialArStack(material, amount, "", "", "service");
+        public CompletableFuture<Boolean> prepareIssuanceAsync(String issuanceKey, Material material, int amount, String source) {
+            if (issuanceKey == null || issuanceKey.isBlank() || material == null || amount <= 0) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException("AR issuance amount/material is invalid"));
+            }
+            Material normalized = material == Material.DEEPSLATE_DIAMOND_ORE
+                    ? Material.DEEPSLATE_DIAMOND_ORE : Material.DIAMOND_ORE;
+            String serial = arFungibleSerial(normalized);
+            return dbFuture("prepare official AR issuance", () -> tx(connection -> {
+                Map<String, Object> existing = queryOne(connection,
+                        "SELECT serial,material,amount,status FROM cmv8_ar_issuance_intents WHERE idempotency_key=? FOR UPDATE",
+                        issuanceKey);
+                if (existing != null && !existing.isEmpty()) {
+                    if (!serial.equals(string(existing.get("serial")))
+                            || !normalized.name().equals(string(existing.get("material")))
+                            || longValue(existing.get("amount")) != amount
+                            || !"PREPARED".equals(string(existing.get("status")))) {
+                        throw new IllegalStateException("AR issuance idempotency conflict");
+                    }
+                    return true;
+                }
+                long timestamp = now();
+                update(connection,
+                        "INSERT INTO cmv8_ar_issuance_intents(idempotency_key,serial,material,amount,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                        issuanceKey, serial, normalized.name(), amount, "PREPARED", first(source, "unknown"), timestamp, timestamp);
+                update(connection,
+                        "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_units,issued_at,updated_at) VALUES(?,?,?,?,?,?,?,?) "
+                                + "ON CONFLICT(serial) DO UPDATE SET issued_units=cmv8_ar_assets.issued_units+excluded.issued_units,status='ACTIVE',updated_at=excluded.updated_at",
+                        serial, 1, normalized.name(), OFFICIAL_AR_SIGNATURE_VERSION, "ACTIVE", amount, timestamp, timestamp);
+                return true;
+            }));
+        }
+
+        @Override
+        public ItemStack createPreparedStack(Material material, int amount, String source) {
+            return createOfficialArStack(material, amount, "", "", first(source, "prepared-issuance"));
         }
 
         @Override
@@ -6475,18 +6537,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return stack;
             }
             return normalizeOfficialArStack(stack, "service-normalize");
-        }
-
-        @Override
-        public boolean removeAmount(Inventory inventory, int amount) {
-            if (inventory == null || amount <= 0) {
-                return false;
-            }
-            if (countOfficialAr(inventory) < amount) {
-                return false;
-            }
-            removeOfficialAr(inventory, amount);
-            return true;
         }
 
         @Override

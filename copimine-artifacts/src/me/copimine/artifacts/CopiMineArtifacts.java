@@ -50,6 +50,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 import me.copimine.economycore.CopiMineEconomyCore;
@@ -516,6 +517,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (this.shopAnchorGuardTask != null) {
          this.shopAnchorGuardTask.cancel();
       }
+
+      this.claimAllInFlight.clear();
 
       // Drain the durable loss-journal writer before the database executor.
       // After fsync its callback schedules reconciliation on dbExecutor; the
@@ -7662,56 +7665,94 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
          return;
       }
-      // The reservation callbacks and physical inventory writes are executed
-      // on the Bukkit thread. This guard prevents a second bulk workflow
-      // from overlapping the first one's asynchronous reservations.
-      Bukkit.getScheduler().runTaskLater(this, () -> this.claimAllInFlight.remove(var1.getUniqueId()), 100L);
-      this.runAsync(
+      UUID claimAllPlayerUuid = var1.getUniqueId();
+      // The guard is released by the final delivery callback, not by a fixed
+      // timer. Slow database work must not allow a second bulk operation to
+      // overlap this one.
+      boolean queued = this.runAsync(
          () -> {
-            List<CopiMineArtifacts.PendingDeliveryRow> var2 = this.readPending(var1.getUniqueId().toString());
+            List<CopiMineArtifacts.PendingDeliveryRow> var2;
+            try {
+               var2 = this.readPending(var1.getUniqueId().toString());
+            } catch (RuntimeException lookupError) {
+               this.claimAllInFlight.remove(claimAllPlayerUuid);
+               this.getLogger().log(Level.WARNING, "Pending delivery bulk lookup failed", lookupError);
+               return;
+            }
             this.readDonationClaimsAsync(var1.getUniqueId())
                .whenComplete(
                   (var3, var4) -> this.runSync(
                         () -> {
                            if (!var1.isOnline()) {
+                              this.claimAllInFlight.remove(claimAllPlayerUuid);
                               return;
                            }
                            if (var4 != null) {
+                              this.claimAllInFlight.remove(claimAllPlayerUuid);
                               this.getLogger().log(Level.WARNING, "Donation claims fetch failed", var4);
                               var1.sendMessage(this.color("&cНе удалось загрузить донат-выдачи. Попробуй ещё раз."));
                               return;
                            }
                            List<CopiMineArtifacts.DonationClaimRow> var5 = var3 == null ? List.of() : var3;
                            if (var2.isEmpty() && var5.isEmpty()) {
+                              this.claimAllInFlight.remove(claimAllPlayerUuid);
                               var1.sendMessage(this.color("&eСейчас нет предметов, ожидающих выдачи."));
                               return;
                            }
 
+                           int requiredClaimSlots = var2.size();
+                           for (CopiMineArtifacts.DonationClaimRow var10 : var5) {
+                              int required = this.requiredDonationSlots(var10.amount());
+                              if (required < 0) {
+                                 this.claimAllInFlight.remove(claimAllPlayerUuid);
+                                 return;
+                              }
+                              requiredClaimSlots += required;
+                           }
+                           if (this.freeStorageSlots(var1.getInventory()) < requiredClaimSlots) {
+                              this.claimAllInFlight.remove(claimAllPlayerUuid);
+                              return;
+                           }
+                           AtomicInteger claimAllRemaining = new AtomicInteger(var2.size() + var5.size());
                            for (CopiMineArtifacts.PendingDeliveryRow var7 : var2) {
                               if (var1.getInventory().firstEmpty() < 0) {
+                                 this.claimAllInFlight.remove(claimAllPlayerUuid);
                                  var1.sendMessage(this.color("&cИнвентарь заполнен. Освободи место и повтори команду."));
                                  return;
                               }
-                              this.deliverPendingRowV2(var1, var7);
+                              this.deliverPendingRowV2(var1, var7, this.claimAllCompletion(claimAllPlayerUuid, claimAllRemaining));
                            }
 
                            for (CopiMineArtifacts.DonationClaimRow var10 : var5) {
                               int var8 = this.requiredDonationSlots(var10.amount());
                               if (var8 < 0) {
+                                 this.claimAllInFlight.remove(claimAllPlayerUuid);
                                  var1.sendMessage(this.color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
                                  return;
                               }
                               if (this.freeStorageSlots(var1.getInventory()) < var8) {
+                                 this.claimAllInFlight.remove(claimAllPlayerUuid);
                                  var1.sendMessage(this.color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + var8));
                                  return;
                               }
-                              this.deliverDonationClaimRowV2(var1, var10);
+                              this.deliverDonationClaimRowV2(var1, var10, this.claimAllCompletion(claimAllPlayerUuid, claimAllRemaining));
                            }
                         }
                      )
                );
          }
       );
+      if (!queued) {
+         this.claimAllInFlight.remove(claimAllPlayerUuid);
+      }
+   }
+
+   private Runnable claimAllCompletion(UUID var1, AtomicInteger var2) {
+      return () -> {
+         if (var2.decrementAndGet() <= 0) {
+            this.claimAllInFlight.remove(var1);
+         }
+      };
    }
 
    private void claimOne(Player var1, String var2) {
@@ -7770,34 +7811,50 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void deliverPendingRowV2(Player var1, CopiMineArtifacts.PendingDeliveryRow var2) {
+      this.deliverPendingRowV2(var1, var2, () -> {});
+   }
+
+   private void deliverPendingRowV2(Player var1, CopiMineArtifacts.PendingDeliveryRow var2, Runnable completion) {
+      AtomicBoolean completionCalled = new AtomicBoolean(false);
+      Runnable finish = () -> {
+         if (completionCalled.compareAndSet(false, true)) {
+            completion.run();
+         }
+      };
       this.reservePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId())
          .whenComplete(
             (var3, var4) -> this.runSync(
                   () -> {
                      if (!var1.isOnline()) {
                         if (Boolean.TRUE.equals(var3)) {
-                           this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                           this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId()).whenComplete((ignored, releaseError) -> finish.run());
+                        } else {
+                           finish.run();
                         }
                         return;
                      }
                      if (var4 != null) {
+                        finish.run();
+                        finish.run();
                         this.getLogger().log(Level.WARNING, "Pending delivery reservation failed", var4);
                         var1.sendMessage(this.color("&cНе удалось зарезервировать отложенную выдачу."));
                         return;
                      }
                      if (!Boolean.TRUE.equals(var3)) {
+                        finish.run();
+                        finish.run();
                         var1.sendMessage(this.color("&eЭта отложенная выдача уже обрабатывается или была получена."));
                         return;
                      }
 
                      CopiMineArtifacts.CatalogItem var5 = this.runtimeCatalogItem(var2.itemId());
                      if (var5 == null) {
-                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId()).whenComplete((ignored, releaseError) -> finish.run());
                         var1.sendMessage(this.color("&cОтложенная выдача повреждена: предмет отсутствует в каталоге."));
                         return;
                      }
                      if (var1.getInventory().firstEmpty() < 0) {
-                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId()).whenComplete((ignored, releaseError) -> finish.run());
                         var1.sendMessage(this.color("&cИнвентарь заполнен. Отложенная выдача не потеряна."));
                         return;
                      }
@@ -7808,11 +7865,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      HashMap var7 = var1.getInventory().addItem(new ItemStack[]{var6});
                      if (!var7.isEmpty()) {
                         this.removeProvisionalDonationInstances(List.of(var2.uniqueItemId()));
-                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId());
+                        this.releasePendingDeliveryAsync(var1.getUniqueId(), var2.deliveryId()).whenComplete((ignored, releaseError) -> finish.run());
                         var1.sendMessage(this.color("&cИнвентарь заполнен. Отложенная выдача не потеряна."));
                         return;
                      }
                      if (!this.playerHasOfficialInstance(var1, var2.uniqueItemId(), var2.itemId(), var1.getUniqueId())) {
+                        finish.run();
                         this.runAsync(() -> {
                            try {
                               this.markArtifactPurchaseReview(var2.purchaseId(), var2.uniqueItemId());
@@ -7829,7 +7887,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      // all storage paths fail closed while this marker is
                      // present, so a crash cannot expose a live instance
                      // whose DELIVERING row is still unresolved.
-                     this.runAsync(() -> {
+                     boolean finalizationQueued = this.runAsync(() -> {
                         try {
                            this.markPendingClaimed(var2.deliveryId(), var2.purchaseId(), var2.uniqueItemId(), var2.itemId());
                            this.runSync(() -> {
@@ -7856,8 +7914,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  var1.sendMessage(this.color("&eВыдача сохранена на проверку. Предмет временно заблокирован до подтверждения базы."));
                               }
                            });
+                        } finally {
+                           finish.run();
                         }
                      });
+                     if (!finalizationQueued) {
+                        finish.run();
+                     }
                   }
                )
          );
@@ -7872,34 +7935,48 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void deliverDonationClaimRowV2(Player var1, CopiMineArtifacts.DonationClaimRow var2) {
+      this.deliverDonationClaimRowV2(var1, var2, () -> {});
+   }
+
+   private void deliverDonationClaimRowV2(Player var1, CopiMineArtifacts.DonationClaimRow var2, Runnable completion) {
+      AtomicBoolean completionCalled = new AtomicBoolean(false);
+      Runnable finish = () -> {
+         if (completionCalled.compareAndSet(false, true)) {
+            completion.run();
+         }
+      };
       this.reserveDonationClaimAsync(var1.getUniqueId(), var2.claimId())
          .whenComplete(
             (var3, var4) -> this.runSync(
                   () -> {
                      if (!var1.isOnline()) {
                         if (Boolean.TRUE.equals(var3)) {
-                           this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                           this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, releaseError) -> finish.run());
+                        } else {
+                           finish.run();
                         }
                         return;
                      }
                      if (var4 != null) {
+                        finish.run();
                         this.getLogger().log(Level.WARNING, "Donation claim reservation failed", var4);
                         var1.sendMessage(this.color("&cНе удалось зарезервировать донат-выдачу."));
                         return;
                      }
                      if (!Boolean.TRUE.equals(var3)) {
+                        finish.run();
                         var1.sendMessage(this.color("&eЭтот донат-предмет уже забирается или был выдан."));
                         return;
                      }
 
                      CopiMineArtifacts.CatalogItem var5 = this.runtimeCatalogItem(var2.itemId());
                      if (var5 == null) {
-                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, releaseError) -> finish.run());
                         var1.sendMessage(this.color("&cДонат-предмет недоступен в каталоге."));
                         return;
                      }
                      if (var2.amount() != 1L) {
-                        this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, reviewError) -> finish.run());
                         var1.sendMessage(this.color("&cВыдача этого donation claim отправлена на ручную проверку. Один claim должен создавать только один owner-bound предмет."));
                         return;
                      }
@@ -7907,19 +7984,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      if ("TAX_CLOCK".equalsIgnoreCase(var5.effect())) {
                         this.markDonationClaimDeliveringAsync(var1.getUniqueId(), var2.claimId()).whenComplete((marked, markError) -> {
                            if (markError != null || !Boolean.TRUE.equals(marked)) {
-                              this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                              this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, reviewError) -> finish.run());
                               return;
                            }
                            String instanceId = var2.purchaseId() == null || var2.purchaseId().isBlank() ? "tax-subscription-" + var2.claimId() : var2.purchaseId();
                            this.grantTaxClockExemptionAsync(var1.getUniqueId(), var1.getName(), instanceId).whenComplete((expiresAt, grantError) -> this.runSync(() -> {
                               if (grantError != null || expiresAt == null || expiresAt <= 0L) {
-                                 this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                 this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, reviewError) -> finish.run());
                                  var1.sendMessage(this.color("&cНе удалось активировать подписку. Обратись к администрации."));
                                  return;
                               }
                               this.completeDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((completed, completeError) -> this.runSync(() -> {
+                                 finish.run();
                                  if (completeError != null || !Boolean.TRUE.equals(completed)) {
-                                    this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                    this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, reviewError) -> finish.run());
                                     return;
                                  }
                                  var1.sendMessage(this.color("&6Ты теперь супергражданин! &7Налоговая подписка активна до: &f" + Instant.ofEpochMilli(expiresAt)));
@@ -7931,12 +8009,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
                      int var6 = this.requiredDonationSlots(var2.amount());
                      if (var6 < 0) {
-                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, releaseError) -> finish.run());
                         var1.sendMessage(this.color("&cЭта донат-выдача слишком большая для одного инвентаря. Нужен администратор."));
                         return;
                      }
                      if (this.freeStorageSlots(var1.getInventory()) < var6) {
-                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                        this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, releaseError) -> finish.run());
                         var1.sendMessage(this.color("&eОсвободи место в инвентаре. Нужно свободных слотов: &f" + var6));
                         return;
                      }
@@ -7953,9 +8031,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                  () -> {
                                     if (!var1.isOnline()) {
                                        if (Boolean.TRUE.equals(var7x)) {
-                                          this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8);
+                                          this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8).whenComplete((ignored, failError) -> finish.run());
                                        } else {
-                                          this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                          this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, releaseError) -> finish.run());
                                        }
                                        return;
                                     }
@@ -7969,7 +8047,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                           if (!var13.isEmpty()) {
                                              this.removeOfficialItemsFromInventory(var1.getInventory(), var9x);
                                              this.removeProvisionalDonationInstances(var8);
-                                             this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8);
+                                             this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8).whenComplete((ignored, failError) -> finish.run());
                                              var1.sendMessage(this.color("&cИнвентарь изменился во время выдачи. Выдача отправлена на ручную проверку и не будет автоматически повторена."));
                                              return;
                                           }
@@ -7989,7 +8067,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        boolean physicalDeliveryPresent = var8.stream()
                                           .allMatch(uniqueId -> this.playerHasOfficialInstance(var1, uniqueId, var5.itemId(), var1.getUniqueId()));
                                        if (!physicalDeliveryPresent) {
-                                          this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                          this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, reviewError) -> finish.run());
                                           this.removeOfficialItemsFromInventory(var1.getInventory(), var9x);
                                           this.removeProvisionalDonationInstances(var8);
                                           var1.sendMessage(this.color("&eФизическая донат-выдача не подтверждена. Заявка отправлена на ручную проверку; повторная копия не будет выдана автоматически."));
@@ -7999,6 +8077,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        this.finalizeDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var7, var5.itemId(), var8)
                                           .whenComplete(
                                              (var3xxxx, var4xxxx) -> {
+                                                finish.run();
                                                 if (var4xxxx != null || !Boolean.TRUE.equals(var3xxxx)) {
                                                    this.getLogger().log(Level.WARNING, "Donation claim was delivered but completion failed: " + var2.claimId(), var4xxxx);
                                                    this.reviewDonationClaimAsync(var1.getUniqueId(), var2.claimId());
@@ -8019,9 +8098,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                                        var1.sendMessage(this.color("&7Выдача подготовлена; ожидается финализация базы..."));
                                     } else {
                                        if (Boolean.TRUE.equals(var7x)) {
-                                          this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8);
+                                          this.failDonationDeliveryAsync(var1.getUniqueId(), var2.claimId(), var8).whenComplete((ignored, failError) -> finish.run());
                                        } else {
-                                          this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId());
+                                          this.releaseDonationClaimAsync(var1.getUniqueId(), var2.claimId()).whenComplete((ignored, releaseError) -> finish.run());
                                        }
                                        this.getLogger().log(Level.WARNING, "Donation claim prepare failed: " + var2.claimId(), var8x);
                                        var1.sendMessage(this.color("&cНе удалось подготовить донат-выдачу. Попробуй ещё раз."));

@@ -1,5 +1,5 @@
 param(
-    [string]$Server = "qwerty@92.126.27.114",
+    [string]$Server = "qwerty@90.188.115.155",
     [int]$Port = 2222,
     [string]$RemoteDir = "/home/qwerty/copimine-upload",
     [string]$ReleaseDir = "",

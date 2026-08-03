@@ -8,6 +8,7 @@ import csv
 import gzip
 import hashlib
 import hmac
+import ipaddress
 import io
 import json
 import logging
@@ -32,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, Optional, Callable, Mapping
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 VOTER_UUID_COL = "voter_" "uuid"
 VOTER_NAME_COL = "voter_" "name"
@@ -1526,8 +1527,20 @@ def direct_request_host(request: Optional[Request]) -> str:
     return str(request.client.host if request and request.client else "").strip().lower()
 
 
+def normalized_peer_address(value: str) -> str:
+    """Return one stable representation for IPv4, IPv6 and mapped IPv4 peers."""
+    raw = str(value or "").strip().lower()
+    if raw.startswith("::ffff:"):
+        raw = raw[7:]
+    try:
+        return ipaddress.ip_address(raw).compressed.lower()
+    except ValueError:
+        return raw
+
+
 def request_uses_trusted_proxy(request: Optional[Request]) -> bool:
-    return direct_request_host(request) in {entry.lower() for entry in TRUSTED_PROXY_IPS}
+    peer = normalized_peer_address(direct_request_host(request))
+    return peer in {normalized_peer_address(entry) for entry in TRUSTED_PROXY_IPS}
 
 
 def request_transport_is_secure(request: Optional[Request]) -> bool:
@@ -1683,29 +1696,56 @@ def _first_forwarded_value(raw_value: str) -> str:
     return str(raw_value or "").split(",", 1)[0].strip()
 
 
+def canonical_origin(value: str) -> str:
+    """Normalize browser origins so default ports and trailing slashes agree."""
+    raw = str(value or "").strip()
+    if not raw or raw.lower() == "null":
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https"} or parsed.username or parsed.password or parsed.path not in {"", "/"}:
+            return ""
+        if parsed.query or parsed.fragment or not parsed.hostname:
+            return ""
+        host = parsed.hostname.lower().rstrip(".")
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = parsed.port
+        if port is None or (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
+            return f"{scheme}://{host}"
+        return f"{scheme}://{host}:{port}"
+    except ValueError:
+        return ""
+
+
 def origin_allowed(request: Request, origin: str) -> bool:
-    allowed = {
-        str(request.base_url).rstrip("/"),
-        ADMIN_PUBLIC_BASE_URL.rstrip("/"),
+    configured = {
+        canonical_origin(ADMIN_PUBLIC_BASE_URL),
+        canonical_origin(str(os.getenv("PUBLIC_PANEL_URL", "")).strip()),
+        canonical_origin(str(os.getenv("BACKEND_INTERNAL_BASE_URL", "")).strip()),
+        *(canonical_origin(item) for item in ALLOWED_ORIGINS),
     }
-    public_panel_url = str(os.getenv("PUBLIC_PANEL_URL", "")).strip()
-    backend_internal = str(os.getenv("BACKEND_INTERNAL_BASE_URL", "")).strip()
-    if public_panel_url:
-        allowed.add(public_panel_url.rstrip("/"))
-    if backend_internal:
-        allowed.add(backend_internal.rstrip("/"))
+    configured.discard("")
+    allowed = {canonical_origin(str(request.base_url))}
+    allowed.update(configured)
     if request_uses_trusted_proxy(request):
         forwarded_host = _first_forwarded_value(request.headers.get("x-forwarded-host") or request.headers.get("host") or "")
         forwarded_proto = _first_forwarded_value(request.headers.get("x-forwarded-proto") or request.url.scheme or "http").lower()
         if forwarded_host:
-            allowed.add(f"{forwarded_proto}://{forwarded_host}".rstrip("/"))
-            allowed.add(f"http://{forwarded_host}".rstrip("/"))
-            allowed.add(f"https://{forwarded_host}".rstrip("/"))
+            # A trusted proxy may report the public Host, but that Host is
+            # still only accepted when the operator explicitly configured the
+            # same origin.  This fixes IP/443 deployments without turning an
+            # arbitrary Host header into a CSRF allowlist entry.
+            forwarded_origin = canonical_origin(f"{forwarded_proto}://{forwarded_host}")
+            if forwarded_origin in configured:
+                allowed.add(forwarded_origin)
         forwarded_origin = _first_forwarded_value(request.headers.get("x-forwarded-origin") or "")
-        if forwarded_origin:
-            allowed.add(forwarded_origin.rstrip("/"))
-    allowed.update(ALLOWED_ORIGINS)
-    return origin.rstrip("/") in {item.rstrip("/") for item in allowed if item}
+        forwarded_origin = canonical_origin(forwarded_origin)
+        if forwarded_origin in configured:
+            allowed.add(forwarded_origin)
+    candidate = canonical_origin(origin)
+    return bool(candidate) and candidate in {item for item in allowed if item}
 
 
 def is_plugin_key_request(request: Request) -> bool:
@@ -1773,13 +1813,13 @@ def get_client_ip(request: Optional[Request]) -> str:
         return "unknown"
     direct_host = str(request.client.host if request.client else "").strip()
     forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
-    if direct_host in TRUSTED_PROXY_IPS and forwarded_for:
+    if request_uses_trusted_proxy(request) and forwarded_for:
         for candidate in forwarded_for.split(","):
             value = candidate.strip()
             if value:
                 return value[:128]
     real_ip = str(request.headers.get("x-real-ip") or "").strip()
-    if direct_host in TRUSTED_PROXY_IPS and real_ip:
+    if request_uses_trusted_proxy(request) and real_ip:
         return real_ip[:128]
     return (direct_host or "unknown")[:128]
 
@@ -4281,11 +4321,9 @@ def require_player(request: Request, authorization: str = Header(default="")) ->
 
 
 def is_loopback_request(request: Request) -> bool:
-    host = str(request.client.host if request.client else "").strip().lower()
+    host = normalized_peer_address(str(request.client.host if request.client else ""))
     if not host:
         return False
-    if host.startswith("::ffff:"):
-        host = host.split("::ffff:", 1)[1]
     return host in {"127.0.0.1", "::1", "localhost"}
 
 

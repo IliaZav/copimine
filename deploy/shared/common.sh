@@ -853,7 +853,7 @@ PY
 }
 
 copimine_install_system_files() {
-  local unit source
+  local unit source release_operator release_wrapper
   # The installer may rewrite .env through a root-owned temporary file during
   # preflight.  systemd starts the backend as the application user, so make
   # the ownership explicit immediately before installing/restarting units.
@@ -882,6 +882,30 @@ $COPIMINE_APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start copimine-minecr
 EOF
   chmod 0440 /etc/sudoers.d/copimine-admin-minecraft
   visudo -cf /etc/sudoers.d/copimine-admin-minecraft >/dev/null
+  # Release installation must never be granted through a user-writable upload
+  # script. Keep the executable wrapper and its sudo rule root-owned; the
+  # wrapper invokes only the root-owned project installer after signature
+  # verification has accepted the archive.
+  release_operator="${COPIMINE_RELEASE_OPERATOR:-qwerty}"
+  id "$release_operator" >/dev/null 2>&1 || copimine_fail "Release operator does not exist: $release_operator"
+  release_wrapper='/usr/local/sbin/copimine-install-release'
+  install -d -o root -g root -m 0755 /usr/local/sbin
+  cat > "$release_wrapper" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+export PROJECT_ROOT=/opt/copimine
+export COPIMINE_TRUSTED_SIGNING_ALLOWED=/etc/copimine/release-signing.allowed
+export COPIMINE_PAYLOAD_VERIFIER=/etc/copimine/verify_payload_manifest.py
+exec /usr/bin/bash /opt/copimine/deploy/ubuntu/install_release.sh "$@"
+EOF
+  chown root:root "$release_wrapper"
+  chmod 0755 "$release_wrapper"
+  cat > /etc/sudoers.d/copimine-codex <<EOF
+$release_operator ALL=(root) NOPASSWD: $release_wrapper *
+EOF
+  chown root:root /etc/sudoers.d/copimine-codex
+  chmod 0440 /etc/sudoers.d/copimine-codex
+  visudo -cf /etc/sudoers.d/copimine-codex >/dev/null
   copimine_render_nginx_config
   ln -sfn "$COPIMINE_NGINX_AVAILABLE" "$COPIMINE_NGINX_ENABLED"
   rm -f /etc/nginx/sites-enabled/default
@@ -892,6 +916,49 @@ EOF
   systemctl reenable copimine-game-hardening.service >/dev/null
   systemctl enable copimine-backup.timer >/dev/null
   systemctl restart copimine-backup.timer
+}
+
+copimine_harden_release_ownership() {
+  # Code, deployment helpers and plugin JARs are immutable to the service
+  # account. Only explicitly inventoried runtime state remains writable.
+  chown -R root:root "$COPIMINE_ROOT"
+  find "$COPIMINE_ROOT" -type d -exec chmod 0755 {} \;
+  find "$COPIMINE_ROOT" -type f -exec chmod 0644 {} \;
+  find "$COPIMINE_ROOT" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 0755 {} \;
+
+  local writable plugin_data
+  local -a writable_paths=(
+    "$COPIMINE_ADMIN_DIR/.env"
+    "$COPIMINE_ADMIN_DIR/data"
+    "$COPIMINE_ADMIN_DIR/backups"
+    "$COPIMINE_ADMIN_DIR/.venv"
+    "$COPIMINE_SERVER_DIR/eula.txt"
+    "$COPIMINE_SERVER_DIR/server.properties"
+    "$COPIMINE_SERVER_DIR/whitelist.json"
+    "$COPIMINE_SERVER_DIR/ops.json"
+    "$COPIMINE_SERVER_DIR/banned-players.json"
+    "$COPIMINE_SERVER_DIR/banned-ips.json"
+    "$COPIMINE_SERVER_DIR/usercache.json"
+    "$COPIMINE_SERVER_DIR/logs"
+  )
+  for writable in "${writable_paths[@]}"; do
+    [[ -e "$writable" || -L "$writable" ]] || continue
+    chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$writable"
+  done
+  if [[ -d "$COPIMINE_SERVER_DIR/plugins" ]]; then
+    for plugin_data in "$COPIMINE_SERVER_DIR/plugins"/*; do
+      [[ -d "$plugin_data" && ! -L "$plugin_data" ]] || continue
+      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$plugin_data"
+    done
+  fi
+  if [[ -d "$COPIMINE_SERVER_DIR" ]]; then
+    while IFS= read -r -d '' world_dir; do
+      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$world_dir"
+    done < <(find "$COPIMINE_SERVER_DIR" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+  fi
+  [[ -f "$COPIMINE_ADMIN_DIR/.env" ]] && chmod 0600 "$COPIMINE_ADMIN_DIR/.env"
+  [[ -d "$COPIMINE_ADMIN_DIR/data" ]] && chmod 0700 "$COPIMINE_ADMIN_DIR/data"
+  [[ -d "$COPIMINE_ADMIN_DIR/backups" ]] && chmod 0700 "$COPIMINE_ADMIN_DIR/backups"
 }
 
 copimine_write_runtime_metadata() {
@@ -1192,7 +1259,7 @@ copimine_install_flow() {
   plugin_api_key="$(copimine_secret plugin-api-key.txt 32)"
   rcon_password="$(copimine_secret rcon-password.txt 32)"
   copimine_write_env "$postgres_password" "$secret_key" "$plugin_api_key" "$rcon_password"
-  chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_ROOT"
+  copimine_harden_release_ownership
   copimine_ensure_postgres "$postgres_password"
   copimine_apply_migrations
   copimine_python_env

@@ -9,7 +9,7 @@ if (-not $wipeList) { $errors.Add('The SQL wipe list cannot be located.') }
 foreach ($table in @('site_accounts','cm_admin_users','cm_admin_sessions','minecraft_account_links','whitelist_account_links','whitelist_requests')) {
   if ($wipeList -match "'${table}'") { $errors.Add("Protected table appears in the wipe list: $table") }
 }
-foreach ($marker in @('votes','candidate_applications','elections','president_terms','cmv4_bank_accounts','artifact_purchases','donation_purchases')) {
+foreach ($marker in @('votes','candidate_applications','elections','president_terms','cmv4_bank_accounts','cmv8_ar_assets','cmv8_ar_asset_movements','cmv8_ar_issuance_intents','artifact_purchases','donation_purchases')) {
   if ($sql -notmatch [regex]::Escape("'${marker}'")) { $errors.Add("Game-state table is missing from the wipe list: $marker") }
 }
 foreach ($marker in @('COPIMINE_CONFIRM_GAME_WIPE','pg_dump','copimine-before-wipe.dump','accounts_before','whitelist_before','--wipe-worlds','realpath -e','mktemp -p /tmp','install -m 600')) {

@@ -64,6 +64,7 @@ DECLARE
         'ar_money_supply_snapshots', 'ar_transactions', 'ar_settlements',
         'ar_idempotency', 'ar_operations', 'ar_atms', 'atm_events',
         'atm_sessions', 'atm_audit', 'cmv8_ar_assets',
+        'cmv8_ar_asset_movements', 'cmv8_ar_issuance_intents',
         'cmv8_ar_deposit_intents', 'cmv8_pending_ar_settlements',
         'cmv8_startup_checks', 'donation_accounts', 'donation_balance_ledger',
         'donation_payment_sessions', 'donation_purchases', 'donation_item_claims',

@@ -46,6 +46,7 @@ def load_modules(temp: Path):
                 f"COPIMINE_ADMIN_DATA={(temp / 'data').as_posix()}",
                 "SECRET_KEY=" + ("t" * 64),
                 "ADMIN_PUBLIC_BASE_URL=https://panel.example.test",
+                "ALLOWED_ORIGINS=https://panel.example.test,https://copimine.ru,https://90.188.115.155",
                 "COPIMINE_STARTUP_STRICT=0",
                 "REQUIRE_OP_FOR_LOGIN=0",
                 "REQUIRE_WHITELIST_FOR_LOGIN=0",
@@ -72,6 +73,7 @@ def load_modules(temp: Path):
             "COPIMINE_ADMIN_DATA": str(temp / "data"),
             "SECRET_KEY": "t" * 64,
             "ADMIN_PUBLIC_BASE_URL": "https://panel.example.test",
+            "ALLOWED_ORIGINS": "https://panel.example.test,https://copimine.ru,https://90.188.115.155",
             "COPIMINE_STARTUP_STRICT": "0",
             "REQUIRE_OP_FOR_LOGIN": "0",
             "REQUIRE_WHITELIST_FOR_LOGIN": "0",
@@ -349,12 +351,24 @@ def assert_trusted_reverse_proxy_origin_is_accepted(main) -> None:
             **request.scope,
             "headers": [
                 (b"host", b"127.0.0.1:8090"),
-                (b"x-forwarded-host", b"copimine.ru:4443"),
+                (b"x-forwarded-host", b"copimine.ru:443"),
                 (b"x-forwarded-proto", b"https"),
             ],
         }
     )
-    assert main.origin_allowed(port_forwarded, "https://copimine.ru:4443")
+    assert main.origin_allowed(port_forwarded, "https://copimine.ru:443")
+    ip_forwarded = Request(
+        {
+            **request.scope,
+            "headers": [
+                (b"host", b"127.0.0.1:8090"),
+                (b"x-forwarded-host", b"90.188.115.155:443"),
+                (b"x-forwarded-proto", b"https"),
+            ],
+        }
+    )
+    assert main.origin_allowed(ip_forwarded, "https://90.188.115.155")
+    assert main.origin_allowed(ip_forwarded, "https://90.188.115.155:443")
     assert not main.origin_allowed(request, "https://attacker.example.test")
 
 

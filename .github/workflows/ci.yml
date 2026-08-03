@@ -112,17 +112,16 @@ jobs:
           $paperBuild = '1.21.1-R0.1-20250328.161643-128'
           $paperJar = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.jar"
           $paperPom = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.pom"
-          $paperSha1 = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.jar.sha1"
           Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.jar" -OutFile $paperJar
           Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.pom" -OutFile $paperPom
-          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.jar.sha1" -OutFile $paperSha1
-          $expectedSha1 = (Get-Content -Raw -LiteralPath $paperSha1).Trim().Split()[0].ToLowerInvariant()
-          $actualSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $paperJar).Hash.ToLowerInvariant()
-          if ($expectedSha1 -ne $actualSha1) { throw "Paper API SHA1 mismatch. Expected=$expectedSha1 Actual=$actualSha1" }
+          $paperJarSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $paperJar).Hash.ToLowerInvariant()
+          if ($paperJarSha256 -ne 'b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0') { throw "Paper API JAR SHA256 mismatch: $paperJarSha256" }
+          $paperPomSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $paperPom).Hash.ToLowerInvariant()
+          if ($paperPomSha256 -ne 'c80905a70192b4d1d9fd5d2ab7cf7879b928c71d5c0bf3715f8806dc338d4c46') { throw "Paper API POM SHA256 mismatch: $paperPomSha256" }
           $placeholderJar = Join-Path $env:RUNNER_TEMP 'PlaceholderAPI-2.12.3.jar'
           Invoke-WebRequest -Uri 'https://github.com/PlaceholderAPI/PlaceholderAPI/releases/download/2.12.3/PlaceholderAPI-2.12.3.jar' -OutFile $placeholderJar
-          $placeholderSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $placeholderJar).Hash.ToLowerInvariant()
-          if ($placeholderSha1 -ne 'c8ff2d014f159757b0c978a2f49ba7e56c5df467') { throw "PlaceholderAPI SHA1 mismatch: $placeholderSha1" }
+          $placeholderSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $placeholderJar).Hash.ToLowerInvariant()
+          if ($placeholderSha256 -ne 'fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437') { throw "PlaceholderAPI SHA256 mismatch: $placeholderSha256" }
           $pluginDir = Join-Path $env:GITHUB_WORKSPACE 'minecraft/server/plugins'
           New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
           Copy-Item -LiteralPath $placeholderJar -Destination (Join-Path $pluginDir 'PlaceholderAPI-2.12.3.jar') -Force

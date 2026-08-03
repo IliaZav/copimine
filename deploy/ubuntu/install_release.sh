@@ -23,15 +23,14 @@ usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-w
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
 
 configure_release_trust() {
-  local source_path="${2:-$SCRIPT_DIR/release-signing.allowed}"
-  local verifier_source="${3:-$SCRIPT_DIR/verify_payload_manifest.py}"
-  local unpack_source="${4:-$SCRIPT_DIR/copimine_unpack_and_verify.sh}"
-  local replace_source="${5:-$SCRIPT_DIR/copimine_full_replace.sh}"
-  local common_source="${6:-$SCRIPT_DIR/common.sh}"
+  local source_path="${2:-$PROJECT_ROOT/deploy/release-signing.allowed}"
+  local verifier_source="${3:-$PROJECT_ROOT/deploy/shared/verify_payload_manifest.py}"
+  local unpack_source="${4:-$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh}"
+  local replace_source="${5:-$PROJECT_ROOT/deploy/ubuntu/copimine_full_replace.sh}"
+  local common_source="${6:-$PROJECT_ROOT/deploy/shared/common.sh}"
   local target_path='/etc/copimine/release-signing.allowed'
   local verifier_target='/etc/copimine/verify_payload_manifest.py'
-  local script_root source_real verifier_real unpack_real replace_real common_real
-  script_root="$(realpath -e -- "$SCRIPT_DIR")"
+  local source_real verifier_real unpack_real replace_real common_real
   source_real="$(realpath -e -- "$source_path" 2>/dev/null || true)"
   verifier_real="$(realpath -e -- "$verifier_source" 2>/dev/null || true)"
   unpack_real="$(realpath -e -- "$unpack_source" 2>/dev/null || true)"
@@ -42,17 +41,15 @@ configure_release_trust() {
   [[ -n "$unpack_real" && -f "$unpack_real" ]] || { echo "[trust] unpack helper is missing: $unpack_source" >&2; return 1; }
   [[ -n "$replace_real" && -f "$replace_real" ]] || { echo "[trust] replacement helper is missing: $replace_source" >&2; return 1; }
   [[ -n "$common_real" && -f "$common_real" ]] || { echo "[trust] shared helper is missing: $common_source" >&2; return 1; }
-  [[ "$source_real" == "$script_root"/* ]] || {
-    echo '[trust] allowlist source must be inside the controlled upload directory' >&2
-    return 1
-  }
-  [[ "$verifier_real" == "$script_root"/* ]] || {
-    echo '[trust] payload verifier source must be inside the controlled upload directory' >&2
-    return 1
-  }
-  for helper in "$unpack_real" "$replace_real" "$common_real"; do
-    [[ "$helper" == "$script_root"/* ]] || {
-      echo '[trust] bootstrap helper source must be inside the controlled upload directory' >&2
+  for trusted_source in "$source_real" "$verifier_real" "$unpack_real" "$replace_real" "$common_real"; do
+    [[ "$(stat -c '%U' "$trusted_source" 2>/dev/null || true)" == 'root' ]] || {
+      echo "[trust] bootstrap source must be owned by root: $trusted_source" >&2
+      return 1
+    }
+    local trusted_mode
+    trusted_mode="$(stat -c '%a' "$trusted_source" 2>/dev/null || true)"
+    [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$trusted_mode & 8#022) == 0 )) || {
+      echo "[trust] bootstrap source is group/world writable: $trusted_source" >&2
       return 1
     }
   done
@@ -60,6 +57,13 @@ configure_release_trust() {
   [[ "${#trust_lines[@]}" -eq 1 ]] || { echo '[trust] allowlist must contain exactly one non-comment key' >&2; return 1; }
   [[ "${trust_lines[0]}" =~ ^[[:space:]]*release[[:space:]]+ssh-ed25519[[:space:]]+[A-Za-z0-9+/]+={0,2}([[:space:]]+[^[:space:]]*)?[[:space:]]*$ ]] || {
     echo '[trust] allowlist must contain a release ssh-ed25519 key' >&2
+    return 1
+  }
+  local expected_trust_line='release ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJpQuMrYtZPi8j2y8BYMEo+ketB5DMPxHY/yP6eCBMln'
+  local normalized_trust_line
+  normalized_trust_line="$(printf '%s\n' "${trust_lines[0]}" | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+  [[ "$normalized_trust_line" == "$expected_trust_line" ]] || {
+    echo '[trust] allowlist key does not match the pinned release signing key' >&2
     return 1
   }
   install -d -m 0755 /etc/copimine

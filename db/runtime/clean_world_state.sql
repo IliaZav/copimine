@@ -22,8 +22,9 @@ DECLARE
         'ar_settlements','ar_idempotency','ar_admin_issues','ar_atms',
         'atm_events','atm_sessions','atm_audit',
         'cmv4_pending_ar_settlements','cmv8_pending_ar_settlements','cmv8_ar_assets',
-        'cmv8_ar_deposit_intents','cmv4_bank_transfers','cmv4_bank_ledger','cmv4_bank_accounts',
-        'cmv4_players','cmv4_audit_events','bank_account_pins','bank_pin_hashes',
+        'cmv8_ar_asset_movements','cmv8_ar_issuance_intents','cmv8_ar_deposit_intents',
+        'cmv4_bank_transfers','cmv4_bank_ledger','cmv4_bank_accounts',
+        'cmv4_players','cmv4_audit_events',
         -- Donation balances and purchase state (payment remains disabled).
         'donation_payment_sessions','donation_purchases',
         'donation_item_claims','donation_balance_ledger','donation_accounts',

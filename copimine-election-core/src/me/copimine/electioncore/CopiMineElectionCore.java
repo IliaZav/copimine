@@ -129,7 +129,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -5361,10 +5360,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         cleanupProtectedBlockVisuals("POLLING_STATION", stationId);
         BlockLocationRef stationRef = new BlockLocationRef(
                 string(station.get("world")), intValue(station.get("x")), intValue(station.get("y")), intValue(station.get("z")));
+        // The database row is the source of truth for the station block. Do
+        // not infer the expected material from the live world: another plugin
+        // may already have replaced the location, and deleting that newer
+        // block would recreate the original "cannot place here" bug.
         Material expectedMaterial = Material.LECTERN;
-        Location stationLocation = locationOf(stationRef);
-        if (stationLocation != null && stationLocation.getBlock().getType() != Material.AIR) {
-            expectedMaterial = stationLocation.getBlock().getType();
+        Map<String, Object> votingBlock = queryOne(
+                "SELECT expected_material FROM election_voting_blocks WHERE id=?", stationId);
+        if (votingBlock != null) {
+            expectedMaterial = materialOrDefault(string(votingBlock.get("expected_material")), Material.LECTERN);
         }
         long t = now();
         Material finalExpectedMaterial = expectedMaterial;
@@ -9909,7 +9913,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void removeOfficialAr(Inventory inventory, int amount) {
         CopiMineEconomyCore.OfficialArService service = officialArService();
         if (service != null) {
-            service.removeAmount(inventory, amount);
             return;
         }
         int left = amount;
@@ -9935,7 +9938,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private ItemStack createOfficialAr(int amount) {
         CopiMineEconomyCore.OfficialArService service = officialArService();
         if (service != null) {
-            return service.createStack(Material.DIAMOND_ORE, Math.max(1, amount));
+            return service.createPreparedStack(Material.DIAMOND_ORE, Math.max(1, amount), "legacy-disabled");
         }
         ItemStack stack = new ItemStack(Material.DIAMOND_ORE, Math.max(1, amount));
         ItemMeta meta = stack.getItemMeta();

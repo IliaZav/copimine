@@ -325,6 +325,8 @@ verify_release_signature() {
   local manifest="$PAYLOAD_ROOT/deploy/release_manifest.json"
   local signature="$PAYLOAD_ROOT/deploy/release_manifest.sig"
   local allowed="$TRUSTED_SIGNING_ALLOWED"
+  [[ "$allowed" == '/etc/copimine/release-signing.allowed' ]] || fail "Trusted signing allowlist path is fixed to /etc/copimine/release-signing.allowed"
+  [[ "$PAYLOAD_VERIFIER" == '/etc/copimine/verify_payload_manifest.py' ]] || fail "Payload verifier path is fixed to /etc/copimine/verify_payload_manifest.py"
   require_file "$manifest"
   require_file "$signature"
   require_file "$allowed"
@@ -523,10 +525,7 @@ fix_permissions() {
   log "[11/14] Fix ownership and permissions"
   load_shared_helpers
   copimine_ensure_app_user
-  chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT"
-  find "$PROJECT_ROOT" -type d -exec chmod 755 {} \;
-  find "$PROJECT_ROOT" -type f -exec chmod 644 {} \;
-  find "$PROJECT_ROOT" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 755 {} \; || true
+  copimine_harden_release_ownership
   if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
     chmod 600 "$PROJECT_ROOT/admin-web/.env"
   fi

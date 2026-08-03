@@ -1031,6 +1031,48 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             boolean eligible=arEligibleBreaks.remove(key) && isValidArCertificationDrop(e.getPlayer());
             boolean reissuePlaced=placed && isValidArCertificationDrop(e.getPlayer());
             ItemStack placedStack=arPlacedStacks.remove(key);
+            if (eligible && !reissuePlaced) {
+                CopiMineEconomyCore.OfficialArService service=officialArService();
+                int total=0;
+                for(Item item:e.getItems()) {
+                    ItemStack dropped=item.getItemStack();
+                    if(arMaterial(dropped.getType())) total+=Math.max(0,dropped.getAmount());
+                }
+                if(service==null || total<=0) {
+                    e.setCancelled(true);
+                    warn(e.getPlayer(),"CopiMineEconomyCore недоступен: AR не был выдан.");
+                    return;
+                }
+                e.setCancelled(true);
+                Location dropLocation=e.getBlock().getLocation().clone();
+                Material dropMaterial=e.getBlockState().getType();
+                int dropAmount=total;
+                service.prepareIssuanceAsync("mining:"+e.getPlayer().getUniqueId()+":"+UUID.randomUUID(),dropMaterial,dropAmount,"silk-touch:"+e.getPlayer().getUniqueId())
+                        .whenComplete((prepared,prepareError)->Bukkit.getScheduler().runTask(this,()->{
+                            if(prepareError!=null || !Boolean.TRUE.equals(prepared)) {
+                                getLogger().log(java.util.logging.Level.WARNING,"Durable AR issuance failed",prepareError);
+                                if(e.getPlayer().isOnline()) warn(e.getPlayer(),"AR не выдан: не удалось подтвердить выпуск в реестре.");
+                                return;
+                            }
+                            if(dropLocation.getWorld()==null) {
+                                getLogger().warning("Durable AR issuance completed but the drop world is unavailable.");
+                                return;
+                            }
+                            int left=dropAmount;
+                            while(left>0) {
+                                int stackAmount=Math.min(64,left);
+                                ItemStack official=service.createPreparedStack(dropMaterial,stackAmount,"silk-touch:"+e.getPlayer().getUniqueId());
+                                if(official==null) {
+                                    warn(e.getPlayer(),"AR не выдан: предмет выпуска недоступен.");
+                                    return;
+                                }
+                                dropLocation.getWorld().dropItemNaturally(dropLocation,official);
+                                left-=stackAmount;
+                            }
+                            recordArTransaction("AR_CERTIFIED",service.createPreparedStack(dropMaterial,Math.min(64,dropAmount),"silk-touch"),e.getPlayer(),"","",null,dropLocation,"AR создан только после durable-регистрации выпуска");
+                        }));
+                return;
+            }
             int amount=0;
             for(Item item:e.getItems()){
                 ItemStack st=item.getItemStack();
@@ -1044,9 +1086,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                     // already tracked as PLACED and is removed by
                     // deleteArPlacedBlock below.  Creating a second DB asset
                     // would make a fast place->break look like duplication.
-                    official=placedStack!=null?placedStack.clone():createOfficialArStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
+                    official=placedStack==null?null:placedStack.clone();
                 } else {
-                    official=service==null?null:service.createStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
+                    official=null;
+                }
+                if(reissuePlaced && official==null) {
+                    e.setCancelled(true);
+                    warn(e.getPlayer(),"AR-блок не имеет подтверждённого исходного актива; выдача остановлена и отправлена на проверку.");
+                    return;
                 }
                 if(official!=null){
                     official.setAmount(Math.max(1,st.getAmount()));
@@ -4261,6 +4308,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private String legacyWithdrawBankArDisabled(Player p,String atmId,int amount,String pin)throws Exception{
+        if(officialArService()!=null)return"&cСтарый банковский обработчик AR отключён: используй CopiMineEconomyCore.";
         final int withdrawAmount=Math.max(1,Math.min(64,amount));
         if(p.getInventory().firstEmpty()<0)return"&cСначала освободи один слот в инвентаре.";
         long locked=bankPinLockedSeconds(p);
@@ -5679,7 +5727,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     private ItemStack createOfficialArStack(Material material,int amount){
         CopiMineEconomyCore.OfficialArService service=officialArService();
-        if(service!=null)return service.createStack(material, amount);
+        if(service!=null)return service.createPreparedStack(material, amount,"legacy-disabled");
         ItemStack item=new ItemStack(material==null?Material.DIAMOND_ORE:material,Math.max(1,amount));
         setArOwnerMeta(item,"","","");
         return item;

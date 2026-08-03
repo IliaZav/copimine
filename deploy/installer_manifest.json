@@ -1,15 +1,15 @@
 {
-    "generatedAtUtc":  "2026-08-02T20:39:15.2987192Z",
-    "gitCommit":  "b984e4e1f95658b8042824f7b44ba24a444fb7b1",
+    "generatedAtUtc":  "2026-08-03T01:06:20.6113728Z",
+    "gitCommit":  "a07801bed563a972c9d48f91421cc4da73ffed07",
     "sourceTreeDirty":  false,
     "sourceArtifacts":  {
-                            "gitCommit":  "b984e4e1f95658b8042824f7b44ba24a444fb7b1",
+                            "gitCommit":  "a07801bed563a972c9d48f91421cc4da73ffed07",
                             "serverPlugins":  {
                                                   "minecraft/server/plugins/AuthEffects.jar":  "c81435063bb43cd9a4b9e1d4b7333c1b28745f5709cccb0304218bcb74e2c81c",
-                                                  "minecraft/server/plugins/CopiMineArtifacts.jar":  "f1b92508ddaa8d1fb0e84829b105f7a9e0be6e23d9451e02252cbc9734696330",
-                                                  "minecraft/server/plugins/CopiMineEconomyCore.jar":  "36b3e44b2e19d39cd6590418ca9052e7f7e7f2eaf7d7a4bc946e575fa896b1c6",
+                                                  "minecraft/server/plugins/CopiMineArtifacts.jar":  "bce37d2d3da9db244cc21acba78d815be3180da37ade4200d6819570d5158cee",
+                                                  "minecraft/server/plugins/CopiMineEconomyCore.jar":  "7c79d04d9556503d0042d10754dc07419e90031906ed89b07dc094c9736e192f",
                                                   "minecraft/server/plugins/CopiMineElectionCore.jar":  "3ed5721742d85f2cdc6c31116987f6d75e877fb037a1fd36f415cf238d4a6f30",
-                                                  "minecraft/server/plugins/CopiMineNarcotics.jar":  "34826de6e2ade314b48398488e79e0f6bdd20a140dfc076c42dc777999e20834",
+                                                  "minecraft/server/plugins/CopiMineNarcotics.jar":  "b04ae407b97328c757fa8dfa5798d14edee73cd41ff565d29769839156495247",
                                                   "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar":  "e3852b901693df9e7ffa5590dd0f9da9d1bf500bd05e9428f6d85e4655cc145b",
                                                   "minecraft/server/plugins/CopiMineWorldCore.jar":  "6afc56e8cc1cc95c093e21a3f9dd5ba06ce81628b32b99fb72b9ff389d3d5ed4"
                                               }
@@ -22,8 +22,8 @@
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
-                                      "sha1":  "eb7fc95a49675d6fd2080db96f8884bc5b4ca41d",
-                                      "sha256":  "81d7ea79a74c1738324e5c9e820b5d31d73e817f9ce8a8c496963121f894777d"
+                                      "sha1":  "ce534efdac39ac6ebe4161e87e93664bee1f2ff4",
+                                      "sha256":  "18c3b406054d8a1d500f35e86cf7e58814d894fb7461b94b7a8ede11be044c59"
                                   },
                       "clientMod":  {
                                         "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
@@ -76,7 +76,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "d54219b13508373dfe3c85ee0f3737519a78ca0c8d6190fb25747e8a8cf82108"
+                                             "sha256":  "477b17e60e783b5a64f79491c5686beec0eff0e83abdf7af3d6e22e3f0a4afb6"
                                          }
                  },
     "serverProperties":  {
@@ -90,7 +90,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "abfca2fc02380ddba8278f4df1cd2dde272ab36ebe901a4f2f097615d3f81dfe",
+                                  "sha256":  "1ef5983a0d77abf2927a21686dad5dce4a3042c63582f218c41ff4d8863d12d3",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

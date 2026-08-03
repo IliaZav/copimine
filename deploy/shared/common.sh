@@ -260,8 +260,10 @@ if tls_enabled == "0" and admin_is_https:
 if tls_enabled == "0" and panel_is_https:
     raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
 external_tls = values.get("COPIMINE_PUBLIC_TLS_EXTERNAL", "0").strip()
-if external_tls != "0":
-    raise SystemExit("COPIMINE_PUBLIC_TLS_EXTERNAL is retired; nginx must terminate TLS directly on port 443")
+# A previous release may have used an outer nginx relay.  Normalize that
+# operator state during upgrade instead of failing before the new direct-443
+# configuration can replace it.
+values["COPIMINE_PUBLIC_TLS_EXTERNAL"] = "0"
 if tls_enabled == "1":
     values["AUTH_COOKIE_SECURE"] = "1"
     values["ALLOW_INSECURE_HTTP_AUTH"] = "0"

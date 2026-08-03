@@ -974,6 +974,13 @@ copimine_harden_release_ownership() {
     chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR"
     chmod 0755 "$COPIMINE_SERVER_DIR"
   fi
+  if [[ -d "$COPIMINE_SERVER_DIR/plugins" ]]; then
+    # Paper creates its remapping index directly below plugins/ on the first
+    # boot. Keep the parent writable while plugin jars remain immutable and
+    # only their explicitly inventoried data directories are chowned below.
+    chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR/plugins"
+    chmod 0755 "$COPIMINE_SERVER_DIR/plugins"
+  fi
   for writable in "${writable_paths[@]}"; do
     [[ -e "$writable" || -L "$writable" ]] || continue
     chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$writable"

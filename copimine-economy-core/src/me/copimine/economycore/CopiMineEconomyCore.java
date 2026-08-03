@@ -3743,16 +3743,21 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return;
         }
         cleanupAtmTitleDisplay(base, atmId);
-        Location location = base.clone().add(0.5D, 1.9D, 0.5D);
-        base.getWorld().spawn(location, TextDisplay.class, display -> {
-            display.setText(color("&eБанкомат"));
-            display.setBillboard(Display.Billboard.CENTER);
-            display.setAlignment(TextDisplay.TextAlignment.CENTER);
-            display.setShadowed(true);
-            display.setSeeThrough(false);
-            display.setPersistent(true);
-            display.getPersistentDataContainer().set(visualEntityTypeKey, PersistentDataType.STRING, "ATM_TITLE_DISPLAY");
-            display.getPersistentDataContainer().set(visualLinkedIdKey, PersistentDataType.STRING, atmId);
+        // ArmorStand names are rendered by older clients and resource-pack
+        // combinations that do not render TextDisplay entities reliably.
+        // Spawn it low enough that the name itself sits directly above the ATM.
+        Location location = base.clone().add(0.5D, 0.35D, 0.5D);
+        base.getWorld().spawn(location, ArmorStand.class, stand -> {
+            stand.setInvisible(true);
+            stand.setMarker(true);
+            stand.setSmall(true);
+            stand.setGravity(false);
+            stand.setInvulnerable(true);
+            stand.setCustomName(color("&eБанкомат"));
+            stand.setCustomNameVisible(true);
+            stand.setPersistent(true);
+            stand.getPersistentDataContainer().set(visualEntityTypeKey, PersistentDataType.STRING, "ATM_TITLE_DISPLAY");
+            stand.getPersistentDataContainer().set(visualLinkedIdKey, PersistentDataType.STRING, atmId);
         });
     }
 
@@ -3762,9 +3767,9 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         Location center = base.clone().add(0.5D, 1.9D, 0.5D);
         for (Entity entity : base.getWorld().getNearbyEntities(center, 2.0D, 2.5D, 2.0D)) {
-            if (entity instanceof TextDisplay display
-                    && "ATM_TITLE_DISPLAY".equals(display.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
-                    && atmId.equalsIgnoreCase(display.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
+            if ((entity instanceof TextDisplay || entity instanceof ArmorStand)
+                    && "ATM_TITLE_DISPLAY".equals(entity.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
+                    && atmId.equalsIgnoreCase(entity.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
                 return;
             }
         }
@@ -3777,10 +3782,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         Location center = base.clone().add(0.5D, 1.9D, 0.5D);
         for (Entity entity : base.getWorld().getNearbyEntities(center, 2.0D, 2.5D, 2.0D)) {
-            if (entity instanceof TextDisplay display
-                    && "ATM_TITLE_DISPLAY".equals(display.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
-                    && atmId.equalsIgnoreCase(display.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
-                display.remove();
+            if ((entity instanceof TextDisplay || entity instanceof ArmorStand)
+                    && "ATM_TITLE_DISPLAY".equals(entity.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
+                    && atmId.equalsIgnoreCase(entity.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
+                entity.remove();
             }
         }
     }

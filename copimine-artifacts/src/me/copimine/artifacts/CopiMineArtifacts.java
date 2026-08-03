@@ -6905,8 +6905,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             );
          } else {
             CopiMineArtifacts.ShopRevenueRecipient var6x = this.resolveActivePresidentRevenueRecipient();
-            if (var6x == null && this.bridge == null) {
-               var1.sendMessage(this.color("&cЛавка временно недоступна: нет активного президента для зачисления выручки."));
+            if (this.bridge == null || var6x == null) {
+               var1.sendMessage(this.color("&cЛавка временно недоступна: банковский сервис ещё не готов."));
                return;
             }
 

@@ -51,6 +51,7 @@ public final class CauldronBrewingService {
     private final ConcurrentLinkedQueue<BlockKey> integrityQueue = new ConcurrentLinkedQueue<>();
     private final Set<BlockKey> integrityQueued = ConcurrentHashMap.newKeySet();
     private final Set<BlockKey> completionInFlight = ConcurrentHashMap.newKeySet();
+    private final Map<BlockKey, Integer> completionAttempts = new ConcurrentHashMap<>();
     private volatile boolean cacheReady = false;
 
     public CauldronBrewingService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, NarcoticsRecipeService recipeService, NarcoticItemFactory itemFactory) {
@@ -359,6 +360,7 @@ public final class CauldronBrewingService {
         integrityQueue.clear();
         integrityQueued.clear();
         completionInFlight.clear();
+        completionAttempts.clear();
     }
 
     public void shutdown() {
@@ -407,6 +409,9 @@ public final class CauldronBrewingService {
     }
 
     private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix, UUID ownerUuid) {
+        if (!completionInFlight.contains(key)) {
+            return;
+        }
         // `version` is the in-memory version after the final ingredient.  The
         // final ingredient is intentionally not persisted as a live state: the
         // atomic completion CAS advances the durable previous version by one,
@@ -416,39 +421,77 @@ public final class CauldronBrewingService {
                 .whenComplete((applied, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
                         synchronized (lockFor(key)) {
                             CauldronState current = cache.get(key);
-                            if (error != null || !Boolean.TRUE.equals(applied)
-                                || current == null || current.version() != version) {
-                            completionInFlight.remove(key);
-                            if (error != null) {
-                                plugin.getLogger().warning("Brewing completion tombstone failed for " + key + ": " + error.getMessage());
+                            if (current == null || current.version() != version) {
+                                scheduleBrewingCompletionRetry(block, key, definition, version, ingredientCount, wrongMix, ownerUuid);
+                                return;
                             }
-                            return;
+                            if (error != null || !Boolean.TRUE.equals(applied)) {
+                                if (error != null) {
+                                    plugin.getLogger().warning("Brewing completion tombstone failed for " + key + ": " + error.getMessage());
+                                }
+                                // A committed transaction can be reported as
+                                // false when the connection drops after COMMIT.
+                                // Confirm the durable state before retrying, so
+                                // the output row is never delivered twice.
+                                database.brewingCompletionResolved(key, expectedStoredVersion)
+                                        .whenComplete((resolved, resolveError) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                                            synchronized (lockFor(key)) {
+                                                if (resolveError == null && Boolean.TRUE.equals(resolved)) {
+                                                    completeBrewingEffects(block, key, definition, version, ingredientCount, wrongMix, ownerUuid);
+                                                } else {
+                                                    scheduleBrewingCompletionRetry(block, key, definition, version, ingredientCount, wrongMix, ownerUuid);
+                                                }
+                                            }
+                                        }));
+                                return;
+                            }
+                            completeBrewingEffects(block, key, definition, version, ingredientCount, wrongMix, ownerUuid);
                         }
-                        removeCachedState(key, current);
-                        if (wrongMix) {
-                            simulateWrongMixExplosion(block);
-                        }
-                        if (ownerUuid != null) {
-                            // The output row was committed with the tombstone.
-                            // Claim it through the durable mailbox rather than
-                            // dropping an untracked item in a crash window.
-                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
-                        } else {
-                            plugin.getLogger().severe("Completed brewing output " + definition.id()
-                                    + " has no owner; durable delivery requires manual review.");
-                        }
-                        if (block.getWorld() != null) {
-                            particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH,
-                                    "zhuzevo".equals(definition.id()) ? 24 : 12);
-                            spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
-                        }
-                        extinguishRig(block);
-                        if (configService.clearCauldronOnCompletion()) {
-                            block.setType(Material.CAULDRON, false);
-                        }
-                        completionInFlight.remove(key);
-                    }
                 }));
+    }
+
+    private void scheduleBrewingCompletionRetry(Block block, BlockKey key, NarcoticDefinition definition,
+                                                long version, int ingredientCount, boolean wrongMix, UUID ownerUuid) {
+        if (!completionInFlight.contains(key)) {
+            return;
+        }
+        int attempt = completionAttempts.merge(key, 1, Integer::sum);
+        long delay = Math.min(100L, 5L << Math.min(4, Math.max(0, attempt - 1)));
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> finishBrewing(block, key, definition, version, ingredientCount, wrongMix, ownerUuid), delay);
+    }
+
+    private void completeBrewingEffects(Block block, BlockKey key, NarcoticDefinition definition,
+                                        long version, int ingredientCount, boolean wrongMix, UUID ownerUuid) {
+        CauldronState current = cache.get(key);
+        if (current == null || current.version() != version) {
+            scheduleBrewingCompletionRetry(block, key, definition, version, ingredientCount, wrongMix, ownerUuid);
+            return;
+        }
+        removeCachedState(key, current);
+        if (wrongMix) {
+            simulateWrongMixExplosion(block);
+        }
+        if (ownerUuid != null) {
+            // The output row was committed with the tombstone. Claim it
+            // through the durable mailbox rather than dropping an untracked
+            // item in a crash window.
+            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
+        } else {
+            plugin.getLogger().severe("Completed brewing output " + definition.id()
+                    + " has no owner; durable delivery requires manual review.");
+        }
+        if (block.getWorld() != null) {
+            particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH,
+                    "zhuzevo".equals(definition.id()) ? 24 : 12);
+            spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
+        }
+        extinguishRig(block);
+        if (configService.clearCauldronOnCompletion()) {
+            block.setType(Material.CAULDRON, false);
+        }
+        completionAttempts.remove(key);
+        completionInFlight.remove(key);
     }
 
     private void simulateWrongMixExplosion(Block block) {

@@ -1921,6 +1921,18 @@ public final class NarcoticsDatabase {
         }
     }
 
+    /**
+     * Confirm whether a completion CAS was committed when its future was
+     * interrupted after the database transaction.  The brewing service uses
+     * this acknowledgement-recovery check before retrying a completion.
+     */
+    public CompletableFuture<Boolean> brewingCompletionResolved(BlockKey key, long expectedVersion) {
+        if (key == null || expectedVersion < 0L) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid brewing completion lookup."));
+        }
+        return runAsyncResult(() -> isBrewingCompletionResolved(key, expectedVersion));
+    }
+
     private boolean isBrewingCompletionResolved(BlockKey key, long expectedVersion) throws Exception {
         return tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(

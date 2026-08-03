@@ -290,10 +290,17 @@ def test_https_release_smoke_checks_bypass_retired_proxy_environment():
 
 def test_atm_visual_has_a_visible_label_and_repairs_or_removes_it_with_the_atm():
     assert "import org.bukkit.entity.TextDisplay;" in ECONOMY
-    assert 'display.setText(color("&eБанкомат"));' in ECONOMY
+    assert 'stand.setCustomName(color("&eБанкомат"));' in ECONOMY
     assert '"ATM_TITLE_DISPLAY"' in ECONOMY
     assert "ensureAtmTitleDisplay(location, linkedId);" in ECONOMY
     assert "cleanupAtmTitleDisplay(" in ECONOMY
+
+
+def test_atm_visual_has_a_reliable_fallback_for_clients_without_text_display_support():
+    assert 'spawn(location, ArmorStand.class' in ECONOMY
+    assert 'stand.setCustomName(color("&eБанкомат"));' in ECONOMY
+    assert "stand.setCustomNameVisible(true);" in ECONOMY
+    assert "entity instanceof ArmorStand" in ECONOMY
 
 
 def test_artifact_shop_uses_the_treasury_when_no_president_is_active():
@@ -301,3 +308,46 @@ def test_artifact_shop_uses_the_treasury_when_no_president_is_active():
     assert '"NO_ACTIVE_PRESIDENT"' in ARTIFACTS
     assert "EMPTY_UUID," in ARTIFACTS
     assert "PRESIDENT_BUDGET_ACCOUNT_ID" in ARTIFACTS
+
+
+def test_artifact_shop_requires_only_a_ready_economy_bridge_not_a_president():
+    purchase = ARTIFACTS[ARTIFACTS.index("ShopRevenueRecipient var6x"):ARTIFACTS.index("String var6 = UUID.randomUUID", ARTIFACTS.index("ShopRevenueRecipient var6x"))]
+    assert "if (this.bridge == null || var6x == null)" in purchase
+    assert "revenueRecipient().budgetAccountId()" not in purchase
+
+
+def test_artifacts_items_are_explicitly_delegated_before_adminplus_inventory_guards():
+    assert "private boolean artifactsCoreOwns(ItemStack stack)" in ADMIN
+    click = ADMIN[ADMIN.index("public void onProtectedItemClick"):ADMIN.index("public void onProtectedItemDrag")]
+    drag = ADMIN[ADMIN.index("public void onProtectedItemDrag"):ADMIN.index("public void onProtectedItemMove")]
+    move = ADMIN[ADMIN.index("public void onProtectedItemMove"):ADMIN.index("public void onOfficialArCreative")]
+    assert "artifactsCoreOwns(cursor,current,hotbar)" in click
+    assert "artifactsCoreOwns(e.getOldCursor())" in drag
+    assert "artifactsCoreOwns(e.getItem())" in move
+    assert '"copimineartifacts"' in ADMIN
+    assert '"DONATION_SHOP_ITEM"' in ADMIN
+
+
+def test_president_mandate_never_enters_adminplus_drop_or_death_recovery_queues():
+    drop = ADMIN[ADMIN.index("public void onDrop"):ADMIN.index("public void onSealDropLowest")]
+    death = ADMIN[ADMIN.index("public void onOfficialItemDeath"):ADMIN.index("public void onOfficialItemRespawn")]
+    restore = ADMIN[ADMIN.index("private void restorePendingOfficialItems"):ADMIN.index("private boolean isProtectedOfficialItem")]
+    assert "if(isPresidentMandate(" in drop
+    assert "if(isPresidentMandate(drop)) continue;" in death
+    assert "if(isPresidentMandate(item))continue;" in restore
+
+
+def test_silk_touch_ar_certification_handles_a_cancelled_or_empty_vanilla_drop_event():
+    assert "@EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)\n    public void onArDrop" in ADMIN
+    drop = ADMIN[ADMIN.index("public void onArDrop"):ADMIN.index("private void", ADMIN.index("public void onArDrop"))]
+    assert "naturalSilkTouchOreAmount(e)" in drop
+    assert "return Math.max(1" in ADMIN
+
+
+def test_brewing_completion_retries_until_the_durable_tombstone_is_resolved():
+    assert "public CompletableFuture<Boolean> brewingCompletionResolved" in NARCOTICS_DB
+    assert "database.brewingCompletionResolved" in NARCOTICS
+    assert "scheduleBrewingCompletionRetry" in NARCOTICS
+    finish = NARCOTICS[NARCOTICS.index("private void finishBrewing"):NARCOTICS.index("private void simulateWrongMixExplosion")]
+    assert "if (resolveError == null && Boolean.TRUE.equals(resolved))" in finish
+    assert "scheduleBrewingCompletionRetry" in finish

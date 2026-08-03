@@ -259,11 +259,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @Override public void onEnable() {
         saveDefaultConfig();
         loadVoiceMutes();
-        dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors())), r -> {
-            Thread t = new Thread(r, "copimine-postgres-worker");
-            t.setDaemon(true);
-            return t;
-        });
+        int dbWorkers = Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors()));
+        dbExecutor = new ThreadPoolExecutor(
+                dbWorkers,
+                dbWorkers,
+                30L,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(256),
+                r -> {
+                    Thread t = new Thread(r, "copimine-postgres-worker");
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
         visualEntityTypeKey = new NamespacedKey(this, "visual_entity_type");
         visualKindKey = new NamespacedKey(this, "visual_kind");
         visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
@@ -274,14 +282,37 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             pgPool = new PgConnectionPool(pgSettings);
             dbLabel = pgSettings.safeLabel();
             dbPath = dbLabel;
-            ensureTables();
-            dbReady = true;
-            audit("SERVER","ULTRA7_750_ENABLE","enabled postgresql="+dbLabel,true);
         } catch (Exception e) {
             getLogger().severe("PostgreSQL init failed; CopiMine active storage is unavailable: "+safeErr(e));
             getLogger().severe("Set POSTGRES_PASSWORD in /opt/copimine/admin-web/.env or COPIMINE_ENV_FILE. SQLite fallback is disabled.");
             closePostgres();
             getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        try {
+            dbExecutor.execute(() -> {
+                try {
+                    ensureTables();
+                    dbReady = true;
+                    audit("SERVER", "ULTRA7_750_ENABLE", "enabled postgresql=" + dbLabel, true);
+                    Bukkit.getScheduler().runTask(this, this::finishEnable);
+                } catch (Exception error) {
+                    getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL schema initialization failed", error);
+                    Bukkit.getScheduler().runTask(this, () -> {
+                        closePostgres();
+                        getServer().getPluginManager().disablePlugin(this);
+                    });
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL initialization worker rejected", error);
+            closePostgres();
+            getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private void finishEnable() {
+        if (!isEnabled() || !dbReady) {
             return;
         }
         registerRpCommandGuard();

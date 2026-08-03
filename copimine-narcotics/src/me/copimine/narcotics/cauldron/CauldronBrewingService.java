@@ -23,10 +23,13 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
+import java.util.Objects;
 
 public final class CauldronBrewingService {
     private static final long STALE_BREW_STATE_MILLIS = 15L * 60L * 1000L;
@@ -44,8 +47,11 @@ public final class CauldronBrewingService {
     // historical world coordinate in memory.
     private final Object[] lockStripes = new Object[256];
     private final Object cacheAdmissionLock = new Object();
+    private final Map<ChunkKey, Set<BlockKey>> cacheByChunk = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedQueue<BlockKey> integrityQueue = new ConcurrentLinkedQueue<>();
+    private final Set<BlockKey> integrityQueued = ConcurrentHashMap.newKeySet();
+    private final Set<BlockKey> completionInFlight = ConcurrentHashMap.newKeySet();
     private volatile boolean cacheReady = false;
-    private int integrityCursor = 0;
 
     public CauldronBrewingService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, NarcoticsRecipeService recipeService, NarcoticItemFactory itemFactory) {
         this.plugin = plugin;
@@ -114,7 +120,11 @@ public final class CauldronBrewingService {
                             continue;
                         }
                         CauldronState restored = new CauldronState(List.copyOf(loaded.ingredients()), loaded.version(), updatedAtMillis, parseOwner(loaded.ownerUuid()));
-                        cache.merge(entry.getKey(), restored, (current, candidate) -> current.version() >= candidate.version() ? current : candidate);
+                        // Merge by version so a late preload response can
+                        // never overwrite a newer in-memory ingredient state.
+                        CauldronState selected = cache.merge(entry.getKey(), restored,
+                                (current, incoming) -> current.version() >= incoming.version() ? current : incoming);
+                        cacheState(entry.getKey(), selected);
                         restoredCount++;
                     }
                     cacheReady = true;
@@ -129,31 +139,33 @@ public final class CauldronBrewingService {
 
     public void runIntegritySweep() {
         long nowMillis = System.currentTimeMillis();
-        List<Map.Entry<BlockKey, CauldronState>> snapshot = List.copyOf(cache.entrySet());
-        if (snapshot.isEmpty()) {
-            integrityCursor = 0;
-            return;
-        }
-        int start = Math.floorMod(integrityCursor, snapshot.size());
-        int budget = Math.min(100, snapshot.size());
-        integrityCursor = (start + budget) % snapshot.size();
-        for (int offset = 0; offset < budget; offset++) {
-            Map.Entry<BlockKey, CauldronState> entry = snapshot.get((start + offset) % snapshot.size());
-            BlockKey key = entry.getKey();
+        for (int processed = 0; processed < 100; processed++) {
+            BlockKey key = integrityQueue.poll();
+            if (key == null) {
+                return;
+            }
+            integrityQueued.remove(key);
+            CauldronState state = cache.get(key);
+            if (state == null) {
+                continue;
+            }
             World world = plugin.getServer().getWorld(key.world());
             if (world == null || !world.isChunkLoaded(key.x() >> 4, key.z() >> 4)) {
+                enqueueIntegrityCheck(key);
                 continue;
             }
             Block block = world.getBlockAt(key.x(), key.y(), key.z());
             if (!isSupportedCauldron(block)) {
-                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), entry.getValue().isStale(nowMillis));
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), state.isStale(nowMillis));
                 continue;
             }
+            Map.Entry<BlockKey, CauldronState> entry = Map.entry(key, state);
             if (entry.getValue().isStale(nowMillis)) {
-                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), entry.getValue().isStale(nowMillis));
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), true);
                 continue;
             }
-            spawnQueuedParticles(block, entry.getValue().ingredients().size(), false);
+            spawnQueuedParticles(block, state.ingredients().size(), false);
+            enqueueIntegrityCheck(key);
         }
     }
 
@@ -163,17 +175,22 @@ public final class CauldronBrewingService {
             return;
         }
         long nowMillis = System.currentTimeMillis();
-        for (Map.Entry<BlockKey, CauldronState> entry : List.copyOf(cache.entrySet())) {
-            BlockKey key = entry.getKey();
-            if (!worldName.equals(key.world()) || (key.x() >> 4) != chunkX || (key.z() >> 4) != chunkZ) {
+        Set<BlockKey> indexed = cacheByChunk.get(new ChunkKey(worldName, chunkX, chunkZ));
+        if (indexed == null || indexed.isEmpty()) {
+            return;
+        }
+        for (BlockKey key : Set.copyOf(indexed)) {
+            CauldronState state = cache.get(key);
+            if (state == null) {
                 continue;
             }
             Block block = world.getBlockAt(key.x(), key.y(), key.z());
-            if (!isSupportedCauldron(block) || entry.getValue().isStale(nowMillis)) {
-                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), entry.getValue().isStale(nowMillis));
+            if (!isSupportedCauldron(block) || state.isStale(nowMillis)) {
+                handleCauldronBroken(block, block.getLocation().add(0.5D, 0.7D, 0.5D), state.isStale(nowMillis));
                 continue;
             }
-            spawnQueuedParticles(block, entry.getValue().ingredients().size(), false);
+            spawnQueuedParticles(block, state.ingredients().size(), false);
+            enqueueIntegrityCheck(key);
         }
     }
 
@@ -195,6 +212,9 @@ public final class CauldronBrewingService {
     }
 
     public boolean tryAddIngredient(org.bukkit.entity.Player player, Block block, ItemStack stack) {
+        if (player == null || block == null || stack == null) {
+            return false;
+        }
         if (!cacheReady) {
             player.sendMessage("§eВарки ещё загружаются. Попробуйте снова через несколько секунд.");
             return false;
@@ -217,15 +237,28 @@ public final class CauldronBrewingService {
         synchronized (lockFor(key)) {
             long nowMillis = System.currentTimeMillis();
             CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis, player.getUniqueId()));
+            UUID playerUuid = player == null ? null : player.getUniqueId();
+            if (base.ownerUuid() != null && !base.ownerUuid().equals(playerUuid)) {
+                if (player != null) {
+                    player.sendMessage("§eЭтот котёл уже используется другим игроком.");
+                }
+                return false;
+            }
+            if (completionInFlight.contains(key)) {
+                if (player != null) {
+                    player.sendMessage("§eЗавершение варки уже обрабатывается.");
+                }
+                return false;
+            }
+            UUID ownerUuid = base.ownerUuid() == null ? playerUuid : base.ownerUuid();
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
             long nextVersion = base.version() + 1L;
 
             NarcoticDefinition exact = recipeService.matchExact(current);
             if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null) {
-                itemFactory.consumeOne(player, stack);
-                finishBrewing(block, key, exact, nextVersion, current.size(), false, player);
-                return true;
+                return prepareFinalIngredient(block, key, exact, nextVersion, current.size(), false,
+                        ownerUuid, player, stack, ingredient, current);
             }
             int maximumRecipeSize = recipeService.maximumRecipeSize();
             boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
@@ -233,14 +266,14 @@ public final class CauldronBrewingService {
                 return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
             }
             if (recipeService.containsUnrecognizedIngredient(current)) {
-                itemFactory.consumeOne(player, stack);
-                return finishWrongMix(block, key, nextVersion, current.size(), player);
+                return prepareFinalIngredient(block, key, configService.items().get("zhuzevo"), nextVersion,
+                        current.size(), true, ownerUuid, player, stack, ingredient, current);
             }
             if (canStillBecomeRecipe && current.size() < maximumRecipeSize) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
             }
-            itemFactory.consumeOne(player, stack);
-            return finishWrongMix(block, key, nextVersion, current.size(), player);
+            return prepareFinalIngredient(block, key, configService.items().get("zhuzevo"), nextVersion,
+                    current.size(), true, ownerUuid, player, stack, ingredient, current);
         }
     }
 
@@ -269,7 +302,7 @@ public final class CauldronBrewingService {
                         }
                         return;
                     }
-                    cache.remove(key, current);
+                    removeCachedState(key, current);
                     spawnQueuedParticles(block, current.ingredients().size(), true);
                     if (current.ownerUuid() != null) {
                         // A world drop is not a durable delivery: a restart,
@@ -319,27 +352,58 @@ public final class CauldronBrewingService {
 
     public void clearCache() {
         cache.clear();
-        integrityCursor = 0;
+        cacheByChunk.clear();
+        integrityQueue.clear();
+        integrityQueued.clear();
+        completionInFlight.clear();
     }
 
     public void shutdown() {
         cacheReady = false;
-        cache.clear();
-        integrityCursor = 0;
+        clearCache();
     }
 
-    private boolean finishWrongMix(Block block, BlockKey key, long version, int ingredientCount, org.bukkit.entity.Player initiator) {
-        NarcoticDefinition zhuzevo = configService.items().get("zhuzevo");
-        if (zhuzevo != null) {
-            finishBrewing(block, key, zhuzevo, version, ingredientCount, true, initiator);
-        } else {
-            clearState(block, key, version);
+    private boolean prepareFinalIngredient(Block block, BlockKey key, NarcoticDefinition definition,
+                                           long version, int ingredientCount, boolean wrongMix, UUID ownerUuid,
+                                           org.bukkit.entity.Player player, ItemStack stack, IngredientEntry ingredient,
+                                           List<IngredientEntry> completedIngredients) {
+        if (definition == null) {
+            if (player != null) {
+                player.sendMessage("§cВарка не может завершиться: в конфигурации отсутствует результат ошибочной смеси.");
+            }
+            return false;
         }
+        if (!completionInFlight.add(key)) {
+            return false;
+        }
+        long expectedStoredVersion = Math.max(0L, version - 1L);
+        database.prepareBrewingCompletionIntent(key, expectedStoredVersion, ownerUuid, definition.id(),
+                        ingredient == null ? "" : ingredient.serialize())
+                .whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                    synchronized (lockFor(key)) {
+                        CauldronState current = cache.get(key);
+                        if (error != null || current == null || current.version() != expectedStoredVersion
+                                || !Objects.equals(current.ownerUuid(), ownerUuid)) {
+                            completionInFlight.remove(key);
+                            if (error != null) {
+                                plugin.getLogger().warning("Brewing completion intent failed for " + key + ": " + error.getMessage());
+                            }
+                            if (player != null) {
+                                player.sendMessage("§cВарка не сохранена. Ингредиент не списан.");
+                            }
+                            return;
+                        }
+                        // The completion intent is durable before this physical mutation.
+                        cacheState(key, new CauldronState(List.copyOf(completedIngredients), version,
+                                System.currentTimeMillis(), ownerUuid));
+                        itemFactory.consumeOne(player, stack);
+                        finishBrewing(block, key, definition, version, ingredientCount, wrongMix, ownerUuid);
+                    }
+                }));
         return true;
     }
 
-    private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix, org.bukkit.entity.Player initiator) {
-        UUID ownerUuid = initiator == null ? null : initiator.getUniqueId();
+    private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix, UUID ownerUuid) {
         // `version` is the in-memory version after the final ingredient.  The
         // final ingredient is intentionally not persisted as a live state: the
         // atomic completion CAS advances the durable previous version by one,
@@ -347,18 +411,19 @@ public final class CauldronBrewingService {
         long expectedStoredVersion = Math.max(0L, version - 1L);
         database.completeBrewingState(key, expectedStoredVersion, ownerUuid, definition.id())
                 .whenComplete((applied, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
-                    synchronized (lockFor(key)) {
-                        CauldronState current = cache.get(key);
-                        if (error != null || !Boolean.TRUE.equals(applied)
+                        synchronized (lockFor(key)) {
+                            CauldronState current = cache.get(key);
+                            if (error != null || !Boolean.TRUE.equals(applied)
                                 || current == null || current.version() != version) {
+                            completionInFlight.remove(key);
                             if (error != null) {
                                 plugin.getLogger().warning("Brewing completion tombstone failed for " + key + ": " + error.getMessage());
                             }
                             return;
                         }
-                        cache.remove(key, current);
+                        removeCachedState(key, current);
                         if (wrongMix) {
-                            simulateWrongMixExplosion(block, initiator);
+                            simulateWrongMixExplosion(block);
                         }
                         if (ownerUuid != null) {
                             // The output row was committed with the tombstone.
@@ -378,21 +443,20 @@ public final class CauldronBrewingService {
                         if (configService.clearCauldronOnCompletion()) {
                             block.setType(Material.CAULDRON, false);
                         }
+                        completionInFlight.remove(key);
                     }
                 }));
     }
 
-    private void simulateWrongMixExplosion(Block block, org.bukkit.entity.Player initiator) {
+    private void simulateWrongMixExplosion(Block block) {
         World world = block.getWorld();
         Location center = block.getLocation().add(0.5D, 1.0D, 0.5D);
         world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1.0F, 0.85F);
         world.spawnParticle(Particle.EXPLOSION, center, 1, 0.1D, 0.1D, 0.1D, 0.0D);
         world.spawnParticle(Particle.SMOKE, center, 42, 0.55D, 0.35D, 0.55D, 0.03D);
-        for (org.bukkit.entity.Player nearby : world.getPlayers()) {
-            if (nearby.getLocation().distanceSquared(center) <= 25.0D) {
-                nearby.damage(ThreadLocalRandom.current().nextDouble(6.0D, 15.0001D), initiator);
-            }
-        }
+        // Wrong mixtures are cosmetic.  Applying direct damage here bypasses
+        // region/PvP policy and cannot be represented in the durable brew
+        // transaction, so no player damage is generated by the effect.
     }
 
     private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis, org.bukkit.entity.Player player, ItemStack consumed) {
@@ -411,7 +475,7 @@ public final class CauldronBrewingService {
             if (player != null && consumed != null) {
                 itemFactory.consumeOne(player, consumed);
             }
-            cache.put(key, new CauldronState(frozen, version, nowMillis, ownerUuid));
+            cacheState(key, new CauldronState(frozen, version, nowMillis, ownerUuid));
         }
         CompletableFuture<Void> persisted = ownerUuid == null
                 ? database.saveBrewingState(key, version, frozen)
@@ -439,7 +503,7 @@ public final class CauldronBrewingService {
                                             }
                                             return;
                                         }
-                                        cache.remove(key, stillCurrent);
+                                        removeCachedState(key, stillCurrent);
                                         refundFailedIngredient(block, key, frozen, ownerUuid, consumed);
                                     }
                                 }));
@@ -481,7 +545,7 @@ public final class CauldronBrewingService {
                     }
                     return;
                 }
-                cache.remove(key, current);
+                removeCachedState(key, current);
                 extinguishRig(block);
                 if (configService.clearCauldronOnCompletion()) {
                     block.setType(Material.CAULDRON, false);
@@ -537,6 +601,40 @@ public final class CauldronBrewingService {
         }
     }
 
+    private void cacheState(BlockKey key, CauldronState state) {
+        CauldronState previous = cache.put(key, state);
+        if (previous != null && previous != state) {
+            removeFromChunkIndex(key);
+        }
+        cacheByChunk.computeIfAbsent(new ChunkKey(key.world(), key.x() >> 4, key.z() >> 4), ignored -> ConcurrentHashMap.newKeySet())
+                .add(key);
+        enqueueIntegrityCheck(key);
+    }
+
+    private void removeCachedState(BlockKey key, CauldronState expected) {
+        if (cache.remove(key, expected)) {
+            removeFromChunkIndex(key);
+            integrityQueued.remove(key);
+        }
+    }
+
+    private void removeFromChunkIndex(BlockKey key) {
+        ChunkKey chunk = new ChunkKey(key.world(), key.x() >> 4, key.z() >> 4);
+        Set<BlockKey> indexed = cacheByChunk.get(chunk);
+        if (indexed != null) {
+            indexed.remove(key);
+            if (indexed.isEmpty()) {
+                cacheByChunk.remove(chunk, indexed);
+            }
+        }
+    }
+
+    private void enqueueIntegrityCheck(BlockKey key) {
+        if (key != null && integrityQueued.add(key)) {
+            integrityQueue.offer(key);
+        }
+    }
+
     private Object lockFor(BlockKey key) {
         return lockStripes[Math.floorMod(key.hashCode(), lockStripes.length)];
     }
@@ -570,5 +668,8 @@ public final class CauldronBrewingService {
         private boolean isStale(long nowMillis) {
             return updatedAtMillis > 0L && nowMillis - updatedAtMillis >= STALE_BREW_STATE_MILLIS;
         }
+    }
+
+    private record ChunkKey(String world, int x, int z) {
     }
 }

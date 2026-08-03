@@ -138,12 +138,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import java.util.logging.Level;
 
-public final class CopiMineElectionCore extends JavaPlugin implements Listener, CommandExecutor {
+public final class CopiMineElectionCore extends JavaPlugin implements Listener, CommandExecutor,
+        CopiMineEconomyCore.ElectionRuntimeService {
     private static final String SIDEBAR_OBJECTIVE = "cm_election_live";
     private static final Pattern SAFE_SCHEMA = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final long PRESIDENT_BROADCAST_COOLDOWN_MS = 2L * 60L * 60L * 1000L;
@@ -205,11 +207,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private final AtomicReference<PresidentCache> presidentCache = new AtomicReference<>(PresidentCache.empty());
     private final ElectionStateMachine electionStateMachine = new ElectionStateMachine();
     /** Bounded executor for service calls that may wait on JDBC. */
-    private final ExecutorService databaseExecutor = Executors.newFixedThreadPool(4, runnable -> {
-        Thread thread = new Thread(runnable, "copimine-election-db-service");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ThreadPoolExecutor databaseExecutor = new ThreadPoolExecutor(
+            4, 4, 30L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(512), runnable -> {
+                Thread thread = new Thread(runnable, "copimine-election-db-service");
+                thread.setDaemon(true);
+                return thread;
+            }, new ThreadPoolExecutor.AbortPolicy());
 
     private NamespacedKey itemTypeKey;
     /** Compatibility keys used by the former AdminPlus election runtime. */
@@ -279,6 +282,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Objects.requireNonNull(getCommand("presidentsay"), "presidentsay command").setExecutor(this);
         Bukkit.getPluginManager().registerEvents(this, this);
         Bukkit.getServicesManager().register(CopiMineEconomyCore.TaxService.class, taxService, this, ServicePriority.Normal);
+        Bukkit.getServicesManager().register(CopiMineEconomyCore.ElectionRuntimeService.class, this, this, ServicePriority.Normal);
         // Database bootstrap is intentionally deferred off the Paper main
         // thread.  The plugin remains loaded in a degraded STARTING state
         // while PostgreSQL is unavailable and retries without blocking the
@@ -290,6 +294,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @Override
     public void onDisable() {
+        Bukkit.getServicesManager().unregister(CopiMineEconomyCore.ElectionRuntimeService.class, this);
         saveHiddenPlayers();
         saveOfficialRestoreQueue();
         protectedInteractAt.clear();
@@ -299,7 +304,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         officialRestore.clear();
         officialRestoreInFlight.clear();
         taxPaymentInFlight.clear();
-        databaseExecutor.shutdownNow();
+        databaseExecutor.shutdown();
+        try {
+            if (!databaseExecutor.awaitTermination(5L, TimeUnit.SECONDS)) {
+                getLogger().warning("Election database executor is still draining its bounded queue during shutdown.");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            getLogger().warning("Election database executor shutdown was interrupted; queued work remains durable and will retry on next start.");
+        }
         databaseReady.set(false);
         if (databaseRetryTask != null) {
             databaseRetryTask.cancel();
@@ -894,6 +907,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     public void onBlockPlace(BlockPlaceEvent event) {
         if (isProtectedOfficialItem(event.getItemInHand())) {
             event.setCancelled(true);
+            return;
+        }
+        // External protection decisions are final.  ElectionCore must never
+        // clear a cancellation in order to reactivate a station.
+        if (event.isCancelled()) {
+            return;
         }
         BlockKey placedKey = BlockKey.from(event.getBlockPlaced().getLocation());
         boolean adminInactiveRepair = hasElectionAdmin(event.getPlayer())
@@ -912,7 +931,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             // still contained the just-removed station.  Explicitly reset the
             // flag here; otherwise the reactivation task below never runs and
             // a freshly placed block remains a dead, non-interactive block.
-            event.setCancelled(false);
         }
         // A station that an administrator physically removed is persisted as
         // inactive so its votes/history survive.  Re-placing a block at the
@@ -929,15 +947,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             // An external protection listener may have cancelled this
             // placement. The remembered station repair path is explicit,
             // administrator-only, and material-bound.
-            event.setCancelled(false);
             // Capture Bukkit state before leaving the primary thread.  The
             // worker revalidates it against the persisted value as well.
             BlockLocationRef ref = new BlockLocationRef(
                     placed.getWorld().getName(), placed.getX(), placed.getY(), placed.getZ());
+            UUID playerUuid = event.getPlayer().getUniqueId();
             Bukkit.getScheduler().runTask(this, () -> {
                 Location location = locationOf(ref);
                 if (location != null && location.getBlock().getType() != Material.AIR) {
-                    reactivateRpVotingBlockAfterPlacementAsync(event.getPlayer(), ref);
+                    Player player = Bukkit.getPlayer(playerUuid);
+                    if (player != null && player.isOnline()) {
+                        reactivateRpVotingBlockAfterPlacementAsync(player, ref);
+                    }
                 }
             });
         }
@@ -4104,6 +4125,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     return;
                 }
                 boolean rpStation = isRpStation(station);
+                boolean votingOpen = rpStation && isDirectVotingOpen(station);
                 runSync(() -> {
                     if (!player.isOnline()) {
                         return;
@@ -4112,12 +4134,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                         player.sendMessage(color("&eСтарый формат выборов отключён. Используйте новый интерактивный блок RP-голосования."));
                         return;
                     }
-                    // An administrator is still an active server player and
-                    // can cast the same vote as everyone else.  Sneaking on
-                    // the block is an explicit maintenance gesture that
-                    // opens the block list; a normal click always opens the
-                    // ballot and cannot accidentally change the campaign.
-                    if (hasElectionAdmin(player) && player.isSneaking()) {
+                    // During preparation/debates/counting an administrator
+                    // needs the management screen, not a misleading
+                    // "voting is closed" toast. Sneaking remains the
+                    // explicit maintenance shortcut while voting is open.
+                    if (hasElectionAdmin(player) && (player.isSneaking() || !votingOpen)) {
                         openRpBlocksMenu(player, 0);
                     } else {
                         openDirectVoteMenu(player, stationId);
@@ -5354,6 +5375,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "UPDATE cik_chairs SET active=0 WHERE station_id=?", stationId);
             logPluginEvent(connection, "election_core", "station_removed", player.getName(), stationId, "");
             return null;
+        });
+        // The confirmation action is a real removal, not only a database
+        // toggle. Leaving the old physical block in place made the next
+        // placement impossible because Minecraft refuses to place into a
+        // non-air block. Remove only the material captured above; if another
+        // plugin/player replaced it meanwhile, preserve that newer block.
+        runSync(() -> {
+            Location current = locationOf(stationRef);
+            if (current != null && current.getWorld() != null
+                    && current.getBlock().getType() == finalExpectedMaterial) {
+                current.getBlock().setType(Material.AIR, false);
+            }
         });
         inactivePollingStationLocations.add(new BlockKey(
                 string(station.get("world")), intValue(station.get("x")), intValue(station.get("y")), intValue(station.get("z"))));

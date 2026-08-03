@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -12,9 +13,11 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -53,6 +56,8 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     private volatile Method authApiIsAuthenticated;
     private volatile Object authApi;
     private volatile boolean authApiAvailable;
+    private volatile boolean loginHookRegistered;
+    private volatile boolean logoutHookRegistered;
 
     @Override
     public void onEnable() {
@@ -69,6 +74,11 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             return;
         }
         initialiseAuthApi();
+        if (!authApiAvailable && (!loginHookRegistered || !logoutHookRegistered)) {
+            getLogger().severe("AuthMeApi is unavailable and AuthEffects has no complete login hook/logout hook pair; disabling fail-closed.");
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
         Bukkit.getPluginManager().registerEvents(this, this);
         Bukkit.getScheduler().runTaskTimer(this, this::syncAuthStates, 20L, 20L);
         getLogger().info("AuthEffects enabled with AuthMe support.");
@@ -125,8 +135,9 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         if (player == null) {
             return;
         }
+        boolean logout = "LogoutEvent".equals(event.getClass().getSimpleName());
         Bukkit.getScheduler().runTask(this, () -> {
-            if ("LogoutEvent".equals(event.getClass().getSimpleName())) {
+            if (logout) {
                 authenticated.remove(player.getUniqueId());
                 applyAuthEffect(player);
                 return;
@@ -188,6 +199,30 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof Player player && blockUnauthenticated(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onDamageByEntity(EntityDamageByEntityEvent event) {
+        if (event.getDamager() instanceof Player attacker && blockUnauthenticated(attacker)) {
+            event.setCancelled(true);
+            return;
+        }
+        if (event.getDamager() instanceof Projectile projectile
+                && projectile.getShooter() instanceof Player attacker
+                && blockUnauthenticated(attacker)) {
+            event.setCancelled(true);
+            return;
+        }
+        if (event.getEntity() instanceof Player victim && blockUnauthenticated(victim)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onInteractEntity(PlayerInteractEntityEvent event) {
+        if (blockUnauthenticated(event.getPlayer())) {
             event.setCancelled(true);
         }
     }
@@ -318,6 +353,12 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
                         true
                 );
                 registered++;
+                if (className.endsWith("LoginEvent") || className.endsWith("RegisterEvent")) {
+                    loginHookRegistered = true;
+                }
+                if (className.endsWith("LogoutEvent")) {
+                    logoutHookRegistered = true;
+                }
             } catch (ClassNotFoundException ignored) {
                 missing.add(className);
             } catch (IllegalArgumentException ex) {

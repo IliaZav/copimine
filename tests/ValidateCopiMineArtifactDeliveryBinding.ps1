@@ -53,7 +53,7 @@ if ($kosaBlock -notmatch '(?m)^\s+proc-chance:\s*0\.30\s*$') {
     throw 'Kosa proc chance is not 30%.'
 }
 
-if ($source -notmatch 'random\.nextDouble\(\)\s*>?=\s*0\.001D') {
+if ($source -notmatch 'AR_THEFT_PROC_CHANCE\s*=\s*0\.001D' -or $source -notmatch 'random\.nextDouble\(\)\s*>?=\s*AR_THEFT_PROC_CHANCE') {
     throw 'Rare AR theft probability is not 0.1%.'
 }
 if ($source -notmatch 'var1\.setDamage\(var1\.getDamage\(\) \+ 4\.0\)') {

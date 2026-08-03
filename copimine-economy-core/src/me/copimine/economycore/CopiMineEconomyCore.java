@@ -279,6 +279,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         void openPayment(Player player);
     }
 
+    /** Typed optional API exported through Bukkit's service registry. */
+    public interface ElectionRuntimeService {
+        Map<String, Object> activePresidentRevenueProfile();
+        CompletableFuture<Map<String, Object>> grantTaxClockExemption(UUID playerUuid, String playerName, String artifactInstanceId);
+    }
+
     public record TaxStatus(boolean available, boolean active, boolean paid, boolean subscription,
                             long validUntilMillis, long periodHours, long amount) {
         public static TaxStatus inactive() {
@@ -2046,10 +2052,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 AR_DEPOSIT_STATUS_CANCELLED, now(), intentId, AR_DEPOSIT_STATUS_CREATED) == 1);
     }
 
-    private boolean markArDepositCommitted(String intentId) throws Exception {
+    private boolean commitArDepositAtomically(String intentId) throws Exception {
         return tx(connection -> {
             Map<String, Object> intentRow = queryOne(connection,
-                    "SELECT snapshot,status,amount FROM cmv8_ar_deposit_intents WHERE id=? FOR UPDATE", intentId);
+                    "SELECT snapshot,status,amount,account_id,account_scope,player_uuid,player_name,idempotency_key "
+                            + "FROM cmv8_ar_deposit_intents WHERE id=? FOR UPDATE", intentId);
             if (intentRow == null || intentRow.isEmpty()) {
                 return false;
             }
@@ -2066,20 +2073,47 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 throw new IllegalStateException("AR deposit amount does not match its durable snapshot");
             }
             long timestamp = now();
+            String accountId = string(intentRow.get("account_id"));
+            Map<String, Object> account = "TREASURY".equalsIgnoreCase(string(intentRow.get("account_scope")))
+                    ? ensureTreasuryAccount(connection)
+                    : queryOne(connection, "SELECT * FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE", accountId);
+            if (account == null || account.isEmpty()) {
+                throw new IllegalStateException("AR deposit target account is missing");
+            }
+            String targetAccountId = string(account.get("account_id"));
+            String txKey = first(string(intentRow.get("idempotency_key")), "ar-deposit-" + intentId);
+            BankServiceImpl bank = new BankServiceImpl();
+            TxnResult replay = bank.replayCreditIfCommitted(connection, txKey, targetAccountId);
+            if (replay == null) {
+                long before = scalarLong(connection,
+                        "SELECT COALESCE(balance,0) FROM cmv4_bank_accounts WHERE account_id=? FOR UPDATE",
+                        targetAccountId);
+                long after = before + longValue(intentRow.get("amount"));
+                String txId = txKey;
+                update(connection,
+                        "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?",
+                        after, timestamp, targetAccountId);
+                update(connection,
+                        "INSERT INTO cmv4_bank_ledger(tx_id,account_id,counterparty_account_id,player_uuid,tx_type,amount,balance_after,idempotency_key,status,created_at,actor,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                        txId, targetAccountId, "AR_DEPOSIT", string(intentRow.get("player_uuid")),
+                        "AR_DEPOSIT", longValue(intentRow.get("amount")), after, txKey, "COMMITTED",
+                        timestamp, string(intentRow.get("player_name")), "atm-deposit=" + intentId);
+            } else {
+                Map<String, Object> ledger = queryOne(connection,
+                        "SELECT account_id,amount FROM cmv4_bank_ledger WHERE idempotency_key=? LIMIT 1", txKey);
+                if (ledger == null || !targetAccountId.equals(string(ledger.get("account_id")))
+                        || longValue(ledger.get("amount")) != longValue(intentRow.get("amount"))) {
+                    throw new IllegalStateException("AR deposit idempotency key is bound to a conflicting bank credit");
+                }
+            }
             for (SerializedArFragment fragment : fragments) {
                 boolean fungible = isFungibleArSerial(fragment.serial());
                 Map<String, Object> asset = queryOne(connection,
-                        "SELECT denomination,material,signature_version,status FROM cmv8_ar_assets WHERE serial=? FOR UPDATE",
+                        "SELECT denomination,material,signature_version,status,issued_units,deposited_units,deposited_intent_id,deposited_account_id "
+                                + "FROM cmv8_ar_assets WHERE serial=? FOR UPDATE",
                         fragment.serial());
                 if (asset == null || asset.isEmpty()) {
-                    if (fungible) {
-                        throw new IllegalStateException("Fungible AR registry entry is missing");
-                    }
-                    update(connection,
-                            "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_at,deposited_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                            fragment.serial(), fragment.amount(), fragment.material().name(), LEGACY_AR_SIGNATURE_VERSION,
-                            AR_DEPOSIT_STATUS_DEPOSITED, timestamp, timestamp, timestamp);
-                    continue;
+                    throw new IllegalStateException("AR asset registry entry is missing");
                 }
                 int expectedDenomination = fungible ? 1 : fragment.amount();
                 int expectedVersion = fungible ? OFFICIAL_AR_SIGNATURE_VERSION : LEGACY_AR_SIGNATURE_VERSION;
@@ -2090,23 +2124,40 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 }
                 String assetStatus = string(asset.get("status"));
                 if (fungible) {
-                    if (!"ACTIVE".equals(assetStatus)) {
-                        throw new IllegalStateException("Fungible AR registry is not active");
+                    long issued = longValue(asset.get("issued_units"));
+                    long deposited = longValue(asset.get("deposited_units"));
+                    if (!"ACTIVE".equals(assetStatus) || issued <= 0L || deposited + fragment.amount() > issued) {
+                        throw new IllegalStateException("Fungible AR supply is not available in the authoritative registry");
+                    }
+                    int movement = updateCount(connection,
+                            "INSERT INTO cmv8_ar_asset_movements(intent_id,serial,account_id,amount,created_at) VALUES(?,?,?,?,?) ON CONFLICT(intent_id,serial) DO NOTHING",
+                            intentId, fragment.serial(), targetAccountId, fragment.amount(), timestamp);
+                    if (movement == 0) {
+                        Map<String, Object> existingMovement = queryOne(connection,
+                                "SELECT account_id,amount FROM cmv8_ar_asset_movements WHERE intent_id=? AND serial=?",
+                                intentId, fragment.serial());
+                        if (existingMovement == null || !targetAccountId.equals(string(existingMovement.get("account_id")))
+                                || longValue(existingMovement.get("amount")) != fragment.amount()) {
+                            throw new IllegalStateException("AR deposit movement idempotency conflict");
+                        }
                     }
                     update(connection,
-                            "UPDATE cmv8_ar_assets SET updated_at=? WHERE serial=? AND status=?",
-                            timestamp, fragment.serial(), "ACTIVE");
+                            "UPDATE cmv8_ar_assets SET deposited_units=deposited_units+?,updated_at=? WHERE serial=? AND status=?",
+                            movement == 1 ? fragment.amount() : 0L, timestamp, fragment.serial(), "ACTIVE");
                     continue;
                 }
                 if (AR_DEPOSIT_STATUS_DEPOSITED.equals(assetStatus)) {
+                    if (!intentId.equals(string(asset.get("deposited_intent_id")))) {
+                        throw new IllegalStateException("AR serial has already been deposited by another intent");
+                    }
                     continue;
                 }
                 if (!"ACTIVE".equals(assetStatus)) {
                     throw new IllegalStateException("AR serial registry is not active");
                 }
                 update(connection,
-                        "UPDATE cmv8_ar_assets SET status=?,deposited_at=?,updated_at=? WHERE serial=? AND status=?",
-                        AR_DEPOSIT_STATUS_DEPOSITED, timestamp, timestamp, fragment.serial(), "ACTIVE");
+                        "UPDATE cmv8_ar_assets SET status=?,deposited_at=?,deposited_intent_id=?,deposited_account_id=?,updated_at=? WHERE serial=? AND status=?",
+                        AR_DEPOSIT_STATUS_DEPOSITED, timestamp, intentId, targetAccountId, timestamp, fragment.serial(), "ACTIVE");
             }
             update(connection,
                     "UPDATE cmv8_ar_deposit_intents SET status=?,committed_at=?,updated_at=? WHERE id=? AND status=?",
@@ -2216,49 +2267,25 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private void advanceArDepositIntent(String intentId, Player player) {
-        dbFuture("load AR deposit intent for commit", () -> tx(connection -> mapArDepositIntent(
-                queryOne(connection, "SELECT id,player_uuid,player_name,account_id,account_scope,atm_id,amount,idempotency_key,snapshot,status FROM cmv8_ar_deposit_intents WHERE id=? FOR UPDATE", intentId))))
-                .whenComplete((intent, loadError) -> Bukkit.getScheduler().runTask(this, () -> {
-                    if (loadError != null || intent == null || !AR_DEPOSIT_STATUS_PHYSICAL_REMOVED.equals(intent.status())) {
-                        if (loadError != null) {
-                            getLogger().warning("AR deposit intent load failed: " + safeError(loadError));
+        dbFuture("commit AR deposit atomically", () -> commitArDepositAtomically(intentId))
+                .whenComplete((committed, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (error != null || !Boolean.TRUE.equals(committed)) {
+                        getLogger().warning("AR deposit atomic commit is pending retry for " + intentId + ": " + safeError(error));
+                        if (player != null && player.isOnline()) {
+                            player.sendMessage(color("&eAR снят, но единая банковская операция ещё не подтверждена. Повтор будет выполнен автоматически."));
                         }
                         return;
                     }
-                    CompletableFuture<TxnResult> credit = "TREASURY".equals(intent.scope())
-                            ? creditAccountAsync(intent.accountId(), intent.playerUuid().toString(), intent.playerName(), intent.amount(),
-                            intent.idempotencyKey(), "TREASURY_DEPOSIT" + (intent.fragments().size() > 1 ? "_ALL" : ""), "atm=" + intent.atmId())
-                            : creditDepositForPlayerAsync(player, intent);
-                    credit.whenComplete((result, creditError) -> Bukkit.getScheduler().runTask(this, () -> {
-                        if (creditError != null || result == null) {
-                            // The bank may have committed immediately before a
-                            // connection failure. Keep PHYSICAL_REMOVED and
-                            // retry with the same idempotency key.
-                            getLogger().warning("AR deposit credit is pending retry for " + intent.id() + ": " + safeError(creditError));
-                            if (player != null && player.isOnline()) {
-                                player.sendMessage(color("&eAR снят и ожидает подтверждения банка. Повтор будет выполнен автоматически."));
-                            }
-                            return;
-                        }
-                        if (!result.ok) {
-                            rejectArDeposit(intent, player, first(result.message, result.code));
-                            return;
-                        }
-                        dbFuture("finalize AR deposit", () -> markArDepositCommitted(intent.id()))
-                                .whenComplete((committed, finalizeError) -> Bukkit.getScheduler().runTask(this, () -> {
-                                    if (finalizeError != null || !Boolean.TRUE.equals(committed)) {
-                                        getLogger().warning("AR deposit commit registry failed for " + intent.id() + ": " + safeError(finalizeError));
-                                        if (player != null && player.isOnline()) {
-                                            player.sendMessage(color("&eБанк подтвердил AR, но реестр предмета ещё не синхронизирован. Повтор будет выполнен автоматически."));
-                                        }
-                                        return;
-                                    }
-                                    if (player != null && player.isOnline()) {
-                                        player.sendMessage(color("&aВ банк внесено: &f" + intent.amount() + " AR"));
+                    if (player != null && player.isOnline()) {
+                        player.sendMessage(color("&aВ банк внесено AR: операция подтверждена реестром."));
+                        dbFuture("load committed AR deposit", () -> tx(connection -> mapArDepositIntent(
+                                queryOne(connection, "SELECT id,player_uuid,player_name,account_id,account_scope,atm_id,amount,idempotency_key,snapshot,status FROM cmv8_ar_deposit_intents WHERE id=?", intentId))))
+                                .thenAccept(intent -> Bukkit.getScheduler().runTask(this, () -> {
+                                    if (intent != null && player.isOnline()) {
                                         openBankAtmAccount(player, intent.atmId(), intent.scope());
                                     }
                                 }));
-                    }));
+                    }
                 }));
     }
 
@@ -2817,7 +2844,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArFungibleSignature(arMaterial));
         stack.setItemMeta(meta);
         if (registerAsset) {
-            registerArAssetAsync(serial, denomination, arMaterial);
+            registerArAssetAsync(serial, stackAmount, arMaterial);
         }
         return stack;
     }
@@ -2921,13 +2948,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
      * stack is inserted only inside the same transaction that consumes it,
      * and the serial is then atomically moved from ACTIVE to DEPOSITED.
      */
-    private void registerArAssetAsync(String serial, int denomination, Material material) {
-        if (serial == null || serial.isBlank() || denomination <= 0 || material == null) {
+    private void registerArAssetAsync(String serial, int issuedAmount, Material material) {
+        if (serial == null || serial.isBlank() || issuedAmount <= 0 || material == null) {
             return;
         }
         dbAsync("register official AR asset", () -> update(
-                "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(serial) DO NOTHING",
-                serial, denomination, material.name(), OFFICIAL_AR_SIGNATURE_VERSION, "ACTIVE", now(), now()));
+                "INSERT INTO cmv8_ar_assets(serial,denomination,material,signature_version,status,issued_units,issued_at,updated_at) VALUES(?,?,?,?,?,?,?,?) "
+                        + "ON CONFLICT(serial) DO UPDATE SET issued_units=cmv8_ar_assets.issued_units+excluded.issued_units,updated_at=excluded.updated_at",
+                serial, 1, material.name(), OFFICIAL_AR_SIGNATURE_VERSION, "ACTIVE", issuedAmount, now(), now()));
     }
 
     private List<ItemStack> snapshotOfficialArStacks(Inventory inventory) {
@@ -3564,6 +3592,24 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 bankAccountId(playerKey), pinHash, stamp, stamp, "economy-core-pin-sync");
     }
 
+    private void synchronizePersonalPinHash(Connection connection, String uuid, String pinHash) throws Exception {
+        String playerKey = first(uuid, "").trim();
+        if (playerKey.isBlank() || pinHash == null || pinHash.isBlank()) {
+            return;
+        }
+        long stamp = now();
+        update(connection,
+                "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at) "
+                        + "VALUES(?,?,?,0,?,?) "
+                        + "ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at",
+                playerKey, "", pinHash, stamp, stamp);
+        update(connection,
+                "INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by) "
+                        + "VALUES(?,?,0,?,?,?) "
+                        + "ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by",
+                bankAccountId(playerKey), pinHash, stamp, stamp, "economy-core-pin-sync");
+    }
+
     private void recordFailedPinAttempt(Player player, String source) {
         String uuid = player.getUniqueId().toString();
         long t = nowSec();
@@ -3693,6 +3739,65 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     accountPinLockoutKey(normalizedAccountId), lockedUntil, "bank-account-pin", nowSeconds);
         }
         return PinVerification.failed("PIN_INVALID", "Неверный PIN казны.");
+    }
+
+    /**
+     * Personal PIN verification for a balance mutation.  The lockout row,
+     * both compatibility PIN rows, failed attempts, and the eventual ledger
+     * mutation are held by the caller's transaction.
+     */
+    private PinVerification verifyPersonalPinForMutation(Connection connection, String uuid,
+                                                         String pin, String source) throws Exception {
+        String playerKey = first(uuid, "").trim();
+        if (playerKey.isBlank() || !pinMatchesPolicy(pin)) {
+            return PinVerification.failed("PIN_INVALID", "Personal bank PIN is invalid.");
+        }
+        long nowSeconds = nowSec();
+        String lockoutKey = bankPinLockoutKey(playerKey);
+        Map<String, Object> lock = queryOne(connection,
+                "SELECT locked_until FROM account_lockouts WHERE account_id=? FOR UPDATE", lockoutKey);
+        if (lock != null && longValue(lock.get("locked_until")) > nowSeconds) {
+            return PinVerification.failed("PIN_LOCKED", "Personal bank PIN is temporarily locked.");
+        }
+        Map<String, Object> personal = queryOne(connection,
+                "SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=? FOR UPDATE", playerKey);
+        Map<String, Object> account = queryOne(connection,
+                "SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=? FOR UPDATE",
+                bankAccountId(playerKey));
+        Map<String, Object> selected = personal != null && !first(string(personal.get("pin_hash")), "").isBlank()
+                ? personal : account;
+        if (selected == null || first(string(selected.get("pin_hash")), "").isBlank()) {
+            return PinVerification.failed("PIN_REQUIRED", "Personal bank PIN is not configured.");
+        }
+        if (longValue(selected.get("must_change")) > 0L) {
+            return PinVerification.failed("PIN_CHANGE_REQUIRED", "The temporary personal bank PIN must be changed.");
+        }
+        boolean valid;
+        try {
+            valid = verifyPinHash(string(selected.get("pin_hash")), pin.trim());
+        } catch (Exception malformedHash) {
+            getLogger().warning("Personal PIN hash rejected: " + safeError(malformedHash));
+            valid = false;
+        }
+        if (valid) {
+            synchronizePersonalPinHash(connection, playerKey, string(selected.get("pin_hash")));
+            update(connection, "DELETE FROM account_lockouts WHERE account_id=?", lockoutKey);
+            return PinVerification.ok();
+        }
+        update(connection,
+                "INSERT INTO failed_pin_attempts(minecraft_uuid,site_account_id,attempted_at,source) VALUES(?,?,?,?)",
+                playerKey, "", nowSeconds, first(source, "economy-personal-pin"));
+        long attempts = scalarLong(connection,
+                "SELECT COUNT(*) FROM failed_pin_attempts WHERE minecraft_uuid=? AND attempted_at>=?",
+                playerKey, nowSeconds - PIN_ATTEMPT_WINDOW_SECONDS);
+        if (attempts >= PIN_MAX_ATTEMPTS) {
+            long lockedUntil = nowSeconds + PIN_LOCK_SECONDS;
+            update(connection,
+                    "INSERT INTO account_lockouts(account_id,locked_until,reason,updated_at) VALUES(?,?,?,?) "
+                            + "ON CONFLICT(account_id) DO UPDATE SET locked_until=GREATEST(account_lockouts.locked_until,excluded.locked_until),reason=excluded.reason,updated_at=excluded.updated_at",
+                    lockoutKey, lockedUntil, "bank-pin", nowSeconds);
+        }
+        return PinVerification.failed("PIN_INVALID", "Personal bank PIN is invalid.");
     }
 
     private long now() {
@@ -3881,28 +3986,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             if (providedPin.isBlank()) {
                 return new TxnResult(false, "PIN_REQUIRED", "Bank PIN is required for this transfer.", 0L, "");
             }
-            long locked = bankPinLockedSeconds(playerKey);
-            if (locked > 0) {
-                return new TxnResult(false, "PIN_LOCKED", "PIN temporarily locked.", 0L, "");
-            }
-            if (!bankPinSet(playerKey)) {
-                return new TxnResult(false, "PIN_REQUIRED", "Bank PIN is not configured.", 0L, "");
-            }
-            if (bankPinMustChange(playerKey)) {
-                return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Temporary PIN must be changed first.", 0L, "");
-            }
-            if (!verifyBankPin(playerKey, providedPin)) {
-                Player online = Bukkit.getPlayer(playerUuid);
-                if (online != null) {
-                    recordFailedPinAttempt(online, "economy-artifact-transfer");
-                }
-                return new TxnResult(false, "PIN_INVALID", "PIN is invalid.", 0L, "");
-            }
             return tx(connection -> {
                 Map<String, Object> fromAccount = ensureBankAccount(connection, playerKey, first(playerName, ""));
                 Map<String, Object> toAccount = resolveManagedAccount(connection, toAccountId, toOwnerUuid, toOwnerName);
                 String fromId = string(fromAccount.get("account_id"));
                 String resolvedToId = string(toAccount.get("account_id"));
+                PinVerification pinVerification = verifyPersonalPinForMutation(
+                        connection, playerKey, providedPin, "economy-artifact-transfer");
+                if (!pinVerification.valid()) {
+                    return new TxnResult(false, pinVerification.code(), pinVerification.message(), 0L, "");
+                }
                 String txKey = first(idempotencyKey, "managed-transfer-" + UUID.randomUUID());
                 TxnResult replay = replayTransferIfCommitted(connection, txKey, fromId, resolvedToId, amount);
                 if (replay != null) {
@@ -4335,7 +4428,12 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             update(connection, "CREATE TABLE IF NOT EXISTS cmv4_pending_ar_settlements(id TEXT PRIMARY KEY,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',amount BIGINT NOT NULL DEFAULT 0 CHECK(amount>0),settlement_type TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',idempotency_key TEXT NOT NULL DEFAULT '',delivery_token TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,delivered_at BIGINT NOT NULL DEFAULT 0)");
             update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE cmv4_pending_ar_settlements ADD COLUMN IF NOT EXISTS delivery_token TEXT NOT NULL DEFAULT ''");
-            update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_assets(serial TEXT PRIMARY KEY,denomination INTEGER NOT NULL CHECK(denomination>0),material TEXT NOT NULL,signature_version INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'ACTIVE',issued_at BIGINT NOT NULL DEFAULT 0,deposited_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_assets(serial TEXT PRIMARY KEY,denomination INTEGER NOT NULL CHECK(denomination>0),material TEXT NOT NULL,signature_version INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'ACTIVE',issued_units BIGINT NOT NULL DEFAULT 0,deposited_units BIGINT NOT NULL DEFAULT 0,deposited_intent_id TEXT NOT NULL DEFAULT '',deposited_account_id TEXT NOT NULL DEFAULT '',issued_at BIGINT NOT NULL DEFAULT 0,deposited_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
+            update(connection, "ALTER TABLE cmv8_ar_assets ADD COLUMN IF NOT EXISTS issued_units BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE cmv8_ar_assets ADD COLUMN IF NOT EXISTS deposited_units BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE cmv8_ar_assets ADD COLUMN IF NOT EXISTS deposited_intent_id TEXT NOT NULL DEFAULT ''");
+            update(connection, "ALTER TABLE cmv8_ar_assets ADD COLUMN IF NOT EXISTS deposited_account_id TEXT NOT NULL DEFAULT ''");
+            update(connection, "CREATE TABLE IF NOT EXISTS cmv8_ar_asset_movements(intent_id TEXT NOT NULL,serial TEXT NOT NULL,account_id TEXT NOT NULL,amount BIGINT NOT NULL CHECK(amount>0),created_at BIGINT NOT NULL DEFAULT 0,PRIMARY KEY(intent_id,serial))");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_cmv8_ar_assets_status ON cmv8_ar_assets(status,updated_at)");
             long arRegistryNow = now();
             for (Material material : List.of(Material.DIAMOND_ORE, Material.DEEPSLATE_DIAMOND_ORE)) {
@@ -6133,28 +6231,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 return new TxnResult(false, "INVALID_REQUEST", "Нельзя перевести AR на тот же счёт.", 0L, "");
             }
             try {
-                long locked = bankPinLockedSeconds(fromUuid.toString());
-                if (locked > 0) {
-                    return new TxnResult(false, "PIN_LOCKED", "PIN временно заблокирован.", 0L, "");
-                }
-                if (!bankPinSet(fromUuid.toString())) {
-                    return new TxnResult(false, "PIN_REQUIRED", "Банковский PIN ещё не задан.", 0L, "");
-                }
-                if (bankPinMustChange(fromUuid.toString())) {
-                    return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Временный PIN нужно заменить на сайте.", 0L, "");
-                }
-                if (!verifyBankPin(fromUuid.toString(), pin)) {
-                    Player online = Bukkit.getPlayer(fromUuid);
-                    if (online != null) {
-                        recordFailedPinAttempt(online, "economy-transfer");
-                    }
-                    return new TxnResult(false, "PIN_INVALID", "Неверный банковский PIN.", 0L, "");
-                }
                 return tx(connection -> {
                     Map<String, Object> fromAccount = ensureBankAccount(connection, fromUuid.toString(), first(fromName, ""));
                     Map<String, Object> toAccount = ensureBankAccount(connection, toUuid.toString(), first(toName, ""));
                     String fromId = string(fromAccount.get("account_id"));
                     String toId = string(toAccount.get("account_id"));
+                    PinVerification pinVerification = verifyPersonalPinForMutation(
+                            connection, fromUuid.toString(), pin, "economy-transfer");
+                    if (!pinVerification.valid()) {
+                        return new TxnResult(false, pinVerification.code(), pinVerification.message(), 0L, "");
+                    }
                     String txKey = first(idempotencyKey, "tx-" + UUID.randomUUID());
                     TxnResult replay = replayTransferIfCommitted(connection, txKey, fromId, toId, amount);
                     if (replay != null) {
@@ -6271,30 +6357,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             String actionName = first(action, "txn");
             String detailText = first(details, "");
             try {
-                if (signedAmount < 0) {
-                    long locked = bankPinLockedSeconds(uuid);
-                    if (locked > 0) {
-                        return new TxnResult(false, "PIN_LOCKED", "PIN temporarily locked.", 0L, "");
-                    }
-                    if (!bankPinSet(uuid)) {
-                        return new TxnResult(false, "PIN_REQUIRED", "Bank PIN is not configured.", 0L, "");
-                    }
-                    if (bankPinMustChange(uuid)) {
-                        return new TxnResult(false, "PIN_CHANGE_REQUIRED", "Temporary PIN must be changed first.", 0L, "");
-                    }
-                    if (pin == null || !pin.matches("\\d{4,8}")) {
-                        return new TxnResult(false, "PIN_REQUIRED", "A 4-8 digit PIN is required.", 0L, "");
-                    }
-                    if (!verifyBankPin(uuid, pin)) {
-                        Player online = Bukkit.getPlayer(playerUuid);
-                        if (online != null) {
-                            recordFailedPinAttempt(online, "economy-bridge");
-                        }
-                        return new TxnResult(false, "PIN_INVALID", "PIN is invalid.", 0L, "");
-                    }
-                }
                 return tx(connection -> {
                     ensureBankAccount(connection, uuid, first(playerName, ""));
+                    if (signedAmount < 0) {
+                        PinVerification pinVerification = verifyPersonalPinForMutation(
+                                connection, uuid, pin, "economy-bridge");
+                        if (!pinVerification.valid()) {
+                            return new TxnResult(false, pinVerification.code(), pinVerification.message(), 0L, "");
+                        }
+                    }
                     TxnResult replay = replayArtifactStyleTxn(connection, txKey, accountId, uuid, signedAmount, detailText);
                     if (replay != null) {
                         return replay;

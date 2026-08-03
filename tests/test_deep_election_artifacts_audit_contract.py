@@ -88,7 +88,8 @@ def test_election_official_items_cannot_move_to_any_external_storage_or_be_clone
 def test_election_station_replacement_clears_stale_cancelled_flag():
     section = ELECTION[ELECTION.index("public void onBlockPlace"):ELECTION.index("public void onProtectedBreak")]
     assert "isPollingStationProtection(cached)" in section
-    assert "event.setCancelled(false)" in section
+    assert "event.isCancelled()" in section
+    assert "event.setCancelled(false)" not in section
     assert "reactivateRpVotingBlockAfterPlacementAsync" in section
 
 

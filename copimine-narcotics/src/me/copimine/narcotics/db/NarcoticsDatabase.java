@@ -503,6 +503,50 @@ public final class NarcoticsDatabase {
         });
     }
 
+    /**
+     * Persist the completion intent before the final ingredient is removed
+     * from a player's inventory.  The intent is keyed by the cauldron and
+     * state version, so a retry after an acknowledgement loss is harmless.
+     */
+    public CompletableFuture<Void> prepareBrewingCompletionIntent(BlockKey key, long expectedVersion,
+                                                                   UUID ownerUuid, String narcoticId,
+                                                                   String finalIngredient) {
+        if (key == null || expectedVersion < 0L || narcoticId == null || narcoticId.isBlank()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid brewing completion intent."));
+        }
+        if (!appendBrewingCompletionJournal(key, expectedVersion, ownerUuid, narcoticId)) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Brewing completion journal is unavailable."));
+        }
+        return enqueueBrewingWrite(key, () -> runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO narcotics_brewing_completion_intents
+                        (intent_id,world_name,x,y,z,state_version,owner_uuid,narcotic_id,final_ingredient,status,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,'PREPARED',?,?)
+                    ON CONFLICT (world_name,x,y,z,state_version) DO UPDATE
+                    SET owner_uuid=EXCLUDED.owner_uuid,
+                        narcotic_id=EXCLUDED.narcotic_id,
+                        final_ingredient=EXCLUDED.final_ingredient,
+                        updated_at=EXCLUDED.updated_at
+                    WHERE narcotics_brewing_completion_intents.status IN ('PREPARED','CONSUMED')
+                    """)) {
+                long now = Instant.now().toEpochMilli();
+                statement.setString(1, UUID.randomUUID().toString());
+                statement.setString(2, key.world());
+                statement.setInt(3, key.x());
+                statement.setInt(4, key.y());
+                statement.setInt(5, key.z());
+                statement.setLong(6, expectedVersion);
+                statement.setString(7, ownerUuid == null ? "" : ownerUuid.toString());
+                statement.setString(8, narcoticId);
+                statement.setString(9, finalIngredient == null ? "" : finalIngredient);
+                statement.setLong(10, now);
+                statement.setLong(11, now);
+                statement.executeUpdate();
+            }
+            return null;
+        })));
+    }
+
     /** Reserve one unit of a signed stack before an asynchronous state write starts. */
     public CompletableFuture<String> reserveConsumption(UUID playerUuid, String instanceId, String narcoticId) {
         return reserveConsumption(playerUuid, instanceId, narcoticId, 1);
@@ -1091,6 +1135,23 @@ public final class NarcoticsDatabase {
                 )
                 """);
         sql.add("""
+                CREATE TABLE IF NOT EXISTS narcotics_brewing_completion_intents (
+                  intent_id TEXT PRIMARY KEY,
+                  world_name TEXT NOT NULL,
+                  x INTEGER NOT NULL,
+                  y INTEGER NOT NULL,
+                  z INTEGER NOT NULL,
+                  state_version BIGINT NOT NULL,
+                  owner_uuid TEXT NOT NULL DEFAULT '',
+                  narcotic_id TEXT NOT NULL,
+                  final_ingredient TEXT NOT NULL DEFAULT '',
+                  status TEXT NOT NULL DEFAULT 'PREPARED',
+                  created_at BIGINT NOT NULL DEFAULT 0,
+                  updated_at BIGINT NOT NULL DEFAULT 0,
+                  UNIQUE(world_name,x,y,z,state_version)
+                )
+                """);
+        sql.add("""
                 CREATE TABLE IF NOT EXISTS narcotics_consumption_reservations (
                   reservation_id TEXT PRIMARY KEY,
                   instance_id TEXT NOT NULL,
@@ -1129,6 +1190,7 @@ public final class NarcoticsDatabase {
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_issued_instances_status ON narcotics_issued_instances(status,updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_refunds_player ON narcotics_pending_refunds(player_uuid,status,created_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_pending_outputs_player ON narcotics_pending_outputs(player_uuid,status,created_at)");
+        sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_brewing_completion_status ON narcotics_brewing_completion_intents(status,updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_brewing_updated ON narcotics_brewing_states(updated_at)");
         sql.add("CREATE INDEX IF NOT EXISTS idx_narcotics_admin_audit_created ON narcotics_admin_audit(created_at)");
         return sql;
@@ -1874,6 +1936,20 @@ public final class NarcoticsDatabase {
                 output.setLong(7, now);
                 output.executeUpdate();
             }
+        }
+        try (PreparedStatement intent = connection.prepareStatement("""
+                UPDATE narcotics_brewing_completion_intents
+                SET status='COMMITTED',updated_at=?
+                WHERE world_name=? AND x=? AND y=? AND z=? AND state_version=?
+                  AND status IN ('PREPARED','CONSUMED')
+                """)) {
+            intent.setLong(1, Instant.now().toEpochMilli());
+            intent.setString(2, key.world());
+            intent.setInt(3, key.x());
+            intent.setInt(4, key.y());
+            intent.setInt(5, key.z());
+            intent.setLong(6, expectedVersion);
+            intent.executeUpdate();
         }
         return true;
     }

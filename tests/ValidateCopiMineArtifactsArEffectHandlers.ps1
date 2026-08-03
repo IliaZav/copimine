@@ -31,7 +31,7 @@ foreach ($id in $requiredEffectIds) {
 if ($content -notmatch "tryFarmerSweep") { throw "Missing farmer sweep helper." }
 if ($content -notmatch "tryForesterChain") { throw "Missing forester chain helper." }
 if ($content -notmatch "grantTrenchBonus") { throw "Missing trench bonus helper." }
-if ($content -notmatch "pointCompassToLastDeath") { throw "Missing loot compass helper." }
+if ($content -notmatch "activateLootCompass") { throw "Missing loot compass helper." }
 # The donation totem is retired, but the AR infinite totem remains a supported
 # catalog item and must restore its official stack after resurrection.
 if ($content -notmatch "EntityResurrectEvent|INFINITE_TOTEM|restoreInfiniteTotem") { throw "Missing AR infinite totem runtime hook." }

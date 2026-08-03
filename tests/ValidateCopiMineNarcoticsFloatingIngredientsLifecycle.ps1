@@ -6,7 +6,7 @@ foreach ($marker in @(
   'spawnQueuedParticles(block, frozen.size(), false)',
   'Particle.WITCH',
   'Particle.SMALL_FLAME',
-  'clearState(block, key, version)',
+  'private void clearState(Block block, BlockKey key, long version)',
   'handleCauldronBroken(block, block.getLocation().add(0.5D, 0.5D, 0.5D))'
 )) {
   if ($source -notmatch [regex]::Escape($marker)) { throw "Cauldron particle lifecycle marker missing: $marker" }

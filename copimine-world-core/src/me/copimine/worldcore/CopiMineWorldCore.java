@@ -45,10 +45,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.nio.channels.FileChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 
 public final class CopiMineWorldCore extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
     private static final int MAX_SAFE_LOCATION_CHECKS = 256;
     private static final int MAX_NETHER_SAFE_Y = 120;
+    private static final int MAX_EVACUATIONS_PER_TICK = 8;
+    private static final long TRUSTED_TELEPORT_TTL_MILLIS = 5_000L;
     private WorldLimit overworldLimit;
     private WorldAccess netherAccess;
     private WorldAccess endAccess;
@@ -57,8 +66,10 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private final Map<String, BorderSnapshot> savedBorders = new HashMap<>();
     /** Durable snapshot of vanilla borders replaced by this plugin. */
     private File savedBordersFile;
-    private final Set<UUID> trustedPluginTeleports = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, TeleportToken> trustedPluginTeleports = new ConcurrentHashMap<>();
     private final Set<UUID> redirectInFlight = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> evacuationQueued = ConcurrentHashMap.newKeySet();
+    private final ConcurrentLinkedQueue<EvacuationRequest> evacuationQueue = new ConcurrentLinkedQueue<>();
 
     @Override
     public void onEnable() {
@@ -135,10 +146,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             return false;
         }
         UUID uuid = player.getUniqueId();
-        trustedPluginTeleports.add(uuid);
+        TeleportToken token = new TeleportToken(uuid, UUID.randomUUID().toString(),
+                target.getWorld().getName(), System.currentTimeMillis() + TRUSTED_TELEPORT_TTL_MILLIS);
+        trustedPluginTeleports.put(uuid, token);
         boolean result = player.teleport(target, PlayerTeleportEvent.TeleportCause.PLUGIN);
         if (!result) {
-            trustedPluginTeleports.remove(uuid);
+            trustedPluginTeleports.remove(uuid, token);
         }
         return result;
     }
@@ -188,7 +201,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
         if ("safecheck".equalsIgnoreCase(args[0])) {
             enforceWorldAccessAndBorders();
-            sender.sendMessage(color("&aПроверка завершена."));
+            sender.sendMessage(color("&aПроверка запущена; перемещения игроков поставлены в очередь и будут выполнены постепенно."));
             return true;
         }
         if ("border".equalsIgnoreCase(args[0])) {
@@ -329,7 +342,9 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onTeleport(PlayerTeleportEvent event) {
         if (event.isCancelled()) {
-            trustedPluginTeleports.remove(event.getPlayer().getUniqueId());
+            if (event.getCause() == PlayerTeleportEvent.TeleportCause.PLUGIN) {
+                trustedPluginTeleports.remove(event.getPlayer().getUniqueId());
+            }
             return;
         }
         if (event.getTo() == null || event.getTo().getWorld() == null) {
@@ -342,11 +357,18 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         };
         boolean commandTeleport = event.getCause() == PlayerTeleportEvent.TeleportCause.COMMAND;
         boolean pluginTeleport = event.getCause() == PlayerTeleportEvent.TeleportCause.PLUGIN;
+        TeleportToken trustedToken = pluginTeleport ? trustedPluginTeleports.get(event.getPlayer().getUniqueId()) : null;
+        boolean trustedPluginTeleport = trustedToken != null
+                && trustedToken.playerUuid().equals(event.getPlayer().getUniqueId())
+                && trustedToken.targetWorld().equals(targetWorld.getName())
+                && trustedToken.expiresAtMillis() >= System.currentTimeMillis();
+        if (pluginTeleport && trustedToken != null) {
+            trustedPluginTeleports.remove(event.getPlayer().getUniqueId(), trustedToken);
+        }
         WorldAccess targetAccess = accessFor(targetWorld);
         if (commandTeleport && targetAccess != null && !targetAccess.enabled() && targetAccess.allowCommandsTeleport()) {
             return;
         }
-        boolean trustedPluginTeleport = pluginTeleport && trustedPluginTeleports.remove(event.getPlayer().getUniqueId());
         if (pluginTeleport && targetAccess != null && !targetAccess.enabled() && trustedPluginTeleport) {
             return;
         }
@@ -422,6 +444,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         blockedWorldWarnings.remove(event.getPlayer().getUniqueId());
         redirectInFlight.remove(event.getPlayer().getUniqueId());
         trustedPluginTeleports.remove(event.getPlayer().getUniqueId());
+        evacuationQueued.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -525,11 +548,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private void enforceWorldAccessAndBorders() {
+        processEvacuationQueue();
         for (Player player : Bukkit.getOnlinePlayers()) {
             World world = player.getWorld();
             WorldAccess blockedAccess = accessFor(world);
             if (blockedAccess != null && !blockedAccess.enabled()) {
-                redirectPlayer(player, blockedAccess, blockedMessage(world));
+                enqueueEvacuation(player, blockedAccess, blockedMessage(world));
                 continue;
             }
             blockedWorldWarnings.remove(player.getUniqueId());
@@ -538,7 +562,10 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                     && isOutsideLimit(player.getLocation(), overworldLimit)) {
                 Location safe = clampToBorder(player.getLocation(), overworldLimit);
                 if (safe != null) {
-                    player.teleport(safe);
+                    if (!player.teleport(safe)) {
+                        getLogger().warning("WorldCore could not clamp " + player.getName() + " back inside the border.");
+                        player.sendMessage(color("&cНе удалось вернуть вас в безопасную зону границы."));
+                    }
                 } else {
                     getLogger().warning("WorldCore could not safely clamp " + player.getName() + " back inside the border.");
                 }
@@ -688,15 +715,16 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 cfg.set(path + ".warning_distance", snap.warningDistance());
                 cfg.set(path + ".warning_time", snap.warningTime());
             }
-            File tmp = new File(savedBordersFile.getParentFile(), savedBordersFile.getName() + ".tmp");
-            cfg.save(tmp);
-            if (!tmp.renameTo(savedBordersFile)) {
-                if (savedBordersFile.isFile() && !savedBordersFile.delete()) {
-                    throw new IOException("could not replace border snapshot");
-                }
-                if (!tmp.renameTo(savedBordersFile)) {
-                    throw new IOException("could not move border snapshot into place");
-                }
+            Path targetPath = savedBordersFile.toPath();
+            Path tmpPath = targetPath.resolveSibling(savedBordersFile.getName() + ".tmp");
+            cfg.save(tmpPath.toFile());
+            try (FileChannel channel = FileChannel.open(tmpPath, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+            try {
+                Files.move(tmpPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException unsupported) {
+                Files.move(tmpPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException | IllegalArgumentException error) {
             getLogger().warning("WorldCore could not persist border snapshot: " + error.getMessage());
@@ -717,8 +745,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         sender.sendMessage(color("&6/cmworld border apply"));
         sender.sendMessage(color("&6/cmworld nether open|close|status"));
         sender.sendMessage(color("&6/cmworld end open|close|status"));
-        sender.sendMessage(color("&7If players are inside: &f/cmworld nether close confirm"));
-        sender.sendMessage(color("&7If players are inside: &f/cmworld end close confirm"));
+        sender.sendMessage(color("&7Если игроки внутри: &f/cmworld nether close confirm"));
+        sender.sendMessage(color("&7Если игроки внутри: &f/cmworld end close confirm"));
         sender.sendMessage(color("&6/cmworld reload"));
         sender.sendMessage(color("&6/cmworld safecheck"));
     }
@@ -755,7 +783,31 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private void evacuatePlayers(WorldAccess access, String message) {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (matchesAccessWorld(access, player.getWorld())) {
-                redirectPlayer(player, access, message);
+                enqueueEvacuation(player, access, message);
+            }
+        }
+    }
+
+    private void enqueueEvacuation(Player player, WorldAccess access, String message) {
+        if (player == null || access == null || !player.isOnline()) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        if (evacuationQueued.add(uuid)) {
+            evacuationQueue.offer(new EvacuationRequest(uuid, access, message));
+        }
+    }
+
+    private void processEvacuationQueue() {
+        for (int processed = 0; processed < MAX_EVACUATIONS_PER_TICK; processed++) {
+            EvacuationRequest request = evacuationQueue.poll();
+            if (request == null) {
+                return;
+            }
+            evacuationQueued.remove(request.playerUuid());
+            Player player = Bukkit.getPlayer(request.playerUuid());
+            if (player != null && player.isOnline() && matchesAccessWorld(request.access(), player.getWorld())) {
+                redirectPlayer(player, request.access(), request.message());
             }
         }
     }
@@ -1112,6 +1164,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private record OperationResult(boolean success, String message) {
+    }
+
+    private record TeleportToken(UUID playerUuid, String operationId, String targetWorld, long expiresAtMillis) {
+    }
+
+    private record EvacuationRequest(UUID playerUuid, WorldAccess access, String message) {
     }
 
     private record BorderSnapshot(double centerX, double centerZ, double size, double damageBuffer,

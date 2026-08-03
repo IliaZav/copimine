@@ -46,40 +46,23 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           $ErrorActionPreference = 'Stop'
-          function Invoke-PythonCheck {
-            param(
-              [Parameter(Mandatory = $true)][string]$Label,
-              [Parameter(Mandatory = $true)][string[]]$Arguments
-            )
-            Write-Host "RUN $Label"
-            & python @Arguments
-            $exitCode = $LASTEXITCODE
-            if ($exitCode -ne 0) {
-              Write-Output "::error title=Python check failed::$Label (exit code $exitCode)"
-              if ($env:GITHUB_STEP_SUMMARY) {
-                Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "### Python check failed`n`n- **$Label** (exit code $exitCode)"
-              }
-              throw "$Label failed with exit code $exitCode."
-            }
-            Write-Host "PASS $Label"
-          }
-          Get-ChildItem tests -Filter 'test_*.py' -File | ForEach-Object {
-            Invoke-PythonCheck -Label "Python contract: $($_.Name)" -Arguments @($_.FullName)
-          }
-          Invoke-PythonCheck -Label 'security self-test' -Arguments @('admin-web/scripts/security_selftest.py')
-          Invoke-PythonCheck -Label 'backend security regression' -Arguments @('admin-web/scripts/backend_security_regression_test.py')
-          Invoke-PythonCheck -Label 'backend smoke test' -Arguments @('admin-web/scripts/backend_smoketest.py')
-          Invoke-PythonCheck -Label 'backend compileall' -Arguments @('-m', 'compileall', '-q', 'admin-web/backend')
-      - name: Run PowerShell validators
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Source CI has no ignored production payload (server plugin jars,
-          # client jar and built resource pack).  Those 25 checks are run by
-          # the signed release-package validation; keep the source contract
-          # suite explicit and report the exact skipped set.
-          & .\tests\RunCopiMineValidators.ps1 -SkipReleaseArtifacts
-          if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }
+          python -m pytest -q tests --junitxml="$env:GITHUB_WORKSPACE\test-results.xml"
+          if ($LASTEXITCODE -ne 0) { throw 'pytest contract suite failed.' }
+          python admin-web/scripts/security_selftest.py
+          if ($LASTEXITCODE -ne 0) { throw 'security self-test failed.' }
+          python admin-web/scripts/backend_security_regression_test.py
+          if ($LASTEXITCODE -ne 0) { throw 'backend security regression failed.' }
+          python admin-web/scripts/backend_smoketest.py
+          if ($LASTEXITCODE -ne 0) { throw 'backend smoke test failed.' }
+          python -m compileall -q admin-web/backend
+          if ($LASTEXITCODE -ne 0) { throw 'backend compileall failed.' }
+      - name: Publish Python test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-results
+          path: test-results.xml
+          if-no-files-found: error
       - name: Verify clean release provenance
         shell: pwsh
         run: |
@@ -176,3 +159,9 @@ jobs:
             & powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'build-plugin.ps1')
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
           }
+      - name: Run all source and release-artifact validators
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\RunCopiMineValidators.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }

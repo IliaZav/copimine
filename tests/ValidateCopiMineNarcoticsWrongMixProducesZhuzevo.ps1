@@ -3,10 +3,10 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $source = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\cauldron\CauldronBrewingService.java')
 foreach ($marker in @(
   'configService.items().get("zhuzevo")',
-  'finishWrongMix(block, key, nextVersion, current.size(), player)',
-  'finishBrewing(block, key, zhuzevo, version, ingredientCount, true, initiator)',
+  'finishBrewing(block, key, definition, version, ingredientCount, wrongMix, ownerUuid)',
+  'if (wrongMix)',
   'Particle.EXPLOSION',
-  'ThreadLocalRandom.current().nextDouble(6.0D, 15.0001D)'
+  'world.spawnParticle(Particle.SMOKE, center, 42'
 )) {
   if ($source -notmatch [regex]::Escape($marker)) { throw "Wrong-mix zhuzevo marker missing: $marker" }
 }

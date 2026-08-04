@@ -104,6 +104,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -195,6 +196,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private NamespacedKey officialArDenominationKey;
     private NamespacedKey officialArSignatureVersionKey;
     private NamespacedKey officialArWorldDropTokenKey;
+    private NamespacedKey officialArIssuanceTokenKey;
     private byte[] officialArSigningSecret;
     private BukkitTask atmAnchorGuardTask;
 
@@ -404,6 +406,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         officialArDenominationKey = new NamespacedKey(this, "ar_denomination");
         officialArSignatureVersionKey = new NamespacedKey(this, "ar_signature_version");
         officialArWorldDropTokenKey = new NamespacedKey(this, "ar_world_drop_token");
+        officialArIssuanceTokenKey = new NamespacedKey(this, "ar_issuance_token");
         officialArSigningSecret = loadOrCreateArSigningSecret();
         pendingArSettlementJournalPath = getDataFolder().toPath().resolve("pending-ar-settlements.tsv");
         try {
@@ -933,6 +936,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDrop(PlayerDropItemEvent event) {
         if (containsOfficialAr(event.getItemDrop().getItemStack())) {
+            ItemStack normalized = officialArService.normalizeStack(event.getItemDrop().getItemStack());
+            if (normalized != null && normalized != event.getItemDrop().getItemStack()) {
+                event.getItemDrop().setItemStack(normalized);
+            }
             // A player drop is an explicit cash hand-off. Authorize this
             // single spawn and strip the one-shot token after it is accepted
             // so the AR keeps its normal stack identity.
@@ -945,7 +952,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDeath(PlayerDeathEvent event) {
-        for (ItemStack stack : event.getDrops()) {
+        ListIterator<ItemStack> iterator = event.getDrops().listIterator();
+        while (iterator.hasNext()) {
+            ItemStack stack = iterator.next();
+            if (containsOfficialAr(stack)) {
+                ItemStack normalized = officialArService.normalizeStack(stack);
+                if (normalized != null && normalized != stack) {
+                    stack = normalized;
+                    iterator.set(stack);
+                }
+            }
             if (containsOfficialAr(stack) && !officialArService.authorizeWorldDrop(stack)) {
                 getLogger().warning("Official AR death drop could not be authorized for "
                         + event.getEntity().getUniqueId());
@@ -2807,32 +2823,37 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private boolean issueOfficialArAmount(Player player, long amount, String source, boolean dropOverflow) {
-        if (player == null || amount <= 0 || amount > Integer.MAX_VALUE || arCapacity(player.getInventory()) < amount) {
+        if (player == null || amount <= 0 || amount > Integer.MAX_VALUE) {
             return false;
         }
+        // Older releases issued a valid-but-unique v2 serial. Normalize it
+        // before calculating capacity so withdrawn AR can stack with every
+        // other fungible AR, including items already in the player's inventory.
+        normalizeOfficialArItems(player);
+        if (arCapacity(player.getInventory()) < amount) {
+            return false;
+        }
+        String issuanceToken = UUID.randomUUID().toString();
         long remaining = amount;
-        List<String> issuedSerials = new ArrayList<>();
         while (remaining > 0) {
             int stackAmount = (int) Math.min(64L, remaining);
             ItemStack out = new OfficialArServiceImpl().createPreparedStack(Material.DIAMOND_ORE, stackAmount, source);
-            String serial = officialArSerial(out);
+            markOfficialArIssuance(out, issuanceToken);
             Map<Integer, ItemStack> left = player.getInventory().addItem(out);
             if (!left.isEmpty()) {
                 // addItem() can partially succeed when another plugin changes
                 // inventory limits between the capacity check and the write.
-                // Roll back every stack issued by this attempt, not just the
-                // last serial; otherwise the bank debit is queued for the
-                // full amount while a prefix of that amount remains live.
-                removeOfficialArSerial(player.getInventory(), serial, stackAmount);
-                for (String issuedSerial : issuedSerials) {
-                    removeOfficialArSerial(player.getInventory(), issuedSerial, 64);
-                }
+                // Roll back only stacks carrying this attempt token. A shared
+                // fungible serial is not enough to identify newly issued AR
+                // and could otherwise remove currency the player had before
+                // the failed issuance.
+                removeOfficialArIssuance(player.getInventory(), issuanceToken);
                 player.updateInventory();
                 return false;
             }
-            issuedSerials.add(serial);
             remaining -= stackAmount;
         }
+        clearOfficialArIssuance(player.getInventory(), issuanceToken);
         player.updateInventory();
         return true;
     }
@@ -3179,6 +3200,64 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
     }
 
+    private void markOfficialArIssuance(ItemStack stack, String issuanceToken) {
+        if (stack == null || stack.getItemMeta() == null || issuanceToken == null || issuanceToken.isBlank()) {
+            return;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        meta.getPersistentDataContainer().set(officialArIssuanceTokenKey, PersistentDataType.STRING, issuanceToken);
+        stack.setItemMeta(meta);
+    }
+
+    private boolean hasOfficialArIssuance(ItemStack stack, String issuanceToken) {
+        if (stack == null || !isOfficialAr(stack) || stack.getItemMeta() == null
+                || issuanceToken == null || issuanceToken.isBlank()) {
+            return false;
+        }
+        return issuanceToken.equals(stack.getItemMeta().getPersistentDataContainer()
+                .get(officialArIssuanceTokenKey, PersistentDataType.STRING));
+    }
+
+    private void removeOfficialArIssuance(Inventory inventory, String issuanceToken) {
+        if (inventory == null || issuanceToken == null || issuanceToken.isBlank()) {
+            return;
+        }
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            if (hasOfficialArIssuance(inventory.getItem(slot), issuanceToken)) {
+                inventory.setItem(slot, null);
+            }
+        }
+        if (inventory instanceof org.bukkit.inventory.PlayerInventory playerInventory
+                && hasOfficialArIssuance(playerInventory.getItemInOffHand(), issuanceToken)) {
+            playerInventory.setItemInOffHand(null);
+        }
+    }
+
+    private void clearOfficialArIssuance(Inventory inventory, String issuanceToken) {
+        if (inventory == null || issuanceToken == null || issuanceToken.isBlank()) {
+            return;
+        }
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!hasOfficialArIssuance(stack, issuanceToken) || stack.getItemMeta() == null) {
+                continue;
+            }
+            ItemMeta meta = stack.getItemMeta();
+            meta.getPersistentDataContainer().remove(officialArIssuanceTokenKey);
+            stack.setItemMeta(meta);
+            inventory.setItem(slot, stack);
+        }
+        if (inventory instanceof org.bukkit.inventory.PlayerInventory playerInventory) {
+            ItemStack offhand = playerInventory.getItemInOffHand();
+            if (hasOfficialArIssuance(offhand, issuanceToken) && offhand.getItemMeta() != null) {
+                ItemMeta meta = offhand.getItemMeta();
+                meta.getPersistentDataContainer().remove(officialArIssuanceTokenKey);
+                offhand.setItemMeta(meta);
+                playerInventory.setItemInOffHand(offhand);
+            }
+        }
+    }
+
     private void normalizeOfficialArItems(Player player) {
         if (player == null) {
             return;
@@ -3214,23 +3293,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private ItemStack normalizeOfficialArStack(ItemStack source, String reason) {
         ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason);
         String serial = officialArSerial(source);
+        // Legacy v2 AR is valid currency, but its per-item UUID prevents
+        // Minecraft from stacking it with withdrawn AR. Reissue the
+        // canonical fungible v3 metadata instead of preserving that UUID.
+        if (!isFungibleArSerial(serial)) {
+            return normalized;
+        }
         if (!serial.isBlank() && normalized.hasItemMeta()) {
             ItemMeta meta = normalized.getItemMeta();
             PersistentDataContainer pdc = meta.getPersistentDataContainer();
-            Integer denomination = source.getItemMeta().getPersistentDataContainer()
-                    .get(officialArDenominationKey, PersistentDataType.INTEGER);
-            Integer signatureVersion = source.getItemMeta().getPersistentDataContainer()
-                    .get(officialArSignatureVersionKey, PersistentDataType.INTEGER);
-            pdc.set(officialArSerialKey, PersistentDataType.STRING, serial);
-            if (denomination != null) {
-                pdc.set(officialArDenominationKey, PersistentDataType.INTEGER, denomination);
-            }
-            if (signatureVersion != null) {
-                pdc.set(officialArSignatureVersionKey, PersistentDataType.INTEGER, signatureVersion);
-            }
-            pdc.set(officialArSignatureKey, PersistentDataType.STRING,
-                    first(source.getItemMeta().getPersistentDataContainer()
-                            .get(officialArSignatureKey, PersistentDataType.STRING), ""));
+            pdc.set(officialArSerialKey, PersistentDataType.STRING, arFungibleSerial(normalized.getType()));
             normalized.setItemMeta(meta);
         }
         return normalized;
@@ -3251,6 +3323,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return true;
         }
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        String serial = officialArSerial(stack);
+        if (!isFungibleArSerial(serial)) {
+            return true;
+        }
         return pdc.has(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING)
                 || pdc.has(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING)
                 || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING)
@@ -3771,8 +3847,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         cleanupAtmTitleDisplay(base, atmId);
         // ArmorStand names are rendered by older clients and resource-pack
         // combinations that do not render TextDisplay entities reliably.
-        // Spawn it low enough that the name itself sits directly above the ATM.
-        Location location = base.clone().add(0.5D, 1.25D, 0.5D);
+        // The ArmorStand name anchor is below the entity eye on current
+        // Paper clients. Keep the entity clearly above the block so the
+        // label cannot render inside the ATM model.
+        Location location = base.clone().add(0.5D, 1.9D, 0.5D);
         base.getWorld().spawn(location, ArmorStand.class, stand -> {
             stand.setInvisible(true);
             stand.setMarker(true);

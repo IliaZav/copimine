@@ -25,6 +25,10 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Item;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.ItemDespawnEvent;
+import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -94,6 +98,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     private NamespacedKey pendingOutputKey;
     /** Output rows currently being materialised on a Bukkit thread. */
     private final ConcurrentHashMap<UUID, Set<String>> pendingOutputClaims = new ConcurrentHashMap<>();
+    /** Marked world outputs remain protected until their durable row closes. */
+    private final Set<String> pendingWorldOutputClaims = ConcurrentHashMap.newKeySet();
     private volatile boolean resetInProgress = false;
 
     private NarcoticsConfigService configService;
@@ -158,6 +164,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         consumeReservationNarcotics.clear();
         consumeReservationQuantities.clear();
         pendingOutputClaims.clear();
+        pendingWorldOutputClaims.clear();
         if (clientBridge != null) {
             clientBridge.shutdown();
         }
@@ -327,6 +334,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent event) {
+        for (org.bukkit.entity.Entity entity : event.getChunk().getEntities()) {
+            if (entity instanceof Item item) {
+                String outputId = pendingOutputId(item.getItemStack());
+                if (outputId != null) {
+                    pendingWorldOutputClaims.add(outputId);
+                }
+            }
+        }
         if (cauldronService.cachedStateCount() <= 0) {
             return;
         }
@@ -440,6 +455,57 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return;
         }
         if (itemFactory.isOfficialFinishedItem(stack) && isBlockedDestination(event.getInventory())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputPickup(EntityPickupItemEvent event) {
+        String outputId = pendingOutputId(event.getItem().getItemStack());
+        if (outputId == null) {
+            return;
+        }
+        if (!(event.getEntity() instanceof Player player)) {
+            event.setCancelled(true);
+            return;
+        }
+        pendingWorldOutputClaims.remove(outputId);
+        pendingOutputClaims.computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet())
+                .add(outputId);
+        // The world item is now owned by this player's inventory. Complete the
+        // same durable row used by the cauldron path; the update is idempotent
+        // if the completion callback raced the pickup event.
+        completePendingOutputClaim(player, outputId);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Item item && pendingOutputId(item.getItemStack()) != null) {
+            pendingWorldOutputClaims.add(pendingOutputId(item.getItemStack()));
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputDespawn(ItemDespawnEvent event) {
+        String outputId = pendingOutputId(event.getEntity().getItemStack());
+        if (outputId != null) {
+            pendingWorldOutputClaims.add(outputId);
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputMerge(ItemMergeEvent event) {
+        String sourceId = pendingOutputId(event.getEntity().getItemStack());
+        String targetId = pendingOutputId(event.getTarget().getItemStack());
+        if (sourceId != null || targetId != null) {
+            if (sourceId != null) {
+                pendingWorldOutputClaims.add(sourceId);
+            }
+            if (targetId != null) {
+                pendingWorldOutputClaims.add(targetId);
+            }
             event.setCancelled(true);
         }
     }
@@ -745,14 +811,19 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         ItemStack output = itemFactory.createOfficialItem(definition, 1);
         markPendingOutput(output, outputId);
+        pendingWorldOutputClaims.add(outputId);
         return location.getWorld().dropItemNaturally(location, output);
     }
 
     /** Remove the crash-recovery marker only after the durable row is closed. */
     public void clearPendingBrewingOutputMarker(Item item, String outputId) {
         if (item == null || item.isDead() || outputId == null || outputId.isBlank()) {
+            if (outputId != null && !outputId.isBlank()) {
+                pendingWorldOutputClaims.remove(outputId);
+            }
             return;
         }
+        pendingWorldOutputClaims.remove(outputId);
         ItemStack stack = item.getItemStack();
         var meta = stack == null ? null : stack.getItemMeta();
         if (meta != null && pendingOutputKey != null && hasPendingOutputMarker(stack, outputId)) {
@@ -927,6 +998,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         return outputId.equals(marker);
     }
 
+    private String pendingOutputId(ItemStack stack) {
+        if (stack == null || pendingOutputKey == null || stack.getItemMeta() == null) {
+            return null;
+        }
+        String outputId = stack.getItemMeta().getPersistentDataContainer()
+                .get(pendingOutputKey, PersistentDataType.STRING);
+        return outputId == null || outputId.isBlank() ? null : outputId;
+    }
+
     private boolean isPendingOutputItem(Player player, ItemStack stack) {
         if (player == null || stack == null || pendingOutputKey == null || stack.getItemMeta() == null) {
             return false;
@@ -941,15 +1021,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     }
 
     private boolean isPendingOutputItem(ItemStack stack) {
-        if (stack == null || pendingOutputKey == null || stack.getItemMeta() == null) {
-            return false;
-        }
-        String marker = stack.getItemMeta().getPersistentDataContainer()
-                .get(pendingOutputKey, PersistentDataType.STRING);
-        if (marker == null || marker.isBlank()) {
-            return false;
-        }
-        return pendingOutputClaims.values().stream().anyMatch(claims -> claims.contains(marker));
+        String marker = pendingOutputId(stack);
+        return marker != null && (pendingWorldOutputClaims.contains(marker)
+                || pendingOutputClaims.values().stream().anyMatch(claims -> claims.contains(marker)));
     }
 
     private void removePendingOutputMarkers(Player player, String outputId) {

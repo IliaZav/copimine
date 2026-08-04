@@ -268,6 +268,15 @@ public final class CauldronBrewingService {
                 return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
             }
             if (recipeService.containsUnrecognizedIngredient(current)) {
+                // Do not resolve a global three-ingredient prefix as Zhuzevo
+                // while a four-ingredient recipe can still be completed. A
+                // valid potion/material can arrive with a server-version
+                // alias in its Bukkit metadata; the final decision belongs
+                // at the recipe's maximum size, where the complete list is
+                // checked exactly.
+                if (current.size() < maximumRecipeSize) {
+                    return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
+                }
                 return prepareFinalIngredient(block, key, configService.items().get("zhuzevo"), nextVersion,
                         current.size(), true, ownerUuid, player, stack, ingredient, current);
             }
@@ -490,49 +499,10 @@ public final class CauldronBrewingService {
         Location dropLocation = block.getLocation().add(0.5D, 0.7D, 0.5D);
         // The completion transaction created the output row atomically with
         // the cauldron tombstone. Claim that row before the Bukkit mutation,
-        // drop the certified item at the cauldron, then close the row. If the
-        // world is unavailable, the owner mailbox remains the safe fallback.
-        database.claimPendingBrewingOutput(outputId).whenComplete((claimed, claimError) ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (claimError != null) {
-                        plugin.getLogger().warning("Unable to claim completed brewing output " + outputId
-                                + ": " + claimError.getMessage());
-                        if (ownerUuid != null) {
-                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
-                        }
-                        return;
-                    }
-                    if (!Boolean.TRUE.equals(claimed)) {
-                        // A reconnect recovery worker may already own this
-                        // row. It will finish the mailbox delivery idempotently.
-                        if (ownerUuid == null) {
-                            plugin.getLogger().warning("Completed ownerless brewing output " + outputId
-                                    + " was already claimed; manual review may be required.");
-                        }
-                        return;
-                    }
-                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
-                    if (dropped == null) {
-                        database.releasePendingBrewingOutput(outputId);
-                        if (ownerUuid != null) {
-                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
-                        } else {
-                            plugin.getLogger().severe("Completed brewing output " + definition.id()
-                                    + " could not be dropped and has no owner mailbox.");
-                        }
-                        return;
-                    }
-                    database.completePendingBrewingOutput(outputId).whenComplete((ignored, completeError) ->
-                            Bukkit.getScheduler().runTask(plugin, () -> {
-                                if (completeError != null) {
-                                    plugin.getLogger().warning("Brewing output " + outputId
-                                            + " was dropped but could not be finalized: "
-                                            + completeError.getMessage());
-                                    return;
-                                }
-                                plugin.clearPendingBrewingOutputMarker(dropped, outputId);
-                            }));
-                }));
+        // drop the certified item at the cauldron, then close the row. A
+        // transient database failure is retried instead of ending the brew
+        // with only its visual effect.
+        deliverCompletedBrewingOutput(block, key, definition, outputId, dropLocation, ownerUuid, 0);
         if (block.getWorld() != null) {
             particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH,
                     "zhuzevo".equals(definition.id()) ? 24 : 12);
@@ -546,6 +516,83 @@ public final class CauldronBrewingService {
         completionInFlight.remove(key);
     }
 
+    private void deliverCompletedBrewingOutput(Block block, BlockKey key, NarcoticDefinition definition,
+                                               String outputId, Location dropLocation, UUID ownerUuid, int attempt) {
+        database.claimPendingBrewingOutput(outputId).whenComplete((claimed, claimError) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (claimError != null) {
+                        plugin.getLogger().warning("Unable to claim completed brewing output " + outputId
+                                + ": " + claimError.getMessage());
+                        scheduleOutputDeliveryRetry(block, key, definition, outputId, dropLocation, ownerUuid, attempt);
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(claimed)) {
+                        // A reconnect recovery worker may already own this
+                        // row. It will finish mailbox delivery idempotently.
+                        if (ownerUuid != null) {
+                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
+                        } else {
+                            plugin.getLogger().warning("Completed ownerless brewing output " + outputId
+                                    + " is already owned by another delivery worker.");
+                        }
+                        return;
+                    }
+                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
+                    if (dropped == null) {
+                        database.releasePendingBrewingOutput(outputId).whenComplete((ignored, releaseError) ->
+                                Bukkit.getScheduler().runTask(plugin, () -> {
+                                    if (releaseError != null) {
+                                        plugin.getLogger().log(java.util.logging.Level.WARNING,
+                                                "Unable to release undelivered brewing output " + outputId,
+                                                releaseError);
+                                    }
+                                    if (ownerUuid != null) {
+                                        plugin.requestPendingBrewingOutputDelivery(ownerUuid);
+                                    } else {
+                                        scheduleOutputDeliveryRetry(block, key, definition, outputId,
+                                                dropLocation, ownerUuid, attempt);
+                                    }
+                                }));
+                        return;
+                    }
+                    database.completePendingBrewingOutput(outputId).whenComplete((ignored, completeError) ->
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                if (completeError != null) {
+                                    plugin.getLogger().warning("Brewing output " + outputId
+                                            + " was dropped but could not be finalized: "
+                                            + completeError.getMessage());
+                                    // Keep the WORLD_DROPPED row and marked
+                                    // entity in place; retry only the durable
+                                    // finalization so no second item is made.
+                                    scheduleOutputFinalizationRetry(dropped, outputId, attempt);
+                                    return;
+                                }
+                                plugin.clearPendingBrewingOutputMarker(dropped, outputId);
+                            }));
+                }));
+    }
+
+    private void scheduleOutputDeliveryRetry(Block block, BlockKey key, NarcoticDefinition definition,
+                                             String outputId, Location dropLocation, UUID ownerUuid, int attempt) {
+        long delay = Math.min(20L * 60L, 20L << Math.min(6, Math.max(0, attempt)));
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> deliverCompletedBrewingOutput(block, key, definition, outputId, dropLocation,
+                        ownerUuid, attempt + 1), delay);
+    }
+
+    private void scheduleOutputFinalizationRetry(Item dropped, String outputId, int attempt) {
+        long delay = Math.min(20L * 60L, 20L << Math.min(6, Math.max(0, attempt)));
+        Bukkit.getScheduler().runTaskLater(plugin, () ->
+                database.completePendingBrewingOutput(outputId).whenComplete((ignored, error) ->
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (error != null) {
+                                scheduleOutputFinalizationRetry(dropped, outputId, attempt + 1);
+                            } else {
+                                plugin.clearPendingBrewingOutputMarker(dropped, outputId);
+                            }
+                        })), delay);
+    }
+
     private void simulateWrongMixExplosion(Block block) {
         World world = block.getWorld();
         Location center = block.getLocation().add(0.5D, 1.0D, 0.5D);
@@ -557,7 +604,8 @@ public final class CauldronBrewingService {
         // transaction, so no player damage is generated by the effect.
     }
 
-    private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis, org.bukkit.entity.Player player, ItemStack consumed) {
+    private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version,
+                                     long nowMillis, org.bukkit.entity.Player player, ItemStack consumed) {
         List<IngredientEntry> frozen = List.copyOf(current);
         UUID ownerUuid = player == null ? null : player.getUniqueId();
         synchronized (cacheAdmissionLock) {
@@ -568,10 +616,12 @@ public final class CauldronBrewingService {
                 plugin.getLogger().warning("Brewing state cache reached its safety limit; rejecting a new cauldron at " + key + ".");
                 return false;
             }
-            // Admission and consumption are one main-thread operation. This
-            // prevents a full-cache rejection from consuming an ingredient.
-            if (player != null && consumed != null) {
-                itemFactory.consumeOne(player, consumed);
+            // Admission and exact consumption are one main-thread operation.
+            // Never consume the current hand blindly: a stale event or a
+            // plugin-modified hand must leave the ingredient untouched.
+            if (player != null && consumed != null
+                    && !itemFactory.consumeOneExact(player, consumed)) {
+                return false;
             }
             cacheState(key, new CauldronState(frozen, version, nowMillis, ownerUuid));
         }

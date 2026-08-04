@@ -985,7 +985,7 @@ public final class NarcoticsDatabase {
             }
             for (String id : ids) {
                 try (PreparedStatement update = connection.prepareStatement(
-                        "UPDATE narcotics_pending_outputs SET status='DELIVERING',updated_at=? WHERE id=? AND status='PENDING'")) {
+                    "UPDATE narcotics_pending_outputs SET status='DELIVERING',updated_at=? WHERE id=? AND status='PENDING'")) {
                     update.setLong(1, now);
                     update.setString(2, id);
                     update.executeUpdate();
@@ -1002,7 +1002,11 @@ public final class NarcoticsDatabase {
         }
         return runAsyncResult(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "UPDATE narcotics_pending_outputs SET status='DELIVERING',updated_at=? WHERE id=? AND status='PENDING'")) {
+                    // WORLD_DROPPED is a durable physical-delivery state. It
+                    // is intentionally excluded from mailbox reservation and
+                    // stale-claim reset, preventing a restart from minting a
+                    // second output while the marked item is still in-world.
+                    "UPDATE narcotics_pending_outputs SET status='WORLD_DROPPED',updated_at=? WHERE id=? AND status='PENDING'")) {
                 statement.setLong(1, Instant.now().getEpochSecond());
                 statement.setString(2, id);
                 return statement.executeUpdate() == 1;
@@ -1020,7 +1024,7 @@ public final class NarcoticsDatabase {
             List<PendingBrewingOutput> result = new ArrayList<>();
             try (Connection connection = openConnection();
                  PreparedStatement statement = connection.prepareStatement(
-                         "SELECT id,player_uuid,narcotic_id,amount FROM narcotics_pending_outputs WHERE player_uuid=? AND status='DELIVERING' ORDER BY created_at ASC LIMIT ?")) {
+                    "SELECT id,player_uuid,narcotic_id,amount FROM narcotics_pending_outputs WHERE player_uuid=? AND status IN ('DELIVERING','WORLD_DROPPED') ORDER BY created_at ASC LIMIT ?")) {
                 statement.setString(1, playerUuid.toString());
                 statement.setInt(2, Math.max(1, Math.min(limit, 32)));
                 try (ResultSet rs = statement.executeQuery()) {
@@ -1039,7 +1043,7 @@ public final class NarcoticsDatabase {
         }
         return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "UPDATE narcotics_pending_outputs SET status='DELIVERED',updated_at=? WHERE id=? AND status='DELIVERING'")) {
+                    "UPDATE narcotics_pending_outputs SET status='DELIVERED',updated_at=? WHERE id=? AND status IN ('DELIVERING','WORLD_DROPPED')")) {
                 statement.setLong(1, Instant.now().getEpochSecond());
                 statement.setString(2, id);
                 statement.executeUpdate();
@@ -1054,7 +1058,7 @@ public final class NarcoticsDatabase {
         }
         return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "UPDATE narcotics_pending_outputs SET status='PENDING',updated_at=? WHERE id=? AND status='DELIVERING'")) {
+                    "UPDATE narcotics_pending_outputs SET status='PENDING',updated_at=? WHERE id=? AND status IN ('DELIVERING','WORLD_DROPPED')")) {
                 statement.setLong(1, Instant.now().getEpochSecond());
                 statement.setString(2, id);
                 statement.executeUpdate();

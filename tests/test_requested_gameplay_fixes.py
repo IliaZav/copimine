@@ -182,3 +182,51 @@ def test_resource_pack_preserves_the_vanilla_blue_stained_glass_pane_parent():
     builder = read("resourcepacks/build-resourcepack.py")
     assert 'if material == "blue_stained_glass_pane":' in builder
     assert 'parent = "minecraft:block/blue_stained_glass_pane"' in builder
+
+
+def test_legacy_ar_is_migrated_to_the_shared_fungible_serial_and_failed_issuance_is_token_scoped():
+    economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
+    normalize = between(economy, "private ItemStack normalizeOfficialArStack", "private boolean needsOfficialArNormalization")
+    issue = between(economy, "private boolean issueOfficialArAmount", "private void completeWithdrawOnMainThread")
+    assert "if (!isFungibleArSerial(serial))" in normalize
+    assert "return normalized;" in normalize
+    assert "normalizeOfficialArItems(player)" in issue
+    assert "officialArIssuanceTokenKey" in issue or "markOfficialArIssuance" in issue
+    assert "removeOfficialArIssuance" in issue
+    assert "clearOfficialArIssuance" in issue
+    assert "removeOfficialArSerial(player.getInventory(), serial, stackAmount)" not in issue
+
+
+def test_brewing_does_not_resolve_a_global_three_ingredient_prefix_as_zhuzevo():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+    assert "if (current.size() < maximumRecipeSize)" in decision
+    assert decision.index("if (current.size() < maximumRecipeSize)") < decision.index("return prepareFinalIngredient(block, key, configService.items().get(\"zhuzevo\")")
+
+
+def test_brewing_consumes_only_the_exact_submitted_ingredient_and_world_output_is_durable():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    database = read("copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java")
+    plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
+    queue = between(service, "private boolean queueIngredients", "private void refundFailedIngredient")
+    assert "consumeOneExact" in queue
+    assert "queuePendingIngredientRefunds(ownerUuid, frozen)" in service
+    assert "WORLD_DROPPED" in database
+    assert "pendingWorldOutputClaims" in plugin
+    assert "onPendingOutputPickup" in plugin
+    assert "onPendingOutputDespawn" in plugin
+
+
+def test_shop_revenue_starts_pending_and_waits_for_the_async_credit_worker():
+    artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
+    persist = between(artifacts, "private void persistPaidPurchase", "private void deliverPurchase")
+    assert 'var8.setString(10, "PENDING")' in persist
+    assert 'var8.setString(10, "CREDITED")' not in persist
+
+
+def test_atm_label_is_above_the_block_model():
+    economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
+    atm = between(economy, "private void spawnAtmTitleDisplay", "private void ensureAtmTitleDisplay")
+    match = re.search(r"Location location = base\.clone\(\)\.add\(0\.5D,\s*([0-9.]+)D,\s*0\.5D\)", atm)
+    assert match
+    assert float(match.group(1)) >= 1.8

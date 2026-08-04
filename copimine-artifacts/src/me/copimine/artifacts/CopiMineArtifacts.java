@@ -7177,7 +7177,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var8.setString(7, var2.item().itemId());
             var8.setString(8, var2.shop().shopId());
             var8.setLong(9, var2.item().priceAr());
-            var8.setString(10, "CREDITED");
+            // The bank transfer only charges the buyer here. Revenue is
+            // credited by the asynchronous payout worker, which consumes
+            // PENDING rows; inserting CREDITED would silently strand every
+            // shop sale before the president/treasury receives its share.
+            var8.setString(10, "PENDING");
             var8.setString(11, var3.txId());
             var8.setString(12, "artifact-president-budget-" + var2.purchaseId());
             var8.setString(13, "");

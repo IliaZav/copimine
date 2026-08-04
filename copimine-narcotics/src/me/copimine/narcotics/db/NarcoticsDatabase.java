@@ -1014,6 +1014,23 @@ public final class NarcoticsDatabase {
         }));
     }
 
+    /** Persist that the already-created physical output is in the world. */
+    public CompletableFuture<Void> markBrewingOutputWorldDropped(String id) {
+        if (id == null || id.isBlank()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return runAsync(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE narcotics_pending_outputs SET status='WORLD_DROPPED',updated_at=? "
+                            + "WHERE id=? AND status IN ('PENDING','DELIVERING')")) {
+                statement.setLong(1, Instant.now().getEpochSecond());
+                statement.setString(2, id);
+                statement.executeUpdate();
+            }
+            return null;
+        }));
+    }
+
     /** Read in-flight rows so a reconnect can recognize an item already added
      * before the previous process crashed, without resetting a live claim. */
     public CompletableFuture<List<PendingBrewingOutput>> loadDeliveringBrewingOutputs(UUID playerUuid, int limit) {
@@ -1043,7 +1060,7 @@ public final class NarcoticsDatabase {
         }
         return runAsync(() -> tx(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "UPDATE narcotics_pending_outputs SET status='DELIVERED',updated_at=? WHERE id=? AND status IN ('DELIVERING','WORLD_DROPPED')")) {
+                    "UPDATE narcotics_pending_outputs SET status='DELIVERED',updated_at=? WHERE id=? AND status IN ('PENDING','DELIVERING','WORLD_DROPPED')")) {
                 statement.setLong(1, Instant.now().getEpochSecond());
                 statement.setString(2, id);
                 statement.executeUpdate();

@@ -622,7 +622,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          } catch (IllegalArgumentException var5) {
             try {
                Files.writeString(var1.toPath(),
-                       this.defaultItemsYaml().replace("per_player_limit: 5", "per_player_limit: 1"),
+                       this.defaultItemsYaml(),
                        StandardCharsets.UTF_8);
             } catch (IOException var4) {
                throw new RuntimeException(var4);
@@ -633,7 +633,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private String defaultItemsYaml() {
-      return "items:\n  - id: zmei_gorynych\n    category: WEAPON\n    material: NETHERITE_SWORD\n    custom_model_data: 10001\n    name: \"&6Змей Горыныч\"\n    rarity: LEGENDARY\n    price_ar: 500\n    supply_limit: 0\n    per_player_limit: 5\n    cooldown_seconds: 12\n    effect: ZMEI_GORYNYCH_POOP\n    effect_chance_percent: 100\n    visual_effect_id: INVERTED_SCREEN\n    lore:\n      - \"&7Официальное оружие CopiMineArtifacts\"\n      - \"&7При ударе может вызвать электрический импульс.\"\n";
+      return "items:\n  - id: zmei_gorynych\n    category: WEAPON\n    material: NETHERITE_SWORD\n    custom_model_data: 10001\n    name: \"&6Змей Горыныч\"\n    rarity: LEGENDARY\n    price_ar: 500\n    supply_limit: 0\n    per_player_limit: 3\n    cooldown_seconds: 12\n    effect: ZMEI_GORYNYCH_POOP\n    effect_chance_percent: 100\n    visual_effect_id: INVERTED_SCREEN\n    lore:\n      - \"&7Официальное оружие CopiMineArtifacts\"\n      - \"&7При ударе может вызвать электрический импульс.\"\n";
    }
 
    private CopiMineArtifacts.PgSettings loadPgSettings() throws IOException {
@@ -836,9 +836,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
 
             String source = this.str(var16.get("source"));
-            int perPlayerLimit = "AR_SHOP".equalsIgnoreCase(source)
-               ? 1
-               : Math.max(0, this.parseInt(this.str(var16.get("per_player_limit")), 0));
+            int perPlayerLimit = Math.max(0, this.parseInt(this.str(var16.get("per_player_limit")), 0));
             List<String> var9 = this.asStringList(var16.get("lore"));
             Object var10 = var16.containsKey("visual_effect_id") ? var16.get("visual_effect_id") : this.artifactVisualEffect(var6);
             CopiMineArtifacts.CatalogItem var11 = new CopiMineArtifacts.CatalogItem(
@@ -1436,21 +1434,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onInventoryClick(InventoryClickEvent var1) {
       if (var1.getWhoClicked() instanceof Player var2) {
-         // Run before every GUI/vanilla path, including clicks cancelled by a
-         // protection plugin.  A foreign donation instance must never reach a
-         // chest, shulker, hopper or any other block inventory.
-         if (this.quarantineForeignDonationClick(var1, var2)) {
+         // Catalog items are ordinary ItemStacks.  The only intentional
+         // transport restriction is the anvil: custom metadata must not be
+         // used as an anvil input or silently rewritten by a rename/repair.
+         if (this.isAnvilArtifactInteraction(var1)) {
+            var1.setCancelled(true);
+            var2.updateInventory();
             return;
          }
          if (var1.isCancelled()) {
-            return;
-         }
-         if (this.shouldBlockOfficialArtifactInsertion(var1)) {
-            var1.setCancelled(true);
-            var2.updateInventory();
-             return;
-         }
-         if (var1 instanceof InventoryCreativeEvent creative && this.blockCreativeOfficialCopy(creative)) {
             return;
          }
          Inventory top = var1.getView().getTopInventory();
@@ -1766,7 +1758,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.setCancelled(true);
          return;
       }
-      if (this.shouldBlockOfficialArtifactDrag(var1)) {
+      if (this.isAnvilArtifactDrag(var1)) {
          var1.setCancelled(true);
          if (var1.getWhoClicked() instanceof Player player) {
             player.updateInventory();
@@ -1780,6 +1772,48 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onInventoryMoveItem(InventoryMoveItemEvent var1) {
       // Shop items intentionally follow vanilla hopper/container movement.
+   }
+
+   private boolean isAnvilArtifactInteraction(InventoryClickEvent event) {
+      if (event == null || event.getView() == null
+            || event.getView().getTopInventory().getType() != InventoryType.ANVIL) {
+         return false;
+      }
+      Player player = event.getWhoClicked() instanceof Player p ? p : null;
+      ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+            ? player.getInventory().getItem(event.getHotbarButton()) : null;
+      ItemStack offhand = player == null ? null : player.getInventory().getItemInOffHand();
+      return this.isOfficialArtifactItem(event.getCursor())
+            || this.isOfficialArtifactItem(event.getCurrentItem())
+            || this.isOfficialArtifactItem(hotbar)
+            || this.isOfficialArtifactItem(offhand)
+            || this.isOfficialDonationItem(event.getCursor())
+            || this.isOfficialDonationItem(event.getCurrentItem())
+            || this.isOfficialDonationItem(hotbar)
+            || this.isOfficialDonationItem(offhand)
+            || this.containsOfficialArtifactOrDonation(event.getView().getTopInventory());
+   }
+
+   private boolean isAnvilArtifactDrag(InventoryDragEvent event) {
+      if (event == null || event.getView() == null
+            || event.getView().getTopInventory().getType() != InventoryType.ANVIL) {
+         return false;
+      }
+      return this.isOfficialArtifactItem(event.getOldCursor())
+            || this.isOfficialDonationItem(event.getOldCursor())
+            || this.containsOfficialArtifactOrDonation(event.getView().getTopInventory());
+   }
+
+   private boolean containsOfficialArtifactOrDonation(Inventory inventory) {
+      if (inventory == null) {
+         return false;
+      }
+      for (ItemStack stack : inventory.getStorageContents()) {
+         if (this.isOfficialArtifactItem(stack) || this.isOfficialDonationItem(stack)) {
+            return true;
+         }
+      }
+      return false;
    }
 
    /** Remove stale terminal donation entities as soon as an unloaded chunk is loaded. */
@@ -1942,9 +1976,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onOfficialBlockCook(BlockCookEvent event) {
-      if (event != null && this.isOfficialArtifactItem(event.getSource())) {
-         event.setCancelled(true);
-      }
+      // Catalog items use vanilla furnace/smoker/campfire behavior.
    }
 
    /** Brewing consumes its ingredient slots without an item-entity event. */
@@ -1953,10 +1985,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onOfficialBrew(BrewEvent event) {
-      if (event != null && event.getContents() != null
-            && this.hasOfficialArtifactIngredient(event.getContents().getContents())) {
-         event.setCancelled(true);
-      }
+      // Catalog items use vanilla brewing behavior.
    }
 
    @EventHandler(
@@ -1964,18 +1993,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       ignoreCancelled = true
    )
    public void onPlayerItemMend(PlayerItemMendEvent var1) {
-      if (this.isOfficialArtifactItem(var1.getItem())) {
-         var1.setCancelled(true);
-      }
+      // Catalog items use vanilla mending behavior.
    }
 
    @EventHandler(
       priority = EventPriority.HIGHEST
    )
    public void onPrepareItemCraft(PrepareItemCraftEvent var1) {
-      if (this.hasOfficialArtifactIngredient(var1.getInventory().getMatrix())) {
-         var1.getInventory().setResult(null);
-      }
+      // Catalog items use vanilla crafting behavior.
    }
 
    @EventHandler(
@@ -1991,18 +2016,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       priority = EventPriority.HIGHEST
    )
    public void onPrepareSmithing(PrepareSmithingEvent var1) {
-      if (this.hasOfficialArtifactIngredient(var1.getInventory().getStorageContents())) {
-         var1.setResult(null);
-      }
+      // Catalog items use vanilla smithing behavior.
    }
 
    @EventHandler(
       priority = EventPriority.HIGHEST
    )
    public void onPrepareGrindstone(PrepareGrindstoneEvent var1) {
-      if (this.hasOfficialArtifactIngredient(var1.getInventory().getStorageContents())) {
-         var1.setResult(null);
-      }
+      // Catalog items use vanilla grindstone behavior.
    }
 
    @EventHandler

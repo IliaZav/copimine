@@ -753,6 +753,13 @@ class AdminShopPriceUpdateIn(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class AdminShopLimitUpdateIn(BaseModel):
+    item_id: str = Field(min_length=2, max_length=120)
+    category: str = Field(min_length=2, max_length=16)
+    limit: int = Field(ge=0, le=1000)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
 class AdminRepairPriceUpdateIn(BaseModel):
     price_ar: int = Field(ge=0, le=1_000_000_000)
     idempotency_key: str = Field(min_length=8, max_length=120)
@@ -14812,6 +14819,26 @@ def _replace_catalog_price_text(text: str, item_id: str, category: str, price: i
     return text[: match.start()] + updated_block + text[match.end() :]
 
 
+def _replace_catalog_limit_text(text: str, item_id: str, category: str, limit: int) -> str:
+    block_pattern, _, _ = _catalog_price_line_pattern(category)
+    normalized_id = _normalize_shop_item_id(item_id)
+    match = next((candidate for candidate in block_pattern.finditer(text) if _normalize_shop_item_id(candidate.group(1)) == normalized_id), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
+    block = match.group(0)
+    limit_pattern = re.compile(r"(?m)^(\s+)per_player_limit:\s*[^#\r\n]*$")
+    if limit_pattern.search(block):
+        updated_block = limit_pattern.sub(lambda found: f"{found.group(1)}per_player_limit: {int(limit)}", block, count=1)
+    else:
+        id_line = re.search(r"(?m)^(\s*-\s*[^\r\n]+)$", block)
+        if not id_line:
+            raise HTTPException(status_code=500, detail="Структура каталога предмета повреждена")
+        indent = re.match(r"\s*", id_line.group(1)).group(0)
+        insertion = f"{id_line.group(1)}\n{indent}  per_player_limit: {int(limit)}"
+        updated_block = block[: id_line.start()] + insertion + block[id_line.end() :]
+    return text[: match.start()] + updated_block + text[match.end() :]
+
+
 def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
     normalized_id = _normalize_shop_item_id(item_id)
     raw_category = str(category or "").strip().upper().replace("-", "_")
@@ -14964,6 +14991,75 @@ def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, 
     audit_event(actor, "shop.price.update", target=target["item_id"], details={"category": target["category"], "before": target["old_price"], "after": normalized_price, "idempotency_key": idempotency_key})
     append_panel_event("shops", "price_changed", actor=actor, target=target["item_id"], metadata={"category": target["category"], "before": target["old_price"], "after": normalized_price}, tags=["shop", "price"])
     return {"ok": True, "item_id": target["item_id"], "category": target["category"], "old_price": target["old_price"], "price": normalized_price, "reload": str(reload_response or "")[:240]}
+
+
+def update_shop_limit_sync(item_id: str, category: str, limit: int, actor: str, idempotency_key: str) -> dict[str, Any]:
+    """Update the per-player purchase limit in every catalog copy and reload it."""
+    if yaml is None:
+        raise HTTPException(status_code=503, detail="Редактор лимитов недоступен: PyYAML не установлен")
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="Изменение лимита требует настроенного RCON")
+    target = _catalog_price_target(item_id, category)
+    normalized_limit = int(limit)
+    if normalized_limit < 0 or normalized_limit > 1000:
+        raise HTTPException(status_code=400, detail="Лимит должен быть целым числом от 0 до 1000")
+    paths = _shop_catalog_paths()
+    if not paths:
+        raise HTTPException(status_code=404, detail="Файл каталога лавки не найден")
+
+    with ARTIFACTS_CATALOG_LOCK:
+        old_texts: dict[Path, str] = {}
+        staged: list[tuple[Path, Path]] = []
+        matched_paths = 0
+        try:
+            for path in paths:
+                text = path.read_text(encoding="utf-8-sig")
+                if not isinstance(yaml.safe_load(text) or {}, dict):
+                    raise HTTPException(status_code=500, detail="Файл каталога имеет неверный формат")
+                old_texts[path] = text
+                try:
+                    updated = _replace_catalog_limit_text(text, target["item_id"], target["category"], normalized_limit)
+                except HTTPException as error:
+                    if error.status_code != 404:
+                        raise
+                    continue
+                matched_paths += 1
+                temp = path.with_name(f".{path.name}.limit-{secrets.token_hex(6)}.tmp")
+                temp.write_text(updated.rstrip() + "\n", encoding="utf-8", newline="\n")
+                temp.chmod(0o640)
+                staged.append((path, temp))
+            for path, temp in staged:
+                temp.replace(path)
+            if matched_paths == 0:
+                raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
+            try:
+                reload_response = rcon_sync("cmartifacts reload")
+            except Exception as exc:
+                raise HTTPException(status_code=503, detail=f"Лимиты сохранены не были: не удалось перезагрузить лавку ({str(exc)[:180]})") from exc
+            lowered = str(reload_response or "").lower()
+            if any(marker in lowered for marker in ("unknown command", "неизвест", "error", "ошиб", "players only", "только игрок")):
+                raise HTTPException(status_code=503, detail="Плагин не подтвердил перезагрузку каталога")
+        except Exception:
+            for path, temp in staged:
+                try:
+                    temp.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            for path, old_text in old_texts.items():
+                try:
+                    path.write_text(old_text, encoding="utf-8", newline="\n")
+                except Exception:
+                    pass
+            if old_texts:
+                try:
+                    rcon_sync("cmartifacts reload")
+                except Exception:
+                    pass
+            raise
+
+    audit_event(actor, "shop.limit.update", target=target["item_id"], details={"category": target["category"], "limit": normalized_limit, "idempotency_key": idempotency_key})
+    append_panel_event("shops", "limit_changed", actor=actor, target=target["item_id"], metadata={"category": target["category"], "limit": normalized_limit}, tags=["shop", "limit"])
+    return {"ok": True, "item_id": target["item_id"], "category": target["category"], "limit": normalized_limit, "reload": str(reload_response or "")[:240]}
 
 
 def update_repair_price_sync(price_ar: int, actor: str, idempotency_key: str) -> dict[str, Any]:
@@ -15941,7 +16037,7 @@ def reset_artifact_limit_sync(player: str, actor: str, data: AdminArtifactLimitR
         conn.commit()
     audit_event(actor, "artifact.purchase_limit.reset", target=player, details={"minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now})
     append_panel_event("players", "artifact_limit_reset", actor=actor, target=player, metadata={"itemIds": item_ids, "resetAt": now}, tags=["artifacts", "limit"])
-    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now, "limit": 5, "donationEntitlementsRetired": [item_id for item_id in item_ids if item_id in donation_items]}
+    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now, "limit": 3, "donationEntitlementsRetired": [item_id for item_id in item_ids if item_id in donation_items]}
 
 
 def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentIn) -> dict[str, Any]:
@@ -17134,6 +17230,13 @@ async def admin_shop_price_update(data: AdminShopPriceUpdateIn, request: Request
             data.item_id, data.category, data.price, exc.status_code, exc.detail, username,
         )
         raise
+
+
+@app.post("/api/admin/shop/limit")
+async def admin_shop_limit_update(data: AdminShopLimitUpdateIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "SHOP_LIMIT_UPDATE")
+    check_rate_limit(request, "admin-shop-limit", limit=20, window_seconds=60)
+    return await bg(update_shop_limit_sync, data.item_id, data.category, data.limit, username, data.idempotency_key)
 
 
 @app.post("/api/admin/shop/repair-price")

@@ -350,6 +350,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInventoryClick(InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player
+                && isAnvilFinishedItemInteraction(event, player)) {
+            event.setCancelled(true);
+            player.updateInventory();
+            return;
+        }
         if (event.getWhoClicked() instanceof Player player && isPendingOutputClick(player, event)) {
             event.setCancelled(true);
             player.sendMessage(ChatColor.YELLOW + "Готовый продукт ещё сохраняется; повторите действие через секунду.");
@@ -361,12 +367,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             player.sendMessage(ChatColor.YELLOW + "Предмет занят сохранением использования; повторите действие через секунду.");
             player.updateInventory();
             return;
-        }
-        if (shouldBlockInventoryClick(event)) {
-            event.setCancelled(true);
-            if (event.getWhoClicked() instanceof Player player) {
-                sendBlocked(player);
-            }
         }
     }
 
@@ -384,45 +384,21 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             player.updateInventory();
             return;
         }
-        if (!itemFactory.isOfficialFinishedItem(event.getOldCursor())) {
-            return;
-        }
         Inventory top = event.getView().getTopInventory();
-        if (isBlockedDestination(top) && event.getRawSlots().stream().anyMatch(slot -> slot >= 0 && slot < top.getSize())) {
+        if (top.getType() == InventoryType.ANVIL
+                && (itemFactory.isOfficialFinishedItem(event.getOldCursor())
+                || containsOfficialFinishedItem(top))) {
             event.setCancelled(true);
             if (event.getWhoClicked() instanceof Player player) {
-                sendBlocked(player);
+                player.updateInventory();
             }
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCreativeOfficialCopy(InventoryCreativeEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) {
-            return;
-        }
-        ItemStack clicked = event.getClickedInventory() == null || event.getSlot() < 0
-                || event.getSlot() >= event.getClickedInventory().getSize()
-                ? null : event.getClickedInventory().getItem(event.getSlot());
-        ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
-                ? player.getInventory().getItem(event.getHotbarButton()) : null;
-        ItemStack offhand = player.getInventory().getItemInOffHand();
-        if (isPendingOutputItem(player, event.getCursor()) || isPendingOutputItem(player, event.getCurrentItem())
-                || isPendingOutputItem(player, clicked) || isPendingOutputItem(player, hotbar)
-                || isPendingOutputItem(player, offhand)) {
-            event.setCancelled(true);
-            player.updateInventory();
-            return;
-        }
-        // Creative clone/set-slot packets may report an empty current slot;
-        // inspect the clicked, hotbar and offhand stacks as well so an
-        // official narcotic can never be copied into a second instance.
-        if (itemFactory.isOfficialCandidate(event.getCursor()) || itemFactory.isOfficialCandidate(event.getCurrentItem())
-                || itemFactory.isOfficialCandidate(clicked) || itemFactory.isOfficialCandidate(hotbar)
-                || itemFactory.isOfficialCandidate(offhand)) {
-            event.setCancelled(true);
-            player.updateInventory();
-        }
+        // Finished narcotics are ordinary ItemStacks.  The only gameplay
+        // restriction is the anvil guard in the normal click/drag handlers.
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -438,9 +414,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             event.setCancelled(true);
             return;
         }
-        if (isBlockedDestination(event.getDestination()) || isBlockedDestination(event.getSource())) {
-            event.setCancelled(true);
-        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -453,9 +426,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (isReservedConsumeInstance(itemFactory.instanceId(stack))) {
             event.setCancelled(true);
             return;
-        }
-        if (itemFactory.isOfficialFinishedItem(stack) && isBlockedDestination(event.getInventory())) {
-            event.setCancelled(true);
         }
     }
 
@@ -515,30 +485,17 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler(ignoreCancelled = true)
     public void onPrepareCraft(PrepareItemCraftEvent event) {
-        for (ItemStack stack : event.getInventory().getMatrix()) {
-            if (itemFactory.isOfficialFinishedItem(stack)) {
-                event.getInventory().setResult(null);
-                return;
-            }
-        }
+        // Finished narcotics use vanilla crafting rules.
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onDispense(BlockDispenseEvent event) {
-        if (itemFactory.isOfficialFinishedItem(event.getItem())) {
-            event.setCancelled(true);
-        }
+        // Finished narcotics use vanilla dispenser/dropper rules.
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        if (isPendingOutputItem(event.getPlayer(), event.getItemInHand())) {
-            event.setCancelled(true);
-            return;
-        }
-        if (itemFactory.isOfficialFinishedItem(event.getItemInHand())) {
-            event.setCancelled(true);
-        }
+        // Finished narcotics use vanilla placement rules.
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -794,9 +751,17 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return null;
         }
         ItemStack output = itemFactory.createOfficialItem(definition, 1);
+        if (output == null || output.getType().isAir()) {
+            return null;
+        }
         markPendingOutput(output, outputId);
         pendingWorldOutputClaims.add(outputId);
-        return location.getWorld().dropItemNaturally(location, output);
+        Item dropped = location.getWorld().dropItemNaturally(location, output);
+        // Keep the result visible beside the cauldron for a short moment. A
+        // player standing on the cauldron otherwise picks it up immediately
+        // and sees only the completion effect.
+        dropped.setPickupDelay(10);
+        return dropped;
     }
 
     /** Remove the crash-recovery marker only after the durable row is closed. */
@@ -1997,6 +1962,32 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 });
         target.updateInventory();
         return 1;
+    }
+
+    private boolean isAnvilFinishedItemInteraction(InventoryClickEvent event, Player player) {
+        if (event == null || player == null || event.getView() == null
+                || event.getView().getTopInventory().getType() != InventoryType.ANVIL) {
+            return false;
+        }
+        ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+                ? player.getInventory().getItem(event.getHotbarButton()) : null;
+        return itemFactory.isOfficialFinishedItem(event.getCursor())
+                || itemFactory.isOfficialFinishedItem(event.getCurrentItem())
+                || itemFactory.isOfficialFinishedItem(hotbar)
+                || itemFactory.isOfficialFinishedItem(player.getInventory().getItemInOffHand())
+                || containsOfficialFinishedItem(event.getView().getTopInventory());
+    }
+
+    private boolean containsOfficialFinishedItem(Inventory inventory) {
+        if (inventory == null) {
+            return false;
+        }
+        for (ItemStack stack : inventory.getContents()) {
+            if (itemFactory.isOfficialFinishedItem(stack)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Integer parseBoundedInt(CommandSender sender, String raw, String label, int min, int max, boolean allowZero) {

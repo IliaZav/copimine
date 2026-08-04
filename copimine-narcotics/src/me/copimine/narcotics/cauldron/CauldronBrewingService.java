@@ -212,6 +212,9 @@ public final class CauldronBrewingService {
         if (block == null || block.getType() != Material.WATER_CAULDRON) {
             return false;
         }
+        if (!hasBrewingRig(block)) {
+            return false;
+        }
         if (!configService.requireFullWater()) {
             return true;
         }
@@ -343,7 +346,8 @@ public final class CauldronBrewingService {
         }
         boolean stillFull = block.getType() == Material.WATER_CAULDRON
                 && newState instanceof Levelled levelled
-                && (!configService.requireFullWater() || isFullWaterLevel(levelled));
+                && (!configService.requireFullWater() || isFullWaterLevel(levelled))
+                && hasBrewingRig(block);
         if (!stillFull) {
             handleCauldronBroken(block, block.getLocation().add(0.5D, 0.5D, 0.5D));
         }
@@ -510,37 +514,32 @@ public final class CauldronBrewingService {
 
     private void deliverCompletedBrewingOutput(Block block, BlockKey key, NarcoticDefinition definition,
                                                String outputId, Location dropLocation, int attempt) {
-        database.claimPendingBrewingOutput(outputId).whenComplete((claimed, claimError) ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (claimError != null) {
-                        plugin.getLogger().warning("Unable to claim completed brewing output " + outputId
-                                + ": " + claimError.getMessage());
-                        scheduleOutputDeliveryRetry(block, key, definition, outputId, dropLocation, attempt);
-                        return;
-                    }
-                    if (!Boolean.TRUE.equals(claimed)) {
-                        // Another completion retry already materialised this
-                        // public output, or the pickup path closed the row.
-                        return;
-                    }
-                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
-                    if (dropped == null) {
-                        database.releasePendingBrewingOutput(outputId).whenComplete((ignored, releaseError) ->
-                                Bukkit.getScheduler().runTask(plugin, () -> {
-                                    if (releaseError != null) {
-                                        plugin.getLogger().log(java.util.logging.Level.WARNING,
-                                                "Unable to release undelivered brewing output " + outputId,
-                                                releaseError);
-                                    }
-                                    scheduleOutputDeliveryRetry(block, key, definition, outputId,
-                                            dropLocation, attempt);
-                                }));
-                        return;
-                    }
-                    // Keep the row in WORLD_DROPPED until any player picks up
-                    // this exact marked entity. The marker is durability
-                    // metadata, never an ownership or authorization signal.
-                }));
+        // The item must become visible in the world immediately.  A database
+        // claim is bookkeeping only; using it as a gate made a failed/late
+        // acknowledgement look like a successful brew with no product,
+        // especially for the Zhuzevo branch.  The completion transaction has
+        // already created the durable row, and the marked entity is reconciled
+        // on pickup/restart.
+        Item dropped;
+        try {
+            dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
+        } catch (RuntimeException deliveryError) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING,
+                    "Unable to materialise completed brewing output " + outputId,
+                    deliveryError);
+            dropped = null;
+        }
+        if (dropped == null) {
+            scheduleOutputDeliveryRetry(block, key, definition, outputId, dropLocation, attempt);
+            return;
+        }
+        database.markBrewingOutputWorldDropped(outputId).whenComplete((ignored, markError) -> {
+            if (markError != null) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to mark brewing output as world-dropped " + outputId,
+                        markError);
+            }
+        });
     }
 
     private void scheduleOutputDeliveryRetry(Block block, BlockKey key, NarcoticDefinition definition,

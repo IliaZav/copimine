@@ -15,7 +15,7 @@ def between(source: str, start: str, end: str) -> str:
     return source[begin:finish]
 
 
-def test_custom_artifacts_are_free_in_player_inventory_but_guarded_in_processing_slots():
+def test_custom_artifacts_are_free_everywhere_except_anvil():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     owns = between(
         admin,
@@ -29,18 +29,34 @@ def test_custom_artifacts_are_free_in_player_inventory_but_guarded_in_processing
     click = between(
         artifacts,
         "public void onInventoryClick(InventoryClickEvent var1)",
-        "private boolean quarantineForeignDonationClick",
+        "private boolean handleCreativeDonationLoss",
     )
-    assert "quarantineForeignDonationClick(var1, var2)" in click
-    assert "shouldBlockOfficialArtifactInsertion(var1)" in click
-    assert click.index("quarantineForeignDonationClick(var1, var2)") < click.index("if (var1.isCancelled())")
+    assert "isAnvilArtifactInteraction(var1)" in click
+    assert "quarantineForeignDonationClick(var1, var2)" not in click
+    assert "shouldBlockOfficialArtifactInsertion(var1)" not in click
 
     drag = between(
         artifacts,
         "public void onInventoryDrag(InventoryDragEvent var1)",
         "public void onInventoryMoveItem(InventoryMoveItemEvent var1)",
     )
-    assert "shouldBlockOfficialArtifactDrag(var1)" in drag
+    assert "isAnvilArtifactDrag(var1)" in drag
+
+    admin_click = between(
+        admin,
+        "public void onProtectedItemClick(InventoryClickEvent e)",
+        "public void onProtectedItemDrag(InventoryDragEvent e)",
+    )
+    admin_drag = between(
+        admin,
+        "public void onProtectedItemDrag(InventoryDragEvent e)",
+        "public void onProtectedItemMove(InventoryMoveItemEvent e)",
+    )
+    assert "InventoryType.ANVIL" in admin_click
+    assert "InventoryType.ANVIL" in admin_drag
+    assert "if(top==null||top.getType()!=InventoryType.ANVIL)return;" in admin_click
+    assert "if(top==null||top.getType()!=InventoryType.ANVIL)return;" in admin_drag
+    assert "isProtectedItemMove" not in admin_drag
 
 
 def test_atm_has_a_visible_title_and_shop_has_a_no_president_treasury_fallback():
@@ -78,15 +94,32 @@ def test_silk_touch_diamond_ore_path_certifies_an_ore_even_when_vanilla_drop_is_
     assert "return Math.max(1,total)" in amount
 
 
-def test_brewing_accepts_any_full_vanilla_water_cauldron():
+def test_placed_ar_is_recorded_so_silk_touch_returns_ar_and_normal_pickaxe_keeps_diamond():
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    place = between(admin, "public void onArPlace(BlockPlaceEvent e)", "public void onArBlockPlaceGuard")
+    drop = between(admin, "public void onArDrop(BlockDropItemEvent e)", "private int naturalSilkTouchOreAmount")
+    assert "arPlacedBlockKeys.add(key)" in place
+    assert "arPlacedStacks.put(key,e.getItemInHand().clone())" in place
+    assert "if(economyCoreOwns(e.getItemInHand())) return;" not in place
+    assert "boolean reissuePlaced=placed && isValidArCertificationDrop(e.getPlayer())" in drop
+    assert "if(!reissuePlaced&&!eligible) { amount+=st.getAmount(); continue; }" in drop
+
+
+def test_brewing_requires_full_water_and_netherrack_fire_rig():
     narcotics = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     supported = between(narcotics, "public boolean isSupportedCauldron", "public boolean tryAddIngredient")
     level_change = between(narcotics, "public void handleCauldronLevelChange", "public int cachedStateCount")
     assert "Material.WATER_CAULDRON" in supported
     assert "Levelled" in supported
     assert "requireFullWater" in supported
-    assert "hasBrewingRig" not in supported
-    assert "hasBrewingRig" not in level_change
+    assert "hasBrewingRig" in supported
+    assert "hasBrewingRig" in level_change
+
+    rig = between(narcotics, "private boolean hasBrewingRig", "private boolean isFullWaterLevel")
+    assert "Material.FIRE" in rig
+    assert "Material.SOUL_FIRE" in rig
+    assert "Material.NETHERRACK" in rig
+    assert "BlockFace.DOWN" in rig
 
 
 def test_brewing_final_ingredient_cannot_consume_a_replaced_stack():
@@ -113,6 +146,14 @@ def test_brewing_keeps_a_valid_three_of_four_prefix_pending():
     assert len(re.findall(r"^      - ", chups, flags=re.MULTILINE)) == 4
 
 
+def test_brewing_does_not_accept_arbitrary_items_as_a_three_item_buffer():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/recipe/NarcoticsRecipeService.java")
+    entry = between(service, "public IngredientEntry cauldronIngredientEntry", "public NarcoticDefinition matchExact")
+    assert "return ingredientEntry(stack);" in entry
+    assert 'new IngredientEntry("MATERIAL:" + stack.getType().name()' not in entry
+    assert "genericPotionKey" not in entry
+
+
 def test_brewing_completion_physically_drops_both_success_and_wrong_mix_outputs():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     effects = between(service, "private void completeBrewingEffects", "private void simulateWrongMixExplosion")
@@ -125,7 +166,15 @@ def test_brewing_completion_physically_drops_both_success_and_wrong_mix_outputs(
     assert "markPendingOutput" in drop
 
 
-def test_brewing_resolves_a_prefix_without_any_recipe_match_after_three_ingredients():
+def test_brewing_world_output_has_a_pickup_delay_instead_of_disappearing_instantly():
+    plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
+    output = between(plugin, "public Item dropCompletedBrewingOutput", "private void markPendingRefund")
+    assert "Item dropped = location.getWorld().dropItemNaturally(location, output);" in output
+    assert "dropped.setPickupDelay(10);" in output
+    assert "return dropped;" in output
+
+
+def test_brewing_rejects_a_three_item_prefix_that_cannot_match_any_recipe():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
     assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current)" in decision
@@ -152,17 +201,22 @@ def test_shared_cauldron_lets_a_different_player_finish_and_receive_the_brew():
     assert "Objects.equals(current.ownerUuid(), ownerUuid)" not in completion
 
 
-def test_official_ar_can_move_in_personal_inventory_and_is_normalized_after_world_drop():
+def test_official_ar_uses_vanilla_inventory_transport_and_world_drop_rules():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
-    click = between(economy, "private boolean officialArTouchesContainer", "private boolean containsOfficialAr")
+    place = between(economy, "public void onOfficialArPlace", "public void onOfficialArCreative")
+    click = between(economy, "public void onOfficialArInventoryClick", "public void onOfficialArInventoryDrag")
     drag = between(economy, "public void onOfficialArInventoryDrag", "public void onOfficialArInventoryMove")
+    move = between(economy, "public void onOfficialArInventoryMove", "public void onOfficialArInventoryPickup")
+    pickup = between(economy, "public void onOfficialArInventoryPickup", "public void onOfficialArPickup")
     spawn = between(economy, "public void onOfficialArSpawn", "public void onOfficialArSmelt")
     drop = between(economy, "public void onOfficialArDrop", "public void onOfficialArDamage")
-    assert "InventoryType.CRAFTING" in click
-    assert "top.getHolder() instanceof Player" in click
-    assert "InventoryType.CRAFTING" in drag
-    assert "authorizeWorldDrop" in drop
-    assert "if (!officialArService.authorizeWorldDrop" in drop
+    assert "event.setCancelled(true)" not in place
+    assert "event.setCancelled(true)" not in click
+    assert "event.setCancelled(true)" not in drag
+    assert "event.setCancelled(true)" not in move
+    assert "event.setCancelled(true)" not in pickup
+    assert "authorizeWorldDrop" not in drop
+    assert "event.setCancelled(true)" not in spawn
     assert "remove(officialArWorldDropTokenKey)" in spawn
     assert "event.getEntity().setItemStack" in spawn
 
@@ -172,11 +226,12 @@ def test_official_ar_is_authorized_on_player_death_instead_of_being_suppressed()
     assert "import org.bukkit.event.entity.PlayerDeathEvent;" in economy
     start = economy.index("public void onOfficialArDeath(PlayerDeathEvent event)")
     death = economy[start : start + 900]
-    assert "event.getDrops()" in death
-    assert "authorizeWorldDrop" in death
+    assert "Death drops remain in the event unchanged" in death
+    assert "event.setCancelled(true)" not in death
+    assert "authorizeWorldDrop" not in death
 
 
-def test_shop_hides_the_disabled_lost_item_recovery_entry_and_limits_regular_items_to_one():
+def test_shop_hides_the_disabled_lost_item_recovery_entry_and_limits_regular_items_to_three():
     artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
     for start, end in (
         ("private void openMain(Player var1, CopiMineArtifacts.Shop var2, boolean var3)", "private void openMainV2"),
@@ -191,10 +246,25 @@ def test_shop_hides_the_disabled_lost_item_recovery_entry_and_limits_regular_ite
     blocks = re.split(r"(?=^  - id:)", catalog, flags=re.MULTILINE)
     regular = [block for block in blocks if "source: AR_SHOP" in block]
     assert regular
-    assert all(re.search(r"^    per_player_limit:\s*1\s*$", block, flags=re.MULTILINE) for block in regular)
-    assert 'defaultItemsYaml().replace("per_player_limit: 5", "per_player_limit: 1")' in artifacts
-    assert '"AR_SHOP".equalsIgnoreCase(source)' in artifacts
-    assert "int perPlayerLimit =" in artifacts
+    assert all(re.search(r"^    per_player_limit:\s*3\s*$", block, flags=re.MULTILINE) for block in regular)
+    assert "per_player_limit: 3" in artifacts
+    assert '"AR_SHOP".equalsIgnoreCase(source)' not in artifacts
+    assert "int perPlayerLimit = Math.max(0, this.parseInt" in artifacts
+
+
+def test_shop_purchase_limit_is_three_and_can_be_changed_or_reset_from_web():
+    backend = read("admin-web/backend/main.py")
+    frontend = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    assert "class AdminShopLimitUpdateIn" in backend
+    assert '@app.post("/api/admin/shop/limit")' in backend
+    assert "update_shop_limit_sync" in backend
+    assert "per_player_limit" in backend
+    assert "limit-reset" in backend
+    assert '"limit": 3' in backend
+    assert "updateShopLimit" in frontend
+    assert '/api/admin/shop/limit' in frontend
+    assert "limit-reset" in frontend
+    assert "limit_value: 3" in frontend
 
 
 def test_atm_title_is_spawned_above_the_block_not_inside_it():

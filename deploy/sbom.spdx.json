@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "CopiMine release SBOM",
-  "documentNamespace": "https://copimine.ru/spdx/574f36cf322424b9a0f234d49d81fd7a0ed0a204",
+  "documentNamespace": "https://copimine.ru/spdx/b252bb62e731e30c9c71c3c3bb322e91cd0ce3cb",
   "creationInfo": {
-    "created": "2026-08-03T15:55:59.323733Z",
+    "created": "2026-08-04T02:51:33.791566Z",
     "creators": [
       "Tool: CopiMine generate_sbom.py"
     ]
@@ -14,7 +14,7 @@
     {
       "SPDXID": "SPDXRef-Package-CopiMine",
       "name": "CopiMine release",
-      "versionInfo": "574f36cf322424b9a0f234d49d81fd7a0ed0a204",
+      "versionInfo": "b252bb62e731e30c9c71c3c3bb322e91cd0ce3cb",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": true,
       "licenseConcluded": "NOASSERTION",
@@ -249,7 +249,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "d890c1d7528da022c95cc22dc68fc84e50527542f28f210171553356fa04e681"
+          "checksumValue": "d601b4702400813bcb38ce8e3197faa3203665825fbcb751f6bf270a2c062b98"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -264,7 +264,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "666fa29fc12b64ea2d4c8dc6bd142c0f283cd62b788f68d7948a9f1e2655c592"
+          "checksumValue": "f542629bb8f97bdbe28b0f247fa0a0b107a4b2f92c022e1df392e5fe17d6a043"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -294,7 +294,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "386cfd6e22b0fb00a769be4c885a66025f9a9c100115894551504fe7e70a39a7"
+          "checksumValue": "5142caee9a08f07ce213edb537cf64837f594fa456a4819ee08aefb7d6e54806"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -639,7 +639,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "b1d03c093ba6b10ec305d1d8e00c6a3fdf36d5f160d3fab41a4916cac6b56d79"
+          "checksumValue": "9c8b21e7b669ae6adcf07b790406cc5b16a7411f7fc5d50e4d2b39d5c71c3462"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -654,7 +654,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "99d2f9201e731daefc6b80cc7f3d3a0c8368d77d44bf3afe7d9100de023d9ef9"
+          "checksumValue": "07d4d56e85a4b2c89c8f8649157a8826d8b3326275ea783f9fe2c7a066301830"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -680,6 +680,21 @@
     },
     {
       "SPDXID": "SPDXRef-File-0036",
+      "fileName": "thirdparty/client-mods/CustomSkinLoader_Fabric-14.26.1.jar",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "733af00a53a9d66719f09f5cb3d630c4bb22ce043b2c66700a234c578f65c621"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-File-0037",
       "fileName": "thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
       "checksums": [
         {
@@ -694,7 +709,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0037",
+      "SPDXID": "SPDXRef-File-0038",
       "fileName": "thirdparty/client-mods/fabric-api-0.116.11+1.21.1.jar",
       "checksums": [
         {
@@ -709,7 +724,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0038",
+      "SPDXID": "SPDXRef-File-0039",
       "fileName": "thirdparty/client-mods/iris-fabric-1.8.8+mc1.21.1.jar",
       "checksums": [
         {
@@ -724,7 +739,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0039",
+      "SPDXID": "SPDXRef-File-0040",
       "fileName": "thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar",
       "checksums": [
         {
@@ -739,7 +754,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0040",
+      "SPDXID": "SPDXRef-File-0041",
       "fileName": "thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar",
       "checksums": [
         {
@@ -754,7 +769,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0041",
+      "SPDXID": "SPDXRef-File-0042",
       "fileName": "thirdparty/server-plugins/CoreProtect-CE-23.0.jar",
       "checksums": [
         {
@@ -769,7 +784,7 @@
       "copyrightText": "NOASSERTION"
     },
     {
-      "SPDXID": "SPDXRef-File-0042",
+      "SPDXID": "SPDXRef-File-0043",
       "fileName": "thirdparty/server-plugins/emotecraft-2.4.12-bukkit.jar",
       "checksums": [
         {
@@ -994,6 +1009,11 @@
       "spdxElementId": "SPDXRef-Package-CopiMine",
       "relationshipType": "CONTAINS",
       "relatedSpdxElement": "SPDXRef-File-0042"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-CopiMine",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-File-0043"
     }
   ]
 }

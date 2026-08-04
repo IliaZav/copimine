@@ -851,193 +851,99 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArPlace(BlockPlaceEvent event) {
-        if (!isOfficialAr(event.getItemInHand())) {
-            return;
-        }
-        event.setCancelled(true);
-        event.getPlayer().sendMessage(color("&cОфициальный AR нельзя размещать в мире. Используйте банкомат для внесения."));
+        // Certified AR is a normal diamond-ore item. AdminPlus records the
+        // placed block so Silk Touch can return the same stack.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArCreative(InventoryCreativeEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) {
-            return;
-        }
-        ItemStack clicked = event.getClickedInventory() == null || event.getSlot() < 0 || event.getSlot() >= event.getClickedInventory().getSize()
-                ? null : event.getClickedInventory().getItem(event.getSlot());
-        ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
-                ? player.getInventory().getItem(event.getHotbarButton()) : null;
-        if (containsOfficialAr(event.getCursor()) || containsOfficialAr(event.getCurrentItem())
-                || containsOfficialAr(clicked) || containsOfficialAr(hotbar)
-                || containsOfficialAr(player.getInventory().getItemInOffHand())) {
-            event.setCancelled(true);
-            player.updateInventory();
-        }
+        // Certified AR is not special inside creative inventory either.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) {
-            return;
-        }
-        if (officialArTouchesContainer(event)) {
-            event.setCancelled(true);
-            player.updateInventory();
-        }
+        // AR follows Bukkit's normal click and shift-click rules.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArInventoryDrag(InventoryDragEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player) || !containsOfficialAr(event.getOldCursor())) {
-            return;
-        }
-        Inventory top = event.getView().getTopInventory();
-        if (top != null && top.getType() == org.bukkit.event.inventory.InventoryType.CRAFTING
-                && (top.getHolder() instanceof Player || event.getWhoClicked() instanceof Player)) {
-            return;
-        }
-        if (event.getRawSlots().stream().anyMatch(slot -> slot < event.getView().getTopInventory().getSize())) {
-            event.setCancelled(true);
-            player.updateInventory();
-        }
+        // AR follows Bukkit's normal drag rules.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArInventoryMove(InventoryMoveItemEvent event) {
-        if (containsOfficialAr(event.getItem())) {
-            event.setCancelled(true);
-        }
+        // Hoppers and other inventories may move AR normally.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArInventoryPickup(InventoryPickupItemEvent event) {
-        if (containsOfficialAr(event.getItem().getItemStack())) {
-            event.setCancelled(true);
-        }
+        // Containers may pick up dropped AR normally.
     }
 
-    /**
-     * EconomyCore is the sole owner of the physical lifecycle of certified AR.
-     * AdminPlus must not retag, delete, merge or otherwise mutate these stacks.
-     * Player pickup/drop remains allowed, while every non-player transport and
-     * destructive entity path is fail-closed so an item cannot disappear
-     * without a ledger operation.
-     */
+    /** Certified AR deliberately uses the ordinary Minecraft item lifecycle. */
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArPickup(EntityPickupItemEvent event) {
-        if (!containsOfficialAr(event.getItem().getItemStack())) {
-            return;
-        }
-        if (!(event.getEntity() instanceof Player)) {
-            event.setCancelled(true);
-        }
+        // Player, hopper and other entity pickup are all allowed.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDrop(PlayerDropItemEvent event) {
-        if (containsOfficialAr(event.getItemDrop().getItemStack())) {
-            ItemStack normalized = officialArService.normalizeStack(event.getItemDrop().getItemStack());
-            if (normalized != null && normalized != event.getItemDrop().getItemStack()) {
-                event.getItemDrop().setItemStack(normalized);
-            }
-            // A player drop is an explicit cash hand-off. Authorize this
-            // single spawn and strip the one-shot token after it is accepted
-            // so the AR keeps its normal stack identity.
-            if (!officialArService.authorizeWorldDrop(event.getItemDrop().getItemStack())) {
-                event.setCancelled(true);
-                getLogger().warning("Blocked an official AR drop because its world authorization could not be issued.");
-            }
-        }
+        // Dropping AR is the supported cash hand-off between players.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDeath(PlayerDeathEvent event) {
-        ListIterator<ItemStack> iterator = event.getDrops().listIterator();
-        while (iterator.hasNext()) {
-            ItemStack stack = iterator.next();
-            if (containsOfficialAr(stack)) {
-                ItemStack normalized = officialArService.normalizeStack(stack);
-                if (normalized != null && normalized != stack) {
-                    stack = normalized;
-                    iterator.set(stack);
-                }
-            }
-            if (containsOfficialAr(stack) && !officialArService.authorizeWorldDrop(stack)) {
-                getLogger().warning("Official AR death drop could not be authorized for "
-                        + event.getEntity().getUniqueId());
-            }
-        }
+        // Death drops remain in the event unchanged, including AR.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Item item && containsOfficialAr(item.getItemStack())) {
-            event.setCancelled(true);
-        }
+        // AR may be destroyed by ordinary item damage.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArDespawn(ItemDespawnEvent event) {
-        if (containsOfficialAr(event.getEntity().getItemStack())) {
-            event.setCancelled(true);
-        }
+        // AR follows the normal item despawn timer.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArMerge(ItemMergeEvent event) {
-        if (containsOfficialAr(event.getEntity().getItemStack())
-                || containsOfficialAr(event.getTarget().getItemStack())) {
-            event.setCancelled(true);
-        }
+        // Identical AR stacks may merge normally.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArSpawn(ItemSpawnEvent event) {
-        if (containsOfficialAr(event.getEntity().getItemStack())) {
-            ItemMeta meta = event.getEntity().getItemStack().getItemMeta();
-            String token = meta == null ? "" : first(
-                    meta.getPersistentDataContainer().get(officialArWorldDropTokenKey, PersistentDataType.STRING), "");
-            Long expiresAt = token.isBlank() ? null : authorizedArWorldDropTokens.remove(token);
-            if (expiresAt != null && expiresAt >= now()) {
-                if (meta != null) {
-                    meta.getPersistentDataContainer().remove(officialArWorldDropTokenKey);
-                    ItemStack normalized = event.getEntity().getItemStack();
-                    normalized.setItemMeta(meta);
-                    event.getEntity().setItemStack(normalized);
-                }
-                return;
+        if (!containsOfficialAr(event.getEntity().getItemStack())) {
+            return;
+        }
+        // Old issuance/drop tokens are harmless metadata. Strip them if
+        // present, but never cancel an ordinary world spawn.
+        ItemMeta meta = event.getEntity().getItemStack().getItemMeta();
+        if (meta != null) {
+            String token = first(meta.getPersistentDataContainer().get(officialArWorldDropTokenKey, PersistentDataType.STRING), "");
+            if (!token.isBlank()) {
+                authorizedArWorldDropTokens.remove(token);
+                meta.getPersistentDataContainer().remove(officialArWorldDropTokenKey);
+                ItemStack normalized = event.getEntity().getItemStack();
+                normalized.setItemMeta(meta);
+                event.getEntity().setItemStack(normalized);
             }
-            event.setCancelled(true);
-            getLogger().warning("Blocked an official AR world spawn; certified AR must remain in inventories or mailbox delivery.");
         }
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArSmelt(FurnaceSmeltEvent event) {
-        if (isOfficialAr(event.getSource())) {
-            event.setCancelled(true);
-            event.setResult(new ItemStack(Material.AIR));
-        }
+        // AR keeps ordinary furnace behavior.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArEntityInteract(PlayerInteractEntityEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND) {
-            return;
-        }
-        ItemStack hand = event.getPlayer().getInventory().getItemInMainHand();
-        if (containsOfficialAr(hand)
-                && (event.getRightClicked() instanceof ItemFrame
-                || event.getRightClicked() instanceof ArmorStand)) {
-            event.setCancelled(true);
-        }
+        // AR can be inserted into item frames/stands normally.
     }
 
     @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOfficialArArmorStand(PlayerArmorStandManipulateEvent event) {
-        if (containsOfficialAr(event.getPlayerItem()) || containsOfficialAr(event.getArmorStandItem())) {
-            event.setCancelled(true);
-        }
+        // AR can be moved through armor-stand inventory normally.
     }
 
     private boolean officialArTouchesContainer(InventoryClickEvent event) {

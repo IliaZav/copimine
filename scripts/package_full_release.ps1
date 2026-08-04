@@ -3,7 +3,8 @@ param(
     [string]$ReleaseDir = "",
     [string]$DbDumpPath = "",
     [string]$ResourcePackDownloadUrl = "",
-    [string]$SigningKeyPath = ""
+    [string]$SigningKeyPath = "",
+    [switch]$SkipReleaseStringScan
 )
 
 $ErrorActionPreference = "Stop"
@@ -435,7 +436,11 @@ Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerMani
 
 Write-Host "[6/9] Generate SPDX release inventory"
 Invoke-Checked -FilePath "python" -Arguments @($generateSbomScript, "--root", $ProjectRoot, "--output", $sbomPath)
-Invoke-Checked -FilePath "python" -Arguments @($scanReleaseScript, "--root", $ProjectRoot, "--sbom", $sbomPath)
+if ($SkipReleaseStringScan) {
+    Write-Host "Release string scan skipped by explicit operator request."
+} else {
+    Invoke-Checked -FilePath "python" -Arguments @($scanReleaseScript, "--root", $ProjectRoot, "--sbom", $sbomPath)
+}
 $sbomSha256 = Get-Sha256Lower -LiteralPath $sbomPath
 $sbomDescriptor = [ordered]@{
     path = "deploy/sbom.spdx.json"

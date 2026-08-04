@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "CopiMine release SBOM",
-  "documentNamespace": "https://copimine.ru/spdx/91300050141c92d7977a397986480544c12001ac",
+  "documentNamespace": "https://copimine.ru/spdx/71a834e68a8f6bf8fa33ee8d739247e90ab4a62d",
   "creationInfo": {
-    "created": "2026-08-04T04:51:10.758377Z",
+    "created": "2026-08-04T05:52:41.845599Z",
     "creators": [
       "Tool: CopiMine generate_sbom.py"
     ]
@@ -14,7 +14,7 @@
     {
       "SPDXID": "SPDXRef-Package-CopiMine",
       "name": "CopiMine release",
-      "versionInfo": "91300050141c92d7977a397986480544c12001ac",
+      "versionInfo": "71a834e68a8f6bf8fa33ee8d739247e90ab4a62d",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": true,
       "licenseConcluded": "NOASSERTION",
@@ -294,7 +294,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "2d026b4eeab4913bc448d69812d265948f75e60f3ad3d5a0bbb2bbc7676b6683"
+          "checksumValue": "92e8edfc02e7aa4033323ff88d08564286666fe8bf4a7115b0c8e3e0600be057"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -309,7 +309,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "563fb14ad54d8379b49201732829e267c2a300ad67554a9d3fbd3a910455d6e5"
+          "checksumValue": "19290a683a9c3f23b5f1f67246926dae552c9d88c3a3b7c44daf9da48d993f74"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -654,7 +654,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "c89d2334a4131a069570343e7fad8dcf394738ab25ba16fc91042c96e2dcabd0"
+          "checksumValue": "a73b200f38543db704c1408046dc64356c829437a74fca21c69a05c3a4c8ecf2"
         }
       ],
       "licenseConcluded": "NOASSERTION",

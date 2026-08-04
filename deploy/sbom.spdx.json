@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "CopiMine release SBOM",
-  "documentNamespace": "https://copimine.ru/spdx/71a834e68a8f6bf8fa33ee8d739247e90ab4a62d",
+  "documentNamespace": "https://copimine.ru/spdx/968b935e6303def02db76d737c9cde38ca579f29",
   "creationInfo": {
-    "created": "2026-08-04T05:52:41.845599Z",
+    "created": "2026-08-04T08:18:07.521207Z",
     "creators": [
       "Tool: CopiMine generate_sbom.py"
     ]
@@ -14,7 +14,7 @@
     {
       "SPDXID": "SPDXRef-Package-CopiMine",
       "name": "CopiMine release",
-      "versionInfo": "71a834e68a8f6bf8fa33ee8d739247e90ab4a62d",
+      "versionInfo": "968b935e6303def02db76d737c9cde38ca579f29",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": true,
       "licenseConcluded": "NOASSERTION",
@@ -249,7 +249,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "1ba6ec1b12a03a2c1ef5442109fefe02da3cb9cafabf23c531bcbecb875f6942"
+          "checksumValue": "42a00ee9ae2c93771af7629c9322219500206ad1f442436ddcf42289508a282e"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -294,7 +294,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "92e8edfc02e7aa4033323ff88d08564286666fe8bf4a7115b0c8e3e0600be057"
+          "checksumValue": "1939b7ddc106c20e5d16b9f5b6ed84a8219c88f713de6cea17ca2dbcd82f8be8"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -309,7 +309,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "19290a683a9c3f23b5f1f67246926dae552c9d88c3a3b7c44daf9da48d993f74"
+          "checksumValue": "af093e291a94a51522ac5fed6bbb028468e6e77054ea5c10312dd5e4e96d2cb3"
         }
       ],
       "licenseConcluded": "NOASSERTION",
@@ -654,7 +654,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "a73b200f38543db704c1408046dc64356c829437a74fca21c69a05c3a4c8ecf2"
+          "checksumValue": "47aa6855039758a98d2746e08dcb039188f7b1594df7b60c9febd0568cdd82e2"
         }
       ],
       "licenseConcluded": "NOASSERTION",

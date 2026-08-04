@@ -184,12 +184,13 @@ def test_resource_pack_preserves_the_vanilla_blue_stained_glass_pane_parent():
     assert 'parent = "minecraft:block/blue_stained_glass_pane"' in builder
 
 
-def test_legacy_ar_is_migrated_to_the_shared_fungible_serial_and_failed_issuance_is_token_scoped():
+def test_legacy_ar_is_not_silently_reissued_and_failed_issuance_is_token_scoped():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
     normalize = between(economy, "private ItemStack normalizeOfficialArStack", "private boolean needsOfficialArNormalization")
     issue = between(economy, "private boolean issueOfficialArAmount", "private void completeWithdrawOnMainThread")
     assert "if (!isFungibleArSerial(serial))" in normalize
-    assert "return normalized;" in normalize
+    assert "return source.clone();" in normalize
+    assert "durable one-time migration" in normalize
     assert "normalizeOfficialArItems(player)" in issue
     assert "officialArIssuanceTokenKey" in issue or "markOfficialArIssuance" in issue
     assert "removeOfficialArIssuance" in issue
@@ -215,6 +216,22 @@ def test_brewing_consumes_only_the_exact_submitted_ingredient_and_world_output_i
     assert "pendingWorldOutputClaims" in plugin
     assert "onPendingOutputPickup" in plugin
     assert "onPendingOutputDespawn" in plugin
+
+
+def test_brewing_world_output_is_bound_to_the_owner_who_completed_the_brew():
+    plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
+    database = read("copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java")
+    cauldron = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    pickup = between(plugin, "public void onPendingOutputPickup", "public void onPendingOutputDamage")
+    output = between(plugin, "public Item dropCompletedBrewingOutput", "public void clearPendingBrewingOutputMarker")
+    completion = between(database, "public CompletableFuture<Boolean> completePendingBrewingOutput", "public CompletableFuture<Void> releasePendingBrewingOutput")
+    assert "pendingOutputOwner" in pickup
+    assert "event.setCancelled(true)" in pickup
+    assert "markPendingOutputOwner(output, ownerUuid)" in output
+    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId, ownerUuid)" in cauldron
+    assert "player_uuid=?" in completion
+    assert "WORLD_DROPPED until the owning player" in cauldron
+    assert "clearPendingOutputMarkers(player, outputId)" in plugin
 
 
 def test_shop_revenue_starts_pending_and_waits_for_the_async_credit_worker():

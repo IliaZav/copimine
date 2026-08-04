@@ -3291,14 +3291,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private ItemStack normalizeOfficialArStack(ItemStack source, String reason) {
-        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason);
         String serial = officialArSerial(source);
-        // Legacy v2 AR is valid currency, but its per-item UUID prevents
-        // Minecraft from stacking it with withdrawn AR. Reissue the
-        // canonical fungible v3 metadata instead of preserving that UUID.
+        // A valid legacy v2 serial is still an individually registered asset.
+        // Do not silently turn it into a v3 fungible stack: that would create
+        // unbacked supply unless a durable one-time migration also updates
+        // cmv8_ar_assets. A future migration must be explicit and idempotent.
         if (!isFungibleArSerial(serial)) {
-            return normalized;
+            return source.clone();
         }
+        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason);
         if (!serial.isBlank() && normalized.hasItemMeta()) {
             ItemMeta meta = normalized.getItemMeta();
             PersistentDataContainer pdc = meta.getPersistentDataContainer();
@@ -3325,7 +3326,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         String serial = officialArSerial(stack);
         if (!isFungibleArSerial(serial)) {
-            return true;
+            // Legacy v2 items remain valid, individually identified assets.
+            // They are deliberately left untouched until a durable migration
+            // can account for their issued amount exactly once.
+            return false;
         }
         return pdc.has(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING)
                 || pdc.has(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING)

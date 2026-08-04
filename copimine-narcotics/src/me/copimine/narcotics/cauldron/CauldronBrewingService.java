@@ -537,7 +537,7 @@ public final class CauldronBrewingService {
                         }
                         return;
                     }
-                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
+                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId, ownerUuid);
                     if (dropped == null) {
                         database.releasePendingBrewingOutput(outputId).whenComplete((ignored, releaseError) ->
                                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -555,20 +555,10 @@ public final class CauldronBrewingService {
                                 }));
                         return;
                     }
-                    database.completePendingBrewingOutput(outputId).whenComplete((ignored, completeError) ->
-                            Bukkit.getScheduler().runTask(plugin, () -> {
-                                if (completeError != null) {
-                                    plugin.getLogger().warning("Brewing output " + outputId
-                                            + " was dropped but could not be finalized: "
-                                            + completeError.getMessage());
-                                    // Keep the WORLD_DROPPED row and marked
-                                    // entity in place; retry only the durable
-                                    // finalization so no second item is made.
-                                    scheduleOutputFinalizationRetry(dropped, outputId, attempt);
-                                    return;
-                                }
-                                plugin.clearPendingBrewingOutputMarker(dropped, outputId);
-                            }));
+                    // Keep the row in WORLD_DROPPED until the owning player
+                    // picks up this exact marked entity. Finalizing here
+                    // would clear the owner marker before pickup and let a
+                    // nearby player take the durable entitlement.
                 }));
     }
 
@@ -578,19 +568,6 @@ public final class CauldronBrewingService {
         Bukkit.getScheduler().runTaskLater(plugin,
                 () -> deliverCompletedBrewingOutput(block, key, definition, outputId, dropLocation,
                         ownerUuid, attempt + 1), delay);
-    }
-
-    private void scheduleOutputFinalizationRetry(Item dropped, String outputId, int attempt) {
-        long delay = Math.min(20L * 60L, 20L << Math.min(6, Math.max(0, attempt)));
-        Bukkit.getScheduler().runTaskLater(plugin, () ->
-                database.completePendingBrewingOutput(outputId).whenComplete((ignored, error) ->
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (error != null) {
-                                scheduleOutputFinalizationRetry(dropped, outputId, attempt + 1);
-                            } else {
-                                plugin.clearPendingBrewingOutputMarker(dropped, outputId);
-                            }
-                        })), delay);
     }
 
     private void simulateWrongMixExplosion(Block block) {

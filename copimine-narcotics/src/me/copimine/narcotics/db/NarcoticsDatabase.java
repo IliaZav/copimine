@@ -1052,6 +1052,22 @@ public final class NarcoticsDatabase {
         }));
     }
 
+    /** Complete a world output only for the player who owns its brew row. */
+    public CompletableFuture<Boolean> completePendingBrewingOutput(String id, UUID ownerUuid) {
+        if (id == null || id.isBlank() || ownerUuid == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return runAsyncResult(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE narcotics_pending_outputs SET status='DELIVERED',updated_at=? WHERE id=? AND player_uuid=? AND status IN ('DELIVERING','WORLD_DROPPED','DELIVERED')")) {
+                statement.setLong(1, Instant.now().getEpochSecond());
+                statement.setString(2, id);
+                statement.setString(3, ownerUuid.toString());
+                return statement.executeUpdate() == 1;
+            }
+        }));
+    }
+
     public CompletableFuture<Void> releasePendingBrewingOutput(String id) {
         if (id == null || id.isBlank()) {
             return CompletableFuture.completedFuture(null);

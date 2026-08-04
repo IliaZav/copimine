@@ -15,7 +15,7 @@ def between(source: str, start: str, end: str) -> str:
     return source[begin:finish]
 
 
-def test_custom_artifacts_are_free_everywhere_except_anvil():
+def test_custom_artifacts_and_ar_are_free_in_vanilla_inventory_transport():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     owns = between(
         admin,
@@ -31,7 +31,7 @@ def test_custom_artifacts_are_free_everywhere_except_anvil():
         "public void onInventoryClick(InventoryClickEvent var1)",
         "private boolean handleCreativeDonationLoss",
     )
-    assert "isAnvilArtifactInteraction(var1)" in click
+    assert "isAnvilArtifactInteraction(var1)" not in click
     assert "quarantineForeignDonationClick(var1, var2)" not in click
     assert "shouldBlockOfficialArtifactInsertion(var1)" not in click
 
@@ -40,7 +40,7 @@ def test_custom_artifacts_are_free_everywhere_except_anvil():
         "public void onInventoryDrag(InventoryDragEvent var1)",
         "public void onInventoryMoveItem(InventoryMoveItemEvent var1)",
     )
-    assert "isAnvilArtifactDrag(var1)" in drag
+    assert "isAnvilArtifactDrag(var1)" not in drag
 
     admin_click = between(
         admin,
@@ -52,10 +52,9 @@ def test_custom_artifacts_are_free_everywhere_except_anvil():
         "public void onProtectedItemDrag(InventoryDragEvent e)",
         "public void onProtectedItemMove(InventoryMoveItemEvent e)",
     )
-    assert "InventoryType.ANVIL" in admin_click
-    assert "InventoryType.ANVIL" in admin_drag
-    assert "if(top==null||top.getType()!=InventoryType.ANVIL)return;" in admin_click
-    assert "if(top==null||top.getType()!=InventoryType.ANVIL)return;" in admin_drag
+    assert "artifactsCoreOwns(vanillaCursor,vanillaCurrent,vanillaHotbar)" in admin_click
+    assert "isOfficialArItem(vanillaCursor)" in admin_click
+    assert "artifactsCoreOwns(e.getOldCursor())||isOfficialArItem(e.getOldCursor())" in admin_drag
     assert "isProtectedItemMove" not in admin_drag
 
 
@@ -334,6 +333,31 @@ def test_brewing_can_reopen_a_tombstoned_cauldron_state():
     persist = between(database, "private void persistBrewingState", "private String brewingJournalKey")
     assert "narcotics_brewing_states.deleted=TRUE" in persist
     assert "state_version < EXCLUDED.state_version" in persist
+
+
+def test_brewing_new_session_uses_a_monotonic_version_after_completion():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "CauldronState base =", "NarcoticDefinition exact")
+    assert "newBrewingVersion(nowMillis)" in decision
+    helper = between(service, "private long newBrewingVersion", "private boolean prepareFinalIngredient")
+    assert "System.currentTimeMillis()" not in helper
+    assert "Math.max" in helper
+
+
+def test_official_ar_inventory_handlers_do_not_mutate_or_cancel_vanilla_clicks():
+    economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
+    click = between(economy, "public void onOfficialArInventoryClick", "public void onOfficialArInventoryDrag")
+    drag = between(economy, "public void onOfficialArInventoryDrag", "public void onOfficialArInventoryMove")
+    assert "event.setCancelled" not in click + drag
+    assert "setAmount" not in click + drag
+
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    admin_click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")
+    admin_drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
+    assert "artifactsCoreOwns(vanillaCursor,vanillaCurrent,vanillaHotbar)" in admin_click
+    assert "isOfficialArItem(vanillaCursor)" in admin_click
+    assert "artifactsCoreOwns(e.getOldCursor())||isOfficialArItem(e.getOldCursor())" in admin_drag
+    assert "setAmount" not in admin_click + admin_drag
 
 
 def test_adminplus_leaves_official_ar_as_a_vanilla_item():

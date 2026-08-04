@@ -1209,6 +1209,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemClick(InventoryClickEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
+        ItemStack vanillaCursor=e.getCursor(), vanillaCurrent=e.getCurrentItem(), vanillaHotbar=null;
+        if(e.getClick()==ClickType.NUMBER_KEY&&e.getHotbarButton()>=0)vanillaHotbar=p.getInventory().getItem(e.getHotbarButton());
+        if(artifactsCoreOwns(vanillaCursor,vanillaCurrent,vanillaHotbar)
+                || isOfficialArItem(vanillaCursor)||isOfficialArItem(vanillaCurrent)||isOfficialArItem(vanillaHotbar))return;
         Inventory top=e.getView().getTopInventory();
         if(top==null||top.getType()!=InventoryType.ANVIL)return;
         ItemStack cursor=e.getCursor(), current=e.getCurrentItem(), hotbar=null;
@@ -1264,6 +1268,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemDrag(InventoryDragEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
+        if(artifactsCoreOwns(e.getOldCursor())||isOfficialArItem(e.getOldCursor()))return;
         Inventory top=e.getView().getTopInventory();
         if(top==null||top.getType()!=InventoryType.ANVIL)return;
         if(artifactsCoreOwns(e.getOldCursor())){

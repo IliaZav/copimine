@@ -1434,14 +1434,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onInventoryClick(InventoryClickEvent var1) {
       if (var1.getWhoClicked() instanceof Player var2) {
-         // Catalog items are ordinary ItemStacks.  The only intentional
-         // transport restriction is the anvil: custom metadata must not be
-         // used as an anvil input or silently rewritten by a rename/repair.
-         if (this.isAnvilArtifactInteraction(var1)) {
-            var1.setCancelled(true);
-            var2.updateInventory();
-            return;
-         }
          if (var1.isCancelled()) {
             return;
          }
@@ -1758,12 +1750,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var1.setCancelled(true);
          return;
       }
-      if (this.isAnvilArtifactDrag(var1)) {
-         var1.setCancelled(true);
-         if (var1.getWhoClicked() instanceof Player player) {
-            player.updateInventory();
-         }
-      }
+      // Catalog items use the ordinary Bukkit drag/split rules everywhere.
    }
 
    @EventHandler(

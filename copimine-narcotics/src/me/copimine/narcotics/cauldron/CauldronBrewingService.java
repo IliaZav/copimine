@@ -250,7 +250,10 @@ public final class CauldronBrewingService {
         }
         synchronized (lockFor(key)) {
             long nowMillis = System.currentTimeMillis();
-            CauldronState base = cache.getOrDefault(key, new CauldronState(List.of(), 0L, nowMillis, player.getUniqueId()));
+            CauldronState cached = cache.get(key);
+            CauldronState base = cached == null
+                    ? new CauldronState(List.of(), 0L, nowMillis, player.getUniqueId())
+                    : cached;
             UUID playerUuid = player == null ? null : player.getUniqueId();
             if (completionInFlight.contains(key)) {
                 if (player != null) {
@@ -264,7 +267,14 @@ public final class CauldronBrewingService {
             UUID ownerUuid = playerUuid;
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
-            long nextVersion = base.version() + 1L;
+            // A completed brew leaves a tombstoned row and its old completion
+            // intent in PostgreSQL. Starting the next session at version 1
+            // would collide with that old intent/output identity. A fresh
+            // in-memory session therefore gets a monotonic seed; subsequent
+            // ingredients remain ordinary +1 revisions.
+            long nextVersion = cached == null
+                    ? newBrewingVersion(nowMillis)
+                    : base.version() + 1L;
 
             NarcoticDefinition exact = recipeService.matchExact(current);
             if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null) {
@@ -355,6 +365,10 @@ public final class CauldronBrewingService {
 
     public int cachedStateCount() {
         return cache.size();
+    }
+
+    private long newBrewingVersion(long nowMillis) {
+        return Math.max(1L, nowMillis);
     }
 
     public void clearCache() {

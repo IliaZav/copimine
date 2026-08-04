@@ -1660,7 +1660,8 @@ public final class NarcoticsDatabase {
                               deleted=EXCLUDED.deleted,
                               updated_at=EXCLUDED.updated_at,
                               owner_uuid=EXCLUDED.owner_uuid
-                WHERE narcotics_brewing_states.state_version < EXCLUDED.state_version
+                WHERE narcotics_brewing_states.deleted=TRUE
+                   OR narcotics_brewing_states.state_version < EXCLUDED.state_version
                 """)) {
             statement.setString(1, key.world());
             statement.setInt(2, key.x());

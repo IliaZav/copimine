@@ -322,6 +322,37 @@ def test_brewing_world_output_is_public_and_never_mailbox_delivered():
     assert "requestPendingBrewingOutputDelivery" not in plugin
 
 
+def test_brewing_completion_consumes_the_rig_for_a_fresh_second_setup():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    effects = between(service, "private void completeBrewingEffects", "private void deliverCompletedBrewingOutput")
+    assert "extinguishRig(block)" in effects
+    assert "if (configService.clearCauldronOnCompletion())" in effects
+
+
+def test_brewing_can_reopen_a_tombstoned_cauldron_state():
+    database = read("copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java")
+    persist = between(database, "private void persistBrewingState", "private String brewingJournalKey")
+    assert "narcotics_brewing_states.deleted=TRUE" in persist
+    assert "state_version < EXCLUDED.state_version" in persist
+
+
+def test_adminplus_leaves_official_ar_as_a_vanilla_item():
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    assert "normalizeArInventoryState(e.getPlayer())" not in admin
+    assert "normalizeArInventoryState(p)" not in admin
+    pickup = between(admin, "public void onPickup(EntityPickupItemEvent e)", "public void onDrop(PlayerDropItemEvent e)")
+    drop = between(admin, "public void onDrop(PlayerDropItemEvent e)", "public void onSealDropLowest")
+    assert "if(isOfficialArItem(picked)) return;" in pickup
+    assert "isOfficialArItem(e.getItemDrop().getItemStack())) return;" in drop
+    for start, end, marker in (
+        ("public void onArHopperPickup(InventoryPickupItemEvent e)", "public void onProtectedInventoryMove", "if(e!=null)return;"),
+        ("public void onArInventoryMove(InventoryMoveItemEvent e)", "public void onProtectedBlockDispense", "if(e!=null)return;"),
+        ("public void onArDispense(BlockDispenseEvent e)", "public void onArSpawn", "if(e!=null)return;"),
+        ("public void onArSpawn(ItemSpawnEvent e)", "public void onChunkLoad", "if(isOfficialArItem(e.getEntity().getItemStack())) return;"),
+    ):
+        assert marker in between(admin, start, end)
+
+
 def test_shop_revenue_starts_pending_and_waits_for_the_async_credit_worker():
     artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
     persist = between(artifacts, "private void persistPaidPurchase", "private void deliverPurchase")

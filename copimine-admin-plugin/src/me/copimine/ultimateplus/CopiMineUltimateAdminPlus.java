@@ -663,7 +663,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
         purgeTemporaryApplicationBooks(e.getPlayer());
-        normalizeArInventoryState(e.getPlayer());
         refreshImageFramePermissions(e.getPlayer());
         updatePlayerProfile(e.getPlayer(), true, clientBrands.getOrDefault(e.getPlayer().getUniqueId(),""));
         refreshElectionRoleStateAsync(e.getPlayer());
@@ -702,7 +701,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     public void onInventoryClose(InventoryCloseEvent e) {
         if (e.getPlayer() instanceof Player p) {
             purgeTemporaryApplicationBooks(p);
-            normalizeArInventoryState(p);
             snapshotOnlineInventory(p, "inventory_close");
         }
     }
@@ -773,6 +771,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST) public void onPickup(EntityPickupItemEvent e){
         ItemStack picked=e.getItem()==null?null:e.getItem().getItemStack();
         if(e.getEntity() instanceof Player p && checkMode.containsKey(p.getUniqueId())&&!hasAdmin(p)){ e.setCancelled(true); return; }
+        if(isOfficialArItem(picked)) return;
         if(economyCoreOwns(picked)) return;
         if(electionCoreOwns(picked)) return;
         if(artifactsCoreOwns(picked)) return;
@@ -787,6 +786,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     @EventHandler(priority=EventPriority.HIGHEST) public void onDrop(PlayerDropItemEvent e){
         if(checkMode.containsKey(e.getPlayer().getUniqueId())&&!hasAdmin(e.getPlayer())){ e.setCancelled(true); return; }
+        if(e.getItemDrop()!=null&&isOfficialArItem(e.getItemDrop().getItemStack())) return;
         if(economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
         if(electionCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
         if(artifactsCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
@@ -818,6 +818,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onArEntityDamage(EntityDamageEvent e){
+        if(e.getEntity() instanceof Item item&&isOfficialArItem(item.getItemStack()))return;
         if(!(e.getEntity() instanceof Item item)||!isOfficialArItem(item.getItemStack()))return;
         if(economyCoreOwns(item.getItemStack())) return;
         queueArSync("AR_ENTITY_DAMAGE:"+e.getCause().name());
@@ -829,6 +830,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onArDespawn(ItemDespawnEvent e){
+        if(isOfficialArItem(e.getEntity().getItemStack())) return;
         if(economyCoreOwns(e.getEntity().getItemStack())) return;
         if(isOfficialArItem(e.getEntity().getItemStack())){queueArSync("AR_DESPAWN"); return;}
     }
@@ -838,6 +840,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onArMerge(ItemMergeEvent e){
+        if(isOfficialArItem(e.getEntity().getItemStack())||isOfficialArItem(e.getTarget().getItemStack())) return;
         if(economyCoreOwns(e.getEntity().getItemStack(),e.getTarget().getItemStack())) return;
         if(isOfficialArItem(e.getEntity().getItemStack())||isOfficialArItem(e.getTarget().getItemStack())){queueArSync("AR_MERGE"); return;}
     }
@@ -884,6 +887,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)
     public void onArSpawn(ItemSpawnEvent e){
+        if(isOfficialArItem(e.getEntity().getItemStack())) return;
         if(economyCoreOwns(e.getEntity().getItemStack())) return;
         if(isOfficialArItem(e.getEntity().getItemStack())){ItemStack stack=e.getEntity().getItemStack(); setArOwnerMeta(stack,"","",""); e.getEntity().setItemStack(stack); queueArSync("AR_SPAWN"); return;}
     }

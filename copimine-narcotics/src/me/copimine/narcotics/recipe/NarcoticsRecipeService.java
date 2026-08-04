@@ -77,11 +77,17 @@ public final class NarcoticsRecipeService {
         if (itemFactory != null && itemFactory.isOfficialFinishedItem(stack)) {
             return null;
         }
-        // The three-item grace period delays the wrong-mix result; it does
-        // not turn arbitrary items into valid ingredients.  Only materials
-        // and potion effects present in at least one configured recipe may
-        // enter the cauldron.
-        return ingredientEntry(stack);
+        // The first three clicks are a real buffer: every ordinary item may
+        // enter it. The recipe decision is made from the accumulated keys;
+        // an unknown key makes the mixture fail once the buffer is exhausted.
+        IngredientEntry recognized = ingredientEntry(stack);
+        if (recognized != null) {
+            return recognized;
+        }
+        if (isPotion(stack)) {
+            return createPotionEntry(stack, genericPotionKey(stack));
+        }
+        return new IngredientEntry("MATERIAL:" + stack.getType().name(), stack.getType().name(), "", "", 1);
     }
 
     public NarcoticDefinition matchExact(List<IngredientEntry> ingredientEntries) {

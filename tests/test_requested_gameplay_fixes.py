@@ -121,15 +121,12 @@ def test_brewing_requires_full_water_and_netherrack_fire_rig():
     assert "BlockFace.DOWN" in rig
 
 
-def test_brewing_final_ingredient_cannot_consume_a_replaced_stack():
+def test_brewing_consumes_the_submitted_ingredient_once_and_has_no_player_owner_gate():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
-    factory = read("copimine-narcotics/src/me/copimine/narcotics/item/NarcoticItemFactory.java")
-    completion = between(service, "private boolean prepareFinalIngredient", "private void finishBrewing")
-    assert "ItemStack expectedIngredient = stack == null ? null : stack.clone()" in completion
-    assert "itemFactory.consumeOneExact(player, expectedIngredient)" in completion
-    assert "abortBrewingCompletionIntent" in completion
-    assert "public boolean consumeOneExact(Player player, ItemStack expected)" in factory
-    assert "candidate.isSimilar(expected)" in factory
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+    assert "itemFactory.consumeOne(player, stack)" in decision
+    assert "ownerUuid" not in decision
+    assert "Objects.equals" not in decision
 
 
 def test_brewing_keeps_a_valid_three_of_four_prefix_pending():
@@ -138,31 +135,27 @@ def test_brewing_keeps_a_valid_three_of_four_prefix_pending():
     assert "if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null)" in decision
     assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current)" in decision
     assert "if (canStillBecomeRecipe && current.size() < maximumRecipeSize)" in decision
-    assert "return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);" in decision
+    assert "return queueIngredients(block, key, current, nextVersion, nowMillis);" in decision
 
     config = read("copimine-narcotics/config.yml")
     chups = between(config, "  chups:", "    normal_effects:")
     assert len(re.findall(r"^      - ", chups, flags=re.MULTILINE)) == 4
 
 
-def test_brewing_does_not_accept_arbitrary_items_as_a_three_item_buffer():
+def test_brewing_accepts_arbitrary_items_as_a_three_item_buffer_then_checks_the_recipe():
     service = read("copimine-narcotics/src/me/copimine/narcotics/recipe/NarcoticsRecipeService.java")
     entry = between(service, "public IngredientEntry cauldronIngredientEntry", "public NarcoticDefinition matchExact")
-    assert "return ingredientEntry(stack);" in entry
-    assert 'new IngredientEntry("MATERIAL:" + stack.getType().name()' not in entry
-    assert "genericPotionKey" not in entry
+    assert "IngredientEntry recognized = ingredientEntry(stack);" in entry
+    assert 'new IngredientEntry("MATERIAL:" + stack.getType().name()' in entry
+    assert "genericPotionKey" in entry
 
 
 def test_brewing_completion_physically_drops_both_success_and_wrong_mix_outputs():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
-    effects = between(service, "private void completeBrewingEffects", "private void simulateWrongMixExplosion")
-    plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
-    drop = between(plugin, "public Item dropCompletedBrewingOutput", "private void markPendingRefund")
-    assert "dropCompletedBrewingOutput" in effects
-    assert "simulateWrongMixExplosion(block)" in effects
-    assert "definition" in drop
-    assert "dropItemNaturally" in drop
-    assert "markPendingOutput" in drop
+    effects = between(service, "private void finishBrewing", "private void simulateWrongMixExplosion")
+    assert "dropItemNaturally" in effects
+    assert "simulateWrongMixExplosion(block, initiator)" in effects
+    assert "clearState(block, key, version)" in effects
 
 
 def test_brewing_world_output_has_a_pickup_delay_instead_of_disappearing_instantly():
@@ -177,17 +170,18 @@ def test_brewing_rejects_a_three_item_prefix_that_cannot_match_any_recipe():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
     assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current)" in decision
-    assert "containsUnrecognizedIngredient" not in decision
+    assert "containsUnrecognizedIngredient" in decision
     assert "if (canStillBecomeRecipe && current.size() < maximumRecipeSize)" in decision
-    assert 'configService.items().get("zhuzevo")' in decision
+    assert "return finishWrongMix(block, key, nextVersion, current.size(), player);" in decision
 
 
 def test_wrong_mix_damages_players_only_inside_six_block_radius():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     explosion = between(service, "private void simulateWrongMixExplosion", "private boolean queueIngredients")
-    assert "getNearbyEntities" in explosion
+    assert "getPlayers" in explosion
     assert "distanceSquared" in explosion
     assert "damage(" in explosion
+    assert "WRONG_MIX_DAMAGE_RADIUS = 6.0D" in service
     assert "WRONG_MIX_MIN_DAMAGE = 14.0D" in service
     assert "WRONG_MIX_MAX_DAMAGE = 20.0D" in service
 
@@ -195,9 +189,9 @@ def test_wrong_mix_damages_players_only_inside_six_block_radius():
 def test_shared_cauldron_lets_a_different_player_finish_and_receive_the_brew():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
-    completion = between(service, "private boolean prepareFinalIngredient", "private void finishBrewing")
-    assert "UUID ownerUuid = playerUuid;" in decision
-    assert "Objects.equals(current.ownerUuid(), ownerUuid)" not in completion
+    completion = between(service, "private void finishBrewing", "private void simulateWrongMixExplosion")
+    assert "ownerUuid" not in decision + completion
+    assert "Objects.equals" not in completion
 
 
 def test_official_ar_uses_vanilla_inventory_transport_and_world_drop_rules():
@@ -294,36 +288,24 @@ def test_legacy_ar_is_not_silently_reissued_and_failed_issuance_is_token_scoped(
     assert "removeOfficialArSerial(player.getInventory(), serial, stackAmount)" not in issue
 
 
-def test_brewing_consumes_only_the_exact_submitted_ingredient_and_world_output_is_durable():
+def test_brewing_consumes_the_submitted_ingredient_and_drops_output_in_world():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
-    database = read("copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java")
-    plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
-    queue = between(service, "private boolean queueIngredients", "private void refundFailedIngredient")
-    assert "consumeOneExact" in queue
-    assert "queuePendingIngredientRefunds(ownerUuid, frozen)" in service
-    assert "WORLD_DROPPED" in database
-    assert "pendingWorldOutputClaims" in plugin
-    assert "onPendingOutputPickup" in plugin
-    assert "onPendingOutputDespawn" in plugin
+    queue = between(service, "private boolean queueIngredients", "private void clearState")
+    assert "saveBrewingState(key, version, frozen)" in queue
+    assert "ownerUuid" not in queue
+    assert "dropItemNaturally" in service
 
 
 def test_brewing_world_output_is_public_and_never_mailbox_delivered():
     plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
     cauldron = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
-    pickup = between(plugin, "public void onPendingOutputPickup", "public void onPendingOutputDamage")
-    output = between(plugin, "public Item dropCompletedBrewingOutput", "public void clearPendingBrewingOutputMarker")
-    assert "pendingOutputOwner" not in pickup
-    assert "event.setCancelled(true)" in pickup
-    assert "markPendingOutputOwner" not in output
-    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId)" in cauldron
-    assert "database.completePendingBrewingOutput(outputId)" in plugin
-    assert "getInventory().addItem(output)" not in plugin
-    assert "requestPendingBrewingOutputDelivery" not in plugin
+    assert "dropItemNaturally" in between(cauldron, "private void finishBrewing", "private void simulateWrongMixExplosion")
+    assert "ownerUuid" not in cauldron
 
 
 def test_brewing_completion_consumes_the_rig_for_a_fresh_second_setup():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
-    effects = between(service, "private void completeBrewingEffects", "private void deliverCompletedBrewingOutput")
+    effects = between(service, "private void clearState", "private void particle")
     assert "extinguishRig(block)" in effects
     assert "if (configService.clearCauldronOnCompletion())" in effects
 
@@ -338,10 +320,8 @@ def test_brewing_can_reopen_a_tombstoned_cauldron_state():
 def test_brewing_new_session_uses_a_monotonic_version_after_completion():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "CauldronState base =", "NarcoticDefinition exact")
-    assert "newBrewingVersion(nowMillis)" in decision
-    helper = between(service, "private long newBrewingVersion", "private boolean prepareFinalIngredient")
-    assert "System.currentTimeMillis()" not in helper
-    assert "Math.max" in helper
+    assert "base.version() + 1L" in decision
+    assert "newBrewingVersion" not in decision
 
 
 def test_official_ar_inventory_handlers_do_not_mutate_or_cancel_vanilla_clicks():

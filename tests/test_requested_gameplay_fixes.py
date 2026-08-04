@@ -125,6 +125,33 @@ def test_brewing_completion_physically_drops_both_success_and_wrong_mix_outputs(
     assert "markPendingOutput" in drop
 
 
+def test_brewing_resolves_a_prefix_without_any_recipe_match_after_three_ingredients():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+    assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current)" in decision
+    assert "containsUnrecognizedIngredient" not in decision
+    assert "if (canStillBecomeRecipe && current.size() < maximumRecipeSize)" in decision
+    assert 'configService.items().get("zhuzevo")' in decision
+
+
+def test_wrong_mix_damages_players_only_inside_six_block_radius():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    explosion = between(service, "private void simulateWrongMixExplosion", "private boolean queueIngredients")
+    assert "getNearbyEntities" in explosion
+    assert "distanceSquared" in explosion
+    assert "damage(" in explosion
+    assert "WRONG_MIX_MIN_DAMAGE = 14.0D" in service
+    assert "WRONG_MIX_MAX_DAMAGE = 20.0D" in service
+
+
+def test_shared_cauldron_lets_a_different_player_finish_and_receive_the_brew():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+    completion = between(service, "private boolean prepareFinalIngredient", "private void finishBrewing")
+    assert "UUID ownerUuid = playerUuid;" in decision
+    assert "Objects.equals(current.ownerUuid(), ownerUuid)" not in completion
+
+
 def test_official_ar_can_move_in_personal_inventory_and_is_normalized_after_world_drop():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
     click = between(economy, "private boolean officialArTouchesContainer", "private boolean containsOfficialAr")
@@ -198,13 +225,6 @@ def test_legacy_ar_is_not_silently_reissued_and_failed_issuance_is_token_scoped(
     assert "removeOfficialArSerial(player.getInventory(), serial, stackAmount)" not in issue
 
 
-def test_brewing_does_not_resolve_a_global_three_ingredient_prefix_as_zhuzevo():
-    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
-    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
-    assert "if (current.size() < maximumRecipeSize)" in decision
-    assert decision.index("if (current.size() < maximumRecipeSize)") < decision.index("return prepareFinalIngredient(block, key, configService.items().get(\"zhuzevo\")")
-
-
 def test_brewing_consumes_only_the_exact_submitted_ingredient_and_world_output_is_durable():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     database = read("copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java")
@@ -218,20 +238,18 @@ def test_brewing_consumes_only_the_exact_submitted_ingredient_and_world_output_i
     assert "onPendingOutputDespawn" in plugin
 
 
-def test_brewing_world_output_is_bound_to_the_owner_who_completed_the_brew():
+def test_brewing_world_output_is_public_and_never_mailbox_delivered():
     plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
-    database = read("copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java")
     cauldron = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     pickup = between(plugin, "public void onPendingOutputPickup", "public void onPendingOutputDamage")
     output = between(plugin, "public Item dropCompletedBrewingOutput", "public void clearPendingBrewingOutputMarker")
-    completion = between(database, "public CompletableFuture<Boolean> completePendingBrewingOutput", "public CompletableFuture<Void> releasePendingBrewingOutput")
-    assert "pendingOutputOwner" in pickup
+    assert "pendingOutputOwner" not in pickup
     assert "event.setCancelled(true)" in pickup
-    assert "markPendingOutputOwner(output, ownerUuid)" in output
-    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId, ownerUuid)" in cauldron
-    assert "player_uuid=?" in completion
-    assert "WORLD_DROPPED until the owning player" in cauldron
-    assert "clearPendingOutputMarkers(player, outputId)" in plugin
+    assert "markPendingOutputOwner" not in output
+    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId)" in cauldron
+    assert "database.completePendingBrewingOutput(outputId)" in plugin
+    assert "getInventory().addItem(output)" not in plugin
+    assert "requestPendingBrewingOutputDelivery" not in plugin
 
 
 def test_shop_revenue_starts_pending_and_waits_for_the_async_credit_worker():

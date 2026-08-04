@@ -53,6 +53,7 @@ foreach ($required in @(
     "mods/voicechat-fabric-1.21.1-2.6.16.jar",
     "mods/iris-fabric-1.8.8+mc1.21.1.jar",
     "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
+    "mods/CustomSkinLoader_Fabric-14.26.1.jar",
     "modpack_manifest.json",
     "README_RU.txt",
     "VOICE_CHAT_OFFICIAL_DOWNLOAD.txt"
@@ -68,6 +69,19 @@ if ($manifestText -notmatch '"requiredExternal"\s*:\s*\[\s*\]') {
 
 if ($manifestText -notmatch 'Simple Voice Chat') {
     throw "modpack_manifest.json must document Simple Voice Chat"
+}
+
+if ($manifestText -notmatch 'CustomSkinLoader' -or $manifestText -notmatch '14\.26\.1') {
+    throw "modpack_manifest.json must document CustomSkinLoader Fabric 14.26.1"
+}
+
+$manifestData = $manifestText | ConvertFrom-Json
+$manifestPaths = @($manifestData.files | ForEach-Object { $_.path })
+if ($manifestPaths | Where-Object { $_ -match '(?i)tl.?skin' }) {
+    throw "modpack_manifest.json must not list the replaced TL Skin mod as an included file"
+}
+if ($zipEntries | Where-Object { $_ -match '(?i)tl.?skin' }) {
+    throw "CopiMineMods.zip must not contain the replaced TL Skin mod"
 }
 
 if ($manifestText -notmatch 'Iris' -or $manifestText -notmatch 'Sodium') {

@@ -19,6 +19,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Levelled;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
@@ -30,12 +31,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
-import java.util.Objects;
 
 public final class CauldronBrewingService {
     private static final long STALE_BREW_STATE_MILLIS = 15L * 60L * 1000L;
     private static final int MINIMUM_RECIPE_CHECK_SIZE = 3;
     private static final int MAX_CACHED_STATES = 10_000;
+    private static final double WRONG_MIX_DAMAGE_RADIUS = 6.0D;
+    private static final double WRONG_MIX_MIN_DAMAGE = 14.0D;
+    private static final double WRONG_MIX_MAX_DAMAGE = 20.0D;
 
     private final CopiMineNarcotics plugin;
     private NarcoticsConfigService configService;
@@ -252,7 +255,10 @@ public final class CauldronBrewingService {
                 }
                 return false;
             }
-            UUID ownerUuid = base.ownerUuid() == null ? playerUuid : base.ownerUuid();
+            // The cauldron is shared: the player who submits this ingredient
+            // owns the completion result, regardless of who supplied earlier
+            // ingredients. There is deliberately no previous-player gate.
+            UUID ownerUuid = playerUuid;
             List<IngredientEntry> current = new ArrayList<>(base.ingredients());
             current.add(ingredient);
             long nextVersion = base.version() + 1L;
@@ -266,19 +272,6 @@ public final class CauldronBrewingService {
             boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
             if (current.size() < MINIMUM_RECIPE_CHECK_SIZE) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
-            }
-            if (recipeService.containsUnrecognizedIngredient(current)) {
-                // Do not resolve a global three-ingredient prefix as Zhuzevo
-                // while a four-ingredient recipe can still be completed. A
-                // valid potion/material can arrive with a server-version
-                // alias in its Bukkit metadata; the final decision belongs
-                // at the recipe's maximum size, where the complete list is
-                // checked exactly.
-                if (current.size() < maximumRecipeSize) {
-                    return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
-                }
-                return prepareFinalIngredient(block, key, configService.items().get("zhuzevo"), nextVersion,
-                        current.size(), true, ownerUuid, player, stack, ingredient, current);
             }
             if (canStillBecomeRecipe && current.size() < maximumRecipeSize) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis, player, stack);
@@ -394,8 +387,7 @@ public final class CauldronBrewingService {
                 .whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(plugin, () -> {
                     synchronized (lockFor(key)) {
                         CauldronState current = cache.get(key);
-                        if (error != null || current == null || current.version() != expectedStoredVersion
-                                || !Objects.equals(current.ownerUuid(), ownerUuid)) {
+                        if (error != null || current == null || current.version() != expectedStoredVersion) {
                             completionInFlight.remove(key);
                             if (error != null) {
                                 plugin.getLogger().warning("Brewing completion intent failed for " + key + ": " + error.getMessage());
@@ -502,7 +494,7 @@ public final class CauldronBrewingService {
         // drop the certified item at the cauldron, then close the row. A
         // transient database failure is retried instead of ending the brew
         // with only its visual effect.
-        deliverCompletedBrewingOutput(block, key, definition, outputId, dropLocation, ownerUuid, 0);
+        deliverCompletedBrewingOutput(block, key, definition, outputId, dropLocation, 0);
         if (block.getWorld() != null) {
             particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH,
                     "zhuzevo".equals(definition.id()) ? 24 : 12);
@@ -517,27 +509,21 @@ public final class CauldronBrewingService {
     }
 
     private void deliverCompletedBrewingOutput(Block block, BlockKey key, NarcoticDefinition definition,
-                                               String outputId, Location dropLocation, UUID ownerUuid, int attempt) {
+                                               String outputId, Location dropLocation, int attempt) {
         database.claimPendingBrewingOutput(outputId).whenComplete((claimed, claimError) ->
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (claimError != null) {
                         plugin.getLogger().warning("Unable to claim completed brewing output " + outputId
                                 + ": " + claimError.getMessage());
-                        scheduleOutputDeliveryRetry(block, key, definition, outputId, dropLocation, ownerUuid, attempt);
+                        scheduleOutputDeliveryRetry(block, key, definition, outputId, dropLocation, attempt);
                         return;
                     }
                     if (!Boolean.TRUE.equals(claimed)) {
-                        // A reconnect recovery worker may already own this
-                        // row. It will finish mailbox delivery idempotently.
-                        if (ownerUuid != null) {
-                            plugin.requestPendingBrewingOutputDelivery(ownerUuid);
-                        } else {
-                            plugin.getLogger().warning("Completed ownerless brewing output " + outputId
-                                    + " is already owned by another delivery worker.");
-                        }
+                        // Another completion retry already materialised this
+                        // public output, or the pickup path closed the row.
                         return;
                     }
-                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId, ownerUuid);
+                    Item dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
                     if (dropped == null) {
                         database.releasePendingBrewingOutput(outputId).whenComplete((ignored, releaseError) ->
                                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -546,39 +532,45 @@ public final class CauldronBrewingService {
                                                 "Unable to release undelivered brewing output " + outputId,
                                                 releaseError);
                                     }
-                                    if (ownerUuid != null) {
-                                        plugin.requestPendingBrewingOutputDelivery(ownerUuid);
-                                    } else {
-                                        scheduleOutputDeliveryRetry(block, key, definition, outputId,
-                                                dropLocation, ownerUuid, attempt);
-                                    }
+                                    scheduleOutputDeliveryRetry(block, key, definition, outputId,
+                                            dropLocation, attempt);
                                 }));
                         return;
                     }
-                    // Keep the row in WORLD_DROPPED until the owning player
-                    // picks up this exact marked entity. Finalizing here
-                    // would clear the owner marker before pickup and let a
-                    // nearby player take the durable entitlement.
+                    // Keep the row in WORLD_DROPPED until any player picks up
+                    // this exact marked entity. The marker is durability
+                    // metadata, never an ownership or authorization signal.
                 }));
     }
 
     private void scheduleOutputDeliveryRetry(Block block, BlockKey key, NarcoticDefinition definition,
-                                             String outputId, Location dropLocation, UUID ownerUuid, int attempt) {
+                                             String outputId, Location dropLocation, int attempt) {
         long delay = Math.min(20L * 60L, 20L << Math.min(6, Math.max(0, attempt)));
         Bukkit.getScheduler().runTaskLater(plugin,
                 () -> deliverCompletedBrewingOutput(block, key, definition, outputId, dropLocation,
-                        ownerUuid, attempt + 1), delay);
+                        attempt + 1), delay);
     }
 
     private void simulateWrongMixExplosion(Block block) {
+        if (block == null || block.getWorld() == null) {
+            return;
+        }
         World world = block.getWorld();
         Location center = block.getLocation().add(0.5D, 1.0D, 0.5D);
         world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1.0F, 0.85F);
         world.spawnParticle(Particle.EXPLOSION, center, 1, 0.1D, 0.1D, 0.1D, 0.0D);
         world.spawnParticle(Particle.SMOKE, center, 42, 0.55D, 0.35D, 0.55D, 0.03D);
-        // Wrong mixtures are cosmetic.  Applying direct damage here bypasses
-        // region/PvP policy and cannot be represented in the durable brew
-        // transaction, so no player damage is generated by the effect.
+        double radiusSquared = WRONG_MIX_DAMAGE_RADIUS * WRONG_MIX_DAMAGE_RADIUS;
+        for (var entity : world.getNearbyEntities(center, WRONG_MIX_DAMAGE_RADIUS,
+                WRONG_MIX_DAMAGE_RADIUS, WRONG_MIX_DAMAGE_RADIUS)) {
+            if (!(entity instanceof Player player)
+                    || player.getLocation().distanceSquared(center) > radiusSquared) {
+                continue;
+            }
+            double damage = ThreadLocalRandom.current().nextDouble(
+                    WRONG_MIX_MIN_DAMAGE, Math.nextUp(WRONG_MIX_MAX_DAMAGE));
+            player.damage(damage);
+        }
     }
 
     private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version,

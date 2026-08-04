@@ -3,9 +3,9 @@
     "generatedFor":  "CopiMine release hardening",
     "clientArchive":  {
                           "path":  "thirdparty/CopiMineMods.zip",
-                          "sha1":  "89ef9de130e2b757bd4c86e30d37ab750c39131c",
+                          "sha1":  "b171691e5c60060c00f2fa6caee0028e1fd7b4a6",
                           "downloadPath":  "/downloads/CopiMineMods.zip",
-                          "sha256":  "46f88e73ac709eea4980a6d6c9a4181530c0c2566b24c715cea038ba4cad4997"
+                          "sha256":  "99d2f9201e731daefc6b80cc7f3d3a0c8368d77d44bf3afe7d9100de023d9ef9"
                       },
     "requiredExternal":  [
 
@@ -19,6 +19,15 @@
                                              "sha1":  "b50462eb9aeb186c6e96503442a7f69e1990616c",
                                              "license":  "Proprietary",
                                              "sha256":  "19df801c80f93adac92cf10503d3b7e168a5f84703538999cfc763cc1b9c3694"
+                                         },
+                                         {
+                                             "name":  "CustomSkinLoader",
+                                             "version":  "14.26.1+1.21.1-fabric",
+                                             "path":  "thirdparty/client-mods/CustomSkinLoader_Fabric-14.26.1.jar",
+                                             "sha1":  "fcfc6bbee1535be771b4d6b3124281236b1f4475",
+                                             "license":  "GPL-3.0-only",
+                                             "source":  "https://github.com/xfl03/MCCustomSkinLoader",
+                                             "sha256":  "733af00a53a9d66719f09f5cb3d630c4bb22ce043b2c66700a234c578f65c621"
                                          },
                                          {
                                              "name":  "Emotecraft",

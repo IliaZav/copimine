@@ -53,9 +53,11 @@ def test_custom_artifacts_and_ar_are_free_in_vanilla_inventory_transport():
         "public void onProtectedItemMove(InventoryMoveItemEvent e)",
     )
     assert "artifactsCoreOwns(cursor,current,hotbar)" in admin_click
-    assert "isOfficialArItem" not in admin_click
+    assert "isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar)" in admin_click
+    assert admin_click.index("isOfficialArItem(cursor)") < admin_click.index("artifactsCoreOwns(cursor,current,hotbar)")
     assert "artifactsCoreOwns(e.getOldCursor())" in admin_drag
-    assert "isOfficialArItem" not in admin_drag
+    assert "if(isOfficialArItem(e.getOldCursor()))return;" in admin_drag
+    assert admin_drag.index("if(isOfficialArItem(e.getOldCursor()))return;") < admin_drag.index("artifactsCoreOwns(e.getOldCursor())")
     assert "isProtectedItemMove" not in admin_drag
 
 
@@ -141,6 +143,29 @@ def test_brewing_keeps_a_valid_three_of_four_prefix_pending():
     config = read("copimine-narcotics/config.yml")
     chups = between(config, "  chups:", "    normal_effects:")
     assert len(re.findall(r"^      - ", chups, flags=re.MULTILINE)) == 4
+
+
+def test_validated_narcotic_use_precedes_generic_cancelled_event_guard():
+    plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
+    official_index = plugin.index("if (official != null)")
+    cancelled_index = plugin.index("if (event.isCancelled())")
+    official = plugin[official_index:cancelled_index]
+
+    assert official_index < cancelled_index
+    assert "overdoseService.isStateReady(player)" in official
+    assert "event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY)" in official
+    assert "database.reserveConsumption" in official
+
+
+def test_chups_has_jump_boost_three_in_normal_effects():
+    config = read("copimine-narcotics/config.yml")
+    chups = between(config, "  chups:", "  borshevik:")
+    normal = between(chups, "    normal_effects:", "    overdose_effects:")
+    assert re.search(
+        r"^      - type:JUMP_BOOST,amplifier:2,duration_seconds:90$",
+        normal,
+        flags=re.MULTILINE,
+    )
 
 
 def test_brewing_accepts_arbitrary_items_as_a_three_item_buffer_then_checks_the_recipe():
@@ -319,24 +344,44 @@ def test_official_ar_inventory_handlers_do_not_mutate_or_cancel_vanilla_clicks()
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     admin_click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")
     admin_drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
-    assert "artifactsCoreOwns(cursor,current,hotbar)" in admin_click
-    assert "isOfficialArItem" not in admin_click
-    assert "artifactsCoreOwns(e.getOldCursor())" in admin_drag
-    assert "isOfficialArItem" not in admin_drag
+    assert "isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar)" in admin_click
+    assert admin_click.index("isOfficialArItem(cursor)") < admin_click.index("artifactsCoreOwns(cursor,current,hotbar)")
+    assert "if(isOfficialArItem(e.getOldCursor()))return;" in admin_drag
+    assert admin_drag.index("if(isOfficialArItem(e.getOldCursor()))return;") < admin_drag.index("artifactsCoreOwns(e.getOldCursor())")
     assert "setAmount" not in admin_click + admin_drag
 
 
 def test_adminplus_does_not_cancel_creative_inventory_transport():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     click = between(admin, "public void onInv(InventoryClickEvent e)", "public void onPrepareCraft")
-    assert "if(e instanceof InventoryCreativeEvent)return;" in click
+    assert "if(e instanceof InventoryCreativeEvent" in click
+    assert "isOfficialArItem(e.getCursor())||isOfficialArItem(e.getCurrentItem())||isOfficialArItem(hotbar)" in admin
+    assert "if(e instanceof InventoryCreativeEvent)return;" not in click
+
+
+def test_adminplus_bypasses_both_paper_creative_click_paths_before_generic_guards():
+    """Paper uses InventoryClickEvent for ordinary Creative container clicks."""
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    click = between(admin, "public void onInv(InventoryClickEvent e)", "public void onPrepareCraft")
+    creative_packet = click.index("if(e instanceof InventoryCreativeEvent")
+    packet_ar = click.index("isOfficialArCreativeClick(e,p)", creative_packet)
+    creative_mode = click.index("getGameMode()==GameMode.CREATIVE")
+    mode_ar = click.index("isOfficialArCreativeClick(e,p)", creative_mode)
+    generic_guard = click.index("inventoryLocks")
+    assert packet_ar < generic_guard
+    assert mode_ar < generic_guard
 
 
 def test_ar_inventory_clicks_have_no_custom_quantity_or_restriction_path():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")
     drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
-    assert "isOfficialArItem" not in click + drag
+    click_early = click[:click.index("Inventory top")]
+    drag_early = drag[:drag.index("Inventory top")]
+    assert "isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar)" in click_early
+    assert "if(isOfficialArItem(e.getOldCursor()))return;" in drag_early
+    assert "setCancelled" not in click_early + drag_early
+    assert "updateInventory" not in click_early + drag_early
     assert "AR_RESTRICTED_INVENTORY_TOUCH" not in click + drag
     assert "setAmount" not in click + drag
     assert "return isProtectedOfficialItem(it);" in admin

@@ -170,9 +170,18 @@ def test_brewing_keeps_a_valid_prefix_pending_even_when_the_runtime_maximum_is_t
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
 
-    assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);" in decision
-    assert "if (canStillBecomeRecipe)" in decision
     assert "if (current.size() < maximumRecipeSize)" in decision
+    assert "canStillBecomeRecipe" not in decision
+
+
+def test_brewing_buffers_a_three_item_prefix_before_considering_zhuzevo():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+
+    minimum_guard = decision.index("if (current.size() < MINIMUM_RECIPE_CHECK_SIZE)")
+    maximum_guard = decision.index("if (current.size() < maximumRecipeSize)")
+    assert minimum_guard < maximum_guard
+    assert "if (canStillBecomeRecipe)" not in decision[minimum_guard:maximum_guard]
 
 
 def test_validated_narcotic_use_precedes_generic_cancelled_event_guard():

@@ -181,17 +181,14 @@ public final class CauldronBrewingService {
                 return true;
             }
             int maximumRecipeSize = recipeService.maximumRecipeSize();
-            boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
             if (current.size() < MINIMUM_RECIPE_CHECK_SIZE) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis);
             }
-            // Do not decide that a mixture is wrong while a longer recipe can
-            // still receive another ingredient. In particular, a four-item
-            // recipe must not turn into Zhuzevo after its third click because
-            // one of its item representations was normalized differently.
-            if (canStillBecomeRecipe) {
-                return queueIngredients(block, key, current, nextVersion, nowMillis);
-            }
+            // The cauldron is a bounded input buffer.  Do not turn a partial
+            // mixture into Zhuzevo at the minimum recipe size: a longer
+            // recipe must be allowed to receive its final ingredient even if
+            // one submitted stack used a representation that is not currently
+            // recognized by the recipe matcher.
             if (current.size() < maximumRecipeSize) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis);
             }

@@ -1118,6 +1118,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             sender.sendMessage(color("&cКоманда доступна только в игре."));
             return true;
         }
+        if (args.length > 0 && "law".equalsIgnoreCase(args[0])) {
+            return handlePresidentLawCommand(player, java.util.Arrays.copyOfRange(args, 1, args.length));
+        }
         if (!isPresident(player) && !hasElectionAdmin(player) && !player.hasPermission("copimine.election.broadcast")) {
             player.sendMessage(color("&cНет доступа к президентскому обращению."));
             return true;
@@ -1154,6 +1157,78 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.sendMessage(color("&cНе удалось отправить обращение: &f" + publicErrorMessage(error)));
         }
         return true;
+    }
+
+    private boolean handlePresidentLawCommand(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(color("&cКоманда доступна только в игре."));
+            return true;
+        }
+        if (!isPresident(player) && !hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНет доступа к законам президента."));
+            return true;
+        }
+        if (args.length == 0) {
+            player.sendMessage(color("&eИспользование: &f/presidentsay law <текст>"));
+            player.sendMessage(color("&eЗамена: &f/presidentsay law replace <id> <текст>"));
+            return true;
+        }
+        boolean replacement = "replace".equalsIgnoreCase(args[0]);
+        int textStart = replacement ? 2 : 0;
+        if (replacement && args.length < 3) {
+            player.sendMessage(color("&eИспользование: &f/presidentsay law replace <id> <текст>"));
+            return true;
+        }
+        String replacesLawId = replacement ? args[1].trim() : "";
+        String text;
+        try {
+            text = sanitizePresidentLawText(String.join(" ", java.util.Arrays.copyOfRange(args, textStart, args.length)));
+        } catch (IllegalArgumentException error) {
+            player.sendMessage(color("&cТекст закона отклонён: &f" + error.getMessage()));
+            return true;
+        }
+        player.sendActionBar(color("&7Отправляю закон на проверку..."));
+        runAsync(() -> {
+            try {
+                submitLawForReview(player, text, replacesLawId);
+                runSync(() -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    player.sendMessage(color(replacement
+                            ? "&aЗамена закона отправлена на проверку администрации."
+                            : "&aЗакон отправлен на проверку администрации."));
+                    openPresidentMandateMenu(player);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "president law command failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        sendUserError(player, error, "&cНе удалось отправить закон.");
+                    }
+                });
+            }
+        });
+        return true;
+    }
+
+    private String sanitizePresidentLawText(String raw) {
+        String text = ChatColor.stripColor(first(raw, ""))
+                .replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ")
+                .replace('\n', ' ')
+                .replace('\t', ' ')
+                .replaceAll("\\s{2,}", " ")
+                .trim();
+        if (text.isBlank()) {
+            throw new IllegalArgumentException("пустой текст");
+        }
+        if (text.length() > LAW_TEXT_LIMIT) {
+            throw new IllegalArgumentException("лимит " + LAW_TEXT_LIMIT + " символов");
+        }
+        if (PRESIDENT_TEXT_FORBIDDEN.matcher(text).find()) {
+            throw new IllegalArgumentException("служебные команды и SQL-последовательности запрещены");
+        }
+        return text;
     }
 
     private String sanitizePresidentBroadcastText(String raw) {
@@ -3567,17 +3642,40 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 "&7Законов: &f" + snap.laws().size(),
                 "&7Налог оплачивается только вручную."
         )));
-        setButton(holder, 10, Material.BOOK, "&eПредложить закон", List.of("&7Текст уйдёт на проверку администрации."), "mandate:law");
+        setStatic(inv, 10, infoItem(Material.BOOK, "&eПредложить закон", List.of(
+                "&7Команда: &f/presidentsay law <текст>",
+                "&7Лимит: &f" + LAW_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
         int replaceSlot = 11;
         for (Map<String, Object> law : publishedLawRows) {
             if (replaceSlot > 16) {
                 break;
             }
-            setButton(holder, replaceSlot++, Material.PAPER, "&fЗаменить: " + shortText(string(law.get("text")), 18), List.of("&7Замена доступна не чаще раза в 3 дня."), "mandate:replace-law:" + string(law.get("id")));
+            String lawId = string(law.get("id"));
+            setStatic(inv, replaceSlot++, infoItem(Material.PAPER,
+                    "&fЗаменить: " + shortText(string(law.get("text")), 18),
+                    List.of(
+                            "&7Команда: &f/presidentsay law replace " + lawId + " <текст>",
+                            "&7Замена доступна не чаще раза в 3 дня.",
+                            "&8Только наведение — кнопка не нажимается."
+                    )));
         }
-        setButton(holder, 19, Material.PAPER, "&eОбращение в чат", List.of("&7Показать команду для общего сообщения."), "mandate:show-command:chat");
-        setButton(holder, 20, Material.BELL, "&eОбращение на экран", List.of("&7Показать команду для title-сообщения."), "mandate:show-command:title");
-        setButton(holder, 21, Material.CLOCK, "&eОбращение в ActionBar", List.of("&7Показать команду для actionbar-сообщения."), "mandate:show-command:actionbar");
+        setStatic(inv, 19, infoItem(Material.PAPER, "&eОбращение в чат", List.of(
+                "&7Команда: &f/presidentsay chat <текст>",
+                "&7Лимит: &f" + BROADCAST_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
+        setStatic(inv, 20, infoItem(Material.BELL, "&eОбращение на экран", List.of(
+                "&7Команда: &f/presidentsay title <текст>",
+                "&7Лимит: &f" + BROADCAST_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
+        setStatic(inv, 21, infoItem(Material.CLOCK, "&eОбращение в ActionBar", List.of(
+                "&7Команда: &f/presidentsay actionbar <текст>",
+                "&7Лимит: &f" + BROADCAST_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
         setStatic(inv, 22, infoItem(Material.GOLD_INGOT, "&6Текущий налог", List.of(
                 "&7Ставка: &f" + currentAmount + " AR",
                 "&7Период: &f" + taxPeriodLabel(snap.taxPeriodHours()),
@@ -3783,17 +3881,32 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         int safePage = Math.max(0, Math.min(10_000, page));
         player.sendActionBar(color("&7Загружаю поступления..."));
         runAsync(() -> {
+            if (!isEnabled()) {
+                return;
+            }
             try {
                 List<Map<String, Object>> rows = currentTaxPayments();
+                if (!isEnabled()) {
+                    return;
+                }
                 runSync(() -> {
+                    if (!isEnabled()) {
+                        return;
+                    }
                     Player current = Bukkit.getPlayer(playerUuid);
                     if (current != null && current.isOnline()) {
                         renderPresidentPaymentsMenu(current, safePage, rows);
                     }
                 });
             } catch (Exception error) {
+                if (!isEnabled()) {
+                    return;
+                }
                 getLogger().log(Level.WARNING, "president payments menu load failed", error);
                 runSync(() -> {
+                    if (!isEnabled()) {
+                        return;
+                    }
                     Player current = Bukkit.getPlayer(playerUuid);
                     if (current != null && current.isOnline()) {
                         sendUserError(current, error, "&cНе удалось загрузить поступления.");

@@ -99,6 +99,48 @@ def test_president_mandate_is_deduplicated_on_death_and_drop():
     assert "deduplicatePresidentMandates(player)" in drop
 
 
+def test_block_mandate_interaction_does_not_trigger_the_announcement_title():
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    branch = between(
+        admin,
+        'if("president_mandate".equals(officialType)){',
+        "Block legacyClicked=null;",
+    )
+    assert "if(clicked!=null)" in branch
+    assert branch.index("if(clicked!=null)") < branch.index("presidentHourlyAnnouncement(p)")
+
+
+def test_mandate_input_and_show_command_items_are_hover_only():
+    election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
+    menu = between(
+        election,
+        "private void openPresidentMandateMenuNow",
+        "private void openPresidentTaxRosterMenu",
+    )
+    for slot in (10, 19, 20, 21):
+        assert f"setStatic(inv, {slot}," in menu
+    assert 'setButton(holder, 10, Material.BOOK' not in menu
+    assert 'setButton(holder, 19, Material.PAPER' not in menu
+    assert 'setButton(holder, 20, Material.BELL' not in menu
+    assert 'setButton(holder, 21, Material.CLOCK' not in menu
+    assert "/presidentsay law <текст>" in menu
+    assert "/presidentsay chat <текст>" in menu
+    assert "/presidentsay title <текст>" in menu
+    assert "/presidentsay actionbar <текст>" in menu
+
+
+def test_president_payments_async_callback_is_safe_during_plugin_shutdown():
+    election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
+    payments = between(
+        election,
+        "private void openPresidentPaymentsMenu",
+        "private void openLiveMenu",
+    )
+    assert payments.count("if (!isEnabled())") >= 3
+    assert payments.index("if (!isEnabled())") < payments.index("List<Map<String, Object>> rows = currentTaxPayments()")
+    assert payments.index("if (!isEnabled())") < payments.index("renderPresidentPaymentsMenu")
+
+
 def test_silk_touch_diamond_ore_path_replaces_the_existing_vanilla_drop():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     drop = between(admin, "public void onArDrop(BlockDropItemEvent e)", "public void onBook(PlayerEditBookEvent e)")

@@ -720,6 +720,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             return;
         }
         if("president_mandate".equals(officialType)){
+            // A block interaction belongs to ElectionCore's mandate GUI.  The
+            // legacy announcement path used to run first and leave a global
+            // title on screen even though the player was opening the menu.
+            if(clicked!=null){
+                e.setCancelled(true);
+                return;
+            }
             try{ e.setCancelled(true); presidentHourlyAnnouncement(p); }catch(Exception ex){ warn(p,"Не удалось выполнить действие мандата. Подробности записаны в лог."); getLogger().warning("president mandate: "+ex); }
             return;
         }

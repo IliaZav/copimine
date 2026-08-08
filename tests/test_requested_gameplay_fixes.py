@@ -397,6 +397,20 @@ def test_creative_ar_transport_never_depends_on_ar_signature_or_admin_lock_state
     assert "GameMode.CREATIVE" in protected_drag[:protected_drag.index("Inventory top")]
 
 
+def test_bug_report_is_persisted_when_the_error_happens_and_reused_for_the_player_note():
+    """An automatic error report must survive without a later /reporta command."""
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    notify = between(admin, "private void notifyPlayerBug", "public void capturePluginError")
+    submit = between(admin, "private boolean submitBugReport", "private boolean handleAuditCommand")
+
+    assert "persistAutomaticBugReportAsync(pending)" in notify
+    assert "pending.requestId()" in submit
+    assert "ON CONFLICT(id) DO UPDATE" in submit
+    assert "pushBackendBugArtifactsAsync" not in submit
+    assert "private void pushBackendBugArtifactsAsync" not in admin
+    assert "private void postBackendJson" not in admin
+
+
 def test_zhuzevo_stale_stack_repair_requires_exact_registered_fungible_identity():
     narcotics = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
     factory = read("copimine-narcotics/src/me/copimine/narcotics/item/NarcoticItemFactory.java")

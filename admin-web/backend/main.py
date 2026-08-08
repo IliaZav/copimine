@@ -17508,6 +17508,58 @@ async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
 NARCOTICS_RECIPE_BLOCKED_TOKENS = {"MATERIAL:DIAMOND_ORE", "MATERIAL:DEEPSLATE_DIAMOND_ORE"}
 NARCOTICS_RECIPE_TOKEN_RE = re.compile(r"^(material|potion):[A-Z0-9_]+$", re.IGNORECASE)
 NARCOTICS_RECIPE_APPLY_MODES = {"save", "apply"}
+# These are the deliberately supported ingredient choices shown by the recipe
+# editor.  A flattened texture directory is not a material registry: it has
+# block faces and animation frames, and it lacks a standalone image for some
+# legitimate block items.  Keep their player-facing names and canonical sprite
+# together so active recipes always render the correct item.
+NARCOTICS_RECIPE_CURATED_MATERIALS: dict[str, tuple[str, str]] = {
+    "SUGAR": ("Сахар", "sugar.png"),
+    "WHITE_DYE": ("Белый краситель", "white_dye.png"),
+    "GLOWSTONE_DUST": ("Светопыль", "glowstone_dust.png"),
+    "RABBIT_FOOT": ("Кроличья лапка", "rabbit_foot.png"),
+    "DIAMOND": ("Алмаз", "diamond.png"),
+    "JUNGLE_LEAVES": ("Листья джунглей", "jungle_leaves.png"),
+    "SLIME_BLOCK": ("Блок слизи", "slime_block.png"),
+    "TURTLE_SCUTE": ("Черепаший панцирь", "turtle_scute.png"),
+    "EMERALD": ("Изумруд", "emerald.png"),
+    "GOLD_INGOT": ("Золотой слиток", "gold_ingot.png"),
+    "GOLDEN_CARROT": ("Золотая морковь", "golden_carrot.png"),
+    "STRING": ("Нить", "string.png"),
+    "BONE": ("Кость", "bone.png"),
+    "IRON_BLOCK": ("Железный блок", "iron_block.png"),
+    "GHAST_TEAR": ("Слеза гаста", "ghast_tear.png"),
+    "AMETHYST_BLOCK": ("Аметистовый блок", "amethyst_block.png"),
+    "END_ROD": ("Энд-стержень", "end_rod.png"),
+    "IRON_INGOT": ("Железный слиток", "iron_ingot.png"),
+    "BLUE_STAINED_GLASS": ("Синее стекло", "blue_stained_glass.png"),
+    "COCOA_BEANS": ("Какао-бобы", "cocoa_beans.png"),
+    "IRON_NUGGET": ("Железный самородок", "iron_nugget.png"),
+    "LARGE_FERN": ("Большой папоротник", "large_fern_top.png"),
+    "DRIED_KELP_BLOCK": ("Блок сушёной ламинарии", "dried_kelp_side.png"),
+    "SUGAR_CANE": ("Сахарный тростник", "sugar_cane.png"),
+    "NETHERRACK": ("Незерак", "netherrack.png"),
+    "SOUL_SAND": ("Песок душ", "soul_sand.png"),
+    "REDSTONE_BLOCK": ("Редстоуновый блок", "redstone_block.png"),
+    "LAPIS_BLOCK": ("Лазуритовый блок", "lapis_block.png"),
+    "COPPER_BLOCK": ("Медный блок", "copper_block.png"),
+    "OBSIDIAN": ("Обсидиан", "obsidian.png"),
+    "CRYING_OBSIDIAN": ("Плачущий обсидиан", "crying_obsidian.png"),
+    "HONEY_BLOCK": ("Блок мёда", "honey_block.png"),
+    "MAGMA_BLOCK": ("Магмовый блок", "magma.png"),
+    "SEA_LANTERN": ("Морской фонарь", "sea_lantern.png"),
+    "SCULK": ("Скалк", "sculk.png"),
+    "TINTED_GLASS": ("Тонированное стекло", "tinted_glass.png"),
+    "PHANTOM_MEMBRANE": ("Мембрана фантома", "phantom_membrane.png"),
+    "BLAZE_POWDER": ("Огненный порошок", "blaze_powder.png"),
+    "FERMENTED_SPIDER_EYE": ("Маринованный паучий глаз", "fermented_spider_eye.png"),
+    "PRISMARINE_CRYSTALS": ("Призмариновые кристаллы", "prismarine_crystals.png"),
+    "ECHO_SHARD": ("Осколок эха", "echo_shard.png"),
+    "AMETHYST_SHARD": ("Осколок аметиста", "amethyst_shard.png"),
+    "ENDER_PEARL": ("Эндер-жемчуг", "ender_pearl.png"),
+    "BREEZE_ROD": ("Стержень бриза", "breeze_rod.png"),
+    "NETHER_STAR": ("Звезда Незера", "nether_star.png"),
+}
 NARCOTICS_RECIPE_TECHNICAL_SUFFIXES = (
     "_top",
     "_bottom",
@@ -17587,13 +17639,7 @@ def _public_recipe_item(item_id: str, item: Mapping[str, Any]) -> dict[str, Any]
 
 
 def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
-    """Build a complete material picker from the bundled vanilla textures.
-
-    The asset directory is already populated from the matching Minecraft
-    client version.  Technical block-face textures are excluded, while every
-    remaining icon is exposed as a valid material token with its own sprite.
-    A tiny mtime cache keeps opening the recipe editor cheap.
-    """
+    """Build the material picker without treating texture filenames as items."""
     global _NARCOTICS_RECIPE_ITEMS_CACHE
     icon_dir = FRONTEND_DIR / "assets" / "mc-icons" / "item"
     if not icon_dir.exists():
@@ -17609,6 +17655,21 @@ def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
     blocked = {token.split(":", 1)[1].lower() for token in NARCOTICS_RECIPE_BLOCKED_TOKENS}
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
+    available = {path.name.lower(): path for path in files}
+    for material, (name, sprite) in NARCOTICS_RECIPE_CURATED_MATERIALS.items():
+        item_id = material.lower()
+        path = available.get(sprite.lower())
+        if item_id in blocked or path is None:
+            continue
+        seen.add(item_id)
+        rows.append(
+            {
+                "id": material,
+                "name": name,
+                "token": f"material:{item_id}",
+                "iconUrl": f"/assets/mc-icons/item/{path.name}",
+            }
+        )
     for path in files:
         item_id = path.stem.lower()
         if not item_id or item_id in blocked or item_id in seen:
@@ -17625,10 +17686,11 @@ def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
                 continue
             item_id = canonical
         seen.add(item_id)
+        curated = NARCOTICS_RECIPE_CURATED_MATERIALS.get(item_id.upper())
         rows.append(
             {
                 "id": item_id.upper(),
-                "name": item_id.replace("_", " ").title(),
+                "name": curated[0] if curated else item_id.replace("_", " ").title(),
                 "token": f"material:{item_id}",
                 "iconUrl": f"/assets/mc-icons/item/{path.name}",
             }

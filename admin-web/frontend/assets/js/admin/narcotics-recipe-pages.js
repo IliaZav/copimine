@@ -47,6 +47,14 @@ const RECIPE_ITEM_TABS = [
   }
 ];
 
+// The recipe configuration is authored in Russian. Keep those canonical names
+// even if a stale asset catalog still contains an English filename-derived label.
+const RECIPE_TOKEN_LABELS = new Map(
+  RECIPE_ITEM_TABS
+    .flatMap((entry) => entry.items || [])
+    .map(([id, label]) => [String(id || "").toUpperCase(), label])
+);
+
 const BLOCKED_RECIPE_MATERIALS = new Set(["DIAMOND_ORE", "DEEPSLATE_DIAMOND_ORE"]);
 const RECIPE_PICKER_TABS = [
   { id: "items", label: "Все предметы", potion: false },
@@ -82,6 +90,8 @@ export function createAdminNarcoticsRecipePages(deps) {
 
   function displayName(token) {
     const { kind, value } = tokenParts(token);
+    const canonical = RECIPE_TOKEN_LABELS.get(value.toUpperCase());
+    if (canonical) return canonical;
     const rs = recipeState();
     const source = kind === "POTION" ? rs.potionCatalog : rs.itemCatalog;
     const found = source.find((item) => String(item.id || "").toLowerCase() === value.toLowerCase());

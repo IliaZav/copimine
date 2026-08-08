@@ -564,8 +564,8 @@ body.junior-admin-mode .page-heading h1::after {
 
 .recipe-slot img,
 .creative-item img {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   object-fit: contain;
   image-rendering: pixelated;
 }

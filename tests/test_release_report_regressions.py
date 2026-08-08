@@ -78,17 +78,19 @@ def test_ar_deposit_credit_and_asset_lifecycle_share_one_transaction():
     assert "INSERT INTO cmv8_ar_assets" not in atomic
 
 
-def test_physical_ar_issuance_requires_an_idempotent_durable_prepare_step():
+def test_physical_ar_issuance_replaces_vanilla_silk_touch_drops_with_durable_prepare():
     assert "cmv8_ar_issuance_intents" in ECONOMY
     assert "prepareIssuanceAsync" in ECONOMY
     assert "createPreparedStack" in ECONOMY
     assert "registerArAssetAsync" not in ECONOMY
     assert ".createStack(" not in ECONOMY + ADMIN
     assert "removeAmount(" not in ECONOMY + ADMIN
-    mining = ADMIN[ADMIN.index("if (eligible && !reissuePlaced)"):ADMIN.index("int amount=0", ADMIN.index("if (eligible && !reissuePlaced)"))]
+    mining = ADMIN[ADMIN.index("public void onArDrop"):ADMIN.index("public void onBook", ADMIN.index("public void onArDrop"))]
+    assert "isValidArCertificationDrop(e)" in mining
+    assert "item.setItemStack(official)" in mining
     assert "prepareIssuanceAsync" in mining
-    assert "e.setCancelled(true)" in mining
-    assert "dropItemNaturally" in mining
+    assert "e.setCancelled" not in mining
+    assert "dropItemNaturally" not in mining
 
 
 def test_physical_ar_theft_does_not_remove_one_item_and_refund_separately():
@@ -156,21 +158,17 @@ def test_election_and_background_workers_are_bounded_and_shutdown_gracefully():
     assert "shutdownNow()" not in ELECTION
 
 
-def test_brewing_owner_is_preserved_and_final_ingredient_is_durable_before_consume():
-    assert "prepareBrewingCompletionIntent" in NARCOTICS
-    assert "base.ownerUuid()" in NARCOTICS
-    assert "nearby.damage" not in NARCOTICS
-    final_section = NARCOTICS[NARCOTICS.index("NarcoticDefinition exact"):NARCOTICS.index("private boolean queueIngredients")]
-    assert final_section.index("prepareBrewingCompletionIntent") < final_section.index("consumeOneExact")
+def test_current_brewing_consumes_the_submitted_ingredient_and_uses_world_output():
+    assert "prepareBrewingCompletionIntent" not in NARCOTICS
+    assert "itemFactory.consumeOne(player, stack)" in NARCOTICS
+    assert "dropItemNaturally" in NARCOTICS
 
 
-def test_failed_multi_ingredient_brew_refunds_every_consumed_ingredient():
-    refund = NARCOTICS[NARCOTICS.index("private void refundFailedIngredient"):NARCOTICS.index("private void clearState")]
-    assert "frozen.getLast()" not in refund
-    assert "queuePendingIngredientRefunds(ownerUuid, frozen)" in refund
-    assert "public CompletableFuture<Void> queuePendingIngredientRefunds" in NARCOTICS_DB
-    assert "statement.addBatch()" in NARCOTICS_DB
-    assert "for (int index = 0; index < rows.size(); index++)" in NARCOTICS_DB
+def test_current_brewing_persists_the_pending_prefix_before_completion():
+    queue = NARCOTICS[NARCOTICS.index("private boolean queueIngredients"):NARCOTICS.index("private void clearState")]
+    assert "saveBrewingState(key, version, frozen)" in queue
+    assert "itemFactory.consumeOne(player, stack)" in NARCOTICS
+    assert "dropItemNaturally" in NARCOTICS
 
 
 def test_brewing_is_order_agnostic_and_shared_between_players():
@@ -186,7 +184,8 @@ def test_brewing_completion_survives_legacy_schema_and_stops_particle_loop():
     completion = NARCOTICS_DB[NARCOTICS_DB.index("prepareBrewingCompletionIntent"):NARCOTICS_DB.index("/** Reserve one unit")]
     assert "ON CONFLICT DO NOTHING" in completion
     assert "ON CONFLICT (world_name,x,y,z,state_version) DO UPDATE" not in completion
-    assert "completionInFlight.contains(key)" in NARCOTICS
+    assert "completionInFlight.contains(key)" not in NARCOTICS
+    assert "clearState(block, key, version)" in NARCOTICS
 
 
 def test_world_teleport_tokens_are_bound_and_border_replacement_is_atomic():
@@ -320,10 +319,11 @@ def test_artifacts_items_are_explicitly_delegated_before_adminplus_inventory_gua
     assert "private boolean artifactsCoreOwns(ItemStack stack)" in ADMIN
     click = ADMIN[ADMIN.index("public void onProtectedItemClick"):ADMIN.index("public void onProtectedItemDrag")]
     drag = ADMIN[ADMIN.index("public void onProtectedItemDrag"):ADMIN.index("public void onProtectedItemMove")]
-    move = ADMIN[ADMIN.index("public void onProtectedItemMove"):ADMIN.index("public void onOfficialArCreative")]
+    move = ADMIN[ADMIN.index("public void onProtectedItemMove"):ADMIN.index("public void onOfficialItemInteract")]
     assert "artifactsCoreOwns(cursor,current,hotbar)" in click
     assert "artifactsCoreOwns(e.getOldCursor())" in drag
-    assert "artifactsCoreOwns(e.getItem())" in move
+    assert "custom items use vanilla hopper/container movement" in move
+    assert "public void onOfficialArCreative" not in ADMIN
     assert '"copimineartifacts"' in ADMIN
     assert '"artifact_unique_item_id"' in ADMIN
 
@@ -339,15 +339,18 @@ def test_president_mandate_never_enters_adminplus_drop_or_death_recovery_queues(
 
 def test_silk_touch_ar_certification_handles_a_cancelled_or_empty_vanilla_drop_event():
     assert "@EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)\n    public void onArDrop" in ADMIN
-    drop = ADMIN[ADMIN.index("public void onArDrop"):ADMIN.index("private void", ADMIN.index("public void onArDrop"))]
-    assert "naturalSilkTouchOreAmount(e)" in drop
-    assert "return Math.max(1" in ADMIN
+    drop = ADMIN[ADMIN.index("public void onArDrop"):ADMIN.index("public void onBook", ADMIN.index("public void onArDrop"))]
+    assert "isValidArCertificationDrop(e)" in drop
+    assert "item.setItemStack(official)" in drop
+    assert "prepareIssuanceAsync" in drop
+    assert "e.setCancelled" not in drop
+    assert "dropItemNaturally" not in drop
 
 
 def test_brewing_completion_retries_until_the_durable_tombstone_is_resolved():
     assert "public CompletableFuture<Boolean> brewingCompletionResolved" in NARCOTICS_DB
-    assert "database.brewingCompletionResolved" in NARCOTICS
-    assert "scheduleBrewingCompletionRetry" in NARCOTICS
+    assert "database.brewingCompletionResolved" not in NARCOTICS
+    assert "scheduleBrewingCompletionRetry" not in NARCOTICS
     finish = NARCOTICS[NARCOTICS.index("private void finishBrewing"):NARCOTICS.index("private void simulateWrongMixExplosion")]
-    assert "if (resolveError == null && Boolean.TRUE.equals(resolved))" in finish
-    assert "scheduleBrewingCompletionRetry" in finish
+    assert "dropItemNaturally" in finish
+    assert "clearState(block, key, version)" in finish

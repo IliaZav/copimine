@@ -15,8 +15,9 @@ foreach ($marker in @(
   'retagArOwner',
   'recordArTransaction',
   'AR_TRANSFER_PICKUP',
-  'AR_SMELT_DIAMOND',
-  'AR_DROP_LISTED',
+  'onArDrop',
+  'createPreparedStack',
+  'prepareIssuanceAsync',
   'EntityDamageEvent',
   'ItemDespawnEvent',
   'ItemMergeEvent',
@@ -29,7 +30,8 @@ foreach ($marker in @(
 }
 
 Require-Regex $java 'BlockPlaceEvent[\s\S]{0,900}setCancelled\(true\)' 'AR place guard cancellation must stay active.'
-Require-Regex $java 'FurnaceSmeltEvent[\s\S]{0,900}setResult\(new ItemStack\(Material\.DIAMOND' 'Certified AR smelting output must be explicit.'
+Require-Regex $java 'public void onArDrop[\s\S]{0,1400}item\.setItemStack\(official\)[\s\S]{0,700}prepareIssuanceAsync' 'Silk Touch AR output must replace the vanilla drop after durable preparation.'
+if ($java.Contains('public void onFurnaceSmelt')) { $script:errors.Add('The removed legacy AR furnace guard must not be reintroduced.') }
 Require-Regex $java '!isOfficialArItem\(it\)' 'Death handling must keep AR droppable without deleting normal items.'
 
 foreach ($marker in @(

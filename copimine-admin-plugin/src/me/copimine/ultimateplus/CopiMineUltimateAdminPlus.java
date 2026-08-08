@@ -760,14 +760,20 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST) public void onPickup(EntityPickupItemEvent e){
         ItemStack picked=e.getItem()==null?null:e.getItem().getItemStack();
         if(e.getEntity() instanceof Player p && checkMode.containsKey(p.getUniqueId())&&!hasAdmin(p)){ e.setCancelled(true); return; }
-        if(economyCoreOwns(picked)) return;
+        if(economyCoreOwns(picked)){
+            if(e.getEntity() instanceof Player p){
+                try { retagArOwner(e.getItem(),p,"pickup",claimArTransfer(e.getItem(),p)); }
+                catch(Exception ex){ getLogger().warning("AR transfer retag failed on pickup: "+safeErr(ex)); }
+            }
+            return;
+        }
         if(electionCoreOwns(picked)) return;
         if(artifactsCoreOwns(picked)) return;
         if(e.getEntity() instanceof Player p && isProtectedCustomItem(picked)&&!requireElectionItemOwner(p,picked,first(electionItemString(picked,"type"),""))) e.setCancelled(true);
     }
     @EventHandler(priority=EventPriority.HIGHEST) public void onDrop(PlayerDropItemEvent e){
         if(checkMode.containsKey(e.getPlayer().getUniqueId())&&!hasAdmin(e.getPlayer())){ e.setCancelled(true); return; }
-        if(economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
+        if(economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())){ registerArTransferClaim(e.getItemDrop(),e.getPlayer()); return; }
         if(electionCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
         if(artifactsCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
         if(isPresidentMandate(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
@@ -4361,6 +4367,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(item==null||newOwner==null)return;
         ItemStack st=item.getItemStack();
         if(!isOfficialArItem(st))return;
+        if("pickup".equals(reason)&&claim==null)return;
         String oldUuid=first(claim==null?"":claim.ownerUuid(),arString(st,"owner_uuid"));
         String oldName=first(claim==null?"":claim.ownerName(),arString(st,"owner_name"),"unknown");
         boolean legacy=!isOfficialAr(st)||oldUuid.isBlank();

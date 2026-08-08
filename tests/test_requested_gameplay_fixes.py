@@ -61,6 +61,18 @@ def test_custom_artifacts_and_ar_are_free_in_vanilla_inventory_transport():
     assert "isProtectedItemMove" not in admin_drag
 
 
+def test_official_ar_drop_and_pickup_use_a_transfer_claim_before_retagging():
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    pickup = between(admin, "public void onPickup(EntityPickupItemEvent e)", "public void onDrop(PlayerDropItemEvent e)")
+    drop = between(admin, "public void onDrop(PlayerDropItemEvent e)", "public void onSealDropLowest")
+
+    assert "registerArTransferClaim(e.getItemDrop(),e.getPlayer())" in drop
+    assert "claimArTransfer(e.getItem(),p)" in pickup
+    assert 'retagArOwner(e.getItem(),p,"pickup"' in pickup
+    assert pickup.index("claimArTransfer(e.getItem(),p)") < pickup.index("return;", pickup.index("claimArTransfer(e.getItem(),p)"))
+    assert 'if("pickup".equals(reason)&&claim==null)return;' in admin
+
+
 def test_atm_has_a_visible_title_and_shop_has_a_no_president_treasury_fallback():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
     atm = between(economy, "private void spawnAtmTitleDisplay", "private void ensureAtmTitleDisplay")

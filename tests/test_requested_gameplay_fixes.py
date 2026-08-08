@@ -166,6 +166,15 @@ def test_brewing_does_not_finish_a_wrong_mix_before_the_longest_recipe_can_be_co
     assert len(re.findall(r"^      - ", chups, flags=re.MULTILINE)) == 4
 
 
+def test_brewing_keeps_a_valid_prefix_pending_even_when_the_runtime_maximum_is_too_small():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+
+    assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);" in decision
+    assert "if (canStillBecomeRecipe)" in decision
+    assert "if (current.size() < maximumRecipeSize)" in decision
+
+
 def test_validated_narcotic_use_precedes_generic_cancelled_event_guard():
     plugin = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
     official_index = plugin.index("if (official != null)")

@@ -147,7 +147,8 @@ const state = {
   adminSearchOpen: false,
   adminSearchTarget: "",
   adminSearchNeedle: "",
-  adminSearchHighlightTimer: null
+  adminSearchHighlightTimer: null,
+  electionPresidentLaws: {}
 };
 
 const PUBLIC_GUEST_HASH_ROUTES = new Set([
@@ -1881,6 +1882,82 @@ window.reviewElectionApplication = async (applicationId, decision) => {
       body: JSON.stringify({ decision }),
     });
     toast(decision === "approved" ? "Заявка одобрена" : "Заявка отклонена");
+    await loadElections();
+    window.closeModal();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+function presidentLawBookPages(text) {
+  const raw = normalizeBookText(text) || "Текст закона пока пуст.";
+  const limit = 900;
+  const pages = [];
+  let remaining = raw;
+  while (remaining.length > limit) {
+    let cut = remaining.lastIndexOf(" ", limit);
+    if (cut < Math.floor(limit * 0.6)) cut = limit;
+    pages.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) pages.push(remaining);
+  return pages.length ? pages : ["Текст закона пока пуст."];
+}
+
+function presidentLawBookScene(row, pageIndex = 0) {
+  const pages = presidentLawBookPages(row.text);
+  const current = Math.max(0, Math.min(Number(pageIndex) || 0, pages.length - 1));
+  const status = String(row.status || "PENDING").toUpperCase();
+  const canReview = status === "PENDING";
+  const id = esc(row.id || "");
+  return `
+    <div class="mc-book-stage">
+      <div class="mc-book">
+        <div class="mc-book-page-count">Страница ${current + 1} из ${pages.length}</div>
+        <div class="mc-book-title">Закон президента</div>
+        <div class="mc-book-question">${esc(row.president_name || "Действующий президент")}</div>
+        <div class="mc-book-text">${bookAnswerHtml(pages[current])}</div>
+        <button class="mc-book-arrow mc-book-arrow-left" ${current <= 0 ? "disabled" : ""} data-click="openPresidentLawBook('${id}',${current - 1})" aria-label="Предыдущая страница"></button>
+        <button class="mc-book-arrow mc-book-arrow-right" ${current >= pages.length - 1 ? "disabled" : ""} data-click="openPresidentLawBook('${id}',${current + 1})" aria-label="Следующая страница"></button>
+      </div>
+      <div class="mc-book-status">
+        ${pill(status === "PUBLISHED" ? "Опубликован" : status === "REJECTED" ? "Отклонён" : "На рассмотрении", status === "PUBLISHED" ? "good" : status === "REJECTED" ? "warn" : "neutral")}
+        ${row.created_at ? pill(`Создан ${dt(row.created_at)}`, "neutral") : ""}
+      </div>
+      <div class="mc-book-actions">
+        <button class="mc-book-button" ${canReview ? "" : "disabled"} data-click="reviewPresidentLaw('${id}','approved')">Одобрить</button>
+        <button class="mc-book-button mc-book-close" data-click="closeModal()">Закрыть</button>
+        <button class="mc-book-button" ${canReview ? "" : "disabled"} data-click="reviewPresidentLaw('${id}','rejected')">Отклонить</button>
+      </div>
+    </div>
+  `;
+}
+
+window.openPresidentLawBook = (lawId, pageIndex = 0) => {
+  const row = state.electionPresidentLaws?.[lawId];
+  if (!row) return toast("Книга закона не найдена", true);
+  const overlay = buildModalOverlay();
+  overlay.classList.add("mc-book-overlay");
+  const modal = buildModalShell("", "", { wide: true });
+  modal.classList.add("mc-book-modal");
+  const preview = document.createElement("div");
+  preview.append(fragmentFromHtml(presidentLawBookScene(row, pageIndex)));
+  modal.append(preview);
+  overlay.append(modal);
+  replaceChildrenSafe($("modalRoot"), [overlay]);
+};
+
+window.reviewPresidentLaw = async (lawId, decision) => {
+  const label = decision === "approved" ? "одобрить" : "отклонить";
+  try {
+    const headers = await dangerConfirm(`Нужно ${label} закон президента?`, `ELECTION_LAW_${decision.toUpperCase()}`);
+    if (!headers) return;
+    await api(`/api/elections/president-laws/${encodeURIComponent(lawId)}/review`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision }),
+    });
+    toast(decision === "approved" ? "Закон одобрен и опубликован" : "Закон отклонён");
     await loadElections();
     window.closeModal();
   } catch (err) {
@@ -3958,6 +4035,37 @@ function renderRpElectionAdminPanel(applicationRows, votingBlocks) {
   `);
 }
 
+function presidentLawCards(pendingLaws = [], publishedLaws = []) {
+  const pending = asArray(pendingLaws);
+  const published = asArray(publishedLaws);
+  const rows = [...pending, ...published];
+  if (!rows.length) {
+    return empty("Законов пока нет", "После отправки закона президентом он появится здесь.");
+  }
+  return `<div class="station-card-grid">${rows.slice(0, 24).map((row) => {
+    const status = String(row.status || "PENDING").toUpperCase();
+    const id = esc(row.id || "");
+    const pendingState = status === "PENDING";
+    return `
+      <article class="station-card ${pendingState ? "inactive" : "active"}">
+        <div class="station-card-top">
+          <strong>${esc(pendingState ? "Закон на рассмотрении" : "Опубликованный закон")}</strong>
+          ${pill(pendingState ? "нужно решение" : "в livebar", pendingState ? "warn" : "good")}
+        </div>
+        <p>${esc(short(row.text || "Текст закона не заполнен.", 260))}</p>
+        <div class="station-card-stats">
+          <span>Президент: <b>${esc(row.president_name || row.president_uuid || "—")}</b></span>
+          <span>${row.created_at ? dt(row.created_at) : ""}</span>
+        </div>
+        <div class="station-card-actions">
+          <button class="btn btn-secondary btn-small" data-click="openPresidentLawBook('${id}')">Открыть книгу</button>
+          ${pendingState ? `<button class="btn btn-primary btn-small" data-click="reviewPresidentLaw('${id}','approved')">Одобрить</button><button class="btn btn-danger btn-small" data-click="reviewPresidentLaw('${id}','rejected')">Отклонить</button>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("")}</div>`;
+}
+
 function rpVotingBlockCards(blocks = []) {
   blocks = asArray(blocks);
   if (!blocks.length) {
@@ -4132,6 +4240,8 @@ async function loadElections() {
   const applications = asArray(detail.applications);
   const candidates = firstArray(detail.candidates, overviewPayload.pluginWeb?.candidates, []);
   const votingBlocks = asArray(detail.votingBlocks);
+  const publishedLaws = asArray(detail.laws);
+  const pendingLaws = asArray(detail.pendingLaws);
   const auditRows = asArray(detail.audit).filter((row) => !/(cik|chair|ballot|law|petition|decree|seal|book)/i.test(String(row.action || row.type || "")));
   const errors = [overviewPayload.error, detailResponse?.error, detail.connected === false ? "PostgreSQL недоступен" : ""].filter(Boolean).map(cleanText);
   const stage = String(election.current_stage || election.status || overviewPayload.pluginWeb?.stageTitle || "NONE").toUpperCase();
@@ -4163,6 +4273,7 @@ async function loadElections() {
   const totalVotes = Number(summary.totalVotes ?? detail.turnout?.deposited_ballots ?? 0) || 0;
   const deadline = Number(election.voting_deadline_at || election.votingDeadline || 0);
   state.electionApplications = Object.fromEntries(applications.map((row) => [row.id, row]));
+  state.electionPresidentLaws = Object.fromEntries([...pendingLaws, ...publishedLaws].map((row) => [row.id, row]));
   setView(`
     <section id="elections-rp" class="election-rp-page">
       ${errors.length ? `<div class="notice bad">${esc(errors.join("; "))}</div>` : ""}
@@ -4189,6 +4300,7 @@ async function loadElections() {
       ${panel("Кандидаты и голоса", "Администратор утверждает от 2 до 4 кандидатов. Голоса видны во время голосования.", `${candidateCards(candidates)}<div class="spacer-12"></div>${resultBars(candidates, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}`)}
       ${panel("Интерактивные блоки", "Игрок нажимает на защищённый блок, выбирает голову кандидата и подтверждает свой голос.", `${rpVotingBlockCards(votingBlocks)}<div class="spacer-12"></div>${kv([["Активных блоков", activeBlocks.length], ["Всего голосов", totalVotes], ["Голосование до", deadline ? dt(deadline) : "не открыто"]])}`)}
       ${panel("Президентский срок", "Победитель получает полномочия ровно на семь дней. Новая кампания не запускается автоматически.", kv([["Президент", president.president_name || president.minecraft_name || election.president_name || "—"], ["Срок", election.president_term_days ? `${election.president_term_days} дней` : "7 дней"], ["Состояние", stage === "PRESIDENT_TERM" ? "исполняет полномочия" : "ожидает победителя"]]))}
+      ${panel("Законы президента", "Ожидающие законы можно прочитать в книге и одобрить или отклонить. Одобренные попадают в livebar, сайт и игровой GUI.", `<div class="book-status-strip"><span class="pill warn">На рассмотрении: ${pendingLaws.length}</span><span class="pill good">Опубликовано: ${publishedLaws.length}</span></div><div class="spacer-12"></div>${presidentLawCards(pendingLaws, publishedLaws)}`)}
       ${panel("История кампании", "События нового RP-сценария без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
     </section>
   `);

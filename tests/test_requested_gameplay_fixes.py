@@ -106,8 +106,58 @@ def test_block_mandate_interaction_does_not_trigger_the_announcement_title():
         'if("president_mandate".equals(officialType)){',
         "Block legacyClicked=null;",
     )
-    assert "if(clicked!=null)" in branch
-    assert branch.index("if(clicked!=null)") < branch.index("presidentHourlyAnnouncement(p)")
+    assert "presidentHourlyAnnouncement(p)" not in branch
+    assert "e.setCancelled(true)" not in branch
+    assert "ElectionCore owns every mandate interaction" in branch
+
+
+def test_rp_president_gui_exposes_pending_law_book_and_review_actions():
+    election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
+    loader = between(election, "private void openRpPresidentMenu", "private void renderRpPresidentMenu")
+    renderer = between(election, "private void renderRpPresidentMenu", "private void openLegacyManagementMenu")
+    routes = between(election, 'if (action.equals("rp:president:remove"))', 'if (action.startsWith("open:stations"))')
+
+    assert "pendingLaws()" in loader
+    assert "publishedLaws()" in loader
+    assert "rp:president:law:view:" in renderer
+    assert "WRITTEN_BOOK" in renderer
+    assert "rp:president:law:approve:" in routes
+    assert "rp:president:law:reject:" in routes
+    assert "reviewLaw(" in routes
+
+
+def test_president_law_book_is_a_real_written_book_with_full_text():
+    election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
+    assert "openRpPresidentLawDetail" in election
+    assert "openPresidentLawBook" in election
+    assert "meta.setPages(presidentLawBookPages" in election
+    assert "law:approve:" in election
+    assert "law:reject:" in election
+
+
+def test_president_term_livebar_never_enters_candidate_page_cycle():
+    election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
+    sidebar = between(election, "private void renderSidebar(Player player, LiveSnapshot snap)", "private void clearSidebar")
+    assert "PRESIDENT_TERM" in sidebar
+    assert re.search(r"presidentTerm\s*=\s*snap\.stage\(\)\s*==\s*ElectionStage\.PRESIDENT_TERM", sidebar)
+    assert re.search(r"showCandidatePage\s*=\s*!presidentTerm", sidebar)
+    assert "snap.laws()" in sidebar
+
+
+def test_election_web_exposes_and_reviews_president_laws():
+    backend = read("admin-web/backend/main.py")
+    frontend = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    detail = between(backend, "def election_detail_sync", "def election_overview_sync") if "def election_overview_sync" in backend else backend[backend.index("def election_detail_sync"):backend.index("def review_candidate_application_sync")]
+
+    assert "president_laws" in detail
+    assert "pending_laws" in detail
+    assert '@app.post("/api/elections/president-laws/{law_id}/review")' in backend
+    assert "review_president_law_sync" in backend
+    assert 'review_decision = "APPROVED" if status == "PUBLISHED" else "REJECTED"' in backend
+    assert 'conn.commit()' in backend[backend.index("def review_president_law_sync"):backend.index('@app.post("/api/elections/president-laws/{law_id}/review")')]
+    assert "presidentLawBookScene" in frontend
+    assert "reviewPresidentLaw" in frontend
+    assert "/api/elections/president-laws/" in frontend
 
 
 def test_mandate_input_and_show_command_items_are_hover_only():

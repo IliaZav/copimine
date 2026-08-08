@@ -28,6 +28,7 @@ def main() -> None:
         '@app.get("/api/player/elections")',
         '@app.post("/api/player/elections/application")',
         '@app.get("/api/elections/detail")',
+        '@app.post("/api/elections/president-laws/{law_id}/review")',
         '@app.post("/api/elections/rp/control")',
         '@app.post("/api/elections/rp/voting-blocks")',
     ):
@@ -39,6 +40,9 @@ def main() -> None:
     require(BACKEND, 'stage not in {"DEBATES", "VOTING"}', "Only Debates and Voting may be selected")
     require(BACKEND, "_rp_active_election", "Single active campaign guard missing")
     require(BACKEND, "president_terms WHERE status='ACTIVE'", "Active president guard missing")
+    require(BACKEND, "president_laws", "President law table must be part of the live election detail/review flow")
+    require(BACKEND, "review_president_law_sync", "President law review transaction missing")
+    require(BACKEND, "ELECTION_LAW_", "President law confirmation prefix missing")
     require(BACKEND, "voting_started_at", "Voting start timestamp missing")
     require(BACKEND, "voting_deadline_at", "Voting deadline timestamp missing")
     require(BACKEND, "requested_deadline < current_deadline", "Voting extension must never shorten the deadline")
@@ -55,6 +59,9 @@ def main() -> None:
     require(PLUGIN, "election_voting_blocks", "Plugin block table missing")
     require(PLUGIN, "votingDeadline", "Plugin deadline guard missing")
     require(FRONTEND, "renderRpElectionAdminPanel", "Admin RP controls missing")
+    require(FRONTEND, "presidentLawBookScene", "President law book missing")
+    require(FRONTEND, "reviewPresidentLaw", "President law review controls missing")
+    require(FRONTEND, "/api/elections/president-laws/", "President law review endpoint missing in frontend")
     require(FRONTEND, "submitPlayerElectionApplication", "Player application form missing")
     require(FRONTEND, "data-click=\"rpElectionControl('stage','VOTING')\"", "Voting control missing")
     require(FRONTEND, "rpElectionControl('finish_early')", "Early campaign completion control missing")

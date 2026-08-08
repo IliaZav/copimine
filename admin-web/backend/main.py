@@ -94,6 +94,10 @@ from .plugin_registry import (
     require_registry_plugin,
     validate_registry_values,
 )
+from .president_law_workflow import (
+    review_president_law_transition,
+    PresidentLawReviewError,
+)
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = APP_ROOT.parent
@@ -527,6 +531,11 @@ class ElectionApplicationReviewIn(BaseModel):
     decision: str = Field(max_length=24)
     note: str = Field(default="", max_length=240)
     create_candidate: bool = True
+
+
+class ElectionLawReviewIn(BaseModel):
+    decision: str = Field(max_length=24)
+    note: str = Field(default="", max_length=240)
 
 
 class PlayerElectionApplicationIn(BaseModel):
@@ -7788,6 +7797,22 @@ def sanitize_application_admin_row(row: Mapping[str, Any] | dict[str, Any]) -> d
     }
 
 
+def sanitize_president_law_admin_row(row: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    source = dict(row or {})
+    return {
+        "id": source.get("id"),
+        "term_id": source.get("term_id"),
+        "president_uuid": source.get("president_uuid"),
+        "president_name": source.get("president_name"),
+        "text": source.get("text"),
+        "status": source.get("status"),
+        "created_at": source.get("created_at"),
+        "published_at": source.get("published_at"),
+        "replaced_law_id": source.get("replaced_law_id"),
+        "slot_no": source.get("slot_no"),
+    }
+
+
 def election_detail_sync(limit: int = 500) -> dict[str, Any]:
     if pg_ready():
         try:
@@ -7856,13 +7881,29 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 applications = [dict(r) for r in conn.execute("SELECT * FROM candidate_applications WHERE election_id=%s ORDER BY submitted_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "candidate_applications") else []
                 curators = []
                 voting_blocks = [dict(r) for r in conn.execute("SELECT id,election_id,world,x,y,z,active,created_at,created_by,updated_at FROM election_voting_blocks WHERE election_id=%s AND active=1 ORDER BY created_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "election_voting_blocks") else []
-                president_rows = [dict(r) for r in conn.execute("SELECT * FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1").fetchall()] if pg_table_exists(conn, "president_terms") else []
+                president_rows = [dict(r) for r in conn.execute(
+                    "SELECT * FROM president_terms WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>%s) ORDER BY started_at DESC LIMIT 1",
+                    (election_now_ms(),),
+                ).fetchall()] if pg_table_exists(conn, "president_terms") else []
                 active_term_id = str((president_rows[0] or {}).get("id") or "") if president_rows else ""
                 # Decrees and petitions belonged to the retired election UI.
                 # Keep their keys for response compatibility, but never query
                 # or render those legacy tables as part of the RP workflow.
                 decrees, petitions = [], []
-                laws, pending_laws = [], []
+                law_rows = [dict(r) for r in conn.execute(
+                    "SELECT l.id,l.term_id,l.president_uuid,t.president_name,l.text,l.status,l.created_at,l.published_at,l.replaced_law_id,l.slot_no "
+                    "FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                    "WHERE l.term_id=%s AND l.status='PUBLISHED' ORDER BY l.slot_no ASC,l.published_at DESC LIMIT %s",
+                    (active_term_id, limit),
+                ).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
+                pending_law_rows = [dict(r) for r in conn.execute(
+                    "SELECT l.id,l.term_id,l.president_uuid,t.president_name,l.text,l.status,l.created_at,l.published_at,l.replaced_law_id,l.slot_no "
+                    "FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                    "WHERE l.term_id=%s AND l.status='PENDING' ORDER BY l.created_at DESC LIMIT %s",
+                    (active_term_id, limit),
+                ).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
+                laws = [sanitize_president_law_admin_row(row) for row in law_rows]
+                pending_laws = [sanitize_president_law_admin_row(row) for row in pending_law_rows]
                 # psycopg parses percent signs in parameterized SQL.  The
                 # literal wildcard therefore must be written as %% or the
                 # query fails with "only '%s', '%b', '%t' are allowed" and
@@ -8386,6 +8427,126 @@ def review_candidate_application_sync(application_id: str, data: ElectionApplica
         tags=["elections", "application"],
     )
     return {"applicationId": application_id, "decision": admin_status, "candidate": candidate}
+
+
+def review_president_law_sync(law_id: str, data: ElectionLawReviewIn, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for president-law review")
+    normalized_law_id = str(law_id or "").strip()
+    decision = str(data.decision or "").strip().lower()
+    if not normalized_law_id:
+        raise HTTPException(status_code=400, detail="Не указан закон президента")
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
+
+    now = election_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        term_raw = conn.execute(
+            "SELECT id,last_law_replace_at FROM president_terms "
+            "WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>%s) "
+            "ORDER BY started_at DESC LIMIT 1 FOR UPDATE",
+            (now,),
+        ).fetchone()
+        if not term_raw:
+            raise HTTPException(status_code=409, detail="Нет активного президентского срока")
+        term = dict(term_raw)
+        law_raw = conn.execute(
+            "SELECT id,term_id,president_uuid,text,status,created_at,published_at,replaced_law_id,slot_no "
+            "FROM president_laws WHERE id=%s FOR UPDATE",
+            (normalized_law_id,),
+        ).fetchone()
+        if not law_raw:
+            raise HTTPException(status_code=404, detail="Закон президента не найден")
+        law = dict(law_raw)
+        term_id = str(term.get("id") or "")
+        if str(law.get("term_id") or "") != term_id or str(law.get("status") or "").upper() != "PENDING":
+            raise HTTPException(status_code=409, detail="Этот закон уже нельзя пересмотреть")
+
+        replaced_id = str(law.get("replaced_law_id") or "").strip()
+        published_count = 0
+        next_slot = 1
+        replacement_elapsed = 0
+        replaced_status = ""
+        replacement_term_matches = True
+        replacement_slot = 0
+        if decision == "approved":
+            published_row = conn.execute(
+                "SELECT COUNT(*) AS published_count FROM president_laws WHERE term_id=%s AND status='PUBLISHED'",
+                (term_id,),
+            ).fetchone()
+            published_count = int(row_get(published_row, "published_count", 0) or 0)
+            next_slot_row = conn.execute(
+                "SELECT COALESCE(MAX(slot_no),0)+1 AS next_slot FROM president_laws WHERE term_id=%s AND status='PUBLISHED'",
+                (term_id,),
+            ).fetchone()
+            next_slot = int(row_get(next_slot_row, "next_slot", 1) or 1)
+            if replaced_id:
+                replaced_raw = conn.execute(
+                    "SELECT id,term_id,status,slot_no FROM president_laws WHERE id=%s FOR UPDATE",
+                    (replaced_id,),
+                ).fetchone()
+                replaced = dict(replaced_raw) if replaced_raw else {}
+                replacement_elapsed = now - int(term.get("last_law_replace_at") or 0)
+                replaced_status = str(replaced.get("status") or "")
+                replacement_term_matches = str(replaced.get("term_id") or "") == term_id
+                replacement_slot = int(replaced.get("slot_no") or 0)
+
+        try:
+            transition = review_president_law_transition(
+                law_status=str(law.get("status") or ""),
+                decision=decision,
+                published_count=published_count,
+                replaced_law_id=replaced_id,
+                replacement_elapsed_ms=replacement_elapsed,
+                replaced_law_status=replaced_status,
+                replacement_term_matches=replacement_term_matches,
+                replacement_slot=replacement_slot,
+                next_slot=next_slot,
+            )
+        except PresidentLawReviewError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        status = str(transition["status"])
+        slot_no = int(transition["slot_no"] or 0)
+        review_decision = "APPROVED" if status == "PUBLISHED" else "REJECTED"
+        conn.execute(
+            "INSERT INTO president_law_reviews(law_id,reviewer,decision,note,created_at) VALUES(%s,%s,%s,%s,%s)",
+            (normalized_law_id, actor, review_decision, str(data.note or "").strip(), now),
+        )
+        if status == "PUBLISHED":
+            if replaced_id:
+                conn.execute("UPDATE president_laws SET status='REPLACED' WHERE id=%s", (replaced_id,))
+                conn.execute("UPDATE president_terms SET last_law_replace_at=%s WHERE id=%s", (now, term_id))
+            conn.execute(
+                "UPDATE president_laws SET status='PUBLISHED',published_at=%s,slot_no=%s WHERE id=%s",
+                (now, slot_no, normalized_law_id),
+            )
+        else:
+            conn.execute("UPDATE president_laws SET status='REJECTED' WHERE id=%s", (normalized_law_id,))
+        conn.commit()
+
+    audit_event(
+        actor,
+        "election.law.review",
+        target=normalized_law_id,
+        details={"decision": status, "termId": term_id, "replacedLawId": replaced_id},
+    )
+    append_panel_event(
+        "admin-panel",
+        "election_law_reviewed",
+        actor=actor,
+        target=normalized_law_id,
+        metadata={"decision": status, "termId": term_id, "replacedLawId": replaced_id},
+        tags=["elections", "president-law"],
+    )
+    return {
+        "lawId": normalized_law_id,
+        "decision": status,
+        "publishedAt": now if status == "PUBLISHED" else 0,
+        "slotNo": slot_no,
+        "replacedLawId": replaced_id,
+    }
 
 
 def _rp_active_election(conn: Any, *, for_update: bool = False) -> Optional[dict[str, Any]]:
@@ -13110,7 +13271,7 @@ async def elections_overview(_: str = Depends(require_panel_admin)) -> dict[str,
             db_data = {
                 "db": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallback": safe_location(admin_plugin_db_path())},
                 "tables": [],
-                "groups": {"postgresql": ["elections", "candidate_applications", "candidates", "round_candidates", "votes", "election_voting_blocks", "president_terms"]},
+                "groups": {"postgresql": ["elections", "candidate_applications", "candidates", "round_candidates", "votes", "election_voting_blocks", "president_terms", "president_laws", "president_law_reviews"]},
                 "antiFraud": detail.get("antiFraud", []),
                 "summary": detail.get("summary", {}),
             }
@@ -13140,6 +13301,21 @@ async def elections_application_review(
         raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
     require_sensitive_confirm(request, f"ELECTION_APPLICATION_{decision.upper()}")
     result = await bg(review_candidate_application_sync, application_id, data, username)
+    return {"ok": True, **result}
+
+
+@app.post("/api/elections/president-laws/{law_id}/review")
+async def elections_president_law_review(
+    law_id: str,
+    data: ElectionLawReviewIn,
+    request: Request,
+    username: str = Depends(require_panel_admin),
+) -> dict[str, Any]:
+    decision = str(data.decision or "").strip().lower()
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
+    require_sensitive_confirm(request, f"ELECTION_LAW_{decision.upper()}")
+    result = await bg(review_president_law_sync, law_id, data, username)
     return {"ok": True, **result}
 
 

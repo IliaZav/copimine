@@ -1467,6 +1467,26 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     "&aПрезидент снят, налог текущего срока закрыт.", () -> openRpPresidentMenu(player));
             return;
         }
+        if (action.startsWith("rp:president:law:view:")) {
+            openRpPresidentLawDetail(player, action.substring("rp:president:law:view:".length()));
+            return;
+        }
+        if (action.startsWith("rp:president:law:book:")) {
+            openPresidentLawBook(player, action.substring("rp:president:law:book:".length()));
+            return;
+        }
+        if (action.startsWith("rp:president:law:approve:")) {
+            String lawId = action.substring("rp:president:law:approve:".length());
+            runRpDatabaseAction(player, "approve president law", () -> reviewLaw(lawId, "APPROVED", player.getName(), ""),
+                    "&aЗакон одобрен и опубликован в livebar.", () -> openRpPresidentMenu(player));
+            return;
+        }
+        if (action.startsWith("rp:president:law:reject:")) {
+            String lawId = action.substring("rp:president:law:reject:".length());
+            runRpDatabaseAction(player, "reject president law", () -> reviewLaw(lawId, "REJECTED", player.getName(), ""),
+                    "&eЗакон отклонён.", () -> openRpPresidentMenu(player));
+            return;
+        }
         if (action.startsWith("open:stations")) {
             openStationsMenu(player, parsePage(action));
             return;
@@ -2891,9 +2911,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         runAsync(() -> {
             try {
                 Map<String, Object> term = queryOne("SELECT president_uuid,president_name,started_at,ends_at FROM president_terms WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>?) ORDER BY started_at DESC LIMIT 1", now());
+                List<Map<String, Object>> pendingLaws = pendingLaws();
+                List<Map<String, Object>> publishedLaws = publishedLaws();
                 runSync(() -> {
                     if (player.isOnline()) {
-                        renderRpPresidentMenu(player, term);
+                        renderRpPresidentMenu(player, term, pendingLaws, publishedLaws);
                     }
                 });
             } catch (Exception error) {
@@ -2907,21 +2929,174 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
     }
 
-    private void renderRpPresidentMenu(Player player, Map<String, Object> term) {
+    private void renderRpPresidentMenu(Player player, Map<String, Object> term,
+            List<Map<String, Object>> pendingLawRows, List<Map<String, Object>> publishedLawRows) {
         MenuHolder holder = new MenuHolder("rp-president", "");
-        Inventory inv = holder.create(27, color("&2&lДействующий президент"));
+        Inventory inv = holder.create(36, color("&2&lПрезидент и законы"));
+        pendingLawRows = pendingLawRows == null ? List.of() : pendingLawRows;
+        publishedLawRows = publishedLawRows == null ? List.of() : publishedLawRows;
         if (term == null) {
-            setStatic(inv, 13, infoItem(Material.BARRIER, "&eПрезидента нет", List.of("&7Сначала проведи дебаты и голосование.")));
+            setStatic(inv, 4, infoItem(Material.BARRIER, "&eПрезидента нет", List.of("&7Сначала проведи дебаты и голосование.")));
         } else {
-            setStatic(inv, 13, infoItem(Material.PLAYER_HEAD, "&f" + string(term.get("president_name")), List.of(
+            setStatic(inv, 4, infoItem(Material.PLAYER_HEAD, "&f" + string(term.get("president_name")), List.of(
                     "&7Начало: &f" + formatTs(longValue(term.get("started_at"))),
                     "&7Окончание: &f" + formatTs(longValue(term.get("ends_at"))),
                     "&7Срок всегда ровно 7 дней."
             )));
             setButton(holder, 11, Material.BARRIER, "&cДосрочно снять президента", List.of("&7Налог текущего срока будет закрыт.", "&7Новые выборы сами не начнутся."), "rp:president:remove");
+            setStatic(inv, 15, infoItem(Material.WRITABLE_BOOK, "&eЗаконы на рассмотрении", List.of(
+                    "&7Ожидают решения: &f" + pendingLawRows.size(),
+                    "&7Открой закон, прочитай книгу и",
+                    "&7одобри или отклони его."
+            )));
+            int pendingSlot = 18;
+            for (Map<String, Object> law : pendingLawRows) {
+                if (pendingSlot > 22) {
+                    break;
+                }
+                String lawId = string(law.get("id"));
+                setButton(holder, pendingSlot++, Material.PAPER,
+                        "&e" + shortText(string(law.get("text")), 26),
+                        List.of(
+                                "&7Статус: &fожидает решения",
+                                "&7Создан: &f" + formatTs(longValue(law.get("created_at"))),
+                                "&eЛКМ: открыть полный текст"
+                        ), "rp:president:law:view:" + lawId);
+            }
+            if (pendingLawRows.isEmpty()) {
+                setStatic(inv, 20, infoItem(Material.LIME_CONCRETE, "&aНовых законов нет", List.of("&7Все текущие предложения рассмотрены.")));
+            }
+            setStatic(inv, 26, infoItem(Material.BOOKSHELF, "&fОпубликованные законы", List.of(
+                    "&7В livebar и на сайте: &f" + publishedLawRows.size(),
+                    "&7Нажми на книгу, чтобы перечитать текст."
+            )));
+            int publishedSlot = 27;
+            for (Map<String, Object> law : publishedLawRows) {
+                if (publishedSlot > 31) {
+                    break;
+                }
+                String lawId = string(law.get("id"));
+                setButton(holder, publishedSlot++, Material.WRITTEN_BOOK,
+                        "&a" + shortText(string(law.get("text")), 26),
+                        List.of(
+                                "&7Статус: &fопубликован",
+                                "&7Слот livebar: &f" + intValue(law.get("slot_no")),
+                                "&eЛКМ: открыть книгу"
+                        ), "rp:president:law:book:" + lawId);
+            }
         }
-        setButton(holder, 15, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:rp-root");
+        setButton(holder, 35, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:rp-root");
         player.openInventory(inv);
+    }
+
+    private void openRpPresidentLawDetail(Player player, String lawId) {
+        if (player == null || lawId == null || lawId.isBlank()) {
+            return;
+        }
+        player.sendActionBar(color("&7Загружаю закон президента..."));
+        runAsync(() -> {
+            try {
+                Map<String, Object> law = queryOne(
+                        "SELECT l.*,t.president_name FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                                + "WHERE l.id=? AND t.status='ACTIVE' AND (t.ends_at=0 OR t.ends_at>?) LIMIT 1",
+                        lawId, now());
+                runSync(() -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (law == null) {
+                        player.sendMessage(color("&cЗакон не найден или президентский срок уже закрыт."));
+                        openRpPresidentMenu(player);
+                        return;
+                    }
+                    renderRpPresidentLawDetail(player, law);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "rp president law detail load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        sendUserError(player, error, "&cНе удалось загрузить закон президента.");
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderRpPresidentLawDetail(Player player, Map<String, Object> law) {
+        String lawId = string(law.get("id"));
+        String status = first(string(law.get("status")), "PENDING");
+        String text = first(string(law.get("text")), "Текст закона не заполнен.");
+        MenuHolder holder = new MenuHolder("rp-president-law-detail", lawId);
+        Inventory inv = holder.create(45, color("&2Закон президента"));
+        setStatic(inv, 4, infoItem(Material.PAPER, "&fЗакон президента", List.of(
+                "&7Президент: &f" + first(string(law.get("president_name")), string(law.get("president_uuid"))),
+                "&7Статус: &f" + status,
+                "&7Создан: &f" + formatTs(longValue(law.get("created_at"))),
+                "&7Текст можно открыть отдельной книгой."
+        )));
+        setButton(holder, 20, Material.WRITTEN_BOOK, "&eОткрыть полный текст", List.of(
+                "&7Прочитать закон в книжном интерфейсе.",
+                "&7После чтения вернись сюда для решения."
+        ), "rp:president:law:book:" + lawId);
+        if ("PENDING".equalsIgnoreCase(status)) {
+            setButton(holder, 22, Material.LIME_WOOL, "&aОдобрить закон", List.of(
+                    "&7Опубликовать закон в livebar, на сайте и в GUI.",
+                    "&7Сохраняются лимит пяти законов и cooldown замены."
+            ), "rp:president:law:approve:" + lawId);
+            setButton(holder, 24, Material.RED_WOOL, "&cОтклонить закон", List.of(
+                    "&7Закон останется в истории как отклонённый.",
+                    "&7Повторное рассмотрение невозможно."
+            ), "rp:president:law:reject:" + lawId);
+        } else {
+            setStatic(inv, 22, infoItem(Material.BOOK, "&fРешение уже принято", List.of(
+                    "&7Этот закон больше нельзя изменить."
+            )));
+        }
+        setButton(holder, 31, Material.PAPER, "&fКратко", List.of("&7" + shortText(text.replace('\n', ' '), 100)), "none");
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К списку президента и законов."), "open:rp-president");
+        player.openInventory(inv);
+    }
+
+    private void openPresidentLawBook(Player player, String lawId) {
+        if (player == null || lawId == null || lawId.isBlank()) {
+            return;
+        }
+        player.sendActionBar(color("&7Открываю текст закона..."));
+        runAsync(() -> {
+            try {
+                Map<String, Object> law = queryOne(
+                        "SELECT l.*,t.president_name FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                                + "WHERE l.id=? AND t.status='ACTIVE' AND (t.ends_at=0 OR t.ends_at>?) LIMIT 1",
+                        lawId, now());
+                runSync(() -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (law == null) {
+                        player.sendMessage(color("&cЗакон не найден или президентский срок уже закрыт."));
+                        return;
+                    }
+                    renderPresidentLawBook(player, law);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "president law book load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        sendUserError(player, error, "&cНе удалось открыть книгу закона.");
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderPresidentLawBook(Player player, Map<String, Object> law) {
+        ItemStack book = new ItemStack(Material.WRITTEN_BOOK);
+        BookMeta meta = (BookMeta) book.getItemMeta();
+        meta.setTitle("Закон президента");
+        meta.setAuthor(first(string(law.get("president_name")), "CopiMine"));
+        meta.setPages(presidentLawBookPages(first(string(law.get("text")), "Текст закона пока пуст.")));
+        book.setItemMeta(meta);
+        player.openBook(book);
     }
 
     private void openLegacyManagementMenu(Player player) {
@@ -7148,10 +7323,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 .toList();
         int candidatePageSize = 6;
         int candidatePageCount = Math.max(1, (candidateLines.size() + candidatePageSize - 1) / candidatePageSize);
-        int cyclePage = candidateLines.isEmpty()
+        boolean presidentTerm = snap.stage() == ElectionStage.PRESIDENT_TERM;
+        int cyclePage = presidentTerm || candidateLines.isEmpty()
                 ? 0
                 : (int) ((System.currentTimeMillis() / 5000L) % (candidatePageCount + 1));
-        boolean showCandidatePage = !candidateLines.isEmpty() && cyclePage > 0;
+        boolean showCandidatePage = !presidentTerm && !candidateLines.isEmpty() && cyclePage > 0;
         if (showCandidatePage) {
             int page = cyclePage - 1;
             lines.add("&fКандидаты " + cyclePage + "/" + candidatePageCount);
@@ -7175,7 +7351,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     lines.add("&8+" + (snap.laws().size() - 3) + " ещё");
                 }
             }
-            if (!candidateLines.isEmpty()) {
+            if (!presidentTerm && !candidateLines.isEmpty()) {
                 lines.add("&8Кандидаты: стр. 1/" + candidatePageCount);
             }
         }
@@ -9934,6 +10110,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             }
         }
         return pages.isEmpty() ? List.of("Ответы заявки пока пусты.") : pages;
+    }
+
+    private List<String> presidentLawBookPages(String raw) {
+        List<String> pages = wrapBookAnswer(raw, 220);
+        return pages.isEmpty() ? List.of("Текст закона пока пуст.") : pages;
     }
 
     private List<ApplicationQuestion> parseApplicationAnswers(String raw) {

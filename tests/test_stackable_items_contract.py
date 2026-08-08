@@ -42,6 +42,13 @@ def test_only_valid_ar_is_canonicalized_to_the_single_stackable_form() -> None:
     assert "officialArIssuanceTokenKey" in canonical
 
 
+def test_ar_has_no_automatic_inventory_resync_during_player_actions() -> None:
+    """AR must not be rewritten or force-synced from an inventory event path."""
+    assert "normalizeFungibleArOnPickup" not in ECONOMY
+    assert "void normalizePlayer(Player player)" not in ECONOMY
+    assert "officialArService.normalizePlayer(player)" not in ECONOMY
+
+
 def test_narcotics_are_stackable_with_a_fungible_signed_key() -> None:
     create = NARCOTICS_FACTORY[NARCOTICS_FACTORY.index("public ItemStack createOfficialItem"):NARCOTICS_FACTORY.index("public NarcoticDefinition resolveOfficial")]
     resolve = NARCOTICS_FACTORY[NARCOTICS_FACTORY.index("public NarcoticDefinition resolveOfficial"):NARCOTICS_FACTORY.index("public boolean isOfficialFinishedItem")]

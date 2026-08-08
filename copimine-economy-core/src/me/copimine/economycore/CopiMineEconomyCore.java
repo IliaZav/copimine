@@ -35,7 +35,6 @@ import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
-import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
@@ -257,7 +256,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         CompletableFuture<Boolean> prepareIssuanceAsync(String issuanceKey, Material material, int amount, String source);
         ItemStack createPreparedStack(Material material, int amount, String source);
         ItemStack normalizeStack(ItemStack stack);
-        void normalizePlayer(Player player);
     }
 
     public interface DonationBalanceService {
@@ -859,27 +857,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             processPendingArSettlements(event.getPlayer(), true);
             processArDepositIntents(event.getPlayer(), true);
         }, 20L);
-    }
-
-    /**
-     * Old mining drops carried a per-entity PDC token.  It made otherwise
-     * identical official AR stacks non-stackable.  Normalize only an already
-     * valid fungible AR immediately before vanilla pickup; this never changes
-     * the item amount and never authorizes an unsigned ore block.
-     */
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
-    public void normalizeFungibleArOnPickup(EntityPickupItemEvent event) {
-        if (event == null || event.getItem() == null) {
-            return;
-        }
-        ItemStack current = event.getItem().getItemStack();
-        if (!isOfficialAr(current) || !isFungibleArSerial(officialArSerial(current))) {
-            return;
-        }
-        ItemStack canonical = canonicalOfficialArStack(current);
-        if (canonical != current) {
-            event.getItem().setItemStack(canonical);
-        }
     }
 
     @EventHandler
@@ -2150,11 +2127,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                             advanceArDepositIntent(intent.id(), player);
                         }
                     }
-                    // Do this only after pending deposit snapshots were checked.
-                    // Legacy v2 stacks have an amount-bound signature, so
-                    // rewriting them before recovery could make an unfinished
-                    // deposit look like a changed item.
-                    officialArService.normalizePlayer(player);
                 }));
     }
 
@@ -2735,22 +2707,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
         ItemStack canonical = createOfficialArStack(stack.getType(), stack.getAmount(), "", "", "canonical");
         return stack.isSimilar(canonical) ? stack : canonical;
-    }
-
-    private boolean normalizeOfficialArInventory(Inventory inventory) {
-        if (inventory == null) {
-            return false;
-        }
-        boolean changed = false;
-        for (int slot = 0; slot < inventory.getSize(); slot++) {
-            ItemStack current = inventory.getItem(slot);
-            ItemStack canonical = canonicalOfficialArStack(current);
-            if (canonical != current) {
-                inventory.setItem(slot, canonical);
-                changed = true;
-            }
-        }
-        return changed;
     }
 
     private String officialArSerial(ItemStack stack) {
@@ -6444,16 +6400,5 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return canonicalOfficialArStack(stack);
         }
 
-        @Override
-        public void normalizePlayer(Player player) {
-            if (player == null || !player.isOnline()) {
-                return;
-            }
-            boolean changed = normalizeOfficialArInventory(player.getInventory());
-            changed = normalizeOfficialArInventory(player.getEnderChest()) || changed;
-            if (changed) {
-                player.updateInventory();
-            }
-        }
     }
 }

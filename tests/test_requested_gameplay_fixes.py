@@ -326,6 +326,12 @@ def test_official_ar_inventory_handlers_do_not_mutate_or_cancel_vanilla_clicks()
     assert "setAmount" not in admin_click + admin_drag
 
 
+def test_adminplus_does_not_cancel_creative_inventory_transport():
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    click = between(admin, "public void onInv(InventoryClickEvent e)", "public void onPrepareCraft")
+    assert "if(e instanceof InventoryCreativeEvent)return;" in click
+
+
 def test_ar_inventory_clicks_have_no_custom_quantity_or_restriction_path():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")

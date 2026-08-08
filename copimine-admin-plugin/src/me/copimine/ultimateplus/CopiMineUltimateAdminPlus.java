@@ -998,6 +998,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             }
             return;
         }
+        if(e instanceof InventoryCreativeEvent)return;
         if(e.getWhoClicked() instanceof Player p){
             Long lockedUntil=inventoryLocks.get(p.getUniqueId());
             if(lockedUntil!=null){

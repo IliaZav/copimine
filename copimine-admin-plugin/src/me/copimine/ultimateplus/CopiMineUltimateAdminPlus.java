@@ -998,7 +998,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             }
             return;
         }
-        if(e instanceof InventoryCreativeEvent)return;
+        if(e instanceof InventoryCreativeEvent
+                && e.getWhoClicked() instanceof Player p
+                && isOfficialArCreativeClick(e,p))return;
+        // Paper uses ordinary InventoryClickEvent for several Creative
+        // container operations (split, merge, shift-click and quick-move).
+        // Keep only official AR on the vanilla path; other custom-item
+        // protections must retain their existing scope.
+        if(e.getWhoClicked() instanceof Player p
+                && p.getGameMode()==GameMode.CREATIVE
+                && isOfficialArCreativeClick(e,p))return;
         if(e.getWhoClicked() instanceof Player p){
             Long lockedUntil=inventoryLocks.get(p.getUniqueId());
             if(lockedUntil!=null){
@@ -1007,6 +1016,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             }
             if(checkMode.containsKey(p.getUniqueId()) && !hasAdmin(p)) e.setCancelled(true);
         }
+    }
+
+    private boolean isOfficialArCreativeClick(InventoryClickEvent e,Player p){
+        ItemStack hotbar=null;
+        if(e.getClick()==ClickType.NUMBER_KEY&&e.getHotbarButton()>=0)hotbar=p.getInventory().getItem(e.getHotbarButton());
+        return isOfficialArItem(e.getCursor())||isOfficialArItem(e.getCurrentItem())||isOfficialArItem(hotbar);
     }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
@@ -1018,10 +1033,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemClick(InventoryClickEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
-        Inventory top=e.getView().getTopInventory();
-        if(top==null||top.getType()!=InventoryType.ANVIL)return;
         ItemStack cursor=e.getCursor(), current=e.getCurrentItem(), hotbar=null;
         if(e.getClick()==ClickType.NUMBER_KEY&&e.getHotbarButton()>=0)hotbar=p.getInventory().getItem(e.getHotbarButton());
+        if(isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar))return;
+        Inventory top=e.getView().getTopInventory();
+        if(top==null||top.getType()!=InventoryType.ANVIL)return;
         if(artifactsCoreOwns(cursor,current,hotbar)){
             e.setCancelled(true);
             p.updateInventory();
@@ -1064,6 +1080,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemDrag(InventoryDragEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
+        if(isOfficialArItem(e.getOldCursor()))return;
         if(artifactsCoreOwns(e.getOldCursor()))return;
         Inventory top=e.getView().getTopInventory();
         if(top==null||top.getType()!=InventoryType.ANVIL)return;

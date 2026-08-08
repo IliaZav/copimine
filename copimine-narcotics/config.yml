@@ -214,6 +214,7 @@ items:
       - type:WATER_BREATHING,amplifier:0,duration_seconds:180
       - type:REGENERATION,amplifier:0,duration_seconds:90
       - type:SLOW_FALLING,amplifier:0,duration_seconds:90
+      - type:JUMP_BOOST,amplifier:2,duration_seconds:90
     overdose_effects:
       - type:POISON,amplifier:0,duration_seconds:120
       - type:WITHER,amplifier:0,duration_seconds:40

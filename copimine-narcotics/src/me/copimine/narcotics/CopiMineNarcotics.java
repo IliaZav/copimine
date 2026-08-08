@@ -195,13 +195,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         Player player = event.getPlayer();
         ItemStack inHand = player.getInventory().getItemInMainHand();
         NarcoticDefinition official = itemFactory.resolveOfficial(inHand);
-        if (event.isCancelled()) {
-            if (official != null || (event.getClickedBlock() != null && cauldronService.isSupportedCauldron(event.getClickedBlock())
-                    && recipeService.canEnterCauldron(inHand))) {
-                player.sendMessage(ChatColor.RED + "Взаимодействие с котлом запрещено защитой региона.");
-            }
-            return;
-        }
         if (resetInProgress) {
             boolean brewingAttempt = event.getAction() == Action.RIGHT_CLICK_BLOCK
                     && event.getClickedBlock() != null
@@ -294,6 +287,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 Bukkit.getScheduler().runTaskLater(this, () -> recoverDurableConsumptions(player), 2L);
                 player.sendMessage(ChatColor.YELLOW + "Результат операции проверяется. Предмет временно заблокирован.");
             }));
+            return;
+        }
+
+        if (event.isCancelled()) {
+            if (event.getClickedBlock() != null && cauldronService.isSupportedCauldron(event.getClickedBlock())
+                    && recipeService.canEnterCauldron(inHand)) {
+                player.sendMessage(ChatColor.RED + "Взаимодействие с котлом запрещено защитой региона.");
+            }
             return;
         }
 

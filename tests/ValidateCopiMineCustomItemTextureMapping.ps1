@@ -11,7 +11,7 @@ $required = @(
   'dezhurniy_argument_sword','vechniy_razgon_firework','eternal_totem','treasurer_chestplate','copimine_miner_pickaxe','craftsman_hammer',
   'kozyrny_tuz_pozdnyakova',
   'batin_remen_sudnogo_dnya','nu_ty_i_nakopal_blyat_pickaxe','kosa_nalogovoy_inspekcii','kaska_prorab_huev',
-  'mne_pohuy_ya_v_tanke_vest','ne_segodnya_suka_shield','pohuy_na_debaffy_amulet',
+  'mne_pohuy_ya_v_tanke_vest','pohuy_na_debaffy_amulet',
   'vremya_platit_nalogi_clock','gde_moy_lut_blyat_compass'
 )
 $errors = [System.Collections.Generic.List[string]]::new()
@@ -49,5 +49,10 @@ foreach ($id in $required) {
   }
 }
 if ($rows.Count -ne $required.Count) { $errors.Add("Expected $($required.Count) source rows, found $($rows.Count)") }
+if ($catalog -notmatch '(?ms)^    - item-id: ne_segodnya_suka_shield\r?\n.*?custom-texture-mode-allowed:\s*false.*?custom-model-data:\s*0') {
+  $errors.Add('The shield must explicitly opt out of custom textures and model data.')
+}
+if ($rowById.ContainsKey('ne_segodnya_suka_shield')) { $errors.Add('The vanilla shield must not have a custom texture source row.') }
+if (@($manifestRows | Where-Object { $_.id -eq 'ne_segodnya_suka_shield' }).Count -ne 0) { $errors.Add('The vanilla shield must not have a resource-pack model override.') }
 if ($errors.Count) { throw ("Custom item texture mapping failed:`n - " + ($errors -join "`n - ")) }
 Write-Host 'ValidateCopiMineCustomItemTextureMapping passed.'

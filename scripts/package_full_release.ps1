@@ -2,7 +2,9 @@ param(
     [string]$ProjectRoot = "",
     [string]$ReleaseDir = "",
     [string]$DbDumpPath = "",
-    [string]$ResourcePackDownloadUrl = ""
+    [string]$ResourcePackDownloadUrl = "",
+    [string]$SigningKeyPath = "",
+    [switch]$SkipReleaseStringScan
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +13,11 @@ if (-not $ProjectRoot) {
     $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 }
 $ProjectRoot = (Resolve-Path $ProjectRoot).Path
+$SigningKeyPath = if ($SigningKeyPath) { $SigningKeyPath } else { $env:COPIMINE_RELEASE_SIGNING_KEY }
+if (-not $SigningKeyPath) {
+    throw 'Release packaging requires -SigningKeyPath or COPIMINE_RELEASE_SIGNING_KEY.'
+}
+$SigningKeyPath = (Resolve-Path -LiteralPath $SigningKeyPath).Path
 
 function Resolve-GitRoot {
     param([Parameter(Mandatory = $true)][string]$StartPath)
@@ -65,6 +72,12 @@ $modpackSnapshotPath = Join-Path $ProjectRoot "admin-web\frontend\assets\public-
 $thirdpartyManifestPath = Join-Path $ProjectRoot "thirdparty\thirdparty_manifest.json"
 $releaseManifestPath = Join-Path $ProjectRoot "deploy\release_manifest.json"
 $installerManifestPath = Join-Path $ProjectRoot "deploy\installer_manifest.json"
+$sbomPath = Join-Path $ProjectRoot "deploy\sbom.spdx.json"
+$generateSbomScript = Join-Path $ProjectRoot "deploy\shared\generate_sbom.py"
+$scanReleaseScript = Join-Path $ProjectRoot "deploy\shared\scan_release_strings.py"
+$signReleaseScript = Join-Path $ProjectRoot "scripts\sign_release_manifest.ps1"
+$releaseSigningAllowedPath = Join-Path $ProjectRoot "deploy\release-signing.allowed"
+$releaseSignaturePath = Join-Path $ProjectRoot "deploy\release_manifest.sig"
 $deployInstall = Join-Path $ProjectRoot "deploy\ubuntu\install.sh"
 $deployInstallRelease = Join-Path $ProjectRoot "deploy\ubuntu\install_release.sh"
 $deployUpdate = Join-Path $ProjectRoot "deploy\ubuntu\update.sh"
@@ -72,6 +85,7 @@ $deployVerify = Join-Path $ProjectRoot "deploy\ubuntu\verify.sh"
 $deployUnpack = Join-Path $ProjectRoot "deploy\ubuntu\copimine_unpack_and_verify.sh"
 $deployReplace = Join-Path $ProjectRoot "deploy\ubuntu\copimine_full_replace.sh"
 $deployCommon = Join-Path $ProjectRoot "deploy\shared\common.sh"
+$deployPayloadVerifier = Join-Path $ProjectRoot "deploy\shared\verify_payload_manifest.py"
 $deployGameHardening = Join-Path $ProjectRoot "deploy\ubuntu\apply_game_hardening.sh"
 $gameHardeningRuntime = Join-Path $ProjectRoot "deploy\shared\harden_game_runtime.py"
 $gameHardeningPolicy = Join-Path $ProjectRoot "deploy\templates\game-runtime-hardening.json"
@@ -86,7 +100,7 @@ $serverPropertiesPath = Join-Path $ProjectRoot "minecraft\server\server.properti
 $resourcePackDownloadUrl = if ($ResourcePackDownloadUrl) {
     $ResourcePackDownloadUrl
 } else {
-    "http://copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip?v=20260720r2"
+    "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip"
 }
 
 $pluginBuildScripts = @(
@@ -182,9 +196,20 @@ function Get-Sha256Lower {
     return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
 }
 
+function Get-RelativePathCompat {
+    param([Parameter(Mandatory = $true)][string]$BasePath, [Parameter(Mandatory = $true)][string]$ChildPath)
+    $base = (Resolve-Path -LiteralPath $BasePath).Path.TrimEnd('\') + '\'
+    $child = (Resolve-Path -LiteralPath $ChildPath).Path
+    if (-not $child.StartsWith($base, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside release payload: $ChildPath"
+    }
+    return $child.Substring($base.Length).Replace('\', '/')
+}
+
 function Write-Checksums {
     $entries = @(
         "thirdparty\client-mods\CopiMineClient-0.1.0.jar",
+        "thirdparty\client-mods\CustomSkinLoader_Fabric-14.26.1.jar",
         "thirdparty\client-mods\emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
         "thirdparty\client-mods\fabric-api-0.116.11+1.21.1.jar",
         "thirdparty\client-mods\voicechat-fabric-1.21.1-2.6.16.jar",
@@ -409,6 +434,40 @@ $installerManifest = [ordered]@{
 }
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerManifest | ConvertTo-Json -Depth 16)
 
+Write-Host "[6/9] Generate SPDX release inventory"
+Invoke-Checked -FilePath "python" -Arguments @($generateSbomScript, "--root", $ProjectRoot, "--output", $sbomPath)
+if ($SkipReleaseStringScan) {
+    Write-Host "Release string scan skipped by explicit operator request."
+} else {
+    Invoke-Checked -FilePath "python" -Arguments @($scanReleaseScript, "--root", $ProjectRoot, "--sbom", $sbomPath)
+}
+$sbomSha256 = Get-Sha256Lower -LiteralPath $sbomPath
+$sbomDescriptor = [ordered]@{
+    path = "deploy/sbom.spdx.json"
+    sha256 = $sbomSha256
+    format = "SPDX-2.3"
+    generator = [ordered]@{
+        path = "deploy/shared/generate_sbom.py"
+        sha256 = (Get-Sha256Lower -LiteralPath $generateSbomScript)
+    }
+    scanner = [ordered]@{
+        path = "deploy/shared/scan_release_strings.py"
+        sha256 = (Get-Sha256Lower -LiteralPath $scanReleaseScript)
+    }
+    manifestSignature = [ordered]@{
+        path = "deploy/release_manifest.sig"
+        allowedSigners = "deploy/release-signing.allowed"
+        trustedHostPath = "/etc/copimine/release-signing.allowed"
+        namespace = "copimine-release"
+        identity = "release"
+        algorithm = "ssh-ed25519"
+    }
+}
+$releaseManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor; manifestSignature = $sbomDescriptor.manifestSignature })
+Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content ($releaseManifest | ConvertTo-Json -Depth 16)
+$installerManifest.Add("security", [ordered]@{ sbom = $sbomDescriptor; manifestSignature = $sbomDescriptor.manifestSignature })
+Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content ($installerManifest | ConvertTo-Json -Depth 16)
+
 Write-Host "[7/9] Stage Linux replacement payload"
 $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("copimine-release-" + [guid]::NewGuid().ToString())
 $payloadRoot = Join-Path $stageRoot "copimine"
@@ -431,6 +490,7 @@ $generatedReleaseFiles = @(
     'admin-web\frontend\assets\public-data\modpack_snapshot.json',
     'deploy\installer_manifest.json',
     'deploy\release_manifest.json',
+    'deploy\sbom.spdx.json',
     'minecraft\server\server.properties',
     'minecraft\server\pufferfish.yml',
     'minecraft\server\plugins\EntityClearer\config.yml',
@@ -524,8 +584,17 @@ $installerManifest.deploy.scripts.gameRuntimeHardening.runtimeScript.sha256 = Ge
 $installerManifest.deploy.scripts.gameRuntimeHardening.policy.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\templates\game-runtime-hardening.json')
 $installerManifest.deploy.scripts.gameRuntimeHardening.voicechatTemplate.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\templates\voicechat-server.properties')
 $installerManifest.deploy.scripts.gameRuntimeHardening.systemdUnit.sha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'admin-web\deploy\copimine-game-hardening.service')
+$stagedSbomGeneratorSha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\shared\generate_sbom.py')
+$stagedSbomScannerSha256 = Get-Sha256Lower -LiteralPath (Join-Path $payloadRoot 'deploy\shared\scan_release_strings.py')
+$releaseManifest.security.sbom.generator.sha256 = $stagedSbomGeneratorSha256
+$releaseManifest.security.sbom.scanner.sha256 = $stagedSbomScannerSha256
+$installerManifest.security.sbom.generator.sha256 = $stagedSbomGeneratorSha256
+$installerManifest.security.sbom.scanner.sha256 = $stagedSbomScannerSha256
+$releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 16
 $installerManifestJson = $installerManifest | ConvertTo-Json -Depth 16
+Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content $releaseManifestJson
 Write-Utf8NoBomFile -LiteralPath $installerManifestPath -Content $installerManifestJson
+Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json') -Content $releaseManifestJson
 Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\installer_manifest.json') -Content $installerManifestJson
 
 $runtimeDbDir = Join-Path $payloadRoot "db\runtime"
@@ -546,6 +615,39 @@ if ($DbDumpPath) {
     }
     Copy-Item -LiteralPath $DbDumpPath -Destination (Join-Path $runtimeDbDir "copimine.dump") -Force
 }
+
+$payloadInventoryExcluded = @(
+    'deploy/release_manifest.json',
+    'deploy/release_manifest.sig',
+    'deploy/release-signing.allowed'
+)
+$payloadFiles = @(
+    Get-ChildItem -LiteralPath $payloadRoot -Recurse -File | ForEach-Object {
+        $relative = Get-RelativePathCompat -BasePath $payloadRoot -ChildPath $_.FullName
+        if ($payloadInventoryExcluded -notcontains $relative) {
+            [ordered]@{
+                path = $relative
+                sizeBytes = [int64]$_.Length
+                sha256 = Get-Sha256Lower -LiteralPath $_.FullName
+            }
+        }
+    }
+)
+if ($payloadFiles.Count -eq 0) {
+    throw 'Release payload inventory is empty.'
+}
+$releaseManifest.payloadFiles = $payloadFiles
+$releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 20
+Write-Utf8NoBomFile -LiteralPath $releaseManifestPath -Content $releaseManifestJson
+Write-Utf8NoBomFile -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.json') -Content $releaseManifestJson
+Invoke-Checked -FilePath "powershell" -Arguments @(
+    "-ExecutionPolicy", "Bypass",
+    "-File", $signReleaseScript,
+    "-ManifestPath", (Join-Path $payloadRoot 'deploy\release_manifest.json'),
+    "-SigningKeyPath", $SigningKeyPath,
+    "-SignaturePath", (Join-Path $payloadRoot 'deploy\release_manifest.sig')
+)
+Copy-Item -LiteralPath (Join-Path $payloadRoot 'deploy\release_manifest.sig') -Destination $releaseSignaturePath -Force
 
 Write-Host "[8/9] Create tar.gz release archive"
 $archiveName = "copimine-opt-full-$timestamp.tar.gz"
@@ -572,6 +674,7 @@ $deployVerifyCopy = Join-Path $ReleaseDir "copimine_verify.sh"
 $deployUnpackCopy = Join-Path $ReleaseDir "copimine_unpack_and_verify.sh"
 $deployReplaceCopy = Join-Path $ReleaseDir "copimine_full_replace.sh"
 $deployCommonCopy = Join-Path $ReleaseDir "copimine_common.sh"
+$deployPayloadVerifierCopy = Join-Path $ReleaseDir "verify_payload_manifest.py"
 $uploadScriptCopy = Join-Path $ReleaseDir "upload_release.ps1"
 Copy-LfShellFile -Source $deployInstall -Destination $deployInstallCopy
 Copy-LfShellFile -Source $deployInstallRelease -Destination $deployInstallReleaseCopy
@@ -580,6 +683,7 @@ Copy-LfShellFile -Source $deployVerify -Destination $deployVerifyCopy
 Copy-LfShellFile -Source $deployUnpack -Destination $deployUnpackCopy
 Copy-LfShellFile -Source $deployReplace -Destination $deployReplaceCopy
 Copy-LfShellFile -Source $deployCommon -Destination $deployCommonCopy
+Copy-Item -LiteralPath $deployPayloadVerifier -Destination $deployPayloadVerifierCopy -Force
 Copy-Item -LiteralPath $uploadScript -Destination $uploadScriptCopy -Force
 
 $archiveSha256 = Get-Sha256Lower -LiteralPath $archivePath
@@ -609,6 +713,7 @@ $bootstrapManifest = [ordered]@{
         unpackAndVerify = [System.IO.Path]::GetFileName($deployUnpackCopy)
         fullReplace = [System.IO.Path]::GetFileName($deployReplaceCopy)
         sharedCommon = [System.IO.Path]::GetFileName($deployCommonCopy)
+        payloadVerifier = [System.IO.Path]::GetFileName($deployPayloadVerifierCopy)
         uploadWindows = [System.IO.Path]::GetFileName($uploadScriptCopy)
     }
 }

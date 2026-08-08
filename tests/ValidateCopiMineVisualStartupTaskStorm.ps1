@@ -1,9 +1,10 @@
 $ErrorActionPreference = "Stop"
 
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $targets = @(
-    "D:\Desktop\Copimine\opt\copimine\copimine-election-core\src\me\copimine\electioncore\CopiMineElectionCore.java",
-    "D:\Desktop\Copimine\opt\copimine\copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java",
-    "D:\Desktop\Copimine\opt\copimine\copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java"
+    (Join-Path $root 'copimine-election-core\src\me\copimine\electioncore\CopiMineElectionCore.java'),
+    (Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'),
+    (Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java')
 )
 
 foreach ($file in $targets) {

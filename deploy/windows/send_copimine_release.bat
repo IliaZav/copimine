@@ -4,9 +4,9 @@ setlocal EnableExtensions
 rem CopiMine release uploader. OpenSSH asks for the password/key itself;
 rem credentials are intentionally not stored in this file.
 set "SERVER_NAME=server-rpgrp"
-set "SERVER_IP=100.108.97.11"
+set "SERVER_IP=90.188.115.155"
 set "USERNAME=qwerty"
-set "SSH_PORT=22"
+set "SSH_PORT=2222"
 set "REMOTE_DIR=/home/%USERNAME%/copimine-upload"
 
 set "ARCHIVE=%~1"

@@ -11,7 +11,7 @@ ExecStart=/opt/copimine/deploy/ubuntu/apply_game_hardening.sh
 # Minecraft can take several minutes to finish plugin startup and expose RCON.
 # Keep the hardening unit patient instead of rolling back an otherwise healthy
 # release while the game server is still warming up.
-TimeoutStartSec=360
+TimeoutStartSec=960
 RemainAfterExit=yes
 
 [Install]

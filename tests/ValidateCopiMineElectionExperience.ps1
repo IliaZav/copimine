@@ -1,8 +1,9 @@
-param(
-    [string]$Root = "D:\Desktop\Copimine\opt\copimine"
-)
+param([string]$Root)
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($Root)) {
+    $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+}
 
 $source = Join-Path $Root "copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java"
 $pluginYml = Join-Path $Root "copimine-admin-plugin\plugin.yml"

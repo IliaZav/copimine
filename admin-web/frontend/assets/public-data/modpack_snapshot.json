@@ -2,10 +2,10 @@
     "available":  true,
     "filename":  "CopiMineMods.zip",
     "downloadUrl":  "/downloads/CopiMineMods.zip",
-    "size":  16488659,
-    "sha1":  "20d1f023b1122461c8c7f5df6fa9a4daedb4748e",
-    "sha256":  "3fec8004be0bce7055c3dedc99ee6bca16b3d75365e4f1dc655c14c51dd5498d",
-    "modified":  1785643445,
+    "size":  16650408,
+    "sha1":  "77a8d2e715f6aa7381d49c45305c7eb3ef9c48ae",
+    "sha256":  "47aa6855039758a98d2746e08dcb039188f7b1594df7b60c9febd0568cdd82e2",
+    "modified":  1785831484,
     "manifest":  {
                      "schemaVersion":  2,
                      "name":  "CopiMineMods",
@@ -20,6 +20,15 @@
                                        "license":  "Proprietary",
                                        "feature":  "Клиентский мод CopiMine, визуалы и связка с сервером",
                                        "required":  true
+                                   },
+                                   {
+                                       "path":  "mods/CustomSkinLoader_Fabric-14.26.1.jar",
+                                       "component":  "CustomSkinLoader",
+                                       "version":  "14.26.1",
+                                       "license":  "GPL-3.0-only",
+                                       "source":  "https://github.com/xfl03/MCCustomSkinLoader",
+                                       "feature":  "Клиентские скины вместо TL Skin",
+                                       "required":  false
                                    },
                                    {
                                        "path":  "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",

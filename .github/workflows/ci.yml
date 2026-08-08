@@ -32,32 +32,46 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check -r admin-web/requirements.txt
+      - name: Run dependency vulnerability gate
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check -r requirements-security.txt
+          python -m pip_audit -r admin-web/requirements.txt --strict
       - name: Run Python contract tests
         shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
         run: |
           $ErrorActionPreference = 'Stop'
-          Get-ChildItem tests -Filter 'test_*.py' -File | ForEach-Object {
-            python $_.FullName
-            if ($LASTEXITCODE -ne 0) { throw "Python contract failed: $($_.Name)" }
-          }
+          python -m pytest -q tests --junitxml="$env:GITHUB_WORKSPACE\test-results.xml"
+          if ($LASTEXITCODE -ne 0) { throw 'pytest contract suite failed.' }
           python admin-web/scripts/security_selftest.py
-          if ($LASTEXITCODE -ne 0) { throw 'Backend security self-test failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'security self-test failed.' }
           python admin-web/scripts/backend_security_regression_test.py
-          if ($LASTEXITCODE -ne 0) { throw 'Backend security regression test failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'backend security regression failed.' }
           python admin-web/scripts/backend_smoketest.py
-          if ($LASTEXITCODE -ne 0) { throw 'Backend smoke test failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'backend smoke test failed.' }
           python -m compileall -q admin-web/backend
-      - name: Run PowerShell validators
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & .\tests\RunCopiMineValidators.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'backend compileall failed.' }
+      - name: Publish Python test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-results
+          path: test-results.xml
+          if-no-files-found: error
       - name: Verify clean release provenance
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ((git status --porcelain) -ne '') { throw 'CI checkout is not clean.' }
+          $status = @(git status --porcelain)
+          if ($status.Count -ne 0) {
+            $status | ForEach-Object { Write-Output "::error title=CI checkout is dirty::$_" }
+            throw 'CI checkout is not clean.'
+          }
           $sha = (git rev-parse HEAD).Trim()
           Write-Host "Verifying source SHA $sha"
           if ($sha.Length -ne 40) { throw 'Unexpected source SHA length.' }
@@ -73,21 +87,69 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Resolve Paper API
+      - name: Set up Maven
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $paper = Get-ChildItem minecraft/server -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $paper) {
-            $paper = Get-ChildItem "$env:USERPROFILE\.m2\repository" -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $paper) {
-            mvn -q dependency:get '-DrepoUrl=https://repo.papermc.io/repository/maven-public/' '-Dartifact=io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper API.' }
-            $paper = Get-ChildItem "$env:USERPROFILE\.m2\repository" -Recurse -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $paper) { throw 'Paper API jar is not available in the checkout or Maven cache.' }
-          "PAPER_API_JAR=$($paper.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $version = '3.9.9'
+          $archive = Join-Path $env:RUNNER_TEMP "apache-maven-$version-bin.zip"
+          $root = Join-Path $env:RUNNER_TEMP "apache-maven-$version"
+          $uri = "https://archive.apache.org/dist/maven/maven-3/$version/binaries/apache-maven-$version-bin.zip"
+          $expectedSha512 = '8beac8d11ef208f1e2a8df0682b9448a9a363d2ad13ca74af43705549e72e74c9378823bf689287801cbbfc2f6ea9596201d19ccacfdfb682ee8a2ff4c4418ba'
+          Invoke-WebRequest -Uri $uri -OutFile $archive
+          $actualSha512 = (Get-FileHash -Algorithm SHA512 -LiteralPath $archive).Hash.ToLowerInvariant()
+          if ($actualSha512 -ne $expectedSha512) { throw "Maven SHA512 mismatch. Expected=$expectedSha512 Actual=$actualSha512" }
+          if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP -Force
+          $mavenBin = Join-Path $root 'bin'
+          if (-not (Test-Path -LiteralPath (Join-Path $mavenBin 'mvn.cmd'))) { throw 'Maven installation is incomplete.' }
+          $mavenBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Prepare pinned Paper API and compile dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paperBase = 'https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.1-R0.1-SNAPSHOT'
+          $paperBuild = '1.21.1-R0.1-20250328.161643-128'
+          $paperJar = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.jar"
+          $paperPom = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.pom"
+          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.jar" -OutFile $paperJar
+          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.pom" -OutFile $paperPom
+          $paperJarSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $paperJar).Hash.ToLowerInvariant()
+          if ($paperJarSha256 -ne 'b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0') { throw "Paper API JAR SHA256 mismatch: $paperJarSha256" }
+          $paperPomSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $paperPom).Hash.ToLowerInvariant()
+          if ($paperPomSha256 -ne 'c80905a70192b4d1d9fd5d2ab7cf7879b928c71d5c0bf3715f8806dc338d4c46') { throw "Paper API POM SHA256 mismatch: $paperPomSha256" }
+          $placeholderJar = Join-Path $env:RUNNER_TEMP 'PlaceholderAPI-2.12.3.jar'
+          Invoke-WebRequest -Uri 'https://github.com/PlaceholderAPI/PlaceholderAPI/releases/download/2.12.3/PlaceholderAPI-2.12.3.jar' -OutFile $placeholderJar
+          $placeholderSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $placeholderJar).Hash.ToLowerInvariant()
+          if ($placeholderSha256 -ne 'fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437') { throw "PlaceholderAPI SHA256 mismatch: $placeholderSha256" }
+          $pluginDir = Join-Path $env:GITHUB_WORKSPACE 'minecraft/server/plugins'
+          New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
+          Copy-Item -LiteralPath $placeholderJar -Destination (Join-Path $pluginDir 'PlaceholderAPI-2.12.3.jar') -Force
+          $dependencyPom = Join-Path $env:RUNNER_TEMP 'copimine-paper-compile-dependencies.pom'
+          @'
+          <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>copimine</groupId>
+            <artifactId>paper-compile-dependencies</artifactId>
+            <version>1.0.0</version>
+            <repositories>
+              <repository><id>papermc</id><url>https://repo.papermc.io/repository/maven-public/</url></repository>
+            </repositories>
+            <dependencies>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-api</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-minimessage</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-gson</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-legacy</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-plain</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-logger-slf4j</artifactId><version>4.17.0</version></dependency>
+              <dependency><groupId>net.md-5</groupId><artifactId>bungeecord-chat</artifactId><version>1.20-R0.2-deprecated+build.18</version></dependency>
+              <dependency><groupId>org.joml</groupId><artifactId>joml</artifactId><version>1.10.5</version></dependency>
+            </dependencies>
+          </project>
+          '@ | Set-Content -LiteralPath $dependencyPom -Encoding utf8
+          mvn -q -B -f $dependencyPom dependency:go-offline
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper compile dependencies.' }
+          "PAPER_API_JAR=$paperJar" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Compile first-party plugins
         shell: pwsh
         run: |
@@ -96,3 +158,9 @@ jobs:
             & powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'build-plugin.ps1')
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
           }
+      - name: Run all source and release-artifact validators
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\RunCopiMineValidators.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }

@@ -1,0 +1,100 @@
+{
+  "documentType": "codex-security.scan-manifest",
+  "scan": {
+    "artifacts": [
+      {
+        "mediaType": "application/json",
+        "path": "findings.json",
+        "sha256": "1f065c2ae24a33c3526c3dedbce05b8737dbd27847f47175c3c4a60ecd72a4b4"
+      },
+      {
+        "mediaType": "application/json",
+        "path": "coverage.json",
+        "sha256": "b407fbe3de02c9fd696cc24e417003636b4ad19de06fbe6ba88b32f0426637e7"
+      },
+      {
+        "mediaType": "application/octet-stream",
+        "path": "artifacts/02_discovery/candidate_ledger.jsonl",
+        "sha256": "ccb393dec4edaf09403069f14989cbc59a7e75617ab40e23b336e4c85fadb1e7"
+      },
+      {
+        "mediaType": "application/octet-stream",
+        "path": "artifacts/02_discovery/in_scope_files.txt",
+        "sha256": "dbd93e15ad6de4381f76a1ce01a3bb4d6ed7c948cef03bfcd3ee088971c572ae"
+      }
+    ],
+    "completedAt": "2026-08-02T21:15:40.059558Z",
+    "coverageRef": "coverage.json",
+    "findingsRef": "findings.json",
+    "id": "b6e00335-922b-4315-a4f2-93c997c05770",
+    "producer": {
+      "name": "codex-security-plugin",
+      "version": "0.1.15"
+    },
+    "scope": {
+      "artifactsReviewed": [
+        "in_scope_files.txt",
+        "candidate_ledger.jsonl",
+        "threat_model.md"
+      ],
+      "excludePaths": [],
+      "includePaths": [
+        "."
+      ],
+      "limitations": [
+        "Native security workbench coverage stopped at 608/3038 discovery rows.",
+        "The scan target is the pre-remediation immutable revision; fixes were implemented and verified in later commits."
+      ],
+      "runtimeStatus": "Repaired release deployed and live HTTPS smoke passed.",
+      "summary": "Repository-wide standard security review of the CopiMine website, authentication, release pipeline, PostgreSQL and Minecraft plugins.",
+      "validationMode": "compact source validation plus targeted regression and live smoke checks"
+    },
+    "sealedAt": "2026-08-02T21:15:40.059558Z",
+    "startedAt": "2026-08-02T18:46:14.617974Z",
+    "status": "completed",
+    "target": {
+      "displayName": "copimine-main",
+      "kind": "git_revision",
+      "remote": "https://github.com/IliaZav/copimine.git",
+      "revision": "856facf0c5638481a4ed19d5a2d440f39f080900",
+      "targetId": "target_sha256_2e9383bb89616bb8c3e3c5f1a2a7b94814d0aacec2b9847a1e06808101366c0d"
+    },
+    "threatModel": {
+      "assets": [
+        "site accounts and sessions",
+        "release archives and signing keys",
+        "Minecraft worlds and plugin state",
+        "PostgreSQL balances, elections and whitelist links",
+        "backup archives and server availability"
+      ],
+      "assumptions": [
+        "production secrets remain outside the signed payload",
+        "the deployed domain certificate and router forwarding remain operator-controlled",
+        "real player, browser and third-party payment tests require hosted/manual environments"
+      ],
+      "attackerCapabilities": [
+        "anonymous HTTPS requests",
+        "malicious state-changing Origin",
+        "crafted release/archive inputs when upload authority is obtained",
+        "concurrent session requests",
+        "malformed Minecraft/plugin event inputs"
+      ],
+      "securityObjectives": [
+        "authenticate and authorize state changes",
+        "preserve one-time and monetary state",
+        "prevent untrusted code/payload execution",
+        "bound public resource use",
+        "retain recoverable and redacted backups"
+      ],
+      "summary": "Protect player identity, site sessions, release integrity, Minecraft state, backups and public service availability across the browser, Nginx, backend, PostgreSQL, plugins and server filesystem.",
+      "trustBoundaries": [
+        "public browser to HTTPS Nginx",
+        "Nginx to loopback backend",
+        "backend to PostgreSQL and RCON",
+        "signed release staging to root installer",
+        "Minecraft players and plugins to persistent state"
+      ]
+    }
+  },
+  "schemaVersion": "1.0"
+}

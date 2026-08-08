@@ -44,7 +44,10 @@ Require $artifact '0.20D' 'The belt cobweb effect must have a separate 20 percen
 Require $artifact '600' 'Belt and chestplate buffs must last at least 30 seconds.'
 Require $artifact 'INSUFFICIENT_AR' 'AR theft must fall back to inventory when the bank has zero balance.'
 Require $artifact 'sendArTheftFailureMessages' 'AR theft must report a failed theft to the attacker and the poor victim.'
-RequireRegex $artifact '(?s)OfficialArService ar = this\.officialArService\(\);.*?ar\.removeAmount\(victim\.getInventory\(\), 1\)' 'Inventory theft must remove exactly one official AR from the victim inventory.'
+RequireRegex $artifact '(?s)private void tryRareArTheft\(Player attacker, LivingEntity target\).*?stealFromPlayerAccount' 'AR theft must use the atomic EconomyCore account operation.'
+if ($artifact -match '(?s)private void tryRareArTheft\(Player attacker, LivingEntity target\).*?(removeAmount|createStack|dropItemNaturally)') {
+    $errors.Add('AR theft must not perform a non-atomic physical inventory fallback.')
+}
 Require $artifact 'reset_at > 100000000000' 'Purchase-limit queries must normalize millisecond reset timestamps.'
 Require $backend 'class AdminArtifactLimitResetIn' 'The reset endpoint must accept a wildcard item id.'
 Require $backend 'requested_id in {"*", "all"}' 'The reset endpoint must handle reset-all explicitly.'

@@ -147,7 +147,8 @@ const state = {
   adminSearchOpen: false,
   adminSearchTarget: "",
   adminSearchNeedle: "",
-  adminSearchHighlightTimer: null
+  adminSearchHighlightTimer: null,
+  electionPresidentLaws: {}
 };
 
 const PUBLIC_GUEST_HASH_ROUTES = new Set([
@@ -1888,6 +1889,82 @@ window.reviewElectionApplication = async (applicationId, decision) => {
   }
 };
 
+function presidentLawBookPages(text) {
+  const raw = normalizeBookText(text) || "Текст закона пока пуст.";
+  const limit = 900;
+  const pages = [];
+  let remaining = raw;
+  while (remaining.length > limit) {
+    let cut = remaining.lastIndexOf(" ", limit);
+    if (cut < Math.floor(limit * 0.6)) cut = limit;
+    pages.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) pages.push(remaining);
+  return pages.length ? pages : ["Текст закона пока пуст."];
+}
+
+function presidentLawBookScene(row, pageIndex = 0) {
+  const pages = presidentLawBookPages(row.text);
+  const current = Math.max(0, Math.min(Number(pageIndex) || 0, pages.length - 1));
+  const status = String(row.status || "PENDING").toUpperCase();
+  const canReview = status === "PENDING";
+  const id = esc(row.id || "");
+  return `
+    <div class="mc-book-stage">
+      <div class="mc-book">
+        <div class="mc-book-page-count">Страница ${current + 1} из ${pages.length}</div>
+        <div class="mc-book-title">Закон президента</div>
+        <div class="mc-book-question">${esc(row.president_name || "Действующий президент")}</div>
+        <div class="mc-book-text">${bookAnswerHtml(pages[current])}</div>
+        <button class="mc-book-arrow mc-book-arrow-left" ${current <= 0 ? "disabled" : ""} data-click="openPresidentLawBook('${id}',${current - 1})" aria-label="Предыдущая страница"></button>
+        <button class="mc-book-arrow mc-book-arrow-right" ${current >= pages.length - 1 ? "disabled" : ""} data-click="openPresidentLawBook('${id}',${current + 1})" aria-label="Следующая страница"></button>
+      </div>
+      <div class="mc-book-status">
+        ${pill(status === "PUBLISHED" ? "Опубликован" : status === "REJECTED" ? "Отклонён" : "На рассмотрении", status === "PUBLISHED" ? "good" : status === "REJECTED" ? "warn" : "neutral")}
+        ${row.created_at ? pill(`Создан ${dt(row.created_at)}`, "neutral") : ""}
+      </div>
+      <div class="mc-book-actions">
+        <button class="mc-book-button" ${canReview ? "" : "disabled"} data-click="reviewPresidentLaw('${id}','approved')">Одобрить</button>
+        <button class="mc-book-button mc-book-close" data-click="closeModal()">Закрыть</button>
+        <button class="mc-book-button" ${canReview ? "" : "disabled"} data-click="reviewPresidentLaw('${id}','rejected')">Отклонить</button>
+      </div>
+    </div>
+  `;
+}
+
+window.openPresidentLawBook = (lawId, pageIndex = 0) => {
+  const row = state.electionPresidentLaws?.[lawId];
+  if (!row) return toast("Книга закона не найдена", true);
+  const overlay = buildModalOverlay();
+  overlay.classList.add("mc-book-overlay");
+  const modal = buildModalShell("", "", { wide: true });
+  modal.classList.add("mc-book-modal");
+  const preview = document.createElement("div");
+  preview.append(fragmentFromHtml(presidentLawBookScene(row, pageIndex)));
+  modal.append(preview);
+  overlay.append(modal);
+  replaceChildrenSafe($("modalRoot"), [overlay]);
+};
+
+window.reviewPresidentLaw = async (lawId, decision) => {
+  const label = decision === "approved" ? "одобрить" : "отклонить";
+  try {
+    const headers = await dangerConfirm(`Нужно ${label} закон президента?`, `ELECTION_LAW_${decision.toUpperCase()}`);
+    if (!headers) return;
+    await api(`/api/elections/president-laws/${encodeURIComponent(lawId)}/review`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ decision }),
+    });
+    toast(decision === "approved" ? "Закон одобрен и опубликован" : "Закон отклонён");
+    await loadElections();
+    window.closeModal();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
 function siteBulletList(items) {
   return `
     <div class="site-bullet-list">
@@ -3359,14 +3436,14 @@ function renderPlayerFullDetails(player, detail, ctx) {
   ];
   const artifactResetAt = Object.fromEntries(asArray(artifactLimitResets).map((row) => [cleanText(row.item_id || "").toLowerCase(), number(row.reset_at || row.resetAt || 0)]));
   const artifactLimitRows = [
-    ...asArray(giftCatalog?.AR).map((item) => ({ ...item, limit_category: "AR", limit_value: 5 })),
+    ...asArray(giftCatalog?.AR).map((item) => ({ ...item, limit_category: "AR", limit_value: 3 })),
     ...asArray(giftCatalog?.DONATION).map((item) => ({ ...item, limit_category: "DONATION", limit_value: 1 })),
   ].map((item) => {
     const itemId = cleanText(item.item_id || "");
     const category = cleanText(item.limit_category || "AR").toUpperCase();
     const resetAt = artifactResetAt[itemId.toLowerCase()] || 0;
     const bought = artifactPurchaseRows.filter((row) => cleanText(row.item_id || "").toLowerCase() === itemId.toLowerCase() && number(row.created_at || row.createdAt || 0) > resetAt && ["PAID", "DELIVERING", "DELIVERED", "PENDING_DELIVERY", "CLAIM_PENDING", "CLAIMED"].includes(String(row.status || "").toUpperCase())).length;
-    return { item_id: itemId, display_name: cleanText(item.display_name || itemId), limit_category: category, bought, limit: item.limit_value || 5 };
+    return { item_id: itemId, display_name: cleanText(item.display_name || itemId), limit_category: category, bought, limit: item.limit_value || (category === "AR" ? 3 : 1) };
   });
   const coreRows = asArray(actions.rows);
   const liveSnapshots = asArray(liveInventory.onlineSnapshots);
@@ -3460,7 +3537,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
         ["Счёт AR", bank.accountId ? "открыт" : "не открыт"],
         ["Баланс AR", formatAr(arCurrent)],
         ["Состояние PIN", pinState],
-        ["PIN", canManagePins ? (pin.visiblePin || "скрыт / не задан") : "скрыт"],
+        ["PIN", "Не раскрывается"],
         ["Блокировка PIN", pin.locked ? dt(pin.lockedUntil) : "нет"],
       ]), `${pinControls}${credentialControls}`)}
       ${panel("Действия и приколы", "Все действия пишутся в аудит. Опасные операции требуют подтверждения.", `
@@ -3958,6 +4035,37 @@ function renderRpElectionAdminPanel(applicationRows, votingBlocks) {
   `);
 }
 
+function presidentLawCards(pendingLaws = [], publishedLaws = []) {
+  const pending = asArray(pendingLaws);
+  const published = asArray(publishedLaws);
+  const rows = [...pending, ...published];
+  if (!rows.length) {
+    return empty("Законов пока нет", "После отправки закона президентом он появится здесь.");
+  }
+  return `<div class="station-card-grid">${rows.slice(0, 24).map((row) => {
+    const status = String(row.status || "PENDING").toUpperCase();
+    const id = esc(row.id || "");
+    const pendingState = status === "PENDING";
+    return `
+      <article class="station-card ${pendingState ? "inactive" : "active"}">
+        <div class="station-card-top">
+          <strong>${esc(pendingState ? "Закон на рассмотрении" : "Опубликованный закон")}</strong>
+          ${pill(pendingState ? "нужно решение" : "в livebar", pendingState ? "warn" : "good")}
+        </div>
+        <p>${esc(short(row.text || "Текст закона не заполнен.", 260))}</p>
+        <div class="station-card-stats">
+          <span>Президент: <b>${esc(row.president_name || row.president_uuid || "—")}</b></span>
+          <span>${row.created_at ? dt(row.created_at) : ""}</span>
+        </div>
+        <div class="station-card-actions">
+          <button class="btn btn-secondary btn-small" data-click="openPresidentLawBook('${id}')">Открыть книгу</button>
+          ${pendingState ? `<button class="btn btn-primary btn-small" data-click="reviewPresidentLaw('${id}','approved')">Одобрить</button><button class="btn btn-danger btn-small" data-click="reviewPresidentLaw('${id}','rejected')">Отклонить</button>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("")}</div>`;
+}
+
 function rpVotingBlockCards(blocks = []) {
   blocks = asArray(blocks);
   if (!blocks.length) {
@@ -4132,6 +4240,8 @@ async function loadElections() {
   const applications = asArray(detail.applications);
   const candidates = firstArray(detail.candidates, overviewPayload.pluginWeb?.candidates, []);
   const votingBlocks = asArray(detail.votingBlocks);
+  const publishedLaws = asArray(detail.laws);
+  const pendingLaws = asArray(detail.pendingLaws);
   const auditRows = asArray(detail.audit).filter((row) => !/(cik|chair|ballot|law|petition|decree|seal|book)/i.test(String(row.action || row.type || "")));
   const errors = [overviewPayload.error, detailResponse?.error, detail.connected === false ? "PostgreSQL недоступен" : ""].filter(Boolean).map(cleanText);
   const stage = String(election.current_stage || election.status || overviewPayload.pluginWeb?.stageTitle || "NONE").toUpperCase();
@@ -4163,6 +4273,7 @@ async function loadElections() {
   const totalVotes = Number(summary.totalVotes ?? detail.turnout?.deposited_ballots ?? 0) || 0;
   const deadline = Number(election.voting_deadline_at || election.votingDeadline || 0);
   state.electionApplications = Object.fromEntries(applications.map((row) => [row.id, row]));
+  state.electionPresidentLaws = Object.fromEntries([...pendingLaws, ...publishedLaws].map((row) => [row.id, row]));
   setView(`
     <section id="elections-rp" class="election-rp-page">
       ${errors.length ? `<div class="notice bad">${esc(errors.join("; "))}</div>` : ""}
@@ -4189,6 +4300,7 @@ async function loadElections() {
       ${panel("Кандидаты и голоса", "Администратор утверждает от 2 до 4 кандидатов. Голоса видны во время голосования.", `${candidateCards(candidates)}<div class="spacer-12"></div>${resultBars(candidates, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}`)}
       ${panel("Интерактивные блоки", "Игрок нажимает на защищённый блок, выбирает голову кандидата и подтверждает свой голос.", `${rpVotingBlockCards(votingBlocks)}<div class="spacer-12"></div>${kv([["Активных блоков", activeBlocks.length], ["Всего голосов", totalVotes], ["Голосование до", deadline ? dt(deadline) : "не открыто"]])}`)}
       ${panel("Президентский срок", "Победитель получает полномочия ровно на семь дней. Новая кампания не запускается автоматически.", kv([["Президент", president.president_name || president.minecraft_name || election.president_name || "—"], ["Срок", election.president_term_days ? `${election.president_term_days} дней` : "7 дней"], ["Состояние", stage === "PRESIDENT_TERM" ? "исполняет полномочия" : "ожидает победителя"]]))}
+      ${panel("Законы президента", "Ожидающие законы можно прочитать в книге и одобрить или отклонить. Одобренные попадают в livebar, сайт и игровой GUI.", `<div class="book-status-strip"><span class="pill warn">На рассмотрении: ${pendingLaws.length}</span><span class="pill good">Опубликовано: ${publishedLaws.length}</span></div><div class="spacer-12"></div>${presidentLawCards(pendingLaws, publishedLaws)}`)}
       ${panel("История кампании", "События нового RP-сценария без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
     </section>
   `);
@@ -4481,7 +4593,7 @@ window.playerAdminDonationSetBalance = playerAdminDonationSetBalance;
 
 window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
   if (!player) return toast("Игрок не выбран", true);
-  const headers = await dangerConfirm(`Назначить новый случайный постоянный PIN для ${player}?`, "PLAYER_BANK_PIN_RANDOMIZE");
+  const headers = await dangerConfirm(`Выдать игроку ${player} новый одноразовый PIN? Он будет показан только в игре и потребует смены.`, "PLAYER_BANK_PIN_RANDOMIZE");
   if (!headers) return;
   try {
     const result = await api(`/api/players/${encodeURIComponent(player)}/bank-pin/randomize`, {
@@ -4489,7 +4601,9 @@ window.playerRandomizeBankPin = async (player = state.selectedPlayer) => {
       headers,
       body: "{}"
     });
-    toast(`Новый PIN для ${player}: ${result.pin}`);
+    toast(result.deliveredInGame
+      ? `Одноразовый PIN отправлен игроку ${player} в игре.`
+      : `Одноразовый PIN создан, но игрок не в сети: повторите выдачу после входа.`);
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
     toast(err.message, true);
@@ -4510,8 +4624,8 @@ window.playerSetBankPinAdmin = async (player = state.selectedPlayer) => {
       body: JSON.stringify({ new_pin: pin.trim() })
     });
     toast(result.pinVerified
-      ? `PIN для ${player} сохранён и проверен: ${result.pin}`
-      : `PIN для ${player} сохранён: ${result.pin}`);
+      ? `PIN для ${player} сохранён и проверен.`
+      : `PIN для ${player} сохранён.`);
     if ($("playerAdminPinInput")) $("playerAdminPinInput").value = "";
     if (state.tab === "players") replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
   } catch (err) {
@@ -4545,6 +4659,30 @@ window.updateShopPrice = async (category, itemId) => {
       body: JSON.stringify({ item_id: id, category: kind, price, idempotency_key: randomActionKey("shop-price") }),
     });
     toast(`Цена ${id} обновлена. Игра и сайт используют новое значение.`);
+    await loadShops();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.updateShopLimit = async (category, itemId) => {
+  const kind = String(category || "").toUpperCase();
+  const id = String(itemId || "").trim().toLowerCase();
+  if (!id || !["AR", "DONATION"].includes(kind)) return toast("Не удалось определить предмет лавки", true);
+  const input = document.getElementById(`shop-limit-${kind.toLowerCase()}-${id}`);
+  const limit = Math.trunc(Number(input?.value || 0));
+  if (!Number.isSafeInteger(limit) || limit < 0 || limit > 1000) {
+    return toast("Лимит должен быть целым числом от 0 до 1000", true);
+  }
+  const headers = await dangerConfirm(`Изменить лимит ${id} в ${kind}-лавке на ${limit}?`, "SHOP_LIMIT_UPDATE");
+  if (!headers) return;
+  try {
+    await api("/api/admin/shop/limit", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ item_id: id, category: kind, limit, idempotency_key: randomActionKey("shop-limit") }),
+    });
+    toast(`Лимит ${id} обновлён: ${limit}.`);
     await loadShops();
   } catch (err) {
     toast(err.message, true);
@@ -4637,6 +4775,7 @@ async function loadShops() {
         { key: "item_id", label: "ID" },
         { key: "name", label: "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435" },
         { key: "price_ar", label: "AR", render: (value, row) => `<div class="shop-price-editor"><input id="shop-price-ar-${esc(row.item_id)}" type="number" min="1" max="1000000000" step="1" value="${esc(value ?? 0)}" aria-label="Цена ${esc(row.item_id)}" /><button class="btn btn-primary btn-small" data-click="updateShopPrice('AR','${esc(row.item_id)}')">Сохранить</button></div>` },
+        { key: "per_player_limit", label: "Лимит", render: (value, row) => `<div class="shop-price-editor"><input id="shop-limit-ar-${esc(row.item_id)}" type="number" min="0" max="1000" step="1" value="${esc(value ?? 3)}" aria-label="Лимит ${esc(row.item_id)}" /><button class="btn btn-primary btn-small" data-click="updateShopLimit('AR','${esc(row.item_id)}')">Сохранить</button></div>` },
         { key: "enabled", label: "\u0414\u043e\u0441\u0442\u0443\u043f", render: value => value ? pill("\u0434\u0430", "good") : pill("\u043d\u0435\u0442", "warn") }
       ], { pageSize: 12 }))}
       ${panel("Donation-\u043b\u0430\u0432\u043a\u0430", "\u041f\u043e\u043a\u0443\u043f\u043a\u0438 \u0437 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 \u0434\u043e\u043d\u0430\u0442-\u0431\u0430\u043b\u0430\u043d\u0441\u0430.", table("shops-donation-catalog", donationRows, [

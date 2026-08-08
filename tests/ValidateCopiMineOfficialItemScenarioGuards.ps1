@@ -39,8 +39,9 @@ Require-Regex 'runPreflightRepair[\s\S]*purgeTemporaryApplicationBooks[\s\S]*res
 Require-Regex 'onInteract[\s\S]*isPollingStationBlock[\s\S]*depositSealedBallotAtStation[\s\S]*sendPollingStationCitizenInfo[\s\S]*openPollingStationHub' 'Polling station click must try ballot deposit first, then show citizen info, then open the station hub.'
 Require-Regex 'giveRoleOfficialItemsAtStation[\s\S]*giveCikSealIfNeeded[\s\S]*givePresidentMandateIfNeeded' 'Station role auto-issue must cover both CIK seal and president mandate.'
 Require-Regex 'private boolean isOfficialArItem\(ItemStack it\)[\s\S]*return isOfficialAr\(it\)\|\|isLegacyArItem\(it\);' 'Official AR detection must rely on plugin markers, not plain renamed text.'
-Require-Regex 'deleteArPlacedBlock\(Block b\)[\s\S]*REMOVED_FROM_WORLD[\s\S]*AR_PLACED_BLOCK_REMOVED' 'Placed AR blocks must leave official circulation when the world block is removed.'
-Require-Regex 'onOfficialArCreative\(InventoryCreativeEvent e\)[\s\S]*isOfficialArItem\(e\.getCursor\(\)\)[\s\S]*setCancelled\(true\)' 'Creative inventory must not duplicate official AR.'
+Require-Regex 'public void onInv\(InventoryClickEvent e\)[\s\S]*getGameMode\(\)==GameMode\.CREATIVE\)[\s\S]*inventoryLocks' 'All Creative inventory transport must bypass generic AdminPlus guards before lock checks.'
+if ($text -match 'isOfficialArCreativeClick|InventoryCreativeEvent') { $errors.Add('Creative transport must not depend on AR signature recognition or a separate Creative event handler.') }
+if ($text -match 'public void onOfficialArCreative') { $errors.Add('Legacy custom Creative AR cancellation must stay removed.') }
 if ([regex]::IsMatch($text, 'openPollingStationHub\(Player p,Block block\)(?:(?!private void sendPollingStationCitizenInfo)[\s\S])*official:recover', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
   $errors.Add('Compact polling station GUI must not expose role recovery buttons to ordinary station flow.')
 }

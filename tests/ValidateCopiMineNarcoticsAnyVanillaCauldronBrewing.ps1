@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $source = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src\me\copimine\narcotics\cauldron\CauldronBrewingService.java')
-foreach ($marker in @('Material.WATER_CAULDRON','Levelled','requireFullWater','tryAddIngredient')) {
+foreach ($marker in @('Material.WATER_CAULDRON','Levelled','requireFullWater','hasBrewingRig','Material.FIRE','Material.SOUL_FIRE','Material.NETHERRACK','tryAddIngredient')) {
   if ($source -notmatch [regex]::Escape($marker)) { throw "Cauldron brewing marker missing: $marker" }
 }
 foreach ($forbidden in @('special cauldron','protected brewing block','TextDisplay','ItemDisplay')) {

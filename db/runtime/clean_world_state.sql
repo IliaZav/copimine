@@ -9,15 +9,22 @@ DO $$
 DECLARE
     table_name TEXT;
     reset_tables TEXT[] := ARRAY[
-        -- Sessions and short-lived identity state (accounts remain).
-        'cm_admin_sessions','login_sessions','one_time_link_codes',
-        'temporary_pin_resets','failed_pin_attempts','account_lockouts',
+        -- Sessions and short-lived identity state (account rows remain).
+        'cm_admin_sessions','cm_refresh_sessions','login_sessions','one_time_link_codes',
+        'temporary_pin_resets','failed_pin_attempts','account_lockouts','pin_reset_audit',
+        'auth_login_checks','auth_login_limits','security_events','security_ip_alerts',
+        'auth_effects_disable_audit','admin_requests',
+        'player_profile_cache','player_last_seen','player_settings',
         -- AR economy, bank accounts, ledgers, transfers and ATM runtime.
         'ar_operations','ar_transfers','ar_deposits','ar_withdrawals',
         'ar_suspicious_items','ar_ground_expiration_log','ar_ledger',
-        'ar_batches','ar_accounts','ar_money_supply_snapshots','ar_atms',
+        'ar_batches','ar_accounts','ar_money_supply_snapshots','ar_transactions',
+        'ar_settlements','ar_idempotency','ar_admin_issues','ar_atms',
         'atm_events','atm_sessions','atm_audit',
-        'cmv4_pending_ar_settlements','cmv4_bank_transfers','cmv4_bank_ledger','cmv4_bank_accounts',
+        'cmv4_pending_ar_settlements','cmv8_pending_ar_settlements','cmv8_ar_assets',
+        'cmv8_ar_asset_movements','cmv8_ar_issuance_intents','cmv8_ar_deposit_intents',
+        'cmv4_bank_transfers','cmv4_bank_ledger','cmv4_bank_accounts',
+        'cmv4_players','cmv4_audit_events',
         -- Donation balances and purchase state (payment remains disabled).
         'donation_payment_sessions','donation_purchases',
         'donation_item_claims','donation_balance_ledger','donation_accounts',
@@ -39,20 +46,28 @@ DECLARE
         'ballots','votes','polling_stations','cik_seals','cik_chairs',
         'president_tax_payment_ops','president_tax_payments','president_tax_exemptions','president_taxes',
         'president_law_reviews','president_laws','president_broadcasts',
-        'president_terms','elections',
+        'president_terms','elections','election_voting_blocks','cik_chairs','cik_seals',
+        'candidate_applications','candidates','round_candidates','rounds','ballots','votes',
+        'election_phases','election_stages','election_candidates','election_applications',
+        'election_presidents','election_stations','polling_stations','vote_participation',
+        'president_tax_payment_ops',
         -- Custom-item shops, purchases, repairs and deferred deliveries.
         'artifact_revenue_payouts','artifact_pending_deliveries',
         'artifact_purchases','artifact_repairs','artifact_suspicious_events',
         'artifact_audit_log','artifact_item_instances','artifact_shops',
+        'artifact_purchase_limit_resets','artifact_repair_events',
+        'artifact_purchases_idempotency','artifact_pending_delivery_refund',
         -- Narcotics runtime effects and usage counters. Recipes/config stay.
         'narcotics_admin_audit','narcotics_player_overdose',
         'narcotics_player_usage_window','narcotics_brewing_states',
+        'narcotics_pending_refunds','narcotics_pending_outputs',
+        'narcotics_consumption_reservations','narcotics_issued_instances',
         -- World-bound displays, protected blocks and plugin runtime state.
         'protected_blocks','protected_block_visuals','text_display_links','plugin_events',
         'bridge_events','status_channel_snapshots','discord_notifications_log',
         'discord_status_state','player_profile_cache','player_last_seen',
         'admin_actions','moderation_actions','prank_audit','smoke_results',
-        'system_checks','repair_actions'
+        'site_audit','system_checks','repair_actions','cmv8_startup_checks'
     ];
 BEGIN
     FOREACH table_name IN ARRAY reset_tables LOOP

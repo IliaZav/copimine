@@ -18,7 +18,11 @@ Environment=COPIMINE_ENV_FILE=/opt/copimine/admin-web/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/opt/copimine/admin-web/backend:/opt/copimine/admin-web
 ExecStartPre=/opt/copimine/admin-web/.venv/bin/python -m backend.startup_checks --strict
-ExecStart=/opt/copimine/admin-web/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8090 --proxy-headers
+# The application validates forwarded headers itself after confirming that the
+# TCP peer is the loopback nginx relay.  Uvicorn's proxy-header mode rewrites
+# request.client to the public visitor IP and would make valid Origin/TLS
+# checks look untrusted.
+ExecStart=/opt/copimine/admin-web/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8090
 Restart=always
 RestartSec=3
 TimeoutStartSec=180

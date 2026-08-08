@@ -2,9 +2,9 @@
 param(
     [string]$Archive = '',
     [string]$ServerName = 'server-rpgrp',
-    [string]$ServerIp = '100.108.97.11',
+    [string]$ServerIp = '90.188.115.155',
     [string]$Username = 'qwerty',
-    [int]$Port = 22,
+    [int]$Port = 2222,
     [string]$RemoteDir = '/home/qwerty/copimine-upload'
 )
 

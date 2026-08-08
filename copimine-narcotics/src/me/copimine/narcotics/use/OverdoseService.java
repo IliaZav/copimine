@@ -132,7 +132,7 @@ public final class OverdoseService {
      * player interactions always provide one so a restart cannot replay the
      * same issued item after the state write succeeds.
      */
-    public CompletableFuture<Void> consume(Player player, NarcoticDefinition definition, String reservationInstanceId) {
+    public CompletableFuture<Void> consume(Player player, NarcoticDefinition definition, String reservationId) {
         if (player == null || definition == null) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Player and narcotic definition are required."));
         }
@@ -146,7 +146,7 @@ public final class OverdoseService {
         // universal applyOverdose(player, definition, ...) plan before the
         // normal applyZhuzevo(player, definition, ...) plan is considered.
         ConsumptionPlan plan = prepareConsumption(player, definition, state, now);
-        return database.savePlayerState(plan.state(), reservationInstanceId).thenCompose(ignored -> {
+        return database.savePlayerState(plan.state(), reservationId).thenCompose(ignored -> {
             states.put(playerUuid, plan.state());
             CompletableFuture<Void> applied = new CompletableFuture<>();
             Bukkit.getScheduler().runTask(plugin, () -> {

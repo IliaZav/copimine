@@ -37,13 +37,9 @@ import java.io.File;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.security.MessageDigest;
 import java.sql.*;
 import java.util.*;
@@ -88,16 +84,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private int tick = 0;
     private static final String SIDEBAR_OBJECTIVE = "cmulive";
     private final Random rnd = new Random();
-    private final Set<String> arPlacedBreaks = ConcurrentHashMap.newKeySet();
-    /**
-     * Fast, main-thread placement marker.  The database record is written
-     * asynchronously, so a player can place an official AR block and break it
-     * again before the INSERT has completed.  Keep the marker in memory for
-     * the lifetime of the loaded block as well as the original item so the
-     * certification survives that immediate round trip.
-     */
-    private final Set<String> arPlacedBlockKeys = ConcurrentHashMap.newKeySet();
-    private final Map<String, ItemStack> arPlacedStacks = new ConcurrentHashMap<>();
     private final Set<UUID> processedSealDrops = ConcurrentHashMap.newKeySet();
     private final Set<String> rpBlocked = new HashSet<>();
     private final Set<String> reportAllowed = new HashSet<>();
@@ -106,7 +92,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private final Map<UUID, PendingBugReport> pendingBugReports = new ConcurrentHashMap<>();
     private final Map<UUID, Long> reportCooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, String> clientBrands = new ConcurrentHashMap<>();
-    private final Set<String> arEligibleBreaks = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean sidebarRefreshInFlight = new AtomicBoolean(false);
     private volatile SidebarSnapshot sidebarSnapshot = SidebarSnapshot.noElection(0L);
     private final Map<UUID, CachedElectionRole> electionRoleCache = new ConcurrentHashMap<>();
@@ -115,7 +100,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private BukkitTask inventorySnapshotTask;
     private BukkitTask nameplateTask;
     private BukkitTask voiceMuteCleanupTask;
-    private final HttpClient backendHttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(4)).build();
     private NamespacedKey visualEntityTypeKey;
     private NamespacedKey visualKindKey;
     private NamespacedKey visualLinkedIdKey;
@@ -191,8 +175,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private record StartupCheckRow(String key,boolean ok,Material material,String title,String detail,String action){}
     private record ArDropClaim(String claimId,String ownerUuid,String ownerName,int amount,long createdAt,Location location){}
     private record AtmPinSession(String atmId,String action,int amount,String pin,String targetUuid,String targetName){}
-    private record PendingBugReport(String token,String source,String action,String playerUuid,String playerName,String world,int x,int y,int z,String itemType,String errorSummary,String exceptionClass,String details,String actionId,long createdAt){}
-    private record BackendIntegrationSettings(String baseUrl,String pluginApiKey){}
+    private record PendingBugReport(String token,String source,String action,String playerUuid,String playerName,String world,int x,int y,int z,String itemType,String errorSummary,String exceptionClass,String details,String actionId,String requestId,long createdAt){}
     private record SidebarCandidate(String name,long total){}
     private record SidebarSnapshot(String eid,boolean liveResults,String status,String stage,long curators,long ballots,List<SidebarCandidate> candidates,long createdAt){
         static SidebarSnapshot noElection(long createdAt){return new SidebarSnapshot(null,false,"","",0,0,List.of(),createdAt);}
@@ -259,11 +242,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @Override public void onEnable() {
         saveDefaultConfig();
         loadVoiceMutes();
-        dbExecutor = Executors.newFixedThreadPool(Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors())), r -> {
-            Thread t = new Thread(r, "copimine-postgres-worker");
-            t.setDaemon(true);
-            return t;
-        });
+        int dbWorkers = Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors()));
+        dbExecutor = new ThreadPoolExecutor(
+                dbWorkers,
+                dbWorkers,
+                30L,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(256),
+                r -> {
+                    Thread t = new Thread(r, "copimine-postgres-worker");
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
         visualEntityTypeKey = new NamespacedKey(this, "visual_entity_type");
         visualKindKey = new NamespacedKey(this, "visual_kind");
         visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
@@ -274,9 +265,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             pgPool = new PgConnectionPool(pgSettings);
             dbLabel = pgSettings.safeLabel();
             dbPath = dbLabel;
-            ensureTables();
-            dbReady = true;
-            audit("SERVER","ULTRA7_750_ENABLE","enabled postgresql="+dbLabel,true);
         } catch (Exception e) {
             getLogger().severe("PostgreSQL init failed; CopiMine active storage is unavailable: "+safeErr(e));
             getLogger().severe("Set POSTGRES_PASSWORD in /opt/copimine/admin-web/.env or COPIMINE_ENV_FILE. SQLite fallback is disabled.");
@@ -284,8 +272,34 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        try {
+            dbExecutor.execute(() -> {
+                try {
+                    ensureTables();
+                    dbReady = true;
+                    audit("SERVER", "ULTRA7_750_ENABLE", "enabled postgresql=" + dbLabel, true);
+                    Bukkit.getScheduler().runTask(this, this::finishEnable);
+                } catch (Exception error) {
+                    getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL schema initialization failed", error);
+                    Bukkit.getScheduler().runTask(this, () -> {
+                        closePostgres();
+                        getServer().getPluginManager().disablePlugin(this);
+                    });
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL initialization worker rejected", error);
+            closePostgres();
+            getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private void finishEnable() {
+        if (!isEnabled() || !dbReady) {
+            return;
+        }
         registerRpCommandGuard();
-        for(String commandName:List.of("cmultra","rpguard","cadm","ar","cmbank","appeal","report","oldvoteoff","cmsealdrop")){
+        for(String commandName:List.of("cmultra","rpguard","cadm","ar","cmbank","appeal","report","reporta","oldvoteoff","cmsealdrop")){
             PluginCommand pc=getCommand(commandName);
             if(pc!=null){pc.setExecutor(this); pc.setTabCompleter(this);}
         }
@@ -632,7 +646,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler public void onJoin(PlayerJoinEvent e) {
         purgeTemporaryApplicationBooks(e.getPlayer());
-        normalizeArInventoryState(e.getPlayer());
         refreshImageFramePermissions(e.getPlayer());
         updatePlayerProfile(e.getPlayer(), true, clientBrands.getOrDefault(e.getPlayer().getUniqueId(),""));
         refreshElectionRoleStateAsync(e.getPlayer());
@@ -671,7 +684,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     public void onInventoryClose(InventoryCloseEvent e) {
         if (e.getPlayer() instanceof Player p) {
             purgeTemporaryApplicationBooks(p);
-            normalizeArInventoryState(p);
             snapshotOnlineInventory(p, "inventory_close");
         }
     }
@@ -694,24 +706,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if("cik_seal".equals(officialType)) return;
         if(isTemporaryApplicationBook(e.getItem())) return;
         Block clicked=e.getClickedBlock();
-        // The RP station lookup belongs to ElectionCore.  In the migrated
-        // runtime do not even touch the legacy SQLite/Postgres query from the
-        // Bukkit thread: it used to block every right-click on a protected
-        // block and occasionally surfaced the generic "bug found" screen.
+        // ElectionCore owns RP station interaction after the migration.  The
+        // old listener is kept only as an explicit compatibility fallback for
+        // installations that opt back into the legacy runtime; the normal
+        // path must return here so ElectionCore can open its current GUI.
         if(clicked!=null&&!legacyElectionRuntimeDisabled()&&isPollingStationBlock(e.getClickedBlock())){
-            // A sealed physical ballot is deposited by the station right
-            // click itself.  Keep this branch before the generic legacy GUI
-            // so a valid ballot can never fall through to a bug screen.
-            if(isBallotItem(e.getItem())&&isSealedBallot(e.getItem())){
-                e.setCancelled(true);
-                try{
-                    depositSealedBallotAtStation(p,e.getItem(),pollingStationId(e.getClickedBlock()));
-                }catch(Exception ex){
-                    warn(p,"Не удалось принять бюллетень. Подробности записаны в лог.");
-                    getLogger().warning("sealed ballot deposit: "+ex);
-                }
-                return;
-            }
             handleLegacyPollingStationInteract(p,e,e.getClickedBlock());
             return;
         }
@@ -721,7 +720,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             return;
         }
         if("president_mandate".equals(officialType)){
-            try{ e.setCancelled(true); presidentHourlyAnnouncement(p); }catch(Exception ex){ warn(p,"Не удалось выполнить действие мандата. Подробности записаны в лог."); getLogger().warning("president mandate: "+ex); }
+            // ElectionCore owns every mandate interaction.  AdminPlus must not
+            // announce or cancel the event: either action can leave a stale
+            // title or prevent the current mandate GUI from opening.
             return;
         }
         Block legacyClicked=null;
@@ -755,114 +756,54 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST) public void onPickup(EntityPickupItemEvent e){
         ItemStack picked=e.getItem()==null?null:e.getItem().getItemStack();
         if(e.getEntity() instanceof Player p && checkMode.containsKey(p.getUniqueId())&&!hasAdmin(p)){ e.setCancelled(true); return; }
-        if(economyCoreOwns(picked)) return;
-        if(electionCoreOwns(picked)) return;
-        if(isOfficialArItem(picked)&&!(e.getEntity() instanceof Player)){e.setCancelled(true); return;}
-        if(e.getEntity() instanceof Player p && isOfficialArItem(picked)){ setArOwnerMeta(picked,"","",""); if(e.getItem()!=null)e.getItem().setItemStack(picked); queueArSync("AR_PICKUP"); return; }
-        if(legacyArTransferEnabled() && e.getEntity() instanceof Player p && isOfficialArItem(picked)){
-            try{retagArOwner(e.getItem(),p,"pickup",claimArTransfer(e.getItem(),p)); protectArEntity(e.getItem(),"pickup"); queueArSync("AR_TRANSFER_PICKUP");}
-            catch(Exception ex){e.setCancelled(true); warn(p,"Не удалось передать AR. Подробности записаны в лог."); getLogger().warning("ar pickup transfer: "+ex);}
+        if(economyCoreOwns(picked)){
+            if(e.getEntity() instanceof Player p){
+                try { retagArOwner(e.getItem(),p,"pickup",claimArTransfer(e.getItem(),p)); }
+                catch(Exception ex){ getLogger().warning("AR transfer retag failed on pickup: "+safeErr(ex)); }
+            }
             return;
         }
+        if(electionCoreOwns(picked)) return;
+        if(artifactsCoreOwns(picked)) return;
         if(e.getEntity() instanceof Player p && isProtectedCustomItem(picked)&&!requireElectionItemOwner(p,picked,first(electionItemString(picked,"type"),""))) e.setCancelled(true);
     }
     @EventHandler(priority=EventPriority.HIGHEST) public void onDrop(PlayerDropItemEvent e){
         if(checkMode.containsKey(e.getPlayer().getUniqueId())&&!hasAdmin(e.getPlayer())){ e.setCancelled(true); return; }
-        if(economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
+        if(economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())){ registerArTransferClaim(e.getItemDrop(),e.getPlayer()); return; }
         if(electionCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
+        if(artifactsCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
+        if(isPresidentMandate(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())) return;
         if(isTemporaryApplicationBook(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())){ e.setCancelled(true); if(e.getItemDrop()!=null)e.getItemDrop().remove(); purgeTemporaryApplicationBooks(e.getPlayer()); return; }
         if(handleDestroyableOfficialDrop(e)) return;
-        if(e.getItemDrop()!=null&&isOfficialArItem(e.getItemDrop().getItemStack())){ queueArSync("AR_DROP"); return; }
-        if(legacyArTransferEnabled()&&e.getItemDrop()!=null&&isOfficialArItem(e.getItemDrop().getItemStack())){
-            protectArEntity(e.getItemDrop(),"drop");
-            registerArTransferClaim(e.getItemDrop(),e.getPlayer());
-            recordArTransaction("AR_DROP_LISTED",e.getItemDrop().getItemStack(),e.getPlayer(),arString(e.getItemDrop().getItemStack(),"owner_uuid"),arString(e.getItemDrop().getItemStack(),"owner_name"),null,e.getItemDrop().getLocation(),"Игрок выставил АР для RP-передачи через pickup");
-            queueArSync("AR_DROP_LISTED");
-            return;
-        }
         if(isProtectedCustomItem(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())){ e.setCancelled(true); warn(e.getPlayer(),"Официальные предметы нельзя выбрасывать. Печать ЦИК и мандат президента уничтожаются отдельным Q-действием."); return; }
     }
 
     @EventHandler(priority=EventPriority.LOWEST, ignoreCancelled=false)
-    public void onSealDropLowest(PlayerDropItemEvent e){if(economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())||electionCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack()))return; handleDestroyableOfficialDrop(e);}
+    public void onSealDropLowest(PlayerDropItemEvent e){if(isPresidentMandate(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())||economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())||electionCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack()))return; handleDestroyableOfficialDrop(e);}
 
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)
-    public void onSealDropMonitor(PlayerDropItemEvent e){if(economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())||electionCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack()))return; handleDestroyableOfficialDrop(e);}
+    public void onSealDropMonitor(PlayerDropItemEvent e){if(isPresidentMandate(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())||economyCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack())||electionCoreOwns(e.getItemDrop()==null?null:e.getItemDrop().getItemStack()))return; handleDestroyableOfficialDrop(e);}
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemDamage(EntityDamageEvent e){
-        if(e.getEntity() instanceof Item item&&(economyCoreOwns(item.getItemStack())||electionCoreOwns(item.getItemStack()))) return;
+        if(e.getEntity() instanceof Item item&&(economyCoreOwns(item.getItemStack())||electionCoreOwns(item.getItemStack())||artifactsCoreOwns(item.getItemStack()))) return;
         if(e.getEntity() instanceof Item item&&isProtectedCustomItem(item.getItemStack())) e.setCancelled(true);
     }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onArEntityDamage(EntityDamageEvent e){
-        if(!(e.getEntity() instanceof Item item)||!isOfficialArItem(item.getItemStack()))return;
-        if(economyCoreOwns(item.getItemStack())) return;
-        queueArSync("AR_ENTITY_DAMAGE:"+e.getCause().name());
-        return;
-    }
+    public void onProtectedItemDespawn(ItemDespawnEvent e){if(economyCoreOwns(e.getEntity().getItemStack())||electionCoreOwns(e.getEntity().getItemStack())||artifactsCoreOwns(e.getEntity().getItemStack()))return; if(isProtectedCustomItem(e.getEntity().getItemStack()))e.setCancelled(true);}
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onProtectedItemDespawn(ItemDespawnEvent e){if(economyCoreOwns(e.getEntity().getItemStack())||electionCoreOwns(e.getEntity().getItemStack()))return; if(isProtectedCustomItem(e.getEntity().getItemStack()))e.setCancelled(true);}
+    public void onProtectedItemMerge(ItemMergeEvent e){if(economyCoreOwns(e.getEntity().getItemStack(),e.getTarget().getItemStack())||electionCoreOwns(e.getEntity().getItemStack())||electionCoreOwns(e.getTarget().getItemStack())||artifactsCoreOwns(e.getEntity().getItemStack())||artifactsCoreOwns(e.getTarget().getItemStack()))return; if(isProtectedCustomItem(e.getEntity().getItemStack())||isProtectedCustomItem(e.getTarget().getItemStack()))e.setCancelled(true);}
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onArDespawn(ItemDespawnEvent e){
-        if(economyCoreOwns(e.getEntity().getItemStack())) return;
-        if(isOfficialArItem(e.getEntity().getItemStack())){queueArSync("AR_DESPAWN"); return;}
-    }
+    public void onProtectedInventoryPickup(InventoryPickupItemEvent e){if(economyCoreOwns(e.getItem().getItemStack())||electionCoreOwns(e.getItem().getItemStack())||artifactsCoreOwns(e.getItem().getItemStack()))return; if(isProtectedCustomItem(e.getItem().getItemStack()))e.setCancelled(true);}
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onProtectedItemMerge(ItemMergeEvent e){if(economyCoreOwns(e.getEntity().getItemStack(),e.getTarget().getItemStack())||electionCoreOwns(e.getEntity().getItemStack())||electionCoreOwns(e.getTarget().getItemStack()))return; if(isProtectedCustomItem(e.getEntity().getItemStack())||isProtectedCustomItem(e.getTarget().getItemStack()))e.setCancelled(true);}
+    public void onProtectedInventoryMove(InventoryMoveItemEvent e){if(economyCoreOwns(e.getItem())||electionCoreOwns(e.getItem())||artifactsCoreOwns(e.getItem()))return; if(isProtectedCustomItem(e.getItem()))e.setCancelled(true);}
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onArMerge(ItemMergeEvent e){
-        if(economyCoreOwns(e.getEntity().getItemStack(),e.getTarget().getItemStack())) return;
-        if(isOfficialArItem(e.getEntity().getItemStack())||isOfficialArItem(e.getTarget().getItemStack())){queueArSync("AR_MERGE"); return;}
-    }
-
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onProtectedInventoryPickup(InventoryPickupItemEvent e){if(economyCoreOwns(e.getItem().getItemStack())||electionCoreOwns(e.getItem().getItemStack()))return; if(isProtectedCustomItem(e.getItem().getItemStack()))e.setCancelled(true);}
-
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onArHopperPickup(InventoryPickupItemEvent e){
-        if(!isOfficialArItem(e.getItem().getItemStack()))return;
-        if(economyCoreOwns(e.getItem().getItemStack())) return;
-        e.setCancelled(true);
-        recordArGuardIncident("AR_HOPPER_PICKUP_BLOCKED",e.getItem().getItemStack(),null,e.getItem().getLocation(),"hopper pickup prevented");
-        recordArTransaction("AR_HOPPER_PICKUP_BLOCKED",e.getItem().getItemStack(),null,arString(e.getItem().getItemStack(),"owner_uuid"),arString(e.getItem().getItemStack(),"owner_name"),null,e.getItem().getLocation(),"АР нельзя засасывать воронками");
-    }
-
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onProtectedInventoryMove(InventoryMoveItemEvent e){if(economyCoreOwns(e.getItem())||electionCoreOwns(e.getItem()))return; if(isProtectedCustomItem(e.getItem()))e.setCancelled(true);}
-
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onArInventoryMove(InventoryMoveItemEvent e){
-        if(economyCoreOwns(e.getItem())) return;
-        if(isOfficialArItem(e.getItem())&&(isArTransportInventory(e.getSource())||isArTransportInventory(e.getDestination()))){
-            e.setCancelled(true);
-            recordArGuardIncident("AR_MACHINE_MOVE_BLOCKED",e.getItem(),null,null,"hopper/dropper/dispenser move prevented");
-            recordArTransaction("AR_MACHINE_MOVE_BLOCKED",e.getItem(),null,arString(e.getItem(),"owner_uuid"),arString(e.getItem(),"owner_name"),null,null,"АР нельзя перемещать воронками, раздатчиками и выбрасывателями");
-        }
-    }
-
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onProtectedBlockDispense(BlockDispenseEvent e){if(economyCoreOwns(e.getItem())||electionCoreOwns(e.getItem()))return; if(isProtectedCustomItem(e.getItem()))e.setCancelled(true);}
-
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onArDispense(BlockDispenseEvent e){
-        if(!isOfficialArItem(e.getItem()))return;
-        if(economyCoreOwns(e.getItem())) return;
-        e.setCancelled(true);
-        recordArGuardIncident("AR_DISPENSE_BLOCKED",e.getItem(),null,e.getBlock().getLocation(),"dispenser/dropper prevented");
-        recordArTransaction("AR_DISPENSE_BLOCKED",e.getItem(),null,arString(e.getItem(),"owner_uuid"),arString(e.getItem(),"owner_name"),null,e.getBlock().getLocation(),"АР нельзя выдавать раздатчиком или выбрасывателем");
-    }
-
-    @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)
-    public void onArSpawn(ItemSpawnEvent e){
-        if(economyCoreOwns(e.getEntity().getItemStack())) return;
-        if(isOfficialArItem(e.getEntity().getItemStack())){ItemStack stack=e.getEntity().getItemStack(); setArOwnerMeta(stack,"","",""); e.getEntity().setItemStack(stack); queueArSync("AR_SPAWN"); return;}
-    }
+    public void onProtectedBlockDispense(BlockDispenseEvent e){if(economyCoreOwns(e.getItem())||electionCoreOwns(e.getItem())||artifactsCoreOwns(e.getItem()))return; if(isProtectedCustomItem(e.getItem()))e.setCancelled(true);}
 
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent e){
@@ -877,6 +818,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Player p=e.getPlayer();
         Entity target=e.getRightClicked();
         ItemStack hand=p.getInventory().getItemInMainHand();
+        if(isOfficialArItem(hand))return;
         if(electionCoreOwns(hand))return;
         if(handleProtectedVisualInteract(p,target,e))return;
         if(legacyElectionRuntimeDisabled()&&isDelegatedElectionRuntimeItem(hand,officialTypeForStack(hand))) return;
@@ -903,7 +845,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             warn(p,"Официальные предметы нельзя помещать в рамки, стойки и декоративные сущности.");
             return;
         }
-        if(!isProtectedCustomItem(hand)||isOfficialArItem(hand))return;
+        if(!isProtectedCustomItem(hand)||isOfficialArItem(hand)||artifactsCoreOwns(hand))return;
         if(target instanceof ItemFrame||target instanceof ArmorStand){
             e.setCancelled(true);
             p.updateInventory();
@@ -913,6 +855,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedArmorStand(PlayerArmorStandManipulateEvent e){
+        if(isOfficialArItem(e.getPlayerItem())||isOfficialArItem(e.getArmorStandItem())
+                ||artifactsCoreOwns(e.getPlayerItem())||artifactsCoreOwns(e.getArmorStandItem()))return;
         if(electionCoreOwns(e.getPlayerItem())||electionCoreOwns(e.getArmorStandItem()))return;
         if(isOfficialArItem(e.getPlayerItem())||isOfficialArItem(e.getArmorStandItem())||isProtectedCustomItem(e.getPlayerItem())||isProtectedCustomItem(e.getArmorStandItem())){
             e.setCancelled(true);
@@ -928,7 +872,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Iterator<ItemStack> iter=e.getDrops().iterator();
         while(iter.hasNext()){
             ItemStack drop=iter.next();
+            if(isPresidentMandate(drop)) continue;
             if(electionCoreOwns(drop)) continue;
+            if(artifactsCoreOwns(drop)) continue;
             if(isTemporaryApplicationBook(drop)){iter.remove(); continue;}
             if(shouldPersistOfficialItem(drop)){
                 keep.add(drop.clone());
@@ -948,111 +894,55 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     @EventHandler(priority=EventPriority.HIGHEST)
     public void onBreak(BlockBreakEvent e) {
-        if (checkMode.containsKey(e.getPlayer().getUniqueId()) && !hasAdmin(e.getPlayer())) { e.setCancelled(true); return; }
-        Material m=e.getBlock().getType();
-        if (m==Material.DIAMOND_ORE || m==Material.DEEPSLATE_DIAMOND_ORE) {
-            try {
-                String key=blockKey(e.getBlock());
-                boolean placed=arPlacedBlockKeys.contains(key) || arPlacedBlockExists(e.getBlock());
-                if(placed) arPlacedBreaks.add(key);
-                boolean eligible=isValidArCertificationBreak(e);
-                if(eligible&&!placed) arEligibleBreaks.add(key);
-                arEvent(eligible&&!placed?"MINE_AR_BLOCK":"AR_CERTIFICATION_BLOCKED", e.getPlayer(), null, m.name(), 1, e.getBlock().getLocation(), eligible&&!placed?"AR_CERTIFICATION_GATE_V3: natural silk-touch ore":"AR_CERTIFICATION_GATE_V3: blocked creative/spectator/no-silk/placed");
-                Block b=e.getBlock();
-                // BlockDropItemEvent is emitted after BlockBreakEvent on the
-                // server thread, but other plugins may defer it by a tick.
-                // Keep the eligibility marker long enough for that event and
-                // remove it afterwards so a later unrelated break cannot
-                // inherit the certification flag.
-                Bukkit.getScheduler().runTaskLater(this, () -> { try {
-                    String cleanupKey=blockKey(b);
-                    arEligibleBreaks.remove(cleanupKey);
-                    arPlacedBreaks.remove(cleanupKey);
-                    arPlacedBlockKeys.remove(cleanupKey);
-                    arPlacedStacks.remove(cleanupKey);
-                    deleteArPlacedBlock(b);
-                } catch(Exception ex){ getLogger().warning("ar placed cleanup: "+ex); } }, 40L);
-            } catch(Exception ex){ getLogger().warning("ar mine: "+ex); }
+        if (checkMode.containsKey(e.getPlayer().getUniqueId()) && !hasAdmin(e.getPlayer())) {
+            e.setCancelled(true);
         }
     }
 
-    @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=true)
-    public void onArPlace(BlockPlaceEvent e) {
-        if(!arMaterial(e.getBlockPlaced().getType())||!isOfficialArItem(e.getItemInHand())) return;
-        if(economyCoreOwns(e.getItemInHand())) return;
-        String key=blockKey(e.getBlockPlaced());
-        // Mark the block synchronously before the asynchronous database write.
-        // Store the original official stack so a Silk Touch break can return
-        // the same certified item instead of a vanilla ore block.
-        arPlacedBlockKeys.add(key);
-        arPlacedStacks.put(key,e.getItemInHand().clone());
-        markOneArAssetPlaced(e.getPlayer(),e.getBlockPlaced().getLocation(),e.getBlockPlaced().getType());
-        try { recordArPlacedBlock(e); } catch(Exception ex) { getLogger().warning("ar place: "+ex); }
-    }
 
+    /**
+     * Valid Silk Touch mining replaces the vanilla ore item in its own drop
+     * event.  No delayed spawn or extra item entity is used, so AR keeps the
+     * same lifecycle as an ordinary block item.
+     */
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onArBlockPlaceGuard(BlockPlaceEvent e) {
-        if(!isOfficialArItem(e.getItemInHand()))return;
-        if(economyCoreOwns(e.getItemInHand()))return;
-        queueArSync("AR_PLACE");
-        if(useFreeArPlacementFlow())return;
-        e.setCancelled(true);
-        e.getPlayer().updateInventory();
-        warn(e.getPlayer(),"Сертифицированный АР нельзя ставить блоком. Единственный вывод алмазов из него - переплавка.");
-        sound(e.getPlayer(),"BLOCK_NOTE_BLOCK_BASS",0.55f,0.8f);
-        recordArGuardIncident("AR_PLACE_BLOCKED",e.getItemInHand(),e.getPlayer(),e.getBlockPlaced().getLocation(),"Certified AR cannot be placed");
-        recordArTransaction("AR_PLACE_BLOCKED",e.getItemInHand(),e.getPlayer(),arString(e.getItemInHand(),"owner_uuid"),arString(e.getItemInHand(),"owner_name"),null,e.getBlockPlaced().getLocation(),"Блокировка установки сертифицированного АР");
-    }
-
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=true)
     public void onArDrop(BlockDropItemEvent e) {
-        if(!arMaterial(e.getBlockState().getType())) return;
-        try {
-            String key=blockKey(e.getBlock());
-            boolean placed=arPlacedBreaks.remove(key) || arPlacedBlockKeys.contains(key) || arPlacedBlockExists(e.getBlock());
-            boolean eligible=arEligibleBreaks.remove(key) && isValidArCertificationDrop(e.getPlayer());
-            boolean reissuePlaced=placed && isValidArCertificationDrop(e.getPlayer());
-            ItemStack placedStack=arPlacedStacks.remove(key);
-            int amount=0;
-            for(Item item:e.getItems()){
-                ItemStack st=item.getItemStack();
-                if(!arMaterial(st.getType())) continue;
-                if(!reissuePlaced&&!eligible) { amount+=st.getAmount(); continue; }
-                CopiMineEconomyCore.OfficialArService service=officialArService();
-                ItemStack official;
-                if(reissuePlaced) {
-                    // Reuse the placed stack when possible.  Do not call
-                    // ensureArAsset/tagArItem here: the original asset is
-                    // already tracked as PLACED and is removed by
-                    // deleteArPlacedBlock below.  Creating a second DB asset
-                    // would make a fast place->break look like duplication.
-                    official=placedStack!=null?placedStack.clone():createOfficialArStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
-                } else {
-                    official=service==null?null:service.createStack(e.getBlockState().getType(),Math.max(1,st.getAmount()));
-                }
-                if(official!=null){
-                    official.setAmount(Math.max(1,st.getAmount()));
-                    item.setItemStack(official);
-                    st=official;
-                }else{
-                    tagArItem(st,e.getPlayer(),e.getBlockState().getType());
-                    item.setItemStack(st);
-                }
-                if(official!=null) {
-                    if(reissuePlaced) {
-                        recordArTransaction("AR_PLACED_REISSUE",st,e.getPlayer(),"","",null,e.getBlock().getLocation(),"Официальный АР возвращён после установки и добычи шёлковым касанием");
-                    } else {
-                        tagArItem(st,e.getPlayer(),e.getBlockState().getType());
+        if (!isValidArCertificationDrop(e)) {
+            return;
+        }
+        CopiMineEconomyCore.OfficialArService service=officialArService();
+        if (service==null) {
+            getLogger().warning("CopiMineEconomyCore is unavailable; leaving the vanilla Silk Touch drop unchanged.");
+            return;
+        }
+        int amount=0;
+        Material material=e.getBlockState().getType();
+        for (Item item:e.getItems()) {
+            ItemStack vanilla=item==null?null:item.getItemStack();
+            if (vanilla==null || !arMaterial(vanilla.getType())) {
+                continue;
+            }
+            ItemStack official=service.createPreparedStack(vanilla.getType(),vanilla.getAmount(),"silk-touch");
+            if (official==null || !service.isOfficialAr(official)) {
+                getLogger().warning("Official AR factory rejected a Silk Touch drop; leaving the vanilla ore item unchanged.");
+                continue;
+            }
+            item.setItemStack(official);
+            amount+=official.getAmount();
+        }
+        if (amount<=0) {
+            return;
+        }
+        Location location=e.getBlock().getLocation().clone();
+        String issuanceKey="mining:"+e.getPlayer().getUniqueId()+":"+UUID.randomUUID();
+        service.prepareIssuanceAsync(issuanceKey,material,amount,"silk-touch")
+                .whenComplete((prepared,error)->{
+                    if(error!=null || !Boolean.TRUE.equals(prepared)) {
+                        getLogger().warning("AR mining issuance registry update failed for "+issuanceKey+": "+(error==null?"not prepared":error.getMessage()));
                     }
-                }
-                amount+=st.getAmount();
-            }
-            if(amount>0) arEvent(reissuePlaced||eligible?"MINE_AR_DROP":placed?"AR_DROP_BLOCKED_PLACED":"AR_CERTIFICATION_BLOCKED", e.getPlayer(), null, e.getBlockState().getType().name(), amount, e.getBlock().getLocation(), reissuePlaced?"Официальный АР восстановлен после установки и добыт шёлковым касанием":placed?"Поставленная руда добыта без шёлкового касания":!eligible?"AR_CERTIFICATION_GATE_V3: drop was not produced by valid Silk Touch survival mining":"Сертифицированный АР создан добычей");
-            if(placed) {
-                arPlacedBlockKeys.remove(key);
-                deleteArPlacedBlock(e.getBlock());
-            }
-        } catch(Exception ex) { getLogger().warning("ar drop: "+ex); }
+                });
+        arEvent("MINE_AR_DROP",e.getPlayer(),null,material.name(),amount,location,
+                "Silk Touch replaced the vanilla ore drop with a canonical signed AR.");
     }
 
     @EventHandler(priority=EventPriority.HIGHEST)
@@ -1110,6 +1000,11 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             }
             return;
         }
+        // Creative inventory packets and ordinary creative container clicks
+        // are both vanilla transport.  Do not gate them on AR recognition:
+        // old certified stacks can carry a signature from a previous server
+        // key and must still move as plain items in Creative.
+        if(e.getWhoClicked() instanceof Player p&&p.getGameMode()==GameMode.CREATIVE)return;
         if(e.getWhoClicked() instanceof Player p){
             Long lockedUntil=inventoryLocks.get(p.getUniqueId());
             if(lockedUntil!=null){
@@ -1121,7 +1016,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onPrepareCraft(PrepareItemCraftEvent e){if(economyCoreOwns(e.getInventory().getMatrix())||electionCoreOwns(e.getInventory().getMatrix()))return; if(containsProtectedItem(e.getInventory().getMatrix()))e.getInventory().setResult(new ItemStack(Material.AIR));}
+    public void onPrepareCraft(PrepareItemCraftEvent e){if(economyCoreOwns(e.getInventory().getMatrix())||electionCoreOwns(e.getInventory().getMatrix())||artifactsCoreOwns(e.getInventory().getMatrix()))return; if(containsProtectedItem(e.getInventory().getMatrix()))e.getInventory().setResult(new ItemStack(Material.AIR));}
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onCraft(CraftItemEvent e){if(economyCoreOwns(e.getInventory().getMatrix())||electionCoreOwns(e.getInventory().getMatrix()))return; if(containsProtectedItem(e.getInventory().getMatrix())){e.setCancelled(true); if(e.getWhoClicked() instanceof Player p)warn(p,"Официальные AR и служебные предметы нельзя использовать в крафте.");}}
@@ -1129,35 +1024,33 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemClick(InventoryClickEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
+        if(p.getGameMode()==GameMode.CREATIVE)return;
         ItemStack cursor=e.getCursor(), current=e.getCurrentItem(), hotbar=null;
         if(e.getClick()==ClickType.NUMBER_KEY&&e.getHotbarButton()>=0)hotbar=p.getInventory().getItem(e.getHotbarButton());
-        if(economyCoreOwns(cursor,current,hotbar)||electionCoreOwns(cursor,current,hotbar))return;
-        boolean officialArCreativeTouch=p.getGameMode()==GameMode.CREATIVE&&(isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar));
-        if(officialArCreativeTouch&&(e.getClick()==ClickType.CREATIVE||e.getClick()==ClickType.MIDDLE||e.getClick()==ClickType.DOUBLE_CLICK||e.getAction()==InventoryAction.CLONE_STACK||e.getAction()==InventoryAction.COLLECT_TO_CURSOR)){
+        Inventory top=e.getView().getTopInventory();
+        if(top==null||top.getType()!=InventoryType.ANVIL)return;
+        if(artifactsCoreOwns(cursor,current,hotbar)){
             e.setCancelled(true);
             p.updateInventory();
-            warn(p,"Официальный AR нельзя дублировать, собирать или клонировать в creative.");
             return;
         }
-        Inventory top=e.getView().getTopInventory();
+        if(economyCoreOwns(cursor,current,hotbar)||electionCoreOwns(cursor,current,hotbar))return;
         if(top==null||top.getHolder() instanceof Menu||!isRestrictedTop(top))return;
         int raw=e.getRawSlot(), topSize=top.getSize();
         boolean clickedTop=raw>=0&&raw<topSize, clickedBottom=raw>=topSize;
-        boolean arRestricted=isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar);
-        if(arRestricted)queueArSync("AR_RESTRICTED_INVENTORY_TOUCH");
         boolean cursorRestricted=isRestrictedInventoryItem(cursor), currentRestricted=isRestrictedInventoryItem(current), hotbarRestricted=isRestrictedInventoryItem(hotbar);
         if(cursorRestricted||currentRestricted||hotbarRestricted){
             InventoryAction action=e.getAction();
             if(action==InventoryAction.MOVE_TO_OTHER_INVENTORY&&clickedBottom&&currentRestricted){
                 e.setCancelled(true);
                 p.updateInventory();
-                if(!arRestricted)warn(p,"Официальные AR и служебные предметы нельзя перекладывать в печи, верстаки, наковальни и другие рабочие блоки.");
+                warn(p,"Служебные предметы нельзя перекладывать в печи, верстаки, наковальни и другие рабочие блоки.");
                 return;
             }
             if(clickedTop&&(cursorRestricted||hotbarRestricted)){
                 e.setCancelled(true);
                 p.updateInventory();
-                if(!arRestricted)warn(p,"Официальные AR и служебные предметы нельзя класть в печи, верстаки, наковальни и другие рабочие блоки.");
+                warn(p,"Служебные предметы нельзя класть в печи, верстаки, наковальни и другие рабочие блоки.");
                 return;
             }
             if(clickedTop&&currentRestricted)return;
@@ -1178,17 +1071,24 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onProtectedItemDrag(InventoryDragEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
+        if(p.getGameMode()==GameMode.CREATIVE)return;
+        if(artifactsCoreOwns(e.getOldCursor()))return;
+        Inventory top=e.getView().getTopInventory();
+        if(top==null||top.getType()!=InventoryType.ANVIL)return;
+        if(artifactsCoreOwns(e.getOldCursor())){
+            e.setCancelled(true);
+            p.updateInventory();
+            return;
+        }
         if(economyCoreOwns(e.getOldCursor())||electionCoreOwns(e.getOldCursor()))return;
         if(!isRestrictedInventoryItem(e.getOldCursor()))return;
-        Inventory top=e.getView().getTopInventory();
         if(top==null||top.getHolder() instanceof Menu||!isRestrictedTop(top))return;
         int topSize=top.getSize();
-        boolean arRestricted=isOfficialArItem(e.getOldCursor());
         if(isRestrictedInventoryItem(e.getOldCursor())){
             for(int raw:e.getRawSlots())if(raw>=0&&raw<topSize){
                 e.setCancelled(true);
                 p.updateInventory();
-                if(!arRestricted)warn(p,"Официальные AR и служебные предметы нельзя перетаскивать в печи, верстаки, наковальни и другие рабочие блоки.");
+                warn(p,"Служебные предметы нельзя перетаскивать в печи, верстаки, наковальни и другие рабочие блоки.");
                 return;
             }
         }
@@ -1196,19 +1096,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onProtectedItemMove(InventoryMoveItemEvent e){if(economyCoreOwns(e.getItem())||electionCoreOwns(e.getItem()))return; if(isProtectedOfficialItem(e.getItem()))e.setCancelled(true);}
+    public void onProtectedItemMove(InventoryMoveItemEvent e){ /* custom items use vanilla hopper/container movement */ }
 
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onOfficialArCreative(InventoryCreativeEvent e){
-        if(!(e.getWhoClicked() instanceof Player p))return;
-        ItemStack hotbar=null;
-        if(e.getHotbarButton()>=0)hotbar=p.getInventory().getItem(e.getHotbarButton());
-        if(economyCoreOwns(e.getCursor())||economyCoreOwns(e.getCurrentItem())||economyCoreOwns(hotbar))return;
-        if(!isOfficialArItem(e.getCursor())&&!isOfficialArItem(e.getCurrentItem())&&!isOfficialArItem(hotbar))return;
-        e.setCancelled(true);
-        p.updateInventory();
-        warn(p,"Официальный AR нельзя создавать или клонировать через creative-инвентарь.");
-    }
 
     @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
     public void onOfficialItemInteract(PlayerInteractEvent e){
@@ -1218,27 +1107,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(e.getClickedBlock().getState() instanceof Container){e.setCancelled(true); warn(e.getPlayer(),"Сначала убери официальный предмет из руки. Его нельзя класть в хранилища.");}
     }
 
-    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=false)
-    public void onFurnaceSmelt(FurnaceSmeltEvent e){
-        ItemStack source=e.getSource();
-        if(!arMaterial(source==null?Material.AIR:source.getType()))return;
-        if(economyCoreOwns(source))return;
-        if(isOfficialArItem(source)){
-            e.setCancelled(true);
-            e.setResult(new ItemStack(Material.AIR));
-            queueArSync("AR_SMELT_BLOCKED");
-            if(blockOfficialArSmelting())return;
-            e.setResult(new ItemStack(Material.DIAMOND,1));
-            recordArTransaction("AR_SMELT_DIAMOND",source,null,arString(source,"owner_uuid"),arString(source,"owner_name"),null,e.getBlock().getLocation(),"Единственный легальный вывод алмаза из сертифицированного АР");
-            queueArSync("AR_SMELT_DIAMOND");
-            return;
-        }
-        e.setCancelled(true);
-        recordArTransaction("UNCERTIFIED_AR_SMELT_BLOCKED",source,null,"","",null,e.getBlock().getLocation(),"Несертифицированная алмазная руда не превращается в экономический АР-алмаз");
-    }
-
-    @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)
-    public void onFurnaceExtract(FurnaceExtractEvent e){queueArSync("FURNACE_EXTRACT");}
     // private void openHub
     public void openHub(Player p){
         Menu m=new Menu("hub"); create(m,27,"&2&lCopiMine &8| &fадминка");
@@ -3955,6 +3823,28 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     /**
+     * CopiMineArtifacts owns every authenticated catalog instance and
+     * deliberately exposes it as an ordinary inventory object.  The legacy
+     * protection layer must not restrict a catalog item merely because it has
+     * a custom model or a protected-item-looking material.
+     */
+    private boolean artifactsCoreOwns(ItemStack stack){
+        if(stack==null||stack.getType()==Material.AIR)return false;
+        ItemMeta meta=stack.getItemMeta();
+        if(meta==null)return false;
+        PersistentDataContainer data=meta.getPersistentDataContainer();
+        String itemId=data.get(new NamespacedKey("copimineartifacts","artifact_item_id"),PersistentDataType.STRING);
+        String uniqueId=data.get(new NamespacedKey("copimineartifacts","artifact_unique_item_id"),PersistentDataType.STRING);
+        return itemId!=null&&!itemId.isBlank()&&uniqueId!=null&&!uniqueId.isBlank();
+    }
+
+    private boolean artifactsCoreOwns(ItemStack... stacks){
+        if(stacks==null)return false;
+        for(ItemStack stack:stacks)if(artifactsCoreOwns(stack))return true;
+        return false;
+    }
+
+    /**
      * EconomyCore is authoritative for signed/certified AR.  AdminPlus keeps
      * the old handlers only for legacy unsigned material and must yield before
      * it can retag, cancel, merge, despawn or audit a current AR stack.
@@ -4243,6 +4133,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private String legacyWithdrawBankArDisabled(Player p,String atmId,int amount,String pin)throws Exception{
+        if(officialArService()!=null)return"&cСтарый банковский обработчик AR отключён: используй CopiMineEconomyCore.";
         final int withdrawAmount=Math.max(1,Math.min(64,amount));
         if(p.getInventory().firstEmpty()<0)return"&cСначала освободи один слот в инвентаре.";
         long locked=bankPinLockedSeconds(p);
@@ -4350,48 +4241,12 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(!arMaterial(it==null?Material.AIR:it.getType()))return 0;
         return isOfficialArItem(it)?it.getAmount():0;
     }
-    private boolean useFreeArPlacementFlow(){ return true; }
-    private boolean legacyArTransferEnabled(){ return false; }
-    private boolean blockOfficialArSmelting(){ return true; }
-    private void normalizeArInventoryState(Player p){
-        if(p==null)return;
-        boolean changed=normalizeArInventory(p.getInventory());
-        changed=normalizeArInventory(p.getEnderChest())||changed;
-        if(changed){
-            p.updateInventory();
-            queueArSync("AR_NORMALIZE");
-        }
-    }
-    private boolean normalizeArInventory(Inventory inv){
-        if(inv==null)return false;
-        boolean changed=false;
-        for(int i=0;i<inv.getSize();i++){
-            ItemStack it=inv.getItem(i);
-            if(!isOfficialArItem(it))continue;
-            it=normalizeOfficialArStack(it);
-            Material beforeType=it.getType();
-            String before=beforeType.name()+":"+arString(it,"batch_id")+":"+arString(it,"owner_uuid")+":"+arString(it,"owner_name")+":"+arString(it,"source");
-            setArOwnerMeta(it,"","","");
-            ItemMeta meta=it.getItemMeta();
-            String name=meta!=null&&meta.hasDisplayName()?meta.getDisplayName():"";
-            if(!before.equals(beforeType.name()+"::::")||it.getType()!=beforeType||!ChatColor.stripColor(name).equalsIgnoreCase("Официальный AR")||(meta!=null&&meta.hasLore()&&meta.getLore()!=null&&!meta.getLore().isEmpty()))changed=true;
-            inv.setItem(i,it);
-        }
-        return changed;
-    }
     private boolean isAr(ItemStack it){return countArItem(it)>0;}
     private boolean arMaterial(Material m){return m==Material.DIAMOND_ORE||m==Material.DEEPSLATE_DIAMOND_ORE;}
-    private boolean isValidArCertificationBreak(BlockBreakEvent e){
-        if(e==null||e.getPlayer()==null||e.getBlock()==null)return false;
-        if(!arMaterial(e.getBlock().getType()))return false;
-        GameMode gm=e.getPlayer().getGameMode();
-        if(gm==GameMode.CREATIVE||gm==GameMode.SPECTATOR)return false;
-        if(!e.isDropItems())return false;
-        ItemStack tool=e.getPlayer().getInventory().getItemInMainHand();
-        return tool!=null&&tool.getType()!=Material.AIR&&tool.getEnchantmentLevel(Enchantment.SILK_TOUCH)>0;
-    }
-    private boolean isValidArCertificationDrop(Player p){
-        if(p==null)return false;
+    private boolean isValidArCertificationDrop(BlockDropItemEvent e){
+        if(e==null||e.getPlayer()==null||e.getBlockState()==null)return false;
+        if(!arMaterial(e.getBlockState().getType()))return false;
+        Player p=e.getPlayer();
         GameMode gm=p.getGameMode();
         if(gm==GameMode.CREATIVE||gm==GameMode.SPECTATOR)return false;
         ItemStack tool=p.getInventory().getItemInMainHand();
@@ -4497,6 +4352,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(item==null||newOwner==null)return;
         ItemStack st=item.getItemStack();
         if(!isOfficialArItem(st))return;
+        if("pickup".equals(reason)&&claim==null)return;
         String oldUuid=first(claim==null?"":claim.ownerUuid(),arString(st,"owner_uuid"));
         String oldName=first(claim==null?"":claim.ownerName(),arString(st,"owner_name"),"unknown");
         boolean legacy=!isOfficialAr(st)||oldUuid.isBlank();
@@ -5176,7 +5032,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 "cikfix","cik","cikbridge","fixcik","цикфикс","cmcik",
                 "ar","ars","cguard","guard","arreconomy","aradmin","cpar","ары","ар",
                 "cmpres","presannounce","presidentannounce");
-        Collections.addAll(reportAllowed,"report","appeal","adminrequest","problem","request","helpadm","обращение","жалоба","репорт","проблема","helpme","ticket");
+        Collections.addAll(reportAllowed,"report","reporta","appeal","adminrequest","problem","request","helpadm","bugreport","bugreporta","обращение","жалоба","репорт","проблема","helpme","ticket");
     }
 
     private boolean isBlockedRpCommand(String raw){
@@ -5275,7 +5131,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private boolean isRestrictedInventoryItem(ItemStack it){
-        return isOfficialArItem(it)||isProtectedOfficialItem(it);
+        return isProtectedOfficialItem(it);
     }
 
     private boolean isProtectedCustomItem(ItemStack it){
@@ -5308,6 +5164,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
                 discardedNonRecoverable++;
                 continue;
             }
+            if(isPresidentMandate(item))continue;
             // A previous AdminPlus build could have left a delegated
             // election entitlement in this compatibility queue.  Do not
             // reissue it here: ElectionCore owns the durable queue and will
@@ -5452,7 +5309,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String id=UUID.randomUUID().toString();
         long n=now();
         Location l=p.getLocation();
-        String snapshot="world="+(l.getWorld()==null?"":l.getWorld().getName())+" x="+l.getBlockX()+" y="+l.getBlockY()+" z="+l.getBlockZ()+" gm="+p.getGameMode()+" hp="+Math.round(p.getHealth());
+        String snapshot=playerReportSnapshot(id,p,reportText,l);
         String playerUuid=p.getUniqueId().toString();
         String playerName=p.getName();
         dbAsyncLoad("report submission",()->{
@@ -5506,19 +5363,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     private boolean submitBugReport(Player p,PendingBugReport pending,String playerNote){
         if(!allowReportSubmission(p)){return true;}
-        String requestId=UUID.randomUUID().toString();
-        long createdAt=now();
-        String snapshot="world="+pending.world()+" x="+pending.x()+" y="+pending.y()+" z="+pending.z()+" item="+first(pending.itemType(),"AIR")+" source="+pending.source()+" action="+pending.action()+" error="+pending.exceptionClass()+" summary="+pending.errorSummary();
+        String requestId=pending.requestId();
+        long createdAt=pending.createdAt();
+        long updatedAt=now();
         String visibleNote=first(playerNote,"Игрок отправил лог без отдельного описания.");
         visibleNote=clipped(visibleNote,1000);
         String message="[BUG "+pending.token()+"] "+visibleNote;
         String finalVisibleNote=visibleNote;
+        String snapshot=bugReportSnapshot(pending,message,finalVisibleNote,false);
         dbAsyncLoad("bug report submission",()->{
-            exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?)",
-                    requestId,pending.playerUuid(),pending.playerName(),message,createdAt,createdAt,snapshot);
-            audit(pending.playerName(),"BUG_REPORT_CREATE",requestId+" "+pending.source()+" "+pending.action(),true);
+            exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?) ON CONFLICT(id) DO UPDATE SET message=EXCLUDED.message,updated_at=EXCLUDED.updated_at,snapshot=EXCLUDED.snapshot",
+                    requestId,pending.playerUuid(),pending.playerName(),message,createdAt,updatedAt,snapshot);
+            audit(pending.playerName(),"BUG_REPORT_SUBMIT",requestId+" "+pending.source()+" "+pending.action(),true);
             pluginEvent("adminplus","BUG_REPORT_CREATE",pending.playerName(),requestId,"code="+pending.token()+" source="+pending.source()+" action="+pending.action()+" note="+clipped(finalVisibleNote,160));
-            pushBackendBugArtifactsAsync(pending, requestId, message);
             return requestId;
         },savedRequestId->{
             pendingBugReports.remove(p.getUniqueId(),pending);
@@ -5530,6 +5387,37 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             if(p.isOnline())warn(p,"Не удалось сохранить отчёт. Опишите проблему и отправьте его ещё раз.");
         });
         return true;
+    }
+    private String playerReportSnapshot(String requestId,Player player,String message,Location location){
+        Location loc=location!=null?location:player.getLocation();
+        String world=loc!=null&&loc.getWorld()!=null?loc.getWorld().getName():"";
+        int x=loc==null?0:loc.getBlockX();
+        int y=loc==null?0:loc.getBlockY();
+        int z=loc==null?0:loc.getBlockZ();
+        return "{"
+                +"\"id\":\""+escapeJson(requestId)+"\","
+                +"\"reporter_uuid\":\""+escapeJson(player.getUniqueId().toString())+"\","
+                +"\"reporter\":\""+escapeJson(player.getName())+"\","
+                +"\"message\":\""+escapeJson(message)+"\","
+                +"\"reportType\":\"report\",\"source\":\"minecraft-command\",\"severity\":\"normal\","
+                +"\"world\":\""+escapeJson(world)+"\",\"x\":"+x+",\"y\":"+y+",\"z\":"+z+","
+                +"\"metadata\":{\"reportKind\":\"report\",\"origin\":\"/report\"}}";
+    }
+    private String bugReportSnapshot(PendingBugReport report,String message,String playerNote,boolean automatic){
+        String stage=automatic?"automatic":"player-confirmed";
+        return "{"
+                +"\"id\":\""+escapeJson(report.requestId())+"\","
+                +"\"reporter_uuid\":\""+escapeJson(report.playerUuid())+"\","
+                +"\"reporter\":\""+escapeJson(report.playerName())+"\","
+                +"\"message\":\""+escapeJson(message)+"\","
+                +"\"reportType\":\"bug\",\"source\":\"minecraft-auto\",\"severity\":\"error\","
+                +"\"errorCode\":\""+escapeJson(report.token())+"\",\"errorSummary\":\""+escapeJson(report.errorSummary())+"\","
+                +"\"world\":\""+escapeJson(report.world())+"\",\"x\":"+report.x()+",\"y\":"+report.y()+",\"z\":"+report.z()+","
+                +"\"metadata\":{\"reportKind\":\"bug\",\"errorCode\":\""+escapeJson(report.token())+"\",\"errorSummary\":\""+escapeJson(report.errorSummary())+"\","
+                +"\"bugReport\":{\"stage\":\""+stage+"\",\"playerNote\":\""+escapeJson(playerNote)+"\",\"capturedAt\":"+report.createdAt()+","
+                +"\"context\":{\"source\":\""+escapeJson(report.source())+"\",\"action\":\""+escapeJson(report.action())+"\",\"itemType\":\""+escapeJson(report.itemType())+"\"},"
+                +"\"diagnostics\":{\"requestId\":\""+escapeJson(report.requestId())+"\",\"actionId\":\""+escapeJson(report.actionId())+"\"},"
+                +"\"technical\":{\"exceptionClass\":\""+escapeJson(report.exceptionClass())+"\",\"details\":\""+escapeJson(clipped(report.details(),1200))+"\"}}}}";
     }
     private boolean handleAuditCommand(CommandSender sender,String[] args)throws Exception{
         if(!hasAnyAdmin(sender)){warn(sender,"Нет прав."); return true;}
@@ -5661,15 +5549,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
     private ItemStack createOfficialArStack(Material material,int amount){
         CopiMineEconomyCore.OfficialArService service=officialArService();
-        if(service!=null)return service.createStack(material, amount);
+        if(service!=null)return service.createPreparedStack(material, amount,"legacy-disabled");
         ItemStack item=new ItemStack(material==null?Material.DIAMOND_ORE:material,Math.max(1,amount));
         setArOwnerMeta(item,"","","");
         return item;
-    }
-    private ItemStack normalizeOfficialArStack(ItemStack stack){
-        CopiMineEconomyCore.OfficialArService service=officialArService();
-        if(service==null||stack==null)return stack;
-        return service.normalizeStack(stack);
     }
     private boolean hasAnyAdmin(CommandSender s){return hasAdmin(s)||hasJuniorAdmin(s)||hasElectionAdmin(s)||hasEconomyAdmin(s)||hasPlayerAdmin(s);}
     private boolean hasAdmin(CommandSender s){if(!(s instanceof Player p))return true; return p.isOp()||p.hasPermission("copimine.admin")||p.hasPermission("copimine.ultra.admin");}
@@ -6060,41 +5943,6 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         return out.toString();
     }
-    private BackendIntegrationSettings loadBackendIntegrationSettings(){
-        try{
-            Map<String,String> values=new LinkedHashMap<>();
-            Path envFile=resolveEnvFile();
-            if(Files.isRegularFile(envFile))values.putAll(readEnvFile(envFile));
-            values.putAll(System.getenv());
-            String baseUrl=first(firstEnv(values,"COPIMINE_ADMIN_BASE_URL","ADMIN_WEB_INTERNAL_URL"),"http://127.0.0.1:8090").trim();
-            String pluginApiKey=firstEnv(values,"PLUGIN_API_KEY");
-            if(baseUrl.isBlank()||pluginApiKey.isBlank())return null;
-            return new BackendIntegrationSettings(baseUrl.replaceAll("/+$",""),pluginApiKey);
-        }catch(Exception error){
-            getLogger().warning("backend settings: "+safeErr(error));
-            return null;
-        }
-    }
-    private void postBackendJson(String path,String payload){
-        BackendIntegrationSettings settings=loadBackendIntegrationSettings();
-        if(settings==null)return;
-        try{
-            HttpRequest request=HttpRequest.newBuilder()
-                    .uri(URI.create(settings.baseUrl()+path))
-                    .timeout(Duration.ofSeconds(6))
-                    .header("Content-Type","application/json; charset=utf-8")
-                    .header("Accept","application/json")
-                    .header("X-Plugin-Key",settings.pluginApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(payload,StandardCharsets.UTF_8))
-                    .build();
-            HttpResponse<String> response=backendHttpClient.send(request,HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if(response.statusCode()<200||response.statusCode()>=300){
-                getLogger().warning("backend post failed path="+path+" status="+response.statusCode()+" body="+response.body());
-            }
-        }catch(Exception error){
-            getLogger().warning("backend post "+path+": "+safeErr(error));
-        }
-    }
     private String playerFacingBugSummary(Throwable error){
         if(error==null)return "Unexpected server error";
         String type=first(error.getClass().getSimpleName(),"Exception").toLowerCase(Locale.ROOT);
@@ -6105,46 +5953,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(type.contains("io"))return "I/O operation failed";
         return "Unexpected server error";
     }
-    private void pushBackendBugArtifactsAsync(PendingBugReport report,String requestId,String message){
-        Bukkit.getScheduler().runTaskAsynchronously(this,()->{
-            String ticketPayload="{"
-                    +"\"player\":\""+escapeJson(report.playerName())+"\","
-                    +"\"uuid\":\""+escapeJson(report.playerUuid())+"\","
-                    +"\"message\":\""+escapeJson(message)+"\","
-                    +"\"kind\":\"report\","
-                    +"\"world\":\""+escapeJson(report.world())+"\","
-                    +"\"x\":"+report.x()+","
-                    +"\"y\":"+report.y()+","
-                    +"\"z\":"+report.z()+","
-                    +"\"metadata\":{\"reportKind\":\"bug\",\"errorCode\":\""+escapeJson(report.token())+"\",\"errorSummary\":\""+escapeJson(report.errorSummary())+"\",\"bugReport\":{\"errorCode\":\""+escapeJson(report.token())+"\",\"errorSummary\":\""+escapeJson(report.errorSummary())+"\",\"capturedAt\":"+report.createdAt()+",\"context\":{\"source\":\""+escapeJson(report.source())+"\",\"action\":\""+escapeJson(report.action())+"\",\"world\":\""+escapeJson(report.world())+"\",\"x\":"+report.x()+",\"y\":"+report.y()+",\"z\":"+report.z()+",\"itemType\":\""+escapeJson(report.itemType())+"\"},\"diagnostics\":{\"requestId\":\""+escapeJson(requestId)+"\",\"actionId\":\""+escapeJson(report.actionId())+"\"},\"technical\":{\"exceptionClass\":\""+escapeJson(report.exceptionClass())+"\",\"details\":\""+escapeJson(report.details())+"\"}}}"
-                    +"}";
-            postBackendJson("/api/plugin/tickets",ticketPayload);
-            String metadata="{"
-                    +"\"token\":\""+escapeJson(report.token())+"\","
-                    +"\"requestId\":\""+escapeJson(requestId)+"\","
-                    +"\"source\":\""+escapeJson(report.source())+"\","
-                    +"\"action\":\""+escapeJson(report.action())+"\","
-                    +"\"errorSummary\":\""+escapeJson(report.errorSummary())+"\","
-                    +"\"exceptionClass\":\""+escapeJson(report.exceptionClass())+"\","
-                    +"\"actionId\":\""+escapeJson(report.actionId())+"\","
-                    +"\"details\":\""+escapeJson(report.details())+"\""
-                    +"}";
-            String eventPayload="{"
-                    +"\"source\":\"adminplus\","
-                    +"\"event_type\":\"player_bug_report\","
-                    +"\"actor\":\""+escapeJson(report.playerName())+"\","
-                    +"\"target\":\""+escapeJson(requestId)+"\","
-                    +"\"world\":\""+escapeJson(report.world())+"\","
-                    +"\"x\":"+report.x()+","
-                    +"\"y\":"+report.y()+","
-                    +"\"z\":"+report.z()+","
-                    +"\"item\":\""+escapeJson(report.itemType())+"\","
-                    +"\"severity\":\"error\","
-                    +"\"tags\":[\"bug\",\"player-report\",\""+escapeJson(report.source())+"\"],"
-                    +"\"metadata\":"+metadata+","
-                    +"\"timestamp\":"+report.createdAt()
-                    +"}";
-            postBackendJson("/api/plugin/events",eventPayload);
+    private void persistAutomaticBugReportAsync(PendingBugReport pending){
+        if(pending==null)return;
+        String requestId=pending.requestId();
+        String message="[BUG "+pending.token()+"] "+pending.errorSummary();
+        String snapshot=bugReportSnapshot(pending,message,"",true);
+        dbAsync("automatic bug report",()->{
+            exec("INSERT INTO admin_requests(id,player_uuid,player_name,message,status,created_at,updated_at,assigned_to,closed_by,close_reason,snapshot) VALUES(?,?,?,?,'OPEN',?,?,'','','',?) ON CONFLICT(id) DO NOTHING",
+                    requestId,pending.playerUuid(),pending.playerName(),message,pending.createdAt(),pending.createdAt(),snapshot);
+            audit(pending.playerName(),"BUG_REPORT_AUTO_CREATE",requestId+" "+pending.source()+" "+pending.action(),true);
+            pluginEvent("adminplus","BUG_REPORT_AUTO_CREATE",pending.playerName(),requestId,"code="+pending.token()+" source="+pending.source()+" action="+pending.action());
         });
     }
     private void notifyPlayerBug(Player player,String source,String action,Throwable error,ItemStack item,Location location){
@@ -6160,8 +5978,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String actionId=shortId(UUID.randomUUID().toString());
         String errorSummary=playerFacingBugSummary(error);
         String exceptionClass=first(error==null?"":error.getClass().getSimpleName(),"unknown");
-        PendingBugReport pending=new PendingBugReport(token,first(source,"unknown"),first(action,"unknown"),player.getUniqueId().toString(),player.getName(),world,x,y,z,itemType,errorSummary,exceptionClass,details,actionId,now());
+        String requestId=UUID.randomUUID().toString();
+        PendingBugReport pending=new PendingBugReport(token,first(source,"unknown"),first(action,"unknown"),player.getUniqueId().toString(),player.getName(),world,x,y,z,itemType,errorSummary,exceptionClass,details,actionId,requestId,now());
         pendingBugReports.put(player.getUniqueId(),pending);
+        persistAutomaticBugReportAsync(pending);
         getLogger().warning("player-bug actionId="+actionId+" player="+player.getName()+" source="+source+" action="+action+" world="+world+" x="+x+" y="+y+" z="+z+" item="+itemType+" error="+details);
         pluginEvent("adminplus","PLAYER_BUG_DETECTED",player.getName(),token,"actionId="+actionId+" source="+source+" action="+action+" item="+itemType+" error="+details);
         player.sendTitle(c("&6Поздравляем, вы нашли баг"),c("&fОбратитесь к админу за вознаграждением"),10,80,15);

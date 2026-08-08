@@ -17,8 +17,12 @@ COPIMINE_BACKUP_DIR="${COPIMINE_BACKUP_DIR:-/opt/copimine-backups}"
 COPIMINE_RUNTIME_METADATA="${COPIMINE_RUNTIME_METADATA:-$COPIMINE_ROOT/deploy/runtime_metadata.json}"
 COPIMINE_RELEASE_MANIFEST="${COPIMINE_RELEASE_MANIFEST:-$COPIMINE_ROOT/deploy/release_manifest.json}"
 COPIMINE_INSTALLER_MANIFEST="${COPIMINE_INSTALLER_MANIFEST:-$COPIMINE_ROOT/deploy/installer_manifest.json}"
+COPIMINE_TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
+COPIMINE_PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-/etc/copimine/verify_payload_manifest.py}"
 COPIMINE_CLEAN_WORLD_STATE_SQL="${COPIMINE_CLEAN_WORLD_STATE_SQL:-$COPIMINE_ROOT/db/runtime/clean_world_state.sql}"
-COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-18080.conf}"
+# Public traffic is terminated directly by the bundled nginx listener on 443.
+# There is deliberately no plaintext or relay listener in the release.
+COPIMINE_NGINX_TEMPLATE="${COPIMINE_NGINX_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-https.conf}"
 COPIMINE_NGINX_TLS_TEMPLATE="${COPIMINE_NGINX_TLS_TEMPLATE:-$COPIMINE_ADMIN_DIR/deploy/nginx-copimine-admin-https.conf}"
 COPIMINE_NGINX_AVAILABLE="${COPIMINE_NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 COPIMINE_NGINX_ENABLED="${COPIMINE_NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
@@ -28,6 +32,7 @@ COPIMINE_VOICECHAT_TEMPLATE="${COPIMINE_VOICECHAT_TEMPLATE:-$COPIMINE_ROOT/deplo
 COPIMINE_TLS_ENABLED="${COPIMINE_TLS_ENABLED:-}"
 COPIMINE_TLS_CERT_PATH="${COPIMINE_TLS_CERT_PATH:-}"
 COPIMINE_TLS_KEY_PATH="${COPIMINE_TLS_KEY_PATH:-}"
+COPIMINE_PUBLIC_TLS_EXTERNAL="${COPIMINE_PUBLIC_TLS_EXTERNAL:-}"
 COPIMINE_SERVER_NAMES="${COPIMINE_SERVER_NAMES:-}"
 COPIMINE_DATABASE_RESTORE_ACTIVE_DB="${COPIMINE_DATABASE_RESTORE_ACTIVE_DB:-}"
 COPIMINE_DATABASE_RESTORE_BACKUP_DB="${COPIMINE_DATABASE_RESTORE_BACKUP_DB:-}"
@@ -60,7 +65,10 @@ copimine_http_wait() {
   local extra=()
   [[ -n "$host_header" ]] && extra=(-H "Host: $host_header")
   while (( elapsed < timeout )); do
-    if curl -fsS "${extra[@]}" "$url" >/dev/null; then
+    # Deployment validation must reach the local direct-443 vhost itself.  A
+    # stale HTTPS_PROXY value from the retired 18080 relay must never route a
+    # release check through a dead listener.
+    if curl --noproxy '*' -fsS "${extra[@]}" "$url" >/dev/null; then
       return 0
     fi
     sleep 2
@@ -82,26 +90,25 @@ PY
 }
 
 copimine_verify_public_endpoints() {
-  local admin_url public_url tls_enabled public_host http_health_url
+  local admin_url public_url tls_enabled public_host
   admin_url="$(copimine_env_value ADMIN_PUBLIC_BASE_URL)"
   public_url="$(copimine_env_value PUBLIC_PANEL_URL)"
   tls_enabled="${COPIMINE_TLS_ENABLED:-$(copimine_env_value COPIMINE_TLS_ENABLED)}"
   tls_enabled="${tls_enabled:-0}"
-  [[ "$admin_url" =~ ^https?:// ]] || copimine_fail "ADMIN_PUBLIC_BASE_URL must use http:// or https://"
-  [[ "$public_url" =~ ^https?:// ]] || copimine_fail "PUBLIC_PANEL_URL must use http:// or https://"
+  [[ "$tls_enabled" == "1" ]] || copimine_fail "Only HTTPS public access on port 443 is supported"
+  [[ "$admin_url" =~ ^https:// ]] || copimine_fail "ADMIN_PUBLIC_BASE_URL must use https://"
+  [[ "$public_url" =~ ^https:// ]] || copimine_fail "PUBLIC_PANEL_URL must use https://"
 
   copimine_http_wait "${admin_url%/}/api/health" "" 90 || copimine_fail "public admin health endpoint failed: $admin_url"
   copimine_http_wait "${public_url%/}/downloads/CopiMineMods.zip" "" 90 || copimine_fail "public modpack endpoint failed: $public_url"
   copimine_http_wait "${public_url%/}/resourcepacks/CopiMineResourcePack.zip" "" 90 || copimine_fail "public resourcepack endpoint failed: $public_url"
 
-  if [[ "$tls_enabled" == "1" ]]; then
-    public_host="$(copimine_url_host "$public_url")"
-    http_health_url="http://${public_host}:18080/api/health"
-    # TLS mode keeps the legacy HTTP listener for game downloads and status;
-    # verify it explicitly so both configured transports stay usable.
-    copimine_http_wait "$http_health_url" "$public_host" 90 || copimine_fail "HTTP compatibility endpoint failed: $http_health_url"
-    copimine_http_wait "http://${public_host}:18080/downloads/CopiMineMods.zip" "$public_host" 90 || copimine_fail "HTTP modpack compatibility endpoint failed"
-    copimine_http_wait "http://${public_host}:18080/resourcepacks/CopiMineResourcePack.zip" "$public_host" 90 || copimine_fail "HTTP resourcepack compatibility endpoint failed"
+  public_host="$(copimine_url_host "$public_url")"
+  if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+    copimine_fail "Plaintext/relay listener is still active on port 80 or 18080"
+  fi
+  if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:443$/ {found=1} END {exit found ? 0 : 1}'; then
+    copimine_fail "HTTPS listener on port 443 is not active"
   fi
 }
 
@@ -225,8 +232,8 @@ values.update({
     "POSTGRES_PASSWORD": postgres_password,
     "DATABASE_URL": f"postgresql://copimine:{postgres_password}@127.0.0.1:5432/copimine",
     "COPIMINE_ENV_FILE": "/opt/copimine/admin-web/.env",
-    "ADMIN_PUBLIC_BASE_URL": values.get("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080"),
-    "PUBLIC_PANEL_URL": values.get("PUBLIC_PANEL_URL", "http://copimine.ru:18080"),
+    "ADMIN_PUBLIC_BASE_URL": values.get("ADMIN_PUBLIC_BASE_URL", "https://copimine.ru"),
+    "PUBLIC_PANEL_URL": values.get("PUBLIC_PANEL_URL", "https://copimine.ru"),
     "BACKEND_INTERNAL_BASE_URL": values.get("BACKEND_INTERNAL_BASE_URL", "http://127.0.0.1:8090"),
     "MINECRAFT_SERVICE": values.get("MINECRAFT_SERVICE", "copimine-minecraft"),
     "RCON_HOST": values.get("RCON_HOST", "127.0.0.1"),
@@ -236,6 +243,7 @@ values.update({
     "COPIMINE_TLS_ENABLED": values.get("COPIMINE_TLS_ENABLED", "0"),
     "COPIMINE_TLS_CERT_PATH": values.get("COPIMINE_TLS_CERT_PATH", ""),
     "COPIMINE_TLS_KEY_PATH": values.get("COPIMINE_TLS_KEY_PATH", ""),
+    "COPIMINE_PUBLIC_TLS_EXTERNAL": values.get("COPIMINE_PUBLIC_TLS_EXTERNAL", "0"),
 })
 for url_key in ("ADMIN_PUBLIC_BASE_URL", "PUBLIC_PANEL_URL"):
     parsed = urlparse(values[url_key])
@@ -254,15 +262,21 @@ if tls_enabled == "0" and admin_is_https:
     raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
 if tls_enabled == "0" and panel_is_https:
     raise SystemExit("HTTPS public URL requires COPIMINE_TLS_ENABLED=1")
+external_tls = values.get("COPIMINE_PUBLIC_TLS_EXTERNAL", "0").strip()
+# A previous release may have used an outer nginx relay.  Normalize that
+# operator state during upgrade instead of failing before the new direct-443
+# configuration can replace it.
+values["COPIMINE_PUBLIC_TLS_EXTERNAL"] = "0"
 if tls_enabled == "1":
     values["AUTH_COOKIE_SECURE"] = "1"
     values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
 else:
     values["AUTH_COOKIE_SECURE"] = "0"
-    if values.get("ALLOW_INSECURE_HTTP_AUTH", "").strip() in {"", "CHANGE_ME"}:
-        # No-TLS installations remain safe by default. Operators who knowingly
-        # run the panel on a trusted LAN must explicitly set this to 1.
-        values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
+    # Public HTTP never receives credentials or authenticated cookies.  The
+    # only HTTP login exception is an unproxied loopback request, enforced by
+    # the backend; do not preserve a legacy opt-in that suggests public HTTP
+    # authentication is safe.
+    values["ALLOW_INSECURE_HTTP_AUTH"] = "0"
 if values.get("ALLOW_INSECURE_HTTP_AUTH", "") not in {"0", "1"}:
     raise SystemExit("ALLOW_INSECURE_HTTP_AUTH must be 0 or 1")
 if values.get("RESOURCE_PACK_PUBLIC_URL", "").strip() in {"", "CHANGE_ME"}:
@@ -306,7 +320,7 @@ for line in lines:
 
 tls = values.get("COPIMINE_TLS_ENABLED", "0").strip() == "1"
 updates = {
-    "ALLOW_INSECURE_HTTP_AUTH": "0" if tls else values.get("ALLOW_INSECURE_HTTP_AUTH", "0"),
+    "ALLOW_INSECURE_HTTP_AUTH": "0",
     "AUTH_COOKIE_SECURE": "1" if tls else values.get("AUTH_COOKIE_SECURE", "0"),
 }
 if updates["ALLOW_INSECURE_HTTP_AUTH"] not in {"0", "1"}:
@@ -433,6 +447,13 @@ copimine_fix_runtime_plugin_ownership() {
       chown -R "$runtime_user:$runtime_group" "$COPIMINE_SERVER_DIR/plugins/$plugin_dir"
     fi
   done
+  # The post-start policy synchronizes rcon.ip through an atomic write as
+  # root. Return server.properties to the Minecraft service user before the
+  # next restart, otherwise Paper can boot but cannot persist its settings.
+  if [[ -e "$COPIMINE_SERVER_PROPERTIES" ]]; then
+    chown "$runtime_user:$runtime_group" "$COPIMINE_SERVER_PROPERTIES"
+    chmod 0644 "$COPIMINE_SERVER_PROPERTIES"
+  fi
 }
 
 copimine_apply_post_start_game_hardening() {
@@ -444,7 +465,7 @@ copimine_apply_post_start_game_hardening() {
   COPIMINE_RCON_PASSWORD="$rcon_password" python3 "$COPIMINE_GAME_HARDENING_SCRIPT" apply-luckperms-imageframe \
     --server-properties "$COPIMINE_SERVER_PROPERTIES" \
     --password-env COPIMINE_RCON_PASSWORD \
-    --timeout-seconds "${COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-300}" \
+    --timeout-seconds "${COPIMINE_GAME_HARDENING_RCON_TIMEOUT_SECONDS:-900}" \
     --admin-group "$admin_group"
   copimine_log "ImageFrame LuckPerms hardening policy applied."
 }
@@ -600,6 +621,7 @@ rcon_password = os.environ["COPIMINE_RCON_PASSWORD"]
 lines = path.read_text(encoding="utf-8").splitlines()
 updates = {
     "rcon.password": rcon_password,
+    "rcon.ip": "127.0.0.1",
 }
 seen = set()
 output = []
@@ -630,7 +652,7 @@ copimine_sync_server_properties() {
   if [[ ! "$resourcepack_url" =~ ^https?:// ]]; then
     public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
     public_panel_url="${public_panel_url//\\/}"
-    [[ "$public_panel_url" =~ ^https?:// ]] || public_panel_url="http://admin.copimine.ru:18080"
+    [[ "$public_panel_url" =~ ^https?:// ]] || public_panel_url="https://copimine.ru"
     resourcepack_url="${public_panel_url%/}/resourcepacks/CopiMineResourcePack.zip?v=${resourcepack_sha1:0:12}"
   fi
   [[ "$resourcepack_url" =~ ^https?:// ]] || copimine_fail "RESOURCE_PACK_PUBLIC_URL must use http:// or https://"
@@ -673,7 +695,7 @@ copimine_sync_runtime_urls() {
   public_panel_url="$(copimine_env_value PUBLIC_PANEL_URL)"
   public_panel_url="${public_panel_url//\\/}"
   if [[ ! "$public_panel_url" =~ ^https?:// ]]; then
-    public_panel_url="http://admin.copimine.ru:18080"
+    public_panel_url="https://copimine.ru"
   fi
   resourcepack_sha1="$(sha1sum "$COPIMINE_ROOT/resourcepacks/build/CopiMineResourcePack.zip" 2>/dev/null | awk '{print $1}' || true)"
   if [[ "$resourcepack_sha1" =~ ^[0-9a-fA-F]{40}$ ]]; then
@@ -774,19 +796,30 @@ copimine_write_modpack_hashes() {
 }
 
 copimine_render_nginx_config() {
-  local template tls_enabled cert_path key_path server_names
+  local template tls_enabled external_tls cert_path key_path server_names
   tls_enabled="${COPIMINE_TLS_ENABLED:-$(copimine_env_value COPIMINE_TLS_ENABLED)}"
   tls_enabled="${tls_enabled:-0}"
+  external_tls="${COPIMINE_PUBLIC_TLS_EXTERNAL:-$(copimine_env_value COPIMINE_PUBLIC_TLS_EXTERNAL)}"
+  external_tls="${external_tls:-0}"
+  if [[ "$external_tls" == "1" ]]; then
+    # Older live releases stored the outer-relay flag in the process
+    # environment. Direct 443 is now the only supported topology; tolerate
+    # and normalize that legacy value during the upgrade.
+    copimine_log "Legacy COPIMINE_PUBLIC_TLS_EXTERNAL=1 detected; normalizing to direct HTTPS on 443."
+    external_tls="0"
+    COPIMINE_PUBLIC_TLS_EXTERNAL="0"
+  fi
+  [[ "$external_tls" == "0" ]] || copimine_fail "COPIMINE_PUBLIC_TLS_EXTERNAL must be 0 for direct HTTPS on port 443"
   server_names="${COPIMINE_SERVER_NAMES:-$(copimine_env_value NGINX_SERVER_NAMES)}"
   server_names="${server_names:-admin.copimine.ru copimine.ru www.copimine.ru}"
-  template="$COPIMINE_NGINX_TEMPLATE"
+  template="$COPIMINE_NGINX_TLS_TEMPLATE"
   cert_path=""
   key_path=""
   case "$tls_enabled" in
     0)
+      copimine_fail "Plain HTTP public mode is retired; enable TLS for the 443-only release"
       ;;
     1)
-      template="$COPIMINE_NGINX_TLS_TEMPLATE"
       cert_path="${COPIMINE_TLS_CERT_PATH:-$(copimine_env_value COPIMINE_TLS_CERT_PATH)}"
       key_path="${COPIMINE_TLS_KEY_PATH:-$(copimine_env_value COPIMINE_TLS_KEY_PATH)}"
       [[ -n "$cert_path" && -f "$cert_path" ]] || copimine_fail "COPIMINE_TLS_CERT_PATH must point to a readable certificate when TLS is enabled"
@@ -823,7 +856,7 @@ PY
 }
 
 copimine_install_system_files() {
-  local unit source
+  local unit source release_operator release_wrapper legacy_path legacy_backup_root legacy_backup_created
   # The installer may rewrite .env through a root-owned temporary file during
   # preflight.  systemd starts the backend as the application user, so make
   # the ownership explicit immediately before installing/restarting units.
@@ -836,6 +869,11 @@ copimine_install_system_files() {
     tr -d '\r' < "$source" | sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" > "/etc/systemd/system/$unit.service"
     chmod 0644 "/etc/systemd/system/$unit.service"
   done
+  for unit in copimine-backup.service copimine-backup.timer; do
+    source="$COPIMINE_ADMIN_DIR/deploy/$unit"
+    tr -d '\r' < "$source" > "/etc/systemd/system/$unit"
+    chmod 0644 "/etc/systemd/system/$unit"
+  done
   tr -d '\r' < "$COPIMINE_ADMIN_DIR/deploy/copimine-game-hardening.service" > /etc/systemd/system/copimine-game-hardening.service
   chmod 0644 /etc/systemd/system/copimine-game-hardening.service
   # The web panel runs as the application user.  Allow only the explicit
@@ -847,6 +885,52 @@ $COPIMINE_APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start copimine-minecr
 EOF
   chmod 0440 /etc/sudoers.d/copimine-admin-minecraft
   visudo -cf /etc/sudoers.d/copimine-admin-minecraft >/dev/null
+  # Release installation must never be granted through a user-writable upload
+  # script. Keep the executable wrapper and its sudo rule root-owned; the
+  # wrapper invokes only the root-owned project installer after signature
+  # verification has accepted the archive.
+  release_operator="${COPIMINE_RELEASE_OPERATOR:-qwerty}"
+  id "$release_operator" >/dev/null 2>&1 || copimine_fail "Release operator does not exist: $release_operator"
+  release_wrapper='/usr/local/sbin/copimine-install-release'
+  install -d -o root -g root -m 0755 /usr/local/sbin
+  cat > "$release_wrapper" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+export PROJECT_ROOT=/opt/copimine
+export COPIMINE_TRUSTED_SIGNING_ALLOWED=/etc/copimine/release-signing.allowed
+export COPIMINE_PAYLOAD_VERIFIER=/etc/copimine/verify_payload_manifest.py
+exec /usr/bin/bash /opt/copimine/deploy/ubuntu/install_release.sh "$@"
+EOF
+  chown root:root "$release_wrapper"
+  chmod 0755 "$release_wrapper"
+  cat > /etc/sudoers.d/copimine-codex <<EOF
+$release_operator ALL=(root) NOPASSWD: $release_wrapper *
+EOF
+  chown root:root /etc/sudoers.d/copimine-codex
+  chmod 0440 /etc/sudoers.d/copimine-codex
+  visudo -cf /etc/sudoers.d/copimine-codex >/dev/null
+  # Releases before the direct-443 topology used a separate public vhost that
+  # owned ports 80/443 (and sometimes the 18080 relay).  Leaving that file
+  # enabled makes nginx reject the canonical admin vhost as a duplicate
+  # default_server.  Preserve the exact legacy files for rollback, then
+  # retire both the available file and its enabled symlink before validation.
+  legacy_backup_created=0
+  legacy_backup_root="/opt/copimine-backups/nginx-legacy-$(date +%Y%m%d-%H%M%S)"
+  for legacy_path in \
+    /etc/nginx/sites-available/copimine-public \
+    /etc/nginx/sites-enabled/copimine-public; do
+    if [[ -e "$legacy_path" || -L "$legacy_path" ]]; then
+      if (( legacy_backup_created == 0 )); then
+        install -d -o root -g root -m 0700 "$legacy_backup_root/available" "$legacy_backup_root/enabled"
+        legacy_backup_created=1
+      fi
+      case "$legacy_path" in
+        /etc/nginx/sites-available/*) cp -a -- "$legacy_path" "$legacy_backup_root/available/" ;;
+        /etc/nginx/sites-enabled/*) cp -a -- "$legacy_path" "$legacy_backup_root/enabled/" ;;
+      esac
+      rm -f -- "$legacy_path"
+    fi
+  done
   copimine_render_nginx_config
   ln -sfn "$COPIMINE_NGINX_AVAILABLE" "$COPIMINE_NGINX_ENABLED"
   rm -f /etc/nginx/sites-enabled/default
@@ -855,6 +939,106 @@ EOF
   # Recreate the install symlink when the unit's WantedBy target changes
   # between releases; a plain enable would retain an obsolete boot target.
   systemctl reenable copimine-game-hardening.service >/dev/null
+  systemctl enable copimine-backup.timer >/dev/null
+  systemctl restart copimine-backup.timer
+}
+
+copimine_configured_world_base() {
+  local properties="${1:-$COPIMINE_SERVER_PROPERTIES}"
+  local configured
+  [[ -f "$properties" ]] || return 1
+  configured="$(awk -F= '$1=="level-name" {print substr($0,index($0,"=")+1); exit}' "$properties" | tr -d '\r')"
+  [[ "$configured" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  printf '%s\n' "$configured"
+}
+
+copimine_runtime_world_names() {
+  local base
+  base="$(copimine_configured_world_base "${1:-$COPIMINE_SERVER_PROPERTIES}")" || return 1
+  printf '%s\n' \
+    "$base" \
+    "${base}_nether" \
+    "${base}_the_end" \
+    'world' \
+    'world_nether' \
+    'world_the_end'
+}
+
+copimine_harden_release_ownership() {
+  # Code, deployment helpers and plugin JARs are immutable to the service
+  # account. Only explicitly inventoried runtime state remains writable.
+  chown -R root:root "$COPIMINE_ROOT"
+  find "$COPIMINE_ROOT" -type d -exec chmod 0755 {} \;
+  find "$COPIMINE_ROOT" -type f -exec chmod 0644 {} \;
+  find "$COPIMINE_ROOT" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 0755 {} \;
+
+  local writable plugin_data world_base world_name
+  local -a writable_paths=(
+    "$COPIMINE_ADMIN_DIR/.env"
+    "$COPIMINE_ADMIN_DIR/data"
+    "$COPIMINE_ADMIN_DIR/backups"
+    "$COPIMINE_ADMIN_DIR/.venv"
+    "$COPIMINE_SERVER_DIR/eula.txt"
+    "$COPIMINE_SERVER_DIR/server.properties"
+    # Paper/Bukkit update these root-level runtime configs during boot.  Keep
+    # them writable just like server.properties after a root-owned release
+    # payload has been unpacked.
+    "$COPIMINE_SERVER_DIR/bukkit.yml"
+    "$COPIMINE_SERVER_DIR/commands.yml"
+    "$COPIMINE_SERVER_DIR/spigot.yml"
+    "$COPIMINE_SERVER_DIR/paper.yml"
+    "$COPIMINE_SERVER_DIR/paper-world-defaults.yml"
+    "$COPIMINE_SERVER_DIR/pufferfish.yml"
+    "$COPIMINE_SERVER_DIR/purpur.yml"
+    "$COPIMINE_SERVER_DIR/permissions.yml"
+    "$COPIMINE_SERVER_DIR/help.yml"
+    "$COPIMINE_SERVER_DIR/whitelist.json"
+    "$COPIMINE_SERVER_DIR/ops.json"
+    "$COPIMINE_SERVER_DIR/banned-players.json"
+    "$COPIMINE_SERVER_DIR/banned-ips.json"
+    "$COPIMINE_SERVER_DIR/usercache.json"
+    "$COPIMINE_SERVER_DIR/cache"
+    "$COPIMINE_SERVER_DIR/config"
+    "$COPIMINE_SERVER_DIR/libraries"
+    "$COPIMINE_SERVER_DIR/versions"
+    "$COPIMINE_SERVER_DIR/emotes"
+    "$COPIMINE_SERVER_DIR/logs"
+    "$COPIMINE_SERVER_DIR/crash-reports"
+  )
+  if [[ -d "$COPIMINE_SERVER_DIR" ]]; then
+    # Paperclip creates cache/ and the configured world directories itself on
+    # a fresh wipe. Keep only the runtime directory writable; static jars and
+    # configs remain root-owned below it.
+    chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR"
+    chmod 0755 "$COPIMINE_SERVER_DIR"
+  fi
+  if [[ -d "$COPIMINE_SERVER_DIR/plugins" ]]; then
+    # Paper creates its remapping index directly below plugins/ on the first
+    # boot. Keep the parent writable while plugin jars remain immutable and
+    # only their explicitly inventoried data directories are chowned below.
+    chown "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR/plugins"
+    chmod 0755 "$COPIMINE_SERVER_DIR/plugins"
+  fi
+  for writable in "${writable_paths[@]}"; do
+    [[ -e "$writable" || -L "$writable" ]] || continue
+    chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$writable"
+  done
+  if [[ -d "$COPIMINE_SERVER_DIR/plugins" ]]; then
+    for plugin_data in "$COPIMINE_SERVER_DIR/plugins"/*; do
+      [[ -d "$plugin_data" && ! -L "$plugin_data" ]] || continue
+      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$plugin_data"
+    done
+  fi
+  if [[ -d "$COPIMINE_SERVER_DIR" ]]; then
+    world_base="$(copimine_configured_world_base)" || copimine_fail "Invalid or missing level-name in $COPIMINE_SERVER_PROPERTIES"
+    while IFS= read -r world_name; do
+      [[ -d "$COPIMINE_SERVER_DIR/$world_name" ]] || continue
+      chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_SERVER_DIR/$world_name"
+    done < <(copimine_runtime_world_names)
+  fi
+  [[ -f "$COPIMINE_ADMIN_DIR/.env" ]] && chmod 0600 "$COPIMINE_ADMIN_DIR/.env"
+  [[ -d "$COPIMINE_ADMIN_DIR/data" ]] && chmod 0700 "$COPIMINE_ADMIN_DIR/data"
+  [[ -d "$COPIMINE_ADMIN_DIR/backups" ]] && chmod 0700 "$COPIMINE_ADMIN_DIR/backups"
 }
 
 copimine_write_runtime_metadata() {
@@ -889,6 +1073,10 @@ copimine_refresh_release_artifacts() {
   copimine_sync_game_runtime_hardening
   copimine_fix_runtime_plugin_ownership
   copimine_write_runtime_metadata
+  # The managed sync steps above use atomic writes and therefore can recreate
+  # files as root. Re-apply the runtime ownership policy after every such
+  # replacement so Paper never starts with an unreadable config file.
+  copimine_harden_release_ownership
 }
 
 copimine_validate_release_contract() {
@@ -993,18 +1181,47 @@ if errors:
         print(entry, file=sys.stderr)
     sys.exit(1)
 PY
+  local signed_manifest="$COPIMINE_ROOT/deploy/release_manifest.json"
+  local signed_signature="$COPIMINE_ROOT/deploy/release_manifest.sig"
+  # deploy/release-signing.allowed remains in the archive for compatibility,
+  # but it is not a trust anchor.  The key allowlist must be provisioned on
+  # the host out of band and be root-owned/non-writable by other users.
+  local signed_allowed="$COPIMINE_TRUSTED_SIGNING_ALLOWED"
+  copimine_require_path "$signed_manifest"
+  copimine_require_path "$signed_signature"
+  copimine_require_path "$signed_allowed"
+  command -v ssh-keygen >/dev/null 2>&1 || copimine_fail "ssh-keygen is required to verify the release manifest signature"
+  [[ -f "$signed_allowed" ]] || copimine_fail "Trusted release signing allowlist is not a regular file: $signed_allowed"
+  [[ "$(stat -c '%U' "$signed_allowed" 2>/dev/null || true)" == "root" ]] \
+    || copimine_fail "Trusted release signing allowlist must be owned by root: $signed_allowed"
+  local trusted_mode
+  trusted_mode="$(stat -c '%a' "$signed_allowed" 2>/dev/null || true)"
+  [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] || copimine_fail "Trusted release signing allowlist has invalid permissions: $signed_allowed"
+  (( (8#$trusted_mode & 8#022) == 0 )) || copimine_fail "Trusted release signing allowlist is group/world writable: $signed_allowed"
+  ssh-keygen -Y verify -f "$signed_allowed" -I release -n copimine-release -s "$signed_signature" < "$signed_manifest" >/dev/null \
+    || copimine_fail "Release manifest signature verification failed"
 }
 
 copimine_backup_snapshot() {
   local backup_name="${1:-copimine-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+  [[ "$backup_name" =~ ^[A-Za-z0-9._-]+\.tar\.gz$ ]] || copimine_fail "Unsafe backup filename: $backup_name"
   local backup_path="$COPIMINE_BACKUP_DIR/$backup_name"
+  local root_name="$(basename "$COPIMINE_ROOT")"
   mkdir -p "$COPIMINE_BACKUP_DIR"
   chmod 700 "$COPIMINE_BACKUP_DIR"
   (
     umask 077
+    # Runtime credentials and mutable private data have dedicated recovery
+    # paths. Never place them in a cleartext project snapshot.
     tar -C /opt -czf "$backup_path" \
-      "$(basename "$COPIMINE_ROOT")" \
-      "$(basename "$COPIMINE_SECRETS_DIR")"
+      --exclude="$root_name/admin-web/.env" \
+      --exclude="$root_name/admin-web/data" \
+      --exclude="$root_name/admin-web/backups" \
+      --exclude="$root_name/minecraft/server/logs" \
+      --exclude="$root_name/minecraft/server/world" \
+      --exclude="$root_name/minecraft/server/world_*" \
+      --exclude="$root_name/minecraft/server/CopiMine*" \
+      "$root_name"
   )
   chmod 600 "$backup_path"
   sha256sum "$backup_path" | awk '{print $1}' > "${backup_path}.sha256"
@@ -1012,14 +1229,66 @@ copimine_backup_snapshot() {
   printf '%s\n' "$backup_path"
 }
 
+copimine_backup_database() {
+  local backup_stem="$1"
+  [[ "$backup_stem" =~ ^[A-Za-z0-9._-]+$ ]] || copimine_fail "Unsafe database backup name: $backup_stem"
+  local pg_host pg_port pg_user pg_db pg_password backup_path
+  pg_host="$(copimine_env_value POSTGRES_HOST)"
+  pg_port="$(copimine_env_value POSTGRES_PORT)"
+  pg_user="$(copimine_env_value POSTGRES_USER)"
+  pg_db="$(copimine_env_value POSTGRES_DB)"
+  pg_password="$(copimine_env_value POSTGRES_PASSWORD)"
+  pg_host="${pg_host:-127.0.0.1}"
+  pg_port="${pg_port:-5432}"
+  [[ "$pg_user" =~ ^[A-Za-z_][A-Za-z0-9_]{0,48}$ ]] || copimine_fail "POSTGRES_USER must be a PostgreSQL identifier"
+  [[ "$pg_db" =~ ^[A-Za-z_][A-Za-z0-9_]{0,40}$ ]] || copimine_fail "POSTGRES_DB must be a PostgreSQL identifier"
+  [[ -n "$pg_password" && "$pg_password" != "CHANGE_ME" ]] || copimine_fail "POSTGRES_PASSWORD is missing in $COPIMINE_ENV_FILE"
+  backup_path="$COPIMINE_BACKUP_DIR/${backup_stem}.dump"
+  PGPASSWORD="$pg_password" pg_dump \
+    --format=custom \
+    --no-owner \
+    --no-acl \
+    --file="$backup_path" \
+    --host="$pg_host" \
+    --port="$pg_port" \
+    --username="$pg_user" \
+    "$pg_db"
+  [[ -s "$backup_path" ]] || copimine_fail "PostgreSQL backup is empty: $backup_path"
+  chmod 600 "$backup_path"
+  sha256sum "$backup_path" | awk '{print $1}' > "${backup_path}.sha256"
+  chmod 600 "${backup_path}.sha256"
+  printf '%s\n' "$backup_path"
+}
+
+copimine_prune_daily_backups() {
+  local keep="${1:-3}" archive stem suffix
+  [[ "$keep" =~ ^[0-9]+$ ]] || copimine_fail "Backup retention must be numeric: $keep"
+  local archives=()
+  while IFS= read -r archive; do
+    [[ -n "$archive" ]] && archives+=("$archive")
+  done < <(find "$COPIMINE_BACKUP_DIR" -maxdepth 1 -type f -name 'copimine-daily-*.tar.gz' -printf '%f\n' | sort -r)
+  if (( ${#archives[@]} <= keep )); then
+    return 0
+  fi
+  for archive in "${archives[@]:keep}"; do
+    stem="${archive%.tar.gz}"
+    [[ "$stem" =~ ^copimine-daily-[0-9]{8}-[0-9]{6}$ ]] || copimine_fail "Refusing to prune unexpected backup: $archive"
+    for suffix in '.tar.gz' '.tar.gz.sha256' '.dump' '.dump.sha256' '.manifest'; do
+      rm -f -- "$COPIMINE_BACKUP_DIR/${stem}${suffix}"
+    done
+    copimine_log "Pruned old daily backup: $stem"
+  done
+}
+
 copimine_wipe_worlds() {
-  local world existing_seed
-  for world in world world_nether world_the_end; do
+  local world existing_seed world_base
+  world_base="$(copimine_configured_world_base)" || copimine_fail "Invalid or missing level-name in $COPIMINE_SERVER_PROPERTIES"
+  while IFS= read -r world; do
     if [[ -d "$COPIMINE_SERVER_DIR/$world" ]]; then
       rm -rf -- "$COPIMINE_SERVER_DIR/$world"
       copimine_log "Removed world directory: $COPIMINE_SERVER_DIR/$world"
     fi
-  done
+  done < <(copimine_runtime_world_names)
   # A world reset must regenerate the same seed, not silently switch to the
   # template default. Operators can still override it with KEEP_WORLD_SEED=0.
   if [[ "${KEEP_WORLD_SEED:-1}" == "1" && -f "$COPIMINE_SERVER_PROPERTIES" ]]; then
@@ -1075,7 +1344,7 @@ copimine_install_flow() {
   plugin_api_key="$(copimine_secret plugin-api-key.txt 32)"
   rcon_password="$(copimine_secret rcon-password.txt 32)"
   copimine_write_env "$postgres_password" "$secret_key" "$plugin_api_key" "$rcon_password"
-  chown -R "$COPIMINE_APP_USER:$COPIMINE_APP_GROUP" "$COPIMINE_ROOT"
+  copimine_harden_release_ownership
   copimine_ensure_postgres "$postgres_password"
   copimine_apply_migrations
   copimine_python_env

@@ -7,7 +7,7 @@
 - backend: Python FastAPI;
 - frontend: обычный HTML/CSS/JS без сборки;
 - backend слушает `127.0.0.1:8090`;
-- nginx проксирует внешний доступ через порт `18080`;
+- nginx завершает TLS и проксирует внешний доступ только через порт `443`;
 - реальные секреты и data-файлы остаются только в `.env` и `data/`.
 
 ## Что есть в v2.1
@@ -57,7 +57,12 @@ chmod 600 .env
 ```bash
 cd /opt/copimine/admin-web
 . .venv/bin/activate
-uvicorn backend.main:app --host 127.0.0.1 --port 8090 --proxy-headers
+uvicorn backend.main:app --host 127.0.0.1 --port 8090
+
+Не добавляйте `--proxy-headers`: приложение принимает forwarded-заголовки
+только после проверки loopback-соединения с nginx. Uvicorn с этим флагом
+подменяет адрес TCP-клиента публичным адресом посетителя и ломает проверки
+Origin и TLS.
 ```
 
 Systemd unit:
@@ -80,7 +85,7 @@ DISCORD_REPORTS_CHANNEL_ID=CHANGE_ME
 DISCORD_ADMIN_ROLE_ID=CHANGE_ME
 DISCORD_ADMIN_ALLOWLIST=
 DISCORD_BOT_API_KEY=CHANGE_ME
-ADMIN_PUBLIC_BASE_URL=http://admin.copimine.ru:18080
+ADMIN_PUBLIC_BASE_URL=https://copimine.ru
 BACKEND_INTERNAL_BASE_URL=http://127.0.0.1:8090
 ```
 

@@ -128,6 +128,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -136,12 +137,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import java.util.logging.Level;
 
-public final class CopiMineElectionCore extends JavaPlugin implements Listener, CommandExecutor {
+public final class CopiMineElectionCore extends JavaPlugin implements Listener, CommandExecutor,
+        CopiMineEconomyCore.ElectionRuntimeService {
     private static final String SIDEBAR_OBJECTIVE = "cm_election_live";
     private static final Pattern SAFE_SCHEMA = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final long PRESIDENT_BROADCAST_COOLDOWN_MS = 2L * 60L * 60L * 1000L;
@@ -171,7 +174,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     /** Serializes candidate toggles and the save action for one administrator. */
     private final Map<UUID, CompletableFuture<Void>> rpCandidateActionQueues = new ConcurrentHashMap<>();
     /** Debounce protected-block clicks before any database-backed menu load. */
-    private final Map<UUID, Long> protectedInteractAt = new ConcurrentHashMap<>();
+    private final Map<String, Long> protectedInteractAt = new ConcurrentHashMap<>();
     /**
      * Durable-in-process delivery queue.  The logical key is the identity of
      * the entitlement, not a list position: retries must replace/retain the
@@ -202,6 +205,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     /** Read-only president identity used by event handlers; refreshed off the Bukkit thread. */
     private final AtomicReference<PresidentCache> presidentCache = new AtomicReference<>(PresidentCache.empty());
     private final ElectionStateMachine electionStateMachine = new ElectionStateMachine();
+    /** Bounded executor for service calls that may wait on JDBC. */
+    private final ThreadPoolExecutor databaseExecutor = new ThreadPoolExecutor(
+            4, 4, 30L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(512), runnable -> {
+                Thread thread = new Thread(runnable, "copimine-election-db-service");
+                thread.setDaemon(true);
+                return thread;
+            }, new ThreadPoolExecutor.AbortPolicy());
 
     private NamespacedKey itemTypeKey;
     /** Compatibility keys used by the former AdminPlus election runtime. */
@@ -271,6 +281,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         Objects.requireNonNull(getCommand("presidentsay"), "presidentsay command").setExecutor(this);
         Bukkit.getPluginManager().registerEvents(this, this);
         Bukkit.getServicesManager().register(CopiMineEconomyCore.TaxService.class, taxService, this, ServicePriority.Normal);
+        Bukkit.getServicesManager().register(CopiMineEconomyCore.ElectionRuntimeService.class, this, this, ServicePriority.Normal);
         // Database bootstrap is intentionally deferred off the Paper main
         // thread.  The plugin remains loaded in a degraded STARTING state
         // while PostgreSQL is unavailable and retries without blocking the
@@ -282,6 +293,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @Override
     public void onDisable() {
+        Bukkit.getServicesManager().unregister(CopiMineEconomyCore.ElectionRuntimeService.class, this);
         saveHiddenPlayers();
         saveOfficialRestoreQueue();
         protectedInteractAt.clear();
@@ -291,6 +303,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         officialRestore.clear();
         officialRestoreInFlight.clear();
         taxPaymentInFlight.clear();
+        databaseExecutor.shutdown();
+        try {
+            if (!databaseExecutor.awaitTermination(5L, TimeUnit.SECONDS)) {
+                getLogger().warning("Election database executor is still draining its bounded queue during shutdown.");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            getLogger().warning("Election database executor shutdown was interrupted; queued work remains durable and will retry on next start.");
+        }
         databaseReady.set(false);
         if (databaseRetryTask != null) {
             databaseRetryTask.cancel();
@@ -351,6 +372,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     public void onQuit(PlayerQuitEvent event) {
         UUID playerId = event.getPlayer().getUniqueId();
         protectedInteractAt.remove(playerId);
+        protectedInteractAt.keySet().removeIf(key -> key.startsWith(playerId + "|"));
         prompts.remove(playerId);
         rpCandidateSelections.remove(playerId);
         rpCandidateSelectionCampaigns.remove(playerId);
@@ -431,10 +453,10 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         event.setCancelled(true);
         if (!databaseReady.get()) {
-            player.sendActionBar(color("&eElection data is loading. Please try again in a second."));
+            player.sendActionBar(color("&eДанные выборов ещё загружаются. Повторите через секунду."));
             return;
         }
-        if (!allowProtectedInteract(player)) {
+        if (!allowProtectedInteract(player, BlockKey.from(clicked.getLocation()), protectedInfo.kind())) {
             return;
         }
         if ("TAX_OFFICE".equals(protectedInfo.kind())) {
@@ -550,7 +572,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 handleMenuAction(player, action, event.getClick(), holder);
             } catch (Exception error) {
                 if (isRpWorkflowAction(action, holder)) {
-                    sendRpActionError(player, error, "&cRP election action failed.");
+                    sendRpActionError(player, error, "&cНе удалось выполнить действие выборов.");
                     getLogger().warning("menu RP action " + action + ": " + safeError(error));
                     return;
                 }
@@ -701,6 +723,25 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             Bukkit.getScheduler().runTask(this, event.getPlayer()::updateInventory);
             return;
         }
+        if (isPresidentMandate(dropped)) {
+            // Bukkit may have already created the entity and removed the
+            // stack from the client inventory by the time this event runs.
+            // Cancel the drop, remove that entity on the next tick, then
+            // reconcile the player's inventory to exactly one mandate.
+            event.setCancelled(true);
+            Player player = event.getPlayer();
+            Bukkit.getScheduler().runTask(this, () -> {
+                if (event.getItemDrop() != null && !event.getItemDrop().isDead()) {
+                    event.getItemDrop().remove();
+                }
+                deduplicatePresidentMandates(player);
+                if (isPresident(player) && !hasOfficialLogicalItem(player, "PRESIDENT_MANDATE")) {
+                    addOrQueueOfficialItem(player, dropped.clone());
+                }
+                player.updateInventory();
+            });
+            return;
+        }
         if (isProtectedOfficialItem(dropped)) {
             event.setCancelled(true);
         }
@@ -845,6 +886,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onOfficialDeath(PlayerDeathEvent event) {
+        // With keepInventory enabled Bukkit may leave the physical stack in
+        // the inventory while also exposing it in the death event.  Collapse
+        // legacy stacks before queuing any recovery copy, otherwise respawn
+        // reconciliation can preserve both the inventory and queued copies.
+        deduplicatePresidentMandates(event.getEntity());
         List<ItemStack> keep = new ArrayList<>();
         event.getDrops().removeIf(stack -> {
             // Application books are temporary workflow items, not durable
@@ -854,7 +900,16 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return true;
             }
             if (isProtectedOfficialItem(stack)) {
-                keep.add(stack.clone());
+                // A stacked/duplicated mandate must never turn into several
+                // queued restores. Keep one logical entitlement per death.
+                if (isPresidentMandate(stack) && keep.stream().anyMatch(this::isPresidentMandate)) {
+                    return true;
+                }
+                ItemStack preserved = stack.clone();
+                if (isPresidentMandate(preserved)) {
+                    preserved.setAmount(1);
+                }
+                keep.add(preserved);
                 return true;
             }
             return false;
@@ -884,9 +939,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     public void onBlockPlace(BlockPlaceEvent event) {
         if (isProtectedOfficialItem(event.getItemInHand())) {
             event.setCancelled(true);
+            return;
+        }
+        // External protection decisions are final.  ElectionCore must never
+        // clear a cancellation in order to reactivate a station.
+        if (event.isCancelled()) {
+            return;
         }
         BlockKey placedKey = BlockKey.from(event.getBlockPlaced().getLocation());
-        if (protectedBlocks.contains(placedKey)) {
+        boolean adminInactiveRepair = hasElectionAdmin(event.getPlayer())
+                && inactivePollingStationLocations.contains(placedKey);
+        if (protectedBlocks.contains(placedKey) && !adminInactiveRepair) {
             // A successful admin removal archives the station before clearing
             // the block.  If the protection cache is one tick behind (or a
             // previous release left a stale entry), do not cancel the repair
@@ -900,14 +963,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             // still contained the just-removed station.  Explicitly reset the
             // flag here; otherwise the reactivation task below never runs and
             // a freshly placed block remains a dead, non-interactive block.
-            event.setCancelled(false);
         }
         // A station that an administrator physically removed is persisted as
         // inactive so its votes/history survive.  Re-placing a block at the
         // same coordinates is the documented repair path; restore the
         // station asynchronously instead of requiring a second GUI action.
-        if (!event.isCancelled() && hasElectionAdmin(event.getPlayer())
-                && inactivePollingStationLocations.contains(placedKey)) {
+        if (adminInactiveRepair) {
             Block placed = event.getBlockPlaced();
             Material expected = inactivePollingStationMaterials.getOrDefault(placedKey, Material.LECTERN);
             if (placed.getType() != expected) {
@@ -915,14 +976,21 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 event.getPlayer().sendMessage(color("&cВосстановление участка возможно только блоком: &f" + expected.name()));
                 return;
             }
+            // An external protection listener may have cancelled this
+            // placement. The remembered station repair path is explicit,
+            // administrator-only, and material-bound.
             // Capture Bukkit state before leaving the primary thread.  The
             // worker revalidates it against the persisted value as well.
             BlockLocationRef ref = new BlockLocationRef(
                     placed.getWorld().getName(), placed.getX(), placed.getY(), placed.getZ());
+            UUID playerUuid = event.getPlayer().getUniqueId();
             Bukkit.getScheduler().runTask(this, () -> {
                 Location location = locationOf(ref);
                 if (location != null && location.getBlock().getType() != Material.AIR) {
-                    reactivateRpVotingBlockAfterPlacementAsync(event.getPlayer(), ref);
+                    Player player = Bukkit.getPlayer(playerUuid);
+                    if (player != null && player.isOnline()) {
+                        reactivateRpVotingBlockAfterPlacementAsync(player, ref);
+                    }
                 }
             });
         }
@@ -1050,6 +1118,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             sender.sendMessage(color("&cКоманда доступна только в игре."));
             return true;
         }
+        if (args.length > 0 && "law".equalsIgnoreCase(args[0])) {
+            return handlePresidentLawCommand(player, java.util.Arrays.copyOfRange(args, 1, args.length));
+        }
         if (!isPresident(player) && !hasElectionAdmin(player) && !player.hasPermission("copimine.election.broadcast")) {
             player.sendMessage(color("&cНет доступа к президентскому обращению."));
             return true;
@@ -1086,6 +1157,78 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             player.sendMessage(color("&cНе удалось отправить обращение: &f" + publicErrorMessage(error)));
         }
         return true;
+    }
+
+    private boolean handlePresidentLawCommand(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(color("&cКоманда доступна только в игре."));
+            return true;
+        }
+        if (!isPresident(player) && !hasElectionAdmin(player)) {
+            player.sendMessage(color("&cНет доступа к законам президента."));
+            return true;
+        }
+        if (args.length == 0) {
+            player.sendMessage(color("&eИспользование: &f/presidentsay law <текст>"));
+            player.sendMessage(color("&eЗамена: &f/presidentsay law replace <id> <текст>"));
+            return true;
+        }
+        boolean replacement = "replace".equalsIgnoreCase(args[0]);
+        int textStart = replacement ? 2 : 0;
+        if (replacement && args.length < 3) {
+            player.sendMessage(color("&eИспользование: &f/presidentsay law replace <id> <текст>"));
+            return true;
+        }
+        String replacesLawId = replacement ? args[1].trim() : "";
+        String text;
+        try {
+            text = sanitizePresidentLawText(String.join(" ", java.util.Arrays.copyOfRange(args, textStart, args.length)));
+        } catch (IllegalArgumentException error) {
+            player.sendMessage(color("&cТекст закона отклонён: &f" + error.getMessage()));
+            return true;
+        }
+        player.sendActionBar(color("&7Отправляю закон на проверку..."));
+        runAsync(() -> {
+            try {
+                submitLawForReview(player, text, replacesLawId);
+                runSync(() -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    player.sendMessage(color(replacement
+                            ? "&aЗамена закона отправлена на проверку администрации."
+                            : "&aЗакон отправлен на проверку администрации."));
+                    openPresidentMandateMenu(player);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "president law command failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        sendUserError(player, error, "&cНе удалось отправить закон.");
+                    }
+                });
+            }
+        });
+        return true;
+    }
+
+    private String sanitizePresidentLawText(String raw) {
+        String text = ChatColor.stripColor(first(raw, ""))
+                .replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", " ")
+                .replace('\n', ' ')
+                .replace('\t', ' ')
+                .replaceAll("\\s{2,}", " ")
+                .trim();
+        if (text.isBlank()) {
+            throw new IllegalArgumentException("пустой текст");
+        }
+        if (text.length() > LAW_TEXT_LIMIT) {
+            throw new IllegalArgumentException("лимит " + LAW_TEXT_LIMIT + " символов");
+        }
+        if (PRESIDENT_TEXT_FORBIDDEN.matcher(text).find()) {
+            throw new IllegalArgumentException("служебные команды и SQL-последовательности запрещены");
+        }
+        return text;
     }
 
     private String sanitizePresidentBroadcastText(String raw) {
@@ -1322,6 +1465,26 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (action.equals("rp:president:remove:apply")) {
             runRpDatabaseAction(player, "remove president", () -> removePresident(player.getName(), "removed-by-admin"),
                     "&aПрезидент снят, налог текущего срока закрыт.", () -> openRpPresidentMenu(player));
+            return;
+        }
+        if (action.startsWith("rp:president:law:view:")) {
+            openRpPresidentLawDetail(player, action.substring("rp:president:law:view:".length()));
+            return;
+        }
+        if (action.startsWith("rp:president:law:book:")) {
+            openPresidentLawBook(player, action.substring("rp:president:law:book:".length()));
+            return;
+        }
+        if (action.startsWith("rp:president:law:approve:")) {
+            String lawId = action.substring("rp:president:law:approve:".length());
+            runRpDatabaseAction(player, "approve president law", () -> reviewLaw(lawId, "APPROVED", player.getName(), ""),
+                    "&aЗакон одобрен и опубликован в livebar.", () -> openRpPresidentMenu(player));
+            return;
+        }
+        if (action.startsWith("rp:president:law:reject:")) {
+            String lawId = action.substring("rp:president:law:reject:".length());
+            runRpDatabaseAction(player, "reject president law", () -> reviewLaw(lawId, "REJECTED", player.getName(), ""),
+                    "&eЗакон отклонён.", () -> openRpPresidentMenu(player));
             return;
         }
         if (action.startsWith("open:stations")) {
@@ -2748,9 +2911,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         runAsync(() -> {
             try {
                 Map<String, Object> term = queryOne("SELECT president_uuid,president_name,started_at,ends_at FROM president_terms WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>?) ORDER BY started_at DESC LIMIT 1", now());
+                List<Map<String, Object>> pendingLaws = pendingLaws();
+                List<Map<String, Object>> publishedLaws = publishedLaws();
                 runSync(() -> {
                     if (player.isOnline()) {
-                        renderRpPresidentMenu(player, term);
+                        renderRpPresidentMenu(player, term, pendingLaws, publishedLaws);
                     }
                 });
             } catch (Exception error) {
@@ -2764,21 +2929,174 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         });
     }
 
-    private void renderRpPresidentMenu(Player player, Map<String, Object> term) {
+    private void renderRpPresidentMenu(Player player, Map<String, Object> term,
+            List<Map<String, Object>> pendingLawRows, List<Map<String, Object>> publishedLawRows) {
         MenuHolder holder = new MenuHolder("rp-president", "");
-        Inventory inv = holder.create(27, color("&2&lДействующий президент"));
+        Inventory inv = holder.create(36, color("&2&lПрезидент и законы"));
+        pendingLawRows = pendingLawRows == null ? List.of() : pendingLawRows;
+        publishedLawRows = publishedLawRows == null ? List.of() : publishedLawRows;
         if (term == null) {
-            setStatic(inv, 13, infoItem(Material.BARRIER, "&eПрезидента нет", List.of("&7Сначала проведи дебаты и голосование.")));
+            setStatic(inv, 4, infoItem(Material.BARRIER, "&eПрезидента нет", List.of("&7Сначала проведи дебаты и голосование.")));
         } else {
-            setStatic(inv, 13, infoItem(Material.PLAYER_HEAD, "&f" + string(term.get("president_name")), List.of(
+            setStatic(inv, 4, infoItem(Material.PLAYER_HEAD, "&f" + string(term.get("president_name")), List.of(
                     "&7Начало: &f" + formatTs(longValue(term.get("started_at"))),
                     "&7Окончание: &f" + formatTs(longValue(term.get("ends_at"))),
                     "&7Срок всегда ровно 7 дней."
             )));
             setButton(holder, 11, Material.BARRIER, "&cДосрочно снять президента", List.of("&7Налог текущего срока будет закрыт.", "&7Новые выборы сами не начнутся."), "rp:president:remove");
+            setStatic(inv, 15, infoItem(Material.WRITABLE_BOOK, "&eЗаконы на рассмотрении", List.of(
+                    "&7Ожидают решения: &f" + pendingLawRows.size(),
+                    "&7Открой закон, прочитай книгу и",
+                    "&7одобри или отклони его."
+            )));
+            int pendingSlot = 18;
+            for (Map<String, Object> law : pendingLawRows) {
+                if (pendingSlot > 22) {
+                    break;
+                }
+                String lawId = string(law.get("id"));
+                setButton(holder, pendingSlot++, Material.PAPER,
+                        "&e" + shortText(string(law.get("text")), 26),
+                        List.of(
+                                "&7Статус: &fожидает решения",
+                                "&7Создан: &f" + formatTs(longValue(law.get("created_at"))),
+                                "&eЛКМ: открыть полный текст"
+                        ), "rp:president:law:view:" + lawId);
+            }
+            if (pendingLawRows.isEmpty()) {
+                setStatic(inv, 20, infoItem(Material.LIME_CONCRETE, "&aНовых законов нет", List.of("&7Все текущие предложения рассмотрены.")));
+            }
+            setStatic(inv, 26, infoItem(Material.BOOKSHELF, "&fОпубликованные законы", List.of(
+                    "&7В livebar и на сайте: &f" + publishedLawRows.size(),
+                    "&7Нажми на книгу, чтобы перечитать текст."
+            )));
+            int publishedSlot = 27;
+            for (Map<String, Object> law : publishedLawRows) {
+                if (publishedSlot > 31) {
+                    break;
+                }
+                String lawId = string(law.get("id"));
+                setButton(holder, publishedSlot++, Material.WRITTEN_BOOK,
+                        "&a" + shortText(string(law.get("text")), 26),
+                        List.of(
+                                "&7Статус: &fопубликован",
+                                "&7Слот livebar: &f" + intValue(law.get("slot_no")),
+                                "&eЛКМ: открыть книгу"
+                        ), "rp:president:law:book:" + lawId);
+            }
         }
-        setButton(holder, 15, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:rp-root");
+        setButton(holder, 35, Material.ARROW, "&aНазад", List.of("&7К разделу выборов."), "open:rp-root");
         player.openInventory(inv);
+    }
+
+    private void openRpPresidentLawDetail(Player player, String lawId) {
+        if (player == null || lawId == null || lawId.isBlank()) {
+            return;
+        }
+        player.sendActionBar(color("&7Загружаю закон президента..."));
+        runAsync(() -> {
+            try {
+                Map<String, Object> law = queryOne(
+                        "SELECT l.*,t.president_name FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                                + "WHERE l.id=? AND t.status='ACTIVE' AND (t.ends_at=0 OR t.ends_at>?) LIMIT 1",
+                        lawId, now());
+                runSync(() -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (law == null) {
+                        player.sendMessage(color("&cЗакон не найден или президентский срок уже закрыт."));
+                        openRpPresidentMenu(player);
+                        return;
+                    }
+                    renderRpPresidentLawDetail(player, law);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "rp president law detail load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        sendUserError(player, error, "&cНе удалось загрузить закон президента.");
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderRpPresidentLawDetail(Player player, Map<String, Object> law) {
+        String lawId = string(law.get("id"));
+        String status = first(string(law.get("status")), "PENDING");
+        String text = first(string(law.get("text")), "Текст закона не заполнен.");
+        MenuHolder holder = new MenuHolder("rp-president-law-detail", lawId);
+        Inventory inv = holder.create(45, color("&2Закон президента"));
+        setStatic(inv, 4, infoItem(Material.PAPER, "&fЗакон президента", List.of(
+                "&7Президент: &f" + first(string(law.get("president_name")), string(law.get("president_uuid"))),
+                "&7Статус: &f" + status,
+                "&7Создан: &f" + formatTs(longValue(law.get("created_at"))),
+                "&7Текст можно открыть отдельной книгой."
+        )));
+        setButton(holder, 20, Material.WRITTEN_BOOK, "&eОткрыть полный текст", List.of(
+                "&7Прочитать закон в книжном интерфейсе.",
+                "&7После чтения вернись сюда для решения."
+        ), "rp:president:law:book:" + lawId);
+        if ("PENDING".equalsIgnoreCase(status)) {
+            setButton(holder, 22, Material.LIME_WOOL, "&aОдобрить закон", List.of(
+                    "&7Опубликовать закон в livebar, на сайте и в GUI.",
+                    "&7Сохраняются лимит пяти законов и cooldown замены."
+            ), "rp:president:law:approve:" + lawId);
+            setButton(holder, 24, Material.RED_WOOL, "&cОтклонить закон", List.of(
+                    "&7Закон останется в истории как отклонённый.",
+                    "&7Повторное рассмотрение невозможно."
+            ), "rp:president:law:reject:" + lawId);
+        } else {
+            setStatic(inv, 22, infoItem(Material.BOOK, "&fРешение уже принято", List.of(
+                    "&7Этот закон больше нельзя изменить."
+            )));
+        }
+        setButton(holder, 31, Material.PAPER, "&fКратко", List.of("&7" + shortText(text.replace('\n', ' '), 100)), "none");
+        setButton(holder, 40, Material.ARROW, "&aНазад", List.of("&7К списку президента и законов."), "open:rp-president");
+        player.openInventory(inv);
+    }
+
+    private void openPresidentLawBook(Player player, String lawId) {
+        if (player == null || lawId == null || lawId.isBlank()) {
+            return;
+        }
+        player.sendActionBar(color("&7Открываю текст закона..."));
+        runAsync(() -> {
+            try {
+                Map<String, Object> law = queryOne(
+                        "SELECT l.*,t.president_name FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                                + "WHERE l.id=? AND t.status='ACTIVE' AND (t.ends_at=0 OR t.ends_at>?) LIMIT 1",
+                        lawId, now());
+                runSync(() -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (law == null) {
+                        player.sendMessage(color("&cЗакон не найден или президентский срок уже закрыт."));
+                        return;
+                    }
+                    renderPresidentLawBook(player, law);
+                });
+            } catch (Exception error) {
+                getLogger().log(Level.WARNING, "president law book load failed", error);
+                runSync(() -> {
+                    if (player.isOnline()) {
+                        sendUserError(player, error, "&cНе удалось открыть книгу закона.");
+                    }
+                });
+            }
+        });
+    }
+
+    private void renderPresidentLawBook(Player player, Map<String, Object> law) {
+        ItemStack book = new ItemStack(Material.WRITTEN_BOOK);
+        BookMeta meta = (BookMeta) book.getItemMeta();
+        meta.setTitle("Закон президента");
+        meta.setAuthor(first(string(law.get("president_name")), "CopiMine"));
+        meta.setPages(presidentLawBookPages(first(string(law.get("text")), "Текст закона пока пуст.")));
+        book.setItemMeta(meta);
+        player.openBook(book);
     }
 
     private void openLegacyManagementMenu(Player player) {
@@ -3499,17 +3817,40 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 "&7Законов: &f" + snap.laws().size(),
                 "&7Налог оплачивается только вручную."
         )));
-        setButton(holder, 10, Material.BOOK, "&eПредложить закон", List.of("&7Текст уйдёт на проверку администрации."), "mandate:law");
+        setStatic(inv, 10, infoItem(Material.BOOK, "&eПредложить закон", List.of(
+                "&7Команда: &f/presidentsay law <текст>",
+                "&7Лимит: &f" + LAW_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
         int replaceSlot = 11;
         for (Map<String, Object> law : publishedLawRows) {
             if (replaceSlot > 16) {
                 break;
             }
-            setButton(holder, replaceSlot++, Material.PAPER, "&fЗаменить: " + shortText(string(law.get("text")), 18), List.of("&7Замена доступна не чаще раза в 3 дня."), "mandate:replace-law:" + string(law.get("id")));
+            String lawId = string(law.get("id"));
+            setStatic(inv, replaceSlot++, infoItem(Material.PAPER,
+                    "&fЗаменить: " + shortText(string(law.get("text")), 18),
+                    List.of(
+                            "&7Команда: &f/presidentsay law replace " + lawId + " <текст>",
+                            "&7Замена доступна не чаще раза в 3 дня.",
+                            "&8Только наведение — кнопка не нажимается."
+                    )));
         }
-        setButton(holder, 19, Material.PAPER, "&eОбращение в чат", List.of("&7Показать команду для общего сообщения."), "mandate:show-command:chat");
-        setButton(holder, 20, Material.BELL, "&eОбращение на экран", List.of("&7Показать команду для title-сообщения."), "mandate:show-command:title");
-        setButton(holder, 21, Material.CLOCK, "&eОбращение в ActionBar", List.of("&7Показать команду для actionbar-сообщения."), "mandate:show-command:actionbar");
+        setStatic(inv, 19, infoItem(Material.PAPER, "&eОбращение в чат", List.of(
+                "&7Команда: &f/presidentsay chat <текст>",
+                "&7Лимит: &f" + BROADCAST_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
+        setStatic(inv, 20, infoItem(Material.BELL, "&eОбращение на экран", List.of(
+                "&7Команда: &f/presidentsay title <текст>",
+                "&7Лимит: &f" + BROADCAST_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
+        setStatic(inv, 21, infoItem(Material.CLOCK, "&eОбращение в ActionBar", List.of(
+                "&7Команда: &f/presidentsay actionbar <текст>",
+                "&7Лимит: &f" + BROADCAST_TEXT_LIMIT + " символов.",
+                "&8Только наведение — кнопка не нажимается."
+        )));
         setStatic(inv, 22, infoItem(Material.GOLD_INGOT, "&6Текущий налог", List.of(
                 "&7Ставка: &f" + currentAmount + " AR",
                 "&7Период: &f" + taxPeriodLabel(snap.taxPeriodHours()),
@@ -3715,17 +4056,32 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         int safePage = Math.max(0, Math.min(10_000, page));
         player.sendActionBar(color("&7Загружаю поступления..."));
         runAsync(() -> {
+            if (!isEnabled()) {
+                return;
+            }
             try {
                 List<Map<String, Object>> rows = currentTaxPayments();
+                if (!isEnabled()) {
+                    return;
+                }
                 runSync(() -> {
+                    if (!isEnabled()) {
+                        return;
+                    }
                     Player current = Bukkit.getPlayer(playerUuid);
                     if (current != null && current.isOnline()) {
                         renderPresidentPaymentsMenu(current, safePage, rows);
                     }
                 });
             } catch (Exception error) {
+                if (!isEnabled()) {
+                    return;
+                }
                 getLogger().log(Level.WARNING, "president payments menu load failed", error);
                 runSync(() -> {
+                    if (!isEnabled()) {
+                        return;
+                    }
                     Player current = Bukkit.getPlayer(playerUuid);
                     if (current != null && current.isOnline()) {
                         sendUserError(current, error, "&cНе удалось загрузить поступления.");
@@ -4013,18 +4369,53 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     }
 
     private boolean isDirectVotingOpen(Map<String, Object> station) {
-        if (station == null || intValue(station.get("active")) <= 0) {
-            return false;
+        return directVotingClosedReason(station).isBlank();
+    }
+
+    /**
+     * Explain the exact state that blocks a click.  A single generic message
+     * made normal DEBATES clicks look like a broken block and hid stale
+     * active/inactive rows.  The database is still the source of truth; this
+     * method only reads it on the election worker.
+     */
+    private String directVotingClosedReason(Map<String, Object> station) {
+        if (station == null) {
+            return "Участок больше не найден.";
+        }
+        if (intValue(station.get("active")) <= 0) {
+            return "Этот блок отключён. Администратор может восстановить его повторной установкой разрешённого блока.";
         }
         try (Connection connection = openConnection()) {
             ElectionContext context = requireActiveElectionContext(connection);
-            long deadline = scalarLong(connection, "SELECT COALESCE(NULLIF(voting_deadline_at,0),NULLIF(scheduled_end_at,0),0) FROM elections WHERE id=?", context.electionId());
-            return context.stage() == ElectionStage.VOTING
-                    && (deadline <= 0L || now() <= deadline)
-                    && context.electionId().equals(string(station.get("election_id")))
-                    && scalarLong(connection, "SELECT COUNT(*) FROM election_voting_blocks WHERE election_id=? AND active=1 AND id=?", context.electionId(), string(station.get("id"))) > 0;
+            String stationElectionId = string(station.get("election_id"));
+            if (!context.electionId().equals(stationElectionId)) {
+                return "Этот участок относится к другой кампании.";
+            }
+            if (context.stage() != ElectionStage.VOTING) {
+                return switch (context.stage()) {
+                    case DEBATES -> "Голосование ещё не открыто: сейчас идут дебаты.";
+                    case PREPARATION, APPLICATIONS, REVIEW -> "Голосование ещё не открыто: кампания находится на этапе подготовки.";
+                    case PRESIDENT_TERM -> "Кампания завершена: сейчас действует президентский срок.";
+                    case FINISHED -> "Эта кампания уже завершена.";
+                    default -> "Голосование сейчас недоступно.";
+                };
+            }
+            long deadline = scalarLong(connection,
+                    "SELECT COALESCE(NULLIF(voting_deadline_at,0),NULLIF(scheduled_end_at,0),0) FROM elections WHERE id=?",
+                    context.electionId());
+            if (deadline > 0L && now() > deadline) {
+                return "Срок голосования уже закончился.";
+            }
+            String stationId = string(station.get("id"));
+            if (scalarLong(connection,
+                    "SELECT COUNT(*) FROM election_voting_blocks WHERE election_id=? AND active=1 AND id=?",
+                    context.electionId(), stationId) <= 0L) {
+                return "Этот блок отключён для текущего голосования. Администратор может восстановить его повторной установкой разрешённого блока.";
+            }
+            return "";
         } catch (Exception error) {
-            return false;
+            getLogger().warning("direct voting state read failed: " + safeError(error));
+            return "Состояние голосования временно недоступно. Повторите попытку через несколько секунд.";
         }
     }
 
@@ -4054,6 +4445,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     return;
                 }
                 boolean rpStation = isRpStation(station);
+                boolean votingOpen = rpStation && isDirectVotingOpen(station);
                 runSync(() -> {
                     if (!player.isOnline()) {
                         return;
@@ -4062,12 +4454,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                         player.sendMessage(color("&eСтарый формат выборов отключён. Используйте новый интерактивный блок RP-голосования."));
                         return;
                     }
-                    // An administrator is still an active server player and
-                    // can cast the same vote as everyone else.  Sneaking on
-                    // the block is an explicit maintenance gesture that
-                    // opens the block list; a normal click always opens the
-                    // ballot and cannot accidentally change the campaign.
-                    if (hasElectionAdmin(player) && player.isSneaking()) {
+                    // During preparation/debates/counting an administrator
+                    // needs the management screen, not a misleading
+                    // "voting is closed" toast. Sneaking remains the
+                    // explicit maintenance shortcut while voting is open.
+                    if (hasElectionAdmin(player) && (player.isSneaking() || !votingOpen)) {
                         openRpBlocksMenu(player, 0);
                     } else {
                         openDirectVoteMenu(player, stationId);
@@ -4092,18 +4483,31 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         runAsync(() -> {
             try {
                 Map<String, Object> station = stationById(stationId);
-                if (station == null || !isDirectVotingOpen(station)) {
+                if (!isDirectVotingOpen(station)) {
+                    String closedReason = directVotingClosedReason(station);
                     runSync(() -> {
                         if (player.isOnline()) {
-                            player.sendMessage(color("&eГолосование на этом блоке сейчас закрыто."));
+                            player.sendMessage(color("&e" + closedReason));
                         }
                     });
                     return;
                 }
                 int round;
+                boolean alreadyVoted;
                 try (Connection connection = openConnection()) {
                     ElectionContext context = requireActiveElectionContext(connection);
                     round = context.round();
+                    alreadyVoted = scalarLong(connection,
+                            "SELECT COUNT(*) FROM vote_participation WHERE election_id=? AND round_no=? AND voter_uuid=?",
+                            context.electionId(), round, voterUuid.toString()) > 0L;
+                }
+                if (alreadyVoted) {
+                    runSync(() -> {
+                        if (player.isOnline()) {
+                            player.sendMessage(color("&eТы уже проголосовал в этом туре. Повторный голос невозможен."));
+                        }
+                    });
+                    return;
                 }
                 List<Map<String, Object>> candidates = activeCandidates(string(station.get("election_id")), round);
                 runSync(() -> {
@@ -5277,10 +5681,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         cleanupProtectedBlockVisuals("POLLING_STATION", stationId);
         BlockLocationRef stationRef = new BlockLocationRef(
                 string(station.get("world")), intValue(station.get("x")), intValue(station.get("y")), intValue(station.get("z")));
+        // The database row is the source of truth for the station block. Do
+        // not infer the expected material from the live world: another plugin
+        // may already have replaced the location, and deleting that newer
+        // block would recreate the original "cannot place here" bug.
         Material expectedMaterial = Material.LECTERN;
-        Location stationLocation = locationOf(stationRef);
-        if (stationLocation != null && stationLocation.getBlock().getType() != Material.AIR) {
-            expectedMaterial = stationLocation.getBlock().getType();
+        Map<String, Object> votingBlock = queryOne(
+                "SELECT expected_material FROM election_voting_blocks WHERE id=?", stationId);
+        if (votingBlock != null) {
+            expectedMaterial = materialOrDefault(string(votingBlock.get("expected_material")), Material.LECTERN);
         }
         long t = now();
         Material finalExpectedMaterial = expectedMaterial;
@@ -5291,6 +5700,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "UPDATE cik_chairs SET active=0 WHERE station_id=?", stationId);
             logPluginEvent(connection, "election_core", "station_removed", player.getName(), stationId, "");
             return null;
+        });
+        // The confirmation action is a real removal, not only a database
+        // toggle. Leaving the old physical block in place made the next
+        // placement impossible because Minecraft refuses to place into a
+        // non-air block. Remove only the material captured above; if another
+        // plugin/player replaced it meanwhile, preserve that newer block.
+        runSync(() -> {
+            Location current = locationOf(stationRef);
+            if (current != null && current.getWorld() != null
+                    && current.getBlock().getType() == finalExpectedMaterial) {
+                current.getBlock().setType(Material.AIR, false);
+            }
         });
         inactivePollingStationLocations.add(new BlockKey(
                 string(station.get("world")), intValue(station.get("x")), intValue(station.get("y")), intValue(station.get("z"))));
@@ -6902,10 +7323,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 .toList();
         int candidatePageSize = 6;
         int candidatePageCount = Math.max(1, (candidateLines.size() + candidatePageSize - 1) / candidatePageSize);
-        int cyclePage = candidateLines.isEmpty()
+        boolean presidentTerm = snap.stage() == ElectionStage.PRESIDENT_TERM;
+        int cyclePage = presidentTerm || candidateLines.isEmpty()
                 ? 0
                 : (int) ((System.currentTimeMillis() / 5000L) % (candidatePageCount + 1));
-        boolean showCandidatePage = !candidateLines.isEmpty() && cyclePage > 0;
+        boolean showCandidatePage = !presidentTerm && !candidateLines.isEmpty() && cyclePage > 0;
         if (showCandidatePage) {
             int page = cyclePage - 1;
             lines.add("&fКандидаты " + cyclePage + "/" + candidatePageCount);
@@ -6929,7 +7351,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     lines.add("&8+" + (snap.laws().size() - 3) + " ещё");
                 }
             }
-            if (!candidateLines.isEmpty()) {
+            if (!presidentTerm && !candidateLines.isEmpty()) {
                 lines.add("&8Кандидаты: стр. 1/" + candidatePageCount);
             }
         }
@@ -7117,7 +7539,61 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 return true;
             }
         }
+        Map<String, ItemStack> queued = officialRestore.get(player.getUniqueId());
+        if (queued != null) {
+            for (ItemStack stack : queued.values()) {
+                if (logicalKey.equals(officialRestoreKey(stack))) {
+                    return true;
+                }
+            }
+        }
         return false;
+    }
+
+    /** Keep one physical president mandate even after a legacy duplicate. */
+    private void deduplicatePresidentMandates(Player player) {
+        if (player == null || player.getInventory() == null) {
+            return;
+        }
+        PlayerInventory inventory = player.getInventory();
+        boolean retained = false;
+        for (int slot = 0; slot < inventory.getContents().length; slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (!isPresidentMandate(stack)) {
+                continue;
+            }
+            if (retained) {
+                inventory.setItem(slot, null);
+            } else {
+                stack.setAmount(1);
+                inventory.setItem(slot, stack);
+                retained = true;
+            }
+        }
+        ItemStack[] armor = inventory.getArmorContents();
+        for (int index = 0; index < armor.length; index++) {
+            ItemStack stack = armor[index];
+            if (!isPresidentMandate(stack)) {
+                continue;
+            }
+            if (retained) {
+                armor[index] = null;
+            } else {
+                stack.setAmount(1);
+                armor[index] = stack;
+                retained = true;
+            }
+        }
+        inventory.setArmorContents(armor);
+        ItemStack offhand = inventory.getItemInOffHand();
+        if (isPresidentMandate(offhand)) {
+            if (retained) {
+                inventory.setItemInOffHand(null);
+            } else {
+                offhand.setAmount(1);
+                inventory.setItemInOffHand(offhand);
+            }
+        }
     }
 
     /**
@@ -7197,6 +7673,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                     officialRestoreInFlight.remove(playerUuid);
                     return;
                 }
+                deduplicatePresidentMandates(player);
                 // Drain death/full-inventory recovery before entitlement
                 // checks; otherwise a fresh mandate could be created first
                 // and the queued copy would become a duplicate.
@@ -7227,6 +7704,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 if (presidentResult && !presidentElectionIdResult.isBlank() && !hasOfficialLogicalItem(player, "PRESIDENT_MANDATE")) {
                     addOrQueueOfficialItem(player, createPresidentMandate(presidentElectionIdResult, playerUuid.toString(), playerName));
                 }
+                deduplicatePresidentMandates(player);
                 if (lookupSucceededResult) {
                     if (!presidentResult) {
                         removeOfficialItemsFromPlayer(player, "PRESIDENT_MANDATE");
@@ -7261,10 +7739,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         PlayerInventory inventory = player.getInventory();
+        boolean changed = false;
         for (int slot = 0; slot < inventory.getContents().length; slot++) {
             ItemStack stack = inventory.getItem(slot);
             if (type.equalsIgnoreCase(electionItemType(stack))) {
                 inventory.setItem(slot, null);
+                changed = true;
             }
         }
         ItemStack[] armor = inventory.getArmorContents();
@@ -7277,11 +7757,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (armorChanged) {
             inventory.setArmorContents(armor);
+            changed = true;
         }
         if (type.equalsIgnoreCase(electionItemType(inventory.getItemInOffHand()))) {
             inventory.setItemInOffHand(null);
+            changed = true;
         }
-        player.updateInventory();
+        if (changed) {
+            player.updateInventory();
+        }
     }
 
     private void removeItemFromMainHandIfType(Player player, String type) {
@@ -7537,16 +8021,18 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
-    private boolean allowProtectedInteract(Player player) {
-        if (player == null) {
+    private boolean allowProtectedInteract(Player player, BlockKey target, String actionType) {
+        if (player == null || target == null) {
             return false;
         }
         long current = System.currentTimeMillis();
-        long previous = protectedInteractAt.getOrDefault(player.getUniqueId(), 0L);
+        String key = player.getUniqueId() + "|" + first(actionType, "UNKNOWN") + "|"
+                + target.world() + ":" + target.x() + ":" + target.y() + ":" + target.z();
+        long previous = protectedInteractAt.getOrDefault(key, 0L);
         if (current - previous < 400L) {
             return false;
         }
-        protectedInteractAt.put(player.getUniqueId(), current);
+        protectedInteractAt.put(key, current);
         return true;
     }
 
@@ -7746,6 +8232,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                             true,
                             true,
                             true,
+                            true,
                             longValue(exemption.get("expires_at")),
                             taxPeriodHours(tax),
                             longValue(tax.get("amount"))
@@ -7757,6 +8244,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 long until = taxWindowStart(longValue(tax.get("created_at")), period, nowMillis) + period;
                 return new CopiMineEconomyCore.TaxStatus(
                         true,
+                        true,
                         paid >= longValue(tax.get("amount")),
                         false,
                         until,
@@ -7765,13 +8253,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 );
             } catch (Exception error) {
                 getLogger().warning("ATM tax status: " + safeError(error));
-                return CopiMineEconomyCore.TaxStatus.inactive();
+                return CopiMineEconomyCore.TaxStatus.unavailable();
             }
         }
 
         @Override
         public CompletableFuture<CopiMineEconomyCore.TaxStatus> statusAsync(UUID playerUuid) {
-            return CompletableFuture.supplyAsync(() -> status(playerUuid));
+            return CompletableFuture.supplyAsync(() -> status(playerUuid), databaseExecutor);
         }
 
         @Override
@@ -8633,7 +9121,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             // Retries of the same claim remain idempotent. A new purchase,
             // however, must extend the current subscription instead of
             // charging Donation while returning the old expiration unchanged.
-            if (existingActive && artifactInstanceId.equals(string(existing.get("artifact_instance_id")))) {
+            boolean sameArtifactInstance = existing != null
+                    && artifactInstanceId.equals(string(existing.get("artifact_instance_id")));
+            if (existingActive && sameArtifactInstance && idempotencyKey.equals(string(existing.get("idempotency_key")))) {
                 Map<String, Object> payload = new LinkedHashMap<>(existing);
                 payload.put("reused", true);
                 payload.put("source", TAX_CLOCK_EXEMPTION_SOURCE);
@@ -9622,6 +10112,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return pages.isEmpty() ? List.of("Ответы заявки пока пусты.") : pages;
     }
 
+    private List<String> presidentLawBookPages(String raw) {
+        List<String> pages = wrapBookAnswer(raw, 220);
+        return pages.isEmpty() ? List.of("Текст закона пока пуст.") : pages;
+    }
+
     private List<ApplicationQuestion> parseApplicationAnswers(String raw) {
         String text = normalizeBookText(raw);
         if (text.isBlank()) {
@@ -9807,7 +10302,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private void removeOfficialAr(Inventory inventory, int amount) {
         CopiMineEconomyCore.OfficialArService service = officialArService();
         if (service != null) {
-            service.removeAmount(inventory, amount);
             return;
         }
         int left = amount;
@@ -9833,7 +10327,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     private ItemStack createOfficialAr(int amount) {
         CopiMineEconomyCore.OfficialArService service = officialArService();
         if (service != null) {
-            return service.createStack(Material.DIAMOND_ORE, Math.max(1, amount));
+            return service.createPreparedStack(Material.DIAMOND_ORE, Math.max(1, amount), "legacy-disabled");
         }
         ItemStack stack = new ItemStack(Material.DIAMOND_ORE, Math.max(1, amount));
         ItemMeta meta = stack.getItemMeta();
@@ -10029,6 +10523,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_payments_tax_player ON president_tax_payments(tax_id,player_uuid,created_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_payment_ops_status ON president_tax_payment_ops(status,updated_at DESC)");
             update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_exemptions_player ON president_tax_exemptions(player_uuid)");
+            update(connection, "CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_exemptions_idempotency ON president_tax_exemptions(idempotency_key) WHERE idempotency_key<>''");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_tax_exemptions_active ON president_tax_exemptions(status,expires_at DESC)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_blocks_coords ON protected_blocks(world,x,y,z,active)");
             update(connection, "CREATE INDEX IF NOT EXISTS idx_protected_block_visuals_linked ON protected_block_visuals(linked_id,active)");
@@ -10677,7 +11172,17 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         if (value instanceof Number number) {
             return number.intValue();
         }
-        return parseInt(String.valueOf(value), 0);
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue ? 1 : 0;
+        }
+        String text = String.valueOf(value).trim();
+        if ("true".equalsIgnoreCase(text)) {
+            return 1;
+        }
+        if ("false".equalsIgnoreCase(text)) {
+            return 0;
+        }
+        return parseInt(text, 0);
     }
 
     private long longValue(Object value) {

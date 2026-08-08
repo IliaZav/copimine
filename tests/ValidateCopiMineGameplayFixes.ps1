@@ -9,9 +9,8 @@ $paperWorld = Get-Content (Join-Path $root 'minecraft/server/config/paper-world-
 $paperGlobal = Get-Content (Join-Path $root 'minecraft/server/config/paper-global.yml') -Raw
 $properties = Get-Content (Join-Path $root 'minecraft/server/server.properties') -Raw
 
-if ($admin -notmatch 'arPlacedBlockKeys\.contains\(key\)') { throw 'Placed AR blocks are not checked synchronously.' }
-if ($admin -notmatch 'boolean reissuePlaced=placed && isValidArCertificationDrop') { throw 'Placed AR Silk Touch reissue path is missing.' }
-if ($admin -notmatch 'arPlacedStacks\.put\(key,e\.getItemInHand\(\)\.clone\(\)\)') { throw 'The original official AR stack is not retained.' }
+if ($admin -notmatch 'public void onArDrop[\s\S]{0,1400}item\.setItemStack\(official\)') { throw 'Silk Touch AR must replace the vanilla drop in-place.' }
+if ($admin -match 'arPlacedBlockKeys|arPlacedStacks|boolean reissuePlaced') { throw 'Legacy AR placed-block/reissue state must stay removed.' }
 if ($artifacts -notmatch 'FARMER_SWEEP_RADIUS = 2') { throw 'Farmer sweep radius is not explicitly five by five.' }
 if ($artifacts -notmatch 'var5 <= FARMER_SWEEP_RADIUS' -or $artifacts -notmatch 'var6 <= FARMER_SWEEP_RADIUS') { throw 'Farmer sweep does not cover both inclusive axes.' }
 if ($bukkit -notmatch '(?m)^\s*monsters:\s*70\s*$' -or $bukkit -notmatch '(?m)^\s*monster-spawns:\s*1\s*$') { throw 'Bukkit monster spawning is still throttled.' }

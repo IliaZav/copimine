@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $sourcePath = Join-Path $PSScriptRoot '..\copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'
 $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
 $death = [regex]::Match($source, '(?s)public void onPlayerDeath\(PlayerDeathEvent var1\) \{.*?(?=\r?\n\s*@EventHandler)')
-$compass = [regex]::Match($source, '(?s)private boolean pointCompassToLastDeath\(Player player, ItemStack ignored\) \{.*?(?=\r?\n\s*private Location persistedLastDeathLocation)')
+$compass = [regex]::Match($source, '(?s)private boolean activateLootCompass\(Player player, ItemStack ignored\) \{.*?(?=\r?\n\s*private Location persistedLastDeathLocation)')
 
 if ($source -notmatch 'keyLastDeathWorld' -or $source -notmatch 'keyLastDeathX' -or $source -notmatch 'keyLastDeathY' -or $source -notmatch 'keyLastDeathZ') {
     throw 'Death compass persistence keys are required.'

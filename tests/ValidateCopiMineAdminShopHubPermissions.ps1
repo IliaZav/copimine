@@ -16,9 +16,15 @@ if (-not $isAdmin.Success -or $isAdmin.Value -notmatch 'isRestrictedJuniorArtifa
     throw 'Artifact administration must explicitly deny restricted junior admins.'
 }
 
-foreach ($permission in 'copimine.admin', 'copimine.ultra.admin', 'copimine.election.admin', 'copimine.election.cik', 'copimine.economy.admin', 'copimine.players.admin') {
+foreach ($permission in 'copimine.artifacts.admin', 'copimine.admin', 'copimine.admin.ultra', 'copimine.ultra.admin') {
     if ($isAdmin.Value -notmatch [regex]::Escape($permission)) {
         throw "Artifact shop access must recognise the existing admin role $permission."
+    }
+}
+
+foreach ($permission in 'copimine.election.admin', 'copimine.election.cik', 'copimine.economy.admin', 'copimine.players.admin') {
+    if ($isAdmin.Value -match [regex]::Escape($permission)) {
+        throw "Artifact shop access must not inherit the unrelated role $permission."
     }
 }
 

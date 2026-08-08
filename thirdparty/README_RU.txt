@@ -4,6 +4,7 @@ This archive is prepared for Minecraft 1.21.1 with Fabric Loader.
 
 Included:
 - CopiMineClient-0.1.0.jar - CopiMine client mod, visuals and in-game integrations
+- CustomSkinLoader Fabric 14.26.1 - custom skins instead of TL Skin (GPL-3.0-only)
 - Emotecraft fabric 2.4.12 - animations and emotes
 - Fabric API 0.116.11+1.21.1 - required Fabric library
 - Simple Voice Chat 2.6.16 - voice chat
@@ -19,4 +20,5 @@ Install steps:
 Notes:
 - CoreProtect and Emotecraft Bukkit are not part of the client archive.
 - Iris and Sodium are included, but they are not required to join the server.
+- CustomSkinLoader is a client-only skin loader; TL Skin is not included in this archive.
 - CopiMineClient can be used together with Iris, Sodium, Emotecraft and Voice Chat without separate manual downloads.

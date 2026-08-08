@@ -14,6 +14,15 @@
       "required": true
     },
     {
+      "path": "mods/CustomSkinLoader_Fabric-14.26.1.jar",
+      "component": "CustomSkinLoader",
+      "version": "14.26.1",
+      "license": "GPL-3.0-only",
+      "source": "https://github.com/xfl03/MCCustomSkinLoader",
+      "feature": "\u041a\u043b\u0438\u0435\u043d\u0442\u0441\u043a\u0438\u0435 \u0441\u043a\u0438\u043d\u044b \u0432\u043c\u0435\u0441\u0442\u043e TL Skin",
+      "required": false
+    },
+    {
       "path": "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
       "component": "Emotecraft",
       "version": "2.4.12+1.21.1-fabric",

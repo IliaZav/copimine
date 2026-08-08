@@ -46,6 +46,7 @@ def load_modules(temp: Path):
                 f"COPIMINE_ADMIN_DATA={(temp / 'data').as_posix()}",
                 "SECRET_KEY=" + ("t" * 64),
                 "ADMIN_PUBLIC_BASE_URL=https://panel.example.test",
+                "ALLOWED_ORIGINS=https://panel.example.test,https://copimine.ru,https://90.188.115.155",
                 "COPIMINE_STARTUP_STRICT=0",
                 "REQUIRE_OP_FOR_LOGIN=0",
                 "REQUIRE_WHITELIST_FOR_LOGIN=0",
@@ -72,6 +73,7 @@ def load_modules(temp: Path):
             "COPIMINE_ADMIN_DATA": str(temp / "data"),
             "SECRET_KEY": "t" * 64,
             "ADMIN_PUBLIC_BASE_URL": "https://panel.example.test",
+            "ALLOWED_ORIGINS": "https://panel.example.test,https://copimine.ru,https://90.188.115.155",
             "COPIMINE_STARTUP_STRICT": "0",
             "REQUIRE_OP_FOR_LOGIN": "0",
             "REQUIRE_WHITELIST_FOR_LOGIN": "0",
@@ -188,7 +190,14 @@ def assert_public_health_has_no_runtime_diagnostics(main) -> None:
     assert "never-public" not in serialized, payload
     transport = payload.get("transport", {})
     assert transport.get("authenticatedSessions") == "https-required", payload
-    assert transport.get("http") == "public-only", payload
+    assert transport.get("http") == "redirects-to-https", payload
+    original_public_url = main.ADMIN_PUBLIC_BASE_URL
+    main.ADMIN_PUBLIC_BASE_URL = "http://panel.example.test"
+    try:
+        assert main.public_auth_transport_state()["http"] == "public-only"
+    finally:
+        main.ADMIN_PUBLIC_BASE_URL = original_public_url
+    assert main.public_auth_transport_state()["http"] == "redirects-to-https"
 
 
 def assert_http_does_not_issue_reusable_auth_cookies(main) -> None:
@@ -310,6 +319,56 @@ def assert_untrusted_forwarded_origin_is_not_accepted(main) -> None:
             "server": ("panel.example.test", 80),
         }
     )
+    assert not main.origin_allowed(request, "https://attacker.example.test")
+
+
+def assert_trusted_reverse_proxy_origin_is_accepted(main) -> None:
+    from starlette.requests import Request
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/auth/login",
+            "raw_path": b"/api/auth/login",
+            "query_string": b"",
+            "headers": [
+                (b"host", b"127.0.0.1:8090"),
+                (b"x-forwarded-host", b"copimine.ru"),
+                (b"x-forwarded-proto", b"https"),
+            ],
+            # This is the state produced when uvicorn is run without
+            # --proxy-headers: nginx is the actual TCP peer.
+            "client": ("127.0.0.1", 54321),
+            "server": ("127.0.0.1", 8090),
+        }
+    )
+    assert main.origin_allowed(request, "https://copimine.ru")
+
+    port_forwarded = Request(
+        {
+            **request.scope,
+            "headers": [
+                (b"host", b"127.0.0.1:8090"),
+                (b"x-forwarded-host", b"copimine.ru:443"),
+                (b"x-forwarded-proto", b"https"),
+            ],
+        }
+    )
+    assert main.origin_allowed(port_forwarded, "https://copimine.ru:443")
+    ip_forwarded = Request(
+        {
+            **request.scope,
+            "headers": [
+                (b"host", b"127.0.0.1:8090"),
+                (b"x-forwarded-host", b"90.188.115.155:443"),
+                (b"x-forwarded-proto", b"https"),
+            ],
+        }
+    )
+    assert main.origin_allowed(ip_forwarded, "https://90.188.115.155")
+    assert main.origin_allowed(ip_forwarded, "https://90.188.115.155:443")
     assert not main.origin_allowed(request, "https://attacker.example.test")
 
 
@@ -683,6 +742,7 @@ def main() -> None:
         assert_live_http_transport_denies_public_login(main_module)
         assert_http_auth_setting_follows_public_url(main_module)
         assert_untrusted_forwarded_origin_is_not_accepted(main_module)
+        assert_trusted_reverse_proxy_origin_is_accepted(main_module)
         assert_reverse_proxy_http_is_not_mistaken_for_a_local_login(main_module)
         assert_automatic_whitelist_cannot_be_approved_into_identity_ownership(main_module)
         assert_registration_does_not_claim_an_existing_minecraft_identity(main_module)

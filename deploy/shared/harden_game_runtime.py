@@ -196,7 +196,23 @@ def replace_list(lines: list[str], parent_path: list[str], key: str, values: lis
     content.extend(f"{' ' * (replacement_indent + 2)}- {scalar(value)}" for value in values)
     if matches:
         indent, index = min(matches)
-        end = block_end(lines, index, indent, parent_end)
+        # AuthMe/ConfigMe has historically emitted some sequence values at the
+        # same indentation as their key (``legacyHashes:\n- SHA256``).  The
+        # normal mapping block scanner stops at that dash, leaving the old
+        # malformed item behind after a policy replacement.  Consume both
+        # canonical and legacy sequence indentation while replacing a managed
+        # list so a previously invalid config is repaired in-place.
+        end = index + 1
+        while end < parent_end:
+            stripped = lines[end].strip()
+            if not stripped or stripped.startswith("#"):
+                end += 1
+                continue
+            line_indent = indentation(lines[end])
+            if line_indent > indent or (line_indent == indent and stripped.startswith("-")):
+                end += 1
+                continue
+            break
         content = [f"{' ' * indent}{key}:"]
         content.extend(f"{' ' * (indent + 2)}- {scalar(value)}" for value in values)
         lines[index:end] = content
@@ -291,6 +307,13 @@ def sync_runtime(server_dir: Path, policy_path: Path, voice_template: Path) -> N
     policy = load_policy(policy_path)
     if not voice_template.is_file():
         raise PolicyError(f"Missing voice-chat template: {voice_template}")
+    server_properties = server_dir / "server.properties"
+    if not server_properties.is_file():
+        raise PolicyError(f"Missing Minecraft server.properties: {server_properties}")
+    # RCON has no transport encryption. It is an installation-only control
+    # channel and must never be exposed on the public Minecraft interface.
+    set_property(server_properties, "rcon.ip", "127.0.0.1")
+    validate_rcon_loopback(server_properties)
     plugins = server_dir / "plugins"
     imageframe_jars = plugin_jars(plugins, "ImageFrame")
     if not imageframe_jars:
@@ -320,6 +343,35 @@ def properties(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip()
     return values
+
+
+def set_property(path: Path, key: str, value: str) -> None:
+    """Set one server.properties key while preserving unrelated settings."""
+    lines = read_text(path).splitlines() if path.exists() else []
+    replacement = f"{key}={value}"
+    replaced = False
+    output: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in line:
+            current_key = line.split("=", 1)[0].strip()
+            if current_key == key:
+                if not replaced:
+                    output.append(replacement)
+                    replaced = True
+                continue
+        output.append(line)
+    if not replaced:
+        output.append(replacement)
+    write_text(path, "\n".join(output) + "\n")
+
+
+def validate_rcon_loopback(server_properties: Path) -> None:
+    bind = properties(server_properties).get("rcon.ip", "").strip().lower()
+    if bind not in {"127.0.0.1", "::1", "[::1]", "localhost"}:
+        raise PolicyError(
+            "server.properties rcon.ip must be loopback-only; refusing a publicly reachable cleartext RCON endpoint"
+        )
 
 
 def is_public_bind(value: str, server_ip: str) -> bool:
@@ -378,6 +430,7 @@ def receive_rcon(sock: socket.socket) -> tuple[int, int, str]:
 def apply_luckperms_imageframe(server_properties: Path, password: str, timeout_seconds: int, admin_group: str) -> None:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", admin_group):
         raise PolicyError("COPIMINE_IMAGEFRAME_ADMIN_GROUP contains unsupported characters")
+    validate_rcon_loopback(server_properties)
     try:
         rcon_port = int(properties(server_properties).get("rcon.port", "25575"))
     except ValueError as error:
@@ -422,6 +475,7 @@ def self_test() -> None:
     script_root = Path(__file__).resolve().parent.parent
     policy_path = script_root / "templates" / "game-runtime-hardening.json"
     voice_template = script_root / "templates" / "voicechat-server.properties"
+    policy = load_policy(policy_path)
     with tempfile.TemporaryDirectory(prefix="copimine-game-hardening-") as temporary:
         root = Path(temporary)
         server = root / "minecraft" / "server"
@@ -463,7 +517,7 @@ def self_test() -> None:
         # materializes defaults at first boot, while the bootstrap below owns the
         # security-critical values before that first boot.
         write_plugin_jar(plugins / "AuthMe-5.6.0.jar", {"plugin.yml": "name: AuthMe\n"})
-        write_text(server / "server.properties", "online-mode=false\nrcon.port=25575\n")
+        write_text(server / "server.properties", "online-mode=false\nrcon.port=25575\nrcon.ip=0.0.0.0\n")
         write_text(
             image_config,
             bundled_imageframe_config,
@@ -476,6 +530,8 @@ def self_test() -> None:
             auth_file.write("Protection:\n    geoIpDatabase:\n        enabled: true\n")
         write_text(voice_config, "bind_address=*\n")
         sync_runtime(server, policy_path, voice_template)
+        if properties(server / "server.properties").get("rcon.ip") != "127.0.0.1":
+            raise PolicyError("RCON hardening did not force a loopback bind")
         image_text = read_text(image_config)
         auth_text = read_text(auth_config)
         if (
@@ -491,6 +547,23 @@ def self_test() -> None:
             raise PolicyError("ImageFrame embedded upload service was not disabled and loopback-bound")
         if "passwordHash: \"BCRYPT\"" not in auth_text or "minPasswordLength: 12" not in auth_text or "preserveMe: true" not in auth_text or "geoIpDatabase:\n        enabled: false" not in auth_text:
             raise PolicyError("AuthMe policy did not preserve unrelated configuration while hardening passwords")
+
+        malformed_auth = root / "malformed-authme.yml"
+        write_text(
+            malformed_auth,
+            "ExternalBoardOptions:\n  bCryptLog2Round: 10\n"
+            "settings:\n    preserveMe: true\n    security:\n"
+            "        minPasswordLength: 5\n        passwordHash: SHA256\n"
+            "        legacyHashes:\n        - 'SHA256'\n"
+            "Protection:\n    geoIpDatabase:\n        enabled: true\n",
+        )
+        sync_authme(malformed_auth, policy["authme"])
+        malformed_lines = read_text(malformed_auth).splitlines()
+        legacy_index = malformed_lines.index("        legacyHashes:")
+        if legacy_index + 1 >= len(malformed_lines) or malformed_lines[legacy_index + 1] != '          - "SHA256"':
+            raise PolicyError("AuthMe policy did not repair a same-indentation legacy list item")
+        if any(line == "        - 'SHA256'" for line in malformed_lines):
+            raise PolicyError("AuthMe policy left the malformed legacy list item behind")
         try:
             validate_voicechat(server / "server.properties", voice_config, "0", "")
         except PolicyError:
@@ -501,10 +574,12 @@ def self_test() -> None:
 
         fresh_server = root / "fresh-install" / "minecraft" / "server"
         fresh_plugins = fresh_server / "plugins"
-        write_text(fresh_server / "server.properties", "online-mode=true\nrcon.port=25575\n")
+        write_text(fresh_server / "server.properties", "online-mode=true\nrcon.port=25575\nrcon.ip=0.0.0.0\n")
         write_plugin_jar(fresh_plugins / "ImageFrame.jar", {"config.yml": bundled_imageframe_config})
         write_plugin_jar(fresh_plugins / "AuthMe-5.6.0.jar", {"plugin.yml": "name: AuthMe\n"})
         sync_runtime(fresh_server, policy_path, voice_template)
+        if properties(fresh_server / "server.properties").get("rcon.ip") != "127.0.0.1":
+            raise PolicyError("Fresh-install RCON hardening did not force a loopback bind")
         fresh_image_text = read_text(fresh_plugins / "ImageFrame" / "config.yml")
         fresh_auth_text = read_text(fresh_plugins / "AuthMe" / "config.yml")
         if "JarDefault: preserved" not in fresh_image_text:

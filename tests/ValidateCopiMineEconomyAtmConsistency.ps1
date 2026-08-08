@@ -7,7 +7,7 @@ $errors = [System.Collections.Generic.List[string]]::new()
 
 foreach ($marker in @(
     'CREATE UNIQUE INDEX IF NOT EXISTS ux_ar_atms_location_active ON ar_atms(world,x,y,z) WHERE active=1',
-    'ON CONFLICT (world,x,y,z) WHERE active=1 DO NOTHING',
+    'ON CONFLICT DO NOTHING',
     'archiveDuplicateActiveAtms('
 )) {
     if ($source -notmatch [regex]::Escape($marker)) {
@@ -16,7 +16,7 @@ foreach ($marker in @(
 }
 
 $asyncCreate = [regex]::Match($source, '(?s)private String createBankAtmFromTargetAsync\(Player player\).*?(?=\r?\n\s*private String archiveBankAtm)')
-if (-not $asyncCreate.Success -or $asyncCreate.Value -notmatch 'ON CONFLICT \(world,x,y,z\) WHERE active=1 DO NOTHING') {
+if (-not $asyncCreate.Success -or $asyncCreate.Value -notmatch 'ON CONFLICT DO NOTHING') {
     $errors.Add('The asynchronous ATM creation path must use the database uniqueness constraint, not a racy read-then-insert check.')
 }
 

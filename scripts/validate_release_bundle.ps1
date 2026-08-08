@@ -90,6 +90,9 @@ try {
 
     $releaseManifestPath = Join-Path $payloadRoot "deploy\release_manifest.json"
     $installerManifestPath = Join-Path $payloadRoot "deploy\installer_manifest.json"
+    $sbomPath = Join-Path $payloadRoot "deploy\sbom.spdx.json"
+    $releaseSignaturePath = Join-Path $payloadRoot "deploy\release_manifest.sig"
+    $releaseSigningAllowedPath = Join-Path $payloadRoot "deploy\release-signing.allowed"
     $modpackZip = Join-Path $payloadRoot "thirdparty\CopiMineMods.zip"
     $modpackSha1Path = Join-Path $payloadRoot "thirdparty\CopiMineMods.sha1"
     $modpackSha256Path = Join-Path $payloadRoot "thirdparty\CopiMineMods.sha256"
@@ -143,6 +146,9 @@ try {
     foreach ($required in @(
         $releaseManifestPath,
         $installerManifestPath,
+        $sbomPath,
+        $releaseSignaturePath,
+        $releaseSigningAllowedPath,
         $modpackZip,
         $modpackSha1Path,
         $modpackSha256Path,
@@ -245,6 +251,7 @@ try {
     if ($errors.Count -eq 0) {
         $releaseManifest = Get-Content -LiteralPath $releaseManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $installerManifest = Get-Content -LiteralPath $installerManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $sbom = Get-Content -LiteralPath $sbomPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $snapshot = Get-Content -LiteralPath $snapshotPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $backendMain = Get-Content -LiteralPath $backendMainPath -Raw -Encoding UTF8
         $serverProperties = Get-Content -LiteralPath $serverPropertiesPath -Raw -Encoding UTF8
@@ -261,6 +268,58 @@ try {
         $resourcePackSha256 = Get-Sha256 $resourcePackZip
         $clientSha1 = Get-Sha1 $clientJar
         $clientSha256 = Get-Sha256 $clientJar
+
+        $payloadInventoryExcluded = @('deploy/release_manifest.json', 'deploy/release_manifest.sig', 'deploy/release-signing.allowed')
+        $payloadEntries = @($releaseManifest.payloadFiles)
+        $expectedPayload = @{}
+        if ($payloadEntries.Count -eq 0) {
+            $errors.Add('release_manifest payloadFiles inventory is missing or empty.')
+        }
+        foreach ($entry in $payloadEntries) {
+            $relative = ([string]$entry.path).Replace('\', '/')
+            if (-not $relative -or $relative.StartsWith('/') -or $relative.Contains('../') -or $relative -match '^[A-Za-z]:') {
+                $errors.Add("release_manifest payloadFiles contains an unsafe path: $relative")
+                continue
+            }
+            if ($payloadInventoryExcluded -contains $relative) {
+                $errors.Add("release_manifest payloadFiles must not contain excluded file: $relative")
+                continue
+            }
+            if ($expectedPayload.ContainsKey($relative)) {
+                $errors.Add("release_manifest payloadFiles contains a duplicate path: $relative")
+                continue
+            }
+            $checksum = ([string]$entry.sha256).ToLowerInvariant()
+            if ($checksum -notmatch '^[0-9a-f]{64}$') {
+                $errors.Add("release_manifest payloadFiles has an invalid SHA256: $relative")
+                continue
+            }
+            $expectedPayload[$relative] = @{ sha256 = $checksum; sizeBytes = [int64]$entry.sizeBytes }
+        }
+        $actualPayload = @{}
+        foreach ($file in (Get-ChildItem -LiteralPath $payloadRoot -Force -Recurse -File -ErrorAction SilentlyContinue)) {
+            if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                $errors.Add("Release payload contains a reparse point: $($file.FullName)")
+                continue
+            }
+            $relative = (Get-RelativePathCompat $payloadRoot $file.FullName).Replace('\', '/')
+            if ($payloadInventoryExcluded -contains $relative) { continue }
+            $actualPayload[$relative] = $file
+        }
+        foreach ($relative in $expectedPayload.Keys) {
+            if (-not $actualPayload.ContainsKey($relative)) {
+                $errors.Add("Signed release payload file is missing: $relative")
+                continue
+            }
+            $file = $actualPayload[$relative]
+            Require-Equal ([string]$expectedPayload[$relative].sizeBytes) ([string][int64]$file.Length) "Signed payload size mismatch: $relative" $errors
+            Require-Equal $expectedPayload[$relative].sha256 (Get-Sha256 $file.FullName) "Signed payload SHA256 mismatch: $relative" $errors
+        }
+        foreach ($relative in $actualPayload.Keys) {
+            if (-not $expectedPayload.ContainsKey($relative)) {
+                $errors.Add("Unsigned file found in release payload: $relative")
+            }
+        }
 
         Require-Equal $modpackSha1 (Get-Utf8Trimmed $modpackSha1Path).ToLowerInvariant() "Modpack SHA1 sidecar mismatch." $errors
         Require-Equal $modpackSha256 (Get-Utf8Trimmed $modpackSha256Path).ToLowerInvariant() "Modpack SHA256 sidecar mismatch." $errors
@@ -302,6 +361,77 @@ try {
         Require-Equal $resourcePackSha256 ([string]$installerManifest.artifacts.resourcePack.sha256) "installer_manifest resourcePack.sha256 mismatch." $errors
         Require-Equal $clientSha1 ([string]$installerManifest.artifacts.clientMod.sha1) "installer_manifest clientMod.sha1 mismatch." $errors
         Require-Equal $clientSha256 ([string]$installerManifest.artifacts.clientMod.sha256) "installer_manifest clientMod.sha256 mismatch." $errors
+
+        if ([string]$sbom.spdxVersion -ne 'SPDX-2.3') {
+            $errors.Add('Release SBOM must use SPDX-2.3.')
+        }
+        if ([string]$sbom.SPDXID -ne 'SPDXRef-DOCUMENT') {
+            $errors.Add('Release SBOM has an invalid document identifier.')
+        }
+        $sbomDescriptor = $installerManifest.security.sbom
+        Require-Equal 'deploy/sbom.spdx.json' ([string]$sbomDescriptor.path) 'installer_manifest SBOM path mismatch.' $errors
+        Require-Equal (Get-Sha256 $sbomPath) ([string]$sbomDescriptor.sha256) 'installer_manifest SBOM SHA256 mismatch.' $errors
+        foreach ($toolName in @('generator', 'scanner')) {
+            $tool = $sbomDescriptor.$toolName
+            $toolPath = Join-Path $payloadRoot (([string]$tool.path) -replace '/', '\')
+            if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+                $errors.Add("Release SBOM $toolName is missing: $($tool.path)")
+            } else {
+                Require-Equal (Get-Sha256 $toolPath) ([string]$tool.sha256) "Release SBOM $toolName SHA256 mismatch." $errors
+            }
+        }
+        $releaseSbomDescriptor = $releaseManifest.security.sbom
+        Require-Equal ([string]$sbomDescriptor.path) ([string]$releaseSbomDescriptor.path) 'release_manifest SBOM path mismatch.' $errors
+        Require-Equal ([string]$sbomDescriptor.sha256) ([string]$releaseSbomDescriptor.sha256) 'release_manifest SBOM SHA256 mismatch.' $errors
+        $signatureDescriptor = $installerManifest.security.manifestSignature
+        $releaseSignatureDescriptor = $releaseManifest.security.manifestSignature
+        Require-Equal 'deploy/release_manifest.sig' ([string]$signatureDescriptor.path) 'installer_manifest signature path mismatch.' $errors
+        Require-Equal 'deploy/release-signing.allowed' ([string]$signatureDescriptor.allowedSigners) 'installer_manifest allowed-signers path mismatch.' $errors
+        Require-Equal 'copimine-release' ([string]$signatureDescriptor.namespace) 'installer_manifest signature namespace mismatch.' $errors
+        Require-Equal 'release' ([string]$signatureDescriptor.identity) 'installer_manifest signature identity mismatch.' $errors
+        Require-Equal 'ssh-ed25519' ([string]$signatureDescriptor.algorithm) 'installer_manifest signature algorithm mismatch.' $errors
+        Require-Equal ([string]$signatureDescriptor.path) ([string]$releaseSignatureDescriptor.path) 'release_manifest signature path mismatch.' $errors
+        Require-Equal ([string]$signatureDescriptor.allowedSigners) ([string]$releaseSignatureDescriptor.allowedSigners) 'release_manifest allowed-signers path mismatch.' $errors
+        if (Get-Command ssh-keygen -ErrorAction SilentlyContinue) {
+            $verifyCommand = 'ssh-keygen -Y verify -f "' + $releaseSigningAllowedPath + '" -I "' + [string]$signatureDescriptor.identity + '" -n "' + [string]$signatureDescriptor.namespace + '" -s "' + $releaseSignaturePath + '" < "' + $releaseManifestPath + '"'
+            cmd.exe /d /s /c $verifyCommand | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                $errors.Add('Release manifest cryptographic signature verification failed.')
+            }
+        } else {
+            $errors.Add('ssh-keygen is required to verify the release manifest signature.')
+        }
+        if (@($sbom.files).Count -lt 1 -or @($sbom.packages).Count -lt 1) {
+            $errors.Add('Release SBOM must contain at least one file and package.')
+        }
+        $sbomNames = New-Object 'System.Collections.Generic.HashSet[string]'
+        foreach ($sbomFile in @($sbom.files)) {
+            $relativeSbom = ([string]$sbomFile.fileName).Replace('/', '\')
+            $sbomPathValue = Join-Path $payloadRoot $relativeSbom
+            if (-not $sbomNames.Add(([string]$sbomFile.fileName))) {
+                $errors.Add("Release SBOM contains a duplicate file: $($sbomFile.fileName)")
+                continue
+            }
+            if ($relativeSbom -match '(^|\\)\.\.(\\|$)' -or [System.IO.Path]::IsPathRooted($relativeSbom) -or -not (Test-Path -LiteralPath $sbomPathValue -PathType Leaf)) {
+                $errors.Add("Release SBOM references a missing or unsafe file: $($sbomFile.fileName)")
+                continue
+            }
+            $checksum = @($sbomFile.checksums) | Where-Object { [string]$_.algorithm -eq 'SHA256' } | Select-Object -First 1
+            if (-not $checksum -or [string]$checksum.checksumValue -notmatch '^[0-9a-f]{64}$') {
+                $errors.Add("Release SBOM has no valid SHA256 checksum: $($sbomFile.fileName)")
+                continue
+            }
+            Require-Equal (Get-Sha256 $sbomPathValue) ([string]$checksum.checksumValue) "Release SBOM checksum mismatch: $($sbomFile.fileName)" $errors
+        }
+        $binaryScanner = Join-Path $payloadRoot 'deploy\shared\scan_release_strings.py'
+        if (-not (Test-Path -LiteralPath $binaryScanner -PathType Leaf)) {
+            $errors.Add('Release binary scanner is missing from the payload.')
+        } else {
+            & python $binaryScanner --root $payloadRoot --sbom $sbomPath
+            if ($LASTEXITCODE -ne 0) {
+                $errors.Add('Release binary-string scan failed.')
+            }
+        }
 
         $expectedUnpackScriptSha = [string]$installerManifest.deploy.scripts.unpackAndVerify.sha256
         $expectedReplaceScriptSha = [string]$installerManifest.deploy.scripts.fullReplace.sha256

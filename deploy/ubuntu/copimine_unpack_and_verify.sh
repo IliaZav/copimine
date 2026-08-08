@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 TS="$(date +%Y%m%d-%H%M%S)"
 
@@ -8,6 +9,11 @@ PROJECT_ROOT="${PROJECT_ROOT:-/opt/copimine}"
 SECRETS_ROOT="${SECRETS_ROOT:-/opt/copimine-secrets}"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt/copimine-backups}"
 LOG_FILE="${LOG_FILE:-/var/log/copimine-unpack.log}"
+TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
+# The payload verifier is a bootstrap trust anchor too. Never resolve it from
+# the archive or from the mutable project tree before the signed payload has
+# been accepted.
+PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-/etc/copimine/verify_payload_manifest.py}"
 TMP_ROOT=""
 EXTRACT_ROOT=""
 PAYLOAD_ROOT=""
@@ -43,7 +49,7 @@ if [[ "$APP_USER" == "root" || -z "$APP_USER" ]]; then
 fi
 APP_GROUP="${APP_GROUP:-$APP_USER}"
 
-NGINX_TEMPLATE_REL="admin-web/deploy/nginx-copimine-admin-18080.conf"
+NGINX_TEMPLATE_REL="admin-web/deploy/nginx-copimine-admin-https.conf"
 NGINX_AVAILABLE="${NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 NGINX_ENABLED="${NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
 
@@ -117,6 +123,25 @@ require_dir() {
   [[ -d "$1" ]] || die "Directory not found: $1"
 }
 
+configured_world_base() {
+  local server_dir="$1"
+  local configured
+  [[ -f "$server_dir/server.properties" ]] || return 1
+  configured="$(awk -F= '$1=="level-name" {print substr($0,index($0,"=")+1); exit}' "$server_dir/server.properties" | tr -d '\r')"
+  [[ "$configured" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  printf '%s\n' "$configured"
+}
+
+runtime_world_paths() {
+  local server_dir="$1"
+  local base world
+  base="$(configured_world_base "$server_dir")" || die "Invalid or missing level-name in $server_dir/server.properties"
+  while IFS= read -r world; do
+    [[ -d "$server_dir/$world" ]] && printf '%s\0' "$server_dir/$world"
+  done < <(printf '%s\n' "$base" "${base}_nether" "${base}_the_end" world world_nether world_the_end)
+  find "$server_dir" -mindepth 1 -maxdepth 1 -type d -name 'paper-world*' -print0
+}
+
 validate_archive_members() {
   python3 - "$ARCHIVE_PATH" <<'PY'
 from pathlib import PurePosixPath
@@ -137,15 +162,20 @@ if archive.endswith((".tar.gz", ".tgz")):
         for member in bundle.getmembers():
             if not safe_name(member.name):
                 raise SystemExit(f"Unsafe archive member path: {member.name!r}")
-            if (member.issym() or member.islnk()) and not safe_name(member.linkname):
-                raise SystemExit(f"Unsafe archive link: {member.name!r}")
+            if not (member.isfile() or member.isdir()):
+                raise SystemExit(f"Archive member is not a regular file or directory: {member.name!r}")
+            if member.issym() or member.islnk():
+                raise SystemExit(f"Archive links are not allowed: {member.name!r}")
 elif archive.endswith(".zip"):
     with zipfile.ZipFile(archive) as bundle:
         for member in bundle.infolist():
             if not safe_name(member.filename):
                 raise SystemExit(f"Unsafe archive member path: {member.filename!r}")
-            if stat.S_ISLNK(member.external_attr >> 16):
-                raise SystemExit(f"Archive symlinks are not allowed: {member.filename!r}")
+            mode = (member.external_attr >> 16) & 0xFFFF
+            if mode and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise SystemExit(f"Archive member is not a regular file or directory: {member.filename!r}")
+            if stat.S_ISLNK(mode):
+                raise SystemExit(f"Archive links are not allowed: {member.filename!r}")
 else:
     raise SystemExit("Unsupported archive extension")
 PY
@@ -216,6 +246,7 @@ preflight() {
   need stat
   need install
   need runuser
+  need ssh-keygen
   need psql
   need pg_restore
   need nginx
@@ -307,23 +338,69 @@ detect_payload() {
   done
 }
 
+verify_release_signature() {
+  log "[5b/16] Verify signed release manifest"
+  local manifest="$PAYLOAD_ROOT/deploy/release_manifest.json"
+  local signature="$PAYLOAD_ROOT/deploy/release_manifest.sig"
+  local allowed="$TRUSTED_SIGNING_ALLOWED"
+  [[ "$allowed" == '/etc/copimine/release-signing.allowed' ]] || die "Trusted signing allowlist path is fixed to /etc/copimine/release-signing.allowed"
+  [[ "$PAYLOAD_VERIFIER" == '/etc/copimine/verify_payload_manifest.py' ]] || die "Payload verifier path is fixed to /etc/copimine/verify_payload_manifest.py"
+  require_file "$manifest"
+  require_file "$signature"
+  require_file "$allowed"
+  [[ -f "$allowed" ]] || die "Trusted release signing allowlist is not a regular file: $allowed"
+  [[ "$(stat -c '%U' "$allowed" 2>/dev/null || true)" == "root" ]] \
+    || die "Trusted release signing allowlist must be owned by root: $allowed"
+  local trusted_mode
+  trusted_mode="$(stat -c '%a' "$allowed" 2>/dev/null || true)"
+  [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] || die "Trusted release signing allowlist has invalid permissions: $allowed"
+  (( (8#$trusted_mode & 8#022) == 0 )) || die "Trusted release signing allowlist is group/world writable: $allowed"
+  ssh-keygen -Y verify -f "$allowed" -I release -n copimine-release -s "$signature" < "$manifest" >/dev/null \
+    || die "Release manifest signature verification failed."
+  require_file "$PAYLOAD_VERIFIER"
+  python3 "$PAYLOAD_VERIFIER" "$PAYLOAD_ROOT" "$manifest" \
+    || die "Signed release payload inventory verification failed."
+  log "Release manifest signature verified."
+}
+
 backup_current_release() {
   log "[6/16] Backup current release"
   local backup_dir="$BACKUP_ROOT/runtime-replace-$TS"
   mkdir -p "$backup_dir"
   chmod 700 "$backup_dir"
   if [[ -d "$PROJECT_ROOT" ]]; then
-    cp -a "$PROJECT_ROOT" "$backup_dir/copimine-pre-replace"
+    local root_name="$(basename "$PROJECT_ROOT")"
+    # Do not duplicate .env or mutable runtime/player data into the readable
+    # project snapshot. Those protected paths are preserved separately and
+    # the database is backed up as its own mode-0600 dump below.
+    tar -C "$(dirname "$PROJECT_ROOT")" -czf "$backup_dir/copimine-pre-replace.tar.gz" \
+      --exclude="$root_name/admin-web/.env" \
+      --exclude="$root_name/admin-web/.env.*" \
+      --exclude="$root_name/admin-web/.postgres-password" \
+      --exclude="$root_name/admin-web/data" \
+      --exclude="$root_name/admin-web/backups" \
+      --exclude="$root_name/minecraft/server/logs" \
+      --exclude="$root_name/minecraft/server/world" \
+      --exclude="$root_name/minecraft/server/world_*" \
+      --exclude="$root_name/minecraft/server/CopiMine*" \
+      --exclude="$root_name/minecraft/server/paper-world*" \
+      "$root_name"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz"
+    sha256sum "$backup_dir/copimine-pre-replace.tar.gz" | awk '{print $1}' > "$backup_dir/copimine-pre-replace.tar.gz.sha256"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz.sha256"
   fi
   if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
     load_shared_helpers
+    command -v pg_dump >/dev/null 2>&1 || die "pg_dump is required to create the pre-replace database backup."
     local pg_password pg_user pg_db
     pg_password="$(copimine_env_value POSTGRES_PASSWORD)"
     pg_user="$(copimine_env_value POSTGRES_USER)"
     pg_db="$(copimine_env_value POSTGRES_DB)"
     if [[ -n "$pg_password" && -n "$pg_user" && -n "$pg_db" ]]; then
-      PGPASSWORD="$pg_password" pg_dump -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 || log "WARNING: PostgreSQL backup skipped."
-      [[ -f "$backup_dir/copimine-db.dump" ]] && chmod 600 "$backup_dir/copimine-db.dump"
+      PGPASSWORD="$pg_password" pg_dump -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -Fc -f "$backup_dir/copimine-db.dump" >/dev/null 2>&1 \
+        || die "PostgreSQL backup failed; refusing to replace the live release."
+      [[ -s "$backup_dir/copimine-db.dump" ]] || die "PostgreSQL backup file was not created."
+      chmod 600 "$backup_dir/copimine-db.dump"
     fi
   fi
   for relative in "${PRESERVE_PATHS[@]}"; do
@@ -337,7 +414,7 @@ backup_current_release() {
       local rel="${world_dir#"$PROJECT_ROOT/"}"
       mkdir -p "$PRESERVE_ROOT/$(dirname "$rel")"
       cp -a "$world_dir" "$PRESERVE_ROOT/$rel"
-    done < <(find "$PROJECT_ROOT/minecraft/server" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+    done < <(runtime_world_paths "$PROJECT_ROOT/minecraft/server")
   fi
   if [[ -d /etc/systemd/system ]]; then
     mkdir -p "$backup_dir/systemd"
@@ -409,7 +486,7 @@ restore_preserved_state() {
       mkdir -p "$target_root/$(dirname "$rel")"
       rm -rf "$target_root/$rel"
       cp -a "$preserved_world" "$target_root/$rel"
-    done < <(find "$PRESERVE_ROOT/minecraft/server" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+    done < <(runtime_world_paths "$PRESERVE_ROOT/minecraft/server")
   fi
 }
 
@@ -465,9 +542,9 @@ wipe_worlds_if_requested() {
   fi
   local server_dir="$PROJECT_ROOT/minecraft/server"
   require_dir "$server_dir"
-  for world in world world_nether world_the_end; do
-    rm -rf "$server_dir/$world"
-  done
+  while IFS= read -r -d '' world_dir; do
+    rm -rf -- "$world_dir"
+  done < <(runtime_world_paths "$server_dir")
   if [[ "${KEEP_WORLD_SEED:-1}" == "1" && -f "$PRESERVE_ROOT/minecraft/server/server.properties" ]]; then
     preserved_seed="$(awk -F= '$1=="level-seed" {print substr($0,index($0,"=")+1); exit}' "$PRESERVE_ROOT/minecraft/server/server.properties")"
     [[ -n "$preserved_seed" ]] && WORLD_SEED="$preserved_seed"
@@ -532,10 +609,7 @@ fix_permissions() {
   log "[11/16] Fix ownership and permissions"
   load_shared_helpers
   copimine_ensure_app_user
-  chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT"
-  find "$PROJECT_ROOT" -type d -exec chmod 755 {} \;
-  find "$PROJECT_ROOT" -type f -exec chmod 644 {} \;
-  find "$PROJECT_ROOT" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 755 {} \; || true
+  copimine_harden_release_ownership
   if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
     chown "$APP_USER:$APP_GROUP" "$PROJECT_ROOT/admin-web/.env"
     chmod 600 "$PROJECT_ROOT/admin-web/.env"
@@ -625,14 +699,14 @@ restart_services() {
     systemctl stop nginx.service 2>/dev/null || true
     local elapsed=0
     while (( elapsed < 30 )); do
-      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
         break
       fi
       sleep 1
       elapsed=$((elapsed + 1))
     done
-    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
-      log 'ERROR: nginx port 18080 is still occupied after stop'
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      log 'ERROR: plaintext/relay nginx port 80 or 18080 is still occupied after stop'
       ss -ltnp || true
       return 1
     fi
@@ -641,6 +715,16 @@ restart_services() {
       log 'ERROR: failed to restart nginx'
       systemctl --no-pager --full status nginx.service || true
       journalctl -u nginx.service -n 160 --no-pager || true
+      return 1
+    fi
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      log 'ERROR: release still exposes a plaintext/relay nginx listener on port 80 or 18080'
+      ss -ltnp || true
+      return 1
+    fi
+    if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:443$/ {found=1} END {exit found ? 0 : 1}'; then
+      log 'ERROR: HTTPS nginx listener on port 443 is missing'
+      ss -ltnp || true
       return 1
     fi
   fi
@@ -702,13 +786,13 @@ verify_http() {
     die '/api/health failed'
   fi
   curl -fsS --max-time 10 http://127.0.0.1:8090/api/runtime >/dev/null || die "/api/runtime failed"
-  curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip >/dev/null || die "Modpack download route failed"
-  curl -fsSI -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack download route failed"
+  curl --noproxy '*' -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || die "Modpack HTTPS download route failed"
+  curl --noproxy '*' -kfsSI --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || die "Resource pack HTTPS route failed"
   local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
   tmp_modpack="$TMP_ROOT/CopiMineMods.zip"
   tmp_resourcepack="$TMP_ROOT/CopiMineResourcePack.zip"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip -o "$tmp_modpack" || die "Modpack payload download failed"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || die "Resource pack payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || die "Modpack HTTPS payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || die "Resource pack HTTPS payload download failed"
   local_modpack_sha="$(sha256sum "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
   remote_modpack_sha="$(sha256sum "$tmp_modpack" | awk '{print $1}')"
   [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || die "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"
@@ -734,6 +818,7 @@ main() {
   prepare_temp
   extract_archive
   detect_payload
+  verify_release_signature
   backup_current_release
   stop_services
   install_payload

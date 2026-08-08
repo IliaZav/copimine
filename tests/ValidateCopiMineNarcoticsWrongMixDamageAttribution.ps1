@@ -2,10 +2,17 @@ $ErrorActionPreference = 'Stop'
 
 $sourcePath = Join-Path $PSScriptRoot '..\copimine-narcotics\src\me\copimine\narcotics\cauldron\CauldronBrewingService.java'
 $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$explosion = [regex]::Match($source, '(?s)private void simulateWrongMixExplosion\(Block block, org\.bukkit\.entity\.Player initiator\) \{.*?(?=\r?\n\s*private boolean queueIngredients)')
+$explosion = [regex]::Match($source, '(?s)private void simulateWrongMixExplosion\(Block block\) \{.*?(?=\r?\n\s*private boolean queueIngredients)')
 
-if (-not $explosion.Success -or $explosion.Value -notmatch 'nearby\.damage\([^;]*initiator\)') {
-    throw 'Wrong-mix damage must retain the initiating player so normal PvP and region-protection handlers can evaluate it.'
+$validDamageContract = $explosion.Success `
+    -and $explosion.Value -match 'getNearbyEntities' `
+    -and $explosion.Value -match 'distanceSquared' `
+    -and $explosion.Value -match '\.damage\(' `
+    -and $source -match 'WRONG_MIX_MIN_DAMAGE = 14\.0D' `
+    -and $source -match 'WRONG_MIX_MAX_DAMAGE = 20\.0D' `
+    -and $source -match 'WRONG_MIX_DAMAGE_RADIUS = 6\.0D'
+if (-not $validDamageContract) {
+    throw 'Wrong-mix effects must damage nearby players for 7-10 hearts only within six blocks.'
 }
 
-Write-Host 'Narcotics wrong-mix damage attribution contract OK'
+Write-Host 'Narcotics wrong-mix radius and damage contract OK'

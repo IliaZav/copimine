@@ -19,7 +19,8 @@ Require-Contains $common 'copimine_verify_public_endpoints' 'Ubuntu live verific
 Require-Contains $common 'panel_is_https' 'TLS configuration must keep the public panel URL on HTTPS as well as the admin URL.'
 Require-Contains $verify 'copimine_verify_runtime' 'Ubuntu live verification must call the runtime endpoint checks.'
 Require-Contains $httpsTemplate 'listen 443 ssl' 'HTTPS nginx template must expose TLS.'
-Require-Contains $httpsTemplate 'listen 18080' 'HTTPS nginx template must preserve the HTTP download endpoint.'
+Require-Contains $httpsTemplate 'proxy_pass http://127.0.0.1:8090;' 'HTTPS nginx template must proxy directly to the loopback backend.'
+if ((Get-Content -LiteralPath $httpsTemplate -Raw -Encoding UTF8) -match '(?m)\blisten\s+(?:\[::\]:)?(?:80|18080)\b') { throw 'HTTPS nginx template must not expose port 80 or the legacy 18080 relay.' }
 Require-Contains $envExample 'ALLOW_INSECURE_HTTP_AUTH=0' 'HTTP login must be disabled by default; operators may opt in explicitly on a trusted LAN.'
 
 Write-Host 'CopiMine HTTP/HTTPS contract OK'

@@ -4,6 +4,7 @@
 
 1. Проверить `thirdparty/client-mods`:
    - `CopiMineClient-0.1.0.jar`
+   - `CustomSkinLoader_Fabric-14.26.1.jar`
    - `emotecraft-for-MC1.21.1-2.4.12-fabric.jar`
    - `fabric-api-0.116.12+1.21.1.jar`
 2. Проверить `thirdparty/server-plugins`:

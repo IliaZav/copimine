@@ -35,6 +35,9 @@ $prepareEmotecraftPs1 = Read-Utf8 'scripts/thirdparty/prepare_emotecraft.ps1'
 $envExample = Read-Utf8 'admin-web/.env.example'
 $imageFrameConfig = Read-Utf8 'minecraft/server/plugins/ImageFrame/config.yml'
 $main = Read-Utf8 'admin-web/backend/main.py'
+$installer = Read-Utf8 'deploy/ubuntu/install_release.sh'
+$adminService = Read-Utf8 'admin-web/deploy/copimine-admin.service'
+$nginxTlsRelay = Read-Utf8 'admin-web/deploy/nginx-copimine-admin-https.conf'
 
 Require-Contains $common 'COPIMINE_APP_USER:-copimine' 'Common deployment default must match the dedicated copimine service account.'
 Require-Contains $common 'copimine_ensure_app_user()' 'Installer must create the dedicated service account on a clean Ubuntu host.'
@@ -49,7 +52,7 @@ Require-Contains $common '\gexec' 'Deployment must execute the safely quoted Pos
 Require-Contains $common 'ALLOW_INSECURE_HTTP_AUTH' 'HTTP-only installer configuration must explicitly control insecure cookie authentication.'
 Require-Contains $common 'TLS configuration requires ADMIN_PUBLIC_BASE_URL to use https://' 'Installer must reject a TLS configuration that advertises an HTTP public URL.'
 Require-Contains $envExample 'ALLOW_INSECURE_HTTP_AUTH=0' 'HTTP authentication must be disabled by default.'
-Require-Contains $envExample 'Only use HTTP authentication on a trusted temporary network.' 'The HTTP authentication tradeoff must be documented next to the setting.'
+Require-Contains $envExample 'Public HTTP is retired.' 'The HTTPS-only transport policy must be documented next to the authentication setting.'
 
 if ($properties -notmatch '(?m)^rcon\.password=__COPIMINE_RCON_PASSWORD_AT_INSTALL__$') {
     $errors.Add('Tracked server.properties must contain only the install-time RCON placeholder.')
@@ -102,9 +105,18 @@ Require-Contains $main 'player = clean_mc_player(player)' 'RCON player names mus
 Require-Contains $main 'target = clean_mc_player(data.target)' 'RCON target names must be validated.'
 Require-Contains $main 'is_reserved_admin_username(username)' 'Player registration must reserve panel usernames.'
 Require-Contains $main 'is_reserved_admin_username(new_username)' 'Player username changes must reserve panel usernames.'
-Require-Contains $main '"visiblePin": ""' 'Player bank responses must not reveal the treasury PIN.'
-Require-Contains $main 'visible_pin = visible_account_pin(conn, TREASURY_ACCOUNT_ID)' 'Authorized treasury views may resolve the PIN through the treasury helper.'
+Require-NotContains $main 'visiblePin' 'Player bank responses must never expose the treasury PIN.'
+Require-NotContains $main 'visible_account_pin' 'Authorized treasury views must use hash verification rather than PIN recovery.'
 Require-NotContains $main "VALUES(%s,%s,%s,%s,%s,'AUTO_APPROVED'" 'Registration must not auto-approve whitelist requests.'
+Require-NotContains $adminService '--proxy-headers' 'Uvicorn must not rewrite the trusted loopback proxy peer into the public client address.'
+Require-Contains $adminService '--port 8090' 'Admin service must keep the backend bound to the loopback port.'
+Require-Contains $nginxTlsRelay 'listen 443 ssl http2 default_server;' 'HTTPS nginx must own the public 443 listener.'
+Require-Contains $nginxTlsRelay 'proxy_pass http://127.0.0.1:8090;' 'HTTPS nginx must proxy directly to the loopback backend.'
+Require-NotContains $nginxTlsRelay 'listen 80' 'HTTPS nginx must not expose plaintext port 80.'
+Require-NotContains $nginxTlsRelay '18080' 'HTTPS nginx must not expose the retired relay port.'
+Require-Contains $installer '--configure-https' 'Release installer must provide the guarded HTTPS reconfiguration path.'
+Require-Contains $installer 'listen 443 ssl http2 default_server;' 'HTTPS reconfiguration must own the public 443 listener.'
+Require-Contains $installer 'COPIMINE_PUBLIC_TLS_EXTERNAL' 'HTTPS reconfiguration must explicitly retire external TLS termination.'
 
 if ($errors.Count -gt 0) {
     throw ("Release safety hardening validation failed:`n - " + ($errors -join "`n - "))

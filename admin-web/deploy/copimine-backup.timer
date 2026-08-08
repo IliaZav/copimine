@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the CopiMine backup every 24 hours
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=15min
+AccuracySec=1min
+Unit=copimine-backup.service
+
+[Install]
+WantedBy=timers.target

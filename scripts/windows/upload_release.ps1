@@ -7,6 +7,7 @@ param(
     [string]$InstallReleaseScriptPath = "",
     [string]$UnpackScriptPath = "",
     [string]$CommonScriptPath = "",
+    [string]$PayloadVerifierPath = "",
     [string]$VerifyScriptPath = "",
     [string]$ReleaseManifestPath = "",
     [string]$BootstrapManifestPath = "",
@@ -116,6 +117,9 @@ if (-not $UnpackScriptPath) {
 if (-not $CommonScriptPath) {
     $CommonScriptPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_common.sh" -ProjectRelative "deploy\shared\common.sh"
 }
+if (-not $PayloadVerifierPath) {
+    $PayloadVerifierPath = Resolve-DefaultHelperPath -ReleaseRelative "verify_payload_manifest.py" -ProjectRelative "deploy\shared\verify_payload_manifest.py"
+}
 if (-not $VerifyScriptPath) {
     $VerifyScriptPath = Resolve-DefaultHelperPath -ReleaseRelative "copimine_verify.sh" -ProjectRelative "deploy\ubuntu\verify.sh"
 }
@@ -146,6 +150,7 @@ $InstallerPath = Resolve-RequiredPath $InstallerPath "Ubuntu full replace script
 $InstallReleaseScriptPath = Resolve-RequiredPath $InstallReleaseScriptPath "Ubuntu release entrypoint"
 $UnpackScriptPath = Resolve-RequiredPath $UnpackScriptPath "Ubuntu unpack script"
 $CommonScriptPath = Resolve-RequiredPath $CommonScriptPath "Shared deploy helper"
+$PayloadVerifierPath = Resolve-RequiredPath $PayloadVerifierPath "Signed payload verifier"
 $VerifyScriptPath = Resolve-RequiredPath $VerifyScriptPath "Ubuntu verify script"
 $ReleaseManifestPath = Resolve-RequiredPath $ReleaseManifestPath "Release manifest"
 if ($BootstrapManifestPath) {
@@ -167,6 +172,7 @@ $InstallerRemoteName = "copimine_full_replace.sh"
 $InstallReleaseRemoteName = "install_release.sh"
 $UnpackRemoteName = "copimine_unpack_and_verify.sh"
 $CommonRemoteName = "copimine_common.sh"
+$PayloadVerifierRemoteName = "verify_payload_manifest.py"
 $VerifyRemoteName = "copimine_verify.sh"
 $ManifestRemoteName = "release_manifest.json"
 $BootstrapRemoteName = "release.bootstrap.json"
@@ -203,6 +209,7 @@ $UploadItems = @(
     $InstallReleaseScriptPath,
     $UnpackScriptPath,
     $CommonScriptPath,
+    $PayloadVerifierPath,
     $VerifyScriptPath,
     $ReleaseManifestPath
 )
@@ -226,10 +233,30 @@ $RemoteInstaller = "$RemoteDir/$InstallerRemoteName"
 $RemoteInstallRelease = "$RemoteDir/$InstallReleaseRemoteName"
 $RemoteUnpack = "$RemoteDir/$UnpackRemoteName"
 $RemoteCommon = "$RemoteDir/$CommonRemoteName"
+$RemotePayloadVerifier = "$RemoteDir/$PayloadVerifierRemoteName"
 $RemoteVerify = "$RemoteDir/$VerifyRemoteName"
 $RemoteManifest = "$RemoteDir/$ManifestRemoteName"
 $RemoteBootstrap = "$RemoteDir/$BootstrapRemoteName"
 $BootstrapLeaf = if ($BootstrapManifestPath) { Split-Path -Leaf $BootstrapManifestPath } else { "" }
+
+foreach ($candidate in @(
+    @{ Path = $InstallerPath; Label = 'Ubuntu full replace script' },
+    @{ Path = $InstallReleaseScriptPath; Label = 'Ubuntu release entrypoint' },
+    @{ Path = $UnpackScriptPath; Label = 'Ubuntu unpack script' },
+    @{ Path = $CommonScriptPath; Label = 'Shared deploy helper' },
+    @{ Path = $PayloadVerifierPath; Label = 'Signed payload verifier' },
+    @{ Path = $VerifyScriptPath; Label = 'Ubuntu verify script' },
+    @{ Path = $ReleaseManifestPath; Label = 'Release manifest' },
+    @{ Path = $ReadmeLocal; Label = 'Upload README' }
+)) {
+    $leaf = Split-Path -Leaf ([string]$candidate.Path)
+    if ($leaf -notmatch '^[A-Za-z0-9._-]+$') {
+        Fail "$($candidate.Label) filename contains unsafe shell characters: $leaf"
+    }
+}
+if ($BootstrapLeaf -and $BootstrapLeaf -notmatch '^[A-Za-z0-9._-]+$') {
+    Fail "Bootstrap manifest filename contains unsafe shell characters: $BootstrapLeaf"
+}
 
 $RenameScript = @"
 set -e
@@ -238,13 +265,14 @@ if [ '$(Split-Path -Leaf $InstallerPath)' != '$InstallerRemoteName' ]; then mv -
 if [ '$(Split-Path -Leaf $InstallReleaseScriptPath)' != '$InstallReleaseRemoteName' ]; then mv -f '$(Split-Path -Leaf $InstallReleaseScriptPath)' '$InstallReleaseRemoteName'; fi
 if [ '$(Split-Path -Leaf $UnpackScriptPath)' != '$UnpackRemoteName' ]; then mv -f '$(Split-Path -Leaf $UnpackScriptPath)' '$UnpackRemoteName'; fi
 if [ '$(Split-Path -Leaf $CommonScriptPath)' != '$CommonRemoteName' ]; then mv -f '$(Split-Path -Leaf $CommonScriptPath)' '$CommonRemoteName'; fi
+if [ '$(Split-Path -Leaf $PayloadVerifierPath)' != '$PayloadVerifierRemoteName' ]; then mv -f '$(Split-Path -Leaf $PayloadVerifierPath)' '$PayloadVerifierRemoteName'; fi
 if [ '$(Split-Path -Leaf $VerifyScriptPath)' != '$VerifyRemoteName' ]; then mv -f '$(Split-Path -Leaf $VerifyScriptPath)' '$VerifyRemoteName'; fi
 if [ '$(Split-Path -Leaf $ReleaseManifestPath)' != '$ManifestRemoteName' ]; then mv -f '$(Split-Path -Leaf $ReleaseManifestPath)' '$ManifestRemoteName'; fi
 if [ -n '$BootstrapLeaf' ] && [ -f '$BootstrapLeaf' ]; then mv -f '$BootstrapLeaf' '$BootstrapRemoteName'; fi
 mv -f '$(Split-Path -Leaf $ReadmeLocal)' '$ReadmeRemoteName'
 chmod 644 '$ArchiveName' '$ArchiveName.sha256' '$ManifestRemoteName' '$ReadmeRemoteName'
 if [ -f '$BootstrapRemoteName' ]; then chmod 644 '$BootstrapRemoteName'; fi
-chmod 755 '$InstallerRemoteName' '$InstallReleaseRemoteName' '$UnpackRemoteName' '$CommonRemoteName' '$VerifyRemoteName'
+chmod 755 '$InstallerRemoteName' '$InstallReleaseRemoteName' '$UnpackRemoteName' '$CommonRemoteName' '$PayloadVerifierRemoteName' '$VerifyRemoteName'
 "@
 Invoke-Ssh $SshTarget $RenameScript
 
@@ -262,7 +290,7 @@ if ($RemoteShaValue -ne $ArchiveSha256) {
 }
 
 Write-Host "[5/6] Checking remote deploy scripts"
-Invoke-Ssh $SshTarget "test -f '$RemoteInstaller' && test -x '$RemoteInstaller' && test -f '$RemoteInstallRelease' && test -x '$RemoteInstallRelease' && test -f '$RemoteUnpack' && test -x '$RemoteUnpack' && test -f '$RemoteCommon' && test -x '$RemoteCommon' && test -f '$RemoteVerify' && test -x '$RemoteVerify'"
+Invoke-Ssh $SshTarget "test -f '$RemoteInstaller' && test -x '$RemoteInstaller' && test -f '$RemoteInstallRelease' && test -x '$RemoteInstallRelease' && test -f '$RemoteUnpack' && test -x '$RemoteUnpack' && test -f '$RemoteCommon' && test -x '$RemoteCommon' && test -f '$RemotePayloadVerifier' && test -x '$RemotePayloadVerifier' && test -f '$RemoteVerify' && test -x '$RemoteVerify'"
 
 Write-Host "[6/6] Done"
 Write-Host ""

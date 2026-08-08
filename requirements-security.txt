@@ -1,0 +1,3 @@
+# Release CI tooling; runtime dependencies stay in admin-web/requirements.txt.
+pip-audit==2.10.1
+pytest==9.1.1

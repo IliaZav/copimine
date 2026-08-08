@@ -19,8 +19,85 @@ WIPE_WORLDS=0
 RESET_GAMEPLAY=0
 RESET_TREASURY=0
 
-usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n' "$0" "$0" "$0" >&2; }
+usage() { printf 'Usage: sudo bash %s /path/to/release.tar.gz [sha256] [--wipe-worlds] [--db-dump path] [--reset-treasury]\n       sudo bash %s --cleanup-zabbix\n       sudo bash %s --cleanup-external-services\n       sudo bash %s --configure-https [primary-host]\n       sudo bash %s --configure-release-trust [allowlist-path] [verifier-path]\n' "$0" "$0" "$0" "$0" "$0" >&2; }
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || { echo 'Run this installer with sudo/root.' >&2; exit 2; }
+
+configure_release_trust() {
+  local source_path="${2:-$PROJECT_ROOT/deploy/release-signing.allowed}"
+  local verifier_source="${3:-$PROJECT_ROOT/deploy/shared/verify_payload_manifest.py}"
+  local unpack_source="${4:-$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh}"
+  local replace_source="${5:-$PROJECT_ROOT/deploy/ubuntu/copimine_full_replace.sh}"
+  local common_source="${6:-$PROJECT_ROOT/deploy/shared/common.sh}"
+  local target_path='/etc/copimine/release-signing.allowed'
+  local verifier_target='/etc/copimine/verify_payload_manifest.py'
+  local source_real verifier_real unpack_real replace_real common_real
+  source_real="$(realpath -e -- "$source_path" 2>/dev/null || true)"
+  verifier_real="$(realpath -e -- "$verifier_source" 2>/dev/null || true)"
+  unpack_real="$(realpath -e -- "$unpack_source" 2>/dev/null || true)"
+  replace_real="$(realpath -e -- "$replace_source" 2>/dev/null || true)"
+  common_real="$(realpath -e -- "$common_source" 2>/dev/null || true)"
+  [[ -n "$source_real" && -f "$source_real" ]] || { echo "[trust] allowlist is missing: $source_path" >&2; return 1; }
+  [[ -n "$verifier_real" && -f "$verifier_real" ]] || { echo "[trust] payload verifier is missing: $verifier_source" >&2; return 1; }
+  [[ -n "$unpack_real" && -f "$unpack_real" ]] || { echo "[trust] unpack helper is missing: $unpack_source" >&2; return 1; }
+  [[ -n "$replace_real" && -f "$replace_real" ]] || { echo "[trust] replacement helper is missing: $replace_source" >&2; return 1; }
+  [[ -n "$common_real" && -f "$common_real" ]] || { echo "[trust] shared helper is missing: $common_source" >&2; return 1; }
+  for trusted_source in "$source_real" "$verifier_real" "$unpack_real" "$replace_real" "$common_real"; do
+    [[ "$(stat -c '%U' "$trusted_source" 2>/dev/null || true)" == 'root' ]] || {
+      echo "[trust] bootstrap source must be owned by root: $trusted_source" >&2
+      return 1
+    }
+    local trusted_mode
+    trusted_mode="$(stat -c '%a' "$trusted_source" 2>/dev/null || true)"
+    [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] && (( (8#$trusted_mode & 8#022) == 0 )) || {
+      echo "[trust] bootstrap source is group/world writable: $trusted_source" >&2
+      return 1
+    }
+  done
+  mapfile -t trust_lines < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$source_real")
+  [[ "${#trust_lines[@]}" -eq 1 ]] || { echo '[trust] allowlist must contain exactly one non-comment key' >&2; return 1; }
+  [[ "${trust_lines[0]}" =~ ^[[:space:]]*release[[:space:]]+ssh-ed25519[[:space:]]+[A-Za-z0-9+/]+={0,2}([[:space:]]+[^[:space:]]*)?[[:space:]]*$ ]] || {
+    echo '[trust] allowlist must contain a release ssh-ed25519 key' >&2
+    return 1
+  }
+  local expected_trust_line='release ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJpQuMrYtZPi8j2y8BYMEo+ketB5DMPxHY/yP6eCBMln'
+  local normalized_trust_line
+  normalized_trust_line="$(printf '%s\n' "${trust_lines[0]}" | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+  [[ "$normalized_trust_line" == "$expected_trust_line" ]] || {
+    echo '[trust] allowlist key does not match the pinned release signing key' >&2
+    return 1
+  }
+  install -d -m 0755 /etc/copimine
+  install -o root -g root -m 0644 -- "$source_real" "$target_path"
+  python3 -m py_compile "$verifier_real"
+  install -o root -g root -m 0644 -- "$verifier_real" "$verifier_target"
+  install -d -m 0755 "$PROJECT_ROOT/deploy/ubuntu" "$PROJECT_ROOT/deploy/shared"
+  install -o root -g root -m 0755 -- "$unpack_real" "$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh"
+  install -o root -g root -m 0755 -- "$replace_real" "$PROJECT_ROOT/deploy/ubuntu/copimine_full_replace.sh"
+  install -o root -g root -m 0755 -- "$common_real" "$PROJECT_ROOT/deploy/shared/common.sh"
+  [[ "$(stat -c '%U:%G %a' "$target_path")" == 'root:root 644' ]] || {
+    echo '[trust] installed allowlist has unsafe ownership or mode' >&2
+    return 1
+  }
+  [[ "$(stat -c '%U:%G %a' "$verifier_target")" == 'root:root 644' ]] || {
+    echo '[trust] installed payload verifier has unsafe ownership or mode' >&2
+    return 1
+  }
+  [[ "$(stat -c '%U:%G %a' "$PROJECT_ROOT/deploy/ubuntu/copimine_unpack_and_verify.sh")" == 'root:root 755' ]] || {
+    echo '[trust] installed unpack helper has unsafe ownership or mode' >&2
+    return 1
+  }
+  [[ "$(stat -c '%U:%G %a' "$PROJECT_ROOT/deploy/ubuntu/copimine_full_replace.sh")" == 'root:root 755' ]] || {
+    echo '[trust] installed replacement helper has unsafe ownership or mode' >&2
+    return 1
+  }
+  [[ "$(stat -c '%U:%G %a' "$PROJECT_ROOT/deploy/shared/common.sh")" == 'root:root 755' ]] || {
+    echo '[trust] installed shared helper has unsafe ownership or mode' >&2
+    return 1
+  }
+  echo "[trust] release signing allowlist installed: $target_path"
+  echo "[trust] payload verifier installed: $verifier_target"
+  echo "[trust] bootstrap helpers installed under: $PROJECT_ROOT/deploy"
+}
 
 cleanup_zabbix() {
   echo '[zabbix] stopping services'
@@ -151,6 +228,362 @@ EOF
   echo "[cleanup] backups retained at $backup_root"
 }
 
+cleanup_legacy_artifacts() {
+  local home_root='/home/qwerty'
+  local upload_root="$home_root/copimine-upload"
+  local target resolved base
+
+  # This mode is intentionally explicit and separate from a normal release
+  # install.  It is for the one-time server opening cleanup requested by the
+  # operator; it only touches the explicit home allowlist, the inventoried
+  # legacy roots below, and exact timestamped rollback directories.
+  for target in \
+    "$home_root/copimine-preserved-before-wipe-20260515-220317" \
+    "$home_root/nginx-backup-resourcepack-20260621-164420" \
+    "$upload_root/backups"; do
+    [[ -e "$target" || -L "$target" ]] || continue
+    resolved="$(readlink -f -- "$target" 2>/dev/null || true)"
+    case "$resolved" in
+      "$home_root"/*) ;;
+      *) echo "[cleanup] refusing legacy target outside $home_root: $target -> $resolved" >&2; return 1 ;;
+    esac
+    [[ "$resolved" != "$home_root" ]] || { echo '[cleanup] refusing home root' >&2; return 1; }
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed legacy home artifact: $resolved"
+  done
+
+  # These roots are historical backup stores from before the managed daily
+  # backup service.  Keep the active /opt/copimine-backups root untouched;
+  # only remove the exact, previously inventoried legacy roots below.
+  local -a legacy_opt_roots=(
+    '/opt/copimine-db-backups'
+    '/opt/copimine-full-backups'
+    '/opt/copimine.backup-20260611-192047'
+    '/opt/copimine.backup.2026-06-28-210147'
+    '/opt/copimine.backup-before-fixed-20260612-061503'
+    '/opt/copimine-old-before-replace-20260606-074851'
+    '/opt/copimine-old-before-replace-20260607-001732'
+    '/opt/copimine-preserve-20260607-001732'
+    '/opt/copimine.old-2026-06-29-182416'
+  )
+  for target in "${legacy_opt_roots[@]}"; do
+    [[ -e "$target" || -L "$target" ]] || continue
+    resolved="$(readlink -f -- "$target" 2>/dev/null || true)"
+    case "$resolved" in
+      /opt/copimine-db-backups|/opt/copimine-full-backups|/opt/copimine.backup-20260611-192047|/opt/copimine.backup.2026-06-28-210147|/opt/copimine.backup-before-fixed-20260612-061503|/opt/copimine-old-before-replace-20260606-074851|/opt/copimine-old-before-replace-20260607-001732|/opt/copimine-preserve-20260607-001732|/opt/copimine.old-2026-06-29-182416) ;;
+      *) echo "[cleanup] refusing unexpected legacy root: $target -> $resolved" >&2; return 1 ;;
+    esac
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed legacy opt backup root: $resolved"
+  done
+
+  # Older failed replacements used separate .broken/.failed roots and one
+  # un-timestamped copimine.old directory. They are not rollback candidates:
+  # the managed retention block below keeps only the three newest exact
+  # copimine.old-YYYYMMDD-HHMMSS directories. Remove only these explicit
+  # top-level names, never a wildcard below an arbitrary path.
+  local stale_root stale_name
+  while IFS= read -r stale_root; do
+    [[ -n "$stale_root" ]] || continue
+    stale_name="$(basename -- "$stale_root")"
+    case "$stale_name" in
+      copimine.broken-*|copimine.failed-*|copimine.old|copimine_unpack_tmp) ;;
+      *) echo "[cleanup] refusing unexpected stale release root: $stale_root" >&2; return 1 ;;
+    esac
+    resolved="$(readlink -f -- "$stale_root" 2>/dev/null || true)"
+    [[ "$resolved" == "/opt/$stale_name" ]] || {
+      echo "[cleanup] refusing stale release symlink: $stale_root -> $resolved" >&2
+      return 1
+    }
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed stale release root: $resolved"
+  done < <(find /opt -mindepth 1 -maxdepth 1 -type d \( -name 'copimine.broken-*' -o -name 'copimine.failed-*' -o -name 'copimine.old' -o -name 'copimine_unpack_tmp' \) -print 2>/dev/null | sort)
+
+  # The upload directory is a staging area, not a backup archive.  Keep the
+  # newest complete release archive for a manual rollback and remove older
+  # archives plus their exact sidecars/bootstrap files and split parts.
+  local upload_archive upload_stem keep_upload_archive keep_upload_stem
+  local -a upload_archives=()
+  while IFS= read -r upload_archive; do
+    [[ -n "$upload_archive" ]] && upload_archives+=("$upload_archive")
+  done < <(find "$upload_root" -mindepth 1 -maxdepth 1 -type f -name 'copimine-opt-full-*.tar.gz' -printf '%f\n' 2>/dev/null | sort -r)
+  keep_upload_archive="${upload_archives[0]:-}"
+  keep_upload_stem="${keep_upload_archive%.tar.gz}"
+  for upload_archive in "${upload_archives[@]:1}"; do
+    [[ "$upload_archive" =~ ^copimine-opt-full-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\.tar\.gz$ ]] || {
+      echo "[cleanup] refusing unexpected upload archive: $upload_archive" >&2
+      return 1
+    }
+    upload_stem="${upload_archive%.tar.gz}"
+    for target in "$upload_archive" "${upload_archive}.sha256" "${upload_stem}.tar.bootstrap.json"; do
+      rm -f -- "$upload_root/$target"
+    done
+    find "$upload_root" -mindepth 1 -maxdepth 1 -type f -name "${upload_stem}.part-[0-9][0-9]" -delete
+    echo "[cleanup] removed old upload release: $upload_stem"
+  done
+  if [[ -n "$keep_upload_stem" ]]; then
+    [[ "$keep_upload_archive" =~ ^copimine-opt-full-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\.tar\.gz$ ]] || {
+      echo "[cleanup] refusing unexpected newest upload archive: $keep_upload_archive" >&2
+      return 1
+    }
+    find "$upload_root" -mindepth 1 -maxdepth 1 -type f -name "${keep_upload_stem}.part-[0-9][0-9]" -delete
+    echo "[cleanup] upload release retention enforced: keep=$keep_upload_archive"
+  else
+    echo '[cleanup] upload release retention: no complete archive found'
+  fi
+
+  # The payload verifier may create a root-owned Python bytecode cache in the
+  # upload staging directory.  It is never part of a release or a rollback;
+  # remove only this exact cache path after validating its resolved location.
+  local verifier_cache="$upload_root/__pycache__"
+  if [[ -e "$verifier_cache" || -L "$verifier_cache" ]]; then
+    resolved="$(readlink -f -- "$verifier_cache" 2>/dev/null || true)"
+    [[ "$resolved" == "$verifier_cache" ]] || {
+      echo "[cleanup] refusing unexpected verifier cache: $verifier_cache -> $resolved" >&2
+      return 1
+    }
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed verifier cache: $resolved"
+  fi
+
+  # Every normal release replacement leaves a top-level rollback directory.
+  # Retain only the three newest exact timestamped copies.  The live project
+  # is /opt/copimine and can never match this allowlist.
+  local runtime_keep=3 runtime_name runtime_path
+  local -a runtime_backups=()
+  while IFS= read -r runtime_name; do
+    [[ -n "$runtime_name" ]] && runtime_backups+=("$runtime_name")
+  done < <(find /opt -mindepth 1 -maxdepth 1 -type d -name 'copimine.old-*' -printf '%f\n' 2>/dev/null | sort -r)
+  if (( ${#runtime_backups[@]} > runtime_keep )); then
+    for runtime_name in "${runtime_backups[@]:runtime_keep}"; do
+      [[ "$runtime_name" =~ ^copimine\.old-[0-9]{8}-[0-9]{6}$ ]] || {
+        echo "[cleanup] refusing unexpected runtime backup: $runtime_name" >&2
+        return 1
+      }
+      runtime_path="/opt/$runtime_name"
+      resolved="$(readlink -f -- "$runtime_path" 2>/dev/null || true)"
+      [[ "$resolved" == "$runtime_path" ]] || {
+        echo "[cleanup] refusing runtime backup symlink: $runtime_path -> $resolved" >&2
+        return 1
+      }
+      rm -rf -- "$resolved"
+      echo "[cleanup] pruned old runtime backup: $resolved"
+    done
+  fi
+  echo "[cleanup] runtime backup retention enforced: keep=$runtime_keep"
+
+  # Keep the most recent pre-wipe dump for recovery from the destructive
+  # opening reset.  Daily backups are pruned by backup.sh and its timer.
+  local -a game_wipes=()
+  while IFS= read -r target; do
+    [[ -n "$target" ]] && game_wipes+=("$target")
+  done < <(find /opt/copimine-backups -mindepth 1 -maxdepth 1 -type d -name 'game-wipe-*' -printf '%f\n' 2>/dev/null | sort -r)
+  local keep_game_wipe="${game_wipes[0]:-}"
+  while IFS= read -r target; do
+    [[ -n "$target" ]] || continue
+    base="$(basename -- "$target")"
+    case "$base" in
+      copimine-daily-*) continue ;;
+      game-wipe-*) [[ "$base" == "$keep_game_wipe" ]] && continue ;;
+    esac
+    resolved="$(readlink -f -- "$target" 2>/dev/null || true)"
+    case "$resolved" in
+      /opt/copimine-backups/*) ;;
+      *) echo "[cleanup] refusing backup target outside /opt/copimine-backups: $target -> $resolved" >&2; return 1 ;;
+    esac
+    rm -rf -- "$resolved"
+    echo "[cleanup] removed legacy backup: $resolved"
+  done < <(find /opt/copimine-backups -mindepth 1 -maxdepth 1 -printf '%p\n' 2>/dev/null | sort)
+
+  local daily_keep=3 archive stem suffix
+  local -a daily_archives=()
+  while IFS= read -r archive; do
+    [[ -n "$archive" ]] && daily_archives+=("$archive")
+  done < <(find /opt/copimine-backups -mindepth 1 -maxdepth 1 -type f -name 'copimine-daily-*.tar.gz' -printf '%f\n' 2>/dev/null | sort -r)
+  if (( ${#daily_archives[@]} > daily_keep )); then
+    for archive in "${daily_archives[@]:daily_keep}"; do
+      stem="${archive%.tar.gz}"
+      [[ "$stem" =~ ^copimine-daily-[0-9]{8}-[0-9]{6}$ ]] || { echo "[cleanup] refusing unexpected daily backup: $archive" >&2; return 1; }
+      for suffix in '.tar.gz' '.tar.gz.sha256' '.dump' '.dump.sha256' '.manifest'; do
+        rm -f -- "/opt/copimine-backups/${stem}${suffix}"
+      done
+      echo "[cleanup] pruned old daily backup: $stem"
+    done
+  fi
+  echo "[cleanup] daily backup retention enforced: keep=$daily_keep"
+  echo "[cleanup] legacy artifact cleanup complete; retained pre-wipe backup: ${keep_game_wipe:-none}"
+}
+
+configure_http_only_public() {
+  echo '[http] public HTTP mode is retired; the site is available only through HTTPS on port 443.' >&2
+  return 2
+}
+
+configure_https_public() {
+  local primary_host="${2:-copimine.ru}"
+  local cert_path="${COPIMINE_TLS_CERT_PATH:-/etc/letsencrypt/live/copimine.ru/fullchain.pem}"
+  local key_path="${COPIMINE_TLS_KEY_PATH:-/etc/letsencrypt/live/copimine.ru/privkey.pem}"
+  local server_names='copimine.ru www.copimine.ru 90.188.115.155'
+  local env_file="$PROJECT_ROOT/admin-web/.env"
+  local config='/etc/nginx/sites-available/copimine-admin.conf'
+  local enabled='/etc/nginx/sites-enabled/copimine-admin.conf'
+  local backup_root='/opt/copimine-backups'
+  local backup_path="${backup_root}/https-public-before-reconfigure-$(date +%Y%m%d-%H%M%S)"
+  local env_user env_group resource_sha1 resource_version
+
+  [[ "$primary_host" =~ ^[A-Za-z0-9.-]+$ ]] || { echo '[https] invalid primary hostname' >&2; return 2; }
+  [[ -s "$cert_path" ]] || { echo "[https] certificate is missing or empty: $cert_path" >&2; return 1; }
+  [[ -s "$key_path" ]] || { echo "[https] private key is missing or empty: $key_path" >&2; return 1; }
+  [[ -f "$env_file" ]] || { echo "[https] runtime environment is missing: $env_file" >&2; return 1; }
+  command -v nginx >/dev/null 2>&1 || { echo '[https] nginx is required' >&2; return 1; }
+
+  mkdir -p "$backup_root"
+  chmod 700 "$backup_root"
+  if [[ -f "$config" ]]; then
+    cp -a -- "$config" "$backup_path"
+    chmod 600 "$backup_path"
+  fi
+
+  resource_sha1="$(sha1sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" 2>/dev/null | awk '{print $1}' || true)"
+  if [[ "$resource_sha1" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    resource_version="${resource_sha1:0:12}"
+  else
+    resource_version='runtime'
+  fi
+
+  # Update only transport/public-origin keys. Secrets, accounts and all other
+  # runtime settings remain untouched.
+  COPIMINE_HTTPS_PRIMARY="$primary_host" \
+  COPIMINE_HTTPS_CERT="$cert_path" \
+  COPIMINE_HTTPS_KEY="$key_path" \
+  COPIMINE_HTTPS_NAMES="$server_names" \
+  COPIMINE_HTTPS_RESOURCE_VERSION="$resource_version" \
+    python3 - "$env_file" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+primary = os.environ["COPIMINE_HTTPS_PRIMARY"]
+cert = os.environ["COPIMINE_HTTPS_CERT"]
+key = os.environ["COPIMINE_HTTPS_KEY"]
+server_names = os.environ["COPIMINE_HTTPS_NAMES"].split()
+resource_version = os.environ["COPIMINE_HTTPS_RESOURCE_VERSION"]
+values = {}
+for raw in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+    if "=" in raw and not raw.lstrip().startswith("#"):
+        name, value = raw.split("=", 1)
+        values[name.strip()] = value.strip().strip('"').strip("'")
+
+values.update(
+    {
+        "ADMIN_PUBLIC_BASE_URL": f"https://{primary}",
+        "PUBLIC_PANEL_URL": f"https://{primary}",
+        "RESOURCE_PACK_PUBLIC_URL": f"https://{primary}/resourcepacks/CopiMineResourcePack.zip?v={resource_version}",
+        "COPIMINE_TLS_ENABLED": "1",
+        "COPIMINE_TLS_CERT_PATH": cert,
+        "COPIMINE_TLS_KEY_PATH": key,
+        "COPIMINE_PUBLIC_TLS_EXTERNAL": "0",
+        "AUTH_COOKIE_SECURE": "1",
+        "ALLOW_INSECURE_HTTP_AUTH": "0",
+        "NGINX_SERVER_NAMES": " ".join(server_names),
+    }
+)
+origins = [item.strip() for item in values.get("ALLOWED_ORIGINS", "").split(",") if item.strip()]
+for name in server_names:
+    origin = f"https://{name}"
+    if origin not in origins:
+        origins.append(origin)
+values["ALLOWED_ORIGINS"] = ",".join(origins)
+
+ordered = [f"{name}={values[name]}" for name in sorted(values)]
+temporary = path.with_name(".env.https-tmp")
+temporary.write_text("\n".join(ordered).rstrip() + "\n", encoding="utf-8")
+temporary.chmod(0o600)
+temporary.replace(path)
+PY
+
+  env_user="$(stat -c '%U' "$env_file" 2>/dev/null || true)"
+  env_group="$(stat -c '%G' "$env_file" 2>/dev/null || true)"
+  [[ -n "$env_user" && "$env_user" != 'root' ]] || env_user='qwerty'
+  [[ -n "$env_group" && "$env_group" != 'root' ]] || env_group="$env_user"
+  chown "$env_user:$env_group" "$env_file"
+  chmod 600 "$env_file"
+
+  cat >"$config" <<'NGINX'
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name __COPIMINE_PUBLIC_SERVER_NAMES__;
+    client_max_body_size 8m;
+
+    ssl_certificate __COPIMINE_PUBLIC_CERT__;
+    ssl_certificate_key __COPIMINE_PUBLIC_KEY__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "same-origin" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+}
+NGINX
+  COPIMINE_PUBLIC_SERVER_NAMES="$server_names" \
+  COPIMINE_PUBLIC_CERT="$cert_path" \
+  COPIMINE_PUBLIC_KEY="$key_path" \
+    python3 - "$config" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+for marker, value in {
+    "__COPIMINE_PUBLIC_SERVER_NAMES__": os.environ["COPIMINE_PUBLIC_SERVER_NAMES"],
+    "__COPIMINE_PUBLIC_CERT__": os.environ["COPIMINE_PUBLIC_CERT"],
+    "__COPIMINE_PUBLIC_KEY__": os.environ["COPIMINE_PUBLIC_KEY"],
+}.items():
+    text = text.replace(marker, value)
+if "__COPIMINE_PUBLIC_" in text:
+    raise SystemExit("unresolved HTTPS nginx marker")
+path.write_text(text, encoding="utf-8")
+PY
+  # Keep the standalone HTTPS maintenance path consistent with the normal
+  # release installer: one canonical vhost on 443, with retired public and
+  # relay vhosts removed before nginx validates the configuration.
+  rm -f -- /etc/nginx/sites-enabled/copimine-public \
+    /etc/nginx/sites-available/copimine-public \
+    /etc/nginx/sites-enabled/default
+  ln -sfn "$config" "$enabled"
+  nginx -t
+  systemctl restart copimine-admin.service
+  systemctl reload nginx.service
+  systemctl is-active --quiet copimine-admin.service || { echo '[https] admin service is not active' >&2; return 1; }
+  systemctl is-active --quiet nginx.service || { echo '[https] nginx is not active' >&2; return 1; }
+  echo '[https] nginx now terminates TLS directly on public port 443; ports 80 and 18080 are disabled'
+  echo "[https] public origin: https://$primary_host"
+  echo "[https] static-IP route: https://90.188.115.155 (certificate must cover the requested hostname)"
+  [[ -f "$backup_path" ]] && echo "[https] previous public config saved at $backup_path"
+}
+
 refresh_resource_pack_url() {
   local env_file="$PROJECT_ROOT/admin-web/.env"
   local properties="$PROJECT_ROOT/minecraft/server/server.properties"
@@ -169,7 +602,7 @@ import sys
 env_path, properties_path = map(Path, sys.argv[1:3])
 resourcepack_version = sys.argv[3]
 lines = env_path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
-panel = 'http://copimine.ru:18080'
+panel = 'https://copimine.ru'
 for line in lines:
     if line.startswith('PUBLIC_PANEL_URL='):
         panel = line.split('=', 1)[1].strip().strip('"').strip("'").rstrip('/')
@@ -265,6 +698,22 @@ if [[ "$ARCHIVE_PATH" == "--cleanup-zabbix" ]]; then
 fi
 if [[ "$ARCHIVE_PATH" == "--cleanup-external-services" ]]; then
   cleanup_external_services
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--cleanup-legacy" ]]; then
+  cleanup_legacy_artifacts
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--configure-release-trust" ]]; then
+  configure_release_trust "$@"
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--configure-http-only" ]]; then
+  configure_http_only_public
+  exit $?
+fi
+if [[ "$ARCHIVE_PATH" == "--configure-https" ]]; then
+  configure_https_public "$@"
   exit $?
 fi
 if [[ "$ARCHIVE_PATH" == "--refresh-resource-pack-url" ]]; then
@@ -379,25 +828,54 @@ PY
 }
 
 verify_runtime() {
-  local expected_sha actual_sha expected_modpack actual_modpack properties_sha
+  local expected_sha actual_sha expected_modpack actual_modpack properties_sha service_timeout
+  wait_for_runtime_service() {
+    local service="$1" timeout="$2" elapsed=0
+    while (( elapsed < timeout )); do
+      if systemctl is-active --quiet "$service"; then
+        return 0
+      fi
+      sleep 2
+      elapsed=$((elapsed + 2))
+    done
+    return 1
+  }
   for service in copimine-admin copimine-minecraft nginx; do
-    systemctl is-active --quiet "$service" || { echo "Service is not active: $service" >&2; return 1; }
+    service_timeout=90
+    if [[ "$service" == "copimine-minecraft" ]]; then
+      # A fresh world can take several minutes to generate before systemd and
+      # the post-wipe restart settle.  Do not report a healthy release as
+      # failed merely because the second Java start is still activating.
+      service_timeout="${COPIMINE_MINECRAFT_START_TIMEOUT_SECONDS:-360}"
+    fi
+    if ! wait_for_runtime_service "$service" "$service_timeout"; then
+      echo "Service is not active after ${service_timeout}s: $service" >&2
+      systemctl --no-pager --full status "$service" || true
+      journalctl -u "$service" -n 120 --no-pager || true
+      return 1
+    fi
     echo "[verify] service active: $service"
   done
   expected_sha="$(sha1sum "$PROJECT_ROOT/resourcepacks/build/CopiMineResourcePack.zip" | awk '{print $1}')"
-  actual_sha="$(curl -fsS --max-time 30 http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip | sha1sum | awk '{print $1}')"
+  actual_sha="$(curl -kfsS --max-time 30 --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip | sha1sum | awk '{print $1}')"
   [[ "$expected_sha" == "$actual_sha" ]] || { echo "Resource pack SHA1 mismatch: local=$expected_sha served=$actual_sha" >&2; return 1; }
   echo "[verify] resource pack SHA1 OK: $actual_sha"
   expected_modpack="$(sha256sum "$PROJECT_ROOT/thirdparty/CopiMineMods.zip" | awk '{print $1}')"
-  actual_modpack="$(curl -fsS --max-time 30 http://127.0.0.1:18080/downloads/CopiMineMods.zip | sha256sum | awk '{print $1}')"
+  actual_modpack="$(curl -kfsS --max-time 30 --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip | sha256sum | awk '{print $1}')"
   [[ "$expected_modpack" == "$actual_modpack" ]] || { echo "Modpack SHA256 mismatch: local=$expected_modpack served=$actual_modpack" >&2; return 1; }
   echo "[verify] modpack SHA256 OK: $actual_modpack"
   grep -q '^require-resource-pack=true$' "$PROJECT_ROOT/minecraft/server/server.properties" || { echo 'require-resource-pack=true is missing' >&2; return 1; }
   properties_sha="$(sed -n 's/^resource-pack-sha1=//p' "$PROJECT_ROOT/minecraft/server/server.properties" | tr -d '\r\n')"
   [[ "$properties_sha" == "$expected_sha" ]] || { echo "server.properties resource-pack-sha1 mismatch: $properties_sha" >&2; return 1; }
   echo '[verify] server.properties resource-pack requirement and SHA1 OK'
-  curl -fsS --max-time 15 http://127.0.0.1:18080/api/runtime >/dev/null
-  echo '[verify] HTTP runtime endpoint OK'
+  curl -kfsS --max-time 15 --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/api/health >/dev/null
+  local runtime_status
+  runtime_status="$(curl -ksS --max-time 15 --resolve copimine.ru:443:127.0.0.1 -o /dev/null -w '%{http_code}' https://copimine.ru/api/runtime || true)"
+  case "$runtime_status" in
+    401|403) echo "[verify] HTTP runtime endpoint is protected (status $runtime_status)" ;;
+    200) echo '[verify] HTTP runtime endpoint allowed direct loopback access' ;;
+    *) echo "Unexpected /api/runtime status: $runtime_status" >&2; return 1 ;;
+  esac
 }
 
 reset_treasury() {
@@ -434,49 +912,6 @@ VALUES
 COMMIT;
 SQL
   echo "[treasury] reset from ${before} AR to 0 AR; audit transaction ${tx_id}"
-}
-
-enable_offline_voicechat() {
-  local env_file="$PROJECT_ROOT/admin-web/.env"
-  [[ -f "$env_file" ]] || return 0
-  # The server is intentionally running offline-mode. The owner explicitly
-  # accepted public voice chat, so persist the required exception before the
-  # hardening step runs.
-  python3 - "$env_file" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-updates = {
-    'COPIMINE_ALLOW_INSECURE_OFFLINE_VOICECHAT': '1',
-    'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
-        'Offline mode is enabled; public voice chat was explicitly accepted by the server owner.',
-}
-
-lines = path.read_text(encoding='utf-8-sig', errors='replace').splitlines()
-out, seen = [], set()
-for line in lines:
-    key = line.split('=', 1)[0].strip() if '=' in line else ''
-    if key in updates:
-        value = updates[key]
-        if key == 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
-            value = '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
-        out.append(f'{key}={value}')
-        seen.add(key)
-    else:
-        out.append(line)
-for key, value in updates.items():
-    if key not in seen:
-        if key == 'COPIMINE_OFFLINE_VOICECHAT_EXCEPTION_REASON':
-            value = '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
-        out.append(f'{key}={value}')
-tmp = path.with_name('.env.voicechat-tmp')
-tmp.write_text('\n'.join(out).rstrip() + '\n', encoding='utf-8')
-tmp.chmod(0o600)
-tmp.replace(path)
-PY
-  chmod 600 "$env_file"
-  echo '[preflight] Offline voice-chat exception enabled by explicit deployment request.'
 }
 
 remove_retired_frontend() {
@@ -585,7 +1020,9 @@ normalize_runtime_env_owner() {
 }
 
 preflight
-enable_offline_voicechat
+# Never silently enable the offline-mode voice-chat exception during an
+# upgrade. The existing .env value is operator state and the shared runtime
+# hardening gate fails closed when it is absent or undocumented.
 normalize_runtime_env_owner
 
 if [[ "$WIPE_DB" == "1" ]]; then

@@ -30,6 +30,11 @@ ARCHIVE_PATH="${1:-}"
 DB_DUMP_PATH="${2:-}"
 CLEAN_WORLD_STATE="${CLEAN_WORLD_STATE:-${COPIMINE_CLEAN_WORLD_STATE:-0}}"
 LOG_FILE="${LOG_FILE:-/var/log/copimine-installer.log}"
+TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
+# The payload verifier is a bootstrap trust anchor too. Never resolve it from
+# the archive or from the mutable project tree before the signed payload has
+# been accepted.
+PAYLOAD_VERIFIER="${COPIMINE_PAYLOAD_VERIFIER:-/etc/copimine/verify_payload_manifest.py}"
 TMP_ROOT=""
 EXTRACT_ROOT=""
 PAYLOAD_ROOT=""
@@ -82,7 +87,7 @@ SYSTEM_FILES=(
   "copimine-game-hardening.service:/etc/systemd/system/copimine-game-hardening.service"
 )
 
-NginxTemplateRelative="admin-web/deploy/nginx-copimine-admin-18080.conf"
+NginxTemplateRelative="admin-web/deploy/nginx-copimine-admin-https.conf"
 NginxAvailable="${NGINX_AVAILABLE:-/etc/nginx/sites-available/copimine-admin.conf}"
 NginxEnabled="${NGINX_ENABLED:-/etc/nginx/sites-enabled/copimine-admin.conf}"
 
@@ -145,6 +150,25 @@ require_file() {
 
 require_dir() {
   [[ -d "$1" ]] || fail "Directory not found: $1"
+}
+
+configured_world_base() {
+  local server_dir="$1"
+  local configured
+  [[ -f "$server_dir/server.properties" ]] || return 1
+  configured="$(awk -F= '$1=="level-name" {print substr($0,index($0,"=")+1); exit}' "$server_dir/server.properties" | tr -d '\r')"
+  [[ "$configured" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  printf '%s\n' "$configured"
+}
+
+runtime_world_paths() {
+  local server_dir="$1"
+  local base world
+  base="$(configured_world_base "$server_dir")" || fail "Invalid or missing level-name in $server_dir/server.properties"
+  while IFS= read -r world; do
+    [[ -d "$server_dir/$world" ]] && printf '%s\0' "$server_dir/$world"
+  done < <(printf '%s\n' "$base" "${base}_nether" "${base}_the_end" world world_nether world_the_end)
+  find "$server_dir" -mindepth 1 -maxdepth 1 -type d -name 'paper-world*' -print0
 }
 
 load_shared_helpers() {
@@ -210,6 +234,7 @@ preflight_system() {
   need python3
   need systemctl
   need runuser
+  need ssh-keygen
   need psql
   need pg_dump
   need pg_restore
@@ -314,6 +339,31 @@ detect_payload_root() {
   done
 }
 
+verify_release_signature() {
+  log "[5b/14] Verify signed release manifest"
+  local manifest="$PAYLOAD_ROOT/deploy/release_manifest.json"
+  local signature="$PAYLOAD_ROOT/deploy/release_manifest.sig"
+  local allowed="$TRUSTED_SIGNING_ALLOWED"
+  [[ "$allowed" == '/etc/copimine/release-signing.allowed' ]] || fail "Trusted signing allowlist path is fixed to /etc/copimine/release-signing.allowed"
+  [[ "$PAYLOAD_VERIFIER" == '/etc/copimine/verify_payload_manifest.py' ]] || fail "Payload verifier path is fixed to /etc/copimine/verify_payload_manifest.py"
+  require_file "$manifest"
+  require_file "$signature"
+  require_file "$allowed"
+  [[ -f "$allowed" ]] || fail "Trusted release signing allowlist is not a regular file: $allowed"
+  [[ "$(stat -c '%U' "$allowed" 2>/dev/null || true)" == "root" ]] \
+    || fail "Trusted release signing allowlist must be owned by root: $allowed"
+  local trusted_mode
+  trusted_mode="$(stat -c '%a' "$allowed" 2>/dev/null || true)"
+  [[ "$trusted_mode" =~ ^[0-7]{3,4}$ ]] || fail "Trusted release signing allowlist has invalid permissions: $allowed"
+  (( (8#$trusted_mode & 8#022) == 0 )) || fail "Trusted release signing allowlist is group/world writable: $allowed"
+  ssh-keygen -Y verify -f "$allowed" -I release -n copimine-release -s "$signature" < "$manifest" >/dev/null \
+    || fail "Release manifest signature verification failed."
+  require_file "$PAYLOAD_VERIFIER"
+  python3 "$PAYLOAD_VERIFIER" "$PAYLOAD_ROOT" "$manifest" \
+    || fail "Signed release payload inventory verification failed."
+  log "Release manifest signature verified."
+}
+
 snapshot_runtime_state() {
   log "[6/14] Backup current project and runtime state"
   local live_root="$PROJECT_ROOT"
@@ -322,10 +372,30 @@ snapshot_runtime_state() {
   chmod 700 "$BACKUP_ROOT" "$backup_dir"
 
   if [[ -d "$live_root" ]]; then
-    cp -a "$live_root" "$backup_dir/copimine-pre-replace"
+    local root_name="$(basename "$live_root")"
+    # Keep the rollback evidence useful without copying credentials and
+    # mutable player/world state into a cleartext project snapshot.  The
+    # protected .env/data paths are preserved separately in PRESERVE_ROOT and
+    # the database dump below; neither needs to be duplicated here.
+    tar -C "$(dirname "$live_root")" -czf "$backup_dir/copimine-pre-replace.tar.gz" \
+      --exclude="$root_name/admin-web/.env" \
+      --exclude="$root_name/admin-web/.env.*" \
+      --exclude="$root_name/admin-web/.postgres-password" \
+      --exclude="$root_name/admin-web/data" \
+      --exclude="$root_name/admin-web/backups" \
+      --exclude="$root_name/minecraft/server/logs" \
+      --exclude="$root_name/minecraft/server/world" \
+      --exclude="$root_name/minecraft/server/world_*" \
+      --exclude="$root_name/minecraft/server/CopiMine*" \
+      --exclude="$root_name/minecraft/server/paper-world*" \
+      "$root_name"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz"
+    sha256sum "$backup_dir/copimine-pre-replace.tar.gz" | awk '{print $1}' > "$backup_dir/copimine-pre-replace.tar.gz.sha256"
+    chmod 600 "$backup_dir/copimine-pre-replace.tar.gz.sha256"
   fi
 
-  if command -v pg_dump >/dev/null 2>&1; then
+  if [[ -f "$live_root/admin-web/.env" ]]; then
+    command -v pg_dump >/dev/null 2>&1 || fail "pg_dump is required to create the pre-replace database backup."
     local env_file="$live_root/admin-web/.env"
     local pg_password=""
     local pg_db="copimine"
@@ -361,7 +431,7 @@ snapshot_runtime_state() {
       rel="${world_dir#"$PROJECT_ROOT/"}"
       mkdir -p "$PRESERVE_ROOT/$(dirname "$rel")"
       cp -a "$world_dir" "$PRESERVE_ROOT/$rel"
-    done < <(find "$PROJECT_ROOT/minecraft/server" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+    done < <(runtime_world_paths "$PROJECT_ROOT/minecraft/server")
   fi
 
   if [[ -d /etc/nginx/sites-available ]]; then
@@ -414,7 +484,7 @@ restore_runtime_state() {
       mkdir -p "$target_root/$(dirname "$rel")"
       rm -rf "$target_root/$rel"
       cp -a "$preserved_world" "$target_root/$rel"
-  done < <(find "$PRESERVE_ROOT/minecraft/server" -mindepth 1 -maxdepth 1 -type d \( -name 'world' -o -name 'world_*' -o -name 'paper-world*' \) -print0)
+  done < <(runtime_world_paths "$PRESERVE_ROOT/minecraft/server")
   fi
 }
 
@@ -494,10 +564,7 @@ fix_permissions() {
   log "[11/14] Fix ownership and permissions"
   load_shared_helpers
   copimine_ensure_app_user
-  chown -R "$APP_USER:$APP_GROUP" "$PROJECT_ROOT"
-  find "$PROJECT_ROOT" -type d -exec chmod 755 {} \;
-  find "$PROJECT_ROOT" -type f -exec chmod 644 {} \;
-  find "$PROJECT_ROOT" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 755 {} \; || true
+  copimine_harden_release_ownership
   if [[ -f "$PROJECT_ROOT/admin-web/.env" ]]; then
     chmod 600 "$PROJECT_ROOT/admin-web/.env"
   fi
@@ -594,17 +661,23 @@ restart_services() {
     systemctl stop nginx.service 2>/dev/null || true
     local elapsed=0
     while (( elapsed < 30 )); do
-      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
         break
       fi
       sleep 1
       elapsed=$((elapsed + 1))
     done
-    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
-      fail 'nginx port 18080 is still occupied after stop'
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      fail 'plaintext/relay nginx port 80 or 18080 is still occupied after stop'
     fi
     systemctl enable nginx >/dev/null 2>&1 || true
     systemctl start nginx
+    if ss -H -ltn 2>/dev/null | awk '$4 ~ /:80$/ || $4 ~ /:18080$/ {found=1} END {exit found ? 0 : 1}'; then
+      fail 'release still exposes a plaintext/relay nginx listener on port 80 or 18080'
+    fi
+    if ! ss -H -ltn 2>/dev/null | awk '$4 ~ /:443$/ {found=1} END {exit found ? 0 : 1}'; then
+      fail 'HTTPS nginx listener on port 443 is missing'
+    fi
   fi
 }
 
@@ -640,13 +713,13 @@ verify_runtime() {
 
   http_check "http://127.0.0.1:8090/api/health" "" 90
   http_check "http://127.0.0.1:8090/api/runtime" "" 90
-  http_check "http://127.0.0.1:18080/downloads/CopiMineMods.zip" "copimine.ru:18080" 90
-  http_check "http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip" "copimine.ru:18080" 90
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip >/dev/null || fail "Modpack HTTPS route failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip >/dev/null || fail "Resource pack HTTPS route failed"
   local tmp_modpack tmp_resourcepack local_modpack_sha remote_modpack_sha local_resourcepack_sha remote_resourcepack_sha
   tmp_modpack="$(mktemp /tmp/copimine-fullreplace-modpack-XXXXXX.zip)"
   tmp_resourcepack="$(mktemp /tmp/copimine-fullreplace-resourcepack-XXXXXX.zip)"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/downloads/CopiMineMods.zip -o "$tmp_modpack" || fail "Modpack payload download failed"
-  curl -fsS -H 'Host: copimine.ru:18080' http://127.0.0.1:18080/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || fail "Resource pack payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/downloads/CopiMineMods.zip -o "$tmp_modpack" || fail "Modpack HTTPS payload download failed"
+  curl --noproxy '*' -kfsS --resolve copimine.ru:443:127.0.0.1 https://copimine.ru/resourcepacks/CopiMineResourcePack.zip -o "$tmp_resourcepack" || fail "Resource pack HTTPS payload download failed"
   local_modpack_sha="$(sha256_file "$PROJECT_ROOT/thirdparty/CopiMineMods.zip")"
   remote_modpack_sha="$(sha256_file "$tmp_modpack")"
   [[ "$local_modpack_sha" == "$remote_modpack_sha" ]] || fail "Served modpack SHA256 mismatch. Runtime=$local_modpack_sha download=$remote_modpack_sha"
@@ -675,6 +748,7 @@ main() {
   prepare_temp_dirs
   extract_archive
   detect_payload_root
+  verify_release_signature
   snapshot_runtime_state
   stop_services
   stage_payload

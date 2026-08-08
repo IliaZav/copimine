@@ -48,6 +48,15 @@ def _item_description(lore: list[str], fallback: str = "") -> str:
     return strip_minecraft_format(fallback).strip()
 
 
+def _item_image_url(item_id: str, base_material: str, custom_model_data: int, custom_texture_allowed: bool = True) -> str:
+    """Use custom art only for entries that explicitly have custom art."""
+    if custom_texture_allowed and custom_model_data > 0:
+        return f"/assets/item-textures/{item_id}.png"
+    if str(base_material or "").strip().upper() == "SHIELD":
+        return "/assets/mc-icons/item/empty_armor_slot_shield.png"
+    return ""
+
+
 def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str = "") -> dict[str, Any]:
     source = items_file or DEFAULT_ITEMS_FILE
     raw = _safe_yaml_load(source)
@@ -97,12 +106,15 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             continue
         lore = _string_list(entry.get("lore") or [])
         effect_description = str(entry.get("effect-description") or "").strip()
+        base_material = str(entry.get("base-material") or "PAPER").strip().upper()
+        custom_model_data = int(entry.get("custom-model-data") or 0)
+        custom_texture_allowed = bool(entry.get("custom-texture-mode-allowed", True))
         row = {
             "item_id": item_id,
             "display_name": strip_minecraft_format(str(entry.get("display-name") or item_id)),
             "description": _item_description(lore, effect_description or "Именной предмет CopiMine."),
-            "image_url": f"/assets/item-textures/{item_id}.png",
-            "base_material": str(entry.get("base-material") or "PAPER").strip().upper(),
+            "image_url": _item_image_url(item_id, base_material, custom_model_data, custom_texture_allowed),
+            "base_material": base_material,
             "price_donation": int(entry.get("price-donation") or 0),
             "enabled": bool(entry.get("enabled", True)),
             "source": str(entry.get("source") or "DONATION_SHOP").strip().upper(),
@@ -115,8 +127,8 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             "proc_chance": float(entry.get("proc-chance") or 0.0),
             "max_stack": int(entry.get("max-stack") or 1),
             "repairable": bool(entry.get("repairable", False)),
-            "custom_texture_mode_allowed": bool(entry.get("custom-texture-mode-allowed", True)),
-            "custom_model_data": int(entry.get("custom-model-data") or 0),
+            "custom_texture_mode_allowed": custom_texture_allowed,
+            "custom_model_data": custom_model_data,
             "visual_effect_id": str(entry.get("visual-effect-id") or "").strip().upper(),
             "lore": lore,
         }
@@ -191,13 +203,16 @@ def admin_gift_catalog_snapshot(items_file: Path | None = None) -> dict[str, Any
             continue
         lore = _string_list(entry.get("lore") or [])
         effect_description = str(entry.get("effect-description") or "").strip()
+        base_material = str(entry.get("base-material") or "PAPER").strip().upper()
+        custom_model_data = int(entry.get("custom-model-data") or 0)
+        custom_texture_allowed = bool(entry.get("custom-texture-mode-allowed", True))
         buckets["DONATION"].append(
             {
                 "item_id": item_id,
                 "display_name": strip_minecraft_format(str(entry.get("display-name") or item_id)),
                 "description": _item_description(lore, effect_description or "Именной предмет CopiMine."),
-                "image_url": f"/assets/item-textures/{item_id}.png",
-                "base_material": str(entry.get("base-material") or "PAPER").strip().upper(),
+                "image_url": _item_image_url(item_id, base_material, custom_model_data, custom_texture_allowed),
+                "base_material": base_material,
                 "category": "DONATION",
                 "source": str(entry.get("source") or "DONATION_SHOP").strip().upper(),
                 "enabled": bool(entry.get("enabled", True)),

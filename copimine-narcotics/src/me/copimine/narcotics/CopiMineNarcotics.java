@@ -24,6 +24,11 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Item;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.ItemDespawnEvent;
+import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -36,7 +41,6 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
@@ -83,14 +87,18 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     private final ConcurrentHashMap<UUID, Long> consumeCooldownUntil = new ConcurrentHashMap<>();
     private final Set<UUID> consumeInFlight = ConcurrentHashMap.newKeySet();
-    /** Exact instance reserved while the DB state is being committed. */
+    /** Fungible stack identity reserved while the DB state is being committed. */
     private final ConcurrentHashMap<UUID, String> consumeReservations = new ConcurrentHashMap<>();
+    /** A unique durable reservation id for each consumption operation. */
+    private final ConcurrentHashMap<UUID, String> consumeReservationIds = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, String> consumeReservationNarcotics = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, Integer> consumeReservationQuantities = new ConcurrentHashMap<>();
     private NamespacedKey pendingRefundKey;
     private NamespacedKey pendingOutputKey;
     /** Output rows currently being materialised on a Bukkit thread. */
     private final ConcurrentHashMap<UUID, Set<String>> pendingOutputClaims = new ConcurrentHashMap<>();
+    /** Marked world outputs remain protected until their durable row closes. */
+    private final Set<String> pendingWorldOutputClaims = ConcurrentHashMap.newKeySet();
     private volatile boolean resetInProgress = false;
 
     private NarcoticsConfigService configService;
@@ -110,7 +118,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         configService.reload();
         database = new NarcoticsDatabase(this, configService);
         database.start();
-        itemFactory = new NarcoticItemFactory(this, configService);
+        itemFactory = new NarcoticItemFactory(this, configService, database);
         pendingRefundKey = new NamespacedKey(this, "pending_refund_id");
         pendingOutputKey = new NamespacedKey(this, "pending_brewing_output_id");
         recipeService = new NarcoticsRecipeService(configService, itemFactory);
@@ -151,9 +159,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         consumeCooldownUntil.clear();
         consumeInFlight.clear();
         consumeReservations.clear();
+        consumeReservationIds.clear();
         consumeReservationNarcotics.clear();
         consumeReservationQuantities.clear();
         pendingOutputClaims.clear();
+        pendingWorldOutputClaims.clear();
         if (clientBridge != null) {
             clientBridge.shutdown();
         }
@@ -185,13 +195,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         Player player = event.getPlayer();
         ItemStack inHand = player.getInventory().getItemInMainHand();
         NarcoticDefinition official = itemFactory.resolveOfficial(inHand);
-        if (event.isCancelled()) {
-            if (official != null || (event.getClickedBlock() != null && cauldronService.isSupportedCauldron(event.getClickedBlock())
-                    && recipeService.canEnterCauldron(inHand))) {
-                player.sendMessage(ChatColor.RED + "Взаимодействие с котлом запрещено защитой региона.");
-            }
-            return;
-        }
         if (resetInProgress) {
             boolean brewingAttempt = event.getAction() == Action.RIGHT_CLICK_BLOCK
                     && event.getClickedBlock() != null
@@ -202,6 +205,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 player.sendMessage(ChatColor.YELLOW + "Наркотики временно недоступны: идёт сброс состояния.");
             }
             return;
+        }
+
+        if (official == null
+                && (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK)) {
+            NarcoticDefinition registeredCandidate = itemFactory.resolveRegisteredStackCandidate(inHand);
+            if (registeredCandidate != null) {
+                repairRegisteredZhuzevoUse(event, player, inHand, registeredCandidate);
+                return;
+            }
         }
 
         if (official != null) {
@@ -238,23 +250,27 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 player.sendMessage(ChatColor.YELLOW + "Предыдущая операция ещё сохраняется. Попробуйте через секунду.");
                 return;
             }
-            String reservedInstanceId = itemFactory.instanceId(inHand);
-            if (reservedInstanceId == null || reservedInstanceId.isBlank()) {
+            String reservedStackKey = itemFactory.instanceId(inHand);
+            if (reservedStackKey == null || reservedStackKey.isBlank()) {
                 consumeInFlight.remove(player.getUniqueId());
                 consumeCooldownUntil.remove(player.getUniqueId());
-                player.sendMessage(ChatColor.RED + "Narcotic instance metadata is missing; obtain a new item.");
+                player.sendMessage(ChatColor.RED + "У предмета отсутствует служебная метка экземпляра. Получите новый предмет.");
                 return;
             }
             String reservedNarcoticId = official.id();
-            int reservedQuantity = Math.max(1, itemFactory.exactQuantity(player, reservedInstanceId, reservedNarcoticId));
-            consumeReservations.put(player.getUniqueId(), reservedInstanceId);
+            int reservedQuantity = Math.max(1, itemFactory.exactQuantity(player, reservedStackKey, reservedNarcoticId));
+            consumeReservations.put(player.getUniqueId(), reservedStackKey);
             consumeReservationNarcotics.put(player.getUniqueId(), reservedNarcoticId);
             consumeReservationQuantities.put(player.getUniqueId(), reservedQuantity);
             // Persist first; remove the exact issued stack only after the DB
             // acknowledgement so a failed write never deletes the item.
-            database.reserveConsumption(player.getUniqueId(), reservedInstanceId, reservedNarcoticId, reservedQuantity)
-                    .thenCompose(ignored -> overdoseService.consume(player, official, reservedInstanceId))
-                    .whenComplete((ignored, error) -> Bukkit.getScheduler().runTask(this, () -> {
+            database.reserveConsumption(player.getUniqueId(), reservedStackKey, reservedNarcoticId, reservedQuantity)
+                    .thenCompose(reservationId -> {
+                        consumeReservationIds.put(player.getUniqueId(), reservationId);
+                        return overdoseService.consume(player, official, reservationId)
+                                .thenApply(ignored -> reservationId);
+                    })
+                    .whenComplete((reservationId, error) -> Bukkit.getScheduler().runTask(this, () -> {
                 if (error == null) {
                     Player current = Bukkit.getPlayer(player.getUniqueId());
                     if (current == null || !current.isOnline()) {
@@ -263,18 +279,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                         // physical copy that can be consumed again.
                         return;
                     }
-                    completePhysicalConsumption(current, reservedInstanceId, reservedNarcoticId, reservedQuantity);
-                    consumeReservations.remove(current.getUniqueId(), reservedInstanceId);
+                    completePhysicalConsumption(current, reservationId, reservedStackKey, reservedNarcoticId, reservedQuantity);
+                    consumeReservations.remove(current.getUniqueId(), reservedStackKey);
+                    consumeReservationIds.remove(current.getUniqueId(), reservationId);
                     consumeReservationNarcotics.remove(current.getUniqueId(), reservedNarcoticId);
                     consumeReservationQuantities.remove(current.getUniqueId(), reservedQuantity);
                     consumeInFlight.remove(current.getUniqueId());
                     return;
                 }
-                consumeReservations.remove(player.getUniqueId(), reservedInstanceId);
-                consumeReservationNarcotics.remove(player.getUniqueId(), reservedNarcoticId);
-                consumeReservationQuantities.remove(player.getUniqueId(), reservedQuantity);
-                consumeInFlight.remove(player.getUniqueId());
-                consumeCooldownUntil.remove(player.getUniqueId());
                 getLogger().log(java.util.logging.Level.WARNING, "Failed to persist narcotic consumption for " + player.getUniqueId(), error);
                 // Resolve the durable marker before allowing the item to be
                 // used again. A failed future can be an acknowledgement loss
@@ -282,8 +294,16 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 // for STATE_COMMITTED rows, while RESERVED rows are released
                 // without creating a refund or duplicate.
                 Bukkit.getScheduler().runTaskLater(this, () -> recoverDurableConsumptions(player), 2L);
-                player.sendMessage(ChatColor.RED + "Не удалось сохранить использование; предмет не списан.");
+                player.sendMessage(ChatColor.YELLOW + "Результат операции проверяется. Предмет временно заблокирован.");
             }));
+            return;
+        }
+
+        if (event.isCancelled()) {
+            if (event.getClickedBlock() != null && cauldronService.isSupportedCauldron(event.getClickedBlock())
+                    && recipeService.canEnterCauldron(inHand)) {
+                player.sendMessage(ChatColor.RED + "Взаимодействие с котлом запрещено защитой региона.");
+            }
             return;
         }
 
@@ -307,6 +327,64 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
     }
 
+    /**
+     * Recover a Zhuzevo stack issued before the narcotics signing key was
+     * rotated.  The item is not accepted from PDC shape alone: PostgreSQL
+     * must still contain the exact active fungible identity, and the physical
+     * stack must remain unchanged while that read completes.
+     */
+    private void repairRegisteredZhuzevoUse(PlayerInteractEvent event, Player player,
+                                            ItemStack stale, NarcoticDefinition definition) {
+        event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && isUnsafeConsumeTarget(event.getClickedBlock())) {
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+        }
+        event.setCancelled(true);
+        if (!overdoseService.isStateReady(player)) {
+            player.sendMessage(ChatColor.YELLOW + "Состояние наркотиков загружается. Попробуйте ещё раз через секунду.");
+            return;
+        }
+        if (!database.hasAsyncCapacity()) {
+            player.sendMessage(ChatColor.YELLOW + "Наркотики временно недоступны: база данных занята. Попробуйте через несколько секунд.");
+            return;
+        }
+        String instanceId = itemFactory.instanceId(stale);
+        database.isActiveIssuedInstance(instanceId, definition.id()).whenComplete((active, error) ->
+                Bukkit.getScheduler().runTask(this, () -> {
+                    if (error != null) {
+                        getLogger().log(java.util.logging.Level.WARNING,
+                                "Unable to verify stale Zhuzevo provenance", error);
+                        if (player.isOnline()) {
+                            player.sendMessage(ChatColor.YELLOW + "Не удалось проверить происхождение жужево. Попробуйте снова.");
+                        }
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(active)) {
+                        player.sendMessage(ChatColor.RED + "Это жужево не зарегистрировано на сервере.");
+                        return;
+                    }
+                    ItemStack current = player.getInventory().getItemInMainHand();
+                    if (!sameStackSnapshot(current, stale)) {
+                        player.sendMessage(ChatColor.YELLOW + "Предмет жужево изменился; повторите использование.");
+                        return;
+                    }
+                    ItemStack repaired = itemFactory.repairRegisteredStack(stale, definition);
+                    if (repaired == null) {
+                        player.sendMessage(ChatColor.RED + "Не удалось восстановить жужево.");
+                        return;
+                    }
+                    player.getInventory().setItemInMainHand(repaired);
+                    player.updateInventory();
+                    player.sendMessage(ChatColor.YELLOW + "Жужево обновлено. Нажмите ещё раз, чтобы использовать его.");
+                }));
+    }
+
+    private boolean sameStackSnapshot(ItemStack current, ItemStack expected) {
+        return current != null && expected != null
+                && current.getAmount() == expected.getAmount()
+                && current.isSimilar(expected);
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
@@ -323,6 +401,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent event) {
+        for (org.bukkit.entity.Entity entity : event.getChunk().getEntities()) {
+            if (entity instanceof Item item) {
+                String outputId = pendingOutputId(item.getItemStack());
+                if (outputId != null) {
+                    pendingWorldOutputClaims.add(outputId);
+                }
+            }
+        }
         if (cauldronService.cachedStateCount() <= 0) {
             return;
         }
@@ -331,6 +417,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInventoryClick(InventoryClickEvent event) {
+        if (event.getWhoClicked() instanceof Player player
+                && isAnvilFinishedItemInteraction(event, player)) {
+            event.setCancelled(true);
+            player.updateInventory();
+            return;
+        }
         if (event.getWhoClicked() instanceof Player player && isPendingOutputClick(player, event)) {
             event.setCancelled(true);
             player.sendMessage(ChatColor.YELLOW + "Готовый продукт ещё сохраняется; повторите действие через секунду.");
@@ -342,12 +434,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             player.sendMessage(ChatColor.YELLOW + "Предмет занят сохранением использования; повторите действие через секунду.");
             player.updateInventory();
             return;
-        }
-        if (shouldBlockInventoryClick(event)) {
-            event.setCancelled(true);
-            if (event.getWhoClicked() instanceof Player player) {
-                sendBlocked(player);
-            }
         }
     }
 
@@ -365,44 +451,14 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             player.updateInventory();
             return;
         }
-        if (!itemFactory.isOfficialFinishedItem(event.getOldCursor())) {
-            return;
-        }
         Inventory top = event.getView().getTopInventory();
-        if (isBlockedDestination(top) && event.getRawSlots().stream().anyMatch(slot -> slot >= 0 && slot < top.getSize())) {
+        if (top.getType() == InventoryType.ANVIL
+                && (itemFactory.isOfficialFinishedItem(event.getOldCursor())
+                || containsOfficialFinishedItem(top))) {
             event.setCancelled(true);
             if (event.getWhoClicked() instanceof Player player) {
-                sendBlocked(player);
+                player.updateInventory();
             }
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onCreativeOfficialCopy(InventoryCreativeEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) {
-            return;
-        }
-        ItemStack clicked = event.getClickedInventory() == null || event.getSlot() < 0
-                || event.getSlot() >= event.getClickedInventory().getSize()
-                ? null : event.getClickedInventory().getItem(event.getSlot());
-        ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
-                ? player.getInventory().getItem(event.getHotbarButton()) : null;
-        ItemStack offhand = player.getInventory().getItemInOffHand();
-        if (isPendingOutputItem(player, event.getCursor()) || isPendingOutputItem(player, event.getCurrentItem())
-                || isPendingOutputItem(player, clicked) || isPendingOutputItem(player, hotbar)
-                || isPendingOutputItem(player, offhand)) {
-            event.setCancelled(true);
-            player.updateInventory();
-            return;
-        }
-        // Creative clone/set-slot packets may report an empty current slot;
-        // inspect the clicked, hotbar and offhand stacks as well so an
-        // official narcotic can never be copied into a second instance.
-        if (itemFactory.isOfficialCandidate(event.getCursor()) || itemFactory.isOfficialCandidate(event.getCurrentItem())
-                || itemFactory.isOfficialCandidate(clicked) || itemFactory.isOfficialCandidate(hotbar)
-                || itemFactory.isOfficialCandidate(offhand)) {
-            event.setCancelled(true);
-            player.updateInventory();
         }
     }
 
@@ -419,9 +475,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             event.setCancelled(true);
             return;
         }
-        if (isBlockedDestination(event.getDestination()) || isBlockedDestination(event.getSource())) {
-            event.setCancelled(true);
-        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -435,37 +488,75 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             event.setCancelled(true);
             return;
         }
-        if (itemFactory.isOfficialFinishedItem(stack) && isBlockedDestination(event.getInventory())) {
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputPickup(EntityPickupItemEvent event) {
+        String outputId = pendingOutputId(event.getItem().getItemStack());
+        if (outputId == null) {
+            return;
+        }
+        if (!(event.getEntity() instanceof Player player)) {
+            event.setCancelled(true);
+            return;
+        }
+        // Brewing outputs are public world items.  Any player may pick up the
+        // item; the marker only protects the durable row until this pickup is
+        // acknowledged by the database.
+        pendingWorldOutputClaims.remove(outputId);
+        pendingOutputClaims.computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet())
+                .add(outputId);
+        // The world item is now owned by this player's inventory. Complete the
+        // same durable row used by the cauldron path; the update is idempotent
+        // if the completion callback raced the pickup event.
+        completePendingOutputClaim(player, outputId);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Item item && pendingOutputId(item.getItemStack()) != null) {
+            pendingWorldOutputClaims.add(pendingOutputId(item.getItemStack()));
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputDespawn(ItemDespawnEvent event) {
+        String outputId = pendingOutputId(event.getEntity().getItemStack());
+        if (outputId != null) {
+            pendingWorldOutputClaims.add(outputId);
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPendingOutputMerge(ItemMergeEvent event) {
+        String sourceId = pendingOutputId(event.getEntity().getItemStack());
+        String targetId = pendingOutputId(event.getTarget().getItemStack());
+        if (sourceId != null || targetId != null) {
+            if (sourceId != null) {
+                pendingWorldOutputClaims.add(sourceId);
+            }
+            if (targetId != null) {
+                pendingWorldOutputClaims.add(targetId);
+            }
             event.setCancelled(true);
         }
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onPrepareCraft(PrepareItemCraftEvent event) {
-        for (ItemStack stack : event.getInventory().getMatrix()) {
-            if (itemFactory.isOfficialFinishedItem(stack)) {
-                event.getInventory().setResult(null);
-                return;
-            }
-        }
+        // Finished narcotics use vanilla crafting rules.
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onDispense(BlockDispenseEvent event) {
-        if (itemFactory.isOfficialFinishedItem(event.getItem())) {
-            event.setCancelled(true);
-        }
+        // Finished narcotics use vanilla dispenser/dropper rules.
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        if (isPendingOutputItem(event.getPlayer(), event.getItemInHand())) {
-            event.setCancelled(true);
-            return;
-        }
-        if (itemFactory.isOfficialFinishedItem(event.getItemInHand())) {
-            event.setCancelled(true);
-        }
+        // Finished narcotics use vanilla placement rules.
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -492,19 +583,11 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     public void onJoin(PlayerJoinEvent event) {
         overdoseService.preloadState(event.getPlayer().getUniqueId());
         processPendingRefunds(event.getPlayer());
-        processPendingBrewingOutputs(event.getPlayer());
-        // A row left DELIVERING by a crashed process is released by the
-        // database after the short lease expires.  Retry once after that
-        // lease even if the player never reconnects again.
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (event.getPlayer().isOnline()) {
-                processPendingBrewingOutputs(event.getPlayer());
-            }
-        }, 80L * 20L);
+        reconcilePendingBrewingOutputMarkers(event.getPlayer());
         visualRuntime.clearTracking(event.getPlayer());
-        String reservedInstanceId = consumeReservations.get(event.getPlayer().getUniqueId());
-        if (reservedInstanceId != null) {
-            Bukkit.getScheduler().runTaskLater(this, () -> finalizeOfflineConsume(event.getPlayer(), reservedInstanceId), 1L);
+        String reservedStackKey = consumeReservations.get(event.getPlayer().getUniqueId());
+        if (reservedStackKey != null) {
+            Bukkit.getScheduler().runTaskLater(this, () -> finalizeOfflineConsume(event.getPlayer(), reservedStackKey), 1L);
         }
         Bukkit.getScheduler().runTaskLater(this, () -> recoverDurableConsumptions(event.getPlayer()), 2L);
     }
@@ -560,16 +643,21 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 && isPendingOutputItem(player, player.getInventory().getItemInOffHand());
     }
 
-    private void completePhysicalConsumption(Player player, String instanceId, String narcoticId, int quantityBefore) {
-        if (player == null || instanceId == null || instanceId.isBlank()) {
+    private void completePhysicalConsumption(Player player, String reservationId, String stackKey,
+                                             String narcoticId, int quantityBefore) {
+        if (player == null || reservationId == null || reservationId.isBlank()
+                || stackKey == null || stackKey.isBlank()) {
             return;
         }
-        int currentQuantity = itemFactory.exactQuantity(player, instanceId, narcoticId);
+        int currentQuantity = itemFactory.exactQuantity(player, stackKey, narcoticId);
+        // quantityBefore makes the physical side idempotent across a crash:
+        // if the stack is already one unit smaller, the Bukkit removal was
+        // completed and only the durable reservation cleanup remains.
         boolean removed = currentQuantity >= Math.max(1, quantityBefore)
-                && itemFactory.consumeOneExact(player, instanceId, narcoticId);
-        database.completeConsumptionReservation(instanceId).exceptionally(error -> {
+                && itemFactory.consumeOneExact(player, stackKey, narcoticId);
+        database.completeConsumptionReservation(reservationId).exceptionally(error -> {
             getLogger().log(java.util.logging.Level.WARNING,
-                    "Unable to finalize narcotic reservation " + instanceId, error);
+                    "Unable to finalize narcotic reservation " + reservationId, error);
             return null;
         });
         if (removed) {
@@ -582,20 +670,24 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
     }
 
-    private void finalizeOfflineConsume(Player player, String reservedInstanceId) {
-        if (player == null || !player.isOnline() || reservedInstanceId == null || reservedInstanceId.isBlank()) {
+    private void finalizeOfflineConsume(Player player, String reservedStackKey) {
+        if (player == null || !player.isOnline() || reservedStackKey == null || reservedStackKey.isBlank()) {
             return;
         }
         String current = consumeReservations.get(player.getUniqueId());
-        if (!reservedInstanceId.equals(current)) {
+        if (!reservedStackKey.equals(current)) {
             return;
         }
         // The durable DB state was committed before reconnect.  Remove the
         // exact instance if it is still present; never enqueue a second refund.
         String narcoticId = consumeReservationNarcotics.get(player.getUniqueId());
         int quantityBefore = Math.max(1, consumeReservationQuantities.getOrDefault(player.getUniqueId(), 1));
-        completePhysicalConsumption(player, reservedInstanceId, narcoticId, quantityBefore);
-        consumeReservations.remove(player.getUniqueId(), reservedInstanceId);
+        String reservationId = consumeReservationIds.get(player.getUniqueId());
+        completePhysicalConsumption(player, reservationId, reservedStackKey, narcoticId, quantityBefore);
+        consumeReservations.remove(player.getUniqueId(), reservedStackKey);
+        if (reservationId != null) {
+            consumeReservationIds.remove(player.getUniqueId(), reservationId);
+        }
         if (narcoticId != null) {
             consumeReservationNarcotics.remove(player.getUniqueId(), narcoticId);
         }
@@ -618,20 +710,23 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                         return;
                     }
                     for (NarcoticsDatabase.ConsumptionReservation row : rows) {
-                        if (row == null || row.instanceId() == null || row.instanceId().isBlank()) {
+                        if (row == null || row.reservationId() == null || row.reservationId().isBlank()
+                                || row.instanceId() == null || row.instanceId().isBlank()) {
                             continue;
                         }
                         if (!"STATE_COMMITTED".equalsIgnoreCase(row.status())) {
                             // A RESERVED row has no committed player state:
                             // release it and leave the physical item alone.
-                            database.releaseConsumptionReservation(row.instanceId());
+                            database.releaseConsumptionReservation(row.reservationId());
                             continue;
                         }
                         consumeReservations.put(player.getUniqueId(), row.instanceId());
+                        consumeReservationIds.put(player.getUniqueId(), row.reservationId());
                         consumeReservationNarcotics.put(player.getUniqueId(), row.narcoticId());
                         consumeReservationQuantities.put(player.getUniqueId(), row.quantityBefore());
-                        completePhysicalConsumption(player, row.instanceId(), row.narcoticId(), row.quantityBefore());
+                        completePhysicalConsumption(player, row.reservationId(), row.instanceId(), row.narcoticId(), row.quantityBefore());
                         consumeReservations.remove(player.getUniqueId(), row.instanceId());
+                        consumeReservationIds.remove(player.getUniqueId(), row.reservationId());
                         consumeReservationNarcotics.remove(player.getUniqueId(), row.narcoticId());
                         consumeReservationQuantities.remove(player.getUniqueId());
                         consumeInFlight.remove(player.getUniqueId());
@@ -710,100 +805,42 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
     }
 
-    /** Trigger delivery of a newly completed brew for an online owner. */
-    public void requestPendingBrewingOutputDelivery(UUID playerUuid) {
-        if (playerUuid == null) {
-            return;
+    /** Materialise a public output beside the cauldron. */
+    public Item dropCompletedBrewingOutput(Location location, NarcoticDefinition definition, String outputId) {
+        if (location == null || location.getWorld() == null || definition == null
+                || outputId == null || outputId.isBlank() || itemFactory == null) {
+            return null;
         }
-        Player player = Bukkit.getPlayer(playerUuid);
-        if (player != null && player.isOnline()) {
-            processPendingBrewingOutputs(player);
+        ItemStack output = itemFactory.createOfficialItem(definition, 1);
+        if (output == null || output.getType().isAir()) {
+            return null;
         }
+        markPendingOutput(output, outputId);
+        pendingWorldOutputClaims.add(outputId);
+        Item dropped = location.getWorld().dropItemNaturally(location, output);
+        // Keep the result visible beside the cauldron for a short moment. A
+        // player standing on the cauldron otherwise picks it up immediately
+        // and sees only the completion effect.
+        dropped.setPickupDelay(10);
+        return dropped;
     }
 
-    private void processPendingBrewingOutputs(Player player) {
-        if (player == null || !player.isOnline() || database == null) {
+    /** Remove the crash-recovery marker only after the durable row is closed. */
+    public void clearPendingBrewingOutputMarker(Item item, String outputId) {
+        if (item == null || item.isDead() || outputId == null || outputId.isBlank()) {
+            if (outputId != null && !outputId.isBlank()) {
+                pendingWorldOutputClaims.remove(outputId);
+            }
             return;
         }
-        // First reconcile rows that were already DELIVERING when the previous
-        // server process stopped.  A marker in the player's inventory proves
-        // the physical addItem call succeeded, so completing that row is
-        // idempotent and cannot create a duplicate.
-        database.loadDeliveringBrewingOutputs(player.getUniqueId(), 16).whenComplete((inFlight, recoveryError) ->
-                Bukkit.getScheduler().runTask(this, () -> {
-                    if (recoveryError != null) {
-                        getLogger().log(java.util.logging.Level.WARNING,
-                                "Failed to recover in-flight narcotic outputs", recoveryError);
-                    } else if (inFlight != null) {
-                        for (NarcoticsDatabase.PendingBrewingOutput row : inFlight) {
-                            if (row != null && hasPendingOutputMarker(player, row.id())) {
-                                pendingOutputClaims
-                                        .computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet())
-                                        .add(row.id());
-                                completePendingOutputClaim(player, row.id());
-                            }
-                        }
-                    }
-                    reservePendingBrewingOutputs(player);
-                }));
-    }
-
-    private void reservePendingBrewingOutputs(Player player) {
-        database.reservePendingBrewingOutputs(player.getUniqueId(), 16).whenComplete((rows, error) ->
-                Bukkit.getScheduler().runTask(this, () -> {
-                    if (error != null) {
-                        getLogger().log(java.util.logging.Level.WARNING,
-                                "Failed to load completed narcotic outputs", error);
-                        return;
-                    }
-                    if (rows == null || rows.isEmpty() || !player.isOnline()) {
-                        return;
-                    }
-                    boolean inventoryChanged = false;
-                    for (NarcoticsDatabase.PendingBrewingOutput row : rows) {
-                        if (row == null || row.id() == null || row.id().isBlank()) {
-                            continue;
-                        }
-                        NarcoticDefinition definition = row.narcoticId() == null
-                                ? null
-                                : configService.items().get(row.narcoticId().toLowerCase(Locale.ROOT));
-                        if (definition == null || row.amount() <= 0 || row.amount() > 64) {
-                            // A removed recipe must not turn an arbitrary row
-                            // into a different item.  It is safe to close the
-                            // malformed output because no physical item was
-                            // ever issued from it.
-                            database.completePendingBrewingOutput(row.id());
-                            getLogger().warning("Discarded invalid pending brew output " + row.id());
-                            continue;
-                        }
-                        Set<String> claims = pendingOutputClaims
-                                .computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet());
-                        claims.add(row.id());
-                        if (hasPendingOutputMarker(player, row.id())) {
-                            completePendingOutputClaim(player, row.id());
-                            continue;
-                        }
-                        ItemStack output = itemFactory.createOfficialItem(definition, row.amount());
-                        markPendingOutput(output, row.id());
-                        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(output);
-                        if (!leftovers.isEmpty()) {
-                            // addItem can partially insert before reporting a
-                            // leftover.  Remove only the marked stack, then
-                            // release the row so the owner can retry without a
-                            // duplicate.
-                            removePendingOutputMarkers(player, row.id());
-                            database.releasePendingBrewingOutput(row.id()).whenComplete((ignored, releaseError) ->
-                                    Bukkit.getScheduler().runTask(this, () -> clearPendingOutputClaim(player, row.id())));
-                            player.sendMessage(ChatColor.YELLOW + "Освободите место для готового продукта в инвентаре.");
-                        } else {
-                            completePendingOutputClaim(player, row.id());
-                            inventoryChanged = true;
-                        }
-                    }
-                    if (inventoryChanged) {
-                        player.updateInventory();
-                    }
-                }));
+        pendingWorldOutputClaims.remove(outputId);
+        ItemStack stack = item.getItemStack();
+        var meta = stack == null ? null : stack.getItemMeta();
+        if (meta != null && pendingOutputKey != null && hasPendingOutputMarker(stack, outputId)) {
+            meta.getPersistentDataContainer().remove(pendingOutputKey);
+            stack.setItemMeta(meta);
+            item.setItemStack(stack);
+        }
     }
 
     private void markPendingRefund(ItemStack stack, String refundId) {
@@ -862,19 +899,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         stack.setItemMeta(meta);
     }
 
-    private boolean hasPendingOutputMarker(Player player, String outputId) {
-        if (player == null || outputId == null || outputId.isBlank() || pendingOutputKey == null) {
-            return false;
-        }
-        for (ItemStack stack : player.getInventory().getContents()) {
-            if (hasPendingOutputMarker(stack, outputId)) {
-                return true;
-            }
-        }
-        return hasPendingOutputMarker(player.getItemOnCursor(), outputId)
-                || hasPendingOutputMarker(player.getInventory().getItemInOffHand(), outputId);
-    }
-
     private boolean hasPendingOutputMarker(ItemStack stack, String outputId) {
         if (stack == null || stack.getType() == Material.AIR || stack.getItemMeta() == null
                 || pendingOutputKey == null) {
@@ -883,6 +907,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         String marker = stack.getItemMeta().getPersistentDataContainer()
                 .get(pendingOutputKey, PersistentDataType.STRING);
         return outputId.equals(marker);
+    }
+
+    private String pendingOutputId(ItemStack stack) {
+        if (stack == null || pendingOutputKey == null || stack.getItemMeta() == null) {
+            return null;
+        }
+        String outputId = stack.getItemMeta().getPersistentDataContainer()
+                .get(pendingOutputKey, PersistentDataType.STRING);
+        return outputId == null || outputId.isBlank() ? null : outputId;
     }
 
     private boolean isPendingOutputItem(Player player, ItemStack stack) {
@@ -899,29 +932,67 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     }
 
     private boolean isPendingOutputItem(ItemStack stack) {
-        if (stack == null || pendingOutputKey == null || stack.getItemMeta() == null) {
-            return false;
-        }
-        String marker = stack.getItemMeta().getPersistentDataContainer()
-                .get(pendingOutputKey, PersistentDataType.STRING);
-        if (marker == null || marker.isBlank()) {
-            return false;
-        }
-        return pendingOutputClaims.values().stream().anyMatch(claims -> claims.contains(marker));
+        String marker = pendingOutputId(stack);
+        return marker != null && (pendingWorldOutputClaims.contains(marker)
+                || pendingOutputClaims.values().stream().anyMatch(claims -> claims.contains(marker)));
     }
 
-    private void removePendingOutputMarkers(Player player, String outputId) {
+    private void clearPendingOutputMarkers(Player player, String outputId) {
         if (player == null || outputId == null || outputId.isBlank()) {
             return;
         }
         for (int slot = 0; slot < player.getInventory().getSize(); slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
-            if (hasPendingOutputMarker(stack, outputId)) {
-                player.getInventory().setItem(slot, new ItemStack(Material.AIR));
+            if (!hasPendingOutputMarker(stack, outputId) || stack.getItemMeta() == null) {
+                continue;
+            }
+            var meta = stack.getItemMeta();
+            meta.getPersistentDataContainer().remove(pendingOutputKey);
+            stack.setItemMeta(meta);
+            player.getInventory().setItem(slot, stack);
+        }
+        ItemStack cursor = player.getItemOnCursor();
+        if (hasPendingOutputMarker(cursor, outputId) && cursor.getItemMeta() != null) {
+            var meta = cursor.getItemMeta();
+            meta.getPersistentDataContainer().remove(pendingOutputKey);
+            cursor.setItemMeta(meta);
+            player.setItemOnCursor(cursor);
+        }
+    }
+
+    /**
+     * A server restart may happen after the public item entered an inventory
+     * but before its durable WORLD_DROPPED row was closed. Reconcile only the
+     * marker already present in that inventory; never create or add an output
+     * here.
+     */
+    private void reconcilePendingBrewingOutputMarkers(Player player) {
+        if (player == null || database == null) {
+            return;
+        }
+        Set<String> outputIds = new HashSet<>();
+        for (ItemStack stack : player.getInventory().getContents()) {
+            String outputId = pendingOutputId(stack);
+            if (outputId != null) {
+                outputIds.add(outputId);
             }
         }
-        if (hasPendingOutputMarker(player.getItemOnCursor(), outputId)) {
-            player.setItemOnCursor(new ItemStack(Material.AIR));
+        String cursorOutputId = pendingOutputId(player.getItemOnCursor());
+        if (cursorOutputId != null) {
+            outputIds.add(cursorOutputId);
+        }
+        String offhandOutputId = pendingOutputId(player.getInventory().getItemInOffHand());
+        if (offhandOutputId != null) {
+            outputIds.add(offhandOutputId);
+        }
+        if (outputIds.isEmpty()) {
+            return;
+        }
+        Set<String> claims = pendingOutputClaims
+                .computeIfAbsent(player.getUniqueId(), ignored -> ConcurrentHashMap.newKeySet());
+        for (String outputId : outputIds) {
+            claims.add(outputId);
+            completePendingOutputClaim(player, outputId);
         }
     }
 
@@ -931,6 +1002,10 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                     if (error != null) {
                         getLogger().log(java.util.logging.Level.WARNING,
                                 "Unable to finalize completed narcotic output " + outputId, error);
+                        if (player != null && player.isOnline()) {
+                            Bukkit.getScheduler().runTaskLater(this,
+                                    () -> completePendingOutputClaim(player, outputId), 20L);
+                        }
                         return;
                     }
                     clearPendingOutputClaim(player, outputId);
@@ -945,6 +1020,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (claims == null) {
             return;
         }
+        clearPendingOutputMarkers(player, outputId);
         claims.remove(outputId);
         if (claims.isEmpty()) {
             pendingOutputClaims.remove(player.getUniqueId(), claims);
@@ -953,7 +1029,10 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
-        event.getDrops().removeIf(stack -> isPendingOutputItem(event.getEntity(), stack));
+        // If the database acknowledgement is still in flight, keep the
+        // marked output in the normal death drops instead of deleting it.
+        // The marker continues to protect the durable row and any player may
+        // pick the item up from the world.
         overdoseService.clearActiveEffects(event.getEntity(), true);
         visualRuntime.clear(event.getEntity());
     }
@@ -1157,15 +1236,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         }
         String rawId = args[2].toLowerCase(Locale.ROOT);
         if ("all".equals(rawId)) {
-            int dropped = 0;
+            int queued = 0;
             for (NarcoticDefinition definition : configService.items().values()) {
-                dropped += deliverOfficialItem(target, definition);
+                queued += deliverOfficialItem(target, definition);
             }
             sender.sendMessage(message("all_given", target.getName()));
-            if (dropped > 0) {
-                sender.sendMessage(ChatColor.YELLOW + "Часть предметов была выброшена рядом с игроком: " + dropped);
+            if (queued > 0) {
+                sender.sendMessage(ChatColor.YELLOW + "Часть предметов поставлена в безопасную очередь выдачи: " + queued);
             }
-            database.auditAsync(sender.getName(), "give_all", "target=" + target.getName() + ",dropped=" + dropped);
+            database.auditAsync(sender.getName(), "give_all", "target=" + target.getName() + ",queued=" + queued);
             return true;
         }
         NarcoticDefinition definition = configService.items().get(rawId);
@@ -1173,12 +1252,12 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             sender.sendMessage(message("unknown_item"));
             return true;
         }
-        int dropped = deliverOfficialItem(target, definition);
+        int queued = deliverOfficialItem(target, definition);
         sender.sendMessage(message("item_given", definition.plainDisplayName(), target.getName()));
-        if (dropped > 0) {
-            sender.sendMessage(ChatColor.YELLOW + "Предмет не влез в инвентарь и был выброшен рядом с игроком.");
+        if (queued > 0) {
+            sender.sendMessage(ChatColor.YELLOW + "Предмет не влез в инвентарь и поставлен в безопасную очередь выдачи.");
         }
-        database.auditAsync(sender.getName(), "give", "target=" + target.getName() + ",item=" + definition.id() + ",dropped=" + dropped);
+        database.auditAsync(sender.getName(), "give", "target=" + target.getName() + ",item=" + definition.id() + ",queued=" + queued);
         return true;
     }
 
@@ -1931,11 +2010,45 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (leftovers.isEmpty()) {
             return 0;
         }
-        for (ItemStack leftover : leftovers.values()) {
-            target.getWorld().dropItemNaturally(target.getLocation(), leftover);
-        }
+        int dropped=leftovers.values().stream().mapToInt(ItemStack::getAmount).sum();
+        // Never call dropItemNaturally for an administrator delivery: a world
+        // drop can be stolen or disappear.  Queue the exact item in the
+        // durable mailbox instead and report the retained quantity.
+        database.queuePendingBrewingOutput(target.getUniqueId(), definition.id(), 1)
+                .exceptionally(error -> {
+                    getLogger().log(java.util.logging.Level.SEVERE,
+                            "Unable to queue narcotic admin delivery for " + target.getUniqueId()
+                                    + " dropped=" + dropped, error);
+                    return null;
+                });
         target.updateInventory();
-        return leftovers.size();
+        return 1;
+    }
+
+    private boolean isAnvilFinishedItemInteraction(InventoryClickEvent event, Player player) {
+        if (event == null || player == null || event.getView() == null
+                || event.getView().getTopInventory().getType() != InventoryType.ANVIL) {
+            return false;
+        }
+        ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+                ? player.getInventory().getItem(event.getHotbarButton()) : null;
+        return itemFactory.isOfficialFinishedItem(event.getCursor())
+                || itemFactory.isOfficialFinishedItem(event.getCurrentItem())
+                || itemFactory.isOfficialFinishedItem(hotbar)
+                || itemFactory.isOfficialFinishedItem(player.getInventory().getItemInOffHand())
+                || containsOfficialFinishedItem(event.getView().getTopInventory());
+    }
+
+    private boolean containsOfficialFinishedItem(Inventory inventory) {
+        if (inventory == null) {
+            return false;
+        }
+        for (ItemStack stack : inventory.getContents()) {
+            if (itemFactory.isOfficialFinishedItem(stack)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Integer parseBoundedInt(CommandSender sender, String raw, String label, int min, int max, boolean allowZero) {

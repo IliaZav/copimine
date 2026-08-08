@@ -11,15 +11,14 @@ function Require-Regex([string]$pattern, [string]$message) {
   if ($source -notmatch $pattern) { throw $message }
 }
 
-# A durability break is still physical destruction of a premium item. It must
-# enter the same durable loss journal as void/cactus/explosion loss.
+# A durability break is an intentional terminal state, not a reclaimable loss.
 $breakHandler = [regex]::Match($source, '(?s)public void onPlayerItemBreak\(PlayerItemBreakEvent var1\).*?(?=\n\s*@EventHandler|\n\s*private |\z)')
 if (-not $breakHandler.Success) { throw 'PlayerItemBreakEvent handler was not found.' }
-if ($breakHandler.Value -notmatch 'recordDonationLossOnce') {
-  throw 'A durability break must be written to the loss journal before the item disappears.'
+if ($breakHandler.Value -notmatch 'markDonationInstanceBroken') {
+  throw 'A durability break must transition the durable item row to BROKEN.'
 }
-if ($breakHandler.Value -match '"BROKEN"') {
-  throw 'A destroyed donation item must remain reclaimable instead of becoming terminal BROKEN.'
+if ($breakHandler.Value -match 'recordDonationLossOnce') {
+  throw 'A durability break must not enter the reclaimable loss journal.'
 }
 
 # Paper can remove an item entity because it merged into another entity; the
@@ -36,8 +35,13 @@ Require 'public void onOfficialBlockCook(BlockCookEvent event)' 'Official items 
 Require 'public void onOfficialBrew(BrewEvent event)' 'Official items must not be consumed by brewing.'
 Require 'case CRAFTING, WORKBENCH, CRAFTER, FURNACE, BLAST_FURNACE, SMOKER, BREWING, SMITHING, ANVIL, GRINDSTONE, STONECUTTER, HOPPER, DROPPER, DISPENSER, LOOM, CARTOGRAPHY, ENCHANTING, MERCHANT, BEACON, COMPOSTER' 'Consumptive inventories must be protected.'
 
-# Hopper/container processing must never consume an official item silently.
-Require 'var1.getSource()' 'Inventory move protection must inspect the source inventory as well as the destination.'
-Require 'isBlockedArtifactProcessingInventory(var1.getSource())' 'Official items must be blocked from being pulled out of processing inventories.'
+# Shop items are now ordinary items.  The old loss/reclaim handlers remain only
+# as migration-readable code, but every live path is disabled by this boundary.
+Require-Regex '(?s)private boolean customShopItemsAreVanilla\(\).*?return true;' 'The ordinary shop-item lifecycle boundary must be enabled.'
+$moveHandler = [regex]::Match($source, '(?s)public void onInventoryMoveItem\(InventoryMoveItemEvent var1\).*?(?=\n\s*\/\*|\n\s*@EventHandler|\z)')
+if (-not $moveHandler.Success -or $moveHandler.Value -notmatch 'Shop items intentionally follow vanilla hopper/container movement') {
+  throw 'Hopper movement must follow vanilla behavior for ordinary shop items.'
+}
+if ($moveHandler.Value -match 'setCancelled\(') { throw 'Ordinary shop-item hopper movement must not be cancelled.' }
 
 Write-Output 'Donation reclaim all-destruction-sources contract: PASS'

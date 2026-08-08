@@ -27,8 +27,8 @@ Require-Regex 'private void disableRpVotingBlockAsync\(Player player, String blo
 Require-Regex 'INSERT INTO election_voting_blocks[\s\S]*?ON CONFLICT\(election_id,world,x,y,z\) DO UPDATE SET active=1' 'Recreating a station at the same coordinates must reactivate its persisted voting block.'
 Require-Regex 'UPDATE protected_blocks SET active=0[\s\S]*?reloadProtectedBlocks\(\);[\s\S]*?if \(removePhysicalBlock\)' 'The protection cache must be refreshed before removing the old station block.'
 Require-Contains 'reactivateRpVotingBlockAfterPlacementAsync' 'Replacing a physically removed station must reactivate it from the normal block-place path.'
-Require-Regex 'public void onBlockPlace\(BlockPlaceEvent event\)[\s\S]*?reactivateRpVotingBlockAfterPlacementAsync\(event\.getPlayer\(\), ref\)' 'Block placement must trigger station reactivation after the event is accepted.'
-Require-NotRegex 'private void routePollingStationInteractAsync\(Player player, String stationId\)[\s\S]*?if \(hasElectionAdmin\(player\)\)[\s\S]*?openRpBlocksMenu\(player, 0\);' 'Administrators must be sent to the same vote menu as every other active player, not diverted to block management.'
+Require-Regex 'public void onBlockPlace\(BlockPlaceEvent event\)[\s\S]*?UUID playerUuid = event\.getPlayer\(\)\.getUniqueId\(\)[\s\S]*?reactivateRpVotingBlockAfterPlacementAsync\(player, ref\)' 'Block placement must trigger station reactivation after the event is accepted.'
+Require-Regex 'private void routePollingStationInteractAsync\(Player player, String stationId\)[\s\S]*?boolean votingOpen = rpStation && isDirectVotingOpen\(station\)[\s\S]*?hasElectionAdmin\(player\) && \(player\.isSneaking\(\) \|\| !votingOpen\)[\s\S]*?openRpBlocksMenu\(player, 0\);' 'Administrators need station management when voting is closed, while an open station keeps the normal ballot flow.'
 
 if ($errors.Count -gt 0) {
   throw ("Election RP station replacement validation failed:`n - " + ($errors -join "`n - "))

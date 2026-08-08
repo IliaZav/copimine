@@ -88,7 +88,8 @@ def test_election_official_items_cannot_move_to_any_external_storage_or_be_clone
 def test_election_station_replacement_clears_stale_cancelled_flag():
     section = ELECTION[ELECTION.index("public void onBlockPlace"):ELECTION.index("public void onProtectedBreak")]
     assert "isPollingStationProtection(cached)" in section
-    assert "event.setCancelled(false)" in section
+    assert "event.isCancelled()" in section
+    assert "event.setCancelled(false)" not in section
     assert "reactivateRpVotingBlockAfterPlacementAsync" in section
 
 
@@ -114,6 +115,12 @@ def test_adminplus_delegates_election_item_authority_to_electioncore():
         if end < 0:
             end = min(len(admin), start + 2500)
         body = admin[start:end]
+        if method == "onProtectedItemMove":
+            # The owning ElectionCore listener is the single authority for
+            # hopper/container movement; AdminPlus deliberately stays a
+            # vanilla no-op here so AR and catalog items are not restricted.
+            assert "public void onMoveOfficial(InventoryMoveItemEvent event)" in ELECTION
+            continue
         assert "electionCoreOwns" in body or method == "onOfficialItemRespawn", method
     entity = admin[admin.index("public void onProtectedEntityDisplay"):admin.index("public void onProtectedArmorStand")]
     assert "e.getHand() != EquipmentSlot.HAND" in entity
@@ -139,8 +146,9 @@ def test_election_financial_history_is_optional_and_uses_one_time_unit():
 
 
 def test_artifact_reclaim_covers_loss_sources_and_durable_journal():
-    for source in ("void", "cactus", "creative-delete", "break", "merge"):
+    for source in ("void", "cactus", "break", "merge"):
         assert source in ARTIFACTS
+    assert "creative-delete" not in ARTIFACTS
     assert '"entity-" + cause.name().toLowerCase(Locale.ROOT)' in ARTIFACTS
     assert "ENTITY_EXPLOSION" in ARTIFACTS and "BLOCK_EXPLOSION" in ARTIFACTS
     assert "FileChannel" in ARTIFACTS
@@ -186,10 +194,11 @@ def test_artifact_compass_is_explicit_teleport_item_with_fifteen_second_cooldown
 
 def test_artifact_permissions_and_world_mutations_are_closed():
     admin_block = ARTIFACTS[ARTIFACTS.index("private boolean isArtifactsAdmin"):ARTIFACTS.index("private boolean isRestrictedJuniorArtifactsAdmin")]
-    # The existing CIK/admin roles are trusted service roles for the shared
-    # admin hub.  Junior staff are still denied by the guard immediately
-    # before this role bridge is evaluated.
-    assert "copimine.election.cik" in admin_block
+    # Domain-specific roles must not cross-authorize the artifacts admin hub.
+    # Shared super-admin roles remain available, while CIK/economy/player
+    # permissions are evaluated only by their own plugins.
+    for permission in ("copimine.election.admin", "copimine.election.cik", "copimine.economy.admin", "copimine.players.admin"):
+        assert permission not in admin_block
     assert "isRestrictedJuniorArtifactsAdmin" in ARTIFACTS
     assert "EntityExplodeEvent" in ARTIFACTS
     assert "BlockExplodeEvent" in ARTIFACTS

@@ -1,19 +1,23 @@
 . "$PSScriptRoot\ElectionPhase1Validator.Helpers.ps1"
 $errors = New-ErrorList
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$env:COPIMINE_REPO_ROOT = $repoRoot
 
 $script = @'
 from pathlib import Path
+import os
 import re
 import sys
 
+repo_root = Path(os.environ["COPIMINE_REPO_ROOT"])
 scan_roots = [
-    Path(r"D:\Desktop\Copimine\opt\copimine"),
-    Path(r"D:\Desktop\Copimine\CopiMineClient"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\docs\superpowers\specs"),
-    Path(r"D:\Desktop\Copimine\opt\copimine\docs\superpowers\plans"),
+    repo_root,
+    repo_root / "CopiMineClient",
+    repo_root / "docs" / "superpowers" / "specs",
+    repo_root / "docs" / "superpowers" / "plans",
 ]
 extensions = {".java", ".py", ".js", ".yml", ".yaml", ".md"}
-skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", ".codex-venv", "backups", ".idea", ".mvn", "out"}
+skip_parts = {"build", "target", "node_modules", ".git", ".gradle", ".venv", ".venv313", ".codex-venv", ".worktrees", "local-runtime", "backups", ".idea", ".mvn", "out"}
 bad_tokens = [
     "\u00d0", "\u00d1", "\u0412\u00a7", "\u0420'\u0412\u00a7",
     "\u0420\u040e", "\u0420\u045f", "\u0420\u045e", "\u0420\u045a",
@@ -28,8 +32,11 @@ bad_escape_patterns = [
     r"\\u0421\\u040[0-9A-Fa-f]",
 ]
 mojibake_patterns = [
-    re.compile(r"(?:\u0420.|\u0421.|\u00D0.|\u00D1.){3,}"),
-    re.compile(r"(?:\u0432\u20AC|\u0432\u20AC\u00A6|\u0432\u20AC\u201D|\u0432\u20AC\u0153|\u0432\u20AC\u015D|\u0432\u20AC\u2122|\u0432\u20AC\u2122)"),
+    # UTF-8 Russian decoded as Windows-1251/Latin-1 alternates the
+    # characteristic Р*/С* pairs.  Require two complete pairs so normal
+    # Russian words are not rejected as mojibake.
+    re.compile(r"(?:\u0420[\u0400-\u04ff]\u0421[\u0400-\u04ff]){2,}"),
+    re.compile(r"(?:\u00d0.\u00d1.){2,}"),
 ]
 
 hits = []

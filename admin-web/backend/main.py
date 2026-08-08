@@ -2,11 +2,13 @@
 
 import asyncio
 import base64
+import copy
 from contextvars import ContextVar
 import csv
 import gzip
 import hashlib
 import hmac
+import ipaddress
 import io
 import json
 import logging
@@ -31,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
 from typing import Any, Optional, Callable, Mapping
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 VOTER_UUID_COL = "voter_" "uuid"
 VOTER_NAME_COL = "voter_" "name"
@@ -92,6 +94,10 @@ from .plugin_registry import (
     require_registry_plugin,
     validate_registry_values,
 )
+from .president_law_workflow import (
+    review_president_law_transition,
+    PresidentLawReviewError,
+)
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = APP_ROOT.parent
@@ -132,7 +138,7 @@ DONATION_SESSION_TTL_MS = DONATION_SESSION_TTL_SECONDS * 1000
 DONATION_EPOCH_MS_THRESHOLD = 100_000_000_000
 MANAGED_RESOURCEPACK_URL = os.getenv(
     "COPIMINE_RESOURCEPACK_URL",
-    "http://admin.copimine.ru:18080/resourcepacks/CopiMineResourcePack.zip",
+    "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip",
 ).strip()
 MANAGED_RESOURCEPACK_ZIP = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
 MANAGED_RESOURCEPACK_SHA1_FILE = PROJECT_ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.sha1"
@@ -148,6 +154,13 @@ OWNER_ONLY_SERVER_PROPERTY_KEYS = {
     "enable-command-block",
 }
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
+PUBLIC_STATUS_CACHE_LOCK = threading.RLock()
+PUBLIC_STATUS_CACHE: tuple[float, dict[str, Any]] = (0.0, {})
+PUBLIC_STATUS_CACHE_TTL_SECONDS = max(2, int(os.getenv("PUBLIC_STATUS_CACHE_TTL_SECONDS", "10")))
+PUBLIC_SKIN_CACHE_LOCK = threading.RLock()
+PUBLIC_SKIN_CACHE: dict[str, tuple[float, bytes, str]] = {}
+PUBLIC_SKIN_CACHE_TTL_SECONDS = max(60, int(os.getenv("PUBLIC_SKIN_CACHE_TTL_SECONDS", "600")))
+PUBLIC_SKIN_CACHE_MAX_ENTRIES = max(16, int(os.getenv("PUBLIC_SKIN_CACHE_MAX_ENTRIES", "256")))
 PLUGIN_REGISTRY_MANIFEST = APP_ROOT / "backend" / "plugin_registry_manifest.json"
 APP_VERSION = "2.2.0"
 STARTUP_STRICT = os.getenv("COPIMINE_STARTUP_STRICT", "1").lower() in {"1", "true", "yes", "on"}
@@ -221,8 +234,8 @@ DB_WRITE_PROTECTED_TABLE_PATTERNS: tuple[tuple[str, str], ...] = (
     ("round_candidates", "кандидаты тура обновляются только election runtime"),
     ("donation_accounts", "донат-баланс меняется только через EconomyCore и безопасные admin endpoints"),
     ("donation_balance_ledger", "журнал донат-баланса является финансовым аудитом"),
-    ("donation_payment_sessions", "сессии оплаты создаются только через mock donation workflow"),
-    ("donation_purchases", "донат-покупки создаются только через mock donation workflow"),
+    ("donation_payment_sessions", "сессии оплаты создаются только через авторизованный платёжный workflow"),
+    ("donation_purchases", "донат-покупки создаются только через авторизованный платёжный workflow"),
     ("donation_item_claims", "выдача донатных предметов ведётся только через claims workflow"),
     ("cmv7_ar_", "АР-экономика защищена от ручных правок баланса, активов и транзакций"),
     ("cmv7_audit", "аудит является неизменяемым журналом"),
@@ -281,7 +294,7 @@ AUTH_STORAGE_MODE = (
 LOGGER = logging.getLogger("copimine.admin")
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cm_session")
 AUTH_REFRESH_COOKIE_NAME = os.getenv("AUTH_REFRESH_COOKIE_NAME", "cm_refresh")
-ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "http://admin.copimine.ru:18080").rstrip("/")
+ADMIN_PUBLIC_BASE_URL = os.getenv("ADMIN_PUBLIC_BASE_URL", "https://copimine.ru").rstrip("/")
 AUTH_COOKIE_SECURE_RAW = os.getenv("AUTH_COOKIE_SECURE", "").strip().lower()
 AUTH_COOKIE_SECURE = (
     AUTH_COOKIE_SECURE_RAW in {"1", "true", "yes", "on"}
@@ -520,6 +533,11 @@ class ElectionApplicationReviewIn(BaseModel):
     create_candidate: bool = True
 
 
+class ElectionLawReviewIn(BaseModel):
+    decision: str = Field(max_length=24)
+    note: str = Field(default="", max_length=240)
+
+
 class PlayerElectionApplicationIn(BaseModel):
     why_president: str = Field(min_length=20, max_length=2400)
     server_plan: str = Field(min_length=20, max_length=2400)
@@ -741,6 +759,13 @@ class AdminShopPriceUpdateIn(BaseModel):
     item_id: str = Field(min_length=2, max_length=120)
     category: str = Field(min_length=2, max_length=16)
     price: int = Field(gt=0, le=1_000_000_000)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class AdminShopLimitUpdateIn(BaseModel):
+    item_id: str = Field(min_length=2, max_length=120)
+    category: str = Field(min_length=2, max_length=16)
+    limit: int = Field(ge=0, le=1000)
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
@@ -1340,16 +1365,28 @@ async def copimine_http_exception_handler(request: Request, exc: StarletteHTTPEx
         if fallback is not None:
             return fallback
     detail = exc.detail if isinstance(exc.detail, (dict, list, str)) else "HTTP error"
-    return JSONResponse({"detail": detail}, status_code=exc.status_code)
+    correlation_id = str(getattr(request.state, "correlation_id", "") or uuid.uuid4())
+    return JSONResponse(
+        {"detail": detail, "correlationId": correlation_id},
+        status_code=exc.status_code,
+        headers={"X-Correlation-ID": correlation_id},
+    )
 
 
 @app.exception_handler(Exception)
-async def copimine_unhandled_exception_handler(request: Request, _: Exception) -> Response:
+async def copimine_unhandled_exception_handler(request: Request, error: Exception) -> Response:
+    correlation_id = str(getattr(request.state, "correlation_id", "") or uuid.uuid4())
+    LOGGER.exception("Unhandled request error correlation_id=%s", correlation_id, exc_info=error)
     if not request.url.path.startswith("/api") and wants_frontend_html(request):
         fallback = frontend_file_response("error.html", 500)
         if fallback is not None:
+            fallback.headers["X-Correlation-ID"] = correlation_id
             return fallback
-    return JSONResponse({"detail": "Internal server error"}, status_code=500)
+    return JSONResponse(
+        {"detail": "Internal server error", "correlationId": correlation_id},
+        status_code=500,
+        headers={"X-Correlation-ID": correlation_id},
+    )
 
 
 @app.on_event("startup")
@@ -1358,6 +1395,10 @@ async def on_startup() -> None:
     _STARTUP_REPORT = run_startup_checks()
     if len(SECRET_KEY) < 32 or SECRET_KEY == "CHANGE_ME":
         raise RuntimeError("SECRET_KEY must be configured explicitly and contain at least 32 characters")
+    if STARTUP_STRICT and AUTH_STORAGE_MODE != "postgresql":
+        raise RuntimeError("Strict CopiMine startup requires PostgreSQL auth/data storage; SQLite is local development only")
+    if STARTUP_STRICT and DONATION_TOPUP_ENABLED and not YOOKASSA_SETTINGS.enabled:
+        raise RuntimeError("DONATION_TOPUP_ENABLED requires a configured real YooKassa provider in strict mode")
     if STARTUP_STRICT and not _STARTUP_REPORT.get("ok", False):
         failed = [
             f"{item.get('key')}: {item.get('summary')}"
@@ -1386,6 +1427,8 @@ async def on_shutdown() -> None:
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next: Callable[..., Any]) -> Response:
+    requested_correlation_id = str(request.headers.get("x-correlation-id") or "").strip()
+    request.state.correlation_id = requested_correlation_id if re.fullmatch(r"[A-Za-z0-9._:-]{8,96}", requested_correlation_id) else str(uuid.uuid4())
     request_path = normalized_request_path(request)
     if request_path.startswith("/api/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
         if not is_plugin_key_request(request):
@@ -1407,6 +1450,7 @@ async def security_headers(request: Request, call_next: Callable[..., Any]) -> R
         response.headers["Expires"] = "0"
         response.headers.setdefault("Vary", "Origin, Sec-Fetch-Site")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Correlation-ID", request.state.correlation_id)
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
@@ -1499,8 +1543,20 @@ def direct_request_host(request: Optional[Request]) -> str:
     return str(request.client.host if request and request.client else "").strip().lower()
 
 
+def normalized_peer_address(value: str) -> str:
+    """Return one stable representation for IPv4, IPv6 and mapped IPv4 peers."""
+    raw = str(value or "").strip().lower()
+    if raw.startswith("::ffff:"):
+        raw = raw[7:]
+    try:
+        return ipaddress.ip_address(raw).compressed.lower()
+    except ValueError:
+        return raw
+
+
 def request_uses_trusted_proxy(request: Optional[Request]) -> bool:
-    return direct_request_host(request) in {entry.lower() for entry in TRUSTED_PROXY_IPS}
+    peer = normalized_peer_address(direct_request_host(request))
+    return peer in {normalized_peer_address(entry) for entry in TRUSTED_PROXY_IPS}
 
 
 def request_transport_is_secure(request: Optional[Request]) -> bool:
@@ -1656,29 +1712,56 @@ def _first_forwarded_value(raw_value: str) -> str:
     return str(raw_value or "").split(",", 1)[0].strip()
 
 
+def canonical_origin(value: str) -> str:
+    """Normalize browser origins so default ports and trailing slashes agree."""
+    raw = str(value or "").strip()
+    if not raw or raw.lower() == "null":
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https"} or parsed.username or parsed.password or parsed.path not in {"", "/"}:
+            return ""
+        if parsed.query or parsed.fragment or not parsed.hostname:
+            return ""
+        host = parsed.hostname.lower().rstrip(".")
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = parsed.port
+        if port is None or (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
+            return f"{scheme}://{host}"
+        return f"{scheme}://{host}:{port}"
+    except ValueError:
+        return ""
+
+
 def origin_allowed(request: Request, origin: str) -> bool:
-    allowed = {
-        str(request.base_url).rstrip("/"),
-        ADMIN_PUBLIC_BASE_URL.rstrip("/"),
+    configured = {
+        canonical_origin(ADMIN_PUBLIC_BASE_URL),
+        canonical_origin(str(os.getenv("PUBLIC_PANEL_URL", "")).strip()),
+        canonical_origin(str(os.getenv("BACKEND_INTERNAL_BASE_URL", "")).strip()),
+        *(canonical_origin(item) for item in ALLOWED_ORIGINS),
     }
-    public_panel_url = str(os.getenv("PUBLIC_PANEL_URL", "")).strip()
-    backend_internal = str(os.getenv("BACKEND_INTERNAL_BASE_URL", "")).strip()
-    if public_panel_url:
-        allowed.add(public_panel_url.rstrip("/"))
-    if backend_internal:
-        allowed.add(backend_internal.rstrip("/"))
+    configured.discard("")
+    allowed = {canonical_origin(str(request.base_url))}
+    allowed.update(configured)
     if request_uses_trusted_proxy(request):
         forwarded_host = _first_forwarded_value(request.headers.get("x-forwarded-host") or request.headers.get("host") or "")
         forwarded_proto = _first_forwarded_value(request.headers.get("x-forwarded-proto") or request.url.scheme or "http").lower()
         if forwarded_host:
-            allowed.add(f"{forwarded_proto}://{forwarded_host}".rstrip("/"))
-            allowed.add(f"http://{forwarded_host}".rstrip("/"))
-            allowed.add(f"https://{forwarded_host}".rstrip("/"))
+            # A trusted proxy may report the public Host, but that Host is
+            # still only accepted when the operator explicitly configured the
+            # same origin.  This fixes IP/443 deployments without turning an
+            # arbitrary Host header into a CSRF allowlist entry.
+            forwarded_origin = canonical_origin(f"{forwarded_proto}://{forwarded_host}")
+            if forwarded_origin in configured:
+                allowed.add(forwarded_origin)
         forwarded_origin = _first_forwarded_value(request.headers.get("x-forwarded-origin") or "")
-        if forwarded_origin:
-            allowed.add(forwarded_origin.rstrip("/"))
-    allowed.update(ALLOWED_ORIGINS)
-    return origin.rstrip("/") in {item.rstrip("/") for item in allowed if item}
+        forwarded_origin = canonical_origin(forwarded_origin)
+        if forwarded_origin in configured:
+            allowed.add(forwarded_origin)
+    candidate = canonical_origin(origin)
+    return bool(candidate) and candidate in {item for item in allowed if item}
 
 
 def is_plugin_key_request(request: Request) -> bool:
@@ -1746,13 +1829,13 @@ def get_client_ip(request: Optional[Request]) -> str:
         return "unknown"
     direct_host = str(request.client.host if request.client else "").strip()
     forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
-    if direct_host in TRUSTED_PROXY_IPS and forwarded_for:
+    if request_uses_trusted_proxy(request) and forwarded_for:
         for candidate in forwarded_for.split(","):
             value = candidate.strip()
             if value:
                 return value[:128]
     real_ip = str(request.headers.get("x-real-ip") or "").strip()
-    if direct_host in TRUSTED_PROXY_IPS and real_ip:
+    if request_uses_trusted_proxy(request) and real_ip:
         return real_ip[:128]
     return (direct_host or "unknown")[:128]
 
@@ -2107,7 +2190,6 @@ def _ensure_v4_schema(conn: Any) -> None:
             minecraft_uuid TEXT PRIMARY KEY,
             site_account_id TEXT NOT NULL DEFAULT '',
             pin_hash TEXT NOT NULL,
-            pin_sealed TEXT NOT NULL DEFAULT '',
             must_change INTEGER NOT NULL DEFAULT 0,
             created_at BIGINT NOT NULL DEFAULT 0,
             updated_at BIGINT NOT NULL DEFAULT 0
@@ -2119,7 +2201,6 @@ def _ensure_v4_schema(conn: Any) -> None:
         CREATE TABLE IF NOT EXISTS bank_account_pins(
             account_id TEXT PRIMARY KEY,
             pin_hash TEXT NOT NULL,
-            pin_sealed TEXT NOT NULL DEFAULT '',
             must_change INTEGER NOT NULL DEFAULT 0,
             created_at BIGINT NOT NULL DEFAULT 0,
             updated_at BIGINT NOT NULL DEFAULT 0,
@@ -2455,6 +2536,17 @@ def _ensure_v4_schema(conn: Any) -> None:
             created_at BIGINT NOT NULL DEFAULT 0,
             active INTEGER NOT NULL DEFAULT 1,
             last_result INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_login_limits(
+            lock_key TEXT PRIMARY KEY,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            window_started_at BIGINT NOT NULL DEFAULT 0,
+            locked_until BIGINT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0
         )
         """
     )
@@ -3074,7 +3166,6 @@ def _ensure_v4_schema(conn: Any) -> None:
         """
     )
     conn.execute("ALTER TABLE temporary_pin_resets ADD COLUMN IF NOT EXISTS delivery_blob TEXT NOT NULL DEFAULT ''")
-    conn.execute("ALTER TABLE bank_pin_hashes ADD COLUMN IF NOT EXISTS pin_sealed TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS amount_rub BIGINT NOT NULL DEFAULT 0")
     conn.execute("ALTER TABLE donation_payment_sessions ADD COLUMN IF NOT EXISTS donation_units BIGINT NOT NULL DEFAULT 0")
@@ -3269,6 +3360,30 @@ def admin_plugin_db_location(path: str | Path) -> str:
     return safe_location(Path(path))
 
 
+def drop_legacy_recoverable_pin_columns(conn: Any) -> None:
+    """Remove the pre-hardening reversible PIN copies from both PIN tables.
+
+    The operation is idempotent and deliberately runs before the schema-ready
+    flag is set.  A failed drop therefore fails closed instead of allowing a
+    worker to continue while an old plaintext-recoverable column remains.
+    """
+    for table in ("bank_pin_hashes", "bank_account_pins"):
+        if auth_storage_backend() == "sqlite":
+            columns = {
+                str(row_get(row, "name", "")).lower()
+                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if "pin_sealed" in columns:
+                conn.execute(f"ALTER TABLE {table} DROP COLUMN pin_sealed")
+            continue
+        present = conn.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=%s AND column_name=%s LIMIT 1",
+            (table, "pin_sealed"),
+        ).fetchone()
+        if present:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN pin_sealed")
+
+
 def ensure_v4_schema(conn: Any) -> None:
     """Apply the v4 schema once per backend process.
 
@@ -3284,6 +3399,7 @@ def ensure_v4_schema(conn: Any) -> None:
         if V4_SCHEMA_READY:
             return
         _ensure_v4_schema(conn)
+        drop_legacy_recoverable_pin_columns(conn)
         V4_SCHEMA_READY = True
 
 
@@ -3829,6 +3945,51 @@ def verify_refresh_token(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
         raise HTTPException(status_code=401, detail="Refresh-сессия недействительна или истекла") from exc
 
 
+def claim_refresh_session(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Atomically consume a refresh token before issuing its replacement.
+
+    Rotation used to read a live row, issue a replacement in another
+    transaction, and revoke the old row afterward. Two concurrent requests
+    could therefore both pass the read. A conditional UPDATE is the single
+    redemption gate: exactly one request can change the pending row.
+    """
+    try:
+        payload = decode_signed_token(token)
+        if str(payload.get("typ") or "") != "refresh":
+            raise ValueError("wrong token type")
+        jti = str(payload.get("jti") or "")
+        token_hash = sha256_hex(token)
+        now = now_ts()
+        marker = f"rotation:{secrets.token_urlsafe(12)}"
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            updated = conn.execute(
+                """
+                UPDATE cm_refresh_sessions
+                SET revoked_at=%s, replaced_by=%s
+                WHERE jti=%s
+                  AND token_hash=%s
+                  AND revoked_at=0
+                  AND replaced_by=''
+                  AND expires_at>%s
+                """,
+                (now, marker, jti, token_hash, now),
+            )
+            if int(getattr(updated, "rowcount", 0) or 0) != 1:
+                conn.rollback()
+                raise ValueError("refresh session already consumed or invalid")
+            row = conn.execute("SELECT * FROM cm_refresh_sessions WHERE jti=%s", (jti,)).fetchone()
+            if not row:
+                conn.rollback()
+                raise ValueError("refresh session missing")
+            conn.commit()
+        return payload, dict(row)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Refresh-сессия недействительна или истекла") from exc
+
+
 def minecraft_access_lists() -> dict[str, Any]:
     ops_raw = read_json(MC_SERVER_DIR / "ops.json", [])
     whitelist_raw = read_json(MC_SERVER_DIR / "whitelist.json", [])
@@ -3876,6 +4037,31 @@ def login_key(request: Request, username: str) -> str:
 def register_failed_login(request: Request, username: str) -> None:
     key = login_key(request, username)
     current = now_ts()
+    try:
+        with auth_conn() as conn:
+            suffix = " FOR UPDATE" if is_pg_conn(conn) else ""
+            row = conn.execute(
+                f"SELECT failed_count,window_started_at,locked_until FROM auth_login_limits WHERE lock_key=%s{suffix}",
+                (key,),
+            ).fetchone()
+            window_started = int(row_get(row, "window_started_at", 0) or 0) if row else current
+            failed_count = int(row_get(row, "failed_count", 0) or 0) if row else 0
+            if window_started <= 0 or current - window_started >= LOGIN_LOCK_SECONDS:
+                window_started = current
+                failed_count = 0
+            failed_count += 1
+            locked_until = current + LOGIN_LOCK_SECONDS if failed_count >= LOGIN_MAX_ATTEMPTS else 0
+            conn.execute(
+                "INSERT INTO auth_login_limits(lock_key,failed_count,window_started_at,locked_until,updated_at) VALUES(%s,%s,%s,%s,%s) "
+                "ON CONFLICT(lock_key) DO UPDATE SET failed_count=excluded.failed_count,window_started_at=excluded.window_started_at,locked_until=excluded.locked_until,updated_at=excluded.updated_at",
+                (key, failed_count, window_started, locked_until, current),
+            )
+            conn.commit()
+            return
+    except Exception as error:
+        if STARTUP_STRICT:
+            raise HTTPException(status_code=503, detail="Сервис входа временно недоступен; повторите попытку позже") from error
+        LOGGER.warning("Persistent login rate limit unavailable; using process-local fallback: %s", error)
     attempts = [x for x in FAILED_LOGINS.get(key, []) if current - x < LOGIN_LOCK_SECONDS]
     attempts.append(current)
     FAILED_LOGINS[key] = attempts
@@ -3885,13 +4071,32 @@ def register_failed_login(request: Request, username: str) -> None:
 
 def clear_failed_login(request: Request, username: str) -> None:
     key = login_key(request, username)
+    try:
+        with auth_conn() as conn:
+            conn.execute("DELETE FROM auth_login_limits WHERE lock_key=%s", (key,))
+            conn.commit()
+    except Exception as error:
+        if STARTUP_STRICT:
+            raise HTTPException(status_code=503, detail="Сервис входа временно недоступен; повторите попытку позже") from error
+        LOGGER.warning("Persistent login rate-limit clear failed: %s", error)
     FAILED_LOGINS.pop(key, None)
     LOCKED_UNTIL.pop(key, None)
 
 
 def assert_not_locked(request: Request, username: str) -> None:
     key = login_key(request, username)
-    until = LOCKED_UNTIL.get(key, 0)
+    try:
+        with auth_conn() as conn:
+            row = conn.execute(
+                "SELECT locked_until FROM auth_login_limits WHERE lock_key=%s LIMIT 1",
+                (key,),
+            ).fetchone()
+            until = int(row_get(row, "locked_until", 0) or 0) if row else 0
+    except Exception as error:
+        if STARTUP_STRICT:
+            raise HTTPException(status_code=503, detail="Сервис входа временно недоступен; повторите попытку позже") from error
+        LOGGER.warning("Persistent login rate-limit read failed: %s", error)
+        until = LOCKED_UNTIL.get(key, 0)
     if until > now_ts():
         raise HTTPException(status_code=429, detail=f"Слишком много попыток входа. Повтори через {until - now_ts()} сек.")
 
@@ -4132,11 +4337,9 @@ def require_player(request: Request, authorization: str = Header(default="")) ->
 
 
 def is_loopback_request(request: Request) -> bool:
-    host = str(request.client.host if request.client else "").strip().lower()
+    host = normalized_peer_address(str(request.client.host if request.client else ""))
     if not host:
         return False
-    if host.startswith("::ffff:"):
-        host = host.split("::ffff:", 1)[1]
     return host in {"127.0.0.1", "::1", "localhost"}
 
 
@@ -4186,7 +4389,16 @@ def issue_player_auth_pair(
 
 
 def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Request], audience: str) -> dict[str, Any]:
-    payload, row = verify_refresh_token(refresh_token)
+    try:
+        presented_payload = decode_signed_token(refresh_token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Refresh-сессия недействительна или истекла") from exc
+    presented_role = str(presented_payload.get("role") or "")
+    if audience == "player" and presented_role != "player":
+        raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к кабинету игрока")
+    if audience != "player" and presented_role == "player":
+        raise HTTPException(status_code=403, detail="Эта refresh-сессия не относится к админ-панели")
+    payload, row = claim_refresh_session(refresh_token)
     role = str(payload.get("role") or "")
     subject = str(payload.get("sub") or "")
     family_id = str(payload.get("family") or row.get("family_id") or "")
@@ -4651,17 +4863,17 @@ def ensure_player_bank_account(conn: Any, minecraft_uuid: str, minecraft_name: s
     return bank
 
 
-def sync_player_account_pin(conn: Any, minecraft_uuid: str, pin_hash: str, pin_sealed: str, actor: str = "") -> None:
+def sync_player_account_pin(conn: Any, minecraft_uuid: str, pin_hash: str, actor: str = "") -> None:
     """Mirror a personal PIN into the legacy account-PIN table for old clients."""
     if not minecraft_uuid:
         return
     conn.execute(
         """
-        INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by)
-        VALUES(%s,%s,%s,0,%s,%s,%s)
-        ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,pin_sealed=excluded.pin_sealed,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by
+        INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by)
+        VALUES(%s,%s,0,%s,%s,%s)
+        ON CONFLICT(account_id) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at,updated_by=excluded.updated_by
         """,
-        (f"ar:{minecraft_uuid}", pin_hash, pin_sealed, now_ts(), now_ts(), actor),
+        (f"ar:{minecraft_uuid}", pin_hash, now_ts(), now_ts(), actor),
     )
 
 
@@ -4757,45 +4969,6 @@ def reveal_temporary_pin(minecraft_uuid: str, delivery_blob: str) -> str:
     return pin if re.fullmatch(r"\d{4,8}", pin or "") else ""
 
 
-def persistent_pin_secret() -> bytes:
-    return hashlib.sha256((SECRET_KEY + ":copimine-bank-pin:v1").encode("utf-8")).digest()
-
-
-def seal_persistent_pin(pin_key: str, pin: str) -> str:
-    nonce = secrets.token_bytes(16)
-    purpose = b"copimine-bank-pin:v1:" + str(pin_key or "").encode("utf-8")
-    mask = hmac.new(persistent_pin_secret(), purpose + nonce, hashlib.sha256).digest()
-    raw = pin.encode("utf-8")
-    cipher = bytes(raw[i] ^ mask[i % len(mask)] for i in range(len(raw)))
-    body = nonce + cipher
-    sig = hmac.new(persistent_pin_secret(), body + purpose, hashlib.sha256).digest()
-    return _b64(body + sig)
-
-
-def reveal_persistent_pin(pin_key: str, sealed: str) -> str:
-    if not sealed:
-        return ""
-    try:
-        raw = _unb64(sealed)
-    except Exception:
-        return ""
-    if len(raw) < 48:
-        return ""
-    nonce = raw[:16]
-    cipher = raw[16:-32]
-    sig = raw[-32:]
-    purpose = b"copimine-bank-pin:v1:" + str(pin_key or "").encode("utf-8")
-    expected = hmac.new(persistent_pin_secret(), nonce + cipher + purpose, hashlib.sha256).digest()
-    if not hmac.compare_digest(sig, expected):
-        return ""
-    mask = hmac.new(persistent_pin_secret(), purpose + nonce, hashlib.sha256).digest()
-    try:
-        pin = bytes(cipher[i] ^ mask[i % len(mask)] for i in range(len(cipher))).decode("utf-8")
-    except Exception:
-        return ""
-    return pin if re.fullmatch(r"\d{4,8}", pin or "") else ""
-
-
 def expire_temporary_pin_resets(conn: Any, minecraft_uuid: str = "") -> None:
     current = now_ts()
     if minecraft_uuid:
@@ -4848,8 +5021,13 @@ def active_temporary_pin_reset(conn: Any, site_account_id: str, minecraft_uuid: 
     }
     if reveal:
         code = reveal_temporary_pin(minecraft_uuid, str(row["delivery_blob"] or ""))
-        if code:
+        claim = conn.execute(
+            "UPDATE temporary_pin_resets SET used_at=%s,delivery_blob='' WHERE id=%s AND used_at=0",
+            (now_ts(), str(row["id"] or "")),
+        )
+        if code and int(getattr(claim, "rowcount", 0) or 0) == 1:
             result["code"] = code
+            result["consumed"] = True
     return result
 
 
@@ -4989,8 +5167,8 @@ def verify_bank_pin(conn: Any, account: dict[str, Any], pin: str) -> None:
     if fallback_row and (not row or not verify_password_hash(str(row["pin_hash"] or ""), pin)):
         now = now_ts()
         conn.execute(
-            "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at) VALUES(%s,%s,%s,%s,0,%s,%s) ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,pin_sealed=excluded.pin_sealed,must_change=0,updated_at=excluded.updated_at",
-            (minecraft_uuid, str(account.get("id") or ""), str(fallback_row["pin_hash"] or ""), seal_persistent_pin(f"personal:{minecraft_uuid}", pin), now, now),
+            "INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at) VALUES(%s,%s,%s,0,%s,%s) ON CONFLICT(minecraft_uuid) DO UPDATE SET pin_hash=excluded.pin_hash,must_change=0,updated_at=excluded.updated_at",
+            (minecraft_uuid, str(account.get("id") or ""), str(fallback_row["pin_hash"] or ""), now, now),
         )
     clear_bank_pin_lockout(conn, str(account.get("minecraft_uuid") or ""))
 
@@ -5030,14 +5208,22 @@ def verify_account_pin(conn: Any, account_id: str, pin: str) -> None:
     clear_account_pin_lockout(conn, account_id)
 
 
-def visible_personal_pin(conn: Any, minecraft_uuid: str) -> str:
-    row = conn.execute("SELECT pin_sealed FROM bank_pin_hashes WHERE minecraft_uuid=%s", (minecraft_uuid,)).fetchone()
-    return reveal_persistent_pin(f"personal:{minecraft_uuid}", str(row_get(row, "pin_sealed", "") or ""))
-
-
-def visible_account_pin(conn: Any, account_id: str) -> str:
-    row = conn.execute("SELECT pin_sealed FROM bank_account_pins WHERE account_id=%s", (account_id,)).fetchone()
-    return reveal_persistent_pin(f"account:{account_id}", str(row_get(row, "pin_sealed", "") or ""))
+def public_pin_status(payload: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Return only non-secret PIN state suitable for a public API response."""
+    if not payload:
+        return {}
+    allowed = {
+        "set",
+        "mustChange",
+        "updatedAt",
+        "lockedUntil",
+        "locked",
+        "status",
+        "temporaryPending",
+        "temporaryIssuedAt",
+        "temporaryExpiresAt",
+    }
+    return {key: payload[key] for key in allowed if key in payload}
 
 
 def resolve_bank_recipient(conn: Any, recipient: str) -> tuple[str, str]:
@@ -5131,7 +5317,7 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
             """,
             (bank["account_id"], max(1, min(limit, 200))),
         ).fetchall()
-        pin = bank_pin_status(conn, str(account.get("id") or ""), str(account.get("minecraft_uuid") or ""))
+        pin = public_pin_status(bank_pin_status(conn, str(account.get("id") or ""), str(account.get("minecraft_uuid") or "")))
         temp_reset = active_temporary_pin_reset(conn, str(account.get("id") or ""), str(account.get("minecraft_uuid") or ""), reveal=True)
         can_treasury = has_treasury_access(conn, account)
         treasury_account = {}
@@ -5152,9 +5338,10 @@ def player_bank_overview_sync(account: dict[str, Any], limit: int = 80) -> dict[
                 (TREASURY_ACCOUNT_ID, max(1, min(limit, 200))),
             ).fetchall()]
             treasury_pin = {
-                "set": bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone()),
-                # Never return the treasury PIN in a regular player response.
-                "visiblePin": "",
+                "set": bool(conn.execute(
+                    "SELECT 1 FROM bank_account_pins WHERE account_id=%s AND COALESCE(pin_hash,'')<>''",
+                    (TREASURY_ACCOUNT_ID,),
+                ).fetchone()),
                 "status": "configured",
             }
         conn.commit()
@@ -5207,21 +5394,30 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
                 raise HTTPException(status_code=403, detail="Treasury account is not available")
             ensure_treasury_bank_account(conn)
             current = conn.execute("SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone()
-            if current:
+            # A legacy bootstrap row may exist with an empty hash. Treat that
+            # as an unset PIN so the first treasury PIN can be created without
+            # requiring an impossible "old" value.
+            if current and str(row_get(current, "pin_hash", "") or "").strip():
                 verify_account_pin(conn, TREASURY_ACCOUNT_ID, data.old_pin or "")
+            pin_hash = make_password_hash(new_pin)
             conn.execute(
                 """
-                INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by)
-                VALUES(%s,%s,%s,0,%s,%s,%s)
+                INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by)
+                VALUES(%s,%s,0,%s,%s,%s)
                 ON CONFLICT(account_id) DO UPDATE SET
                     pin_hash=excluded.pin_hash,
-                    pin_sealed=excluded.pin_sealed,
                     must_change=0,
                     updated_at=excluded.updated_at,
                     updated_by=excluded.updated_by
                 """,
-                (TREASURY_ACCOUNT_ID, make_password_hash(new_pin), seal_persistent_pin(f"account:{TREASURY_ACCOUNT_ID}", new_pin), now, now, account.get("username") or ""),
+                (TREASURY_ACCOUNT_ID, pin_hash, now, now, account.get("username") or ""),
             )
+            stored = conn.execute(
+                "SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s",
+                (TREASURY_ACCOUNT_ID,),
+            ).fetchone()
+            if not stored or not str(row_get(stored, "pin_hash", "") or "").strip() or int(row_get(stored, "must_change", 0) or 0) != 0:
+                raise HTTPException(status_code=500, detail="Treasury PIN was not persisted")
             clear_account_pin_lockout(conn, TREASURY_ACCOUNT_ID)
             conn.execute(
                 "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'TREASURY_PIN_SET',%s,'site')",
@@ -5229,32 +5425,37 @@ def set_player_pin_sync(account: dict[str, Any], data: PlayerPinSetIn) -> dict[s
             )
         else:
             current = conn.execute("SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s", (account.get("minecraft_uuid") or "",)).fetchone()
-            if current:
+            if current and str(row_get(current, "pin_hash", "") or "").strip():
                 enforce_bank_pin_lockout(conn, str(account.get("minecraft_uuid") or ""))
                 if not data.old_pin or not verify_password_hash(str(current["pin_hash"] or ""), normalize_pin(data.old_pin)):
                     record_failed_bank_pin(conn, account, "site-pin-change")
                     conn.commit()
                     raise HTTPException(status_code=403, detail="Old PIN is invalid")
+            pin_hash = make_password_hash(new_pin)
             conn.execute(
                 """
-                INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-                VALUES(%s,%s,%s,%s,0,%s,%s)
+                INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at)
+                VALUES(%s,%s,%s,0,%s,%s)
                 ON CONFLICT(minecraft_uuid) DO UPDATE SET
                     site_account_id=excluded.site_account_id,
                     pin_hash=excluded.pin_hash,
-                    pin_sealed=excluded.pin_sealed,
                     must_change=0,
                     updated_at=excluded.updated_at
                 """,
-                (account.get("minecraft_uuid") or "", account.get("id") or "", make_password_hash(new_pin), seal_persistent_pin(f"personal:{account.get('minecraft_uuid') or ''}", new_pin), now, now),
+                (account.get("minecraft_uuid") or "", account.get("id") or "", pin_hash, now, now),
             )
             sync_player_account_pin(
                 conn,
                 str(account.get("minecraft_uuid") or ""),
-                make_password_hash(new_pin),
-                seal_persistent_pin(f"personal:{account.get('minecraft_uuid') or ''}", new_pin),
+                pin_hash,
                 str(account.get("username") or ""),
             )
+            stored = conn.execute(
+                "SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s",
+                (account.get("minecraft_uuid") or "",),
+            ).fetchone()
+            if not stored or not str(row_get(stored, "pin_hash", "") or "").strip() or int(row_get(stored, "must_change", 0) or 0) != 0:
+                raise HTTPException(status_code=500, detail="Personal PIN was not persisted")
             conn.execute(
                 "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PIN_SET','minecraft_uuid=' || %s,'site')",
                 (now, account.get("username") or "", account.get("minecraft_uuid") or ""),
@@ -5298,8 +5499,7 @@ def player_site_bank_profile_sync(minecraft_uuid: str, minecraft_name: str) -> d
         ).fetchone()
         donation = dict(donation_row) if donation_row else {}
         live_balance = live_plugin_ar_balance_sync(minecraft_uuid, minecraft_name)
-        pin = bank_pin_status(conn, str(site.get("id") or ""), minecraft_uuid)
-        pin["visiblePin"] = visible_personal_pin(conn, minecraft_uuid)
+        pin = public_pin_status(bank_pin_status(conn, str(site.get("id") or ""), minecraft_uuid))
         conn.commit()
     return {
         "siteAccount": {
@@ -5432,16 +5632,15 @@ def reset_player_bank_pin_sync(player: str, actor: str) -> dict[str, Any]:
         site = dict(site_row)
         conn.execute(
             """
-            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-            VALUES(%s,%s,%s,%s,1,%s,%s)
+            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at)
+            VALUES(%s,%s,%s,1,%s,%s)
             ON CONFLICT(minecraft_uuid) DO UPDATE SET
                 site_account_id=excluded.site_account_id,
                 pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
                 must_change=1,
                 updated_at=excluded.updated_at
             """,
-            (uuid, site["id"], pin_hash, seal_persistent_pin(f"personal:{uuid}", temp_pin), now, now),
+            (uuid, site["id"], pin_hash, now, now),
         )
         clear_bank_pin_lockout(conn, uuid)
         clear_temporary_pin_resets(conn, uuid, now)
@@ -5478,59 +5677,8 @@ def reset_player_bank_pin_sync(player: str, actor: str) -> dict[str, Any]:
 
 
 def randomize_player_bank_pin_sync(player: str, actor: str) -> dict[str, Any]:
-    uuid = find_player_uuid(player) or ""
-    if not uuid:
-        raise HTTPException(status_code=404, detail="Player was not found")
-    minecraft_name = uuid_to_name().get(uuid, player)
-    new_pin = generate_temporary_pin()
-    now = donation_now_ms()
-    with auth_conn() as conn:
-        ensure_v4_schema(conn)
-        site_row = conn.execute(
-            """
-            SELECT id,username,minecraft_uuid,minecraft_name
-            FROM site_accounts
-            WHERE minecraft_uuid=%s AND enabled=1
-            ORDER BY updated_at DESC,created_at DESC
-            LIMIT 1
-            """,
-            (uuid,),
-        ).fetchone()
-        if not site_row:
-            raise HTTPException(status_code=409, detail="У игрока нет активного site account")
-        site = dict(site_row)
-        conn.execute(
-            """
-            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-            VALUES(%s,%s,%s,%s,0,%s,%s)
-            ON CONFLICT(minecraft_uuid) DO UPDATE SET
-                site_account_id=excluded.site_account_id,
-                pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
-                must_change=0,
-                updated_at=excluded.updated_at
-            """,
-            (uuid, site["id"], make_password_hash(new_pin), seal_persistent_pin(f"personal:{uuid}", new_pin), now, now),
-        )
-        clear_bank_pin_lockout(conn, uuid)
-        clear_temporary_pin_resets(conn, uuid, now)
-        conn.execute(
-            "INSERT INTO pin_reset_audit(minecraft_uuid,actor,created_at,details) VALUES(%s,%s,%s,%s)",
-            (uuid, actor, now, "randomized_permanent_pin"),
-        )
-        conn.execute(
-            "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PIN_RANDOMIZED',%s,'admin-web')",
-            (now, actor, f"minecraft_uuid={uuid}"),
-        )
-        conn.commit()
-    return {
-        "ok": True,
-        "minecraftUuid": uuid,
-        "minecraftName": minecraft_name,
-        "pin": new_pin,
-        "siteAccountId": str(site.get("id") or ""),
-        "siteUsername": str(site.get("username") or ""),
-    }
+    """Issue a one-time temporary PIN; never create a permanent admin PIN."""
+    return reset_player_bank_pin_sync(player, actor)
 
 
 def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn) -> dict[str, Any]:
@@ -5553,24 +5701,23 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
             (uuid,),
         ).fetchone()
         site = dict(site_row) if site_row else {}
+        pin_hash = make_password_hash(new_pin)
         conn.execute(
             """
-            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,pin_sealed,must_change,created_at,updated_at)
-            VALUES(%s,%s,%s,%s,0,%s,%s)
+            INSERT INTO bank_pin_hashes(minecraft_uuid,site_account_id,pin_hash,must_change,created_at,updated_at)
+            VALUES(%s,%s,%s,0,%s,%s)
             ON CONFLICT(minecraft_uuid) DO UPDATE SET
                 site_account_id=excluded.site_account_id,
                 pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
                 must_change=0,
                 updated_at=excluded.updated_at
             """,
-            (uuid, site.get("id") or "", make_password_hash(new_pin), seal_persistent_pin(f"personal:{uuid}", new_pin), now, now),
+            (uuid, site.get("id") or "", pin_hash, now, now),
         )
         sync_player_account_pin(
             conn,
             uuid,
-            make_password_hash(new_pin),
-            seal_persistent_pin(f"personal:{uuid}", new_pin),
+            pin_hash,
             actor,
         )
         clear_bank_pin_lockout(conn, uuid)
@@ -5584,10 +5731,10 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
             (now, actor, f"minecraft_uuid={uuid}"),
         )
         verify_row = conn.execute(
-            "SELECT pin_hash,pin_sealed,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s",
+            "SELECT pin_hash,must_change FROM bank_pin_hashes WHERE minecraft_uuid=%s",
             (uuid,),
         ).fetchone()
-        if not verify_row or not verify_password_hash(str(verify_row["pin_hash"] or ""), new_pin) or not str(verify_row["pin_sealed"] or ""):
+        if not verify_row or not verify_password_hash(str(verify_row["pin_hash"] or ""), new_pin):
             conn.rollback()
             raise HTTPException(status_code=500, detail="PIN не сохранился в банковском хранилище")
         conn.commit()
@@ -5595,7 +5742,6 @@ def admin_set_player_bank_pin_sync(player: str, actor: str, data: PlayerPinSetIn
         "ok": True,
         "minecraftUuid": uuid,
         "minecraftName": minecraft_name,
-        "pin": new_pin,
         "siteAccountId": str(site.get("id") or ""),
         "siteUsername": str(site.get("username") or ""),
         "pinVerified": True,
@@ -5608,8 +5754,10 @@ def treasury_bank_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         if not has_treasury_access(conn, account):
             raise HTTPException(status_code=403, detail="Treasury account is not available")
         treasury = ensure_treasury_bank_account(conn)
-        visible_pin = visible_account_pin(conn, TREASURY_ACCOUNT_ID)
-        pin_set = bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone())
+        pin_set = bool(conn.execute(
+            "SELECT 1 FROM bank_account_pins WHERE account_id=%s AND COALESCE(pin_hash,'')<>''",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone())
         ledger = [dict(x) for x in conn.execute(
             """
             SELECT l.tx_id,l.tx_type,l.amount,l.balance_after,l.counterparty_account_id,
@@ -5628,7 +5776,7 @@ def treasury_bank_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
         "account": treasury,
         "ownerUuid": owner_uuid,
         "ownerName": owner_name,
-        "pin": {"set": pin_set, "visiblePin": visible_pin, "status": "configured"},
+        "pin": {"set": pin_set, "status": "configured"},
         "ledger": ledger,
     }
 
@@ -5637,8 +5785,10 @@ def admin_treasury_bank_profile_sync(actor: str) -> dict[str, Any]:
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         treasury = ensure_treasury_bank_account(conn)
-        visible_pin = visible_account_pin(conn, TREASURY_ACCOUNT_ID)
-        pin_set = bool(conn.execute("SELECT 1 FROM bank_account_pins WHERE account_id=%s", (TREASURY_ACCOUNT_ID,)).fetchone())
+        pin_set = bool(conn.execute(
+            "SELECT 1 FROM bank_account_pins WHERE account_id=%s AND COALESCE(pin_hash,'')<>''",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone())
         owner_uuid, owner_name = current_treasury_owner(conn)
         ledger = [dict(x) for x in conn.execute(
             """
@@ -5655,7 +5805,7 @@ def admin_treasury_bank_profile_sync(actor: str) -> dict[str, Any]:
         "account": treasury,
         "ownerUuid": owner_uuid,
         "ownerName": owner_name,
-        "pin": {"set": pin_set, "visiblePin": visible_pin, "status": "configured"},
+        "pin": {"set": pin_set, "status": "configured"},
         "ledger": ledger,
         "actor": actor,
     }
@@ -5667,26 +5817,32 @@ def admin_set_treasury_pin_sync(actor: str, data: PlayerPinSetIn) -> dict[str, A
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         ensure_treasury_bank_account(conn)
+        pin_hash = make_password_hash(new_pin)
         conn.execute(
             """
-            INSERT INTO bank_account_pins(account_id,pin_hash,pin_sealed,must_change,created_at,updated_at,updated_by)
-            VALUES(%s,%s,%s,0,%s,%s,%s)
+            INSERT INTO bank_account_pins(account_id,pin_hash,must_change,created_at,updated_at,updated_by)
+            VALUES(%s,%s,0,%s,%s,%s)
             ON CONFLICT(account_id) DO UPDATE SET
                 pin_hash=excluded.pin_hash,
-                pin_sealed=excluded.pin_sealed,
                 must_change=0,
                 updated_at=excluded.updated_at,
                 updated_by=excluded.updated_by
             """,
-            (TREASURY_ACCOUNT_ID, make_password_hash(new_pin), seal_persistent_pin(f"account:{TREASURY_ACCOUNT_ID}", new_pin), now, now, actor),
+            (TREASURY_ACCOUNT_ID, pin_hash, now, now, actor),
         )
+        stored = conn.execute(
+            "SELECT pin_hash,must_change FROM bank_account_pins WHERE account_id=%s",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone()
+        if not stored or not str(row_get(stored, "pin_hash", "") or "").strip() or int(row_get(stored, "must_change", 0) or 0) != 0:
+            raise HTTPException(status_code=500, detail="Treasury PIN was not persisted")
         clear_account_pin_lockout(conn, TREASURY_ACCOUNT_ID)
         conn.execute(
             "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'TREASURY_PIN_ADMIN_SET',%s,'admin-web')",
             (now, actor, TREASURY_ACCOUNT_ID),
         )
         conn.commit()
-    return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "pin": new_pin}
+    return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "pinVerified": True}
 
 
 def admin_reset_treasury_sync(actor: str) -> dict[str, Any]:
@@ -6495,16 +6651,30 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
         account = player_account_by_minecraft_name(conn, minecraft_name)
         if not account:
             raise HTTPException(status_code=404, detail="Аккаунт для этого Minecraft-ника не найден")
-        rows = conn.execute(
-            "SELECT * FROM one_time_link_codes WHERE site_account_id=%s AND status='PENDING' AND expires_at>%s ORDER BY created_at DESC LIMIT 8",
-            (account["id"], now),
-        ).fetchall()
-        row = next((candidate for candidate in rows if hmac.compare_digest(str(candidate["code_hash"] or ""), code_hash)), None)
+        row = conn.execute(
+            """
+            SELECT * FROM one_time_link_codes
+            WHERE site_account_id=%s AND code_hash=%s AND status='PENDING' AND expires_at>%s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (account["id"], code_hash, now),
+        ).fetchone()
         if not row:
             raise HTTPException(status_code=403, detail="Неверный или просроченный код восстановления")
         minecraft_uuid = str(account.get("minecraft_uuid") or row["minecraft_uuid"] or find_player_uuid(minecraft_name) or offline_uuid_for_name(minecraft_name))
         updated_at = now_ts()
-        conn.execute("UPDATE one_time_link_codes SET status='USED',used_at=%s WHERE id=%s", (now, row["id"]))
+        claimed = conn.execute(
+            """
+            UPDATE one_time_link_codes
+            SET status='USED',used_at=%s
+            WHERE id=%s AND code_hash=%s AND status='PENDING' AND expires_at>%s
+            """,
+            (now, row["id"], code_hash, now),
+        )
+        if int(getattr(claimed, "rowcount", 0) or 0) != 1:
+            conn.rollback()
+            raise HTTPException(status_code=403, detail="Код восстановления уже использован или истёк")
         conn.execute(
             "UPDATE site_accounts SET password_hash=%s,minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
             (make_password_hash(new_password), minecraft_uuid, minecraft_name, updated_at, account["id"]),
@@ -7627,6 +7797,22 @@ def sanitize_application_admin_row(row: Mapping[str, Any] | dict[str, Any]) -> d
     }
 
 
+def sanitize_president_law_admin_row(row: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    source = dict(row or {})
+    return {
+        "id": source.get("id"),
+        "term_id": source.get("term_id"),
+        "president_uuid": source.get("president_uuid"),
+        "president_name": source.get("president_name"),
+        "text": source.get("text"),
+        "status": source.get("status"),
+        "created_at": source.get("created_at"),
+        "published_at": source.get("published_at"),
+        "replaced_law_id": source.get("replaced_law_id"),
+        "slot_no": source.get("slot_no"),
+    }
+
+
 def election_detail_sync(limit: int = 500) -> dict[str, Any]:
     if pg_ready():
         try:
@@ -7695,13 +7881,29 @@ def election_detail_sync(limit: int = 500) -> dict[str, Any]:
                 applications = [dict(r) for r in conn.execute("SELECT * FROM candidate_applications WHERE election_id=%s ORDER BY submitted_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "candidate_applications") else []
                 curators = []
                 voting_blocks = [dict(r) for r in conn.execute("SELECT id,election_id,world,x,y,z,active,created_at,created_by,updated_at FROM election_voting_blocks WHERE election_id=%s AND active=1 ORDER BY created_at DESC LIMIT %s", (eid, limit)).fetchall()] if eid and pg_table_exists(conn, "election_voting_blocks") else []
-                president_rows = [dict(r) for r in conn.execute("SELECT * FROM president_terms WHERE status='ACTIVE' ORDER BY started_at DESC LIMIT 1").fetchall()] if pg_table_exists(conn, "president_terms") else []
+                president_rows = [dict(r) for r in conn.execute(
+                    "SELECT * FROM president_terms WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>%s) ORDER BY started_at DESC LIMIT 1",
+                    (election_now_ms(),),
+                ).fetchall()] if pg_table_exists(conn, "president_terms") else []
                 active_term_id = str((president_rows[0] or {}).get("id") or "") if president_rows else ""
                 # Decrees and petitions belonged to the retired election UI.
                 # Keep their keys for response compatibility, but never query
                 # or render those legacy tables as part of the RP workflow.
                 decrees, petitions = [], []
-                laws, pending_laws = [], []
+                law_rows = [dict(r) for r in conn.execute(
+                    "SELECT l.id,l.term_id,l.president_uuid,t.president_name,l.text,l.status,l.created_at,l.published_at,l.replaced_law_id,l.slot_no "
+                    "FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                    "WHERE l.term_id=%s AND l.status='PUBLISHED' ORDER BY l.slot_no ASC,l.published_at DESC LIMIT %s",
+                    (active_term_id, limit),
+                ).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
+                pending_law_rows = [dict(r) for r in conn.execute(
+                    "SELECT l.id,l.term_id,l.president_uuid,t.president_name,l.text,l.status,l.created_at,l.published_at,l.replaced_law_id,l.slot_no "
+                    "FROM president_laws l JOIN president_terms t ON t.id=l.term_id "
+                    "WHERE l.term_id=%s AND l.status='PENDING' ORDER BY l.created_at DESC LIMIT %s",
+                    (active_term_id, limit),
+                ).fetchall()] if active_term_id and pg_table_exists(conn, "president_laws") else []
+                laws = [sanitize_president_law_admin_row(row) for row in law_rows]
+                pending_laws = [sanitize_president_law_admin_row(row) for row in pending_law_rows]
                 # psycopg parses percent signs in parameterized SQL.  The
                 # literal wildcard therefore must be written as %% or the
                 # query fails with "only '%s', '%b', '%t' are allowed" and
@@ -8225,6 +8427,126 @@ def review_candidate_application_sync(application_id: str, data: ElectionApplica
         tags=["elections", "application"],
     )
     return {"applicationId": application_id, "decision": admin_status, "candidate": candidate}
+
+
+def review_president_law_sync(law_id: str, data: ElectionLawReviewIn, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for president-law review")
+    normalized_law_id = str(law_id or "").strip()
+    decision = str(data.decision or "").strip().lower()
+    if not normalized_law_id:
+        raise HTTPException(status_code=400, detail="Не указан закон президента")
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
+
+    now = election_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        term_raw = conn.execute(
+            "SELECT id,last_law_replace_at FROM president_terms "
+            "WHERE status='ACTIVE' AND (ends_at=0 OR ends_at>%s) "
+            "ORDER BY started_at DESC LIMIT 1 FOR UPDATE",
+            (now,),
+        ).fetchone()
+        if not term_raw:
+            raise HTTPException(status_code=409, detail="Нет активного президентского срока")
+        term = dict(term_raw)
+        law_raw = conn.execute(
+            "SELECT id,term_id,president_uuid,text,status,created_at,published_at,replaced_law_id,slot_no "
+            "FROM president_laws WHERE id=%s FOR UPDATE",
+            (normalized_law_id,),
+        ).fetchone()
+        if not law_raw:
+            raise HTTPException(status_code=404, detail="Закон президента не найден")
+        law = dict(law_raw)
+        term_id = str(term.get("id") or "")
+        if str(law.get("term_id") or "") != term_id or str(law.get("status") or "").upper() != "PENDING":
+            raise HTTPException(status_code=409, detail="Этот закон уже нельзя пересмотреть")
+
+        replaced_id = str(law.get("replaced_law_id") or "").strip()
+        published_count = 0
+        next_slot = 1
+        replacement_elapsed = 0
+        replaced_status = ""
+        replacement_term_matches = True
+        replacement_slot = 0
+        if decision == "approved":
+            published_row = conn.execute(
+                "SELECT COUNT(*) AS published_count FROM president_laws WHERE term_id=%s AND status='PUBLISHED'",
+                (term_id,),
+            ).fetchone()
+            published_count = int(row_get(published_row, "published_count", 0) or 0)
+            next_slot_row = conn.execute(
+                "SELECT COALESCE(MAX(slot_no),0)+1 AS next_slot FROM president_laws WHERE term_id=%s AND status='PUBLISHED'",
+                (term_id,),
+            ).fetchone()
+            next_slot = int(row_get(next_slot_row, "next_slot", 1) or 1)
+            if replaced_id:
+                replaced_raw = conn.execute(
+                    "SELECT id,term_id,status,slot_no FROM president_laws WHERE id=%s FOR UPDATE",
+                    (replaced_id,),
+                ).fetchone()
+                replaced = dict(replaced_raw) if replaced_raw else {}
+                replacement_elapsed = now - int(term.get("last_law_replace_at") or 0)
+                replaced_status = str(replaced.get("status") or "")
+                replacement_term_matches = str(replaced.get("term_id") or "") == term_id
+                replacement_slot = int(replaced.get("slot_no") or 0)
+
+        try:
+            transition = review_president_law_transition(
+                law_status=str(law.get("status") or ""),
+                decision=decision,
+                published_count=published_count,
+                replaced_law_id=replaced_id,
+                replacement_elapsed_ms=replacement_elapsed,
+                replaced_law_status=replaced_status,
+                replacement_term_matches=replacement_term_matches,
+                replacement_slot=replacement_slot,
+                next_slot=next_slot,
+            )
+        except PresidentLawReviewError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        status = str(transition["status"])
+        slot_no = int(transition["slot_no"] or 0)
+        review_decision = "APPROVED" if status == "PUBLISHED" else "REJECTED"
+        conn.execute(
+            "INSERT INTO president_law_reviews(law_id,reviewer,decision,note,created_at) VALUES(%s,%s,%s,%s,%s)",
+            (normalized_law_id, actor, review_decision, str(data.note or "").strip(), now),
+        )
+        if status == "PUBLISHED":
+            if replaced_id:
+                conn.execute("UPDATE president_laws SET status='REPLACED' WHERE id=%s", (replaced_id,))
+                conn.execute("UPDATE president_terms SET last_law_replace_at=%s WHERE id=%s", (now, term_id))
+            conn.execute(
+                "UPDATE president_laws SET status='PUBLISHED',published_at=%s,slot_no=%s WHERE id=%s",
+                (now, slot_no, normalized_law_id),
+            )
+        else:
+            conn.execute("UPDATE president_laws SET status='REJECTED' WHERE id=%s", (normalized_law_id,))
+        conn.commit()
+
+    audit_event(
+        actor,
+        "election.law.review",
+        target=normalized_law_id,
+        details={"decision": status, "termId": term_id, "replacedLawId": replaced_id},
+    )
+    append_panel_event(
+        "admin-panel",
+        "election_law_reviewed",
+        actor=actor,
+        target=normalized_law_id,
+        metadata={"decision": status, "termId": term_id, "replacedLawId": replaced_id},
+        tags=["elections", "president-law"],
+    )
+    return {
+        "lawId": normalized_law_id,
+        "decision": status,
+        "publishedAt": now if status == "PUBLISHED" else 0,
+        "slotNo": slot_no,
+        "replacedLawId": replaced_id,
+    }
 
 
 def _rp_active_election(conn: Any, *, for_update: bool = False) -> Optional[dict[str, Any]]:
@@ -9703,6 +10025,18 @@ def public_site_config_sync() -> dict[str, Any]:
 
 
 def public_site_status_sync() -> dict[str, Any]:
+    global PUBLIC_STATUS_CACHE
+    now = time.time()
+    with PUBLIC_STATUS_CACHE_LOCK:
+        cached_at, cached = PUBLIC_STATUS_CACHE
+        if cached and now - cached_at < PUBLIC_STATUS_CACHE_TTL_SECONDS:
+            return copy.deepcopy(cached)
+        fresh = _public_site_status_uncached()
+        PUBLIC_STATUS_CACHE = (now, copy.deepcopy(fresh))
+        return fresh
+
+
+def _public_site_status_uncached() -> dict[str, Any]:
     online, latency = tcp_online(MC_HOST, MC_PORT)
     players_online = 0
     player_cap = 0
@@ -11488,7 +11822,8 @@ async def public_cms() -> dict[str, Any]:
 
 
 @app.get("/api/public/status")
-async def public_status() -> dict[str, Any]:
+async def public_status(request: Request) -> dict[str, Any]:
+    check_rate_limit(request, "public-status", limit=30, window_seconds=60)
     return {"ok": True, "data": await bg(public_site_status_sync)}
 
 
@@ -11513,12 +11848,21 @@ async def public_president() -> dict[str, Any]:
 
 
 @app.get("/api/public/president/skin/body")
-async def public_president_skin_body(uuid: str = Query(default="")) -> Response:
+async def public_president_skin_body(request: Request, uuid: str = Query(default="")) -> Response:
+    check_rate_limit(request, "public-president-skin", limit=20, window_seconds=60)
     safe_uuid = str(uuid or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f-]{32,36}", safe_uuid):
         raise HTTPException(status_code=404, detail="Президентский скин недоступен")
     if httpx is None:
         raise HTTPException(status_code=503, detail="Skin proxy is unavailable")
+    now = time.time()
+    with PUBLIC_SKIN_CACHE_LOCK:
+        cached = PUBLIC_SKIN_CACHE.get(safe_uuid)
+        if cached and now - cached[0] < PUBLIC_SKIN_CACHE_TTL_SECONDS:
+            return Response(content=cached[1], media_type=cached[2], headers={"Cache-Control": "public, max-age=600"})
+        for key, value in list(PUBLIC_SKIN_CACHE.items()):
+            if now - value[0] >= PUBLIC_SKIN_CACHE_TTL_SECONDS:
+                PUBLIC_SKIN_CACHE.pop(key, None)
     urls = [
         f"https://crafatar.com/renders/body/{safe_uuid}?overlay=true&scale=6",
         f"https://mc-heads.net/body/{safe_uuid}/right",
@@ -11535,6 +11879,13 @@ async def public_president_skin_body(uuid: str = Query(default="")) -> Response:
             content_type = remote.headers.get("content-type", "image/png")
             if "image" not in content_type:
                 continue
+            if len(remote.content) > 2 * 1024 * 1024:
+                continue
+            with PUBLIC_SKIN_CACHE_LOCK:
+                if len(PUBLIC_SKIN_CACHE) >= PUBLIC_SKIN_CACHE_MAX_ENTRIES:
+                    oldest = min(PUBLIC_SKIN_CACHE, key=lambda key: PUBLIC_SKIN_CACHE[key][0])
+                    PUBLIC_SKIN_CACHE.pop(oldest, None)
+                PUBLIC_SKIN_CACHE[safe_uuid] = (time.time(), remote.content, content_type)
             return Response(
                 content=remote.content,
                 media_type=content_type,
@@ -11951,7 +12302,7 @@ async def player_create_report(request: Request, data: PlayerSupportReportIn, ac
 @app.get("/api/status")
 async def status(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
     online, latency = await bg(tcp_online, MC_HOST, MC_PORT)
-    web_online, web_latency = await bg(tcp_online, "127.0.0.1", 18080)
+    web_online, web_latency = await bg(tcp_online, "127.0.0.1", 443)
     backend_online, backend_latency = await bg(tcp_online, "127.0.0.1", 8090)
     voice = await bg(udp_probe, MC_HOST, 24454)
     rcon_ok = False
@@ -11986,7 +12337,7 @@ async def status(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
         "ports": {
             "minecraftTcp25565": {"online": online, "latencyMs": latency},
             "voiceUdp24454": voice,
-            "adminHttp18080": {"online": web_online, "latencyMs": web_latency},
+            "adminHttps443": {"online": web_online, "latencyMs": web_latency},
             "backend8090": {"online": backend_online, "latencyMs": backend_latency},
         },
         "time": int(time.time()),
@@ -12180,10 +12531,7 @@ def player_full_detail_sync(player: str, full_access: bool = False, limit: int =
     adv = advancement_summary(uuid)
     profile_meta = player_site_bank_profile_sync(uuid, name)
     if not full_access:
-        profile_pin = dict(profile_meta.get("pin") or {})
-        profile_pin["visiblePin"] = ""
-        profile_pin["temporaryPin"] = {}
-        profile_meta["pin"] = profile_pin
+        profile_meta["pin"] = public_pin_status(profile_meta.get("pin"))
     invsum = inventory_summary(nbt) if nbt else {"arInInventory": 0, "arInEnderChest": 0}
     live_inventory = plugin_inventory_live_sync(name, 10)
     inventory_history = inventory_history_sync(name, 16)
@@ -12482,10 +12830,7 @@ async def player_profile(player: str, context: dict[str, Any] = Depends(require_
     adv = await bg(advancement_summary, uuid)
     profile_meta = await bg(player_site_bank_profile_sync, uuid, name)
     if not bool(context.get("fullAccess")):
-        profile_pin = dict(profile_meta.get("pin") or {})
-        profile_pin["visiblePin"] = ""
-        profile_pin["temporaryPin"] = {}
-        profile_meta["pin"] = profile_pin
+        profile_meta["pin"] = public_pin_status(profile_meta.get("pin"))
     invsum = inventory_summary(nbt) if nbt else {"arInInventory": 0, "arInEnderChest": 0}
     return {
         "uuid": uuid,
@@ -12641,16 +12986,30 @@ async def player_bank_pin_reset(player: str, request: Request, username: str = D
 async def player_bank_pin_randomize(player: str, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
     require_sensitive_confirm(request, "PLAYER_BANK_PIN_RANDOMIZE")
     result = await bg(randomize_player_bank_pin_sync, player, username)
-    audit_event(username, "player.bank_pin_randomize", target=player, details={"minecraftUuid": result.get("minecraftUuid")})
+    delivered = await deliver_temporary_pin_in_game(str(result.get("minecraftName") or player), str(result.get("temporaryPin") or ""))
+    audit_event(
+        username,
+        "player.bank_pin_randomize",
+        target=player,
+        details={"minecraftUuid": result.get("minecraftUuid"), "expiresAt": result.get("expiresAt"), "deliveredInGame": delivered},
+    )
     append_panel_event(
         "admin-panel",
         "player_bank_pin_randomize",
         actor=username,
         target=player,
-        metadata={"minecraftUuid": result.get("minecraftUuid")},
+        metadata={"minecraftUuid": result.get("minecraftUuid"), "expiresAt": result.get("expiresAt"), "deliveredInGame": delivered},
         tags=["player", "security", "bank"],
     )
-    return result
+    return {
+        "ok": True,
+        "minecraftUuid": result.get("minecraftUuid"),
+        "minecraftName": result.get("minecraftName"),
+        "siteAccountId": result.get("siteAccountId"),
+        "siteUsername": result.get("siteUsername"),
+        "expiresAt": result.get("expiresAt"),
+        "deliveredInGame": delivered,
+    }
 
 
 @app.post("/api/players/{player}/bank-pin/set")
@@ -12912,7 +13271,7 @@ async def elections_overview(_: str = Depends(require_panel_admin)) -> dict[str,
             db_data = {
                 "db": {"type": "postgresql", "schema": POSTGRES_SCHEMA, "legacyFallback": safe_location(admin_plugin_db_path())},
                 "tables": [],
-                "groups": {"postgresql": ["elections", "candidate_applications", "candidates", "round_candidates", "votes", "election_voting_blocks", "president_terms"]},
+                "groups": {"postgresql": ["elections", "candidate_applications", "candidates", "round_candidates", "votes", "election_voting_blocks", "president_terms", "president_laws", "president_law_reviews"]},
                 "antiFraud": detail.get("antiFraud", []),
                 "summary": detail.get("summary", {}),
             }
@@ -12942,6 +13301,21 @@ async def elections_application_review(
         raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
     require_sensitive_confirm(request, f"ELECTION_APPLICATION_{decision.upper()}")
     result = await bg(review_candidate_application_sync, application_id, data, username)
+    return {"ok": True, **result}
+
+
+@app.post("/api/elections/president-laws/{law_id}/review")
+async def elections_president_law_review(
+    law_id: str,
+    data: ElectionLawReviewIn,
+    request: Request,
+    username: str = Depends(require_panel_admin),
+) -> dict[str, Any]:
+    decision = str(data.decision or "").strip().lower()
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Решение должно быть approved или rejected")
+    require_sensitive_confirm(request, f"ELECTION_LAW_{decision.upper()}")
+    result = await bg(review_president_law_sync, law_id, data, username)
     return {"ok": True, **result}
 
 
@@ -14621,6 +14995,26 @@ def _replace_catalog_price_text(text: str, item_id: str, category: str, price: i
     return text[: match.start()] + updated_block + text[match.end() :]
 
 
+def _replace_catalog_limit_text(text: str, item_id: str, category: str, limit: int) -> str:
+    block_pattern, _, _ = _catalog_price_line_pattern(category)
+    normalized_id = _normalize_shop_item_id(item_id)
+    match = next((candidate for candidate in block_pattern.finditer(text) if _normalize_shop_item_id(candidate.group(1)) == normalized_id), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
+    block = match.group(0)
+    limit_pattern = re.compile(r"(?m)^(\s+)per_player_limit:\s*[^#\r\n]*$")
+    if limit_pattern.search(block):
+        updated_block = limit_pattern.sub(lambda found: f"{found.group(1)}per_player_limit: {int(limit)}", block, count=1)
+    else:
+        id_line = re.search(r"(?m)^(\s*-\s*[^\r\n]+)$", block)
+        if not id_line:
+            raise HTTPException(status_code=500, detail="Структура каталога предмета повреждена")
+        indent = re.match(r"\s*", id_line.group(1)).group(0)
+        insertion = f"{id_line.group(1)}\n{indent}  per_player_limit: {int(limit)}"
+        updated_block = block[: id_line.start()] + insertion + block[id_line.end() :]
+    return text[: match.start()] + updated_block + text[match.end() :]
+
+
 def _catalog_price_target(item_id: str, category: str) -> dict[str, Any]:
     normalized_id = _normalize_shop_item_id(item_id)
     raw_category = str(category or "").strip().upper().replace("-", "_")
@@ -14773,6 +15167,75 @@ def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, 
     audit_event(actor, "shop.price.update", target=target["item_id"], details={"category": target["category"], "before": target["old_price"], "after": normalized_price, "idempotency_key": idempotency_key})
     append_panel_event("shops", "price_changed", actor=actor, target=target["item_id"], metadata={"category": target["category"], "before": target["old_price"], "after": normalized_price}, tags=["shop", "price"])
     return {"ok": True, "item_id": target["item_id"], "category": target["category"], "old_price": target["old_price"], "price": normalized_price, "reload": str(reload_response or "")[:240]}
+
+
+def update_shop_limit_sync(item_id: str, category: str, limit: int, actor: str, idempotency_key: str) -> dict[str, Any]:
+    """Update the per-player purchase limit in every catalog copy and reload it."""
+    if yaml is None:
+        raise HTTPException(status_code=503, detail="Редактор лимитов недоступен: PyYAML не установлен")
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="Изменение лимита требует настроенного RCON")
+    target = _catalog_price_target(item_id, category)
+    normalized_limit = int(limit)
+    if normalized_limit < 0 or normalized_limit > 1000:
+        raise HTTPException(status_code=400, detail="Лимит должен быть целым числом от 0 до 1000")
+    paths = _shop_catalog_paths()
+    if not paths:
+        raise HTTPException(status_code=404, detail="Файл каталога лавки не найден")
+
+    with ARTIFACTS_CATALOG_LOCK:
+        old_texts: dict[Path, str] = {}
+        staged: list[tuple[Path, Path]] = []
+        matched_paths = 0
+        try:
+            for path in paths:
+                text = path.read_text(encoding="utf-8-sig")
+                if not isinstance(yaml.safe_load(text) or {}, dict):
+                    raise HTTPException(status_code=500, detail="Файл каталога имеет неверный формат")
+                old_texts[path] = text
+                try:
+                    updated = _replace_catalog_limit_text(text, target["item_id"], target["category"], normalized_limit)
+                except HTTPException as error:
+                    if error.status_code != 404:
+                        raise
+                    continue
+                matched_paths += 1
+                temp = path.with_name(f".{path.name}.limit-{secrets.token_hex(6)}.tmp")
+                temp.write_text(updated.rstrip() + "\n", encoding="utf-8", newline="\n")
+                temp.chmod(0o640)
+                staged.append((path, temp))
+            for path, temp in staged:
+                temp.replace(path)
+            if matched_paths == 0:
+                raise HTTPException(status_code=404, detail="Предмет не найден в выбранной лавке")
+            try:
+                reload_response = rcon_sync("cmartifacts reload")
+            except Exception as exc:
+                raise HTTPException(status_code=503, detail=f"Лимиты сохранены не были: не удалось перезагрузить лавку ({str(exc)[:180]})") from exc
+            lowered = str(reload_response or "").lower()
+            if any(marker in lowered for marker in ("unknown command", "неизвест", "error", "ошиб", "players only", "только игрок")):
+                raise HTTPException(status_code=503, detail="Плагин не подтвердил перезагрузку каталога")
+        except Exception:
+            for path, temp in staged:
+                try:
+                    temp.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            for path, old_text in old_texts.items():
+                try:
+                    path.write_text(old_text, encoding="utf-8", newline="\n")
+                except Exception:
+                    pass
+            if old_texts:
+                try:
+                    rcon_sync("cmartifacts reload")
+                except Exception:
+                    pass
+            raise
+
+    audit_event(actor, "shop.limit.update", target=target["item_id"], details={"category": target["category"], "limit": normalized_limit, "idempotency_key": idempotency_key})
+    append_panel_event("shops", "limit_changed", actor=actor, target=target["item_id"], metadata={"category": target["category"], "limit": normalized_limit}, tags=["shop", "limit"])
+    return {"ok": True, "item_id": target["item_id"], "category": target["category"], "limit": normalized_limit, "reload": str(reload_response or "")[:240]}
 
 
 def update_repair_price_sync(price_ar: int, actor: str, idempotency_key: str) -> dict[str, Any]:
@@ -15280,6 +15743,8 @@ def yookassa_http_error(error: YooKassaGatewayError) -> HTTPException:
 def create_donation_session_sync(player_uuid: str, player_name: str, amount: int, actor: str, source: str, idempotency_key: str) -> dict[str, Any]:
     if not pg_ready():
         raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    if STARTUP_STRICT and (not DONATION_TOPUP_ENABLED or not YOOKASSA_SETTINGS.enabled):
+        raise HTTPException(status_code=503, detail="Пополнение донат-баланса временно отключено: реальный платёжный провайдер не настроен")
     player_uuid = str(player_uuid or "").strip()
     if not player_uuid:
         raise HTTPException(status_code=409, detail="Minecraft account is not linked")
@@ -15748,7 +16213,7 @@ def reset_artifact_limit_sync(player: str, actor: str, data: AdminArtifactLimitR
         conn.commit()
     audit_event(actor, "artifact.purchase_limit.reset", target=player, details={"minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now})
     append_panel_event("players", "artifact_limit_reset", actor=actor, target=player, metadata={"itemIds": item_ids, "resetAt": now}, tags=["artifacts", "limit"])
-    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now, "limit": 5, "donationEntitlementsRetired": [item_id for item_id in item_ids if item_id in donation_items]}
+    return {"ok": True, "player": player, "minecraftUuid": uuid, "itemIds": item_ids, "resetAt": now, "limit": 3, "donationEntitlementsRetired": [item_id for item_id in item_ids if item_id in donation_items]}
 
 
 def purchase_ar_item_sync(account: dict[str, Any], data: PlayerArPurchaseIntentIn) -> dict[str, Any]:
@@ -16943,6 +17408,13 @@ async def admin_shop_price_update(data: AdminShopPriceUpdateIn, request: Request
         raise
 
 
+@app.post("/api/admin/shop/limit")
+async def admin_shop_limit_update(data: AdminShopLimitUpdateIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "SHOP_LIMIT_UPDATE")
+    check_rate_limit(request, "admin-shop-limit", limit=20, window_seconds=60)
+    return await bg(update_shop_limit_sync, data.item_id, data.category, data.limit, username, data.idempotency_key)
+
+
 @app.post("/api/admin/shop/repair-price")
 async def admin_shop_repair_price_update(data: AdminRepairPriceUpdateIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
     require_sensitive_confirm(request, "SHOP_REPAIR_PRICE_UPDATE")
@@ -17212,6 +17684,58 @@ async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
 NARCOTICS_RECIPE_BLOCKED_TOKENS = {"MATERIAL:DIAMOND_ORE", "MATERIAL:DEEPSLATE_DIAMOND_ORE"}
 NARCOTICS_RECIPE_TOKEN_RE = re.compile(r"^(material|potion):[A-Z0-9_]+$", re.IGNORECASE)
 NARCOTICS_RECIPE_APPLY_MODES = {"save", "apply"}
+# These are the deliberately supported ingredient choices shown by the recipe
+# editor.  A flattened texture directory is not a material registry: it has
+# block faces and animation frames, and it lacks a standalone image for some
+# legitimate block items.  Keep their player-facing names and canonical sprite
+# together so active recipes always render the correct item.
+NARCOTICS_RECIPE_CURATED_MATERIALS: dict[str, tuple[str, str]] = {
+    "SUGAR": ("Сахар", "sugar.png"),
+    "WHITE_DYE": ("Белый краситель", "white_dye.png"),
+    "GLOWSTONE_DUST": ("Светопыль", "glowstone_dust.png"),
+    "RABBIT_FOOT": ("Кроличья лапка", "rabbit_foot.png"),
+    "DIAMOND": ("Алмаз", "diamond.png"),
+    "JUNGLE_LEAVES": ("Листья джунглей", "jungle_leaves.png"),
+    "SLIME_BLOCK": ("Блок слизи", "slime_block.png"),
+    "TURTLE_SCUTE": ("Черепаший панцирь", "turtle_scute.png"),
+    "EMERALD": ("Изумруд", "emerald.png"),
+    "GOLD_INGOT": ("Золотой слиток", "gold_ingot.png"),
+    "GOLDEN_CARROT": ("Золотая морковь", "golden_carrot.png"),
+    "STRING": ("Нить", "string.png"),
+    "BONE": ("Кость", "bone.png"),
+    "IRON_BLOCK": ("Железный блок", "iron_block.png"),
+    "GHAST_TEAR": ("Слеза гаста", "ghast_tear.png"),
+    "AMETHYST_BLOCK": ("Аметистовый блок", "amethyst_block.png"),
+    "END_ROD": ("Энд-стержень", "end_rod.png"),
+    "IRON_INGOT": ("Железный слиток", "iron_ingot.png"),
+    "BLUE_STAINED_GLASS": ("Синее стекло", "blue_stained_glass.png"),
+    "COCOA_BEANS": ("Какао-бобы", "cocoa_beans.png"),
+    "IRON_NUGGET": ("Железный самородок", "iron_nugget.png"),
+    "LARGE_FERN": ("Большой папоротник", "large_fern_top.png"),
+    "DRIED_KELP_BLOCK": ("Блок сушёной ламинарии", "dried_kelp_side.png"),
+    "SUGAR_CANE": ("Сахарный тростник", "sugar_cane.png"),
+    "NETHERRACK": ("Незерак", "netherrack.png"),
+    "SOUL_SAND": ("Песок душ", "soul_sand.png"),
+    "REDSTONE_BLOCK": ("Редстоуновый блок", "redstone_block.png"),
+    "LAPIS_BLOCK": ("Лазуритовый блок", "lapis_block.png"),
+    "COPPER_BLOCK": ("Медный блок", "copper_block.png"),
+    "OBSIDIAN": ("Обсидиан", "obsidian.png"),
+    "CRYING_OBSIDIAN": ("Плачущий обсидиан", "crying_obsidian.png"),
+    "HONEY_BLOCK": ("Блок мёда", "honey_block.png"),
+    "MAGMA_BLOCK": ("Магмовый блок", "magma.png"),
+    "SEA_LANTERN": ("Морской фонарь", "sea_lantern.png"),
+    "SCULK": ("Скалк", "sculk.png"),
+    "TINTED_GLASS": ("Тонированное стекло", "tinted_glass.png"),
+    "PHANTOM_MEMBRANE": ("Мембрана фантома", "phantom_membrane.png"),
+    "BLAZE_POWDER": ("Огненный порошок", "blaze_powder.png"),
+    "FERMENTED_SPIDER_EYE": ("Маринованный паучий глаз", "fermented_spider_eye.png"),
+    "PRISMARINE_CRYSTALS": ("Призмариновые кристаллы", "prismarine_crystals.png"),
+    "ECHO_SHARD": ("Осколок эха", "echo_shard.png"),
+    "AMETHYST_SHARD": ("Осколок аметиста", "amethyst_shard.png"),
+    "ENDER_PEARL": ("Эндер-жемчуг", "ender_pearl.png"),
+    "BREEZE_ROD": ("Стержень бриза", "breeze_rod.png"),
+    "NETHER_STAR": ("Звезда Незера", "nether_star.png"),
+}
 NARCOTICS_RECIPE_TECHNICAL_SUFFIXES = (
     "_top",
     "_bottom",
@@ -17291,13 +17815,7 @@ def _public_recipe_item(item_id: str, item: Mapping[str, Any]) -> dict[str, Any]
 
 
 def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
-    """Build a complete material picker from the bundled vanilla textures.
-
-    The asset directory is already populated from the matching Minecraft
-    client version.  Technical block-face textures are excluded, while every
-    remaining icon is exposed as a valid material token with its own sprite.
-    A tiny mtime cache keeps opening the recipe editor cheap.
-    """
+    """Build the material picker without treating texture filenames as items."""
     global _NARCOTICS_RECIPE_ITEMS_CACHE
     icon_dir = FRONTEND_DIR / "assets" / "mc-icons" / "item"
     if not icon_dir.exists():
@@ -17313,6 +17831,21 @@ def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
     blocked = {token.split(":", 1)[1].lower() for token in NARCOTICS_RECIPE_BLOCKED_TOKENS}
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
+    available = {path.name.lower(): path for path in files}
+    for material, (name, sprite) in NARCOTICS_RECIPE_CURATED_MATERIALS.items():
+        item_id = material.lower()
+        path = available.get(sprite.lower())
+        if item_id in blocked or path is None:
+            continue
+        seen.add(item_id)
+        rows.append(
+            {
+                "id": material,
+                "name": name,
+                "token": f"material:{item_id}",
+                "iconUrl": f"/assets/mc-icons/item/{path.name}",
+            }
+        )
     for path in files:
         item_id = path.stem.lower()
         if not item_id or item_id in blocked or item_id in seen:
@@ -17329,10 +17862,11 @@ def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
                 continue
             item_id = canonical
         seen.add(item_id)
+        curated = NARCOTICS_RECIPE_CURATED_MATERIALS.get(item_id.upper())
         rows.append(
             {
                 "id": item_id.upper(),
-                "name": item_id.replace("_", " ").title(),
+                "name": curated[0] if curated else item_id.replace("_", " ").title(),
                 "token": f"material:{item_id}",
                 "iconUrl": f"/assets/mc-icons/item/{path.name}",
             }
@@ -17551,6 +18085,12 @@ def public_health_projection(report: Mapping[str, Any] | dict[str, Any]) -> dict
 
 
 def public_auth_transport_state() -> dict[str, Any]:
+    if ADMIN_PUBLIC_BASE_URL.lower().startswith("https://"):
+        return {
+            "http": "redirects-to-https",
+            "authenticatedSessions": "https-required",
+            "warning": "HTTP requests are redirected to HTTPS; login cookies require HTTPS.",
+        }
     return {
         "http": "public-only",
         "authenticatedSessions": "https-required",
@@ -17572,7 +18112,11 @@ async def health() -> dict[str, Any]:
 
 @app.get("/api/runtime")
 async def runtime(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
-    if not is_loopback_request(request):
+    # Nginx reaches Uvicorn over loopback too.  Only a direct local request
+    # without forwarded proxy headers may use the operator-only bypass;
+    # public TLS requests must still authenticate even when their TCP peer is
+    # 127.0.0.1.
+    if not request_is_direct_loopback(request):
         require_panel_admin(request, authorization)
     report = _STARTUP_REPORT or run_startup_checks()
     snapshot = managed_runtime_snapshot(PROJECT_ROOT, APP_ROOT)

@@ -19,6 +19,7 @@ import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -181,9 +182,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     /** Read-only president/treasury role cache; event handlers never query JDBC. */
     private final Map<UUID, Boolean> treasuryAccessCache = new ConcurrentHashMap<>();
     private final Set<UUID> atmPinRefreshBypass = ConcurrentHashMap.newKeySet();
-    /** Short-lived permits for AR entities intentionally created by silk-touch mining. */
-    private final Map<String, Long> authorizedArWorldDropTokens = new ConcurrentHashMap<>();
-    private final SecureRandom worldDropTokenRandom = new SecureRandom();
     private final Set<BlockKey> activeAtmBlocks = ConcurrentHashMap.newKeySet();
     private final Map<BlockKey, String> atmIdsByBlock = new ConcurrentHashMap<>();
     private final Map<BlockKey, String> atmExpectedMaterials = new ConcurrentHashMap<>();
@@ -195,7 +193,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private NamespacedKey officialArSignatureKey;
     private NamespacedKey officialArDenominationKey;
     private NamespacedKey officialArSignatureVersionKey;
-    private NamespacedKey officialArWorldDropTokenKey;
     private NamespacedKey officialArIssuanceTokenKey;
     private byte[] officialArSigningSecret;
     private BukkitTask atmAnchorGuardTask;
@@ -259,7 +256,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         int countOfficialAr(Inventory inventory);
         CompletableFuture<Boolean> prepareIssuanceAsync(String issuanceKey, Material material, int amount, String source);
         ItemStack createPreparedStack(Material material, int amount, String source);
-        boolean authorizeWorldDrop(ItemStack stack);
         ItemStack normalizeStack(ItemStack stack);
         void normalizePlayer(Player player);
     }
@@ -405,7 +401,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         officialArSignatureKey = new NamespacedKey(this, "ar_signature");
         officialArDenominationKey = new NamespacedKey(this, "ar_denomination");
         officialArSignatureVersionKey = new NamespacedKey(this, "ar_signature_version");
-        officialArWorldDropTokenKey = new NamespacedKey(this, "ar_world_drop_token");
         officialArIssuanceTokenKey = new NamespacedKey(this, "ar_issuance_token");
         officialArSigningSecret = loadOrCreateArSigningSecret();
         pendingArSettlementJournalPath = getDataFolder().toPath().resolve("pending-ar-settlements.tsv");
@@ -849,159 +844,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
     }
 
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArPlace(BlockPlaceEvent event) {
-        // Certified AR is a normal diamond-ore item. AdminPlus records the
-        // placed block so Silk Touch can return the same stack.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArCreative(InventoryCreativeEvent event) {
-        // Certified AR is not special inside creative inventory either.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArInventoryClick(InventoryClickEvent event) {
-        // AR follows Bukkit's normal click and shift-click rules.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArInventoryDrag(InventoryDragEvent event) {
-        // AR follows Bukkit's normal drag rules.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArInventoryMove(InventoryMoveItemEvent event) {
-        // Hoppers and other inventories may move AR normally.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArInventoryPickup(InventoryPickupItemEvent event) {
-        // Containers may pick up dropped AR normally.
-    }
-
-    /** Certified AR deliberately uses the ordinary Minecraft item lifecycle. */
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArPickup(EntityPickupItemEvent event) {
-        // Player, hopper and other entity pickup are all allowed.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArDrop(PlayerDropItemEvent event) {
-        // Dropping AR is the supported cash hand-off between players.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArDeath(PlayerDeathEvent event) {
-        // Death drops remain in the event unchanged, including AR.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArDamage(EntityDamageEvent event) {
-        // AR may be destroyed by ordinary item damage.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArDespawn(ItemDespawnEvent event) {
-        // AR follows the normal item despawn timer.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArMerge(ItemMergeEvent event) {
-        // Identical AR stacks may merge normally.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArSpawn(ItemSpawnEvent event) {
-        if (!containsOfficialAr(event.getEntity().getItemStack())) {
-            return;
-        }
-        // Old issuance/drop tokens are harmless metadata. Strip them if
-        // present, but never cancel an ordinary world spawn.
-        ItemMeta meta = event.getEntity().getItemStack().getItemMeta();
-        if (meta != null) {
-            String token = first(meta.getPersistentDataContainer().get(officialArWorldDropTokenKey, PersistentDataType.STRING), "");
-            if (!token.isBlank()) {
-                authorizedArWorldDropTokens.remove(token);
-                meta.getPersistentDataContainer().remove(officialArWorldDropTokenKey);
-                ItemStack normalized = event.getEntity().getItemStack();
-                normalized.setItemMeta(meta);
-                event.getEntity().setItemStack(normalized);
-            }
-        }
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArSmelt(FurnaceSmeltEvent event) {
-        // AR keeps ordinary furnace behavior.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArEntityInteract(PlayerInteractEntityEvent event) {
-        // AR can be inserted into item frames/stands normally.
-    }
-
-    @EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onOfficialArArmorStand(PlayerArmorStandManipulateEvent event) {
-        // AR can be moved through armor-stand inventory normally.
-    }
-
-    private boolean officialArTouchesContainer(InventoryClickEvent event) {
-        Inventory top = event.getView().getTopInventory();
-        if (top == null || top.getType() == org.bukkit.event.inventory.InventoryType.PLAYER
-                || (top.getType() == org.bukkit.event.inventory.InventoryType.CRAFTING
-                && (top.getHolder() instanceof Player || event.getWhoClicked() instanceof Player))) {
-            return false;
-        }
-        // Check the clicked stack regardless of whether it came from the top
-        // inventory or the player's bottom inventory.  In particular,
-        // SHIFT-clicking an AR stack from the player inventory would otherwise
-        // bypass the top-slot check and move it into a chest/hopper.
-        if (containsOfficialAr(event.getCurrentItem())) {
-            return true;
-        }
-        if (containsOfficialAr(event.getCursor())) {
-            return true;
-        }
-        if (event.getClick() == ClickType.NUMBER_KEY) {
-            int hotbarSlot = event.getHotbarButton();
-            ItemStack hotbar = hotbarSlot >= 0 && hotbarSlot < 9
-                    ? event.getWhoClicked().getInventory().getItem(hotbarSlot) : null;
-            return containsOfficialAr(hotbar);
-        }
-        if (event.getClick() == ClickType.SWAP_OFFHAND) {
-            return containsOfficialAr(event.getWhoClicked().getInventory().getItemInOffHand());
-        }
-        if (event.getClick() == ClickType.DOUBLE_CLICK) {
-            // Double-click collection can pull matching stacks from both
-            // inventories even when the clicked slot itself is empty.
-            return java.util.Arrays.stream(top.getContents()).anyMatch(this::containsOfficialAr)
-                    || java.util.Arrays.stream(event.getWhoClicked().getInventory().getContents()).anyMatch(this::containsOfficialAr)
-                    || containsOfficialAr(event.getWhoClicked().getInventory().getItemInOffHand());
-        }
-        return false;
-    }
-
-    private boolean containsOfficialAr(ItemStack stack) {
-        if (stack == null || stack.getType().isAir()) {
-            return false;
-        }
-        if (isOfficialAr(stack)) {
-            return true;
-        }
-        if (!stack.hasItemMeta() || stack.getItemMeta() == null) {
-            return false;
-        }
-        ItemMeta meta = stack.getItemMeta();
-        if (meta instanceof BundleMeta bundle && bundle.hasItems()) {
-            return bundle.getItems().stream().anyMatch(this::containsOfficialAr);
-        }
-        if (meta instanceof BlockStateMeta stateMeta && stateMeta.getBlockState() instanceof Container container) {
-            return java.util.Arrays.stream(container.getInventory().getContents()).anyMatch(this::containsOfficialAr);
-        }
-        return false;
-    }
-
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent event) {
         try {
@@ -1013,11 +855,31 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        normalizeOfficialArItems(event.getPlayer());
         Bukkit.getScheduler().runTaskLater(this, () -> {
             processPendingArSettlements(event.getPlayer(), true);
             processArDepositIntents(event.getPlayer(), true);
         }, 20L);
+    }
+
+    /**
+     * Old mining drops carried a per-entity PDC token.  It made otherwise
+     * identical official AR stacks non-stackable.  Normalize only an already
+     * valid fungible AR immediately before vanilla pickup; this never changes
+     * the item amount and never authorizes an unsigned ore block.
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void normalizeFungibleArOnPickup(EntityPickupItemEvent event) {
+        if (event == null || event.getItem() == null) {
+            return;
+        }
+        ItemStack current = event.getItem().getItemStack();
+        if (!isOfficialAr(current) || !isFungibleArSerial(officialArSerial(current))) {
+            return;
+        }
+        ItemStack canonical = canonicalOfficialArStack(current);
+        if (canonical != current) {
+            event.getItem().setItemStack(canonical);
+        }
     }
 
     @EventHandler
@@ -2288,6 +2150,11 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                             advanceArDepositIntent(intent.id(), player);
                         }
                     }
+                    // Do this only after pending deposit snapshots were checked.
+                    // Legacy v2 stacks have an amount-bound signature, so
+                    // rewriting them before recovery could make an unfinished
+                    // deposit look like a changed item.
+                    officialArService.normalizePlayer(player);
                 }));
     }
 
@@ -2732,10 +2599,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         if (player == null || amount <= 0 || amount > Integer.MAX_VALUE) {
             return false;
         }
-        // Older releases issued a valid-but-unique v2 serial. Normalize it
-        // before calculating capacity so withdrawn AR can stack with every
-        // other fungible AR, including items already in the player's inventory.
-        normalizeOfficialArItems(player);
         if (arCapacity(player.getInventory()) < amount) {
             return false;
         }
@@ -2854,6 +2717,40 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         pdc.set(officialArSignatureKey, PersistentDataType.STRING, officialArFungibleSignature(arMaterial));
         stack.setItemMeta(meta);
         return stack;
+    }
+
+    /**
+     * Rebuild a valid official AR with only its canonical fungible metadata.
+     * The validation happens before rebuilding, so a renamed or forged diamond
+     * ore is never upgraded into an official AR.  Issuance-tagged stacks are
+     * intentionally left alone until their current durable issuance finishes.
+     */
+    private ItemStack canonicalOfficialArStack(ItemStack stack) {
+        if (!isOfficialAr(stack)) {
+            return stack;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        if (meta == null || meta.getPersistentDataContainer().has(officialArIssuanceTokenKey, PersistentDataType.STRING)) {
+            return stack;
+        }
+        ItemStack canonical = createOfficialArStack(stack.getType(), stack.getAmount(), "", "", "canonical");
+        return stack.isSimilar(canonical) ? stack : canonical;
+    }
+
+    private boolean normalizeOfficialArInventory(Inventory inventory) {
+        if (inventory == null) {
+            return false;
+        }
+        boolean changed = false;
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack current = inventory.getItem(slot);
+            ItemStack canonical = canonicalOfficialArStack(current);
+            if (canonical != current) {
+                inventory.setItem(slot, canonical);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     private String officialArSerial(ItemStack stack) {
@@ -3162,86 +3059,6 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 playerInventory.setItemInOffHand(offhand);
             }
         }
-    }
-
-    private void normalizeOfficialArItems(Player player) {
-        if (player == null) {
-            return;
-        }
-        boolean updated = normalizeOfficialArInventory(player.getInventory());
-        updated = normalizeOfficialArInventory(player.getEnderChest()) || updated;
-        ItemStack offHand = player.getInventory().getItemInOffHand();
-        if (isOfficialAr(offHand) && needsOfficialArNormalization(offHand)) {
-            player.getInventory().setItemInOffHand(normalizeOfficialArStack(offHand, "join-normalize"));
-            updated = true;
-        }
-        if (updated) {
-            player.updateInventory();
-        }
-    }
-
-    private boolean normalizeOfficialArInventory(Inventory inventory) {
-        if (inventory == null) {
-            return false;
-        }
-        boolean updated = false;
-        for (int slot = 0; slot < inventory.getSize(); slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (!isOfficialAr(stack) || !needsOfficialArNormalization(stack)) {
-                continue;
-            }
-            inventory.setItem(slot, normalizeOfficialArStack(stack, "normalize"));
-            updated = true;
-        }
-        return updated;
-    }
-
-    private ItemStack normalizeOfficialArStack(ItemStack source, String reason) {
-        String serial = officialArSerial(source);
-        // A valid legacy v2 serial is still an individually registered asset.
-        // Do not silently turn it into a v3 fungible stack: that would create
-        // unbacked supply unless a durable one-time migration also updates
-        // cmv8_ar_assets. A future migration must be explicit and idempotent.
-        if (!isFungibleArSerial(serial)) {
-            return source.clone();
-        }
-        ItemStack normalized = createOfficialArStack(source.getType(), Math.max(1, source.getAmount()), "", "", reason);
-        if (!serial.isBlank() && normalized.hasItemMeta()) {
-            ItemMeta meta = normalized.getItemMeta();
-            PersistentDataContainer pdc = meta.getPersistentDataContainer();
-            pdc.set(officialArSerialKey, PersistentDataType.STRING, arFungibleSerial(normalized.getType()));
-            normalized.setItemMeta(meta);
-        }
-        return normalized;
-    }
-
-    private boolean needsOfficialArNormalization(ItemStack stack) {
-        if (!isOfficialAr(stack)) {
-            return false;
-        }
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) {
-            return false;
-        }
-        if (!color("&bОфициальный AR").equals(meta.getDisplayName())) {
-            return true;
-        }
-        if (meta.lore() != null && !meta.lore().isEmpty()) {
-            return true;
-        }
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        String serial = officialArSerial(stack);
-        if (!isFungibleArSerial(serial)) {
-            // Legacy v2 items remain valid, individually identified assets.
-            // They are deliberately left untouched until a durable migration
-            // can account for their issued amount exactly once.
-            return false;
-        }
-        return pdc.has(new NamespacedKey("copiminear", "owner_uuid"), PersistentDataType.STRING)
-                || pdc.has(new NamespacedKey("copiminear", "owner_name"), PersistentDataType.STRING)
-                || pdc.has(new NamespacedKey("copiminear", "source"), PersistentDataType.STRING)
-                || !pdc.has(officialArSerialKey, PersistentDataType.STRING)
-                || !hasValidArSignature(stack);
     }
 
     private int countOfficialAr(Inventory inventory) {
@@ -6623,31 +6440,20 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
 
         @Override
-        public boolean authorizeWorldDrop(ItemStack stack) {
-            if (!isOfficialAr(stack) || stack.getItemMeta() == null) {
-                return false;
-            }
-            ItemMeta meta = stack.getItemMeta();
-            byte[] tokenBytes = new byte[24];
-            worldDropTokenRandom.nextBytes(tokenBytes);
-            String token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
-            meta.getPersistentDataContainer().set(officialArWorldDropTokenKey, PersistentDataType.STRING, token);
-            stack.setItemMeta(meta);
-            authorizedArWorldDropTokens.put(token, now() + 30_000L);
-            return true;
-        }
-
-        @Override
         public ItemStack normalizeStack(ItemStack stack) {
-            if (stack == null || !isOfficialAr(stack)) {
-                return stack;
-            }
-            return normalizeOfficialArStack(stack, "service-normalize");
+            return canonicalOfficialArStack(stack);
         }
 
         @Override
         public void normalizePlayer(Player player) {
-            normalizeOfficialArItems(player);
+            if (player == null || !player.isOnline()) {
+                return;
+            }
+            boolean changed = normalizeOfficialArInventory(player.getInventory());
+            changed = normalizeOfficialArInventory(player.getEnderChest()) || changed;
+            if (changed) {
+                player.updateInventory();
+            }
         }
     }
 }

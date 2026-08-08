@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ECONOMY = (ROOT / "copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java").read_text(encoding="utf-8")
+ADMIN = (ROOT / "copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java").read_text(encoding="utf-8")
 NARCOTICS_FACTORY = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/item/NarcoticItemFactory.java").read_text(encoding="utf-8")
 NARCOTICS_DB = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java").read_text(encoding="utf-8")
 
@@ -15,6 +16,30 @@ def test_ar_is_fungible_and_stack_identity_does_not_bind_to_quantity() -> None:
     assert "UUID.randomUUID()" not in create
     assert "arFungibleSerial(arMaterial)" in create
     assert "int denomination = 1" in create
+
+
+def test_silk_touch_replaces_the_vanilla_drop_without_unique_world_metadata() -> None:
+    assert "ar_world_drop_token" not in ECONOMY
+    assert "authorizeWorldDrop" not in ECONOMY
+
+    start = ADMIN.index("public void onArDrop(BlockDropItemEvent e)")
+    finish = ADMIN.index("public void onBook(PlayerEditBookEvent e)", start)
+    drop = ADMIN[start:finish]
+    assert "e.setCancelled" not in drop
+    assert "dropItemNaturally" not in drop
+    assert "createPreparedStack" in drop
+    assert "item.setItemStack(official)" in drop
+
+
+def test_only_valid_ar_is_canonicalized_to_the_single_stackable_form() -> None:
+    assert "private ItemStack canonicalOfficialArStack" in ECONOMY
+    canonical = ECONOMY[
+        ECONOMY.index("private ItemStack canonicalOfficialArStack"):
+        ECONOMY.index("private String officialArSerial", ECONOMY.index("private ItemStack canonicalOfficialArStack"))
+    ]
+    assert "if (!isOfficialAr(stack))" in canonical
+    assert "createOfficialArStack(stack.getType(), stack.getAmount()" in canonical
+    assert "officialArIssuanceTokenKey" in canonical
 
 
 def test_narcotics_are_stackable_with_a_fungible_signed_key() -> None:

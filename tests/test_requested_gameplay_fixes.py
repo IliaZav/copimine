@@ -52,9 +52,10 @@ def test_custom_artifacts_and_ar_are_free_in_vanilla_inventory_transport():
         "public void onProtectedItemDrag(InventoryDragEvent e)",
         "public void onProtectedItemMove(InventoryMoveItemEvent e)",
     )
-    assert "artifactsCoreOwns(vanillaCursor,vanillaCurrent,vanillaHotbar)" in admin_click
-    assert "isOfficialArItem(vanillaCursor)" in admin_click
-    assert "artifactsCoreOwns(e.getOldCursor())||isOfficialArItem(e.getOldCursor())" in admin_drag
+    assert "artifactsCoreOwns(cursor,current,hotbar)" in admin_click
+    assert "isOfficialArItem" not in admin_click
+    assert "artifactsCoreOwns(e.getOldCursor())" in admin_drag
+    assert "isOfficialArItem" not in admin_drag
     assert "isProtectedItemMove" not in admin_drag
 
 
@@ -84,24 +85,24 @@ def test_president_mandate_is_deduplicated_on_death_and_drop():
     assert "deduplicatePresidentMandates(player)" in drop
 
 
-def test_silk_touch_diamond_ore_path_certifies_an_ore_even_when_vanilla_drop_is_empty():
+def test_silk_touch_diamond_ore_path_replaces_the_existing_vanilla_drop():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
-    drop = between(admin, "public void onArDrop(BlockDropItemEvent e)", "private int naturalSilkTouchOreAmount")
-    amount = between(admin, "private int naturalSilkTouchOreAmount", "private NamespacedKey arKey")
+    drop = between(admin, "public void onArDrop(BlockDropItemEvent e)", "public void onBook(PlayerEditBookEvent e)")
     assert "ignoreCancelled=false" in admin[admin.index("public void onArDrop") - 180 : admin.index("public void onArDrop")]
-    assert "naturalSilkTouchOreAmount(e)" in drop
-    assert "return Math.max(1,total)" in amount
+    assert "isValidArCertificationDrop(e)" in drop
+    assert "item.setItemStack(official)" in drop
+    assert "prepareIssuanceAsync" in drop
+    assert "e.setCancelled" not in drop
+    assert "dropItemNaturally" not in drop
 
 
-def test_placed_ar_is_recorded_so_silk_touch_returns_ar_and_normal_pickaxe_keeps_diamond():
+def test_ar_placement_needs_no_custom_block_provenance_or_reissue_state():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
-    place = between(admin, "public void onArPlace(BlockPlaceEvent e)", "public void onArBlockPlaceGuard")
-    drop = between(admin, "public void onArDrop(BlockDropItemEvent e)", "private int naturalSilkTouchOreAmount")
-    assert "arPlacedBlockKeys.add(key)" in place
-    assert "arPlacedStacks.put(key,e.getItemInHand().clone())" in place
-    assert "if(economyCoreOwns(e.getItemInHand())) return;" not in place
-    assert "boolean reissuePlaced=placed && isValidArCertificationDrop(e.getPlayer())" in drop
-    assert "if(!reissuePlaced&&!eligible) { amount+=st.getAmount(); continue; }" in drop
+    drop = between(admin, "public void onArDrop(BlockDropItemEvent e)", "public void onBook(PlayerEditBookEvent e)")
+    assert "public void onArPlace(BlockPlaceEvent e)" not in admin
+    assert "arPlacedBlockKeys" not in drop
+    assert "arPlacedStacks" not in drop
+    assert "item.setItemStack(official)" in drop
 
 
 def test_brewing_requires_full_water_and_netherrack_fire_rig():
@@ -196,32 +197,21 @@ def test_shared_cauldron_lets_a_different_player_finish_and_receive_the_brew():
 
 def test_official_ar_uses_vanilla_inventory_transport_and_world_drop_rules():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
-    place = between(economy, "public void onOfficialArPlace", "public void onOfficialArCreative")
-    click = between(economy, "public void onOfficialArInventoryClick", "public void onOfficialArInventoryDrag")
-    drag = between(economy, "public void onOfficialArInventoryDrag", "public void onOfficialArInventoryMove")
-    move = between(economy, "public void onOfficialArInventoryMove", "public void onOfficialArInventoryPickup")
-    pickup = between(economy, "public void onOfficialArInventoryPickup", "public void onOfficialArPickup")
-    spawn = between(economy, "public void onOfficialArSpawn", "public void onOfficialArSmelt")
-    drop = between(economy, "public void onOfficialArDrop", "public void onOfficialArDamage")
-    assert "event.setCancelled(true)" not in place
-    assert "event.setCancelled(true)" not in click
-    assert "event.setCancelled(true)" not in drag
-    assert "event.setCancelled(true)" not in move
-    assert "event.setCancelled(true)" not in pickup
-    assert "authorizeWorldDrop" not in drop
-    assert "event.setCancelled(true)" not in spawn
-    assert "remove(officialArWorldDropTokenKey)" in spawn
-    assert "event.getEntity().setItemStack" in spawn
+    for method in (
+        "onOfficialArPlace", "onOfficialArCreative", "onOfficialArInventoryClick",
+        "onOfficialArInventoryDrag", "onOfficialArInventoryMove", "onOfficialArInventoryPickup",
+        "onOfficialArPickup", "onOfficialArDrop", "onOfficialArDeath", "onOfficialArDamage",
+        "onOfficialArDespawn", "onOfficialArMerge", "onOfficialArSpawn", "onOfficialArSmelt",
+        "onOfficialArEntityInteract", "onOfficialArArmorStand",
+    ):
+        assert f"public void {method}" not in economy
 
 
 def test_official_ar_is_authorized_on_player_death_instead_of_being_suppressed():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
     assert "import org.bukkit.event.entity.PlayerDeathEvent;" in economy
-    start = economy.index("public void onOfficialArDeath(PlayerDeathEvent event)")
-    death = economy[start : start + 900]
-    assert "Death drops remain in the event unchanged" in death
-    assert "event.setCancelled(true)" not in death
-    assert "authorizeWorldDrop" not in death
+    assert "public void onOfficialArDeath" not in economy
+    assert "public void onOfficialArDrop" not in economy
 
 
 def test_shop_hides_the_disabled_lost_item_recovery_entry_and_limits_regular_items_to_three():
@@ -276,12 +266,9 @@ def test_resource_pack_preserves_the_vanilla_blue_stained_glass_pane_parent():
 
 def test_legacy_ar_is_not_silently_reissued_and_failed_issuance_is_token_scoped():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
-    normalize = between(economy, "private ItemStack normalizeOfficialArStack", "private boolean needsOfficialArNormalization")
     issue = between(economy, "private boolean issueOfficialArAmount", "private void completeWithdrawOnMainThread")
-    assert "if (!isFungibleArSerial(serial))" in normalize
-    assert "return source.clone();" in normalize
-    assert "durable one-time migration" in normalize
-    assert "normalizeOfficialArItems(player)" in issue
+    assert "normalizeOfficialArItems" not in economy
+    assert "normalizeOfficialArStack" not in economy
     assert "officialArIssuanceTokenKey" in issue or "markOfficialArIssuance" in issue
     assert "removeOfficialArIssuance" in issue
     assert "clearOfficialArIssuance" in issue
@@ -326,18 +313,27 @@ def test_brewing_new_session_uses_a_monotonic_version_after_completion():
 
 def test_official_ar_inventory_handlers_do_not_mutate_or_cancel_vanilla_clicks():
     economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
-    click = between(economy, "public void onOfficialArInventoryClick", "public void onOfficialArInventoryDrag")
-    drag = between(economy, "public void onOfficialArInventoryDrag", "public void onOfficialArInventoryMove")
-    assert "event.setCancelled" not in click + drag
-    assert "setAmount" not in click + drag
+    assert "public void onOfficialArInventoryClick" not in economy
+    assert "public void onOfficialArInventoryDrag" not in economy
 
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     admin_click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")
     admin_drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
-    assert "artifactsCoreOwns(vanillaCursor,vanillaCurrent,vanillaHotbar)" in admin_click
-    assert "isOfficialArItem(vanillaCursor)" in admin_click
-    assert "artifactsCoreOwns(e.getOldCursor())||isOfficialArItem(e.getOldCursor())" in admin_drag
+    assert "artifactsCoreOwns(cursor,current,hotbar)" in admin_click
+    assert "isOfficialArItem" not in admin_click
+    assert "artifactsCoreOwns(e.getOldCursor())" in admin_drag
+    assert "isOfficialArItem" not in admin_drag
     assert "setAmount" not in admin_click + admin_drag
+
+
+def test_ar_inventory_clicks_have_no_custom_quantity_or_restriction_path():
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")
+    drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
+    assert "isOfficialArItem" not in click + drag
+    assert "AR_RESTRICTED_INVENTORY_TOUCH" not in click + drag
+    assert "setAmount" not in click + drag
+    assert "return isProtectedOfficialItem(it);" in admin
 
 
 def test_adminplus_leaves_official_ar_as_a_vanilla_item():
@@ -346,15 +342,12 @@ def test_adminplus_leaves_official_ar_as_a_vanilla_item():
     assert "normalizeArInventoryState(p)" not in admin
     pickup = between(admin, "public void onPickup(EntityPickupItemEvent e)", "public void onDrop(PlayerDropItemEvent e)")
     drop = between(admin, "public void onDrop(PlayerDropItemEvent e)", "public void onSealDropLowest")
-    assert "if(isOfficialArItem(picked)) return;" in pickup
-    assert "isOfficialArItem(e.getItemDrop().getItemStack())) return;" in drop
-    for start, end, marker in (
-        ("public void onArHopperPickup(InventoryPickupItemEvent e)", "public void onProtectedInventoryMove", "if(e!=null)return;"),
-        ("public void onArInventoryMove(InventoryMoveItemEvent e)", "public void onProtectedBlockDispense", "if(e!=null)return;"),
-        ("public void onArDispense(BlockDispenseEvent e)", "public void onArSpawn", "if(e!=null)return;"),
-        ("public void onArSpawn(ItemSpawnEvent e)", "public void onChunkLoad", "if(isOfficialArItem(e.getEntity().getItemStack())) return;"),
-    ):
-        assert marker in between(admin, start, end)
+    assert "isOfficialArItem(picked)" not in pickup
+    assert "isOfficialArItem(e.getItemDrop().getItemStack())" not in drop
+    for method in ("onArHopperPickup", "onArInventoryMove", "onArDispense", "onArSpawn"):
+        assert method not in admin
+    for method in ("onArBlockPlaceGuard", "onFurnaceSmelt", "onOfficialArCreative"):
+        assert f"public void {method}" not in admin
 
 
 def test_shop_revenue_starts_pending_and_waits_for_the_async_credit_worker():

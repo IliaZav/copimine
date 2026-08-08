@@ -148,9 +148,18 @@ def test_brewing_keeps_a_valid_three_of_four_prefix_pending():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
     assert "if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null)" in decision
-    assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current)" in decision
-    assert "if (canStillBecomeRecipe && current.size() < maximumRecipeSize)" in decision
+    assert "if (current.size() < maximumRecipeSize)" in decision
     assert "return queueIngredients(block, key, current, nextVersion, nowMillis);" in decision
+
+
+def test_brewing_does_not_finish_a_wrong_mix_before_the_longest_recipe_can_be_completed():
+    service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
+    decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
+
+    queue_guard = decision.index("if (current.size() < maximumRecipeSize)")
+    wrong_mix = decision.index("return finishWrongMix", queue_guard)
+    assert queue_guard < wrong_mix
+    assert "containsUnrecognizedIngredient(current)" not in decision
 
     config = read("copimine-narcotics/config.yml")
     chups = between(config, "  chups:", "    normal_effects:")
@@ -207,9 +216,7 @@ def test_brewing_world_output_has_a_pickup_delay_instead_of_disappearing_instant
 def test_brewing_rejects_a_three_item_prefix_that_cannot_match_any_recipe():
     service = read("copimine-narcotics/src/me/copimine/narcotics/cauldron/CauldronBrewingService.java")
     decision = between(service, "public boolean tryAddIngredient", "public void handleCauldronBroken")
-    assert "boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current)" in decision
-    assert "containsUnrecognizedIngredient" in decision
-    assert "if (canStillBecomeRecipe && current.size() < maximumRecipeSize)" in decision
+    assert "if (current.size() < maximumRecipeSize)" in decision
     assert "return finishWrongMix(block, key, nextVersion, current.size(), player);" in decision
 
 

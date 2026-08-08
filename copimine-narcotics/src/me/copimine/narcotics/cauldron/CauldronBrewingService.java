@@ -181,14 +181,14 @@ public final class CauldronBrewingService {
                 return true;
             }
             int maximumRecipeSize = recipeService.maximumRecipeSize();
-            boolean canStillBecomeRecipe = recipeService.canStillBecomeRecipe(current);
             if (current.size() < MINIMUM_RECIPE_CHECK_SIZE) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis);
             }
-            if (recipeService.containsUnrecognizedIngredient(current)) {
-                return finishWrongMix(block, key, nextVersion, current.size(), player);
-            }
-            if (canStillBecomeRecipe && current.size() < maximumRecipeSize) {
+            // Do not decide that a mixture is wrong while a longer recipe can
+            // still receive another ingredient. In particular, a four-item
+            // recipe must not turn into Zhuzevo after its third click because
+            // one of its item representations was normalized differently.
+            if (current.size() < maximumRecipeSize) {
                 return queueIngredients(block, key, current, nextVersion, nowMillis);
             }
             return finishWrongMix(block, key, nextVersion, current.size(), player);

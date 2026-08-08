@@ -53,11 +53,11 @@ def test_custom_artifacts_and_ar_are_free_in_vanilla_inventory_transport():
         "public void onProtectedItemMove(InventoryMoveItemEvent e)",
     )
     assert "artifactsCoreOwns(cursor,current,hotbar)" in admin_click
-    assert "isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar)" in admin_click
-    assert admin_click.index("isOfficialArItem(cursor)") < admin_click.index("artifactsCoreOwns(cursor,current,hotbar)")
+    assert "GameMode.CREATIVE" in admin_click
+    assert admin_click.index("GameMode.CREATIVE") < admin_click.index("Inventory top")
     assert "artifactsCoreOwns(e.getOldCursor())" in admin_drag
-    assert "if(isOfficialArItem(e.getOldCursor()))return;" in admin_drag
-    assert admin_drag.index("if(isOfficialArItem(e.getOldCursor()))return;") < admin_drag.index("artifactsCoreOwns(e.getOldCursor())")
+    assert "GameMode.CREATIVE" in admin_drag
+    assert admin_drag.index("GameMode.CREATIVE") < admin_drag.index("Inventory top")
     assert "isProtectedItemMove" not in admin_drag
 
 
@@ -356,32 +356,61 @@ def test_official_ar_inventory_handlers_do_not_mutate_or_cancel_vanilla_clicks()
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     admin_click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")
     admin_drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
-    assert "isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar)" in admin_click
-    assert admin_click.index("isOfficialArItem(cursor)") < admin_click.index("artifactsCoreOwns(cursor,current,hotbar)")
-    assert "if(isOfficialArItem(e.getOldCursor()))return;" in admin_drag
-    assert admin_drag.index("if(isOfficialArItem(e.getOldCursor()))return;") < admin_drag.index("artifactsCoreOwns(e.getOldCursor())")
+    assert "GameMode.CREATIVE" in admin_click
+    assert admin_click.index("GameMode.CREATIVE") < admin_click.index("Inventory top")
+    assert "GameMode.CREATIVE" in admin_drag
+    assert admin_drag.index("GameMode.CREATIVE") < admin_drag.index("Inventory top")
     assert "setAmount" not in admin_click + admin_drag
 
 
 def test_adminplus_does_not_cancel_creative_inventory_transport():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     click = between(admin, "public void onInv(InventoryClickEvent e)", "public void onPrepareCraft")
-    assert "if(e instanceof InventoryCreativeEvent" in click
-    assert "isOfficialArItem(e.getCursor())||isOfficialArItem(e.getCurrentItem())||isOfficialArItem(hotbar)" in admin
-    assert "if(e instanceof InventoryCreativeEvent)return;" not in click
+    assert "if(e instanceof InventoryCreativeEvent" not in click
+    assert "isOfficialArCreativeClick" not in admin
+    assert "GameMode.CREATIVE" in click
+    assert click.index("GameMode.CREATIVE") < click.index("inventoryLocks")
 
 
 def test_adminplus_bypasses_both_paper_creative_click_paths_before_generic_guards():
     """Paper uses InventoryClickEvent for ordinary Creative container clicks."""
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     click = between(admin, "public void onInv(InventoryClickEvent e)", "public void onPrepareCraft")
-    creative_packet = click.index("if(e instanceof InventoryCreativeEvent")
-    packet_ar = click.index("isOfficialArCreativeClick(e,p)", creative_packet)
-    creative_mode = click.index("getGameMode()==GameMode.CREATIVE")
-    mode_ar = click.index("isOfficialArCreativeClick(e,p)", creative_mode)
     generic_guard = click.index("inventoryLocks")
-    assert packet_ar < generic_guard
-    assert mode_ar < generic_guard
+    assert click.index("getGameMode()==GameMode.CREATIVE") < generic_guard
+    assert "InventoryCreativeEvent" not in admin
+    assert "isOfficialArCreativeClick" not in admin
+
+
+def test_creative_ar_transport_never_depends_on_ar_signature_or_admin_lock_state():
+    """Creative inventory transport must be a vanilla path for every AR copy."""
+    admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
+    click = between(admin, "public void onInv(InventoryClickEvent e)", "public void onPrepareCraft")
+    protected_click = between(admin, "public void onProtectedItemClick(InventoryClickEvent e)", "public void onProtectedItemDrag")
+    protected_drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
+
+    assert "isOfficialArCreativeClick" not in click
+    assert "InventoryCreativeEvent" not in admin
+    assert "GameMode.CREATIVE" in click
+    assert click.index("GameMode.CREATIVE") < click.index("inventoryLocks")
+    assert "GameMode.CREATIVE" in protected_click[:protected_click.index("Inventory top")]
+    assert "GameMode.CREATIVE" in protected_drag[:protected_drag.index("Inventory top")]
+
+
+def test_zhuzevo_stale_stack_repair_requires_exact_registered_fungible_identity():
+    narcotics = read("copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java")
+    factory = read("copimine-narcotics/src/me/copimine/narcotics/item/NarcoticItemFactory.java")
+    database = read("copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java")
+    interact = between(narcotics, "public void onInteract(PlayerInteractEvent event)", "public void onBreak")
+
+    assert "resolveRegisteredStackCandidate(inHand)" in interact
+    assert "isActiveIssuedInstance" in interact
+    assert "repairRegisteredStack" in interact
+    assert "public NarcoticDefinition resolveRegisteredStackCandidate(ItemStack stack)" in factory
+    assert "stackIdentity(definition, version).equals(instanceId)" in factory
+    assert '"zhuzevo".equals(definition.id())' in factory
+    assert "public CompletableFuture<Boolean> isActiveIssuedInstance" in database
+    assert "WHERE instance_id=? AND narcotic_id=? AND status='ACTIVE'" in database
 
 
 def test_ar_inventory_clicks_have_no_custom_quantity_or_restriction_path():
@@ -390,8 +419,8 @@ def test_ar_inventory_clicks_have_no_custom_quantity_or_restriction_path():
     drag = between(admin, "public void onProtectedItemDrag(InventoryDragEvent e)", "public void onProtectedItemMove")
     click_early = click[:click.index("Inventory top")]
     drag_early = drag[:drag.index("Inventory top")]
-    assert "isOfficialArItem(cursor)||isOfficialArItem(current)||isOfficialArItem(hotbar)" in click_early
-    assert "if(isOfficialArItem(e.getOldCursor()))return;" in drag_early
+    assert "GameMode.CREATIVE" in click_early
+    assert "GameMode.CREATIVE" in drag_early
     assert "setCancelled" not in click_early + drag_early
     assert "updateInventory" not in click_early + drag_early
     assert "AR_RESTRICTED_INVENTORY_TOUCH" not in click + drag

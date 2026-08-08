@@ -213,6 +213,32 @@ public final class NarcoticsDatabase {
         }));
     }
 
+    /**
+     * Read-only provenance check used when a fungible stack was signed with a
+     * previous server key.  The caller must still validate the exact item
+     * identity and material before it can be re-signed.
+     */
+    public CompletableFuture<Boolean> isActiveIssuedInstance(String instanceId, String narcoticId) {
+        if (instanceId == null || instanceId.isBlank() || narcoticId == null || narcoticId.isBlank()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return supplyAsync(() -> {
+            try (Connection connection = openConnection();
+                 PreparedStatement statement = connection.prepareStatement("""
+                         SELECT 1
+                         FROM narcotics_issued_instances
+                         WHERE instance_id=? AND narcotic_id=? AND status='ACTIVE'
+                         LIMIT 1
+                         """)) {
+                statement.setString(1, instanceId);
+                statement.setString(2, narcoticId);
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next();
+                }
+            }
+        });
+    }
+
     public void shutdown() {
         if (executor != null) {
             executor.shutdown();

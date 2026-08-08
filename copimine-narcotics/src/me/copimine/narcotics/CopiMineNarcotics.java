@@ -207,6 +207,15 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             return;
         }
 
+        if (official == null
+                && (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK)) {
+            NarcoticDefinition registeredCandidate = itemFactory.resolveRegisteredStackCandidate(inHand);
+            if (registeredCandidate != null) {
+                repairRegisteredZhuzevoUse(event, player, inHand, registeredCandidate);
+                return;
+            }
+        }
+
         if (official != null) {
             if (!overdoseService.isStateReady(player)) {
                 event.setCancelled(true);
@@ -316,6 +325,64 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
             event.setCancelled(true);
         }
+    }
+
+    /**
+     * Recover a Zhuzevo stack issued before the narcotics signing key was
+     * rotated.  The item is not accepted from PDC shape alone: PostgreSQL
+     * must still contain the exact active fungible identity, and the physical
+     * stack must remain unchanged while that read completes.
+     */
+    private void repairRegisteredZhuzevoUse(PlayerInteractEvent event, Player player,
+                                            ItemStack stale, NarcoticDefinition definition) {
+        event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && isUnsafeConsumeTarget(event.getClickedBlock())) {
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+        }
+        event.setCancelled(true);
+        if (!overdoseService.isStateReady(player)) {
+            player.sendMessage(ChatColor.YELLOW + "Состояние наркотиков загружается. Попробуйте ещё раз через секунду.");
+            return;
+        }
+        if (!database.hasAsyncCapacity()) {
+            player.sendMessage(ChatColor.YELLOW + "Наркотики временно недоступны: база данных занята. Попробуйте через несколько секунд.");
+            return;
+        }
+        String instanceId = itemFactory.instanceId(stale);
+        database.isActiveIssuedInstance(instanceId, definition.id()).whenComplete((active, error) ->
+                Bukkit.getScheduler().runTask(this, () -> {
+                    if (error != null) {
+                        getLogger().log(java.util.logging.Level.WARNING,
+                                "Unable to verify stale Zhuzevo provenance", error);
+                        if (player.isOnline()) {
+                            player.sendMessage(ChatColor.YELLOW + "Не удалось проверить происхождение жужево. Попробуйте снова.");
+                        }
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(active)) {
+                        player.sendMessage(ChatColor.RED + "Это жужево не зарегистрировано на сервере.");
+                        return;
+                    }
+                    ItemStack current = player.getInventory().getItemInMainHand();
+                    if (!sameStackSnapshot(current, stale)) {
+                        player.sendMessage(ChatColor.YELLOW + "Предмет жужево изменился; повторите использование.");
+                        return;
+                    }
+                    ItemStack repaired = itemFactory.repairRegisteredStack(stale, definition);
+                    if (repaired == null) {
+                        player.sendMessage(ChatColor.RED + "Не удалось восстановить жужево.");
+                        return;
+                    }
+                    player.getInventory().setItemInMainHand(repaired);
+                    player.updateInventory();
+                    player.sendMessage(ChatColor.YELLOW + "Жужево обновлено. Нажмите ещё раз, чтобы использовать его.");
+                }));
+    }
+
+    private boolean sameStackSnapshot(ItemStack current, ItemStack expected) {
+        return current != null && expected != null
+                && current.getAmount() == expected.getAmount()
+                && current.isSimilar(expected);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

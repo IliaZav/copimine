@@ -180,6 +180,57 @@ public final class NarcoticItemFactory {
         return resolveOfficialLoose(stack) != null;
     }
 
+    /**
+     * Recognize only the one registered fungible stack that needs key-rotation
+     * recovery.  This is not an authorization result: the caller must confirm
+     * the instance is ACTIVE in PostgreSQL before re-signing the item.
+     */
+    public NarcoticDefinition resolveRegisteredStackCandidate(ItemStack stack) {
+        NarcoticDefinition definition = resolveOfficialLoose(stack);
+        if (definition == null || !"zhuzevo".equals(definition.id()) || !stack.hasItemMeta()) {
+            return null;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        Integer version = meta.getPersistentDataContainer().get(versionKey, PersistentDataType.INTEGER);
+        Integer signatureVersion = meta.getPersistentDataContainer().get(signatureVersionKey, PersistentDataType.INTEGER);
+        String instanceId = meta.getPersistentDataContainer().get(instanceIdKey, PersistentDataType.STRING);
+        String signature = meta.getPersistentDataContainer().get(narcoticSignatureKey, PersistentDataType.STRING);
+        if (stack.getAmount() < 1 || stack.getAmount() > stack.getMaxStackSize()
+                || stack.getType() != definition.material()
+                || version == null || version != configService.narcoticVersion()
+                || signatureVersion == null || signatureVersion != STACK_SIGNATURE_VERSION
+                || signature == null || signature.isBlank()
+                || !stackIdentity(definition, version).equals(instanceId)) {
+            return null;
+        }
+        if (configService.textureMode() == NarcoticsConfigService.TextureMode.CUSTOM
+                && definition.customModelData() > 0
+                && (!meta.hasCustomModelData() || meta.getCustomModelData() != definition.customModelData())) {
+            return null;
+        }
+        if (meta.hasCustomModelData() && meta.getCustomModelData() != definition.customModelData()) {
+            return null;
+        }
+        try {
+            if (Base64.getUrlDecoder().decode(signature).length != 32) {
+                return null;
+            }
+        } catch (IllegalArgumentException malformedSignature) {
+            return null;
+        }
+        return definition;
+    }
+
+    /** Rebuild the canonical current-key form after the DB provenance check. */
+    public ItemStack repairRegisteredStack(ItemStack stack, NarcoticDefinition definition) {
+        if (stack == null || definition == null || !"zhuzevo".equals(definition.id())
+                || resolveOfficial(stack) != null
+                || resolveRegisteredStackCandidate(stack) == null) {
+            return null;
+        }
+        return createOfficialItem(definition, stack.getAmount(), stackIdentity(definition, configService.narcoticVersion()));
+    }
+
     public void consumeOne(Player player, ItemStack stack) {
         if (stack == null || stack.getType() == Material.AIR) {
             return;

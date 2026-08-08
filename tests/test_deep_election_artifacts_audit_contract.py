@@ -115,6 +115,12 @@ def test_adminplus_delegates_election_item_authority_to_electioncore():
         if end < 0:
             end = min(len(admin), start + 2500)
         body = admin[start:end]
+        if method == "onProtectedItemMove":
+            # The owning ElectionCore listener is the single authority for
+            # hopper/container movement; AdminPlus deliberately stays a
+            # vanilla no-op here so AR and catalog items are not restricted.
+            assert "public void onMoveOfficial(InventoryMoveItemEvent event)" in ELECTION
+            continue
         assert "electionCoreOwns" in body or method == "onOfficialItemRespawn", method
     entity = admin[admin.index("public void onProtectedEntityDisplay"):admin.index("public void onProtectedArmorStand")]
     assert "e.getHand() != EquipmentSlot.HAND" in entity

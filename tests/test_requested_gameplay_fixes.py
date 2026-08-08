@@ -442,6 +442,16 @@ def test_ar_inventory_clicks_have_no_custom_quantity_or_restriction_path():
     assert "return isProtectedOfficialItem(it);" in admin
 
 
+def test_election_restore_only_resyncs_after_removing_an_actual_official_item():
+    election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
+    cleanup = between(election, "private void removeOfficialItemsFromPlayer", "private void removeItemFromMainHandIfType")
+
+    assert "boolean changed = false" in cleanup
+    assert "changed = true" in cleanup
+    assert "if (changed)" in cleanup
+    assert cleanup.index("if (changed)") < cleanup.index("player.updateInventory()")
+
+
 def test_adminplus_leaves_official_ar_as_a_vanilla_item():
     admin = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")
     assert "normalizeArInventoryState(e.getPlayer())" not in admin

@@ -7450,10 +7450,12 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return;
         }
         PlayerInventory inventory = player.getInventory();
+        boolean changed = false;
         for (int slot = 0; slot < inventory.getContents().length; slot++) {
             ItemStack stack = inventory.getItem(slot);
             if (type.equalsIgnoreCase(electionItemType(stack))) {
                 inventory.setItem(slot, null);
+                changed = true;
             }
         }
         ItemStack[] armor = inventory.getArmorContents();
@@ -7466,11 +7468,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
         if (armorChanged) {
             inventory.setArmorContents(armor);
+            changed = true;
         }
         if (type.equalsIgnoreCase(electionItemType(inventory.getItemInOffHand()))) {
             inventory.setItemInOffHand(null);
+            changed = true;
         }
-        player.updateInventory();
+        if (changed) {
+            player.updateInventory();
+        }
     }
 
     private void removeItemFromMainHandIfType(Player player, String type) {

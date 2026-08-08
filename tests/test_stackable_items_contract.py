@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ECONOMY = (ROOT / "copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java").read_text(encoding="utf-8")
 ADMIN = (ROOT / "copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java").read_text(encoding="utf-8")
+ARTIFACTS = (ROOT / "copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java").read_text(encoding="utf-8")
+NARCOTICS = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java").read_text(encoding="utf-8")
 NARCOTICS_FACTORY = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/item/NarcoticItemFactory.java").read_text(encoding="utf-8")
 NARCOTICS_DB = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java").read_text(encoding="utf-8")
 
@@ -47,6 +49,15 @@ def test_ar_has_no_automatic_inventory_resync_during_player_actions() -> None:
     assert "normalizeFungibleArOnPickup" not in ECONOMY
     assert "void normalizePlayer(Player player)" not in ECONOMY
     assert "officialArService.normalizePlayer(player)" not in ECONOMY
+
+
+def test_custom_item_plugins_do_not_register_the_old_creative_antidupe_handlers() -> None:
+    """Creative inventory transport for catalog items must stay vanilla."""
+    for source in (ECONOMY, ARTIFACTS, NARCOTICS):
+        assert "InventoryCreativeEvent" not in source
+    assert "handleCreativeDonationLoss" not in ARTIFACTS
+    assert "blockCreativeOfficialCopy" not in ARTIFACTS
+    assert "onCreativeOfficialCopy" not in NARCOTICS
 
 
 def test_narcotics_are_stackable_with_a_fungible_signed_key() -> None:

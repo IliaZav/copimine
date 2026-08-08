@@ -29,7 +29,7 @@ def test_custom_artifacts_and_ar_are_free_in_vanilla_inventory_transport():
     click = between(
         artifacts,
         "public void onInventoryClick(InventoryClickEvent var1)",
-        "private boolean handleCreativeDonationLoss",
+        "public void onInventoryDrag(InventoryDragEvent var1)",
     )
     assert "isAnvilArtifactInteraction(var1)" not in click
     assert "quarantineForeignDonationClick(var1, var2)" not in click

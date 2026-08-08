@@ -125,7 +125,6 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
@@ -1537,89 +1536,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
           }
       }
-   }
-
-   /**
-    * Creative inventory deletion (usually dropping the cursor outside the
-    * inventory) bypasses Item entity events entirely.  Outside-window removal
-    * is treated as a loss; every other official creative packet is rejected by
-    * blockCreativeOfficialCopy.  The durable journal is written before the
-    * cursor is cleared so the item cannot be duplicated or lost from reclaim.
-    */
-   private boolean handleCreativeDonationLoss(InventoryCreativeEvent event) {
-      if (event == null || event.getWhoClicked() == null || event.getRawSlot() >= 0
-            || !(event.getWhoClicked() instanceof Player player)) {
-         return false;
-      }
-      ItemStack candidate = event.getCursor();
-      OfficialDonationRef ref = this.officialDonationRef(candidate);
-      // Some Paper/vanilla creative clients report the item being deleted in
-      // the clicked slot rather than on the cursor.  Outside-window clicks
-      // are still the only destructive signal; inspect both representations
-      // so either client path reaches the same durable loss journal.
-      if (ref == null) {
-         candidate = event.getCurrentItem();
-         ref = this.officialDonationRef(candidate);
-      }
-      if (ref == null || !player.getUniqueId().equals(ref.ownerUuid())) {
-         return false;
-      }
-      // Creative deletion is an outside-window InventoryCreativeEvent.  The
-      // client reports different ClickType values across Paper versions;
-      // rawSlot < 0 is the stable signal.  Cancel first so an I/O failure
-      // cannot silently destroy the only physical copy.
-      event.setCancelled(true);
-      if (!this.recordDonationLossOnce(ref, "creative-delete")) {
-         return true;
-      }
-      event.setCursor(new ItemStack(Material.AIR));
-      // A cancelled creative click does not always synchronize the cursor
-      // state back to the client.  Force the inventory update on the Bukkit
-      // thread so the journaled item cannot remain visually usable (and then
-      // be duplicated through reclaim).
-      if (player.isOnline()) {
-         Bukkit.getScheduler().runTask(this, player::updateInventory);
-      }
-      this.flushPendingDonationLossJournalAsync();
-      return true;
-   }
-
-   /**
-    * Creative clone/set-slot packets can create a second stack without a
-    * normal inventory click.  Deletion is handled above; every other creative
-    * packet containing an official artifact is cancelled so a unique PDC
-    * identity can never be cloned.  Admin delivery uses the plugin's pending
-    * delivery transaction, not a creative packet.
-    */
-   private boolean blockCreativeOfficialCopy(InventoryCreativeEvent event) {
-      if (event == null || !(event.getWhoClicked() instanceof Player player)) {
-         return false;
-      }
-      ItemStack cursor = event.getCursor();
-      ItemStack current = event.getCurrentItem();
-      ItemStack hotbar = event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
-            ? player.getInventory().getItem(event.getHotbarButton()) : null;
-      ItemStack offhand = player.getInventory().getItemInOffHand();
-      boolean official = this.isOfficialArtifactItem(cursor) || this.isOfficialArtifactItem(current)
-            || this.isOfficialArtifactItem(hotbar) || this.isOfficialArtifactItem(offhand)
-            || this.isOfficialDonationItem(cursor) || this.isOfficialDonationItem(current)
-            || this.isOfficialDonationItem(hotbar) || this.isOfficialDonationItem(offhand);
-      // CLONE_STACK is reported with an empty current slot on a number of
-      // Paper clients.  Inspect the clicked slot as well as the cursor so a
-      // middle-click clone can never mint a second PDC identity.
-      if (event.getAction() == InventoryAction.CLONE_STACK && event.getClickedInventory() != null
-            && (this.isOfficialArtifactItem(event.getClickedInventory().getItem(event.getSlot()))
-               || this.isOfficialDonationItem(event.getClickedInventory().getItem(event.getSlot())))) {
-         official = true;
-      }
-      if (!official) {
-         return false;
-      }
-      event.setCancelled(true);
-      if (player.isOnline()) {
-         Bukkit.getScheduler().runTask(this, player::updateInventory);
-      }
-      return true;
    }
 
    /**

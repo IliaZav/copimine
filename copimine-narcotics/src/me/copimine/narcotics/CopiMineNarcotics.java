@@ -41,7 +41,6 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
@@ -393,12 +392,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
                 player.updateInventory();
             }
         }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onCreativeOfficialCopy(InventoryCreativeEvent event) {
-        // Finished narcotics are ordinary ItemStacks.  The only gameplay
-        // restriction is the anvil guard in the normal click/drag handlers.
     }
 
     @EventHandler(ignoreCancelled = true)

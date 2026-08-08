@@ -140,8 +140,9 @@ def test_election_financial_history_is_optional_and_uses_one_time_unit():
 
 
 def test_artifact_reclaim_covers_loss_sources_and_durable_journal():
-    for source in ("void", "cactus", "creative-delete", "break", "merge"):
+    for source in ("void", "cactus", "break", "merge"):
         assert source in ARTIFACTS
+    assert "creative-delete" not in ARTIFACTS
     assert '"entity-" + cause.name().toLowerCase(Locale.ROOT)' in ARTIFACTS
     assert "ENTITY_EXPLOSION" in ARTIFACTS and "BLOCK_EXPLOSION" in ARTIFACTS
     assert "FileChannel" in ARTIFACTS

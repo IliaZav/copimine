@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-09T07:02:53.6915606Z",
-    "gitCommit":  "bbdfb1669c2a757bf5fbeb20d32360bbc34d3a3e",
+    "generatedAtUtc":  "2026-08-09T07:35:46.8792419Z",
+    "gitCommit":  "2a4a63e3d4e368c6f1d050f507c2741b26a4f674",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -23,14 +23,14 @@
     "serverPlugins":  {
                           "minecraft/server/plugins/AuthEffects.jar":  "90ba4f8692b83b75b38d450c99a5642499db09325e5d4caaf16ea46fd0d90db9",
                           "minecraft/server/plugins/CopiMineArtifacts.jar":  "dd440b37b2c17959717f5c98ccd4a968b87368bc8e7e5470abdcbd409031ef58",
-                          "minecraft/server/plugins/CopiMineEconomyCore.jar":  "4b34b276161689a402e9318c6efc01cd55999e5533eef28d3f31cc30484baa28",
-                          "minecraft/server/plugins/CopiMineElectionCore.jar":  "037cae5d5f965b106f2dae39dcb15a9654a890313c4c97736f1ab08e846cda8d",
+                          "minecraft/server/plugins/CopiMineEconomyCore.jar":  "29eb05b952e2c0a80c087a631cb77785095bd2ab588ae4ec85052b46744a4b05",
+                          "minecraft/server/plugins/CopiMineElectionCore.jar":  "f1ae4aadc1c1d95249b37833a88cfabd3847166bea597c89daa2c4465182e04d",
                           "minecraft/server/plugins/CopiMineNarcotics.jar":  "1272b5713ec5ea79d08c90c43eecfb7762505c31b1c4f4b2e1cfc5f97befefec",
                           "minecraft/server/plugins/CopiMineUltimateAdminPlus.jar":  "f0e0cadc77e79601a63b6f386af40e3ab713c490670adbe7e826aea3e4481699",
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "bbdfb1669c2a757bf5fbeb20d32360bbc34d3a3e",
+                      "sourceCommit":  "2a4a63e3d4e368c6f1d050f507c2741b26a4f674",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "cde1ce63f59084af712060fd357e93d2e6c218aa67bb29b32a0c6569e731f706",
+                                  "sha256":  "0e48cbd51ef03f40e7ad56997830748f4bdbb14315e75b9a4f6a52785d48d4cc",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -206,8 +206,8 @@
                          },
                          {
                              "path":  "admin-web/backend/main.py",
-                             "sizeBytes":  917070,
-                             "sha256":  "248e687078af6642a730e1d7e1e510ac35c7cf7b4eff06521cd384f53fe17042"
+                             "sizeBytes":  924236,
+                             "sha256":  "3d39007a25d0ee37f9c4147635e967ea0301891ee592a1bd3bf483e34fa0cf84"
                          },
                          {
                              "path":  "admin-web/backend/minecraft_discord_bridge.py",
@@ -290,14 +290,24 @@
                              "sha256":  "97bad3466d4e2490fc0df4f0ea9bd33e6bff45a51d6b01055f62b9b1833e51c1"
                          },
                          {
+                             "path":  "admin-web/deploy/copimine-noncritical-db-backup.service",
+                             "sizeBytes":  359,
+                             "sha256":  "28393da0d91dc10813b5dee40cd82d6708728af09a3f681eec56a2cf78bf21dd"
+                         },
+                         {
+                             "path":  "admin-web/deploy/copimine-noncritical-db-backup.timer",
+                             "sizeBytes":  244,
+                             "sha256":  "68f76435e408f684ee2236f23effa559a90a84a74242169296920b9cdf4ae3d8"
+                         },
+                         {
                              "path":  "admin-web/deploy/copimine-world-backup.service",
                              "sizeBytes":  371,
                              "sha256":  "857160eace1b208e474109c8dbceaff6b04383e4c6c143be196ce9ca10391aa2"
                          },
                          {
                              "path":  "admin-web/deploy/copimine-world-backup.timer",
-                             "sizeBytes":  220,
-                             "sha256":  "205cf8872bd5add17fae8c0e6b97cef468227990fb9d9cce98eaeef20a5e5e10"
+                             "sizeBytes":  214,
+                             "sha256":  "ecd2d5365fc43bd5c2253bfa80d4d9b28fc112528ed3848e77ba71fbd81929dd"
                          },
                          {
                              "path":  "admin-web/deploy/nginx-copimine-admin-https.conf",
@@ -706,8 +716,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/cabinet-runtime.js",
-                             "sizeBytes":  353912,
-                             "sha256":  "82b812e1a4e267d1175b99d25a4a092b0eb2ca515dc63b3da4fbfd56cf412001"
+                             "sizeBytes":  355223,
+                             "sha256":  "772c590161c22f1439b4d718ce7d39c774986b61e181e92ea8905345e15f71c7"
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/preview-nav.js",
@@ -8787,7 +8797,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  6439,
-                             "sha256":  "635018d0fa020496bc0ee44decce55584a7dc12da7f2e350f1a1f61a3721f792"
+                             "sha256":  "166169349deab19290d78ed7622544dd596a2adff3f9d429a361408a98eef05e"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -9421,8 +9431,8 @@
                          },
                          {
                              "path":  "copimine-economy-core/CopiMineEconomyCore.jar",
-                             "sizeBytes":  147566,
-                             "sha256":  "4b34b276161689a402e9318c6efc01cd55999e5533eef28d3f31cc30484baa28"
+                             "sizeBytes":  147608,
+                             "sha256":  "29eb05b952e2c0a80c087a631cb77785095bd2ab588ae4ec85052b46744a4b05"
                          },
                          {
                              "path":  "copimine-economy-core/plugin.yml",
@@ -9431,8 +9441,8 @@
                          },
                          {
                              "path":  "copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java",
-                             "sizeBytes":  370614,
-                             "sha256":  "3df2a821d4ff0f6c85c45592d9b2ade013cf588a75fa57229bebed3d8d6b410a"
+                             "sizeBytes":  371275,
+                             "sha256":  "b220df65e4cd8769385ee8232021e9f7e8ba81fc70e69176593bd8636db7cf9b"
                          },
                          {
                              "path":  "copimine-election-core/build-plugin.ps1",
@@ -9451,8 +9461,8 @@
                          },
                          {
                              "path":  "copimine-election-core/CopiMineElectionCore.jar",
-                             "sizeBytes":  203986,
-                             "sha256":  "037cae5d5f965b106f2dae39dcb15a9654a890313c4c97736f1ab08e846cda8d"
+                             "sizeBytes":  203999,
+                             "sha256":  "f1ae4aadc1c1d95249b37833a88cfabd3847166bea597c89daa2c4465182e04d"
                          },
                          {
                              "path":  "copimine-election-core/plugin.yml",
@@ -9461,8 +9471,8 @@
                          },
                          {
                              "path":  "copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java",
-                             "sizeBytes":  678920,
-                             "sha256":  "3d36d878f7f329d14735375e6139698b8954f4fa1ca676231c0acdb16724146a"
+                             "sizeBytes":  678950,
+                             "sha256":  "72f369c2b530ed961dddb29d281c248f2a2aa22014c47df8f900736e3abb5cca"
                          },
                          {
                              "path":  "copimine-narcotics/build-plugin.ps1",
@@ -10057,7 +10067,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "fd61f267b7c8a9640c8ac03b6110bfd4713b7aec88ba65199bfd0fd74a6c35a9"
+                             "sha256":  "993594bd59326eb10b700d6a36b71c87a6e9c6d7be38247421e87390ae4fa66e"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10067,12 +10077,12 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  31064,
-                             "sha256":  "cde1ce63f59084af712060fd357e93d2e6c218aa67bb29b32a0c6569e731f706"
+                             "sha256":  "0e48cbd51ef03f40e7ad56997830748f4bdbb14315e75b9a4f6a52785d48d4cc"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
-                             "sizeBytes":  60294,
-                             "sha256":  "84af12765c2f7a89ab75eb2e1d88777e743048fe46067c7ffa8ed3159fdd9895"
+                             "sizeBytes":  60844,
+                             "sha256":  "83ecba7016f69c892b528b7006a34b64948f51b43d63ad701d76fd03783b1e12"
                          },
                          {
                              "path":  "deploy/shared/generate_sbom.py",
@@ -10118,6 +10128,11 @@
                              "path":  "deploy/ubuntu/backup.sh",
                              "sizeBytes":  1050,
                              "sha256":  "1c8751f67f78eee469ca42273e89ad6a84a849f6bf7067acccd423adc451e9fe"
+                         },
+                         {
+                             "path":  "deploy/ubuntu/backup_noncritical_db.sh",
+                             "sizeBytes":  6906,
+                             "sha256":  "bc884bb296ee6c482be25205dcdff0413d5f8f0a48cb2e49412b52cb890d4e19"
                          },
                          {
                              "path":  "deploy/ubuntu/collect_deploy_diagnostics.sh",
@@ -10181,8 +10196,13 @@
                          },
                          {
                              "path":  "deploy/ubuntu/world_backup.sh",
-                             "sizeBytes":  7452,
-                             "sha256":  "9a50a82f19390b7f241739021a9ba1efc05cb81f01c0d9df188609eb9a4ee890"
+                             "sizeBytes":  7794,
+                             "sha256":  "831f85e16377bed7cffc58ed5c626ab8f5f4aa1c6664a1cf39ad8bbb40f4b7d4"
+                         },
+                         {
+                             "path":  "deploy/ubuntu/world_restore_latest.sh",
+                             "sizeBytes":  4154,
+                             "sha256":  "183c440509e74c5514a7dfa231cdeb72d2498ed4a6b1914a958a0cb9f5316ed9"
                          },
                          {
                              "path":  "deploy/windows/backup.ps1",
@@ -10326,8 +10346,8 @@
                          },
                          {
                              "path":  "docs/deploy/COPIMINE_GAME_WIPE_MANIFEST_RU.md",
-                             "sizeBytes":  4692,
-                             "sha256":  "86dd9b694e7f8def4b1376c7e418a018fca8b51b3397aae412a77b04e4ddbc86"
+                             "sizeBytes":  5778,
+                             "sha256":  "adca10534af298cf928eb4a3220c90981867ac6d1c6efcba61451989eaa5237f"
                          },
                          {
                              "path":  "docs/deploy/UBUNTU_OPT_REPLACE_RU.md",
@@ -10531,8 +10551,8 @@
                          },
                          {
                              "path":  "docs/superpowers/plans/2026-08-09-release-wipe-and-deploy.md",
-                             "sizeBytes":  11307,
-                             "sha256":  "e6c6962437d3a985c2f607bb58dd0d15c0cf6b06946108430a0e0e1096b6f552"
+                             "sizeBytes":  11508,
+                             "sha256":  "e5310f77d400904fdae4885bff000b3b2eac0feb6d9dc1223228646c1656b3e9"
                          },
                          {
                              "path":  "docs/superpowers/specs/2026-06-24-copimine-narcotics-design.md",
@@ -10746,13 +10766,13 @@
                          },
                          {
                              "path":  "minecraft/server/plugins/CopiMineEconomyCore.jar",
-                             "sizeBytes":  147566,
-                             "sha256":  "4b34b276161689a402e9318c6efc01cd55999e5533eef28d3f31cc30484baa28"
+                             "sizeBytes":  147608,
+                             "sha256":  "29eb05b952e2c0a80c087a631cb77785095bd2ab588ae4ec85052b46744a4b05"
                          },
                          {
                              "path":  "minecraft/server/plugins/CopiMineElectionCore.jar",
-                             "sizeBytes":  203986,
-                             "sha256":  "037cae5d5f965b106f2dae39dcb15a9654a890313c4c97736f1ab08e846cda8d"
+                             "sizeBytes":  203999,
+                             "sha256":  "f1ae4aadc1c1d95249b37833a88cfabd3847166bea597c89daa2c4465182e04d"
                          },
                          {
                              "path":  "minecraft/server/plugins/CopiMineNarcotics.jar",
@@ -12256,8 +12276,8 @@
                          },
                          {
                              "path":  "tests/test_public_president_and_player_link.py",
-                             "sizeBytes":  3700,
-                             "sha256":  "0a1fbc6c063807cf34e02ee064485fa7e6fa01249a5fc251c38624bf822c1884"
+                             "sizeBytes":  5122,
+                             "sha256":  "8d521c672b2a05802c4b87ada0a74e2f64d38bf39c9eebd80e60a3ebc74c7912"
                          },
                          {
                              "path":  "tests/test_recipe_ui_contract.py",
@@ -12271,8 +12291,8 @@
                          },
                          {
                              "path":  "tests/test_release_wipe_and_world_backup_contract.py",
-                             "sizeBytes":  4388,
-                             "sha256":  "44267eecc00c19585dffb752cf11f464835f6e5822949893dc01e01c767048be"
+                             "sizeBytes":  6285,
+                             "sha256":  "1c6cd65bc1a752a112e5037b7f8556e935f3da131c6a5768c450b33ea0e83dac"
                          },
                          {
                              "path":  "tests/test_report_and_recipe_runtime.py",
@@ -12286,8 +12306,8 @@
                          },
                          {
                              "path":  "tests/test_requested_gameplay_fixes.py",
-                             "sizeBytes":  33116,
-                             "sha256":  "3d41a6faa86719d1e3c547de16c6672b67795cc42cc08e90313470c28944267f"
+                             "sizeBytes":  34222,
+                             "sha256":  "f69b62f02a01dd88510c1767948d0aad2c8d772c595f3507b9877b158c1460ae"
                          },
                          {
                              "path":  "tests/test_stackable_items_contract.py",

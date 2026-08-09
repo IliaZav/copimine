@@ -6,13 +6,13 @@ $script = Read-Utf8 (Join-Path $root 'deploy\ubuntu\reset_game_state_preserve_ac
 
 $wipeList = [regex]::Match($sql, '(?s)wipe_names constant text\[\] := ARRAY\[(.*?)\];').Groups[1].Value
 if (-not $wipeList) { $errors.Add('The SQL wipe list cannot be located.') }
-foreach ($table in @('site_accounts','cm_admin_users','cm_admin_sessions','minecraft_account_links','whitelist_account_links','whitelist_requests')) {
+foreach ($table in @('site_accounts','cm_admin_users','cm_admin_sessions','minecraft_account_links','whitelist_account_links','whitelist_requests','ar_settings','artifact_items_catalog','narcotics_schema_version','narcotics_config_values')) {
   if ($wipeList -match "'${table}'") { $errors.Add("Protected table appears in the wipe list: $table") }
 }
-foreach ($marker in @('votes','candidate_applications','elections','president_terms','cmv4_bank_accounts','cmv8_ar_assets','cmv8_ar_asset_movements','cmv8_ar_issuance_intents','artifact_purchases','donation_purchases')) {
+foreach ($marker in @('votes','candidate_applications','elections','president_terms','cmv4_bank_accounts','cmv8_ar_assets','cmv8_ar_asset_movements','cmv8_ar_issuance_intents','artifact_shops','artifact_purchases','narcotics_item_texture_migrations','donation_purchases')) {
   if ($sql -notmatch [regex]::Escape("'${marker}'")) { $errors.Add("Game-state table is missing from the wipe list: $marker") }
 }
-foreach ($marker in @('COPIMINE_CONFIRM_GAME_WIPE','pg_dump','copimine-before-wipe.dump','accounts_before','whitelist_before','--wipe-worlds','realpath -e','mktemp -p /tmp','install -m 600')) {
+foreach ($marker in @('COPIMINE_CONFIRM_GAME_WIPE','pg_dump','copimine-before-wipe.dump','accounts_before','whitelist_before','protected-counts.before','protected-counts.after','world_backup.sh','flock','--wipe-worlds','realpath -e','mktemp -p /tmp','install -m 600')) {
   if ($script -notmatch [regex]::Escape($marker)) { $errors.Add("Wipe wrapper lacks guard/backup marker: $marker") }
 }
 if ($sql -match 'SET LOCAL search_path') { $errors.Add('Gameplay reset must keep the configured schema for the full psql session; SET LOCAL would be cleared.') }

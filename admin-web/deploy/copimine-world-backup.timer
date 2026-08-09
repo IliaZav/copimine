@@ -1,0 +1,12 @@
+[Unit]
+Description=Run CopiMine world backup every five hours
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=5h
+Persistent=true
+AccuracySec=1min
+Unit=copimine-world-backup.service
+
+[Install]
+WantedBy=timers.target

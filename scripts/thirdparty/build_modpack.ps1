@@ -66,18 +66,10 @@ foreach ($relative in $files) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "mods") -Force
 }
 
-foreach ($relative in @(
-    "thirdparty\README_RU.txt",
-    "thirdparty\VOICE_CHAT_OFFICIAL_DOWNLOAD.txt",
-    "thirdparty\checksums.txt",
-    "thirdparty\modpack_manifest.json"
-)) {
-    $source = Join-Path $ProjectRoot $relative
-    if (-not (Test-Path -LiteralPath $source)) {
-        throw "Missing file for modpack: $relative"
-    }
-    Copy-Item -LiteralPath $source -Destination $stage -Force
-}
+# The downloadable archive is deliberately a plain Fabric client payload:
+# only .minecraft/mods is packaged. Documentation, checksums and the JSON
+# manifest stay in the repository and public metadata, not inside the client
+# archive where launchers may copy them into the game directory.
 
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force

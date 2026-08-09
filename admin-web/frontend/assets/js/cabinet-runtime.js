@@ -3474,6 +3474,11 @@ function renderPlayerFullDetails(player, detail, ctx) {
           <label class="field-stack"><span>Новый пароль сайта</span><input id="playerAdminSitePassword" type="password" placeholder="Оставь пустым, если менять не нужно" autocomplete="new-password" /></label>
         </div>
         <button class="btn btn-primary full" data-click="playerUpdateSiteAccount('${esc(player)}')">Сбросить/сохранить доступ сайта</button>
+        <div class="credential-note"><strong>Minecraft / whitelist</strong><span>Текущий ник: ${esc(site.minecraftName || "не привязан")}. Новый ник заменит старую привязку и обновит whitelist.</span></div>
+        <div class="form-grid compact-grid">
+          <label class="field-stack"><span>Новый Minecraft-ник</span><input id="playerAdminMinecraftName" value="" placeholder="3-16 символов: A-Z, 0-9, _" autocomplete="off" /></label>
+          <button class="btn btn-secondary full" data-click="playerRelinkMinecraft('${esc(player)}')">Перепривязать ник и whitelist</button>
+        </div>
         <div class="credential-note"><strong>AuthMe</strong><span>Текущий пароль хранится только как хэш и не показывается. Можно задать новый пароль через сервер.</span></div>
         <div class="form-grid compact-grid">
           <label class="field-stack"><span>Новый пароль AuthMe</span><input id="playerAdminAuthMePassword" type="password" placeholder="8-64 символа без пробелов" autocomplete="new-password" /></label>
@@ -3812,6 +3817,29 @@ window.playerUpdateSiteAccount = async (player) => {
     });
     toast("Доступ сайта обновлён.");
     if ($("playerAdminSitePassword")) $("playerAdminSitePassword").value = "";
+    if (state.tab === "players" && state.selectedPlayer === player) {
+      replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
+    }
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerRelinkMinecraft = async (player) => {
+  const minecraftName = String($("playerAdminMinecraftName")?.value || "").trim();
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(minecraftName)) {
+    return toast("Minecraft-ник должен содержать 3-16 символов: A-Z, 0-9 или _.", true);
+  }
+  const headers = await dangerConfirm(`Перепривязать аккаунт ${player} к Minecraft-нику ${minecraftName} и обновить whitelist?`, "PLAYER_MINECRAFT_LINK_REBIND");
+  if (!headers) return;
+  try {
+    await api(`/api/players/${encodeURIComponent(player)}/minecraft-link/rebind`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ minecraft_name: minecraftName }),
+    });
+    toast(`Аккаунт перепривязан к ${minecraftName}, whitelist обновлён.`);
+    if ($("playerAdminMinecraftName")) $("playerAdminMinecraftName").value = "";
     if (state.tab === "players" && state.selectedPlayer === player) {
       replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
     }

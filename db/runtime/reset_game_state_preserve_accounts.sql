@@ -15,12 +15,18 @@ DECLARE
     protected_name text;
     wipe_name text;
     protected_names constant text[] := ARRAY[
+        -- Website identity, credentials, administrator access and whitelist
+        -- linkage are not game-season data.
         'site_accounts', 'player_web_accounts', 'password_hashes',
         'bank_pin_hashes', 'bank_account_pins', 'cm_admin_users',
         'cm_admin_sessions', 'cm_refresh_sessions', 'minecraft_account_links',
         'cmv4_account_links', 'whitelist_account_links', 'whitelist_requests',
         'auth_users_imported', 'auth_migration_state', 'auth_whitelist_sync',
-        'site_cms_entries'
+        'site_cms_entries',
+        -- Configuration/catalog rows must survive a season reset.  The
+        -- world-bound shop placements and per-player runtime rows do not.
+        'ar_settings', 'artifact_items_catalog', 'narcotics_schema_version',
+        'narcotics_config_values'
     ];
     wipe_names constant text[] := ARRAY[
         -- Identity-adjacent request/runtime rows and audit data.  Account rows,
@@ -54,8 +60,9 @@ DECLARE
         'candidates', 'candidate_applications', 'ballots', 'votes',
         'cik_chairs', 'cik_seals', 'polling_stations',
         'election_settings', 'vote_participation',
-        -- AR, Donation, ATM and shop state.  Catalog rows remain so the
-        -- release can repopulate the same assortment after the reset.
+        -- AR, donation, ATM and world-bound shop state.  Prices and item
+        -- definitions remain in ar_settings/artifact_items_catalog above;
+        -- shop coordinates belong to the deleted world and are reset.
         'cmv4_bank_ledger', 'cmv4_bank_transfers', 'cmv4_pending_ar_settlements',
         'cmv4_bank_accounts', 'cmv4_players', 'cmv4_audit_events',
         'ar_accounts', 'ar_batches', 'ar_ledger',
@@ -78,6 +85,7 @@ DECLARE
         -- into a clean season.  Recipe/configuration tables stay intact.
         'narcotics_brewing_states', 'narcotics_player_overdose',
         'narcotics_player_usage_window', 'narcotics_admin_audit',
+        'narcotics_item_texture_migrations',
         'narcotics_pending_refunds', 'narcotics_pending_outputs',
         'narcotics_consumption_reservations', 'narcotics_issued_instances',
         -- World-bound visuals, operational journals and old plugin state.

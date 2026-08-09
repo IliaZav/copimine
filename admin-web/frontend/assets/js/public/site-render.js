@@ -394,6 +394,8 @@ export function createHomepageRenderer() {
   const historyMount = document.getElementById("publicTreasuryHistory");
   const presidentName = document.getElementById("presidentCardName");
   const presidentMeta = document.getElementById("presidentCardMeta");
+  const presidentAvatar = document.getElementById("presidentCardAvatar");
+  const presidentLaws = document.getElementById("presidentLaws");
   const skinShell = document.getElementById("presidentSkinShell");
   const skinTilt = document.getElementById("presidentSkinTilt");
   const skinImage = document.getElementById("presidentSkinImage");
@@ -870,10 +872,37 @@ export function createHomepageRenderer() {
 
   }
 
+  function renderPresidentLaws(laws = []) {
+    if (!presidentLaws) return;
+    const rows = Array.isArray(laws) ? laws.filter((law) => String(law?.text || law?.body || "").trim()) : [];
+    if (!rows.length) {
+      replaceChildrenSafe(presidentLaws, [makeElement("p", "election-empty-note", "Сейчас опубликованных законов нет.")]);
+      return;
+    }
+    replaceChildrenSafe(presidentLaws, rows.slice(0, 6).map((law, index) => {
+      const card = makeElement("article", "election-law-card president-law-card");
+      const title = makeElement("strong", "", `Закон ${Number(law.slotNo || index + 1) || index + 1}`);
+      const body = makeElement("p", "", String(law.text || law.body || "").trim());
+      card.append(title, body);
+      const publishedAt = Number(law.publishedAt || law.published_at || 0);
+      if (publishedAt) card.append(makeElement("small", "", `Опубликован ${formatDate(publishedAt)}`));
+      return card;
+    }));
+  }
+
   function renderPresidentCard(president = {}) {
+    renderPresidentLaws(president.laws || president.current_laws || []);
     if (!presidentName || !presidentMeta) return;
     const name = String(president.current_president_name || president.ownerName || "").trim();
     const uuid = String(president.current_president_uuid || president.ownerUuid || "").trim();
+    const fallbackAvatar = "/assets/brand/copimine-logo.png";
+    if (presidentAvatar) {
+      presidentAvatar.onerror = () => { presidentAvatar.src = fallbackAvatar; };
+      presidentAvatar.src = /^[0-9a-f-]{32,36}$/i.test(uuid)
+        ? `https://mc-heads.net/avatar/${encodeURIComponent(uuid)}/128`
+        : fallbackAvatar;
+      presidentAvatar.alt = name ? `Голова президента ${name}` : "Голова президента не выбрана";
+    }
     if (!name) {
       presidentName.textContent = "Президент пока не выбран";
       presidentMeta.textContent = "Должность свободна.";
@@ -1006,6 +1035,7 @@ export function createHomepageRenderer() {
     renderStatusPayload,
     renderServerHero,
     renderPresidentCard,
+    renderPresidentLaws,
     renderAuthState,
     renderUnavailableState,
     renderModpack,

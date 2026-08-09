@@ -869,7 +869,7 @@ copimine_install_system_files() {
     tr -d '\r' < "$source" | sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" > "/etc/systemd/system/$unit.service"
     chmod 0644 "/etc/systemd/system/$unit.service"
   done
-  for unit in copimine-backup.service copimine-backup.timer; do
+  for unit in copimine-backup.service copimine-backup.timer copimine-world-backup.service copimine-world-backup.timer; do
     source="$COPIMINE_ADMIN_DIR/deploy/$unit"
     tr -d '\r' < "$source" > "/etc/systemd/system/$unit"
     chmod 0644 "/etc/systemd/system/$unit"
@@ -941,6 +941,8 @@ EOF
   systemctl reenable copimine-game-hardening.service >/dev/null
   systemctl enable copimine-backup.timer >/dev/null
   systemctl restart copimine-backup.timer
+  systemctl enable copimine-world-backup.timer >/dev/null
+  systemctl restart copimine-world-backup.timer
 }
 
 copimine_configured_world_base() {

@@ -85,6 +85,8 @@ SYSTEM_FILES=(
   "copimine-minecraft-discord-bridge.service:/etc/systemd/system/copimine-minecraft-discord-bridge.service"
   "copimine-minecraft.service:/etc/systemd/system/copimine-minecraft.service"
   "copimine-game-hardening.service:/etc/systemd/system/copimine-game-hardening.service"
+  "copimine-world-backup.service:/etc/systemd/system/copimine-world-backup.service"
+  "copimine-world-backup.timer:/etc/systemd/system/copimine-world-backup.timer"
 )
 
 NginxTemplateRelative="admin-web/deploy/nginx-copimine-admin-https.conf"

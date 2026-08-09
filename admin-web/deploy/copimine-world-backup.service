@@ -1,0 +1,16 @@
+[Unit]
+Description=CopiMine low-priority live world snapshot
+After=copimine-minecraft.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/copimine/deploy/ubuntu/world_backup.sh
+Nice=19
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+TimeoutStartSec=2h
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/copimine-backups

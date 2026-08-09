@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/assets/css/themes.css" />
   <link rel="stylesheet" href="/assets/css/release-ui.css" />
   <link rel="stylesheet" href="/assets/css/public-elections.css" />
+  <link rel="stylesheet" href="/assets/css/public-president.css" />
 </head>
 <body data-page-kind="public-home">
   <main class="public-site public-site-compact">
@@ -103,6 +104,35 @@
       </div>
 
       <div class="public-dashboard-grid">
+        <article class="public-panel public-panel-wide president-panel president-home-panel" id="presidentCardMount">
+          <div class="public-panel-head">
+            <div>
+              <span class="hero-kicker">Президент</span>
+              <h3 id="presidentCardName">Президент пока не выбран</h3>
+            </div>
+          </div>
+          <div class="president-home-layout">
+            <div class="president-avatar-shell">
+              <img id="presidentCardAvatar" class="president-card-avatar" src="/assets/brand/copimine-logo.png" alt="" />
+            </div>
+            <div class="president-card-copy">
+              <p id="presidentCardMeta">Должность свободна.</p>
+              <section class="president-laws-block" aria-labelledby="presidentLawsTitle">
+                <div class="president-laws-head">
+                  <div>
+                    <span class="hero-kicker">Публичная часть срока</span>
+                    <h4 id="presidentLawsTitle">Текущие законы</h4>
+                  </div>
+                  <small>Только опубликованные законы действующего президента</small>
+                </div>
+                <div id="presidentLaws" class="election-laws-grid">
+                  <p class="election-empty-note">Сейчас опубликованных законов нет.</p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </article>
+
         <article class="public-panel public-panel-wide">
           <div class="public-panel-head">
             <div>
@@ -127,14 +157,6 @@
               <strong id="presidentBudgetCounter">0 AR</strong>
             </div>
             <p id="presidentBudgetDetail">Ждём ответ сервера.</p>
-          </div>
-        </article>
-
-        <article class="public-panel president-panel" id="presidentCardMount">
-          <div class="president-card-copy">
-            <span class="hero-kicker">Президент</span>
-            <h3 id="presidentCardName">Президент пока не выбран</h3>
-            <p id="presidentCardMeta">Должность свободна.</p>
           </div>
         </article>
 

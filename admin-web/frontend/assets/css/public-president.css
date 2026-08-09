@@ -1,0 +1,96 @@
+.president-home-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.president-home-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  gap: 22px;
+  align-items: stretch;
+}
+
+.president-avatar-shell {
+  display: grid;
+  place-items: center;
+  min-height: 172px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 16%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%),
+    var(--surface-soft);
+}
+
+.president-card-avatar {
+  width: 128px;
+  height: 128px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  image-rendering: pixelated;
+  object-fit: cover;
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--accent) 17%, transparent);
+}
+
+.president-card-copy {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.president-card-copy > p {
+  margin: 0;
+}
+
+.president-laws-block {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.president-laws-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.president-laws-head h4 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 1.16rem;
+}
+
+.president-laws-head small {
+  max-width: 270px;
+  color: var(--muted);
+  font-size: .76rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.president-law-card {
+  min-height: 100%;
+}
+
+@media (max-width: 620px) {
+  .president-home-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .president-avatar-shell {
+    min-height: 142px;
+  }
+
+  .president-laws-head {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .president-laws-head small {
+    max-width: none;
+    text-align: left;
+  }
+}

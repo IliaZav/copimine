@@ -685,6 +685,10 @@ class AdminPlayerAccountUpdateIn(BaseModel):
     new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
 
 
+class AdminMinecraftLinkRebindIn(BaseModel):
+    minecraft_name: str = Field(min_length=3, max_length=16)
+
+
 class AdminAuthMePasswordResetIn(BaseModel):
     new_password: str = Field(min_length=8, max_length=64)
 
@@ -4739,6 +4743,41 @@ def add_player_to_whitelist_sync(minecraft_uuid: str, minecraft_name: str) -> di
     return {"ok": True, "whitelisted": True, "rconState": rcon_state}
 
 
+def remove_player_from_whitelist_sync(minecraft_uuid: str, minecraft_name: str) -> dict[str, Any]:
+    """Remove one exact identity from the file whitelist and live server."""
+    uuid_value = str(minecraft_uuid or "").strip().lower()
+    name = str(minecraft_name or "").strip()
+    lower_name = name.lower()
+    if not uuid_value and not lower_name:
+        raise HTTPException(status_code=400, detail="Не указана старая Minecraft-привязка")
+    whitelist_path = MC_SERVER_DIR / "whitelist.json"
+    rows = read_json(whitelist_path, [])
+    if not isinstance(rows, list):
+        return {"ok": True, "removed": False, "rconState": "FILE_INVALID"}
+    kept: list[Any] = []
+    removed = False
+    for item in rows:
+        matches = isinstance(item, dict) and (
+            bool(uuid_value) and str(item.get("uuid") or "").strip().lower() == uuid_value
+            or bool(lower_name) and str(item.get("name") or "").strip().lower() == lower_name
+        )
+        if matches:
+            removed = True
+            continue
+        kept.append(item)
+    if removed:
+        write_json(whitelist_path, kept)
+    rcon_state = "FILE_ONLY"
+    if RCON_PASSWORD and name:
+        try:
+            rcon_quick(f"whitelist remove {name}")
+            rcon_quick("whitelist reload")
+            rcon_state = "RCON_AND_FILE"
+        except Exception:
+            rcon_state = "FILE_ONLY"
+    return {"ok": True, "removed": removed, "rconState": rcon_state}
+
+
 def approve_whitelist_request_sync(request_id: str, actor: str, note: str = "", source: str = "web") -> dict[str, Any]:
     with auth_conn() as conn:
         ensure_v4_schema(conn)
@@ -5601,6 +5640,162 @@ def admin_update_player_account_sync(player: str, actor: str, data: AdminPlayerA
     }
 
 
+def admin_rebind_player_minecraft_sync(player: str, actor: str, data: AdminMinecraftLinkRebindIn) -> dict[str, Any]:
+    """Move one linked site account to a new Minecraft identity.
+
+    The operation is deliberately limited to the selected player's account. It
+    never merges balances or inventory data between UUIDs; those remain owned
+    by their original Minecraft identity. The old whitelist identity is
+    revoked and the new one is added before the durable link is committed.
+    """
+    player = clean_mc_player(player)
+    requested_name = str(data.minecraft_name or "").strip()
+    if not valid_minecraft_name(requested_name):
+        raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник (3-16 символов: A-Z, 0-9, _)")
+    old_uuid = str(find_player_uuid(player) or "").strip()
+    if not old_uuid:
+        raise HTTPException(status_code=404, detail="Player was not found")
+    new_uuid = str(find_player_uuid(requested_name) or offline_uuid_for_name(requested_name)).strip()
+    now = donation_now_ms()
+    removed_old = False
+    whitelist_result: dict[str, Any] = {}
+    old_name = ""
+    current: dict[str, Any] = {}
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute(
+            """
+            SELECT id,username,minecraft_uuid,minecraft_name,enabled
+            FROM site_accounts
+            WHERE minecraft_uuid=%s AND role='player'
+            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (old_uuid,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
+        current = dict(row)
+        account_id = str(current.get("id") or "").strip()
+        old_uuid = str(current.get("minecraft_uuid") or old_uuid).strip()
+        old_name = str(current.get("minecraft_name") or uuid_to_name().get(old_uuid, player)).strip()
+
+        link_owner = conn.execute(
+            "SELECT site_account_id FROM minecraft_account_links WHERE minecraft_uuid=%s LIMIT 1",
+            (new_uuid,),
+        ).fetchone()
+        if link_owner and str(row_get(link_owner, "site_account_id", "") or "") != account_id:
+            raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже привязан к другому аккаунту")
+        whitelist_owner = conn.execute(
+            "SELECT site_account_id FROM whitelist_account_links WHERE minecraft_uuid=%s LIMIT 1",
+            (new_uuid,),
+        ).fetchone()
+        if whitelist_owner and str(row_get(whitelist_owner, "site_account_id", "") or "") != account_id:
+            raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже находится в whitelist другого аккаунта")
+        account_collision = conn.execute(
+            """
+            SELECT id FROM site_accounts
+            WHERE id<>%s AND (minecraft_uuid=%s OR LOWER(minecraft_name)=LOWER(%s))
+            LIMIT 1
+            """,
+            (account_id, new_uuid, requested_name),
+        ).fetchone()
+        if account_collision:
+            raise HTTPException(status_code=409, detail="Этот Minecraft-ник уже привязан к другому аккаунту")
+
+        identity_changed = old_uuid.lower() != new_uuid.lower() or old_name.casefold() != requested_name.casefold()
+        try:
+            if identity_changed and (old_uuid or old_name):
+                remove_player_from_whitelist_sync(old_uuid, old_name)
+                removed_old = True
+            whitelist_result = add_player_to_whitelist_sync(new_uuid, requested_name)
+
+            if old_uuid and old_uuid.lower() != new_uuid.lower():
+                conn.execute(
+                    "UPDATE minecraft_account_links SET status='REVOKED',updated_at=%s WHERE minecraft_uuid=%s AND site_account_id=%s",
+                    (now, old_uuid, account_id),
+                )
+                conn.execute(
+                    "UPDATE whitelist_account_links SET whitelisted=0,synced_at=%s WHERE minecraft_uuid=%s AND site_account_id=%s",
+                    (now, old_uuid, account_id),
+                )
+            conn.execute(
+                "UPDATE whitelist_requests SET status='REPLACED',updated_at=%s WHERE site_account_id=%s AND status='PENDING'",
+                (now, account_id),
+            )
+            conn.execute(
+                "UPDATE one_time_link_codes SET status='EXPIRED' WHERE site_account_id=%s AND status='PENDING'",
+                (account_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO minecraft_account_links(minecraft_uuid,minecraft_name,site_account_id,status,linked_at,updated_at)
+                VALUES(%s,%s,%s,'ACTIVE',%s,%s)
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    site_account_id=EXCLUDED.site_account_id,
+                    status='ACTIVE',
+                    updated_at=EXCLUDED.updated_at
+                """,
+                (new_uuid, requested_name, account_id, now, now),
+            )
+            conn.execute(
+                "UPDATE site_accounts SET minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
+                (new_uuid, requested_name, now, account_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO whitelist_account_links(minecraft_uuid,minecraft_name,site_account_id,whitelisted,synced_at)
+                VALUES(%s,%s,%s,1,%s)
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    site_account_id=EXCLUDED.site_account_id,
+                    whitelisted=1,
+                    synced_at=EXCLUDED.synced_at
+                """,
+                (new_uuid, requested_name, account_id, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO auth_users_imported(minecraft_uuid,minecraft_name,imported_at,source)
+                VALUES(%s,%s,%s,'admin-rebind')
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    imported_at=EXCLUDED.imported_at,
+                    source=EXCLUDED.source
+                """,
+                (new_uuid, requested_name, now),
+            )
+            conn.execute(
+                "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PLAYER_MINECRAFT_LINK_REBIND',%s,'admin-web')",
+                (now, actor, f"site_account_id={account_id} old_uuid={old_uuid} new_uuid={new_uuid}"),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            try:
+                remove_player_from_whitelist_sync(new_uuid, requested_name)
+                if removed_old:
+                    add_player_to_whitelist_sync(old_uuid, old_name)
+            except Exception:
+                # The database transaction is still rolled back. The caller
+                # receives the original failure and the next admin audit can
+                # inspect the whitelist sync state.
+                pass
+            raise
+    return {
+        "ok": True,
+        "siteAccountId": str(current.get("id") or ""),
+        "oldMinecraftUuid": old_uuid,
+        "oldMinecraftName": old_name,
+        "minecraftUuid": new_uuid,
+        "minecraftName": requested_name,
+        "whitelisted": True,
+        "rconState": whitelist_result.get("rconState", "FILE_ONLY"),
+    }
+
+
 def generate_temporary_pin() -> str:
     return "".join(secrets.choice("0123456789") for _ in range(temporary_pin_length()))
 
@@ -6186,10 +6381,43 @@ def public_president_budget_history_sync(limit: int = 20, offset: int = 0) -> di
 
 def public_president_profile_sync() -> dict[str, Any]:
     payload = public_president_budget_payload_sync()
+    current_name = ""
+    current_uuid = ""
+    laws: list[dict[str, Any]] = []
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        term = active_president_term(conn)
+        if term:
+            current_name = sanitize_public_plain_text(term.get("president_name") or "", 64)
+            current_uuid = sanitize_public_plain_text(term.get("president_uuid") or "", 64)
+            rows = conn.execute(
+                """
+                SELECT id,text,status,published_at,slot_no
+                FROM president_laws
+                WHERE term_id=%s AND status='PUBLISHED'
+                ORDER BY slot_no ASC, published_at DESC
+                LIMIT 6
+                """,
+                (str(term.get("id") or ""),),
+            ).fetchall()
+            for row in rows:
+                text = sanitize_public_plain_text(row_get(row, "text", ""), 3000)
+                if not text:
+                    continue
+                laws.append(
+                    {
+                        "id": str(row_get(row, "id", "") or ""),
+                        "text": text,
+                        "publishedAt": int(row_get(row, "published_at", 0) or 0),
+                        "slotNo": int(row_get(row, "slot_no", 0) or 0),
+                    }
+                )
+        conn.commit()
     return {
-        "current_president_name": payload["current_president_name"],
-        "current_president_uuid": payload["current_president_uuid"],
-        "skin_body_url": f"/api/public/president/skin/body?uuid={quote(payload['current_president_uuid'])}" if payload["current_president_uuid"] else "",
+        "current_president_name": current_name,
+        "current_president_uuid": current_uuid,
+        "skin_body_url": f"/api/public/president/skin/body?uuid={quote(current_uuid)}" if current_uuid else "",
+        "laws": laws,
         "updated_at": payload["updated_at"],
     }
 
@@ -12895,6 +13123,42 @@ async def player_site_account_update(
             "passwordChanged": bool(result.get("passwordChanged")),
         },
         tags=["player", "security", "account"],
+    )
+    return result
+
+
+@app.post("/api/players/{player}/minecraft-link/rebind")
+async def player_minecraft_link_rebind(
+    player: str,
+    data: AdminMinecraftLinkRebindIn,
+    request: Request,
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    require_sensitive_confirm(request, "PLAYER_MINECRAFT_LINK_REBIND")
+    result = await bg(admin_rebind_player_minecraft_sync, player, username, data)
+    audit_event(
+        username,
+        "player.minecraft_link_rebind",
+        target=player,
+        details={
+            "oldMinecraftUuid": result.get("oldMinecraftUuid", ""),
+            "minecraftUuid": result.get("minecraftUuid", ""),
+            "minecraftName": result.get("minecraftName", ""),
+            "rconState": result.get("rconState", "FILE_ONLY"),
+        },
+    )
+    append_panel_event(
+        "admin-panel",
+        "player_minecraft_link_rebind",
+        actor=username,
+        target=player,
+        metadata={
+            "oldMinecraftUuid": result.get("oldMinecraftUuid", ""),
+            "minecraftUuid": result.get("minecraftUuid", ""),
+            "minecraftName": result.get("minecraftName", ""),
+            "rconState": result.get("rconState", "FILE_ONLY"),
+        },
+        tags=["player", "security", "whitelist"],
     )
     return result
 

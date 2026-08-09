@@ -93,6 +93,8 @@ SYSTEMD_UNITS=(
   "copimine-minecraft-discord-bridge.service"
   "copimine-minecraft.service"
   "copimine-game-hardening.service"
+  "copimine-world-backup.service"
+  "copimine-world-backup.timer"
 )
 
 log() {
@@ -368,6 +370,14 @@ backup_current_release() {
   local backup_dir="$BACKUP_ROOT/runtime-replace-$TS"
   mkdir -p "$backup_dir"
   chmod 700 "$backup_dir"
+  if [[ "$WIPE_WORLDS" == "1" ]]; then
+    local world_backup_script="$PROJECT_ROOT/deploy/ubuntu/world_backup.sh"
+    [[ -x "$world_backup_script" ]] || die "World wipe requires the installed world backup script: $world_backup_script"
+    COPIMINE_WORLD_BACKUP_REASON=pre-release-wipe \
+    COPIMINE_WORLD_BACKUP_REQUIRED=1 \
+      "$world_backup_script" > "$backup_dir/world-backup.txt"
+    chmod 600 "$backup_dir/world-backup.txt"
+  fi
   if [[ -d "$PROJECT_ROOT" ]]; then
     local root_name="$(basename "$PROJECT_ROOT")"
     # Do not duplicate .env or mutable runtime/player data into the readable

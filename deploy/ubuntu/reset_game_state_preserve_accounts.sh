@@ -13,6 +13,7 @@ WIPE_WORLDS=0
 LOG_FILE="/var/log/copimine-game-wipe.log"
 WORLD_BACKUP_SCRIPT="$ROOT/deploy/ubuntu/world_backup.sh"
 WORLD_BACKUP_LOCK="${COPIMINE_WORLD_BACKUP_LOCK:-$BACKUP_ROOT/.world-backup.lock}"
+world_snapshot_path=""
 
 log() { printf '[copimine-wipe][%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG_FILE"; }
 fail() { log "ERROR: $*"; exit 1; }
@@ -22,7 +23,7 @@ fail() { log "ERROR: $*"; exit 1; }
 [[ -f "$SQL_FILE" ]] || fail "не найден $SQL_FILE"
 [[ -d "$SERVER_DIR" ]] || fail "не найден каталог сервера $SERVER_DIR"
 [[ "${1:-}" != "--wipe-worlds" ]] || WIPE_WORLDS=1
-for command in systemctl runuser psql pg_dump sha256sum awk sed find realpath flock cmp; do
+for command in systemctl runuser psql pg_dump sha256sum awk sed find realpath flock cmp cp; do
   command -v "$command" >/dev/null 2>&1 || fail "не найдена команда $command"
 done
 
@@ -49,6 +50,11 @@ if (( WIPE_WORLDS == 1 )); then
     rm -f -- "$pending_world_backup"
     fail "world snapshot failed before wipe"
   fi
+  world_snapshot_path="$(awk -F'published snapshot: ' '/published snapshot: / {print $2; exit}' "$pending_world_backup")"
+  [[ -n "$world_snapshot_path" ]] || {
+    rm -f -- "$pending_world_backup"
+    fail "world snapshot path was not reported before wipe"
+  }
 fi
 
 exec 9>"$WORLD_BACKUP_LOCK"
@@ -59,6 +65,16 @@ mkdir -p "$backup_dir"
 chmod 700 "$BACKUP_ROOT" "$backup_dir"
 if (( WIPE_WORLDS == 1 )); then
   install -m 600 "$pending_world_backup" "$backup_dir/world-backup.txt"
+  world_snapshot_resolved="$(realpath -e -- "$world_snapshot_path")"
+  world_backup_root_resolved="$(realpath -e -- "$BACKUP_ROOT/worlds")"
+  [[ "$world_snapshot_resolved" == "$world_backup_root_resolved/worlds-"* ]] \
+    || fail "pre-wipe snapshot escaped the world backup root: $world_snapshot_resolved"
+  [[ "$(basename -- "$world_snapshot_resolved")" =~ ^worlds-[0-9]{8}-[0-9]{6}$ ]] \
+    || fail "pre-wipe snapshot has an invalid name: $world_snapshot_resolved"
+  mkdir -p "$backup_dir/worlds-pre-wipe"
+  cp -al -- "$world_snapshot_resolved/." "$backup_dir/worlds-pre-wipe/"
+  chmod -R a-w "$backup_dir/worlds-pre-wipe"
+  log "durable pre-wipe world snapshot saved as hardlinks: $backup_dir/worlds-pre-wipe"
   rm -f -- "$pending_world_backup"
 fi
 log "резервная копия базы: $backup_dir/copimine-before-wipe.dump"

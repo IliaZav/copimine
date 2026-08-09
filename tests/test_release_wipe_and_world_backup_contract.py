@@ -168,6 +168,9 @@ def test_wipe_path_requires_durable_world_snapshot() -> None:
     assert "WIPE_WORLDS" in unpack
     assert "flock" in reset
     assert "copimine-before-wipe.dump" in reset
+    assert "published snapshot: " in reset
+    assert "cp -al" in reset
+    assert "worlds-pre-wipe" in reset
 
 
 def test_modpack_contains_only_mods_directory() -> None:

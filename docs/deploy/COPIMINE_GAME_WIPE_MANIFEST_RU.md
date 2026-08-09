@@ -40,6 +40,10 @@
   PostgreSQL custom dump;
 - рядом с ним `copimine-before-wipe.dump.sha256`, манифест защищённых строк и
   указатель предварительной копии мира;
+- при вайпе мира рядом создаётся
+  `/opt/copimine-backups/game-wipe-<UTC>/worlds-pre-wipe/` — hardlink-копия
+  исходного snapshot, поэтому обычная ротация world backup через 5 часов её
+  не удаляет;
 - `/opt/copimine-backups/worlds/worlds-<UTC>/` — атомарный снимок мира.
 
 Сервис `copimine-world-backup.timer` запускает снимок через 10 минут после

@@ -1,5 +1,5 @@
-import { bindHomepageEvents, loadPublicPage } from "./homepage.js";
-import { initCartPage } from "./cart-page.js";
+import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260809publiccopy1";
+import { initCartPage } from "./cart-page.js?v=20260809publiccopy1";
 import { initThemeToggle } from "../theme/theme-toggle.js?v=20260719r7";
 import { initPublicNav } from "./public-nav.js?v=20260719r7";
 

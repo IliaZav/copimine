@@ -572,8 +572,8 @@ export function createHomepageRenderer() {
     }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
-        ? "Готовый комплект для входа на сервер."
-        : "Повторите попытку позже.";
+        ? "Сборка готова к загрузке."
+        : "Данные пока недоступны.";
     }
     if (modpackMetaGrid) {
       const metaCards = [
@@ -766,10 +766,10 @@ export function createHomepageRenderer() {
       electionHeroMeta.textContent = unavailable
         ? "Сервер не ответил вовремя. Нажмите «Обновить», чтобы повторить запрос."
         : !hasElection
-        ? "Активная кампания ещё не запущена. Здесь появится актуальный этап после старта выборов."
+        ? "Выборы ещё не начались."
         : candidateCount
         ? `${candidateCount} кандидатов участвуют в текущем туре · ${totalVotes.toLocaleString("ru-RU")} голосов учтено.`
-        : "Заявки ещё проходят подготовку. Как только состав будет утверждён, он появится здесь.";
+        : "Заявки проходят проверку.";
     }
     if (electionHeroCandidates) electionHeroCandidates.textContent = candidateCount.toLocaleString("ru-RU");
     if (electionHeroVotes) electionHeroVotes.textContent = totalVotes.toLocaleString("ru-RU");
@@ -791,8 +791,8 @@ export function createHomepageRenderer() {
     if (electionCandidates) {
       if (!candidates.length) {
         replaceChildrenSafe(electionCandidates, [cardStrong(
-          unavailable ? "Не удалось получить список кандидатов" : candidateCount ? "Список кандидатов синхронизируется" : "Одобренных кандидатов пока нет",
-          unavailable ? "Повторите обновление через несколько секунд." : candidateCount ? "Количество уже обновлено. Имена появятся после следующего ответа сервера." : "Администратор покажет список после проверки заявок.",
+          unavailable ? "Не удалось получить список кандидатов" : candidateCount ? "Список обновится позже" : "Одобренных кандидатов пока нет",
+          unavailable ? "Повторите позже." : candidateCount ? "Список обновится позже." : "Список появится после проверки заявок.",
           "",
           mcIcon("written_book.png"),
         )]);
@@ -948,7 +948,7 @@ export function createHomepageRenderer() {
       serverPulseText.textContent = "Свежих данных по серверу нет.";
     }
     if (modpackSummaryLead) {
-      modpackSummaryLead.textContent = "Состояние архива модов пока не удалось получить.";
+      modpackSummaryLead.textContent = "Данные модпака недоступны.";
     }
   }
 

@@ -7,9 +7,15 @@ PUBLIC_TEMPLATES = (
     "admin-web/frontend/index.html",
     "admin-web/frontend/server.html",
     "admin-web/frontend/elections.html",
+    "admin-web/frontend/shops.html",
     "admin-web/frontend/mods.html",
+    "admin-web/frontend/signin.html",
+    "admin-web/frontend/register.html",
+    "admin-web/frontend/cart.html",
     "admin-web/frontend/404.html",
     "admin-web/frontend/error.html",
+    "admin-web/frontend/preview-admin.html",
+    "admin-web/frontend/preview-player.html",
 )
 
 
@@ -31,6 +37,40 @@ def test_public_templates_do_not_expose_release_or_internal_copy():
         "API health-check",
         "API-обработчик",
         "старой версии кабинета",
+    )
+    for phrase in forbidden:
+        assert phrase not in source, phrase
+
+
+def test_public_templates_do_not_ship_ai_sounding_or_operational_filler_copy():
+    source = "\n".join(read(path) for path in PUBLIC_TEMPLATES)
+    forbidden = (
+        "Здесь собраны",
+        "На странице собраны",
+        "Здесь показывается только рабочая сводка",
+        "Ниже показана открытая сводка",
+        "Архив на сайте должен совпадать",
+        "Здесь публикуется та же сборка",
+        "Готовый комплект для входа",
+        "Как это работает",
+        "Что сделать дальше",
+        "Что можно сделать",
+        "рабочий раздел",
+        "Resource pack hash",
+        "Обновлено:",
+    )
+    for phrase in forbidden:
+        assert phrase not in source, phrase
+
+
+def test_public_renderer_uses_plain_short_fallbacks_without_release_copy():
+    source = read("admin-web/frontend/assets/js/public/site-render.js")
+    forbidden = (
+        "Готовый комплект для входа",
+        "Состояние архива модов пока не удалось получить",
+        "Количество уже обновлено",
+        "Как только состав будет утверждён",
+        "Синхронизируется",
     )
     for phrase in forbidden:
         assert phrase not in source, phrase
@@ -77,3 +117,22 @@ def test_public_modpack_meta_grid_has_loaded_layout_rules():
     assert ".modpack-meta-grid" in css
     assert ".modpack-stat" in css
     assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
+
+
+def test_public_copy_audit_keeps_hero_and_sections_compact():
+    css = read("admin-web/frontend/assets/css/ui-audit.css")
+
+    assert ".public-site .public-hero-copy > p" in css
+    assert ".public-site .scene-card-copy p" in css
+    assert ".public-site .public-hero {" in css
+    assert ".public-site .public-section {" in css
+
+
+def test_public_templates_bust_the_cache_for_the_copy_audit_release():
+    for path in PUBLIC_TEMPLATES:
+        assert "style.css?v=20260809publiccopy1" in read(path), path
+
+    public_page = read("admin-web/frontend/assets/js/public/public-page.js")
+    homepage = read("admin-web/frontend/assets/js/public/homepage.js")
+    assert "./homepage.js?v=20260809publiccopy1" in public_page
+    assert "./site-render.js?v=20260809publiccopy1" in homepage

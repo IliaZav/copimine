@@ -93,3 +93,29 @@
     min-width: 540px;
   }
 }
+
+/* Public copy audit: let the data lead and keep explanatory copy short. */
+.public-site .public-hero-copy > p,
+.public-site .scene-card-copy p,
+.public-site .hero-media-copy p,
+.public-site .hero-side-note p,
+.public-site .section-head p {
+  max-width: 52ch;
+  line-height: 1.45;
+}
+
+.public-site .public-hero {
+  padding-block: 24px 18px;
+}
+
+.public-site .public-section {
+  padding-block: 24px;
+}
+
+.public-site .section-head {
+  margin-bottom: 14px;
+}
+
+.public-site .hero-side-card {
+  gap: 12px;
+}

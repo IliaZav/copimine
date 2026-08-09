@@ -193,6 +193,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     private NamespacedKey officialArSignatureVersionKey;
     private NamespacedKey officialArIssuanceTokenKey;
     private byte[] officialArSigningSecret;
+    /**
+     * The primary key signs newly issued ARs.  Previously only this one
+     * process-local field was consulted during validation, so replacing the
+     * release tree could make already-held, correctly signed ARs invalid.
+     * The bounded key ring below contains the primary key plus server-owned
+     * legacy keys carried across a release replacement.
+     */
+    private List<byte[]> officialArSigningSecrets = List.of();
     private BukkitTask atmAnchorGuardTask;
 
     private final BankService bankService = new BankServiceImpl();
@@ -400,6 +408,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         officialArSignatureVersionKey = new NamespacedKey(this, "ar_signature_version");
         officialArIssuanceTokenKey = new NamespacedKey(this, "ar_issuance_token");
         officialArSigningSecret = loadOrCreateArSigningSecret();
+        officialArSigningSecrets = loadArSigningSecrets(officialArSigningSecret);
         pendingArSettlementJournalPath = getDataFolder().toPath().resolve("pending-ar-settlements.tsv");
         try {
             Files.createDirectories(pendingArSettlementJournalPath.getParent());
@@ -2726,12 +2735,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String officialArSignature(String serial, Material material, int denomination) {
-        if (serial == null || serial.isBlank() || material == null || denomination <= 0 || officialArSigningSecret == null) {
+        return officialArSignature(officialArSigningSecret, serial, material, denomination);
+    }
+
+    private String officialArSignature(byte[] signingSecret, String serial, Material material, int denomination) {
+        if (serial == null || serial.isBlank() || material == null || denomination <= 0 || signingSecret == null) {
             return "";
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(officialArSigningSecret, "HmacSHA256"));
+            mac.init(new SecretKeySpec(signingSecret, "HmacSHA256"));
             byte[] digest = mac.doFinal((serial + "|" + material.name() + "|" + denomination + "|certified|v2").getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte value : digest) {
@@ -2762,9 +2775,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                     || stack.getAmount() < 1 || stack.getAmount() > stack.getMaxStackSize()) {
                 return false;
             }
-            String expected = officialArFungibleSignature(stack.getType());
-            return !expected.isBlank() && MessageDigest.isEqual(
-                    expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII));
+            for (byte[] candidate : officialArSigningSecrets) {
+                String expected = officialArFungibleSignature(candidate, stack.getType());
+                if (!expected.isBlank() && MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII))) {
+                    return true;
+                }
+            }
+            return false;
         }
         if (denomination != stack.getAmount() || signatureVersion != LEGACY_AR_SIGNATURE_VERSION) {
             return false;
@@ -2774,9 +2792,14 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         } catch (IllegalArgumentException invalidSerial) {
             return false;
         }
-        String expected = officialArSignature(serial, stack.getType(), denomination);
-        return !expected.isBlank() && MessageDigest.isEqual(
-                expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII));
+        for (byte[] candidate : officialArSigningSecrets) {
+            String expected = officialArSignature(candidate, serial, stack.getType(), denomination);
+            if (!expected.isBlank() && MessageDigest.isEqual(
+                    expected.getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String arFungibleSerial(Material material) {
@@ -2792,12 +2815,16 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
     }
 
     private String officialArFungibleSignature(Material material) {
-        if (material == null || officialArSigningSecret == null) {
+        return officialArFungibleSignature(officialArSigningSecret, material);
+    }
+
+    private String officialArFungibleSignature(byte[] signingSecret, Material material) {
+        if (material == null || signingSecret == null) {
             return "";
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(officialArSigningSecret, "HmacSHA256"));
+            mac.init(new SecretKeySpec(signingSecret, "HmacSHA256"));
             byte[] digest = mac.doFinal((AR_FUNGIBLE_SERIAL_PREFIX + material.name()
                     + "|certified|v" + OFFICIAL_AR_SIGNATURE_VERSION).getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder(digest.length * 2);
@@ -4468,7 +4495,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
                 // short/invalid operator value as an item-signing key.
             }
         }
-        Path secretFile = getDataFolder().toPath().resolve("ar-signing-secret.b64");
+        Path secretFile = resolveArSigningSecretPath();
         try {
             Files.createDirectories(secretFile.getParent());
             if (Files.isRegularFile(secretFile)) {
@@ -4482,13 +4509,82 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             Files.writeString(secretFile, Base64.getEncoder().encodeToString(generated), StandardCharsets.US_ASCII);
             return generated;
         } catch (Exception error) {
-            getLogger().log(java.util.logging.Level.SEVERE, "Unable to persist AR signing secret", error);
-            // A process-local fallback still prevents accidental vanilla AR
-            // acceptance during this boot; the next restart will retry.
-            byte[] generated = new byte[32];
-            new SecureRandom().nextBytes(generated);
-            return generated;
+            getLogger().log(java.util.logging.Level.SEVERE, "Unable to persist AR signing secret at " + secretFile, error);
+            // Keep the old plugin-data fallback for a manually started local
+            // Paper instance. Production releases prepare the /var/lib path
+            // before the tree is replaced, so this fallback is not used by
+            // the managed server deployment.
+            Path localFallback = getDataFolder().toPath().resolve("ar-signing-secret.b64");
+            try {
+                Files.createDirectories(localFallback.getParent());
+                if (Files.isRegularFile(localFallback)) {
+                    byte[] decoded = Base64.getDecoder().decode(Files.readString(localFallback, StandardCharsets.US_ASCII).trim());
+                    if (decoded.length >= 32) {
+                        return decoded;
+                    }
+                }
+                byte[] generated = new byte[32];
+                new SecureRandom().nextBytes(generated);
+                Files.writeString(localFallback, Base64.getEncoder().encodeToString(generated), StandardCharsets.US_ASCII);
+                return generated;
+            } catch (Exception fallbackError) {
+                getLogger().log(java.util.logging.Level.SEVERE, "Unable to persist fallback AR signing secret", fallbackError);
+                byte[] generated = new byte[32];
+                new SecureRandom().nextBytes(generated);
+                return generated;
+            }
         }
+    }
+
+    private Path resolveArSigningSecretPath() {
+        String configured = System.getenv("COPIMINE_AR_SIGNING_SECRET_FILE");
+        if (configured != null && !configured.isBlank()) {
+            return Paths.get(configured.trim()).toAbsolutePath().normalize();
+        }
+        return Paths.get("/var/lib/copimine/ar-signing-secret.b64");
+    }
+
+    private Path resolveArSigningLegacySecretsPath() {
+        String configured = System.getenv("COPIMINE_AR_SIGNING_LEGACY_SECRETS_FILE");
+        if (configured != null && !configured.isBlank()) {
+            return Paths.get(configured.trim()).toAbsolutePath().normalize();
+        }
+        return resolveArSigningSecretPath().resolveSibling("ar-signing-legacy.b64");
+    }
+
+    private List<byte[]> loadArSigningSecrets(byte[] primary) {
+        List<byte[]> secrets = new ArrayList<>();
+        addArSigningSecret(secrets, primary);
+        Path legacyFile = resolveArSigningLegacySecretsPath();
+        if (Files.isRegularFile(legacyFile)) {
+            try {
+                for (String encoded : Files.readAllLines(legacyFile, StandardCharsets.US_ASCII)) {
+                    if (encoded == null || encoded.isBlank()) {
+                        continue;
+                    }
+                    try {
+                        addArSigningSecret(secrets, Base64.getDecoder().decode(encoded.trim()));
+                    } catch (IllegalArgumentException ignored) {
+                        getLogger().warning("Ignoring malformed legacy AR signing key entry in " + legacyFile);
+                    }
+                }
+            } catch (Exception error) {
+                getLogger().warning("Unable to read legacy AR signing keys: " + safeError(error));
+            }
+        }
+        return List.copyOf(secrets);
+    }
+
+    private void addArSigningSecret(List<byte[]> secrets, byte[] candidate) {
+        if (candidate == null || candidate.length < 32) {
+            return;
+        }
+        for (byte[] existing : secrets) {
+            if (MessageDigest.isEqual(existing, candidate)) {
+                return;
+            }
+        }
+        secrets.add(candidate.clone());
     }
 
     private Path releaseRoot() {

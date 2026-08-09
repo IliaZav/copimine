@@ -8,6 +8,7 @@ ARTIFACTS = (ROOT / "copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifa
 NARCOTICS = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java").read_text(encoding="utf-8")
 NARCOTICS_FACTORY = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/item/NarcoticItemFactory.java").read_text(encoding="utf-8")
 NARCOTICS_DB = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/db/NarcoticsDatabase.java").read_text(encoding="utf-8")
+DEPLOY = (ROOT / "deploy/ubuntu/copimine_unpack_and_verify.sh").read_text(encoding="utf-8")
 
 
 def test_ar_is_fungible_and_stack_identity_does_not_bind_to_quantity() -> None:
@@ -49,6 +50,17 @@ def test_ar_has_no_automatic_inventory_resync_during_player_actions() -> None:
     assert "normalizeFungibleArOnPickup" not in ECONOMY
     assert "void normalizePlayer(Player player)" not in ECONOMY
     assert "officialArService.normalizePlayer(player)" not in ECONOMY
+
+
+def test_ar_signing_keys_survive_restart_and_release_replacement() -> None:
+    """Known AR keys remain valid after a server restart or atomic release swap."""
+    assert "officialArSigningSecrets" in ECONOMY
+    assert "loadArSigningSecrets" in ECONOMY
+    assert "COPIMINE_AR_SIGNING_SECRET_FILE" in ECONOMY
+    assert "COPIMINE_AR_SIGNING_LEGACY_SECRETS_FILE" in ECONOMY
+    assert "for (byte[] candidate : officialArSigningSecrets)" in ECONOMY
+    assert "preserveArSigningSecret" in DEPLOY
+    assert '"minecraft/server/plugins/CopiMineEconomyCore/ar-signing-secret.b64"' in DEPLOY
 
 
 def test_custom_item_plugins_do_not_register_the_old_creative_antidupe_handlers() -> None:

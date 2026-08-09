@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "CopiMine release SBOM",
-  "documentNamespace": "https://copimine.ru/spdx/008d9f34e205ff6958c667aca039f62da1772922",
+  "documentNamespace": "https://copimine.ru/spdx/9f2237c91b4727a4ad3d0ea95a851eff7987bc89",
   "creationInfo": {
-    "created": "2026-08-09T08:13:38.881136Z",
+    "created": "2026-08-09T08:43:28.649387Z",
     "creators": [
       "Tool: CopiMine generate_sbom.py"
     ]
@@ -14,7 +14,7 @@
     {
       "SPDXID": "SPDXRef-Package-CopiMine",
       "name": "CopiMine release",
-      "versionInfo": "008d9f34e205ff6958c667aca039f62da1772922",
+      "versionInfo": "9f2237c91b4727a4ad3d0ea95a851eff7987bc89",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": true,
       "licenseConcluded": "NOASSERTION",

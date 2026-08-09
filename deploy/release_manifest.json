@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-09T08:13:37.7046971Z",
-    "gitCommit":  "008d9f34e205ff6958c667aca039f62da1772922",
+    "generatedAtUtc":  "2026-08-09T08:43:28.3430072Z",
+    "gitCommit":  "9f2237c91b4727a4ad3d0ea95a851eff7987bc89",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "008d9f34e205ff6958c667aca039f62da1772922",
+                      "sourceCommit":  "9f2237c91b4727a4ad3d0ea95a851eff7987bc89",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "b8d1ed2300d21792a7342b3dfeee8b7750d107ab5216dc6b92cccfe8cd1b0f4c",
+                                  "sha256":  "5c0ee87ccd6fa54b4b6d266a151e6f2d3586311bc4d01cc602aef1121c7a1856",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -8797,7 +8797,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  6439,
-                             "sha256":  "f92704b9568550abfcd8b1354a277b2882ab73e0cf8a35647ef50f82be92d7f0"
+                             "sha256":  "1ca2b40fdcd6c214b681f0b8f41ca59fd51e5ded29a74d18c33cf8c6d6e0c1fa"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -10067,7 +10067,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "21fac4aa34f68c97df967fb0102a5f15fd8347dab911bc0e95fc200aff6f03b4"
+                             "sha256":  "b2066a6c6a743acbed154d5f91f69d0f8e7b89c012088eb95d08635a7ed7b62e"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10077,7 +10077,7 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  31064,
-                             "sha256":  "b8d1ed2300d21792a7342b3dfeee8b7750d107ab5216dc6b92cccfe8cd1b0f4c"
+                             "sha256":  "5c0ee87ccd6fa54b4b6d266a151e6f2d3586311bc4d01cc602aef1121c7a1856"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
@@ -10176,8 +10176,8 @@
                          },
                          {
                              "path":  "deploy/ubuntu/reset_game_state_preserve_accounts.sh",
-                             "sizeBytes":  7429,
-                             "sha256":  "6f1ce754b956801001c1a5dca22d50d6f914799b4647923e1daea45be7c0e10a"
+                             "sizeBytes":  8432,
+                             "sha256":  "2773ba039db77da99656396a2fa4e5f363cad57be305d4718e17461503b26d6f"
                          },
                          {
                              "path":  "deploy/ubuntu/rollback.sh",
@@ -10346,8 +10346,8 @@
                          },
                          {
                              "path":  "docs/deploy/COPIMINE_GAME_WIPE_MANIFEST_RU.md",
-                             "sizeBytes":  6046,
-                             "sha256":  "aee7e499bde267846baf96297f72206bb910841c77f82323a68a1d10f4a0d72b"
+                             "sizeBytes":  6333,
+                             "sha256":  "064a52be5ae657524be17b956da47fd7679d5427a1d6eaaf0772f43593f78b4e"
                          },
                          {
                              "path":  "docs/deploy/UBUNTU_OPT_REPLACE_RU.md",
@@ -12291,8 +12291,8 @@
                          },
                          {
                              "path":  "tests/test_release_wipe_and_world_backup_contract.py",
-                             "sizeBytes":  6876,
-                             "sha256":  "24da41a0ad8feaf5564cec2d8d7acd528766f69a8054b83621ab026137df6409"
+                             "sizeBytes":  6989,
+                             "sha256":  "0a65ebd03b2659b7aad4ea48883f323e3c624c8212e9158a65d09007e2b563e0"
                          },
                          {
                              "path":  "tests/test_report_and_recipe_runtime.py",

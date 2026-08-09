@@ -49,11 +49,27 @@ def test_game_wipe_preserves_configuration_and_catalog_tables() -> None:
         "artifact_shops",
         "artifact_purchases",
         "narcotics_brewing_states",
+        "narcotics_brewing_completion_intents",
         "narcotics_item_texture_migrations",
         "elections",
         "ar_accounts",
+        "cmv731_vote_sessions",
+        "cmv731_votes",
+        "cmv7_ar_balances",
+        "cmv7_ar_assets",
+        "cmv7_election_settings",
+        "cmv7_president_state",
+        "cmv7_polling_stations",
+        "cmv7_audit",
+        "audit",
     ):
         assert re.search(rf"'{re.escape(table)}'", wipe), table
+
+    reset_wrapper = (
+        ROOT / "deploy/ubuntu/reset_game_state_preserve_accounts.sh"
+    ).read_text(encoding="utf-8")
+    for table in ("password_hashes", "bank_pin_hashes", "bank_account_pins"):
+        assert re.search(rf"\b{re.escape(table)}\b", reset_wrapper), table
 
     clean_world_sql = (ROOT / "db/runtime/clean_world_state.sql").read_text(
         encoding="utf-8"

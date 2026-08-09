@@ -60,6 +60,19 @@ DECLARE
         'candidates', 'candidate_applications', 'ballots', 'votes',
         'cik_chairs', 'cik_seals', 'polling_stations',
         'election_settings', 'vote_participation',
+        -- Current v7/v731 plugin tables.  These are the authoritative
+        -- PostgreSQL game-state tables on the release server; the older
+        -- names above are retained for installations that still have them.
+        'cmv731_vote_sessions', 'cmv731_votes',
+        'cmv7_application_issues', 'cmv7_ar_assets', 'cmv7_ar_balances',
+        'cmv7_ar_economy_snapshots', 'cmv7_ar_events',
+        'cmv7_ar_guard_incidents', 'cmv7_ar_placed_blocks',
+        'cmv7_ar_scan_reports', 'cmv7_ar_transactions', 'cmv7_audit',
+        'cmv7_ballot_issues', 'cmv7_election_curators',
+        'cmv7_election_settings', 'cmv7_inventory_snapshots',
+        'cmv7_official_item_bindings', 'cmv7_player_activity',
+        'cmv7_player_checks', 'cmv7_polling_stations',
+        'cmv7_president_cooldowns', 'cmv7_president_state',
         -- AR, donation, ATM and world-bound shop state.  Prices and item
         -- definitions remain in ar_settings/artifact_items_catalog above;
         -- shop coordinates belong to the deleted world and are reset.
@@ -88,11 +101,12 @@ DECLARE
         'narcotics_item_texture_migrations',
         'narcotics_pending_refunds', 'narcotics_pending_outputs',
         'narcotics_consumption_reservations', 'narcotics_issued_instances',
+        'narcotics_brewing_completion_intents',
         -- World-bound visuals, operational journals and old plugin state.
         'protected_blocks', 'protected_block_visuals', 'text_display_links',
         'plugin_events', 'bridge_events', 'status_channel_snapshots',
         'discord_notifications_log', 'discord_status_state', 'admin_actions',
-        'site_audit', 'moderation_actions', 'prank_audit', 'smoke_results',
+        'audit', 'site_audit', 'moderation_actions', 'prank_audit', 'smoke_results',
         'system_checks', 'repair_actions', 'cmv8_startup_checks'
     ];
 BEGIN

@@ -84,6 +84,7 @@ protected_tables=(
   cm_refresh_sessions minecraft_account_links cmv4_account_links
   whitelist_account_links whitelist_requests auth_users_imported
   auth_migration_state auth_whitelist_sync site_cms_entries
+  password_hashes bank_pin_hashes bank_account_pins
   ar_settings artifact_items_catalog narcotics_schema_version
   narcotics_config_values
 )

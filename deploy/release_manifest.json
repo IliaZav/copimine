@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-09T07:35:46.8792419Z",
-    "gitCommit":  "2a4a63e3d4e368c6f1d050f507c2741b26a4f674",
+    "generatedAtUtc":  "2026-08-09T08:13:37.7046971Z",
+    "gitCommit":  "008d9f34e205ff6958c667aca039f62da1772922",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "2a4a63e3d4e368c6f1d050f507c2741b26a4f674",
+                      "sourceCommit":  "008d9f34e205ff6958c667aca039f62da1772922",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "0e48cbd51ef03f40e7ad56997830748f4bdbb14315e75b9a4f6a52785d48d4cc",
+                                  "sha256":  "b8d1ed2300d21792a7342b3dfeee8b7750d107ab5216dc6b92cccfe8cd1b0f4c",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -8797,7 +8797,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  6439,
-                             "sha256":  "166169349deab19290d78ed7622544dd596a2adff3f9d429a361408a98eef05e"
+                             "sha256":  "f92704b9568550abfcd8b1354a277b2882ab73e0cf8a35647ef50f82be92d7f0"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -10061,13 +10061,13 @@
                          },
                          {
                              "path":  "db/runtime/reset_game_state_preserve_accounts.sql",
-                             "sizeBytes":  7127,
-                             "sha256":  "a7810be1ea04f1a4ffad32564b515a196eb98157c195813fd10f24fb1c648a99"
+                             "sizeBytes":  8020,
+                             "sha256":  "e98befdc95eb672da5a7af066275d03b428e35268956d91508cf19304ab72b4f"
                          },
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "993594bd59326eb10b700d6a36b71c87a6e9c6d7be38247421e87390ae4fa66e"
+                             "sha256":  "21fac4aa34f68c97df967fb0102a5f15fd8347dab911bc0e95fc200aff6f03b4"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10077,7 +10077,7 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  31064,
-                             "sha256":  "0e48cbd51ef03f40e7ad56997830748f4bdbb14315e75b9a4f6a52785d48d4cc"
+                             "sha256":  "b8d1ed2300d21792a7342b3dfeee8b7750d107ab5216dc6b92cccfe8cd1b0f4c"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
@@ -10176,8 +10176,8 @@
                          },
                          {
                              "path":  "deploy/ubuntu/reset_game_state_preserve_accounts.sh",
-                             "sizeBytes":  7377,
-                             "sha256":  "46d614d69530f696e3fe64cdaffecdc898f7e5336fce22e2ca0055f4286638a6"
+                             "sizeBytes":  7429,
+                             "sha256":  "6f1ce754b956801001c1a5dca22d50d6f914799b4647923e1daea45be7c0e10a"
                          },
                          {
                              "path":  "deploy/ubuntu/rollback.sh",
@@ -10346,8 +10346,8 @@
                          },
                          {
                              "path":  "docs/deploy/COPIMINE_GAME_WIPE_MANIFEST_RU.md",
-                             "sizeBytes":  5778,
-                             "sha256":  "adca10534af298cf928eb4a3220c90981867ac6d1c6efcba61451989eaa5237f"
+                             "sizeBytes":  6046,
+                             "sha256":  "aee7e499bde267846baf96297f72206bb910841c77f82323a68a1d10f4a0d72b"
                          },
                          {
                              "path":  "docs/deploy/UBUNTU_OPT_REPLACE_RU.md",
@@ -12291,8 +12291,8 @@
                          },
                          {
                              "path":  "tests/test_release_wipe_and_world_backup_contract.py",
-                             "sizeBytes":  6285,
-                             "sha256":  "1c6cd65bc1a752a112e5037b7f8556e935f3da131c6a5768c450b33ea0e83dac"
+                             "sizeBytes":  6876,
+                             "sha256":  "24da41a0ad8feaf5564cec2d8d7acd528766f69a8054b83621ab026137df6409"
                          },
                          {
                              "path":  "tests/test_report_and_recipe_runtime.py",

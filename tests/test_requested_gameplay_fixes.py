@@ -412,10 +412,13 @@ def test_atm_title_is_spawned_above_the_block_not_inside_it():
     assert float(match.group(1)) >= 1.0
 
 
-def test_resource_pack_preserves_the_vanilla_blue_stained_glass_pane_parent():
+def test_resource_pack_preserves_the_vanilla_blue_stained_glass_pane_item_model():
     builder = read("resourcepacks/build-resourcepack.py")
     assert 'if material == "blue_stained_glass_pane":' in builder
-    assert 'parent = "minecraft:block/blue_stained_glass_pane"' in builder
+    pane_case = between(builder, 'elif material == "blue_stained_glass_pane":', 'else:')
+    assert 'parent = "minecraft:item/generated"' in pane_case
+    assert 'textures = {"layer0": "minecraft:block/blue_stained_glass"}' in pane_case
+    assert 'minecraft:block/blue_stained_glass_pane' not in pane_case
 
 
 def test_legacy_ar_is_not_silently_reissued_and_failed_issuance_is_token_scoped():

@@ -332,12 +332,13 @@ def build_stage() -> None:
             parent = "minecraft:item/generated"
             textures = {"layer0": "minecraft:item/compass_16"}
         elif material == "blue_stained_glass_pane":
-            # A stained-glass pane has no vanilla item-layer texture.  Its
-            # item model inherits the block pane geometry and textures; using
-            # item/generated here produces the missing-texture model shown by
-            # clients whenever the custom-model-data predicate is absent.
-            parent = "minecraft:block/blue_stained_glass_pane"
-            textures = {}
+            # Minecraft 1.21.1 has no aggregate block model named
+            # ``blue_stained_glass_pane``.  The vanilla item model is a flat
+            # generated icon using the stained-glass texture; inheriting the
+            # nonexistent block model produces the broken/magenta pane icon
+            # while still allowing the CustomModelData override for Чупс.
+            parent = "minecraft:item/generated"
+            textures = {"layer0": "minecraft:block/blue_stained_glass"}
         else:
             parent = "minecraft:item/generated"
             textures = {"layer0": f"minecraft:item/{material}"}

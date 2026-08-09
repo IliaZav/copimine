@@ -17948,6 +17948,13 @@ async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
 NARCOTICS_RECIPE_BLOCKED_TOKENS = {"MATERIAL:DIAMOND_ORE", "MATERIAL:DEEPSLATE_DIAMOND_ORE"}
 NARCOTICS_RECIPE_TOKEN_RE = re.compile(r"^(material|potion):[A-Z0-9_]+$", re.IGNORECASE)
 NARCOTICS_RECIPE_APPLY_MODES = {"save", "apply"}
+NARCOTICS_RECIPE_RU_NAMES_PATH = Path(__file__).with_name("minecraft_recipe_names_ru.json")
+try:
+    NARCOTICS_RECIPE_RU_NAMES = json.loads(NARCOTICS_RECIPE_RU_NAMES_PATH.read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    # Keep the editor usable during a partial development checkout.  The
+    # release bundle always carries the generated localization catalog.
+    NARCOTICS_RECIPE_RU_NAMES = {}
 # These are the deliberately supported ingredient choices shown by the recipe
 # editor.  A flattened texture directory is not a material registry: it has
 # block faces and animation frames, and it lacks a standalone image for some
@@ -17973,6 +17980,7 @@ NARCOTICS_RECIPE_CURATED_MATERIALS: dict[str, tuple[str, str]] = {
     "END_ROD": ("Энд-стержень", "end_rod.png"),
     "IRON_INGOT": ("Железный слиток", "iron_ingot.png"),
     "BLUE_STAINED_GLASS": ("Синее стекло", "blue_stained_glass.png"),
+    "BLUE_STAINED_GLASS_PANE": ("Синяя стеклянная панель", "blue_stained_glass.png"),
     "COCOA_BEANS": ("Какао-бобы", "cocoa_beans.png"),
     "IRON_NUGGET": ("Железный самородок", "iron_nugget.png"),
     "LARGE_FERN": ("Большой папоротник", "large_fern_top.png"),
@@ -18130,7 +18138,7 @@ def _minecraft_recipe_item_catalog() -> list[dict[str, Any]]:
         rows.append(
             {
                 "id": item_id.upper(),
-                "name": curated[0] if curated else item_id.replace("_", " ").title(),
+                "name": curated[0] if curated else NARCOTICS_RECIPE_RU_NAMES.get(item_id.upper(), "Предмет Minecraft"),
                 "token": f"material:{item_id}",
                 "iconUrl": f"/assets/mc-icons/item/{path.name}",
             }

@@ -88,16 +88,23 @@ export function createAdminNarcoticsRecipePages(deps) {
     return `/assets/mc-icons/item/${String(value || "").toLowerCase()}.png`;
   }
 
-  function displayName(token) {
+  function localizedItemName(token, item = null) {
     const { kind, value } = tokenParts(token);
     const canonical = RECIPE_TOKEN_LABELS.get(value.toUpperCase());
     if (canonical) return canonical;
-    const rs = recipeState();
-    const source = kind === "POTION" ? rs.potionCatalog : rs.itemCatalog;
-    const found = source.find((item) => String(item.id || "").toLowerCase() === value.toLowerCase());
-    if (found?.name) return found.name;
+    const source = kind === "POTION" ? recipeState().potionCatalog : recipeState().itemCatalog;
+    const found = item || source.find((entry) => String(entry.id || "").toLowerCase() === value.toLowerCase());
+    const catalogName = String(found?.name || "").trim();
+    // The backend catalog is Russian, but do not let a stale filename-derived
+    // label leak into the native hover tooltip while a browser cache expires.
+    if (catalogName && /[А-Яа-яЁё]/.test(catalogName)) return catalogName;
     const fallback = RECIPE_ITEM_TABS.flatMap((entry) => entry.items || []).find(([id]) => id === value);
-    return fallback?.[1] || value.replace(/_/g, " ").toLowerCase();
+    if (fallback?.[1]) return fallback[1];
+    return `Предмет Minecraft: ${value.replace(/_/g, " ").toLowerCase()}`;
+  }
+
+  function displayName(token) {
+    return localizedItemName(token);
   }
 
   function catalogItemFor(token) {
@@ -166,9 +173,10 @@ export function createAdminNarcoticsRecipePages(deps) {
           const token = String(item.token || `${active.potion ? "potion" : "material"}:${item.id || ""}`).toLowerCase();
           const fallbackIcon = iconFor(item.id, active.potion);
           const primaryIcon = item.iconUrl || fallbackIcon;
-          return `<button class="creative-item" title="${esc(item.name || item.id || "Предмет")}" data-click="adminRecipeAdd('${esc(token)}')">
-            <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(item.name || item.id || "Предмет")}" loading="lazy" onerror="if(this.dataset.fallbackIcon && this.src !== this.dataset.fallbackIcon){this.src=this.dataset.fallbackIcon;}else{this.style.visibility='hidden';}" />
-            <span>${esc(item.name || item.id || "Предмет")}</span>
+          const label = localizedItemName(token, item);
+          return `<button class="creative-item" title="${esc(label)}" data-click="adminRecipeAdd('${esc(token)}')">
+            <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(label)}" loading="lazy" onerror="if(this.dataset.fallbackIcon && this.src !== this.dataset.fallbackIcon){this.src=this.dataset.fallbackIcon;}else{this.style.visibility='hidden';}" />
+            <span>${esc(label)}</span>
           </button>`;
         }).join("") || `<div class="recipe-empty">Ничего не найдено.</div>`}
       </div>`;

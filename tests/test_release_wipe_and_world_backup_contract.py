@@ -81,7 +81,7 @@ def test_world_backup_is_scheduled_and_low_priority() -> None:
     assert "save-off" in script_text
     assert "save-all flush" in script_text
     assert "save-on" in script_text
-    assert "43200" in script_text
+    assert "18000" in script_text
     assert "RCON_READY_TIMEOUT_SECONDS" in script_text
     assert "RCON_RETRY_INTERVAL_SECONDS" in script_text
     assert "wait_for_rcon" in script_text
@@ -96,11 +96,49 @@ def test_world_backup_is_scheduled_and_low_priority() -> None:
 
     assert timer.is_file()
     timer_text = timer.read_text(encoding="utf-8")
-    assert "OnUnitActiveSec=5h" in timer_text
+    assert "OnUnitActiveSec=1h" in timer_text
     assert "Persistent=true" in timer_text
 
     assert "copimine-world-backup.service" in common
     assert "copimine-world-backup.timer" in common
+
+
+def test_world_restore_helper_is_guarded_and_restores_only_the_latest_snapshot() -> None:
+    restore = ROOT / "deploy/ubuntu/world_restore_latest.sh"
+    common = (ROOT / "deploy/shared/common.sh").read_text(encoding="utf-8")
+    assert restore.is_file()
+    restore_text = restore.read_text(encoding="utf-8")
+    assert "COPIMINE_CONFIRM_WORLD_RESTORE" in restore_text
+    assert "worlds-*" in restore_text
+    assert "sort -r" in restore_text
+    assert "systemctl stop copimine-minecraft" in restore_text
+    assert "systemctl start copimine-minecraft" in restore_text
+    assert "rsync" in restore_text
+    assert "realpath" in restore_text
+    assert "world_restore_latest.sh" in common
+
+
+def test_noncritical_database_backup_is_separate_hourly_contract() -> None:
+    script = ROOT / "deploy/ubuntu/backup_noncritical_db.sh"
+    service = ROOT / "admin-web/deploy/copimine-noncritical-db-backup.service"
+    timer = ROOT / "admin-web/deploy/copimine-noncritical-db-backup.timer"
+    common = (ROOT / "deploy/shared/common.sh").read_text(encoding="utf-8")
+    assert script.is_file()
+    script_text = script.read_text(encoding="utf-8")
+    assert "--data-only" in script_text
+    assert "RETENTION_SECONDS=\"${COPIMINE_NONCRITICAL_DB_RETENTION_SECONDS:-86400}\"" in script_text
+    assert "site_accounts" not in script_text
+    assert "whitelist_account_links" not in script_text
+    assert "pg_dump" in script_text
+    assert "sha256sum" in script_text
+    assert service.is_file()
+    assert "backup_noncritical_db.sh" in service.read_text(encoding="utf-8")
+    assert timer.is_file()
+    timer_text = timer.read_text(encoding="utf-8")
+    assert "OnUnitActiveSec=12h" in timer_text
+    assert "Persistent=true" in timer_text
+    assert "copimine-noncritical-db-backup.service" in common
+    assert "copimine-noncritical-db-backup.timer" in common
 
 
 def test_wipe_path_requires_durable_world_snapshot() -> None:

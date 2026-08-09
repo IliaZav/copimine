@@ -3484,6 +3484,8 @@ function renderPlayerFullDetails(player, detail, ctx) {
           <label class="field-stack"><span>Новый пароль AuthMe</span><input id="playerAdminAuthMePassword" type="password" placeholder="8-64 символа без пробелов" autocomplete="new-password" /></label>
           <button class="btn btn-secondary full" data-click="playerResetAuthMePassword('${esc(player)}')">Сбросить пароль AuthMe</button>
         </div>
+        <div class="credential-note danger"><strong>Удаление аккаунта</strong><span>Удалит аккаунт сайта, его web-привязки и этот Minecraft-ник из whitelist. Баланс и мир Minecraft останутся за UUID.</span></div>
+        <button class="btn btn-danger full" data-click="playerDeleteSiteAccount('${esc(player)}')">Удалить аккаунт сайта и whitelist</button>
       </article>
     `
     : "";
@@ -3843,6 +3845,26 @@ window.playerRelinkMinecraft = async (player) => {
     if (state.tab === "players" && state.selectedPlayer === player) {
       replaceChildrenSafe($("playerDetails"), [fragmentFromHtml(await playerDetailsHtml(player))]);
     }
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerDeleteSiteAccount = async (player) => {
+  const headers = await dangerConfirm(
+    `Удалить аккаунт сайта игрока ${player} и убрать его Minecraft-ник из whitelist? Мир и игровой баланс UUID сохранятся.`,
+    "PLAYER_SITE_ACCOUNT_DELETE",
+  );
+  if (!headers) return;
+  try {
+    await api(`/api/players/${encodeURIComponent(player)}/site-account/delete`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation: "DELETE_PLAYER_ACCOUNT" }),
+    });
+    toast(`Аккаунт сайта игрока ${player} удалён, Minecraft-ник убран из whitelist.`);
+    state.selectedPlayer = "";
+    await loadPlayers();
   } catch (err) {
     toast(err.message, true);
   }

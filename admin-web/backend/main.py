@@ -685,6 +685,10 @@ class AdminPlayerAccountUpdateIn(BaseModel):
     new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
 
 
+class AdminPlayerAccountDeleteIn(BaseModel):
+    confirmation: str = Field(min_length=20, max_length=40)
+
+
 class AdminMinecraftLinkRebindIn(BaseModel):
     minecraft_name: str = Field(min_length=3, max_length=16)
 
@@ -5637,6 +5641,114 @@ def admin_update_player_account_sync(player: str, actor: str, data: AdminPlayerA
         "username": requested_username if username_changed else str(current.get("username") or ""),
         "usernameChanged": username_changed,
         "passwordChanged": password_changed,
+    }
+
+
+def admin_delete_player_account_sync(player: str, actor: str) -> dict[str, Any]:
+    """Delete one player web account and revoke its Minecraft whitelist identity.
+
+    This removes web credentials, link/request state and PIN credentials only.
+    The Minecraft UUID's world/economy history remains available for a later
+    account link.  The whitelist file is changed before the database commit
+    and restored if the transaction fails.
+    """
+    player = clean_mc_player(player)
+    uuid = str(find_player_uuid(player) or "").strip()
+    if not uuid:
+        raise HTTPException(status_code=404, detail="Player was not found")
+    now = donation_now_ms()
+    removed_identity: dict[str, Any] = {}
+    current: dict[str, Any] = {}
+    deleted_rows: dict[str, int] = {}
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute(
+            """
+            SELECT id,username,role,minecraft_uuid,minecraft_name
+            FROM site_accounts
+            WHERE minecraft_uuid=%s AND role='player'
+            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (uuid,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
+        current = dict(row)
+        account_id = str(current.get("id") or "").strip()
+        old_uuid = str(current.get("minecraft_uuid") or uuid).strip()
+        old_name = str(current.get("minecraft_name") or uuid_to_name().get(old_uuid, player)).strip()
+        if not account_id or not old_uuid:
+            raise HTTPException(status_code=409, detail="У аккаунта отсутствует Minecraft-привязка")
+        try:
+            removed_identity = remove_player_from_whitelist_sync(old_uuid, old_name)
+            delete_specs = (
+                ("player_web_accounts", "site_account_id", account_id),
+                ("whitelist_requests", "site_account_id", account_id),
+                ("one_time_link_codes", "site_account_id", account_id),
+                ("login_sessions", "account_id", account_id),
+                ("password_hashes", "account_id", account_id),
+                ("player_settings", "site_account_id", account_id),
+                ("bank_pin_hashes", "site_account_id", account_id),
+                ("temporary_pin_resets", "site_account_id", account_id),
+                ("failed_pin_attempts", "site_account_id", account_id),
+                ("cm_refresh_sessions", "subject_id", account_id),
+                ("cmv4_account_links", "site_user_id", account_id),
+                ("auth_users_imported", "minecraft_uuid", old_uuid),
+                ("auth_whitelist_sync", "minecraft_uuid", old_uuid),
+            )
+            for table, column, value in delete_specs:
+                deleted_rows[table] = int(conn.execute(
+                    f"DELETE FROM {table} WHERE {column}=%s", (value,)
+                ).rowcount or 0)
+            deleted_rows["minecraft_account_links"] = int(conn.execute(
+                "DELETE FROM minecraft_account_links WHERE minecraft_uuid=%s AND site_account_id=%s",
+                (old_uuid, account_id),
+            ).rowcount or 0)
+            deleted_rows["whitelist_account_links"] = int(conn.execute(
+                "DELETE FROM whitelist_account_links WHERE minecraft_uuid=%s AND site_account_id=%s",
+                (old_uuid, account_id),
+            ).rowcount or 0)
+            deleted_rows["bank_account_pins"] = int(conn.execute(
+                "DELETE FROM bank_account_pins WHERE account_id=%s", (f"ar:{old_uuid}",)
+            ).rowcount or 0)
+            deleted_rows["account_lockouts"] = int(conn.execute(
+                "DELETE FROM account_lockouts WHERE account_id IN (%s,%s,%s)",
+                (
+                    account_pin_lockout_key(account_id),
+                    account_pin_lockout_key(f"ar:{old_uuid}"),
+                    account_pin_lockout_key(old_uuid),
+                ),
+            ).rowcount or 0)
+            deleted_rows["site_accounts"] = int(conn.execute(
+                "DELETE FROM site_accounts WHERE id=%s AND role='player'", (account_id,)
+            ).rowcount or 0)
+            if deleted_rows["site_accounts"] != 1:
+                raise HTTPException(status_code=409, detail="Аккаунт уже удалён или изменён")
+            conn.execute(
+                "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'PLAYER_SITE_ACCOUNT_DELETE',%s,'admin-web')",
+                (now, actor, f"site_account_id={account_id} minecraft_uuid={old_uuid} whitelist_removed={int(bool(removed_identity.get('removed')))}"),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            try:
+                if old_uuid and old_name and bool(removed_identity.get("removed")):
+                    add_player_to_whitelist_sync(old_uuid, old_name)
+            except Exception:
+                pass
+            raise
+    return {
+        "ok": True,
+        "siteAccountId": str(current.get("id") or ""),
+        "username": str(current.get("username") or ""),
+        "minecraftUuid": str(current.get("minecraft_uuid") or ""),
+        "minecraftName": str(current.get("minecraft_name") or player),
+        "whitelistRemoved": bool(removed_identity.get("removed")),
+        "rconState": removed_identity.get("rconState", "FILE_ONLY"),
+        "deletedRows": deleted_rows,
+        "gameIdentityPreserved": True,
     }
 
 
@@ -13123,6 +13235,42 @@ async def player_site_account_update(
             "passwordChanged": bool(result.get("passwordChanged")),
         },
         tags=["player", "security", "account"],
+    )
+    return result
+
+
+@app.post("/api/players/{player}/site-account/delete")
+async def player_site_account_delete(
+    player: str,
+    data: AdminPlayerAccountDeleteIn,
+    request: Request,
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    require_sensitive_confirm(request, "PLAYER_SITE_ACCOUNT_DELETE")
+    if data.confirmation.strip() != "DELETE_PLAYER_ACCOUNT":
+        raise HTTPException(status_code=409, detail="Для удаления введи DELETE_PLAYER_ACCOUNT")
+    result = await bg(admin_delete_player_account_sync, player, username)
+    audit_event(
+        username,
+        "player.site_account_delete",
+        target=player,
+        details={
+            "siteAccountId": result.get("siteAccountId", ""),
+            "minecraftUuid": result.get("minecraftUuid", ""),
+            "whitelistRemoved": bool(result.get("whitelistRemoved")),
+        },
+    )
+    append_panel_event(
+        "admin-panel",
+        "player_site_account_delete",
+        actor=username,
+        target=player,
+        metadata={
+            "siteAccountId": result.get("siteAccountId", ""),
+            "minecraftUuid": result.get("minecraftUuid", ""),
+            "whitelistRemoved": bool(result.get("whitelistRemoved")),
+        },
+        tags=["player", "security", "account", "whitelist"],
     )
     return result
 

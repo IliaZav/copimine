@@ -869,11 +869,15 @@ copimine_install_system_files() {
     tr -d '\r' < "$source" | sed "s/^User=copimine$/User=$COPIMINE_APP_USER/" > "/etc/systemd/system/$unit.service"
     chmod 0644 "/etc/systemd/system/$unit.service"
   done
-  for unit in copimine-backup.service copimine-backup.timer copimine-world-backup.service copimine-world-backup.timer; do
+  for unit in copimine-backup.service copimine-backup.timer copimine-world-backup.service copimine-world-backup.timer copimine-noncritical-db-backup.service copimine-noncritical-db-backup.timer; do
     source="$COPIMINE_ADMIN_DIR/deploy/$unit"
     tr -d '\r' < "$source" > "/etc/systemd/system/$unit"
     chmod 0644 "/etc/systemd/system/$unit"
   done
+  # Keep the guarded restore helper beside the world snapshots. It is
+  # deliberately root-owned and is not exposed through the web panel.
+  install -d -o root -g root -m 0700 "$COPIMINE_BACKUP_DIR/worlds"
+  install -o root -g root -m 0700 "$COPIMINE_ROOT/deploy/ubuntu/world_restore_latest.sh" "$COPIMINE_BACKUP_DIR/worlds/world_restore_latest.sh"
   tr -d '\r' < "$COPIMINE_ADMIN_DIR/deploy/copimine-game-hardening.service" > /etc/systemd/system/copimine-game-hardening.service
   chmod 0644 /etc/systemd/system/copimine-game-hardening.service
   # The web panel runs as the application user.  Allow only the explicit
@@ -943,6 +947,8 @@ EOF
   systemctl restart copimine-backup.timer
   systemctl enable copimine-world-backup.timer >/dev/null
   systemctl restart copimine-world-backup.timer
+  systemctl enable copimine-noncritical-db-backup.timer >/dev/null
+  systemctl restart copimine-noncritical-db-backup.timer
 }
 
 copimine_configured_world_base() {

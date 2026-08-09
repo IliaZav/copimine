@@ -1,0 +1,15 @@
+[Unit]
+Description=CopiMine non-critical gameplay PostgreSQL backup
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/copimine/deploy/ubuntu/backup_noncritical_db.sh
+Nice=19
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/copimine-backups

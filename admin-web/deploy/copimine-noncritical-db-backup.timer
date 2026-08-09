@@ -1,0 +1,12 @@
+[Unit]
+Description=Run CopiMine non-critical database backup every 12 hours
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=12h
+Persistent=true
+AccuracySec=1min
+Unit=copimine-noncritical-db-backup.service
+
+[Install]
+WantedBy=timers.target

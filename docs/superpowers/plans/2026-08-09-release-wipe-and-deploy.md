@@ -81,9 +81,11 @@
 
 ### Task 3a: Configure low-priority world backups
 
-- [x] Add `deploy/ubuntu/world_backup.sh` with RCON save flush, `flock`, atomic publication, hard-linked incremental copies, a 12-hour retention window and a newest-snapshot safety floor.
-- [x] Add `copimine-world-backup.service` and `.timer` for an initial 10-minute run followed by five-hour intervals.
+- [x] Add `deploy/ubuntu/world_backup.sh` with RCON save flush, `flock`, atomic publication, hard-linked incremental copies, a 5-hour retention window and a newest-snapshot safety floor.
+- [x] Add `copimine-world-backup.service` and `.timer` for an initial 10-minute run followed by hourly intervals.
 - [x] Install/enable the units through `deploy/shared/common.sh` and require a durable pre-wipe snapshot before a world deletion.
+- [x] Add a guarded latest-snapshot restore helper and install it under `/opt/copimine-backups/worlds/`.
+- [x] Add an independent 12-hour data-only non-critical PostgreSQL backup with 24-hour retention.
 - [x] Document the deletion and restore manifest in `docs/deploy/COPIMINE_GAME_WIPE_MANIFEST_RU.md`.
 
 ---

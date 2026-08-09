@@ -4014,7 +4014,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         long windowEnd = windowStart + taxPeriodMs(tax);
         String rosterQuery = "SELECT accounts.owner_uuid,accounts.owner_name,exemptions.expires_at AS exemption_expires_at,CASE WHEN exemptions.player_uuid IS NOT NULL OR COALESCE(payments.paid_amount,0)>=? THEN 1 ELSE 0 END AS paid_state " +
                 "FROM cmv4_bank_accounts accounts " +
-                "LEFT JOIN (SELECT player_uuid FROM president_tax_exemptions WHERE status='ACTIVE' AND source=? AND expires_at>? GROUP BY player_uuid) exemptions ON exemptions.player_uuid=accounts.owner_uuid " +
+                "LEFT JOIN (SELECT player_uuid,MAX(expires_at) AS expires_at FROM president_tax_exemptions WHERE status='ACTIVE' AND source=? AND expires_at>? GROUP BY player_uuid) exemptions ON exemptions.player_uuid=accounts.owner_uuid " +
                 "LEFT JOIN (SELECT player_uuid,COALESCE(SUM(amount),0) AS paid_amount FROM president_tax_payments WHERE tax_id=? AND created_at>=? AND created_at<? GROUP BY player_uuid) payments ON payments.player_uuid=accounts.owner_uuid " +
                 "WHERE accounts.account_type='PLAYER' AND accounts.status='ACTIVE' AND accounts.owner_uuid<>''";
         int paidState = paid ? 1 : 0;

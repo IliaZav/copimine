@@ -599,3 +599,23 @@ def test_atm_label_is_above_the_block_model():
     match = re.search(r"Location location = base\.clone\(\)\.add\(0\.5D,\s*([0-9.]+)D,\s*0\.5D\)", atm)
     assert match
     assert float(match.group(1)) >= 1.8
+
+
+def test_president_tax_roster_selects_exemption_expiration_from_its_subquery():
+    election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
+    roster = between(
+        election,
+        "private PresidentTaxRoster loadPresidentTaxRoster",
+        "private void markTaxPaidByPresidentAsync",
+    )
+    assert "SELECT player_uuid,MAX(expires_at) AS expires_at FROM president_tax_exemptions" in roster
+    assert "exemptions.expires_at AS exemption_expires_at" in roster
+
+
+def test_fungible_ar_deposit_accepts_a_split_stack_without_requiring_total_inventory_equality():
+    economy = read("copimine-economy-core/src/me/copimine/economycore/CopiMineEconomyCore.java")
+    exact = between(economy, "private boolean hasExactArFragments", "private boolean removeExactArFragments")
+    assert "isFungibleArSerial(fragment.serial())" in exact
+    assert "int available = countOfficialArSerial(player.getInventory(), fragment.serial())" in exact
+    assert "available < fragment.amount()" in exact
+    assert "available != fragment.amount()" in exact

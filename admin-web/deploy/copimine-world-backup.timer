@@ -1,9 +1,9 @@
 [Unit]
-Description=Run CopiMine world backup every five hours
+Description=Run CopiMine world backup every hour
 
 [Timer]
 OnBootSec=10min
-OnUnitActiveSec=5h
+OnUnitActiveSec=1h
 Persistent=true
 AccuracySec=1min
 Unit=copimine-world-backup.service

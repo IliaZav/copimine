@@ -74,6 +74,33 @@ def test_site_password_control_remains_explicit_and_nonrecoverable():
     assert "new_password" in backend
 
 
+def test_admin_can_delete_a_player_site_account_and_its_whitelist_identity_with_two_confirmations():
+    backend = read("admin-web/backend/main.py")
+    frontend = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+
+    assert "class AdminPlayerAccountDeleteIn" in backend
+    assert 'PLAYER_SITE_ACCOUNT_DELETE' in backend
+    assert 'DELETE_PLAYER_ACCOUNT' in backend
+    assert "def admin_delete_player_account_sync" in backend
+    assert "remove_player_from_whitelist_sync" in backend
+    assert 'DELETE FROM whitelist_account_links' in backend
+    assert 'DELETE FROM site_accounts' in backend
+    assert '("password_hashes", "account_id", account_id)' in backend
+    assert '("login_sessions", "account_id", account_id)' in backend
+    assert '@app.post("/api/players/{player}/site-account/delete")' in backend
+    route_start = backend.index('@app.post("/api/players/{player}/site-account/delete")')
+    route_end = backend.index("\n\n@app.", route_start + 10)
+    route = backend[route_start:route_end]
+    assert 'require_sensitive_confirm(request, "PLAYER_SITE_ACCOUNT_DELETE")' in route
+    assert "data.confirmation" in route
+    assert "admin_delete_player_account_sync" in route
+
+    assert "playerDeleteSiteAccount" in frontend
+    assert "PLAYER_SITE_ACCOUNT_DELETE" in frontend
+    assert "DELETE_PLAYER_ACCOUNT" in frontend
+    assert "/site-account/delete" in frontend
+
+
 def test_mandate_cleanup_must_not_be_a_broad_text_display_purge():
     election = read("copimine-election-core/src/me/copimine/electioncore/CopiMineElectionCore.java")
     admin_plus = read("copimine-admin-plugin/src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java")

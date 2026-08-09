@@ -4,20 +4,21 @@ umask 077
 
 # Make a point-in-time copy of the live worlds without stopping the server.
 # save-off prevents chunk files from changing while rsync reads them; the
-# server keeps ticking, and rsync itself runs at idle I/O priority.  Each
+# server keeps ticking, and rsync itself runs at idle I/O priority. Each
 # completed snapshot is published with one atomic rename and unchanged files
-# are hard-linked from the previous snapshot to keep the five-hour rotation
+# are hard-linked from the previous snapshot to keep the hourly rotation
 # cheap on disk.
 
 ROOT="${COPIMINE_ROOT:-/opt/copimine}"
 SERVER_DIR="$ROOT/minecraft/server"
 BACKUP_ROOT="${COPIMINE_WORLD_BACKUP_ROOT:-/opt/copimine-backups/worlds}"
 LOCK_FILE="${COPIMINE_WORLD_BACKUP_LOCK:-/opt/copimine-backups/.world-backup.lock}"
-RETENTION_SECONDS="${COPIMINE_WORLD_BACKUP_RETENTION_SECONDS:-43200}"
+RETENTION_SECONDS="${COPIMINE_WORLD_BACKUP_RETENTION_SECONDS:-18000}"
 RCON_READY_TIMEOUT_SECONDS="${COPIMINE_WORLD_BACKUP_RCON_TIMEOUT_SECONDS:-600}"
 RCON_RETRY_INTERVAL_SECONDS="${COPIMINE_WORLD_BACKUP_RCON_RETRY_INTERVAL_SECONDS:-5}"
 REASON="${COPIMINE_WORLD_BACKUP_REASON:-scheduled}"
 REQUIRED="${COPIMINE_WORLD_BACKUP_REQUIRED:-0}"
+PRESERVE_SNAPSHOT="${COPIMINE_WORLD_BACKUP_PRESERVE_SNAPSHOT:-}"
 TS="$(date -u +%Y%m%d-%H%M%S)"
 SNAPSHOT_NAME="worlds-$TS"
 TEMP_PATH="$BACKUP_ROOT/.$SNAPSHOT_NAME.tmp"
@@ -35,6 +36,7 @@ done
 [[ "$RCON_READY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || fail "RCON ready timeout must be positive"
 [[ "$RCON_RETRY_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]] || fail "RCON retry interval must be positive"
 [[ "$REASON" =~ ^[A-Za-z0-9._-]+$ ]] || fail "unsafe backup reason"
+[[ -z "$PRESERVE_SNAPSHOT" || "$PRESERVE_SNAPSHOT" =~ ^worlds-[0-9]{8}-[0-9]{6}$ ]] || fail "unsafe snapshot preservation name"
 
 mkdir -p "$BACKUP_ROOT"
 chmod 700 "$BACKUP_ROOT"
@@ -158,6 +160,7 @@ chmod 700 "$TEMP_PATH"
 for source_path in "${world_paths[@]}"; do
   world_name="$(basename "$source_path")"
   destination="$TEMP_PATH/$world_name"
+  printf 'world=%s\n' "$world_name" >> "$TEMP_PATH/manifest.txt"
   mkdir -p "$destination"
   link_args=()
   if [[ -n "$latest_snapshot" && -d "$BACKUP_ROOT/$latest_snapshot/$world_name" ]]; then
@@ -177,6 +180,7 @@ while IFS= read -r snapshot_name; do
   [[ -n "$snapshot_name" ]] || continue
   [[ "$snapshot_name" =~ ^worlds-[0-9]{8}-[0-9]{6}$ ]] || fail "unexpected snapshot name: $snapshot_name"
   [[ "$snapshot_name" == "$SNAPSHOT_NAME" ]] && continue
+  [[ -n "$PRESERVE_SNAPSHOT" && "$snapshot_name" == "$PRESERVE_SNAPSHOT" ]] && continue
   snapshot_path="$BACKUP_ROOT/$snapshot_name"
   snapshot_mtime="$(stat -c %Y -- "$snapshot_path")"
   if (( now - snapshot_mtime > RETENTION_SECONDS )); then

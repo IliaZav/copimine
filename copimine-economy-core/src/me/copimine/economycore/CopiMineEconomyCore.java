@@ -1984,7 +1984,17 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return false;
         }
         for (SerializedArFragment fragment : fragments) {
-            if (countOfficialArSerial(player.getInventory(), fragment.serial()) != fragment.amount()) {
+            int available = countOfficialArSerial(player.getInventory(), fragment.serial());
+            // Fungible AR intentionally shares one authoritative serial across
+            // all stacks.  A hand deposit may be split, moved, or merged while
+            // its asynchronous intent is being created, so requiring the
+            // inventory-wide total to equal the selected stack amount rejects
+            // valid split stacks.  Non-fungible legacy AR still requires the
+            // exact serialized quantity and therefore keeps the anti-tamper
+            // check unchanged.
+            if (isFungibleArSerial(fragment.serial())
+                    ? available < fragment.amount()
+                    : available != fragment.amount()) {
                 return false;
             }
         }

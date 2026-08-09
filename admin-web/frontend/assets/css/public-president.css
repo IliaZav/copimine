@@ -45,15 +45,14 @@
 
 .president-laws-block {
   display: grid;
+  min-width: 0;
   gap: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
 .president-laws-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
+  min-width: 0;
   gap: 12px;
 }
 
@@ -61,14 +60,6 @@
   margin: 4px 0 0;
   color: var(--ink);
   font-size: 1.16rem;
-}
-
-.president-laws-head small {
-  max-width: 270px;
-  color: var(--muted);
-  font-size: .76rem;
-  line-height: 1.35;
-  text-align: right;
 }
 
 .president-law-card {
@@ -84,13 +75,4 @@
     min-height: 142px;
   }
 
-  .president-laws-head {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .president-laws-head small {
-    max-width: none;
-    text-align: left;
-  }
 }

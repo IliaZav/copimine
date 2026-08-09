@@ -32,6 +32,18 @@ def test_homepage_places_president_and_current_laws_before_server_summary():
     assert "presidentLaws" in render
 
 
+def test_public_law_cards_wrap_long_text_and_hide_redundant_laws_intro():
+    html = read("admin-web/frontend/index.html")
+    styles = read("admin-web/frontend/assets/css/public-elections.css")
+
+    assert "Публичная часть срока" not in html
+    assert "Только опубликованные законы действующего президента" not in html
+    assert ".election-law-card" in styles
+    assert "overflow-wrap: anywhere" in styles
+    assert ".election-law-card p" in styles
+    assert "min-width: 0" in styles
+
+
 def test_admin_can_rebind_minecraft_identity_with_whitelist_sync_and_confirmation():
     backend = read("admin-web/backend/main.py")
     frontend = read("admin-web/frontend/assets/js/cabinet-runtime.js")

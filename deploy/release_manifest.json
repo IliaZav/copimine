@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-09T06:11:09.2659088Z",
-    "gitCommit":  "8b2d92ed8282426fece7887a12fc42a46624e6ca",
+    "generatedAtUtc":  "2026-08-09T07:02:53.6915606Z",
+    "gitCommit":  "bbdfb1669c2a757bf5fbeb20d32360bbc34d3a3e",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "8b2d92ed8282426fece7887a12fc42a46624e6ca",
+                      "sourceCommit":  "bbdfb1669c2a757bf5fbeb20d32360bbc34d3a3e",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "e88aa87b10c84dd426a62cab722ea56ddbdcec4682e447afdb48f2fc033ced34",
+                                  "sha256":  "cde1ce63f59084af712060fd357e93d2e6c218aa67bb29b32a0c6569e731f706",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -316,63 +316,63 @@
                          },
                          {
                              "path":  "admin-web/frontend/404.html",
-                             "sizeBytes":  3406,
-                             "sha256":  "e049579ccaf0ab644fb9c992519cbd4bf6e70d4a780f2fd8db978aa548f55e40"
+                             "sizeBytes":  3367,
+                             "sha256":  "3bab9d6c20bcf328b3091a2387ce35fae198bcf4f6ff7a3afd2f1d82d298e57f"
                          },
                          {
                              "path":  "admin-web/frontend/cart.html",
-                             "sizeBytes":  5821,
-                             "sha256":  "9e92190a6b42fb19ea963ff26bbb3f6be55acf3c3c914d5ecaf5485281b5499d"
+                             "sizeBytes":  5732,
+                             "sha256":  "7c7a8bbff91c8238c3920b286a4495d6df2209676e102c27f755db308be80751"
                          },
                          {
                              "path":  "admin-web/frontend/elections.html",
-                             "sizeBytes":  6700,
-                             "sha256":  "21699ffde6c9931923bd350ff1993c1e4962c6e278282aa8b9dedd57311aba94"
+                             "sizeBytes":  6463,
+                             "sha256":  "f774b065ef8d8101ec62fefceaa5db300b9cd4a2789931dccdfd707c6e96f3a7"
                          },
                          {
                              "path":  "admin-web/frontend/error.html",
-                             "sizeBytes":  3643,
-                             "sha256":  "076f0fb82677042442873b96d3fb31856eaad163651e5e83c30c96591893e767"
+                             "sizeBytes":  3594,
+                             "sha256":  "0b22552433a7b752881bd0e806cc3e51a069ffb9e0fbc297e6644152bf7030c1"
                          },
                          {
                              "path":  "admin-web/frontend/index.html",
-                             "sizeBytes":  9176,
-                             "sha256":  "8f33add8c8f1d6e5ba2e9af349348cdd9fa62918028b41b6d0f323f7d67a6403"
+                             "sizeBytes":  8853,
+                             "sha256":  "bf2e73a8c23991661552842a020880658983696df0d673e00ae2927b1b23dd60"
                          },
                          {
                              "path":  "admin-web/frontend/mods.html",
-                             "sizeBytes":  6611,
-                             "sha256":  "7f04de63c49d0ab5fd700748e0a658175857099f43fd99fe62d904345cc489e3"
+                             "sizeBytes":  6243,
+                             "sha256":  "6bc80fc3bb1339f63f78964617c1465be5571ce524229527780f0a2f730a8c50"
                          },
                          {
                              "path":  "admin-web/frontend/preview-admin.html",
-                             "sizeBytes":  7985,
-                             "sha256":  "4de6be4cb80cbbaad5d784b328fe0eaea609e0db8d904b36a63ecd4c8a03edcf"
+                             "sizeBytes":  7658,
+                             "sha256":  "82356e429cbf82cfa8aec6212efa43a091569b3653f0325f633b68c0f1633c84"
                          },
                          {
                              "path":  "admin-web/frontend/preview-player.html",
-                             "sizeBytes":  7949,
-                             "sha256":  "c5f17f7f73bb98ce2251406b8aee3867189c3372ab9f5debe576da1b068b80ec"
+                             "sizeBytes":  7650,
+                             "sha256":  "b1688238095c49f54f29874839ac7c128d132f04fd98bd747e5c64d0092c5974"
                          },
                          {
                              "path":  "admin-web/frontend/register.html",
-                             "sizeBytes":  6700,
-                             "sha256":  "cca0cc75d312709d88186227bce2de256bcdf475042d7a3edb5e7abda9070637"
+                             "sizeBytes":  6635,
+                             "sha256":  "1783654c2eb78c80e5dbd479d23ac7dfa44b9802e250503b1874a9e81daef98c"
                          },
                          {
                              "path":  "admin-web/frontend/server.html",
-                             "sizeBytes":  8821,
-                             "sha256":  "d04c594e8ad7239627264c5d2f4dfb03c11be45a874ff29b0ec8520c620abf5d"
+                             "sizeBytes":  8512,
+                             "sha256":  "0fa80927ed1908c51e4274014e0f53ecbb255b32e8b4729172b981b7245a6b7d"
                          },
                          {
                              "path":  "admin-web/frontend/shops.html",
-                             "sizeBytes":  7191,
-                             "sha256":  "174745a7a682a3c5ddff4e87d9b5866328622c49221b65c40609816dc0f772ba"
+                             "sizeBytes":  6721,
+                             "sha256":  "ce77d671f4342f3b38d3a87e57577ff8939ad21d439de43402c2edf053292bcb"
                          },
                          {
                              "path":  "admin-web/frontend/signin.html",
-                             "sizeBytes":  4605,
-                             "sha256":  "82a8e46db3fb03357b8edb6bc01a9c5df89d1d4265ab830b30abc8f1a7fb73f0"
+                             "sizeBytes":  4428,
+                             "sha256":  "df04faef130f4a48c8377a1c05d8c13164cf06ab9b85b58738cfec8f4ebcf3db"
                          },
                          {
                              "path":  "admin-web/frontend/assets/app.js",
@@ -571,8 +571,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/ui-audit.css",
-                             "sizeBytes":  2255,
-                             "sha256":  "5605ac4d8b0b70d00a37d101b46f0d554034211c2c4416685880e64bd66032f9"
+                             "sizeBytes":  2783,
+                             "sha256":  "71dd09d3c092f3d5ba9688728c2a14a2859365fb4bc019d9c6b4c09b146099b1"
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/ui-polish.css",
@@ -781,8 +781,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/homepage.js",
-                             "sizeBytes":  7329,
-                             "sha256":  "fc5fb6109f5ed468b5bfc8d052e1c05f64925d10baa25e957b1fdf3c05f7820b"
+                             "sizeBytes":  7351,
+                             "sha256":  "61c6177c2ba049edfabcc2aa303a7b06650fd46b7a8de608ec203ddecc597c17"
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/public-nav.js",
@@ -791,8 +791,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/public-page.js",
-                             "sizeBytes":  643,
-                             "sha256":  "e4fed5fe0aac6afcfbfabcd4c2854b84a78f34758795404dffe1d6a04914dfea"
+                             "sizeBytes":  687,
+                             "sha256":  "259f606d9d42c90082dc7b57d005ddfe60a4b4aadf0799bded0de799ef924940"
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/shop-cart.js",
@@ -806,8 +806,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/site-render.js",
-                             "sizeBytes":  46613,
-                             "sha256":  "dbeb1c0ecc0a1774df772bbf1ef67bbc665f50dddc98cd4bae28deea962c141a"
+                             "sizeBytes":  46126,
+                             "sha256":  "5f04c794ea4dc5f75aef0df561c9461021a6641f58fbc290208c962f26b7458e"
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/shared/app-routes.js",
@@ -8787,7 +8787,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  6439,
-                             "sha256":  "31286ca8cc546ce214aa94e94ddccb40a265ce6873907b3ad31cde33b5ec79bd"
+                             "sha256":  "635018d0fa020496bc0ee44decce55584a7dc12da7f2e350f1a1f61a3721f792"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -10057,7 +10057,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "34a9a43ed593390872b9a2649314555ed28bae35c4b29087f65b5cc7506bb22d"
+                             "sha256":  "fd61f267b7c8a9640c8ac03b6110bfd4713b7aec88ba65199bfd0fd74a6c35a9"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10067,7 +10067,7 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  31064,
-                             "sha256":  "e88aa87b10c84dd426a62cab722ea56ddbdcec4682e447afdb48f2fc033ced34"
+                             "sha256":  "cde1ce63f59084af712060fd357e93d2e6c218aa67bb29b32a0c6569e731f706"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
@@ -12246,13 +12246,13 @@
                          },
                          {
                              "path":  "tests/test_public_cabinet_election_freshness.py",
-                             "sizeBytes":  1899,
-                             "sha256":  "01896321df7e5cf50cbabb2d1fa0d064ae5c13384a0e85a96e3de54c0f467692"
+                             "sizeBytes":  1900,
+                             "sha256":  "80962b2c51905ed39c795992fd74524c811311968747fdb1fc891bdf423e8fc9"
                          },
                          {
                              "path":  "tests/test_public_copy_contract.py",
-                             "sizeBytes":  2967,
-                             "sha256":  "345422077a8f24ab0655ac4f0f53d235555689d546d24115086f3ba18b688728"
+                             "sizeBytes":  5551,
+                             "sha256":  "241e25e08ca0183d7f650e6f2019eec829dbc885c75a3643034c9fd95ce1c2f8"
                          },
                          {
                              "path":  "tests/test_public_president_and_player_link.py",

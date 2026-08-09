@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-09T04:54:13.9558304Z",
-    "gitCommit":  "b5996468b74ccbd1573b21c3b8f89d8d49f94976",
+    "generatedAtUtc":  "2026-08-09T05:32:56.8373623Z",
+    "gitCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "b5996468b74ccbd1573b21c3b8f89d8d49f94976",
+                      "sourceCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "d36bbe805b285cd89f8fc0e3301d040acec41210ba34401408b175a497b819c5",
+                                  "sha256":  "feb95d3635653565fc34f3158c69731a5565802617dd9dbc56630dbf31a51e6c",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -536,8 +536,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/release-ui.css",
-                             "sizeBytes":  71406,
-                             "sha256":  "16b064a4b18d42c9f7bbc381c85385d03b4d9ebed490dccee164075513848390"
+                             "sizeBytes":  71866,
+                             "sha256":  "36261b382aaab383c77557ebe8f075dc3167622ed16ea5c707b7efe5e84f3344"
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/responsive.css",
@@ -8782,7 +8782,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  6439,
-                             "sha256":  "e951d6108d6e31ce5888abc0b6b6d74ea25ce24cb28f328d6cd60f33091b55c4"
+                             "sha256":  "3efe8b02e10e1289edf29efe5b640b05f901c600fa96619d488244230edb05fb"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -10052,7 +10052,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "d4710841c6d073c0d2ce84c6d08bc5a0f20f06744026cfa2a5d10924531c6f11"
+                             "sha256":  "d7c0f1e00ed45d9473d30b510a6a9cc0aff43466c280a83f54e21f955ee587f2"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10062,7 +10062,7 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  31064,
-                             "sha256":  "d36bbe805b285cd89f8fc0e3301d040acec41210ba34401408b175a497b819c5"
+                             "sha256":  "feb95d3635653565fc34f3158c69731a5565802617dd9dbc56630dbf31a51e6c"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
@@ -12246,8 +12246,8 @@
                          },
                          {
                              "path":  "tests/test_public_copy_contract.py",
-                             "sizeBytes":  2690,
-                             "sha256":  "5327d2d5cd19723d33f6ee62b85956923d6cea03b8a72b48e5ede64341d64c1b"
+                             "sizeBytes":  2967,
+                             "sha256":  "345422077a8f24ab0655ac4f0f53d235555689d546d24115086f3ba18b688728"
                          },
                          {
                              "path":  "tests/test_public_president_and_player_link.py",

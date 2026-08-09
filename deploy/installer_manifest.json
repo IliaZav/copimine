@@ -1,9 +1,9 @@
 {
-    "generatedAtUtc":  "2026-08-09T04:54:13.9668174Z",
-    "gitCommit":  "b5996468b74ccbd1573b21c3b8f89d8d49f94976",
+    "generatedAtUtc":  "2026-08-09T05:32:56.8946096Z",
+    "gitCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
     "sourceTreeDirty":  false,
     "sourceArtifacts":  {
-                            "gitCommit":  "b5996468b74ccbd1573b21c3b8f89d8d49f94976",
+                            "gitCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
                             "serverPlugins":  {
                                                   "minecraft/server/plugins/AuthEffects.jar":  "90ba4f8692b83b75b38d450c99a5642499db09325e5d4caaf16ea46fd0d90db9",
                                                   "minecraft/server/plugins/CopiMineArtifacts.jar":  "dd440b37b2c17959717f5c98ccd4a968b87368bc8e7e5470abdcbd409031ef58",
@@ -76,7 +76,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "e951d6108d6e31ce5888abc0b6b6d74ea25ce24cb28f328d6cd60f33091b55c4"
+                                             "sha256":  "3efe8b02e10e1289edf29efe5b640b05f901c600fa96619d488244230edb05fb"
                                          }
                  },
     "serverProperties":  {
@@ -90,7 +90,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "d36bbe805b285cd89f8fc0e3301d040acec41210ba34401408b175a497b819c5",
+                                  "sha256":  "feb95d3635653565fc34f3158c69731a5565802617dd9dbc56630dbf31a51e6c",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

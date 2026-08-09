@@ -82,6 +82,10 @@ def test_world_backup_is_scheduled_and_low_priority() -> None:
     assert "save-all flush" in script_text
     assert "save-on" in script_text
     assert "43200" in script_text
+    assert "RCON_READY_TIMEOUT_SECONDS" in script_text
+    assert "RCON_RETRY_INTERVAL_SECONDS" in script_text
+    assert "wait_for_rcon" in script_text
+    assert "run_rcon list" in script_text
     assert re.search(r"mv\s+--?\S*\$", script_text) or "mv --" in script_text
 
     assert service.is_file()

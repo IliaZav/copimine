@@ -14,6 +14,8 @@ SERVER_DIR="$ROOT/minecraft/server"
 BACKUP_ROOT="${COPIMINE_WORLD_BACKUP_ROOT:-/opt/copimine-backups/worlds}"
 LOCK_FILE="${COPIMINE_WORLD_BACKUP_LOCK:-/opt/copimine-backups/.world-backup.lock}"
 RETENTION_SECONDS="${COPIMINE_WORLD_BACKUP_RETENTION_SECONDS:-43200}"
+RCON_READY_TIMEOUT_SECONDS="${COPIMINE_WORLD_BACKUP_RCON_TIMEOUT_SECONDS:-600}"
+RCON_RETRY_INTERVAL_SECONDS="${COPIMINE_WORLD_BACKUP_RCON_RETRY_INTERVAL_SECONDS:-5}"
 REASON="${COPIMINE_WORLD_BACKUP_REASON:-scheduled}"
 REQUIRED="${COPIMINE_WORLD_BACKUP_REQUIRED:-0}"
 TS="$(date -u +%Y%m%d-%H%M%S)"
@@ -30,6 +32,8 @@ for command in awk date find flock ionice nice realpath rsync stat; do
 done
 [[ -d "$SERVER_DIR" ]] || fail "missing server directory: $SERVER_DIR"
 [[ "$RETENTION_SECONDS" =~ ^[0-9]+$ ]] || fail "retention must be numeric"
+[[ "$RCON_READY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || fail "RCON ready timeout must be positive"
+[[ "$RCON_RETRY_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]] || fail "RCON retry interval must be positive"
 [[ "$REASON" =~ ^[A-Za-z0-9._-]+$ ]] || fail "unsafe backup reason"
 
 mkdir -p "$BACKUP_ROOT"
@@ -94,6 +98,26 @@ run_rcon() {
     mcrcon -s "$@" >/dev/null
 }
 
+wait_for_rcon() {
+  local started deadline attempt=0
+  started="$(date +%s)"
+  deadline=$((started + RCON_READY_TIMEOUT_SECONDS))
+  while true; do
+    if run_rcon list >/dev/null 2>&1; then
+      log "RCON is ready; starting a consistent live snapshot"
+      return 0
+    fi
+    if (( $(date +%s) >= deadline )); then
+      fail "RCON did not become ready within ${RCON_READY_TIMEOUT_SECONDS}s"
+    fi
+    ((attempt += 1))
+    if (( attempt == 1 || attempt % 12 == 0 )); then
+      log "RCON is not ready yet; retrying in ${RCON_RETRY_INTERVAL_SECONDS}s"
+    fi
+    sleep "$RCON_RETRY_INTERVAL_SECONDS"
+  done
+}
+
 cleanup() {
   local status=$?
   if (( SAVE_OFF == 1 )); then
@@ -107,6 +131,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+wait_for_rcon
 run_rcon save-off
 SAVE_OFF=1
 run_rcon 'save-all flush'

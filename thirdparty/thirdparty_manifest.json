@@ -3,9 +3,9 @@
     "generatedFor":  "CopiMine release hardening",
     "clientArchive":  {
                           "path":  "thirdparty/CopiMineMods.zip",
-                          "sha1":  "96cc2ff58f8817d615296e022febd4d43e8c1ed8",
+                          "sha1":  "d9d9a62d9b7392ecba152118fadc98a9880e468c",
                           "downloadPath":  "/downloads/CopiMineMods.zip",
-                          "sha256":  "9a4f6e740ccffbeff9cb20626e7e70382745f78c01d07a49bf73a402a6c76d79"
+                          "sha256":  "ac51d3825922a922a13c6f991d818941a7102ce3a925e14170e0001a1e14af69"
                       },
     "requiredExternal":  [
 

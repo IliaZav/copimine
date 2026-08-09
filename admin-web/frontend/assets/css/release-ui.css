@@ -2038,8 +2038,32 @@ body.junior-admin-mode .admin-search-panel {
   100% { transform: scale(1); }
 }
 
+.modpack-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.modpack-stat {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.modpack-stat span,
+.modpack-stat strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
   .public-nav { padding: 7px; }
+  .modpack-meta-grid { grid-template-columns: 1fr; }
   .shop-catalog-head { min-height: 0; padding-left: 9px; }
   .shop-product-grid { gap: 8px; }
   .shop-product-body { gap: 7px; padding: 10px; }

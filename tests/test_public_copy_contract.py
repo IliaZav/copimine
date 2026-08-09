@@ -69,3 +69,11 @@ def test_public_pages_keep_player_actions_and_data_mounts():
     assert 'id="modpackMetaGrid"' in mods
     assert 'href="/index.html"' in errors
     assert 'href="/signin.html"' in errors
+
+
+def test_public_modpack_meta_grid_has_loaded_layout_rules():
+    css = read("admin-web/frontend/assets/css/release-ui.css")
+
+    assert ".modpack-meta-grid" in css
+    assert ".modpack-stat" in css
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css

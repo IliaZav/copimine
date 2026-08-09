@@ -1019,7 +1019,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void loadShopsFromPostgres() throws SQLException {
-      this.shopsByLocation.clear();
+      Map<String, CopiMineArtifacts.Shop> loadedShops = new HashMap<>();
       Connection var1 = this.pgPool.acquire();
 
       try (
@@ -1030,11 +1030,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             CopiMineArtifacts.Shop var4 = new CopiMineArtifacts.Shop(
                var3.getString(1), var3.getString(2), var3.getString(3), var3.getInt(4), var3.getInt(5), var3.getInt(6), var3.getBoolean(7), var3.getString(8)
             );
-            this.shopsByLocation.put(var4.locationKey(), var4);
+            loadedShops.put(var4.locationKey(), var4);
          }
       } finally {
          this.pgPool.release(var1);
       }
+
+      // Publish a successful snapshot only after the complete query has
+      // finished.  A temporary PostgreSQL failure must not erase the cache
+      // that the running server is already using.
+      this.shopsByLocation.clear();
+      this.shopsByLocation.putAll(loadedShops);
    }
 
    private void loadInstanceCache() throws SQLException {
@@ -3331,6 +3337,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            this.audit(var1.getName(), "shop_remove", var4.shopId(), var4.locationKey());
                            this.runSync(() -> {
                               try {
+                                 Location shopLocation = this.shopLocation(var4);
+                                 this.cleanupShopTitleDisplay(shopLocation, var4.shopId());
                                  // cleanupProtectedBlockVisuals("ARTIFACT_SHOP", shop.shopId())
                                  this.cleanupProtectedBlockVisuals("ARTIFACT_SHOP", var4.shopId());
                               } catch (Exception var3x) {
@@ -3585,6 +3593,34 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   private void openAdminShopsFromDatabaseAsync(Player var1) {
+      if (var1 == null || !var1.isOnline()) {
+         return;
+      }
+      if (!this.runAsync(() -> {
+         try {
+            this.loadShopsFromPostgres();
+            this.runSync(() -> {
+               if (var1.isOnline()) {
+                  this.openAdminShops(var1);
+               }
+            });
+         } catch (SQLException error) {
+            this.getLogger().log(Level.WARNING, "Artifact admin shop refresh failed", error);
+            this.runSync(() -> {
+               if (var1.isOnline()) {
+                  var1.sendMessage(this.color("&cНе удалось обновить список лавок из PostgreSQL."));
+                  this.openAdminShops(var1);
+               }
+            });
+         }
+      })) {
+         // Keep the already loaded cache usable during shutdown or queue
+         // back-pressure; never run JDBC on the Bukkit thread here.
+         this.openAdminShops(var1);
+      }
+   }
+
    private void openAdminShops(Player var1) {
       CopiMineArtifacts.SessionState var2 = this.session(var1);
       var2.viewType = CopiMineArtifacts.ViewType.ADMIN_SHOPS;
@@ -3656,6 +3692,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.setAction(
          var3,
          var2,
+         47,
+         this.button(
+            Material.NAME_TAG,
+            "&bПерезагрузить надписи",
+            List.of(
+               "&7Удалить старые надписи лавок",
+               "&7и создать их только по данным БД."
+            )
+         ),
+         "admin:shop:refresh_titles"
+      );
+      this.setAction(
+         var3,
+         var2,
          49,
          this.button(
             Material.CLOCK,
@@ -3682,7 +3732,44 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    public void openAdminShopHub(Player player) {
       if (!this.isArtifactsAdmin(player)) { this.noPermission(player); return; }
-      this.openAdminShops(player);
+      this.openAdminShopsFromDatabaseAsync(player);
+   }
+
+   private void rebuildAdminShopTitlesAsync(Player player) {
+      if (player == null || !this.hasArtifactPermission(player, "copimine.artifacts.shop.list")) {
+         if (player != null) {
+            this.noPermission(player);
+         }
+         return;
+      }
+      if (!player.isOnline()) {
+         return;
+      }
+
+      if (!this.runAsync(() -> {
+         try {
+            this.loadShopsFromPostgres();
+            this.runSync(() -> {
+               if (!player.isOnline()) {
+                  return;
+               }
+               int removed = this.removeLoadedShopTitleDisplays();
+               int created = this.createLoadedShopTitleDisplays();
+               player.sendMessage(this.color("&aНадписи лавок перезагружены. Удалено: &f" + removed + "&a, создано: &f" + created));
+               this.openAdminShops(player);
+            });
+         } catch (Exception error) {
+            this.getLogger().log(Level.WARNING, "Artifact admin shop title rebuild failed", error);
+            this.runSync(() -> {
+               if (player.isOnline()) {
+                  player.sendMessage(this.color("&cНе удалось перезагрузить надписи лавок. Данные и текущие надписи не изменены."));
+                  this.openAdminShops(player);
+               }
+            });
+         }
+      })) {
+         player.sendMessage(this.color("&eПерезагрузка надписей сейчас недоступна: очередь базы данных занята."));
+      }
    }
 
    private String nextGeneratedShopId() {
@@ -3809,7 +3896,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void openAdminShopListAsync(Player player) {
       this.runAsync(() -> {
          List<CopiMineArtifacts.ShopStats> stats = new ArrayList<>(); Connection connection = null;
-         try { connection = this.pgPool.acquire(); for (CopiMineArtifacts.Shop shop : this.shopsByLocation.values()) {
+         try { this.loadShopsFromPostgres(); connection = this.pgPool.acquire(); for (CopiMineArtifacts.Shop shop : this.shopsByLocation.values()) {
             long buyers = 0L, ar = 0L;
             try (PreparedStatement ps = connection.prepareStatement("SELECT COUNT(DISTINCT player_uuid),COALESCE(SUM(price_ar),0) FROM artifact_purchases WHERE shop_id=? AND status IN ('PAID','DELIVERING','DELIVERED','PENDING_DELIVERY') AND bank_tx_id<>'ADMIN_GIFT'")) { ps.setString(1, shop.shopId()); try (ResultSet rs=ps.executeQuery()) { if(rs.next()){ buyers=rs.getLong(1); ar=rs.getLong(2); } } }
             stats.add(new CopiMineArtifacts.ShopStats(shop, buyers, ar, 0L));
@@ -6573,7 +6660,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       } else if ("admin:main".equals(var3)) {
          this.openArtifactsAdminMenu(var1);
       } else if ("admin:shops".equals(var3)) {
-         this.openAdminShops(var1);
+         this.openAdminShopsFromDatabaseAsync(var1);
+      } else if ("admin:shop:refresh_titles".equals(var3)) {
+         this.rebuildAdminShopTitlesAsync(var1);
       } else if ("admin:shop:create".equals(var3)) {
          this.createAdminShopFromTarget(var1);
       } else if ("admin:shop:list".equals(var3)) {
@@ -6750,7 +6839,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.openArtifactsAdminMenu(var1);
             break;
          case ADMIN_SHOPS:
-            this.openAdminShops(var1);
+            this.openAdminShopsFromDatabaseAsync(var1);
             break;
          case ADMIN_CATALOG:
             this.openAdminCatalog(var1);
@@ -12863,13 +12952,82 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (world == null || !world.isChunkLoaded(chunkX, chunkZ)) {
          return;
       }
+      this.removeOrphanShopTitleDisplays(worldName, chunkX, chunkZ);
       for (CopiMineArtifacts.Shop shop : this.shopsByLocation.values()) {
-         if (!worldName.equals(shop.world()) || (shop.x() >> 4) != chunkX || (shop.z() >> 4) != chunkZ) {
+         if (!worldName.equals(shop.world()) || (shop.x() >> 4) != chunkX || (shop.z() >> 4) != chunkZ || !shop.enabled() || !this.hasLoadedShopAnchor(shop)) {
             continue;
          }
          Location location = this.shopLocation(shop);
          this.spawnShopTitleDisplay(location, shop.shopId(), shop.title());
       }
+   }
+
+   private int removeLoadedShopTitleDisplays() {
+      int removed = 0;
+      for (World world : Bukkit.getWorlds()) {
+         for (Chunk chunk : world.getLoadedChunks()) {
+            for (Entity entity : chunk.getEntities()) {
+               if (entity instanceof TextDisplay display
+                     && "SHOP_TITLE_DISPLAY".equals(display.getPersistentDataContainer().get(this.visualEntityTypeKey, PersistentDataType.STRING))) {
+                  display.remove();
+                  ++removed;
+               }
+            }
+         }
+      }
+      return removed;
+   }
+
+   private int createLoadedShopTitleDisplays() {
+      int created = 0;
+      for (CopiMineArtifacts.Shop shop : this.shopsByLocation.values()) {
+         if (!shop.enabled() || !this.hasLoadedShopAnchor(shop)) {
+            continue;
+         }
+         Location location = this.shopLocation(shop);
+         if (location != null && location.getWorld() != null) {
+            this.spawnShopTitleDisplay(location, shop.shopId(), shop.title());
+            ++created;
+         }
+      }
+      return created;
+   }
+
+   private int removeOrphanShopTitleDisplays(String worldName, int chunkX, int chunkZ) {
+      World world = Bukkit.getWorld(worldName);
+      if (world == null || !world.isChunkLoaded(chunkX, chunkZ)) {
+         return 0;
+      }
+      int removed = 0;
+      for (Entity entity : world.getChunkAt(chunkX, chunkZ).getEntities()) {
+         if (!(entity instanceof TextDisplay display)
+               || !"SHOP_TITLE_DISPLAY".equals(display.getPersistentDataContainer().get(this.visualEntityTypeKey, PersistentDataType.STRING))) {
+            continue;
+         }
+         String linkedId = display.getPersistentDataContainer().get(this.visualLinkedIdKey, PersistentDataType.STRING);
+         boolean registered = linkedId != null && this.shopsByLocation.values().stream().anyMatch(shop ->
+               shop.shopId().equalsIgnoreCase(linkedId)
+                  && worldName.equals(shop.world())
+                  && (shop.x() >> 4) == chunkX
+                  && (shop.z() >> 4) == chunkZ
+                  && shop.enabled()
+                  && this.hasLoadedShopAnchor(shop));
+         if (!registered) {
+            display.remove();
+            ++removed;
+         }
+      }
+      return removed;
+   }
+
+   private boolean hasLoadedShopAnchor(CopiMineArtifacts.Shop shop) {
+      if (shop == null) {
+         return false;
+      }
+      World world = Bukkit.getWorld(shop.world());
+      return world != null
+         && world.isChunkLoaded(shop.x() >> 4, shop.z() >> 4)
+         && !world.getBlockAt(shop.x(), shop.y(), shop.z()).getType().isAir();
    }
 
    private void repairProtectedBlockVisuals(String var1, int var2, int var3) throws Exception {

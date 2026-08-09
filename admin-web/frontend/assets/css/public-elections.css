@@ -10,8 +10,7 @@
   background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 68%);
   pointer-events: none;
 }
-.elections-hero .public-hero-copy,
-.elections-hero .election-readonly-note { position: relative; z-index: 1; }
+.elections-hero .public-hero-copy { position: relative; z-index: 1; }
 .elections-hero-side { position: relative; z-index: 1; }
 .elections-live-card {
   display: grid;
@@ -72,21 +71,6 @@
   font-size: 1.35rem;
   font-variant-numeric: tabular-nums;
 }
-.election-readonly-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 46%, var(--line));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
-  color: var(--accent-strong);
-  font-size: .78rem;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
 .election-summary-bar {
   display: flex;
   align-items: flex-end;
@@ -101,7 +85,6 @@
   justify-content: flex-end;
   gap: 10px;
 }
-.election-updated { color: var(--muted); font-size: .82rem; white-space: nowrap; }
 .election-stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -175,16 +158,18 @@
 }
 .candidate-vote-count { min-width: 52px; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .candidate-vote-foot { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: .78rem; }
-.candidate-readonly { color: var(--accent-strong); font-weight: 800; }
 .election-laws-grid,
 .election-law-card {
   min-width: 0;
 }
 .election-laws-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 12px; }
 .election-law-card { display: grid; gap: 7px; min-width: 0; max-width: 100%; overflow: hidden; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.election-law-card strong,
+.election-law-card p,
+.election-law-card small { min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
 .election-law-card strong { color: var(--ink); }
-.election-law-card p { min-width: 0; max-width: 100%; margin: 0; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; white-space: normal; }
-.election-law-card small { min-width: 0; max-width: 100%; color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; white-space: normal; }
+.election-law-card p { margin: 0; color: var(--muted); line-height: 1.5; }
+.election-law-card small { color: var(--muted); font-size: .75rem; }
 .election-empty-note { margin: 12px 0 0; color: var(--muted); }
 .treasury-history-card { position: relative; gap: 11px; overflow: hidden; }
 .treasury-history-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--line); }
@@ -201,7 +186,6 @@
 @media (max-width: 640px) {
   .election-summary-bar { align-items: flex-start; flex-direction: column; gap: 7px; }
   .election-summary-actions { align-items: flex-start; justify-content: space-between; width: 100%; }
-  .election-updated { white-space: normal; }
   .election-stats-grid { grid-template-columns: 1fr 1fr; }
   .public-candidate-card { grid-template-columns: 1fr; }
   .candidate-vote-row { grid-template-columns: minmax(0, 1fr) 44px; }

@@ -58,15 +58,15 @@ async function refreshPublicElections({ silent = false } = {}) {
   try {
     const payload = await loadPublicElectionsPageData();
     if (payload.elections?._unavailable) {
-      const updated = document.getElementById("publicElectionUpdated");
-      if (updated && !silent) updated.textContent = "Не удалось обновить данные — повторите попытку";
+      const meta = document.getElementById("publicElectionMeta");
+      if (meta && !silent) meta.textContent = "Не удалось загрузить результаты. Повторите попытку.";
       return;
     }
     renderer.renderElections(payload.elections || {});
     renderer.renderStatus(payload.status || {}, payload.config || {});
   } catch (_error) {
-    const updated = document.getElementById("publicElectionUpdated");
-    if (updated && !silent) updated.textContent = "Не удалось обновить данные — повторите попытку";
+    const meta = document.getElementById("publicElectionMeta");
+    if (meta && !silent) meta.textContent = "Не удалось загрузить результаты. Повторите попытку.";
   } finally {
     electionRefreshInFlight = false;
     if (refreshButton) {

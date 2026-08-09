@@ -1229,22 +1229,8 @@ body {
   background: rgba(255, 255, 255, 0.44);
 }
 
-.modpack-file-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: center;
-  color: rgba(73, 88, 111, 0.82);
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
-
 :root[data-theme="dark"] .modpack-stat {
   background: rgba(255, 255, 255, 0.04);
-}
-
-:root[data-theme="dark"] .modpack-file-meta {
-  color: rgba(209, 220, 232, 0.74);
 }
 
 .brand-banner-card.brand-banner-inline {

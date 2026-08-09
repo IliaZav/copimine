@@ -83,12 +83,6 @@ function formatPlayers(server = {}) {
   return cap > 0 ? `${online} / ${cap}` : `${online}`;
 }
 
-function formatMegabytes(bytes) {
-  const value = Number(bytes || 0);
-  if (!Number.isFinite(value) || value <= 0) return "0 МБ";
-  return `${(value / (1024 * 1024)).toFixed(2)} МБ`;
-}
-
 function customerFacingItemDescription(row = {}) {
   const raw = String(row.description || "").trim();
   if (!raw) return "Игровой предмет с выдачей после оплаты.";
@@ -101,12 +95,6 @@ function customerFacingItemDescription(row = {}) {
     .replace(/^[\s:|,.;-]+|[\s:|,.;-]+$/g, "")
     .trim();
   return cleaned || "Игровой предмет с выдачей после оплаты.";
-}
-
-function shortSha(value) {
-  const sha = String(value || "").trim();
-  if (!sha) return "нет";
-  return sha.length > 12 ? `${sha.slice(0, 12)}…` : sha;
 }
 
 function cabinetRoute(targetRoute) {
@@ -224,17 +212,13 @@ function buildModpackMeta(label, value) {
 
 function buildExternalModCard(row = {}) {
   const card = makeElement("article", "modpack-file-card");
-  const meta = makeElement("div", "modpack-file-meta");
   const icon = makeElement("div", "modpack-file-icon");
   icon.append(createSprite(mcIcon("knowledge_book.png")));
-  if (row.license) meta.append(makeElement("span", "", String(row.license)));
-  if (row.distribution) meta.append(makeElement("span", "", String(row.distribution)));
   card.append(
     icon,
     makeElement("span", "modpack-file-badge", "external"),
     makeElement("strong", "", String(row.component || "Внешний мод")),
     makeElement("p", "", String(row.feature || row.reason || "Загружается отдельно с официальной страницы.")),
-    meta,
   );
   const links = makeElement("div", "public-actions public-actions-compact");
   if (row.clientSource) {
@@ -416,7 +400,6 @@ export function createHomepageRenderer() {
   const modpackMetaGrid = document.getElementById("modpackMetaGrid");
   const modpackFileGrid = document.getElementById("modpackFileGrid");
   const modpackExternalGrid = document.getElementById("modpackExternalGrid");
-  const modpackNotes = document.getElementById("modpackNotes");
   const arShopMount = document.getElementById("publicArShopPreview");
   const donationShopMount = document.getElementById("publicDonationShopPreview");
   const openArShopBtn = document.getElementById("openArShopBtn");
@@ -426,7 +409,6 @@ export function createHomepageRenderer() {
   const electionStats = document.getElementById("publicElectionStats");
   const electionCandidates = document.getElementById("publicElectionCandidates");
   const electionLaws = document.getElementById("publicElectionLaws");
-  const electionUpdated = document.getElementById("publicElectionUpdated");
   const electionHeroStatus = document.getElementById("publicElectionHeroStatus");
   const electionHeroMeta = document.getElementById("publicElectionHeroMeta");
   const electionHeroCandidates = document.getElementById("publicElectionHeroCandidates");
@@ -570,61 +552,55 @@ export function createHomepageRenderer() {
     const manifest = modpack && typeof modpack === "object" ? (modpack.manifest || {}) : {};
     const files = Array.isArray(manifest.files) ? manifest.files : [];
     const requiredExternal = Array.isArray(manifest.requiredExternal) ? manifest.requiredExternal : [];
-    const notes = Array.isArray(manifest.notes) ? manifest.notes : [];
     const available = Boolean(modpack.available);
     const downloadUrl = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
 
     if (heroMiniTitle) {
       heroMiniTitle.textContent = available
-        ? (modpack.filename || "CopiMineMods.zip")
-        : "Клиент и модпак";
+        ? "Сборка для входа"
+        : "Сборка недоступна";
     }
     if (heroMiniText) {
       if (available) {
         const versionText = `${manifest.loader || "Fabric"} ${manifest.minecraftVersion || config.serverVersion || ""}`.trim();
-        const fileText = `${files.length || 0} файлов`;
+        const fileText = `${files.length || 0} модов`;
         const externalText = requiredExternal.length ? `, отдельно ещё ${requiredExternal.length}` : "";
         heroMiniText.textContent = `${versionText} · ${fileText}${externalText}`;
       } else {
-        heroMiniText.textContent = "Архив модов сейчас недоступен.";
+        heroMiniText.textContent = "Сборка сейчас недоступна.";
       }
     }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
-        ? `Размер архива ${formatMegabytes(modpack.size || 0)} · SHA1 ${shortSha(modpack.sha1 || manifest.sha1 || "")}`
-        : "Проверьте состояние downloads и сборки клиента.";
+        ? "Готовый комплект для входа на сервер."
+        : "Повторите попытку позже.";
     }
     if (modpackMetaGrid) {
-      replaceChildrenSafe(modpackMetaGrid, [
+      const metaCards = [
         buildModpackMeta("Minecraft", manifest.minecraftVersion || config.serverVersion || "1.21.1"),
         buildModpackMeta("Loader", manifest.loader || "Fabric"),
-        buildModpackMeta("Файлов", String(files.length || 0)),
-        buildModpackMeta("Отдельно", String(requiredExternal.length || 0)),
-        buildModpackMeta("Размер", formatMegabytes(modpack.size || 0)),
-        buildModpackMeta("Обновлён", modpack.modified ? formatDate(modpack.modified * 1000) : "нет данных"),
-      ]);
+        buildModpackMeta("Модов", String(files.length || 0)),
+      ];
+      if (requiredExternal.length) metaCards.push(buildModpackMeta("Отдельно", String(requiredExternal.length)));
+      replaceChildrenSafe(modpackMetaGrid, metaCards);
     }
     if (modpackFileGrid) {
       if (!available || !files.length) {
         replaceChildrenSafe(modpackFileGrid, [
-          cardStrong("Архив недоступен", "Список файлов пока не загружен.", "", mcIcon("bundle.png")),
+          cardStrong("Список модов недоступен", "Повторите попытку позже.", "", mcIcon("bundle.png")),
         ]);
       } else {
         replaceChildrenSafe(
           modpackFileGrid,
           files.map((file) => {
             const card = makeElement("article", "modpack-file-card");
-            const meta = makeElement("div", "modpack-file-meta");
             const icon = makeElement("div", "modpack-file-icon");
             icon.append(createSprite(mcIcon("bundle.png")));
-            meta.append(makeElement("span", "", String(file.path || "mods/unknown.jar")));
-            if (file.license) meta.append(makeElement("span", "", String(file.license)));
             card.append(
               icon,
               makeElement("span", "modpack-file-badge", "mods"),
-              makeElement("strong", "", String(file.component || file.path || "Мод")),
+              makeElement("strong", "", String(file.component || "Мод")),
               makeElement("p", "", String(file.version || "без версии")),
-              meta,
             );
             return card;
           }),
@@ -634,22 +610,11 @@ export function createHomepageRenderer() {
     if (modpackExternalGrid) {
       if (!requiredExternal.length) {
         replaceChildrenSafe(modpackExternalGrid, [
-          cardStrong("Дополнительные загрузки не нужны", "Всё обязательное уже включено в архив.", "", mcIcon("book.png")),
+          cardStrong("Дополнительные загрузки не нужны", "Устанавливать отдельно ничего не нужно.", "", mcIcon("book.png")),
         ]);
       } else {
         replaceChildrenSafe(modpackExternalGrid, requiredExternal.map((row) => buildExternalModCard(row)));
       }
-    }
-    if (false && modpackNotes) {
-      const noteCards = (notes.length ? notes : ["Проверьте версию Minecraft, Fabric и состав архива перед запуском."]).map((note) => {
-        const card = makeElement("article", "modpack-note-card");
-        card.append(
-          makeElement("strong", "", ""),
-          makeElement("p", "", String(note)),
-        );
-        return card;
-      });
-      replaceChildrenSafe(modpackNotes, noteCards);
     }
     if (downloadModsBtn && available) {
       downloadModsBtn.href = downloadUrl;
@@ -674,7 +639,7 @@ export function createHomepageRenderer() {
     if (downloadModsBtn) {
       if (modpack.available) {
         downloadModsBtn.href = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
-        downloadModsBtn.textContent = `Скачать модпак (${formatMegabytes(modpack.size || 0)})`;
+        downloadModsBtn.textContent = "Скачать модпак";
         downloadModsBtn.classList.remove("btn-disabled");
         downloadModsBtn.removeAttribute("aria-disabled");
       } else if (document.body?.dataset.pageKind === "public-home") {
@@ -792,13 +757,10 @@ export function createHomepageRenderer() {
 
     if (electionStage) electionStage.textContent = stage;
     if (electionMeta) electionMeta.textContent = unavailable
-      ? "Сейчас не удалось получить снимок выборов · повторите обновление"
+      ? "Не удалось получить данные. Нажмите «Обновить»."
       : hasElection
-        ? `Тур ${round} · ${candidateCount} одобренных кандидатов · только просмотр`
-        : "Активная кампания ещё не запущена · только просмотр";
-    if (electionUpdated) electionUpdated.textContent = unavailable
-      ? "Обновление не удалось"
-      : payload.generatedAt ? `Обновлено ${formatDate(payload.generatedAt)}` : "Данные обновляются автоматически";
+        ? `Тур ${round} · одобренных кандидатов: ${candidateCount}`
+        : "Активная кампания не запущена.";
     if (electionHeroStatus) electionHeroStatus.textContent = stage;
     if (electionHeroMeta) {
       electionHeroMeta.textContent = unavailable
@@ -861,7 +823,7 @@ export function createHomepageRenderer() {
           track.append(fill);
           barRow.append(track, makeElement("strong", "candidate-vote-count", votes.toLocaleString("ru-RU")));
           const foot = makeElement("div", "candidate-vote-foot");
-          foot.append(makeElement("span", "", `${percent}% от учтённых голосов`), makeElement("span", "candidate-readonly", "Только просмотр"));
+          foot.append(makeElement("span", "", `${percent}% от учтённых голосов`));
           const voteBlock = makeElement("div", "candidate-vote-block");
           voteBlock.append(barRow, foot);
           card.append(identity, voteBlock);
@@ -929,11 +891,7 @@ export function createHomepageRenderer() {
         ? `Казна закреплена за ${currentPresidentName}`
         : "Активный президент не назначен";
     }
-    if (budgetDetail) {
-      budgetDetail.textContent = payload.updated_at || payload.updatedAt
-        ? `Обновлено ${formatDate(payload.updated_at || payload.updatedAt)}`
-        : "Публичный баланс казны.";
-    }
+    if (budgetDetail) budgetDetail.textContent = "Публичный баланс казны.";
     animateCounter(balance);
     renderPresidentCard(payload);
   }
@@ -950,7 +908,6 @@ export function createHomepageRenderer() {
       balance_ar: treasury.balance,
       current_president_name: treasury.ownerName || status.elections?.president || "",
       current_president_uuid: treasury.ownerUuid || "",
-      updated_at: status.generatedAt || Date.now(),
     });
     renderHistory((treasury.history || []).map((row) => ({
       ...row,

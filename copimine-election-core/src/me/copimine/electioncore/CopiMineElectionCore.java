@@ -617,11 +617,6 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             if (isBundleItem(current) || isBundleItem(cursor)) {
                 external = true;
             }
-            if (!external && event.getClick().isShiftClick()) {
-                // Shift-click is the one player-inventory operation that can
-                // move a protected stack into the top crafting/result view.
-                external = isElectionOwnedItem(current);
-            }
             if (external) {
                 event.setCancelled(true);
             }
@@ -663,10 +658,47 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
                 && !bundleContainsProtectedOfficial(event.getCursor())) {
             return;
         }
-        event.setCancelled(true);
-        if (event.getWhoClicked() instanceof Player player) {
-            Bukkit.getScheduler().runTask(this, player::updateInventory);
+        if (!(event.getWhoClicked() instanceof Player player)
+                || event.getRawSlot() < 0
+                || event.getClick() == ClickType.DROP
+                || event.getClick() == ClickType.CONTROL_DROP
+                || !creativeOfficialActionLeavesPlayerInventory(event, player)) {
+            event.setCancelled(true);
+            if (event.getWhoClicked() instanceof Player player) {
+                Bukkit.getScheduler().runTask(this, player::updateInventory);
+            }
         }
+    }
+
+    /**
+     * Creative transport is allowed only when the clicked destination is the
+     * player's own inventory.  A mandate must never enter a block inventory,
+     * a crafting/processing surface, or the outside/drop slot.
+     */
+    private boolean creativeOfficialActionLeavesPlayerInventory(InventoryCreativeEvent event, Player player) {
+        if (event == null || player == null || event.getRawSlot() < 0) {
+            return false;
+        }
+        InventoryView view = event.getView();
+        Inventory top = view == null ? null : view.getTopInventory();
+        if (view == null || top == null) {
+            return false;
+        }
+        boolean clickedPlayerInventory = event.getClickedInventory() == player.getInventory()
+                || (view.getBottomInventory() == player.getInventory()
+                && event.getRawSlot() >= top.getSize());
+        if (!clickedPlayerInventory) {
+            return false;
+        }
+        if (event.getClick() == ClickType.DROP || event.getClick() == ClickType.CONTROL_DROP
+                || event.getRawSlot() < 0) {
+            return false;
+        }
+        if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
+            return event.getRawSlot() >= top.getSize();
+        }
+        return top.getType() == InventoryType.CREATIVE
+                && view.getBottomInventory() instanceof PlayerInventory;
     }
 
     /**
@@ -805,6 +837,9 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             return true;
         }
         if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
+            return false;
+        }
+        if (top.getType() == InventoryType.CREATIVE && view.getBottomInventory() instanceof PlayerInventory) {
             return false;
         }
         return true;

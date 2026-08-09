@@ -1,6 +1,6 @@
 {
-    "generatedAtUtc":  "2026-08-09T04:00:00.9911738Z",
-    "gitCommit":  "4a135dae8ceaa27ee6bbd77819fcc7dd03c92e11",
+    "generatedAtUtc":  "2026-08-09T04:54:13.9558304Z",
+    "gitCommit":  "b5996468b74ccbd1573b21c3b8f89d8d49f94976",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "4a135dae8ceaa27ee6bbd77819fcc7dd03c92e11",
+                      "sourceCommit":  "b5996468b74ccbd1573b21c3b8f89d8d49f94976",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "0013e9395f2bd3d732ee29cf1852c4ef8b6639a5084220256def55fe6e7b88af",
+                                  "sha256":  "d36bbe805b285cd89f8fc0e3301d040acec41210ba34401408b175a497b819c5",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -311,8 +311,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/404.html",
-                             "sizeBytes":  4030,
-                             "sha256":  "92f5d6480ad2f543167fd7597a2d22e61562a64256d8b9f4df2d95f8a3ff4173"
+                             "sizeBytes":  3406,
+                             "sha256":  "e049579ccaf0ab644fb9c992519cbd4bf6e70d4a780f2fd8db978aa548f55e40"
                          },
                          {
                              "path":  "admin-web/frontend/cart.html",
@@ -321,23 +321,23 @@
                          },
                          {
                              "path":  "admin-web/frontend/elections.html",
-                             "sizeBytes":  7100,
-                             "sha256":  "612f503ccfa08bd78f7a3fb5d17397b95dfc9979de920f9da365113264b98435"
+                             "sizeBytes":  6700,
+                             "sha256":  "21699ffde6c9931923bd350ff1993c1e4962c6e278282aa8b9dedd57311aba94"
                          },
                          {
                              "path":  "admin-web/frontend/error.html",
-                             "sizeBytes":  4157,
-                             "sha256":  "1977bc956fed6714f7fcac5c15f57dce5e27c40f19010f724c5ad7fffd667037"
+                             "sizeBytes":  3643,
+                             "sha256":  "076f0fb82677042442873b96d3fb31856eaad163651e5e83c30c96591893e767"
                          },
                          {
                              "path":  "admin-web/frontend/index.html",
-                             "sizeBytes":  9286,
-                             "sha256":  "9ae2ec94253018f1d2d4b143724f95222227403ee0a9ffa93bd79090c32a9c83"
+                             "sizeBytes":  9176,
+                             "sha256":  "8f33add8c8f1d6e5ba2e9af349348cdd9fa62918028b41b6d0f323f7d67a6403"
                          },
                          {
                              "path":  "admin-web/frontend/mods.html",
-                             "sizeBytes":  6729,
-                             "sha256":  "5b0023717b857b13ba93337961299927c2dffda6f1b1237428be0df79a7876b2"
+                             "sizeBytes":  6611,
+                             "sha256":  "7f04de63c49d0ab5fd700748e0a658175857099f43fd99fe62d904345cc489e3"
                          },
                          {
                              "path":  "admin-web/frontend/preview-admin.html",
@@ -511,8 +511,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/public-elections.css",
-                             "sizeBytes":  8725,
-                             "sha256":  "00724b551c25dfa4405b14f18ccf1036e8794fea2badfd4e59f94f6254483460"
+                             "sizeBytes":  8073,
+                             "sha256":  "6a8119340ec90c992fb0390da3356b43c033e1f88e7e9467b1caba482585e802"
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/public-page.css",
@@ -551,8 +551,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/site-redesign.css",
-                             "sizeBytes":  51054,
-                             "sha256":  "b5a098d38be2493cc4610d0808d9ee093bc0ef5546c9680e1db336e8cba6a79c"
+                             "sizeBytes":  50779,
+                             "sha256":  "91240d14a73cf961fe374e567b9d374d7f3fff448a22771a5488bd9f8e9b3708"
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/themes.css",
@@ -776,8 +776,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/homepage.js",
-                             "sizeBytes":  7337,
-                             "sha256":  "3ae6e39f622e1f0bcfc8f4e81ca9c24cf25577c7c961146d5e4bc0a692f25222"
+                             "sizeBytes":  7329,
+                             "sha256":  "fc5fb6109f5ed468b5bfc8d052e1c05f64925d10baa25e957b1fdf3c05f7820b"
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/public-nav.js",
@@ -801,8 +801,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/public/site-render.js",
-                             "sizeBytes":  49136,
-                             "sha256":  "166bdb1ba7e824c0551bc8f1f6f578385d806636aa3e7f057f99c5b010f1708d"
+                             "sizeBytes":  46613,
+                             "sha256":  "dbeb1c0ecc0a1774df772bbf1ef67bbc665f50dddc98cd4bae28deea962c141a"
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/shared/app-routes.js",
@@ -8782,7 +8782,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  6439,
-                             "sha256":  "ef2dc922026b3afa313e84f6acf48f6d550508f62a8ec13c77b9fc2d6e955273"
+                             "sha256":  "e951d6108d6e31ce5888abc0b6b6d74ea25ce24cb28f328d6cd60f33091b55c4"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -10052,7 +10052,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "98388a3cddc3452be7148b254fd229a84dc800c148f8fdaa5b1ab65c1f22fffe"
+                             "sha256":  "d4710841c6d073c0d2ce84c6d08bc5a0f20f06744026cfa2a5d10924531c6f11"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10062,7 +10062,7 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  31064,
-                             "sha256":  "0013e9395f2bd3d732ee29cf1852c4ef8b6639a5084220256def55fe6e7b88af"
+                             "sha256":  "d36bbe805b285cd89f8fc0e3301d040acec41210ba34401408b175a497b819c5"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
@@ -10520,6 +10520,11 @@
                              "sha256":  "38a8182f41dbf1220f48085f29890aaa55d4d37a7c56aca3470d1fbb655754d8"
                          },
                          {
+                             "path":  "docs/superpowers/plans/2026-08-09-public-pages-copy-cleanup.md",
+                             "sizeBytes":  15110,
+                             "sha256":  "3fee0345fd31a88cd2e16e48eeb142c791f2258efc52f7ba4b76975df070bf39"
+                         },
+                         {
                              "path":  "docs/superpowers/plans/2026-08-09-release-wipe-and-deploy.md",
                              "sizeBytes":  11307,
                              "sha256":  "e6c6962437d3a985c2f607bb58dd0d15c0cf6b06946108430a0e0e1096b6f552"
@@ -10598,6 +10603,11 @@
                              "path":  "docs/superpowers/specs/2026-08-09-president-law-review-design.md",
                              "sizeBytes":  4579,
                              "sha256":  "a2d675c66e9696ff82a31525d0ba90a81074d4dd12cbb60c8302a3f5771a3fbe"
+                         },
+                         {
+                             "path":  "docs/superpowers/specs/2026-08-09-public-pages-copy-and-design-audit.md",
+                             "sizeBytes":  4940,
+                             "sha256":  "f3f1320d402e86e90d1c23c5587628f6175eb78a440ab49e7ab8cd25cd8a0ee4"
                          },
                          {
                              "path":  "minecraft/server/bukkit.yml",
@@ -12233,6 +12243,11 @@
                              "path":  "tests/test_public_cabinet_election_freshness.py",
                              "sizeBytes":  1899,
                              "sha256":  "01896321df7e5cf50cbabb2d1fa0d064ae5c13384a0e85a96e3de54c0f467692"
+                         },
+                         {
+                             "path":  "tests/test_public_copy_contract.py",
+                             "sizeBytes":  2690,
+                             "sha256":  "5327d2d5cd19723d33f6ee62b85956923d6cea03b8a72b48e5ede64341d64c1b"
                          },
                          {
                              "path":  "tests/test_public_president_and_player_link.py",

@@ -398,10 +398,10 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        visualEntityTypeKey = new NamespacedKey(this, "visual_entity_type");
-        visualKindKey = new NamespacedKey(this, "visual_kind");
-        visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
-        visualModelIdKey = new NamespacedKey(this, "visual_model_id");
+        visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
+        visualKindKey = new NamespacedKey("copimine", "visual_kind");
+        visualLinkedIdKey = new NamespacedKey("copimine", "visual_linked_id");
+        visualModelIdKey = new NamespacedKey("copimine", "visual_model_id");
         officialArSerialKey = new NamespacedKey(this, "ar_serial");
         officialArSignatureKey = new NamespacedKey(this, "ar_signature");
         officialArDenominationKey = new NamespacedKey(this, "ar_denomination");
@@ -3263,20 +3263,55 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
             return false;
         }
         PersistentDataContainer pdc = display.getPersistentDataContainer();
-        if (!"PROTECTED_BLOCK_VISUAL".equals(pdc.get(visualEntityTypeKey, PersistentDataType.STRING))) {
+        if (!"PROTECTED_BLOCK_VISUAL".equals(readVisualString(pdc, visualEntityTypeKey, "visual_entity_type"))) {
+            return isLegacyProtectedVisualModel(display, kind, modelId, customModelData);
+        }
+        if (!kind.equals(readVisualString(pdc, visualKindKey, "visual_kind"))) {
             return false;
         }
-        if (!kind.equals(first(pdc.get(visualKindKey, PersistentDataType.STRING), ""))) {
+        if (!linkedId.equals(readVisualString(pdc, visualLinkedIdKey, "visual_linked_id"))) {
             return false;
         }
-        if (!linkedId.equals(first(pdc.get(visualLinkedIdKey, PersistentDataType.STRING), ""))) {
-            return false;
-        }
-        if (!modelId.equals(first(pdc.get(visualModelIdKey, PersistentDataType.STRING), ""))) {
+        if (!modelId.equals(readVisualString(pdc, visualModelIdKey, "visual_model_id"))) {
             return false;
         }
         ItemStack stack = display.getItemStack();
         return stack != null && stack.hasItemMeta() && stack.getItemMeta() != null && stack.getItemMeta().hasCustomModelData() && stack.getItemMeta().getCustomModelData() == customModelData;
+    }
+
+    /**
+     * Visual entities were historically tagged with one plugin's namespace,
+     * while four plugins could create and remove the same protected block.
+     * Read those namespaces during migration so an old overlay cannot survive
+     * deletion just because another plugin created it.
+     */
+    private String readVisualString(PersistentDataContainer pdc, NamespacedKey currentKey, String keyName) {
+        String value = pdc.get(currentKey, PersistentDataType.STRING);
+        if (value != null) {
+            return value;
+        }
+        for (String namespace : List.of("copimineeconomycore", "copimineultimateadminplus", "copimineartifacts", "copimineelectioncore")) {
+            value = pdc.get(new NamespacedKey(namespace, keyName), PersistentDataType.STRING);
+            if (value != null) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private boolean isLegacyProtectedVisualModel(ItemDisplay display, String kind, String modelId, int customModelData) {
+        int expectedModelData = customModelData;
+        if (expectedModelData <= 0 && "ATM".equals(kind)) {
+            expectedModelData = MODEL_ATM_TERMINAL;
+        }
+        ItemStack stack = display.getItemStack();
+        ItemMeta meta = stack == null ? null : stack.getItemMeta();
+        return expectedModelData > 0
+                && stack != null
+                && stack.getType() == Material.PAPER
+                && meta != null
+                && meta.hasCustomModelData()
+                && meta.getCustomModelData() == expectedModelData;
     }
 
     private Entity findEntityByUuid(String uuidText) {
@@ -3591,8 +3626,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         Location center = base.clone().add(0.5D, 1.9D, 0.5D);
         for (Entity entity : base.getWorld().getNearbyEntities(center, 2.0D, 2.5D, 2.0D)) {
             if ((entity instanceof TextDisplay || entity instanceof ArmorStand)
-                    && "ATM_TITLE_DISPLAY".equals(entity.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
-                    && atmId.equalsIgnoreCase(entity.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
+                    && "ATM_TITLE_DISPLAY".equals(readVisualString(entity.getPersistentDataContainer(), visualEntityTypeKey, "visual_entity_type"))
+                    && atmId.equalsIgnoreCase(readVisualString(entity.getPersistentDataContainer(), visualLinkedIdKey, "visual_linked_id"))) {
                 return;
             }
         }
@@ -3606,8 +3641,8 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         Location center = base.clone().add(0.5D, 1.9D, 0.5D);
         for (Entity entity : base.getWorld().getNearbyEntities(center, 2.0D, 2.5D, 2.0D)) {
             if ((entity instanceof TextDisplay || entity instanceof ArmorStand)
-                    && "ATM_TITLE_DISPLAY".equals(entity.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING))
-                    && atmId.equalsIgnoreCase(entity.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING))) {
+                    && "ATM_TITLE_DISPLAY".equals(readVisualString(entity.getPersistentDataContainer(), visualEntityTypeKey, "visual_entity_type"))
+                    && atmId.equalsIgnoreCase(readVisualString(entity.getPersistentDataContainer(), visualLinkedIdKey, "visual_linked_id"))) {
                 entity.remove();
             }
         }

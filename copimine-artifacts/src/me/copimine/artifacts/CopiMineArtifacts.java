@@ -301,10 +301,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyLastDeathY = new NamespacedKey(this, "last_death_y");
       this.keyLastDeathZ = new NamespacedKey(this, "last_death_z");
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
-      this.visualEntityTypeKey = new NamespacedKey(this, "visual_entity_type");
-      this.visualKindKey = new NamespacedKey(this, "visual_kind");
-      this.visualLinkedIdKey = new NamespacedKey(this, "visual_linked_id");
-      this.visualModelIdKey = new NamespacedKey(this, "visual_model_id");
+      this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
+      this.visualKindKey = new NamespacedKey("copimine", "visual_kind");
+      this.visualLinkedIdKey = new NamespacedKey("copimine", "visual_linked_id");
+      this.visualModelIdKey = new NamespacedKey("copimine", "visual_model_id");
       if (!this.customBlockVisualsEnabled()) {
          this.cleanupAllProtectedBlockVisualEntities();
       }
@@ -13110,14 +13110,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return false;
       } else {
          PersistentDataContainer var7 = var6.getPersistentDataContainer();
-         if (!"PROTECTED_BLOCK_VISUAL".equals(var7.get(this.visualEntityTypeKey, PersistentDataType.STRING))) {
-            return false;
-         } else if (!var2.equals(this.first((String)var7.get(this.visualKindKey, PersistentDataType.STRING), ""))) {
-            return false;
-         } else if (!var3.equals(this.first((String)var7.get(this.visualLinkedIdKey, PersistentDataType.STRING), ""))) {
-            return false;
-         } else if (!var4.equals(this.first((String)var7.get(this.visualModelIdKey, PersistentDataType.STRING), ""))) {
-            return false;
+          if (!"PROTECTED_BLOCK_VISUAL".equals(this.readVisualString(var7, this.visualEntityTypeKey, "visual_entity_type"))) {
+             return this.isLegacyProtectedVisualModel(var6, var2, var4, var5);
+          } else if (!var2.equals(this.readVisualString(var7, this.visualKindKey, "visual_kind"))) {
+             return false;
+          } else if (!var3.equals(this.readVisualString(var7, this.visualLinkedIdKey, "visual_linked_id"))) {
+             return false;
+          } else if (!var4.equals(this.readVisualString(var7, this.visualModelIdKey, "visual_model_id"))) {
+             return false;
          } else {
             ItemStack var8 = var6.getItemStack();
             if (var8 != null && var8.getType() == Material.PAPER) {
@@ -13270,6 +13270,35 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   private String readVisualString(PersistentDataContainer pdc, NamespacedKey currentKey, String keyName) {
+      String value = pdc.get(currentKey, PersistentDataType.STRING);
+      if (value != null) {
+         return value;
+      }
+      for (String namespace : List.of("copimineeconomycore", "copimineultimateadminplus", "copimineartifacts", "copimineelectioncore")) {
+         value = pdc.get(new NamespacedKey(namespace, keyName), PersistentDataType.STRING);
+         if (value != null) {
+            return value;
+         }
+      }
+      return "";
+   }
+
+   private boolean isLegacyProtectedVisualModel(ItemDisplay display, String kind, String modelId, int customModelData) {
+      int expectedModelData = customModelData;
+      if (expectedModelData <= 0 && "ARTIFACT_SHOP".equals(kind)) {
+         expectedModelData = 14004;
+      }
+      ItemStack stack = display.getItemStack();
+      ItemMeta meta = stack == null ? null : stack.getItemMeta();
+      return expectedModelData > 0
+            && stack != null
+            && stack.getType() == Material.PAPER
+            && meta != null
+            && meta.hasCustomModelData()
+            && meta.getCustomModelData() == expectedModelData;
+   }
+
    private boolean runAsync(Runnable var1) {
       if (!this.isEnabled()) {
          return false;
@@ -13304,9 +13333,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (entity == null || visualEntityTypeKey == null || visualKindKey == null || visualLinkedIdKey == null) {
          return false;
       }
-      String type = entity.getPersistentDataContainer().get(visualEntityTypeKey, PersistentDataType.STRING);
-      String storedKind = entity.getPersistentDataContainer().get(visualKindKey, PersistentDataType.STRING);
-      String storedLinkedId = entity.getPersistentDataContainer().get(visualLinkedIdKey, PersistentDataType.STRING);
+       String type = readVisualString(entity.getPersistentDataContainer(), visualEntityTypeKey, "visual_entity_type");
+       String storedKind = readVisualString(entity.getPersistentDataContainer(), visualKindKey, "visual_kind");
+       String storedLinkedId = readVisualString(entity.getPersistentDataContainer(), visualLinkedIdKey, "visual_linked_id");
       return "PROTECTED_BLOCK_VISUAL".equals(type) && Objects.equals(kind, storedKind)
             && Objects.equals(linkedId, storedLinkedId);
    }

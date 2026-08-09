@@ -1,12 +1,12 @@
 {
-    "generatedAtUtc":  "2026-08-09T05:32:56.8373623Z",
-    "gitCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
+    "generatedAtUtc":  "2026-08-09T06:11:09.2659088Z",
+    "gitCommit":  "8b2d92ed8282426fece7887a12fc42a46624e6ca",
     "sourceTreeDirty":  false,
     "projectRoot":  "copimine",
     "resourcePack":  {
                          "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                         "sha1":  "40bb5992713d43787bfc0228996585711c7a9fb1",
-                         "sha256":  "9c8b21e7b669ae6adcf07b790406cc5b16a7411f7fc5d50e4d2b39d5c71c3462",
+                         "sha1":  "22bfc10db200ee022db7b1855f078566a52a2eea",
+                         "sha256":  "3688e7494d659e01dd982484912ae4f00b603f257674605080bade8f9d6ac2ff",
                          "downloadUrl":  "https://copimine.ru/resourcepacks/CopiMineResourcePack.zip"
                      },
     "modpack":  {
@@ -30,7 +30,7 @@
                           "minecraft/server/plugins/CopiMineWorldCore.jar":  "c9ea906c6f49a5635d174077e3cf5499f1c719c2245af937996d5e73f0772d70"
                       },
     "javaBuild":  {
-                      "sourceCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
+                      "sourceCommit":  "8b2d92ed8282426fece7887a12fc42a46624e6ca",
                       "scripts":  [
                                       "build-plugin.ps1",
                                       "build-plugin.ps1",
@@ -50,7 +50,7 @@
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "feb95d3635653565fc34f3158c69731a5565802617dd9dbc56630dbf31a51e6c",
+                                  "sha256":  "e88aa87b10c84dd426a62cab722ea56ddbdcec4682e447afdb48f2fc033ced34",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",
@@ -206,13 +206,18 @@
                          },
                          {
                              "path":  "admin-web/backend/main.py",
-                             "sizeBytes":  916504,
-                             "sha256":  "356d4f26c53871f53c5e8de995b8994486b2302c4de9ced43345bf310ba74bb8"
+                             "sizeBytes":  917070,
+                             "sha256":  "248e687078af6642a730e1d7e1e510ac35c7cf7b4eff06521cd384f53fe17042"
                          },
                          {
                              "path":  "admin-web/backend/minecraft_discord_bridge.py",
                              "sizeBytes":  10571,
                              "sha256":  "6e0b2822ce0430caea31fd76101e0416fb9dbf20731509a47b86e5e4fce91aa8"
+                         },
+                         {
+                             "path":  "admin-web/backend/minecraft_recipe_names_ru.json",
+                             "sizeBytes":  40025,
+                             "sha256":  "9760e452b2a181a37fc381c1c7702d32fa7ef21e8eae9e025d9e0253813f379c"
                          },
                          {
                              "path":  "admin-web/backend/plugin_registry.py",
@@ -422,7 +427,7 @@
                          {
                              "path":  "admin-web/frontend/assets/css/admin.css",
                              "sizeBytes":  20049,
-                             "sha256":  "a476a90e05c8a541a5c96ae0b1808c589b68e56fb9840cdd5a74ca2a229a9502"
+                             "sha256":  "53f243811436f4d765e53f9787fd56ed539c5ad32ca0c0833aaaae456538b50e"
                          },
                          {
                              "path":  "admin-web/frontend/assets/css/animations.css",
@@ -721,8 +726,8 @@
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/admin/narcotics-recipe-pages.js",
-                             "sizeBytes":  18868,
-                             "sha256":  "ad197461e8ff954c0ea49c8fb964a26d7ed15c7da5e199f9f75298f4f6217024"
+                             "sizeBytes":  19236,
+                             "sha256":  "34dd261b5cdf1f31a3eda184b916c2d75271bb5f2afe59e29946c5165a4f7a57"
                          },
                          {
                              "path":  "admin-web/frontend/assets/js/admin/plugin-registry-pages.js",
@@ -8782,7 +8787,7 @@
                          {
                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
                              "sizeBytes":  6439,
-                             "sha256":  "3efe8b02e10e1289edf29efe5b640b05f901c600fa96619d488244230edb05fb"
+                             "sha256":  "31286ca8cc546ce214aa94e94ddccb40a265ce6873907b3ad31cde33b5ec79bd"
                          },
                          {
                              "path":  "admin-web/frontend/assets/showcase/home-dark-v2.png",
@@ -10052,7 +10057,7 @@
                          {
                              "path":  "deploy/installer_manifest.json",
                              "sizeBytes":  9956,
-                             "sha256":  "d7c0f1e00ed45d9473d30b510a6a9cc0aff43466c280a83f54e21f955ee587f2"
+                             "sha256":  "34a9a43ed593390872b9a2649314555ed28bae35c4b29087f65b5cc7506bb22d"
                          },
                          {
                              "path":  "deploy/plugin_versions.json",
@@ -10062,7 +10067,7 @@
                          {
                              "path":  "deploy/sbom.spdx.json",
                              "sizeBytes":  31064,
-                             "sha256":  "feb95d3635653565fc34f3158c69731a5565802617dd9dbc56630dbf31a51e6c"
+                             "sha256":  "e88aa87b10c84dd426a62cab722ea56ddbdcec4682e447afdb48f2fc033ced34"
                          },
                          {
                              "path":  "deploy/shared/common.sh",
@@ -10637,7 +10642,7 @@
                          {
                              "path":  "minecraft/server/server.properties",
                              "sizeBytes":  1782,
-                             "sha256":  "8b3a77cb7819f4c12d7a1dd6a710bfa419a03ca106ecc4e0b4485a2892ee7a83"
+                             "sha256":  "0b8cccba4d461bee5960b83678f166fc56d56e92c137a667b36f35f24b7231f9"
                          },
                          {
                              "path":  "minecraft/server/spigot.yml",
@@ -10966,8 +10971,8 @@
                          },
                          {
                              "path":  "resourcepacks/build-resourcepack.py",
-                             "sizeBytes":  23494,
-                             "sha256":  "1421840bc77a67d5a28cdf7c7a1ed0042074208aa825cef625e627d05da1a330"
+                             "sizeBytes":  23595,
+                             "sha256":  "bde5393f4d2329c162a91495301878c7dc29233aa8a9302c9f33b0023e7ca9e6"
                          },
                          {
                              "path":  "resourcepacks/item_texture_sources.json",
@@ -10997,17 +11002,17 @@
                          {
                              "path":  "resourcepacks/build/CopiMineResourcePack.sha1",
                              "sizeBytes":  42,
-                             "sha256":  "ba9a4402951ddea766838b84d7c00dd2050614885b8123fbcc8080d7ab098206"
+                             "sha256":  "baac29b38d5da9ae9f73759fbcf3a38884b1ac74402400b704b38dfdb3f8dfc7"
                          },
                          {
                              "path":  "resourcepacks/build/CopiMineResourcePack.sha256",
                              "sizeBytes":  66,
-                             "sha256":  "6286b837c34d8b12cb8237c0da80e7532273da6b9a4466991b9deb1a9b498351"
+                             "sha256":  "485853a52e32bab7fc88b47ec085be0e27937406129e30d0cbf3b41081a580c0"
                          },
                          {
                              "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                             "sizeBytes":  559296,
-                             "sha256":  "9c8b21e7b669ae6adcf07b790406cc5b16a7411f7fc5d50e4d2b39d5c71c3462"
+                             "sizeBytes":  559335,
+                             "sha256":  "3688e7494d659e01dd982484912ae4f00b603f257674605080bade8f9d6ac2ff"
                          },
                          {
                              "path":  "resourcepacks/src/pack.mcmeta",
@@ -12255,6 +12260,11 @@
                              "sha256":  "0a1fbc6c063807cf34e02ee064485fa7e6fa01249a5fc251c38624bf822c1884"
                          },
                          {
+                             "path":  "tests/test_recipe_ui_contract.py",
+                             "sizeBytes":  2247,
+                             "sha256":  "c061f806dc9a7390ad2b29bee21c80098000cafcec8da476b618956532f776cc"
+                         },
+                         {
                              "path":  "tests/test_release_report_regressions.py",
                              "sizeBytes":  19491,
                              "sha256":  "8721ff5400316693d83a5ca43602edee8d0a35e2b7bf385ea9225ed6801e7f37"
@@ -12276,8 +12286,8 @@
                          },
                          {
                              "path":  "tests/test_requested_gameplay_fixes.py",
-                             "sizeBytes":  32877,
-                             "sha256":  "7de7afede2509b8ed8aaf274369ccc871b3fc82f88b233baa608c37972226587"
+                             "sizeBytes":  33116,
+                             "sha256":  "3d41a6faa86719d1e3c547de16c6672b67795cc42cc08e90313470c28944267f"
                          },
                          {
                              "path":  "tests/test_stackable_items_contract.py",

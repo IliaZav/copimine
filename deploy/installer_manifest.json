@@ -1,9 +1,9 @@
 {
-    "generatedAtUtc":  "2026-08-09T05:32:56.8946096Z",
-    "gitCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
+    "generatedAtUtc":  "2026-08-09T06:11:09.2744231Z",
+    "gitCommit":  "8b2d92ed8282426fece7887a12fc42a46624e6ca",
     "sourceTreeDirty":  false,
     "sourceArtifacts":  {
-                            "gitCommit":  "5f0cc283659ee2882eb45e9839c534e726c8e262",
+                            "gitCommit":  "8b2d92ed8282426fece7887a12fc42a46624e6ca",
                             "serverPlugins":  {
                                                   "minecraft/server/plugins/AuthEffects.jar":  "90ba4f8692b83b75b38d450c99a5642499db09325e5d4caaf16ea46fd0d90db9",
                                                   "minecraft/server/plugins/CopiMineArtifacts.jar":  "dd440b37b2c17959717f5c98ccd4a968b87368bc8e7e5470abdcbd409031ef58",
@@ -17,8 +17,8 @@
     "artifacts":  {
                       "resourcePack":  {
                                            "path":  "resourcepacks/build/CopiMineResourcePack.zip",
-                                           "sha1":  "40bb5992713d43787bfc0228996585711c7a9fb1",
-                                           "sha256":  "9c8b21e7b669ae6adcf07b790406cc5b16a7411f7fc5d50e4d2b39d5c71c3462"
+                                           "sha1":  "22bfc10db200ee022db7b1855f078566a52a2eea",
+                                           "sha256":  "3688e7494d659e01dd982484912ae4f00b603f257674605080bade8f9d6ac2ff"
                                        },
                       "modpack":  {
                                       "path":  "thirdparty/CopiMineMods.zip",
@@ -76,7 +76,7 @@
     "frontend":  {
                      "modpackSnapshot":  {
                                              "path":  "admin-web/frontend/assets/public-data/modpack_snapshot.json",
-                                             "sha256":  "3efe8b02e10e1289edf29efe5b640b05f901c600fa96619d488244230edb05fb"
+                                             "sha256":  "31286ca8cc546ce214aa94e94ddccb40a265ce6873907b3ad31cde33b5ec79bd"
                                          }
                  },
     "serverProperties":  {
@@ -84,13 +84,13 @@
                              "required":  {
                                               "levelSeed":  "-1861153001556076901",
                                               "resourcePack":  "https\\://copimine.ru/resourcepacks/CopiMineResourcePack.zip",
-                                              "resourcePackSha1":  "40bb5992713d43787bfc0228996585711c7a9fb1"
+                                              "resourcePackSha1":  "22bfc10db200ee022db7b1855f078566a52a2eea"
                                           }
                          },
     "security":  {
                      "sbom":  {
                                   "path":  "deploy/sbom.spdx.json",
-                                  "sha256":  "feb95d3635653565fc34f3158c69731a5565802617dd9dbc56630dbf31a51e6c",
+                                  "sha256":  "e88aa87b10c84dd426a62cab722ea56ddbdcec4682e447afdb48f2fc033ced34",
                                   "format":  "SPDX-2.3",
                                   "generator":  {
                                                     "path":  "deploy/shared/generate_sbom.py",

@@ -10,6 +10,7 @@ AUTH_EFFECTS = (
     / "minecraft/server/plugins/AuthEffects/src/main/java/me/serverrp/autheffects/AuthEffectsPlugin.java"
 )
 HARDEN_RUNTIME = ROOT / "deploy/shared/harden_game_runtime.py"
+HARDEN_SCRIPT = ROOT / "deploy/ubuntu/apply_game_hardening.sh"
 
 
 def load_runtime_hardening_module():
@@ -42,3 +43,9 @@ def test_essentials_respawn_override_is_disabled_for_vanilla_bed_respawn(tmp_pat
     assert "respawn-listener-priority: \"none\"" in result
     assert "respawn-at-home: false" in result
     assert "respawn-at-home-bed: true" in result
+
+
+def test_essentials_is_resynced_after_plugin_startup():
+    source = HARDEN_SCRIPT.read_text(encoding="utf-8")
+    post_start = source.index("copimine_apply_post_start_game_hardening")
+    assert "copimine_sync_game_runtime_hardening" in source[post_start:]

@@ -155,6 +155,8 @@ OWNER_ONLY_SERVER_PROPERTY_KEYS = {
     "enable-command-block",
 }
 GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
+PUBLIC_STATUS_RATE_LIMIT = max(50, int(os.getenv("PUBLIC_STATUS_RATE_LIMIT", "120")))
+PUBLIC_PRESIDENT_SKIN_RATE_LIMIT = max(50, int(os.getenv("PUBLIC_PRESIDENT_SKIN_RATE_LIMIT", "60")))
 PUBLIC_STATUS_CACHE_LOCK = threading.RLock()
 PUBLIC_STATUS_CACHE: tuple[float, dict[str, Any]] = (0.0, {})
 PUBLIC_STATUS_CACHE_TTL_SECONDS = max(2, int(os.getenv("PUBLIC_STATUS_CACHE_TTL_SECONDS", "10")))
@@ -12198,7 +12200,7 @@ async def public_cms() -> dict[str, Any]:
 
 @app.get("/api/public/status")
 async def public_status(request: Request) -> dict[str, Any]:
-    check_rate_limit(request, "public-status", limit=30, window_seconds=60)
+    check_rate_limit(request, "public-status", limit=PUBLIC_STATUS_RATE_LIMIT, window_seconds=60)
     return {"ok": True, "data": await bg(public_site_status_sync)}
 
 
@@ -12224,7 +12226,7 @@ async def public_president() -> dict[str, Any]:
 
 @app.get("/api/public/president/skin/body")
 async def public_president_skin_body(request: Request, uuid: str = Query(default="")) -> Response:
-    check_rate_limit(request, "public-president-skin", limit=20, window_seconds=60)
+    check_rate_limit(request, "public-president-skin", limit=PUBLIC_PRESIDENT_SKIN_RATE_LIMIT, window_seconds=60)
     safe_uuid = str(uuid or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f-]{32,36}", safe_uuid):
         raise HTTPException(status_code=404, detail="Президентский скин недоступен")

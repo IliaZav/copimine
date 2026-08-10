@@ -181,6 +181,29 @@ def replace_scalar(lines: list[str], parent_path: list[str], key: str, value: An
         lines.insert(parent_end, f"{' ' * replacement_indent}{key}: {scalar(value)}")
 
 
+def replace_top_level_scalar(lines: list[str], key: str, value: Any) -> None:
+    matches = [
+        (indentation(lines[index]), index)
+        for index in range(len(lines))
+        if key_matches(lines[index], key) and indentation(lines[index]) == 0
+    ]
+    if matches:
+        indent, index = min(matches)
+        end = block_end(lines, index, indent, len(lines))
+        lines[index:end] = [f"{key}: {scalar(value)}"]
+    else:
+        lines.append(f"{key}: {scalar(value)}")
+
+
+def sync_essentials(path: Path) -> None:
+    """Leave respawn selection to vanilla so beds remain per-player."""
+    if not path.is_file():
+        return
+    lines = read_text(path).splitlines()
+    replace_top_level_scalar(lines, "respawn-listener-priority", "none")
+    write_text(path, "\n".join(lines) + "\n")
+
+
 def replace_list(lines: list[str], parent_path: list[str], key: str, values: list[Any]) -> None:
     parent = find_block(lines, parent_path)
     if parent is None:
@@ -315,6 +338,7 @@ def sync_runtime(server_dir: Path, policy_path: Path, voice_template: Path) -> N
     set_property(server_properties, "rcon.ip", "127.0.0.1")
     validate_rcon_loopback(server_properties)
     plugins = server_dir / "plugins"
+    sync_essentials(plugins / "Essentials" / "config.yml")
     imageframe_jars = plugin_jars(plugins, "ImageFrame")
     if not imageframe_jars:
         raise PolicyError("ImageFrame JAR is missing; cannot securely seed its managed configuration")

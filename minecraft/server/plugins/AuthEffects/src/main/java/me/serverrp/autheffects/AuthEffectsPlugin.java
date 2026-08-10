@@ -283,7 +283,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             command = command.substring(colon + 1);
         }
         return switch (command.toLowerCase(Locale.ROOT)) {
-            case "login", "l", "register", "reg", "changepassword", "cp" -> true;
+            case "login", "l", "register", "reg", "changepassword", "cp", "captcha" -> true;
             default -> false;
         };
     }

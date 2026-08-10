@@ -784,6 +784,46 @@ def assert_admin_player_actions_resolve_stale_minecraft_link(main) -> None:
     assert main.verify_password_hash(row["password_hash"], "NewStalePassword!45")
 
 
+def assert_authme_unregister_uses_exact_confirmed_command(main) -> None:
+    from starlette.requests import Request
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": "https",
+            "path": "/api/players/ExistingHero/authme/unregister",
+            "raw_path": b"/api/players/ExistingHero/authme/unregister",
+            "query_string": b"",
+            "headers": [
+                (b"host", b"panel.example.test"),
+                (main.SENSITIVE_CONFIRM_HEADER.lower().encode("ascii"), b"PLAYER_AUTHME_UNREGISTER"),
+            ],
+            "client": ("127.0.0.1", 54321),
+            "server": ("panel.example.test", 443),
+        }
+    )
+    commands: list[str] = []
+
+    async def fake_rcon(command: str) -> str:
+        commands.append(command)
+        return "Player ExistingHero was unregistered"
+
+    with patch.object(main, "RCON_PASSWORD", "test-rcon-password"), \
+         patch.object(main, "rcon", side_effect=fake_rcon), \
+         patch.object(main, "audit_event"), \
+         patch.object(main, "append_panel_event"):
+        result = asyncio.run(main.player_authme_unregister("ExistingHero", request, "AdminUser"))
+
+    assert result == {
+        "ok": True,
+        "player": "ExistingHero",
+        "unregistered": True,
+        "alreadyUnregistered": False,
+    }, result
+    assert commands == ["authme unregister ExistingHero"], commands
+
+
 def assert_new_linked_site_account_appears_in_player_list(main) -> None:
     now = main.now_ts()
     linked_uuid = "22222222-2222-2222-2222-222222222222"
@@ -934,6 +974,7 @@ def main() -> None:
         assert_new_linked_site_account_appears_in_player_list(main_module)
         assert_admin_player_credentials_never_return_plaintext(main_module)
         assert_admin_player_actions_resolve_stale_minecraft_link(main_module)
+        assert_authme_unregister_uses_exact_confirmed_command(main_module)
         assert_site_only_admin_creation_does_not_require_minecraft_access(main_module)
         assert_price_update_survives_audit_and_panel_event_writer_failures(main_module)
         assert_release_ownership_allows_price_catalog_updates()

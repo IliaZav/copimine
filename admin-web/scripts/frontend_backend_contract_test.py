@@ -77,6 +77,12 @@ def main() -> None:
     assert "const credentialControls = site.id && canManagePins" not in cabinet_runtime, (
         "Player credential actions must not depend on the denormalized site account cache"
     )
+    assert '@app.post("/api/players/{player}/authme/unregister")' in backend, (
+        "AuthMe unregister endpoint is missing"
+    )
+    assert "data-click=\"playerUnregisterAuthMe" in cabinet_runtime, (
+        "Player cards must expose the AuthMe unregister action"
+    )
     routes = {
         (match.group(1).upper(), clean_path(match.group(2)))
         for match in ROUTE_RE.finditer(backend)

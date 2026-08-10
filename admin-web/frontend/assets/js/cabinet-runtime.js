@@ -3489,6 +3489,7 @@ function renderPlayerFullDetails(player, detail, ctx) {
         <div class="form-grid compact-grid">
           <label class="field-stack"><span>Новый пароль AuthMe</span><input id="playerAdminAuthMePassword" type="password" placeholder="8-64 символа без пробелов" autocomplete="new-password" /></label>
           <button class="btn btn-secondary full" data-click="playerResetAuthMePassword('${esc(player)}')">Сбросить пароль AuthMe</button>
+          <button class="btn btn-danger full" data-click="playerUnregisterAuthMe('${esc(player)}')">Разлогинить /authme unregister</button>
         </div>
         <div class="credential-note danger"><strong>Удаление аккаунта</strong><span>Удалит аккаунт сайта, его web-привязки и этот Minecraft-ник из whitelist. Баланс и мир Minecraft останутся за UUID.</span></div>
         <button class="btn btn-danger full" data-click="playerDeleteSiteAccount('${esc(player)}')">Удалить аккаунт сайта и whitelist</button>
@@ -3889,6 +3890,23 @@ window.playerResetAuthMePassword = async (player) => {
     });
     toast("Пароль AuthMe изменён.");
     if ($("playerAdminAuthMePassword")) $("playerAdminAuthMePassword").value = "";
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+
+window.playerUnregisterAuthMe = async (player) => {
+  const headers = await dangerConfirm(
+    `Выполнить /authme unregister ${player}? Аккаунт сайта и Minecraft-данные не удаляются.`,
+    "PLAYER_AUTHME_UNREGISTER",
+  );
+  if (!headers) return;
+  try {
+    const result = await api(`/api/players/${encodeURIComponent(player)}/authme/unregister`, {
+      method: "POST",
+      headers,
+    });
+    toast(result.alreadyUnregistered ? "Игрок уже был разлогинен в AuthMe." : "Игрок разлогинен в AuthMe.");
   } catch (err) {
     toast(err.message, true);
   }

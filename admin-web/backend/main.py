@@ -13440,6 +13440,50 @@ async def player_authme_password_reset(
     return {"ok": True, "player": player, "passwordChanged": True}
 
 
+@app.post("/api/players/{player}/authme/unregister")
+async def player_authme_unregister(
+    player: str,
+    request: Request,
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    """Unregister one AuthMe identity without deleting the site account."""
+    player = clean_mc_player(player)
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="RCON_PASSWORD не настроен: AuthMe недоступен")
+    require_sensitive_confirm(request, "PLAYER_AUTHME_UNREGISTER")
+    response = await rcon(f"authme unregister {player}")
+    lowered = str(response or "").lower()
+    already_unregistered = any(
+        marker in lowered
+        for marker in ("not registered", "не зарегистрирован", "not found")
+    )
+    if not already_unregistered and any(
+        marker in lowered
+        for marker in ("unknown command", "permission", "error", "failed", "ошибка")
+    ):
+        raise HTTPException(status_code=502, detail="AuthMe не подтвердил выход игрока")
+    audit_event(
+        username,
+        "player.authme_unregister",
+        target=player,
+        details={"alreadyUnregistered": already_unregistered},
+    )
+    append_panel_event(
+        "admin-panel",
+        "player_authme_unregister",
+        actor=username,
+        target=player,
+        metadata={"alreadyUnregistered": already_unregistered},
+        tags=["player", "security", "authme"],
+    )
+    return {
+        "ok": True,
+        "player": player,
+        "unregistered": not already_unregistered,
+        "alreadyUnregistered": already_unregistered,
+    }
+
+
 @app.post("/api/players/{player}/mute")
 async def player_voice_mute(
     player: str,

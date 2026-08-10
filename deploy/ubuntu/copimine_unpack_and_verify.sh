@@ -10,6 +10,8 @@ SECRETS_ROOT="${SECRETS_ROOT:-/opt/copimine-secrets}"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt/copimine-backups}"
 AR_SIGNING_SECRET_FILE="${COPIMINE_AR_SIGNING_SECRET_FILE:-/var/lib/copimine/ar-signing-secret.b64}"
 AR_SIGNING_LEGACY_SECRETS_FILE="${COPIMINE_AR_SIGNING_LEGACY_SECRETS_FILE:-/var/lib/copimine/ar-signing-legacy.b64}"
+NARCOTICS_SIGNING_SECRET_FILE="${COPIMINE_NARCOTICS_SIGNING_SECRET_FILE:-/var/lib/copimine/narcotics-signing-secret.b64}"
+NARCOTICS_SIGNING_LEGACY_SECRETS_FILE="${COPIMINE_NARCOTICS_SIGNING_LEGACY_SECRETS_FILE:-/var/lib/copimine/narcotics-signing-legacy.b64}"
 LOG_FILE="${LOG_FILE:-/var/log/copimine-unpack.log}"
 TRUSTED_SIGNING_ALLOWED="${COPIMINE_TRUSTED_SIGNING_ALLOWED:-/etc/copimine/release-signing.allowed}"
 # The payload verifier is a bootstrap trust anchor too. Never resolve it from
@@ -217,6 +219,89 @@ prepareArSigningState() {
   if [[ -f "$AR_SIGNING_LEGACY_SECRETS_FILE" ]]; then
     chown "$APP_USER:$APP_GROUP" "$AR_SIGNING_LEGACY_SECRETS_FILE"
     chmod 600 "$AR_SIGNING_LEGACY_SECRETS_FILE"
+  fi
+}
+
+validNarcoticsSigningSecretFile() {
+  local path="$1"
+  [[ -s "$path" ]] || return 1
+  python3 - "$path" <<'PY'
+from base64 import b64decode
+from pathlib import Path
+import sys
+
+try:
+    raw = b64decode(Path(sys.argv[1]).read_text(encoding="ascii").strip(), validate=True)
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0 if len(raw) >= 32 else 1)
+PY
+}
+
+appendNarcoticsSigningLegacySecret() {
+  local candidate="$1"
+  validNarcoticsSigningSecretFile "$candidate" || return 0
+  local encoded primary
+  encoded="$(tr -d '\r\n' < "$candidate")"
+  primary="$(tr -d '\r\n' < "$NARCOTICS_SIGNING_SECRET_FILE")"
+  [[ -n "$encoded" && "$encoded" != "$primary" ]] || return 0
+  if [[ -f "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE" ]] \
+    && grep -Fqx -- "$encoded" "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE"; then
+    return 0
+  fi
+  printf '%s\n' "$encoded" >> "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE"
+  chmod 600 "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE"
+  chown root:root "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE"
+}
+
+preserveNarcoticsSigningSecret() {
+  local current="$PROJECT_ROOT/minecraft/server/plugins/CopiMineNarcotics/narcotics-signing-secret.b64"
+  local candidate
+  install -d -o root -g root -m 0700 "$(dirname "$NARCOTICS_SIGNING_SECRET_FILE")"
+  install -d -o root -g root -m 0700 "$(dirname "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE")"
+
+  if ! validNarcoticsSigningSecretFile "$NARCOTICS_SIGNING_SECRET_FILE"; then
+    if validNarcoticsSigningSecretFile "$current"; then
+      install -o root -g root -m 0600 "$current" "$NARCOTICS_SIGNING_SECRET_FILE"
+      log "Migrated the live narcotics signing key to durable runtime state."
+    else
+      for candidate in "$PROJECT_ROOT".old-*/minecraft/server/plugins/CopiMineNarcotics/narcotics-signing-secret.b64; do
+        [[ -f "$candidate" ]] || continue
+        if validNarcoticsSigningSecretFile "$candidate"; then
+          install -o root -g root -m 0600 "$candidate" "$NARCOTICS_SIGNING_SECRET_FILE"
+          log "Recovered a narcotics signing key from the previous release backup."
+          break
+        fi
+      done
+    fi
+  fi
+  validNarcoticsSigningSecretFile "$NARCOTICS_SIGNING_SECRET_FILE" || {
+    log "WARNING: no valid durable narcotics signing key found; plugin startup will generate one."
+    return 0
+  }
+
+  if [[ -f "$current" ]]; then
+    appendNarcoticsSigningLegacySecret "$current"
+  fi
+  for candidate in "$PROJECT_ROOT".old-*/minecraft/server/plugins/CopiMineNarcotics/narcotics-signing-secret.b64; do
+    [[ -f "$candidate" ]] || continue
+    appendNarcoticsSigningLegacySecret "$candidate"
+  done
+  chmod 600 "$NARCOTICS_SIGNING_SECRET_FILE"
+  chown root:root "$NARCOTICS_SIGNING_SECRET_FILE"
+}
+
+prepareNarcoticsSigningState() {
+  local directory
+  directory="$(dirname "$NARCOTICS_SIGNING_SECRET_FILE")"
+  install -d -o "$APP_USER" -g "$APP_GROUP" -m 0700 "$directory"
+  if [[ -f "$NARCOTICS_SIGNING_SECRET_FILE" ]]; then
+    chown "$APP_USER:$APP_GROUP" "$NARCOTICS_SIGNING_SECRET_FILE"
+    chmod 600 "$NARCOTICS_SIGNING_SECRET_FILE"
+  fi
+  if [[ -f "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE" ]]; then
+    chown "$APP_USER:$APP_GROUP" "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE"
+    chmod 600 "$NARCOTICS_SIGNING_LEGACY_SECRETS_FILE"
   fi
 }
 
@@ -466,6 +551,7 @@ backup_current_release() {
   mkdir -p "$backup_dir"
   chmod 700 "$backup_dir"
   preserveArSigningSecret
+  preserveNarcoticsSigningSecret
   if [[ "$WIPE_WORLDS" == "1" ]]; then
     local world_backup_script="$PROJECT_ROOT/deploy/ubuntu/world_backup.sh"
     [[ -x "$world_backup_script" ]] || die "World wipe requires the installed world backup script: $world_backup_script"
@@ -565,6 +651,7 @@ bootstrap_runtime_environment() {
   copimine_ensure_layout
   copimine_ensure_app_user
   prepareArSigningState
+  prepareNarcoticsSigningState
   if [[ ! -f "$COPIMINE_ENV_FILE" ]]; then
     local postgres_password secret_key plugin_api_key rcon_password
     postgres_password="$(copimine_secret postgres-password.txt 24)"

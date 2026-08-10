@@ -732,6 +732,33 @@ def assert_admin_player_credentials_never_return_plaintext(main) -> None:
     assert "NewPassword!45" not in str(row["password_hash"])
 
 
+def assert_new_linked_site_account_appears_in_player_list(main) -> None:
+    now = main.now_ts()
+    linked_uuid = "22222222-2222-2222-2222-222222222222"
+    with main.auth_conn() as conn:
+        main.ensure_v4_schema(conn)
+        conn.execute(
+            "INSERT INTO site_accounts(id,username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip) VALUES(%s,%s,%s,%s,'player',1,%s,%s,%s,%s,%s,'')",
+            (
+                "new-linked-player-account",
+                "newlinked",
+                "newlinked",
+                main.make_password_hash("NewLinkedPassword!23"),
+                linked_uuid,
+                "NewLinkedPlayer",
+                now,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+    players = main.list_players_sync()["players"]
+    record = next((item for item in players if item["uuid"] == linked_uuid), None)
+    assert record is not None, players
+    assert record["name"] == "NewLinkedPlayer", record
+    assert record["hasPlayerData"] is False, record
+
+
 def assert_site_only_admin_creation_does_not_require_minecraft_access(main) -> None:
     from fastapi.testclient import TestClient
 
@@ -840,6 +867,7 @@ def main() -> None:
         assert_fresh_registration_keeps_automatic_whitelist_without_bank_link(main_module)
         assert_link_code_cannot_reassign_another_players_identity(main_module)
         assert_admin_player_credentials_never_return_plaintext(main_module)
+        assert_new_linked_site_account_appears_in_player_list(main_module)
         assert_site_only_admin_creation_does_not_require_minecraft_access(main_module)
         assert_price_update_survives_audit_and_panel_event_writer_failures(main_module)
         assert_artifact_digest_is_cached(runtime, temp)

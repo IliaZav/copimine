@@ -7706,6 +7706,29 @@ def list_players_sync(q: str = "") -> dict[str, Any]:
     uuids = {str(x.get("uuid")) for x in cached if x.get("uuid")}
     if pdata_dir.exists():
         uuids |= {p.stem for p in pdata_dir.glob("*.dat")}
+    # A newly registered player can have a durable site account and a
+    # Minecraft link before ever joining the server.  The old list only
+    # looked at usercache/playerdata, so that account was invisible until the
+    # first login created a cache entry.  Include active linked player
+    # accounts as a source of truth while keeping the filesystem sources for
+    # existing game-only profiles.
+    try:
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            linked_accounts = conn.execute(
+                "SELECT minecraft_uuid,minecraft_name FROM site_accounts WHERE role='player' AND enabled=1 AND minecraft_uuid<>%s",
+                ("",),
+            ).fetchall()
+            for row in linked_accounts:
+                linked_uuid = str(row_get(row, "minecraft_uuid", "") or "").strip()
+                linked_name = str(row_get(row, "minecraft_name", "") or "").strip()
+                if linked_uuid:
+                    uuids.add(linked_uuid)
+                    if linked_name:
+                        names[linked_uuid] = linked_name
+            conn.commit()
+    except Exception:
+        LOGGER.exception("Could not add linked site accounts to the player list")
     banned_players = {str(x.get("name", "")).lower(): x for x in read_json(MC_SERVER_DIR / "banned-players.json", []) if isinstance(x, dict)}
     ops = {str(x.get("uuid", "")): x for x in read_json(MC_SERVER_DIR / "ops.json", []) if isinstance(x, dict)}
     whitelist = {str(x.get("uuid", "")): x for x in read_json(MC_SERVER_DIR / "whitelist.json", []) if isinstance(x, dict)}

@@ -13,14 +13,14 @@ JAVA = ROOT / "copimine-artifacts" / "src" / "me" / "copimine" / "artifacts" / "
 
 EXPECTED = {
     "batin_remen_sudnogo_dnya": (500, "BATIN_REMEN", "NETHERITE_AXE"),
-    "nu_ty_i_nakopal_blyat_pickaxe": (400, "NAKOPAL_PICKAXE", "NETHERITE_PICKAXE"),
-    "kosa_nalogovoy_inspekcii": (200, "NALOGOVAYA_KOSA", "NETHERITE_HOE"),
-    "kaska_prorab_huev": (50, "PRORAB_HELMET", "NETHERITE_HELMET"),
-    "mne_pohuy_ya_v_tanke_vest": (150, "TANK_VEST", "NETHERITE_CHESTPLATE"),
-    "ne_segodnya_suka_shield": (50, "NOT_TODAY_SHIELD", "SHIELD"),
-    "pohuy_na_debaffy_amulet": (150, "DEBUFF_AMULET", "HEART_OF_THE_SEA"),
-    "vremya_platit_nalogi_clock": (300, "TAX_CLOCK", "CLOCK"),
-    "gde_moy_lut_blyat_compass": (100, "LOOT_COMPASS", "COMPASS"),
+    "nu_ty_i_nakopal_blyat_pickaxe": (450, "NAKOPAL_PICKAXE", "NETHERITE_PICKAXE"),
+    "kosa_nalogovoy_inspekcii": (400, "NALOGOVAYA_KOSA", "NETHERITE_HOE"),
+    "kaska_prorab_huev": (350, "PRORAB_HELMET", "NETHERITE_HELMET"),
+    "mne_pohuy_ya_v_tanke_vest": (400, "TANK_VEST", "NETHERITE_CHESTPLATE"),
+    "ne_segodnya_suka_shield": (300, "NOT_TODAY_SHIELD", "SHIELD"),
+    "pohuy_na_debaffy_amulet": (250, "DEBUFF_AMULET", "HEART_OF_THE_SEA"),
+    "vremya_platit_nalogi_clock": (200, "TAX_CLOCK", "CLOCK"),
+    "gde_moy_lut_blyat_compass": (200, "LOOT_COMPASS", "COMPASS"),
 }
 
 

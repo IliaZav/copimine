@@ -986,6 +986,10 @@ copimine_harden_release_ownership() {
     "$COPIMINE_ADMIN_DIR/data"
     "$COPIMINE_ADMIN_DIR/backups"
     "$COPIMINE_ADMIN_DIR/.venv"
+    # The admin panel stages a temporary file next to the canonical catalog
+    # before replacing it. Keep this explicitly inventoried runtime catalog
+    # writable; the live plugin copy is covered by its plugin data directory.
+    "$COPIMINE_ROOT/copimine-artifacts"
     "$COPIMINE_SERVER_DIR/eula.txt"
     "$COPIMINE_SERVER_DIR/server.properties"
     # Paper/Bukkit update these root-level runtime configs during boot.  Keep

@@ -757,6 +757,7 @@ def assert_new_linked_site_account_appears_in_player_list(main) -> None:
     assert record is not None, players
     assert record["name"] == "NewLinkedPlayer", record
     assert record["hasPlayerData"] is False, record
+    assert not any(item["name"] == "ExistingHero" for item in players), players
 
 
 def assert_site_only_admin_creation_does_not_require_minecraft_access(main) -> None:
@@ -849,6 +850,18 @@ def assert_price_update_survives_audit_and_panel_event_writer_failures(main) -> 
         assert "price_ar: 150" in text, text
 
 
+def assert_release_ownership_allows_price_catalog_updates() -> None:
+    common_path = Path(__file__).resolve().parents[2] / "deploy" / "shared" / "common.sh"
+    common = common_path.read_text(encoding="utf-8")
+    ownership_start = common.index("copimine_harden_release_ownership()")
+    ownership_end = common.index("copimine_write_runtime_metadata()", ownership_start)
+    ownership = common[ownership_start:ownership_end]
+    assert '"$COPIMINE_ROOT/copimine-artifacts"' in ownership, (
+        "The canonical artifacts catalog directory must be in the runtime writable allowlist "
+        "because price updates use atomic temp-file replacement."
+    )
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="copimine-backend-security-") as raw_temp:
         temp = Path(raw_temp)
@@ -870,6 +883,7 @@ def main() -> None:
         assert_new_linked_site_account_appears_in_player_list(main_module)
         assert_site_only_admin_creation_does_not_require_minecraft_access(main_module)
         assert_price_update_survives_audit_and_panel_event_writer_failures(main_module)
+        assert_release_ownership_allows_price_catalog_updates()
         assert_artifact_digest_is_cached(runtime, temp)
         assert_bridge_limits_distinct_messages(bridge, temp)
         assert_discord_rejects_mutable_role_names(discord_bot)

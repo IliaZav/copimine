@@ -7698,20 +7698,22 @@ def stat_value(stats: dict[str, Any], key: str) -> Any:
 
 
 def list_players_sync(q: str = "") -> dict[str, Any]:
-    cached = usercache()
     names = uuid_to_name()
     result: list[dict[str, Any]] = []
     stat_dir = WORLD_DIR / "stats"
     pdata_dir = WORLD_DIR / "playerdata"
-    uuids = {str(x.get("uuid")) for x in cached if x.get("uuid")}
-    if pdata_dir.exists():
-        uuids |= {p.stem for p in pdata_dir.glob("*.dat")}
-    # A newly registered player can have a durable site account and a
-    # Minecraft link before ever joining the server.  The old list only
-    # looked at usercache/playerdata, so that account was invisible until the
-    # first login created a cache entry.  Include active linked player
-    # accounts as a source of truth while keeping the filesystem sources for
-    # existing game-only profiles.
+    whitelist = {str(x.get("uuid", "")): x for x in read_json(MC_SERVER_DIR / "whitelist.json", []) if isinstance(x, dict) and x.get("uuid")}
+    uuids = set(whitelist)
+    for uuid, row in whitelist.items():
+        whitelist_name = str(row.get("name") or "").strip()
+        if whitelist_name:
+            names[uuid] = whitelist_name
+    # The admin roster is an account/whitelist view, not a history of every
+    # UUID that has ever touched the world.  Keep playerdata/stats readable
+    # for the selected identities, but do not let old usercache/playerdata
+    # entries repopulate the cards after a whitelist cleanup.
+    # A newly registered player can still appear before the first login when
+    # an active site account already has a Minecraft link.
     try:
         with auth_conn() as conn:
             ensure_v4_schema(conn)
@@ -7731,7 +7733,6 @@ def list_players_sync(q: str = "") -> dict[str, Any]:
         LOGGER.exception("Could not add linked site accounts to the player list")
     banned_players = {str(x.get("name", "")).lower(): x for x in read_json(MC_SERVER_DIR / "banned-players.json", []) if isinstance(x, dict)}
     ops = {str(x.get("uuid", "")): x for x in read_json(MC_SERVER_DIR / "ops.json", []) if isinstance(x, dict)}
-    whitelist = {str(x.get("uuid", "")): x for x in read_json(MC_SERVER_DIR / "whitelist.json", []) if isinstance(x, dict)}
     for uuid in sorted(uuids):
         name = names.get(uuid, uuid)
         if q and q.lower() not in name.lower() and q.lower() not in uuid.lower():

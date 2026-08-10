@@ -81,6 +81,7 @@ from .commerce_catalog import admin_gift_catalog_snapshot, ar_catalog_snapshot, 
 from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from .envfile import load_env_file_to_os, resolve_env_file
+from .public_config_cache import FileMtimeMemo
 from .startup_checks import run_startup_checks
 from .yookassa_gateway import YooKassaGateway, YooKassaGatewayError, YooKassaSettings
 from .plugin_registry import (
@@ -157,6 +158,7 @@ GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PUBLIC_STATUS_CACHE_LOCK = threading.RLock()
 PUBLIC_STATUS_CACHE: tuple[float, dict[str, Any]] = (0.0, {})
 PUBLIC_STATUS_CACHE_TTL_SECONDS = max(2, int(os.getenv("PUBLIC_STATUS_CACHE_TTL_SECONDS", "10")))
+PUBLIC_SITE_CONFIG_DONATION_MEMO = FileMtimeMemo()
 PUBLIC_SKIN_CACHE_LOCK = threading.RLock()
 PUBLIC_SKIN_CACHE: dict[str, tuple[float, bytes, str]] = {}
 PUBLIC_SKIN_CACHE_TTL_SECONDS = max(60, int(os.getenv("PUBLIC_SKIN_CACHE_TTL_SECONDS", "600")))
@@ -10395,7 +10397,10 @@ def public_site_config_sync() -> dict[str, Any]:
     public_host = MC_PUBLIC_ADDRESS or ("" if MC_HOST in {"127.0.0.1", "localhost", "::1"} else MC_HOST)
     props = read_server_properties()
     version = MC_PUBLIC_VERSION or "1.21.x"
-    donation_enabled = bool((donation_catalog_snapshot_sync().get("items") or []))
+    donation_enabled = PUBLIC_SITE_CONFIG_DONATION_MEMO.get(
+        ARTIFACTS_ITEMS_FILE,
+        lambda: bool((donation_catalog_snapshot_sync().get("items") or [])),
+    )
     return {
         "serverName": "CopiMine",
         "serverAddress": public_host,

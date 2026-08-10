@@ -2022,13 +2022,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (queuedTotem != null) {
             this.restoreInfiniteTotem(player, queuedTotem);
          }
-         CatalogItem chestplate = this.authenticCatalogItem(player.getInventory().getChestplate(), player, "armor_tick");
-         if (chestplate != null && "TANK_VEST".equalsIgnoreCase(chestplate.effect())) {
-            // Refresh every second so equipping the chestplate immediately
-            // grants its protection and there is no visible gap between ticks.
-            player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 80, 0, false, false, true));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 80, 0, false, false, true));
-         }
       }
    }
 
@@ -2663,7 +2656,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (var13 != null && "PRORAB_HELMET".equalsIgnoreCase(var13.effect()) && var1.getCause() == DamageCause.FALL) {
             long var6 = this.now();
             long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var13), 0L);
-            if (var8 <= var6 && this.rollEffectChance(var13)) {
+            if (var8 > var6) {
+               this.sendCooldownMessage(var2, var13, var8, var6);
+            } else if (this.rollEffectChance(var13)) {
                var1.setDamage(var1.getDamage() * 0.4);
                var2.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 80, 0, false, false, true));
                var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 80, 0, false, false, true));
@@ -2676,8 +2671,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var4), 0L);
             if (var1.getDamage() > 0.0) {
                var1.setDamage(var1.getDamage() * 0.8);
-               var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 600, 0, false, false, true));
-               if (var8 <= var6 && this.rollEffectChance(var4)) {
+               if (var8 > var6) {
+                  this.sendCooldownMessage(var2, var4, var8, var6);
+               } else if (this.rollEffectChance(var4)) {
+                  var2.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 600, 0, false, false, true));
                   var2.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 200, 0, false, false, true));
                   this.actionCooldowns.put(this.actionCooldownKey(var2, var4), var6 + (long)Math.max(8, var4.cooldownSeconds()));
                }
@@ -2687,7 +2684,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (var5 != null && "NOT_TODAY_SHIELD".equalsIgnoreCase(var5.effect()) && var2.isBlocking() && var1 instanceof EntityDamageByEntityEvent var14) {
             long var7 = this.now();
             long var9 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var5), 0L);
-            if (var9 <= var7 && this.rollEffectChance(var5)) {
+            if (var9 > var7) {
+               this.sendCooldownMessage(var2, var5, var9, var7);
+            } else if (this.rollEffectChance(var5)) {
                LivingEntity attacker = this.resolveDamageAttacker(var14);
                if (attacker != null && attacker != var2) {
                   attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 80, 0, false, false, true));
@@ -2825,14 +2824,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.tryRareArTheft(var2, target);
             }
             if (this.artifactCombatEffects().contains(var16)) {
-               if (this.rollEffectChance(var15)) {
-                  long var19 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var15), 0L);
-                  long var8 = this.now();
-                  if (var19 <= var8) {
-                     this.actionCooldowns.put(this.actionCooldownKey(var2, var15), var8 + (long)var15.cooldownSeconds());
-                     LivingEntity var10 = var1.getEntity() instanceof LivingEntity var11 ? var11 : null;
-                     Location var20 = var1.getEntity().getLocation().add(0.0, 1.0, 0.0);
-                     switch (var16) {
+               long var19 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var15), 0L);
+               long var8 = this.now();
+               if (var19 <= var8 && this.rollEffectChance(var15)) {
+                  this.actionCooldowns.put(this.actionCooldownKey(var2, var15), var8 + (long)var15.cooldownSeconds());
+                  LivingEntity var10 = var1.getEntity() instanceof LivingEntity var11 ? var11 : null;
+                  Location var20 = var1.getEntity().getLocation().add(0.0, 1.0, 0.0);
+                  switch (var16) {
                         case "LIGHTNING":
                             var20.getWorld().strikeLightning(var1.getEntity().getLocation());
                            var20.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, var20, 10, 0.3, 0.3, 0.3, 0.01);
@@ -2926,15 +2924,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            }
 
                            var20.getWorld().spawnParticle(Particle.ENCHANT, var20, 18, 0.3, 0.3, 0.3, 0.02);
-                     }
+                  }
 
-                     if (var10 != null && !var15.visualEffectId().isBlank()) {
-                        this.visualEffects.applyTo(var10, var15.visualEffectId(), Math.max(4, var15.cooldownSeconds()));
-                        if ("ZMEI_GORYNYCH_POOP".equals(var16)) {
-                           this.visualEffects.applyTo(var10, "DARK_PULSE", 4);
-                        }
+                  if (var10 != null && !var15.visualEffectId().isBlank()) {
+                     this.visualEffects.applyTo(var10, var15.visualEffectId(), Math.max(4, var15.cooldownSeconds()));
+                     if ("ZMEI_GORYNYCH_POOP".equals(var16)) {
+                        this.visualEffects.applyTo(var10, "DARK_PULSE", 4);
                      }
                   }
+               } else if (var19 > var8) {
+                  this.sendCooldownMessage(var2, var15, var19, var8);
                }
             }
          }

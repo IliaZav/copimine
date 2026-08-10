@@ -15,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -731,6 +732,96 @@ def assert_admin_player_credentials_never_return_plaintext(main) -> None:
     assert "NewPassword!45" not in str(row["password_hash"])
 
 
+def assert_site_only_admin_creation_does_not_require_minecraft_access(main) -> None:
+    from fastapi.testclient import TestClient
+
+    owner_password = "OwnerHorseBatteryStaple!23"
+    whitelist_before = json.loads((main.MC_SERVER_DIR / "whitelist.json").read_text(encoding="utf-8"))
+    main.upsert_auth_user(
+        "OwnerAdmin",
+        {
+            "password_hash": main.make_password_hash(owner_password),
+            "enabled": True,
+            "role": "owner",
+            "minecraft_name": "",
+            "minecraft_uuid": "",
+            "createdBy": "regression",
+            "updatedBy": "regression",
+        },
+    )
+
+    with TestClient(main.app, base_url="https://panel.example.test") as client:
+        login = client.post("/api/auth/login", json={"username": "OwnerAdmin", "password": owner_password})
+        assert login.status_code == 200, login.text
+        csrf_response = client.get("/api/auth/csrf")
+        assert csrf_response.status_code == 200, csrf_response.text
+        csrf = client.cookies.get(main.CSRF_COOKIE_NAME)
+        assert csrf, client.cookies
+        response = client.post(
+            "/api/security/admins",
+            headers={
+                main.CSRF_HEADER_NAME: csrf,
+                main.SENSITIVE_CONFIRM_HEADER: "ADMIN_CREATE",
+            },
+            json={
+                "username": "panel_login",
+                "password": "PanelLogin!123",
+                "minecraft_name": "",
+                "role": "admin",
+                "ensure_op": False,
+                "ensure_whitelist": False,
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["admin"]["username"] == "panel_login", response.text
+        created = client.post("/api/auth/login", json={"username": "panel_login", "password": "PanelLogin!123"})
+        assert created.status_code == 200, created.text
+        whitelist_after = json.loads((main.MC_SERVER_DIR / "whitelist.json").read_text(encoding="utf-8"))
+        assert whitelist_after == whitelist_before, (whitelist_before, whitelist_after)
+
+
+def assert_price_update_survives_audit_and_panel_event_writer_failures(main) -> None:
+    target_id = "zmei_gorynych"
+    new_price = 150
+    source_text = (main.ARTIFACTS_ITEMS_FILE).read_text(encoding="utf-8-sig")
+    temp = Path(tempfile.mkdtemp(prefix="copimine-price-regression-"))
+    primary = temp / "items-primary.yml"
+    runtime = temp / "items-runtime.yml"
+    primary.write_text(source_text, encoding="utf-8")
+    runtime.write_text(source_text, encoding="utf-8")
+
+    def fake_catalog(path: Path) -> dict[str, Any]:
+        text = path.read_text(encoding="utf-8-sig")
+        return {
+            "ar": {
+                "byId": {
+                    target_id: {
+                        "item_id": target_id,
+                        "source": "AR_SHOP",
+                        "price_ar": 500,
+                    }
+                }
+            },
+            "donation": {"byId": {}},
+        }
+
+    with patch.object(main, "RCON_PASSWORD", "test-rcon-password"), \
+         patch.object(main, "yaml", SimpleNamespace(safe_load=lambda _text: {})), \
+         patch.object(main, "load_commerce_catalog", side_effect=fake_catalog), \
+         patch.object(main, "_shop_catalog_paths", return_value=[primary, runtime]), \
+         patch.object(main, "rcon_sync", return_value="Reloaded"), \
+         patch.object(main, "audit_event", side_effect=RuntimeError("audit sink failed")), \
+         patch.object(main, "append_panel_event", side_effect=RuntimeError("panel sink failed")):
+        result = main.update_shop_price_sync(target_id, "AR", new_price, "OwnerAdmin", "price-regression")
+
+    assert result["ok"] is True, result
+    assert result["price"] == new_price, result
+    assert "auditWarning" in result, result
+    for path in (primary, runtime):
+        text = path.read_text(encoding="utf-8")
+        assert "price_ar: 150" in text, text
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="copimine-backend-security-") as raw_temp:
         temp = Path(raw_temp)
@@ -749,6 +840,8 @@ def main() -> None:
         assert_fresh_registration_keeps_automatic_whitelist_without_bank_link(main_module)
         assert_link_code_cannot_reassign_another_players_identity(main_module)
         assert_admin_player_credentials_never_return_plaintext(main_module)
+        assert_site_only_admin_creation_does_not_require_minecraft_access(main_module)
+        assert_price_update_survives_audit_and_panel_event_writer_failures(main_module)
         assert_artifact_digest_is_cached(runtime, temp)
         assert_bridge_limits_distinct_messages(bridge, temp)
         assert_discord_rejects_mutable_role_names(discord_bot)

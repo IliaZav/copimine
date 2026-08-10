@@ -821,8 +821,9 @@ class PropertiesPatchIn(BaseModel):
 
 
 class AdminAccessIn(BaseModel):
-    username: str = Field(min_length=3, max_length=16)
+    username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=8, max_length=128)
+    minecraft_name: Optional[str] = Field(default=None, max_length=16)
     role: str = Field(default="admin", max_length=32)
     ensure_op: bool = False
     ensure_whitelist: bool = False
@@ -830,6 +831,7 @@ class AdminAccessIn(BaseModel):
 
 class AdminUpdateIn(BaseModel):
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    minecraft_name: Optional[str] = Field(default=None, max_length=16)
     role: Optional[str] = Field(default=None, max_length=32)
     enabled: Optional[bool] = None
     ensure_op: bool = False
@@ -838,7 +840,7 @@ class AdminUpdateIn(BaseModel):
 
 class AdminAccountUpdateIn(BaseModel):
     current_password: str = Field(min_length=1, max_length=128)
-    new_username: Optional[str] = Field(default=None, min_length=3, max_length=16)
+    new_username: Optional[str] = Field(default=None, min_length=3, max_length=32)
     new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
 
 
@@ -1869,7 +1871,7 @@ def normalize_admin_users(data: Any) -> dict[str, dict[str, Any]]:
         return normalized
     for name, meta in data.items():
         username = str(name).strip()
-        if not valid_minecraft_name(username):
+        if not valid_site_username(username):
             continue
         if isinstance(meta, str):
             normalized[username] = {"password_hash": meta, "role": "admin", "enabled": True}
@@ -1880,6 +1882,8 @@ def normalize_admin_users(data: Any) -> dict[str, dict[str, Any]]:
                 item["password_hash"] = password_hash
                 item["role"] = normalize_admin_role(meta.get("role"))
                 item["enabled"] = bool(meta.get("enabled", True))
+                item["minecraft_name"] = str(meta.get("minecraft_name") or meta.get("minecraftName") or "").strip()
+                item["minecraft_uuid"] = str(meta.get("minecraft_uuid") or meta.get("minecraftUuid") or "").strip()
                 normalized[username] = item
     return normalized
 
@@ -3429,6 +3433,8 @@ def ensure_auth_db() -> None:
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'admin',
                 enabled INTEGER NOT NULL DEFAULT 1,
+                minecraft_uuid TEXT NOT NULL DEFAULT '',
+                minecraft_name TEXT NOT NULL DEFAULT '',
                 created_at BIGINT NOT NULL DEFAULT 0,
                 created_by TEXT NOT NULL DEFAULT '',
                 updated_at BIGINT NOT NULL DEFAULT 0,
@@ -3437,6 +3443,8 @@ def ensure_auth_db() -> None:
             )
             """
                 )
+                conn.execute("ALTER TABLE cm_admin_users ADD COLUMN IF NOT EXISTS minecraft_uuid TEXT NOT NULL DEFAULT ''")
+                conn.execute("ALTER TABLE cm_admin_users ADD COLUMN IF NOT EXISTS minecraft_name TEXT NOT NULL DEFAULT ''")
                 conn.execute(
             """
             CREATE TABLE IF NOT EXISTS cm_admin_sessions(
@@ -3493,6 +3501,8 @@ def auth_db_user_rows() -> dict[str, dict[str, Any]]:
                 "password_hash": str(row["password_hash"]),
                 "role": str(row["role"] or "admin"),
                 "enabled": bool(int(row["enabled"] or 0)),
+                "minecraftUuid": str(row["minecraft_uuid"] or ""),
+                "minecraftName": str(row["minecraft_name"] or ""),
                 "createdAt": int(row["created_at"] or 0),
                 "createdBy": str(row["created_by"] or "db"),
                 "updatedAt": int(row["updated_at"] or 0),
@@ -3508,13 +3518,15 @@ def upsert_auth_user(username: str, meta: dict[str, Any]) -> None:
     with auth_conn() as conn:
         conn.execute(
             """
-            INSERT INTO cm_admin_users(username,username_norm,password_hash,role,enabled,created_at,created_by,updated_at,updated_by,source)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO cm_admin_users(username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,created_by,updated_at,updated_by,source)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(username_norm) DO UPDATE SET
                 username=excluded.username,
                 password_hash=excluded.password_hash,
                 role=excluded.role,
                 enabled=excluded.enabled,
+                minecraft_uuid=excluded.minecraft_uuid,
+                minecraft_name=excluded.minecraft_name,
                 updated_at=excluded.updated_at,
                 updated_by=excluded.updated_by,
                 source=excluded.source
@@ -3525,6 +3537,8 @@ def upsert_auth_user(username: str, meta: dict[str, Any]) -> None:
                 str(meta.get("password_hash", "")),
                 str(meta.get("role") or "admin"),
                 1 if bool(meta.get("enabled", True)) else 0,
+                str(meta.get("minecraft_uuid") or meta.get("minecraftUuid") or ""),
+                str(meta.get("minecraft_name") or meta.get("minecraftName") or ""),
                 int(meta.get("createdAt") or now),
                 str(meta.get("createdBy") or "migration"),
                 int(meta.get("updatedAt") or now),
@@ -3562,7 +3576,7 @@ def load_legacy_admin_users() -> dict[str, dict[str, Any]]:
 def migrate_legacy_admins_to_auth_db() -> None:
     legacy = load_legacy_admin_users()
     for username, meta in legacy.items():
-        if not valid_minecraft_name(username):
+        if not valid_site_username(username):
             continue
         item = dict(meta)
         item.setdefault("createdAt", int(time.time()))
@@ -3596,6 +3610,8 @@ def current_admin_users_nonblocking() -> dict[str, dict[str, Any]]:
                     "password_hash": str(row["password_hash"]),
                     "role": str(row["role"] or "admin"),
                     "enabled": bool(int(row["enabled"] or 0)),
+                    "minecraftUuid": str(row["minecraft_uuid"] or ""),
+                    "minecraftName": str(row["minecraft_name"] or ""),
                     "createdAt": int(row["created_at"] or 0),
                     "createdBy": str(row["created_by"] or "db"),
                     "updatedAt": int(row["updated_at"] or 0),
@@ -4037,6 +4053,15 @@ def minecraft_access_ok(username: str) -> tuple[bool, list[str]]:
     return ok, errors
 
 
+def admin_minecraft_access_state(username: str, meta: Optional[Mapping[str, Any]] = None) -> tuple[bool, list[str]]:
+    """Report optional Minecraft access without making it a site-login gate."""
+    record = dict(meta or {})
+    minecraft_name = str(record.get("minecraft_name") or record.get("minecraftName") or "").strip()
+    if not minecraft_name:
+        return True, []
+    return minecraft_access_ok(minecraft_name)
+
+
 def login_key(request: Request, username: str) -> str:
     ip = get_client_ip(request)
     return f"{ip}:{username.lower()}"
@@ -4148,9 +4173,6 @@ def require_panel_admin_context(request: Request, authorization: str = Header(de
     role = normalize_admin_role(meta.get("role"))
     if not is_panel_admin_role(role):
         raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
-    access_ok, access_errors = minecraft_access_ok(real_username)
-    if not access_ok:
-        raise HTTPException(status_code=403, detail="Minecraft-доступ отозван: " + "; ".join(access_errors))
     return {
         "username": real_username,
         "role": role,
@@ -4448,9 +4470,6 @@ def rotate_auth_pair_from_refresh_sync(refresh_token: str, request: Optional[Req
     if not is_panel_admin_role(current_role):
         revoke_refresh_session(str(payload.get("jti") or ""))
         raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
-    access_ok, access_errors = minecraft_access_ok(real_username)
-    if not access_ok:
-        raise HTTPException(status_code=403, detail="Minecraft-доступ отозван: " + "; ".join(access_errors))
     access_token = make_token(real_username, current_role, request, extra_claims={"display_name": real_username, "remember": remember_me})
     refresh_token_new = make_refresh_token(real_username, current_role, request, family_id=family_id, extra_claims={"remember": remember_me})
     refresh_payload = decode_signed_token(refresh_token_new)
@@ -11944,11 +11963,6 @@ async def login(data: LoginIn, request: Request, response: Response) -> dict[str
         register_failed_login(request, username)
         audit_event(username, "auth.login", status="failed", details={"ip": get_client_ip(request)})
         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
-    access_ok, access_errors = minecraft_access_ok(real_username)
-    if not access_ok:
-        register_failed_login(request, username)
-        audit_event(username, "auth.login", status="blocked", details={"reason": access_errors})
-        raise HTTPException(status_code=403, detail="Доступ запрещён: " + "; ".join(access_errors))
     clear_failed_login(request, username)
     role = normalize_admin_role(meta.get("role"))
     if not is_panel_admin_role(role):
@@ -11977,11 +11991,6 @@ async def session_login(data: PlayerLoginIn, request: Request, response: Respons
 
     real_username, meta = resolve_admin_user(username)
     if meta and bool(meta.get("enabled", True)) and verify_password_hash(str(meta.get("password_hash", "")), data.password):
-        access_ok, access_errors = minecraft_access_ok(real_username)
-        if not access_ok:
-            register_failed_login(request, "session:" + username)
-            audit_event(username, "auth.session_login", status="blocked", details={"reason": access_errors})
-            raise HTTPException(status_code=403, detail="Доступ запрещён: " + "; ".join(access_errors))
         role = normalize_admin_role(meta.get("role"))
         if not is_panel_admin_role(role):
             register_failed_login(request, "session:" + username)
@@ -12121,9 +12130,6 @@ async def session_me(request: Request, authorization: str = Header(default="")) 
     current_role = normalize_admin_role(meta.get("role"))
     if not is_panel_admin_role(current_role):
         raise HTTPException(status_code=403, detail="Недостаточно прав для панели")
-    access_ok, access_errors = minecraft_access_ok(real_username)
-    if not access_ok:
-        raise HTTPException(status_code=403, detail="Minecraft-доступ отозван: " + "; ".join(access_errors))
     return {
         "authenticated": True,
         "kind": "panel",
@@ -12138,8 +12144,8 @@ async def session_me(request: Request, authorization: str = Header(default="")) 
 @app.get("/api/auth/me")
 async def me(context: dict[str, Any] = Depends(require_panel_admin_context)) -> dict[str, Any]:
     username = str(context.get("username") or "")
-    access_ok, access_errors = minecraft_access_ok(username)
     meta = current_admin_users().get(username, {})
+    access_ok, access_errors = admin_minecraft_access_state(username, meta)
     role = normalize_admin_role(meta.get("role") or context.get("role"))
     return {
         "username": username,
@@ -14519,11 +14525,14 @@ async def admin_db_delete(table: str, data: DbDeleteIn, request: Request, userna
 
 def admin_public_row(username: str, meta: dict[str, Any], *, credentials_visible: bool = False) -> dict[str, Any]:
     lists = minecraft_access_lists()
-    username_l = username.lower()
-    uuid = name_to_uuid().get(username_l, "").lower()
-    is_op = username_l in lists["opNames"] or (uuid and uuid in lists["opUuids"])
-    is_whitelisted = username_l in lists["whitelistNames"] or (uuid and uuid in lists["whitelistUuids"])
-    can_login = bool(meta.get("enabled", True)) and (is_op or not REQUIRE_OP_FOR_LOGIN) and (is_whitelisted or not REQUIRE_WHITELIST_FOR_LOGIN)
+    minecraft_name = str(meta.get("minecraft_name") or meta.get("minecraftName") or "").strip()
+    minecraft_uuid = str(meta.get("minecraft_uuid") or meta.get("minecraftUuid") or "").strip().lower()
+    if minecraft_name and not minecraft_uuid:
+        minecraft_uuid = name_to_uuid().get(minecraft_name.lower(), "").lower()
+    minecraft_name_l = minecraft_name.lower()
+    is_op = bool(minecraft_name and (minecraft_name_l in lists["opNames"] or (minecraft_uuid and minecraft_uuid in lists["opUuids"])))
+    is_whitelisted = bool(minecraft_name and (minecraft_name_l in lists["whitelistNames"] or (minecraft_uuid and minecraft_uuid in lists["whitelistUuids"])))
+    can_login = bool(meta.get("enabled", True))
     return {
         "username": username,
         # Never return a password or password hash.  The owner sees the
@@ -14531,6 +14540,8 @@ def admin_public_row(username: str, meta: dict[str, Any], *, credentials_visible
         "credentialsVisible": bool(credentials_visible),
         "login": username if credentials_visible else "",
         "passwordSet": bool(credentials_visible and str(meta.get("password_hash") or "")),
+        "minecraftName": minecraft_name,
+        "minecraftUuid": minecraft_uuid,
         "role": normalize_admin_role(meta.get("role")),
         "enabled": bool(meta.get("enabled", True)),
         "op": bool(is_op),
@@ -14542,52 +14553,54 @@ def admin_public_row(username: str, meta: dict[str, Any], *, credentials_visible
     }
 
 
-def ensure_minecraft_access_for_new_admin(username: str, ensure_op: bool, ensure_whitelist: bool) -> dict[str, Any]:
+def ensure_minecraft_access_for_new_admin(minecraft_name: str, ensure_op: bool, ensure_whitelist: bool) -> dict[str, Any]:
+    minecraft_name = str(minecraft_name or "").strip()
+    if not minecraft_name:
+        if ensure_op or ensure_whitelist:
+            raise HTTPException(status_code=400, detail="Для OP или whitelist сначала укажи Minecraft-ник")
+        return {"configured": False, "minecraftName": "", "op": False, "whitelisted": False, "rconActions": []}
     lists = minecraft_access_lists()
-    username_l = username.lower()
-    uuid = name_to_uuid().get(username_l, "").lower()
-    is_op = username_l in lists["opNames"] or (uuid and uuid in lists["opUuids"])
-    is_whitelisted = username_l in lists["whitelistNames"] or (uuid and uuid in lists["whitelistUuids"])
+    minecraft_name_l = minecraft_name.lower()
+    uuid = name_to_uuid().get(minecraft_name_l, "").lower()
+    is_op = minecraft_name_l in lists["opNames"] or (uuid and uuid in lists["opUuids"])
+    is_whitelisted = minecraft_name_l in lists["whitelistNames"] or (uuid and uuid in lists["whitelistUuids"])
     actions: list[str] = []
-    if not is_whitelisted:
-        if ensure_whitelist:
-            if not RCON_PASSWORD:
-                raise HTTPException(status_code=503, detail="Нельзя добавить в whitelist: RCON_PASSWORD не настроен")
-            actions.append(f"whitelist add {username}")
-            actions.append("whitelist reload")
-            is_whitelisted = True
-        else:
-            raise HTTPException(status_code=400, detail="Игрока нет в whitelist. Выбери игрока из whitelist или включи 'добавить в whitelist'.")
-    if not is_op and (REQUIRE_OP_FOR_LOGIN or ensure_op):
-        if ensure_op:
-            if not RCON_PASSWORD:
-                raise HTTPException(status_code=503, detail="Нельзя выдать OP: RCON_PASSWORD не настроен")
-            actions.append(f"op {username}")
-            is_op = True
-        elif REQUIRE_OP_FOR_LOGIN:
-            raise HTTPException(status_code=400, detail="Для входа включена проверка OP, а игрок не OP. Включи 'выдать OP' или сначала выдай OP в игре.")
+    if not is_whitelisted and ensure_whitelist:
+        if not RCON_PASSWORD:
+            raise HTTPException(status_code=503, detail="Нельзя добавить в whitelist: RCON_PASSWORD не настроен")
+        actions.append(f"whitelist add {minecraft_name}")
+        actions.append("whitelist reload")
+        is_whitelisted = True
+    if not is_op and ensure_op:
+        if not RCON_PASSWORD:
+            raise HTTPException(status_code=503, detail="Нельзя выдать OP: RCON_PASSWORD не настроен")
+        actions.append(f"op {minecraft_name}")
+        is_op = True
     responses = []
     for command in actions:
         responses.append({"command": command, "response": rcon_sync(command)})
-    return {"op": is_op, "whitelisted": is_whitelisted, "rconActions": responses}
+    return {"configured": True, "minecraftName": minecraft_name, "minecraftUuid": uuid, "op": is_op, "whitelisted": is_whitelisted, "rconActions": responses}
 
 
 def save_admin_user(username: str, meta: dict[str, Any]) -> None:
     upsert_auth_user(username, meta)
 
 
-def revoke_minecraft_admin_access(username: str) -> dict[str, Any]:
+def revoke_minecraft_admin_access(minecraft_name: str) -> dict[str, Any]:
     """Remove server operator and known admin LuckPerms groups, keep whitelist."""
+    minecraft_name = str(minecraft_name or "").strip()
+    if not minecraft_name:
+        return {"configured": False, "actions": [], "errors": []}
     if not RCON_PASSWORD:
         return {"configured": False, "actions": [], "errors": ["RCON_PASSWORD не настроен"]}
     actions: list[dict[str, str]] = []
     # The username is validated before this helper is called.  Keep the
     # whitelist entry so the demoted person can still join as a normal player.
     commands = [
-        f"deop {username}",
-        f"lp user {username} parent remove admin",
-        f"lp user {username} parent remove junior_admin",
-        f"lp user {username} parent remove senior_admin",
+        f"deop {minecraft_name}",
+        f"lp user {minecraft_name} parent remove admin",
+        f"lp user {minecraft_name} parent remove junior_admin",
+        f"lp user {minecraft_name} parent remove senior_admin",
     ]
     for command in commands:
         try:
@@ -14653,11 +14666,13 @@ def remove_or_disable_admin_user(username: str, current_owner: str) -> dict[str,
     meta["updatedAt"] = int(time.time())
     meta["updatedBy"] = current_owner
     save_admin_user(real_username, meta)
-    minecraft = revoke_minecraft_admin_access(real_username)
-    try:
-        prepare_demoted_player_account(real_username, str(found.get("password_hash") or ""))
-    except Exception as exc:
-        LOGGER.warning("Could not prepare demoted player account %s: %s", real_username, exc)
+    minecraft_name = str(found.get("minecraft_name") or found.get("minecraftName") or "").strip()
+    minecraft = revoke_minecraft_admin_access(minecraft_name)
+    if minecraft_name:
+        try:
+            prepare_demoted_player_account(minecraft_name, str(found.get("password_hash") or ""))
+        except Exception as exc:
+            LOGGER.warning("Could not prepare demoted player account %s: %s", minecraft_name, exc)
     return {"ok": True, "admin": admin_public_row(real_username, meta), "minecraft": minecraft, "demoted": True}
 
 
@@ -14684,12 +14699,15 @@ async def security_add_admin(data: AdminAccessIn, request: Request, username: st
     require_sensitive_confirm(request, "ADMIN_CREATE")
     username = data.username.strip()
     ensure_admin_account_create_allowed(actor_username, username, data.role)
-    if not valid_minecraft_name(username):
-        raise HTTPException(status_code=400, detail="Ник должен быть обычным Minecraft-ником 3-16 символов: A-Z, 0-9, _")
+    if not valid_site_username(username):
+        raise HTTPException(status_code=400, detail="Логин должен быть 3-32 символа: A-Z, 0-9 и _")
+    minecraft_name = str(data.minecraft_name or "").strip()
+    if minecraft_name and not valid_minecraft_name(minecraft_name):
+        raise HTTPException(status_code=400, detail="Minecraft-ник должен быть 3-16 символов: A-Z, 0-9 и _")
     ok, msg = password_policy_ok(data.password)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
-    mc = await bg(ensure_minecraft_access_for_new_admin, username, data.ensure_op, data.ensure_whitelist)
+    mc = await bg(ensure_minecraft_access_for_new_admin, minecraft_name, data.ensure_op, data.ensure_whitelist)
     now = int(time.time())
     _, existing = resolve_admin_user(username)
     meta = dict(existing)
@@ -14697,13 +14715,15 @@ async def security_add_admin(data: AdminAccessIn, request: Request, username: st
         "password_hash": make_password_hash(data.password),
         "role": normalize_admin_role(data.role),
         "enabled": True,
+        "minecraft_name": minecraft_name,
+        "minecraft_uuid": str(mc.get("minecraftUuid") or resolve_minecraft_uuid("", minecraft_name) or ""),
         "createdAt": meta.get("createdAt", now),
         "createdBy": meta.get("createdBy", actor_username),
         "updatedAt": now,
         "updatedBy": actor_username,
     })
     save_admin_user(username, meta)
-    audit_event(actor_username, "security.admin.create", target=username, details={"ensureOp": data.ensure_op, "ensureWhitelist": data.ensure_whitelist, "role": normalize_admin_role(data.role)})
+    audit_event(actor_username, "security.admin.create", target=username, details={"ensureOp": data.ensure_op, "ensureWhitelist": data.ensure_whitelist, "role": normalize_admin_role(data.role), "minecraftName": minecraft_name})
     append_panel_event("admin-panel", "admin_access_created", actor=actor_username, target=username, tags=["security"])
     return {"ok": True, "admin": admin_public_row(username, meta), "minecraft": mc}
 
@@ -14711,14 +14731,21 @@ async def security_add_admin(data: AdminAccessIn, request: Request, username: st
 @app.patch("/api/security/admins/{username}")
 async def security_update_admin(username: str, data: AdminUpdateIn, request: Request, owner: str = Depends(require_owner)) -> dict[str, Any]:
     require_sensitive_confirm(request, "ADMIN_UPDATE")
-    if not valid_minecraft_name(username):
-        raise HTTPException(status_code=400, detail="Некорректный ник")
+    if not valid_site_username(username):
+        raise HTTPException(status_code=400, detail="Некорректный логин")
     real_username, found = resolve_admin_user(username)
     if not found:
         raise HTTPException(status_code=404, detail="Админ не найден")
     username = real_username
     ensure_admin_account_owner_mutation_allowed(owner, username, data.role)
     meta = dict(found)
+    minecraft_name = str(found.get("minecraft_name") or found.get("minecraftName") or "").strip()
+    if data.minecraft_name is not None:
+        minecraft_name = str(data.minecraft_name or "").strip()
+        if minecraft_name and not valid_minecraft_name(minecraft_name):
+            raise HTTPException(status_code=400, detail="Minecraft-ник должен быть 3-16 символов: A-Z, 0-9 и _")
+        meta["minecraft_name"] = minecraft_name
+        meta["minecraft_uuid"] = resolve_minecraft_uuid("", minecraft_name)
     if data.enabled is not None:
         if username == owner and data.enabled is False:
             raise HTTPException(status_code=400, detail="Нельзя выключить самого себя")
@@ -14730,11 +14757,11 @@ async def security_update_admin(username: str, data: AdminUpdateIn, request: Req
         meta["password_hash"] = make_password_hash(data.password)
     if data.role is not None:
         meta["role"] = normalize_admin_role(data.role)
-    mc = await bg(ensure_minecraft_access_for_new_admin, username, data.ensure_op, data.ensure_whitelist)
+    mc = await bg(ensure_minecraft_access_for_new_admin, minecraft_name, data.ensure_op, data.ensure_whitelist)
     meta["updatedAt"] = int(time.time())
     meta["updatedBy"] = owner
     save_admin_user(username, meta)
-    audit_event(owner, "security.admin.update", target=username, details={"passwordChanged": bool(data.password), "enabled": data.enabled})
+    audit_event(owner, "security.admin.update", target=username, details={"passwordChanged": bool(data.password), "enabled": data.enabled, "minecraftName": minecraft_name})
     append_panel_event("admin-panel", "admin_access_updated", actor=owner, target=username, tags=["security"])
     return {"ok": True, "admin": admin_public_row(username, meta), "minecraft": mc}
 
@@ -14760,16 +14787,12 @@ async def security_update_own_account(
     if not verify_password_hash(str(current_meta.get("password_hash") or ""), data.current_password):
         raise HTTPException(status_code=401, detail="Текущий пароль указан неверно")
     next_name = str(data.new_username or "").strip() or current_name
-    if not valid_minecraft_name(next_name):
-        raise HTTPException(status_code=400, detail="Логин должен быть Minecraft-ником 3-16 символов: A-Z, 0-9 и _")
+    if not valid_site_username(next_name):
+        raise HTTPException(status_code=400, detail="Логин должен быть 3-32 символа: A-Z, 0-9 и _")
     users = current_admin_users()
     for existing_name in users:
         if existing_name.casefold() == next_name.casefold() and existing_name.casefold() != current_name.casefold():
             raise HTTPException(status_code=409, detail="Такой логин администратора уже занят")
-    if next_name.casefold() != current_name.casefold():
-        access_ok, access_errors = minecraft_access_ok(next_name)
-        if not access_ok:
-            raise HTTPException(status_code=400, detail="Новый логин не имеет доступа к Minecraft: " + "; ".join(access_errors))
     next_password = data.new_password
     if next_password:
         ok, reason = password_policy_ok(next_password)
@@ -14807,7 +14830,8 @@ async def security_delete_admin(username: str, request: Request, owner: str = De
 @app.get("/api/security/access")
 async def security_access(username: str = Depends(require_admin)) -> dict[str, Any]:
     lists = minecraft_access_lists()
-    access_ok, errors = minecraft_access_ok(username)
+    meta = current_admin_users().get(username, {})
+    access_ok, errors = admin_minecraft_access_state(username, meta)
     return {
         "username": username,
         "accessOk": access_ok,
@@ -15576,9 +15600,21 @@ def update_shop_price_sync(item_id: str, category: str, price: int, actor: str, 
                     pass
             raise
 
-    audit_event(actor, "shop.price.update", target=target["item_id"], details={"category": target["category"], "before": target["old_price"], "after": normalized_price, "idempotency_key": idempotency_key})
-    append_panel_event("shops", "price_changed", actor=actor, target=target["item_id"], metadata={"category": target["category"], "before": target["old_price"], "after": normalized_price}, tags=["shop", "price"])
-    return {"ok": True, "item_id": target["item_id"], "category": target["category"], "old_price": target["old_price"], "price": normalized_price, "reload": str(reload_response or "")[:240]}
+    audit_warnings: list[str] = []
+    try:
+        audit_event(actor, "shop.price.update", target=target["item_id"], details={"category": target["category"], "before": target["old_price"], "after": normalized_price, "idempotency_key": idempotency_key})
+    except Exception:
+        LOGGER.exception("Shop price changed but audit write failed for %s", target["item_id"])
+        audit_warnings.append("Не удалось записать событие в основной аудит")
+    try:
+        append_panel_event("shops", "price_changed", actor=actor, target=target["item_id"], metadata={"category": target["category"], "before": target["old_price"], "after": normalized_price}, tags=["shop", "price"])
+    except Exception:
+        LOGGER.exception("Shop price changed but panel event write failed for %s", target["item_id"])
+        audit_warnings.append("Не удалось записать событие в журнал панели")
+    result = {"ok": True, "item_id": target["item_id"], "category": target["category"], "old_price": target["old_price"], "price": normalized_price, "reload": str(reload_response or "")[:240]}
+    if audit_warnings:
+        result["auditWarning"] = "; ".join(audit_warnings)
+    return result
 
 
 def update_shop_limit_sync(item_id: str, category: str, limit: int, actor: str, idempotency_key: str) -> dict[str, Any]:

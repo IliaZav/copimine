@@ -594,6 +594,10 @@ function isMinecraftName(value) {
   return /^[A-Za-z0-9_]{3,16}$/.test(cleanText(value));
 }
 
+function isSiteUsername(value) {
+  return /^[A-Za-z0-9_]{3,32}$/.test(cleanText(value));
+}
+
 function statusLabel(value, fallback = "-") {
   const raw = cleanText(value).toLowerCase();
   const labels = {
@@ -4703,12 +4707,12 @@ window.updateShopPrice = async (category, itemId) => {
   const headers = await dangerConfirm(`Изменить цену ${id} в ${kind}-лавке на ${price}?`, "SHOP_PRICE_UPDATE");
   if (!headers) return;
   try {
-    await api("/api/admin/shop/price", {
+    const result = await api("/api/admin/shop/price", {
       method: "POST",
       headers,
       body: JSON.stringify({ item_id: id, category: kind, price, idempotency_key: randomActionKey("shop-price") }),
     });
-    toast(`Цена ${id} обновлена. Игра и сайт используют новое значение.`);
+    toast(result?.auditWarning ? `Цена ${id} обновлена, но ${result.auditWarning.toLowerCase()}.` : `Цена ${id} обновлена. Игра и сайт используют новое значение.`);
     await loadShops();
   } catch (err) {
     toast(err.message, true);
@@ -5435,6 +5439,7 @@ async function loadAdmins() {
           { key: "passwordSet", label: "Пароль", render: v => v ? pill("задан · сменить", "good") : pill("не задан", "warn") }
         ] : []),
         { key: "username", label: "Ник" },
+        { key: "minecraftName", label: "Minecraft", render: value => value ? esc(value) : pill("не привязан", "neutral") },
         { key: "role", label: "Роль", render: value => pill(value === "junior_admin" ? "младший админ" : (value || "admin"), value === "junior_admin" ? "neutral" : "good") },
         { key: "enabled", label: "Включён", render: v => v ? pill("да", "good") : pill("нет", "bad") },
         { key: "op", label: "OP", render: v => v ? pill("OP", "good") : pill("нет", "warn") },
@@ -5460,7 +5465,8 @@ async function loadAdmins() {
           `)
         : panel("Новый админ панели", "Создай сотруднику отдельный вход в рабочий кабинет сервера.", `
             <div class="form-grid danger-zone admin-create-panel">
-              <label class="field-stack"><span>Логин администратора</span><input id="newAdminUsername" list="adminPlayerNames" placeholder="Minecraft-ник" autocomplete="off" /></label>
+              <label class="field-stack"><span>Логин</span><input id="newAdminUsername" placeholder="Логин админки" autocomplete="username" /></label>
+              <label class="field-stack"><span>Minecraft-ник <small>(необязательно)</small></span><input id="newAdminMinecraftName" list="adminPlayerNames" placeholder="Оставь пустым для site-only admin" autocomplete="off" /></label>
               <datalist id="adminPlayerNames">${availableAdminPlayers.map((row) => `<option value="${esc(row.name)}">`).join("")}</datalist>
               <label class="field-stack"><span>Пароль</span><input id="newAdminPassword" type="password" placeholder="Минимум 8 символов" autocomplete="new-password" /></label>
               <div class="admin-role-toggle" role="group" aria-label="Роль администратора">
@@ -5470,7 +5476,7 @@ async function loadAdmins() {
               <details class="admin-access-advanced">
                 <summary>Дополнительный доступ к Minecraft</summary>
                 <div class="check-row">
-                  <label class="check-line"><input id="newAdminWhitelist" type="checkbox" checked /> Добавить в whitelist</label>
+                  <label class="check-line"><input id="newAdminWhitelist" type="checkbox" /> Добавить в whitelist</label>
                   <label class="check-line"><input id="newAdminOp" type="checkbox" /> Выдать OP</label>
                 </div>
               </details>
@@ -5512,8 +5518,10 @@ window.approveWhitelistRequest = async (requestId) => {
 };
 window.createAdminUser = async () => {
   const username = $("newAdminUsername")?.value?.trim() || "";
+  const minecraftName = $("newAdminMinecraftName")?.value?.trim() || "";
   const password = $("newAdminPassword")?.value || "";
-  if (!isMinecraftName(username)) return toast("Ник должен быть 3-16 символов: A-Z, 0-9 или _.", true);
+  if (!isSiteUsername(username)) return toast("Логин должен быть 3-32 символа: A-Z, 0-9 или _.", true);
+  if (minecraftName && !isMinecraftName(minecraftName)) return toast("Minecraft-ник должен быть 3-16 символов: A-Z, 0-9 или _.", true);
   if (password.length < 8) return toast("Пароль должен быть не короче 8 символов.", true);
   const headers = await dangerConfirm(`Создать админа панели: ${username}`, "ADMIN_CREATE");
   if (!headers) return;
@@ -5524,12 +5532,14 @@ window.createAdminUser = async () => {
       body: JSON.stringify({
         username,
         password,
+        minecraft_name: minecraftName,
         role: document.querySelector('input[name="newAdminRole"]:checked')?.value || $("newAdminRole")?.value || "admin",
         ensure_whitelist: Boolean($("newAdminWhitelist")?.checked),
         ensure_op: Boolean($("newAdminOp")?.checked)
       })
     });
     $("newAdminUsername").value = "";
+    $("newAdminMinecraftName").value = "";
     $("newAdminPassword").value = "";
     toast("Админ создан");
     loadAdmins();
@@ -5581,7 +5591,7 @@ window.restoreAdmin = async (username) => {
     await api(`/api/security/admins/${encodeURIComponent(target)}`, {
       method: "PATCH",
       headers,
-      body: JSON.stringify({ enabled: true, role: "admin", ensure_op: true, ensure_whitelist: true })
+      body: JSON.stringify({ enabled: true, role: "admin" })
     });
     toast(`${target} снова администратор`);
     await loadAdmins();

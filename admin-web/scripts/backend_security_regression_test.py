@@ -732,6 +732,58 @@ def assert_admin_player_credentials_never_return_plaintext(main) -> None:
     assert "NewPassword!45" not in str(row["password_hash"])
 
 
+def assert_admin_player_actions_resolve_stale_minecraft_link(main) -> None:
+    """A link-table identity must expose the same admin controls as a cached link."""
+    now = main.now_ts()
+    minecraft_name = "StaleLinkedHero"
+    minecraft_uuid = "33333333-3333-3333-3333-333333333333"
+    cache_path = main.MC_SERVER_DIR / "usercache.json"
+    cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    cache.append({"uuid": minecraft_uuid, "name": minecraft_name})
+    cache_path.write_text(json.dumps(cache), encoding="utf-8")
+    with main.auth_conn() as conn:
+        main.ensure_v4_schema(conn)
+        conn.execute(
+            "INSERT INTO site_accounts(id,username,username_norm,password_hash,role,enabled,minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip) VALUES(%s,%s,%s,%s,'player',1,'','',%s,%s,%s,'')",
+            (
+                "stale-link-account",
+                "stalelinked",
+                "stalelinked",
+                main.make_password_hash("OldStalePassword!23"),
+                now,
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO minecraft_account_links(minecraft_uuid,minecraft_name,site_account_id,status,linked_at,updated_at) VALUES(%s,%s,%s,'ACTIVE',%s,%s)",
+            (minecraft_uuid, minecraft_name, "stale-link-account", now, now),
+        )
+        conn.commit()
+
+    profile = main.player_site_bank_profile_sync(minecraft_uuid, minecraft_name)
+    assert profile["siteAccount"]["id"] == "stale-link-account", profile
+    assert profile["siteAccount"]["username"] == "stalelinked", profile
+
+    result = main.admin_update_player_account_sync(
+        minecraft_name,
+        "AdminUser",
+        main.AdminPlayerAccountUpdateIn(username="staleupdated", new_password="NewStalePassword!45"),
+    )
+    assert result["siteAccountId"] == "stale-link-account", result
+    assert result["username"] == "staleupdated", result
+    with main.auth_conn() as conn:
+        row = conn.execute(
+            "SELECT username,minecraft_uuid,minecraft_name,password_hash FROM site_accounts WHERE id=%s",
+            ("stale-link-account",),
+        ).fetchone()
+        conn.commit()
+    assert row["username"] == "staleupdated", row
+    assert row["minecraft_uuid"] == minecraft_uuid, row
+    assert row["minecraft_name"] == minecraft_name, row
+    assert main.verify_password_hash(row["password_hash"], "NewStalePassword!45")
+
+
 def assert_new_linked_site_account_appears_in_player_list(main) -> None:
     now = main.now_ts()
     linked_uuid = "22222222-2222-2222-2222-222222222222"
@@ -879,8 +931,9 @@ def main() -> None:
         assert_registration_does_not_claim_an_existing_minecraft_identity(main_module)
         assert_fresh_registration_keeps_automatic_whitelist_without_bank_link(main_module)
         assert_link_code_cannot_reassign_another_players_identity(main_module)
-        assert_admin_player_credentials_never_return_plaintext(main_module)
         assert_new_linked_site_account_appears_in_player_list(main_module)
+        assert_admin_player_credentials_never_return_plaintext(main_module)
+        assert_admin_player_actions_resolve_stale_minecraft_link(main_module)
         assert_site_only_admin_creation_does_not_require_minecraft_access(main_module)
         assert_price_update_survives_audit_and_panel_event_writer_failures(main_module)
         assert_release_ownership_allows_price_catalog_updates()

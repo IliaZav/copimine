@@ -4320,6 +4320,100 @@ def hydrate_player_account_link(conn: Any, account: Mapping[str, Any] | dict[str
     return hydrated
 
 
+def player_site_account_for_identity(
+    conn: Any,
+    minecraft_uuid: str = "",
+    minecraft_name: str = "",
+) -> Optional[dict[str, Any]]:
+    """Resolve a player site account from every durable Minecraft link source.
+
+    ``site_accounts.minecraft_*`` is a cache, not the source of truth.  Older
+    link flows can leave those two columns empty while the active identity is
+    present in ``minecraft_account_links`` or ``whitelist_account_links``.
+    Admin player cards must still expose account actions for that identity.
+    """
+    uuid_value = str(minecraft_uuid or "").strip()
+    name_value = str(minecraft_name or "").strip()
+    queries: list[tuple[str, tuple[Any, ...]]] = []
+    if uuid_value:
+        queries.extend(
+            [
+                (
+                    """
+                    SELECT * FROM site_accounts
+                    WHERE role='player' AND minecraft_uuid=%s
+                    ORDER BY enabled DESC,last_login_at DESC,created_at DESC
+                    LIMIT 1
+                    """,
+                    (uuid_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM minecraft_account_links mal
+                    JOIN site_accounts sa ON sa.id=mal.site_account_id
+                    WHERE sa.role='player' AND mal.minecraft_uuid=%s AND mal.status='ACTIVE'
+                    ORDER BY sa.enabled DESC,mal.updated_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (uuid_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM whitelist_account_links wal
+                    JOIN site_accounts sa ON sa.id=wal.site_account_id
+                    WHERE sa.role='player' AND wal.minecraft_uuid=%s AND wal.whitelisted=1
+                    ORDER BY sa.enabled DESC,wal.synced_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (uuid_value,),
+                ),
+            ]
+        )
+    if name_value:
+        queries.extend(
+            [
+                (
+                    """
+                    SELECT * FROM site_accounts
+                    WHERE role='player' AND LOWER(minecraft_name)=LOWER(%s)
+                    ORDER BY enabled DESC,last_login_at DESC,created_at DESC
+                    LIMIT 1
+                    """,
+                    (name_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM minecraft_account_links mal
+                    JOIN site_accounts sa ON sa.id=mal.site_account_id
+                    WHERE sa.role='player' AND LOWER(mal.minecraft_name)=LOWER(%s) AND mal.status='ACTIVE'
+                    ORDER BY sa.enabled DESC,mal.updated_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (name_value,),
+                ),
+                (
+                    """
+                    SELECT sa.*
+                    FROM whitelist_account_links wal
+                    JOIN site_accounts sa ON sa.id=wal.site_account_id
+                    WHERE sa.role='player' AND LOWER(wal.minecraft_name)=LOWER(%s) AND wal.whitelisted=1
+                    ORDER BY sa.enabled DESC,wal.synced_at DESC,sa.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (name_value,),
+                ),
+            ]
+        )
+    for query, params in queries:
+        row = conn.execute(query, params).fetchone()
+        if row:
+            return hydrate_player_account_link(conn, dict(row))
+    return None
+
+
 def player_account_by_id(conn: Any, account_id: str) -> dict[str, Any]:
     row = conn.execute("SELECT * FROM site_accounts WHERE id=%s AND enabled=1", (account_id,)).fetchone()
     if not row:
@@ -4333,24 +4427,7 @@ def player_account_by_username(conn: Any, username: str) -> Optional[dict[str, A
 
 
 def player_account_by_minecraft_name(conn: Any, minecraft_name: str) -> Optional[dict[str, Any]]:
-    normalized = str(minecraft_name or "").strip().lower()
-    if not normalized:
-        return None
-    row = conn.execute("SELECT * FROM site_accounts WHERE LOWER(minecraft_name)=%s ORDER BY updated_at DESC LIMIT 1", (normalized,)).fetchone()
-    if row:
-        return hydrate_player_account_link(conn, dict(row))
-    row = conn.execute(
-        """
-        SELECT sa.*
-        FROM whitelist_account_links wal
-        JOIN site_accounts sa ON sa.id=wal.site_account_id
-        WHERE LOWER(wal.minecraft_name)=%s
-        ORDER BY sa.updated_at DESC
-        LIMIT 1
-        """,
-        (normalized,),
-    ).fetchone()
-    return hydrate_player_account_link(conn, dict(row)) if row else None
+    return player_site_account_for_identity(conn, minecraft_name=minecraft_name)
 
 
 def require_player(request: Request, authorization: str = Header(default="")) -> dict[str, Any]:
@@ -5546,17 +5623,7 @@ def player_site_bank_profile_sync(minecraft_uuid: str, minecraft_name: str) -> d
     with auth_conn() as conn:
         ensure_v4_schema(conn)
         expire_temporary_pin_resets(conn, minecraft_uuid)
-        site_row = conn.execute(
-            """
-            SELECT id,username,enabled,created_at,updated_at,last_login_at,minecraft_name
-            FROM site_accounts
-            WHERE minecraft_uuid=%s
-            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-            LIMIT 1
-            """,
-            (minecraft_uuid,),
-        ).fetchone()
-        site = dict(site_row) if site_row else {}
+        site = player_site_account_for_identity(conn, minecraft_uuid, minecraft_name) or {}
         bank = ensure_player_bank_account(conn, minecraft_uuid, minecraft_name)
         ensure_donation_account_row(conn, minecraft_uuid, minecraft_name)
         donation_row = conn.execute(
@@ -5618,19 +5685,16 @@ def admin_update_player_account_sync(player: str, actor: str, data: AdminPlayerA
     now = now_ts()
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        row = conn.execute(
-            """
-            SELECT id,username,username_norm,minecraft_uuid,minecraft_name,enabled
-            FROM site_accounts
-            WHERE minecraft_uuid=%s AND role='player'
-            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-            LIMIT 1
-            """,
-            (uuid,),
-        ).fetchone()
+        row = player_site_account_for_identity(conn, uuid, player)
         if not row:
             raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
-        current = dict(row)
+        locked_row = conn.execute(
+            "SELECT id,username,role,minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s AND role='player' FOR UPDATE",
+            (row.get("id"),),
+        ).fetchone()
+        if not locked_row:
+            raise HTTPException(status_code=409, detail="Аккаунт уже удалён или изменён")
+        current = dict(locked_row)
         username_changed = bool(requested_username and requested_username.lower() != str(current.get("username") or "").lower())
         if username_changed:
             collision = conn.execute(
@@ -5685,20 +5749,16 @@ def admin_delete_player_account_sync(player: str, actor: str) -> dict[str, Any]:
     deleted_rows: dict[str, int] = {}
     with auth_conn() as conn:
         ensure_v4_schema(conn)
-        row = conn.execute(
-            """
-            SELECT id,username,role,minecraft_uuid,minecraft_name
-            FROM site_accounts
-            WHERE minecraft_uuid=%s AND role='player'
-            ORDER BY enabled DESC,last_login_at DESC,created_at DESC
-            LIMIT 1
-            FOR UPDATE
-            """,
-            (uuid,),
-        ).fetchone()
+        row = player_site_account_for_identity(conn, uuid, player)
         if not row:
             raise HTTPException(status_code=409, detail="У игрока нет привязанного аккаунта сайта")
-        current = dict(row)
+        locked_row = conn.execute(
+            "SELECT id,username,role,minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s AND role='player' FOR UPDATE",
+            (row.get("id"),),
+        ).fetchone()
+        if not locked_row:
+            raise HTTPException(status_code=409, detail="Аккаунт уже удалён или изменён")
+        current = dict(locked_row)
         account_id = str(current.get("id") or "").strip()
         old_uuid = str(current.get("minecraft_uuid") or uuid).strip()
         old_name = str(current.get("minecraft_name") or uuid_to_name().get(old_uuid, player)).strip()

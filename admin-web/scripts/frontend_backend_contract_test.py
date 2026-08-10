@@ -70,6 +70,13 @@ def matching_paren(source: str, opening: int) -> int:
 
 def main() -> None:
     backend = BACKEND.read_text(encoding="utf-8")
+    cabinet_runtime = (FRONTEND_JS / "cabinet-runtime.js").read_text(encoding="utf-8")
+    assert "const credentialControls = canManagePins" in cabinet_runtime, (
+        "Player credential actions must be available for every full-admin player card"
+    )
+    assert "const credentialControls = site.id && canManagePins" not in cabinet_runtime, (
+        "Player credential actions must not depend on the denormalized site account cache"
+    )
     routes = {
         (match.group(1).upper(), clean_path(match.group(2)))
         for match in ROUTE_RE.finditer(backend)

@@ -3469,7 +3469,9 @@ function renderPlayerFullDetails(player, detail, ctx) {
       </div>
     `
     : "";
-  const credentialControls = site.id && canManagePins
+  // Do not hide account actions when the denormalized site_accounts cache is
+  // stale; the backend resolves active link-table identities by player.
+  const credentialControls = canManagePins
     ? `
       <article class="stack-card admin-player-credentials-card">
         <header class="stack-card-head"><strong>Доступы игрока</strong><span>Пароли не читаются из хэшей. Здесь можно безопасно задать новые.</span></header>

@@ -9,8 +9,122 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "src" / "assets" / "copimine" / "models" / "item" / "artifacts"
 TEXTURE_DIR = ROOT / "src" / "assets" / "copimine" / "textures" / "item" / "artifacts"
+REFERENCE_TEXTURE_DIR = ROOT / "reference" / "vanilla" / "item"
 LOGICAL_SIZE = 16
 OUTPUT_SIZE = 32
+
+# The pull textures contain the vanilla three-pixel projectile at these
+# coordinates. The diagonal grey pixels outside this set are the bow string
+# and must be retained. Keeping the projectile coordinates explicit prevents
+# a broad "remove grey" rule from damaging the animation geometry while still
+# letting each custom bow draw its own arrow over the vanilla pose.
+BOW_PROJECTILE_COORDS: dict[str, set[tuple[int, int]]] = {
+    "bow_pulling_0.png": {(1, 0), (1, 1), (2, 1)},
+    "bow_pulling_1.png": {(2, 1), (2, 2), (3, 2)},
+    "bow_pulling_2.png": {(3, 2), (3, 3), (4, 3)},
+}
+CROSSBOW_PROJECTILE_REFERENCE = "crossbow_arrow.png"
+
+PROJECTILE_PALETTES = {
+    "teleport": {
+        "tip": (190, 255, 255, 255),
+        "shaft": (58, 211, 233, 255),
+        "fletching": (27, 103, 178, 255),
+    },
+    "trail": {
+        "tip": (242, 239, 215, 255),
+        "shaft": (153, 161, 151, 255),
+        "fletching": (70, 78, 80, 255),
+    },
+    "explosive": {
+        "tip": (255, 218, 132, 255),
+        "shaft": (226, 91, 53, 255),
+        "fletching": (100, 29, 37, 255),
+    },
+}
+
+RECOLOR_PALETTES = {
+    "teleport": {
+        "dark": (26, 15, 69, 255),
+        "shadow": (51, 28, 119, 255),
+        "base": (95, 56, 180, 255),
+        "light": (151, 106, 230, 255),
+        "highlight": (205, 182, 255, 255),
+        "metal_dark": (20, 49, 72, 255),
+        "metal": (37, 117, 145, 255),
+        "metal_light": (82, 203, 215, 255),
+        "metal_highlight": (190, 255, 255, 255),
+    },
+    "trail": {
+        "dark": (25, 29, 25, 255),
+        "shadow": (54, 67, 60, 255),
+        "base": (94, 108, 100, 255),
+        "light": (153, 164, 151, 255),
+        "highlight": (208, 213, 192, 255),
+        "metal_dark": (40, 44, 46, 255),
+        "metal": (92, 101, 103, 255),
+        "metal_light": (166, 176, 171, 255),
+        "metal_highlight": (230, 236, 224, 255),
+    },
+    "explosive": {
+        "dark": (35, 16, 25, 255),
+        "shadow": (82, 31, 35, 255),
+        "base": (151, 45, 42, 255),
+        "light": (210, 92, 54, 255),
+        "highlight": (255, 180, 90, 255),
+        "metal_dark": (35, 39, 52, 255),
+        "metal": (84, 97, 125, 255),
+        "metal_light": (157, 180, 213, 255),
+        "metal_highlight": (231, 244, 255, 255),
+    },
+}
+
+
+def load_vanilla_texture(name: str) -> Image.Image:
+    path = REFERENCE_TEXTURE_DIR / name
+    if not path.is_file():
+        raise FileNotFoundError(f"missing vanilla reference texture: {path}")
+    with Image.open(path) as source:
+        return source.convert("RGBA").copy()
+
+
+def _recolor_pixel(pixel: tuple[int, int, int, int], palette: dict[str, tuple[int, int, int, int]]) -> tuple[int, int, int, int]:
+    red, green, blue, alpha = pixel
+    if alpha == 0:
+        return (0, 0, 0, 0)
+
+    luminance = (red * 299 + green * 587 + blue * 114) // 1000
+    if max(red, green, blue) - min(red, green, blue) <= 8:
+        keys = ("metal_dark", "metal", "metal_light", "metal_highlight")
+    else:
+        keys = ("dark", "shadow", "base", "light", "highlight")
+    if luminance < 45:
+        key = keys[0]
+    elif luminance < 90:
+        key = keys[1]
+    elif luminance < 145:
+        key = keys[2]
+    elif luminance < 200:
+        key = keys[3]
+    else:
+        key = keys[-1]
+    recolored = palette[key]
+    return (recolored[0], recolored[1], recolored[2], alpha)
+
+
+def recolor_vanilla_texture(
+    name: str,
+    palette: dict[str, tuple[int, int, int, int]],
+    remove_coords: set[tuple[int, int]] | frozenset[tuple[int, int]] = frozenset(),
+) -> Image.Image:
+    image = load_vanilla_texture(name)
+    for y in range(image.height):
+        for x in range(image.width):
+            if (x, y) in remove_coords:
+                image.putpixel((x, y), (0, 0, 0, 0))
+            else:
+                image.putpixel((x, y), _recolor_pixel(image.getpixel((x, y)), palette))
+    return image
 
 
 def canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
@@ -128,110 +242,36 @@ def draw_infinite_torch() -> Image.Image:
     return image
 
 
-def draw_arrow(
-    draw: ImageDraw.ImageDraw,
-    start: tuple[int, int],
-    end: tuple[int, int],
-    shaft: tuple[int, int, int, int],
-    head: tuple[int, int, int, int],
-) -> None:
-    """Draw a readable vanilla-style arrow over a bow pull frame."""
-    line(draw, [start, end], shaft, 1)
-    ex, ey = end
-    line(draw, [(ex - 2, ey - 1), (ex, ey), (ex - 2, ey + 1)], head, 1)
-    rect(draw, (start[0], start[1] - 1, start[0] + 1, start[1]), head)
+def draw_custom_bow_projectile(image: Image.Image, kind: str, source_name: str) -> None:
+    colors = PROJECTILE_PALETTES[kind]
+    ordered_coords = sorted(BOW_PROJECTILE_COORDS.get(source_name, set()))
+    for index, (x, y) in enumerate(ordered_coords):
+        role = ("tip", "shaft", "fletching")[min(index, 2)]
+        image.putpixel((x, y), colors[role])
 
 
 def draw_bow(kind: str, stage: int) -> Image.Image:
-    image, draw = canvas()
-    outline = (24, 16, 14, 255)
-    wood = (114, 65, 30, 255)
-    wood_light = (177, 111, 49, 255)
-    grip = (83, 48, 37, 255)
-    string = (210, 213, 196, 255)
-    if kind == "teleport":
-        accent = (91, 65, 163, 255)
-        glow = (46, 218, 220, 255)
-    else:
-        accent = (112, 111, 106, 255)
-        glow = (171, 171, 160, 255)
-
-    outer = [(3, 14), (2, 12), (2, 9), (3, 6), (5, 4), (8, 2), (11, 2), (13, 4)]
-    line(draw, outer, outline, 3)
-    line(draw, outer, wood, 1)
-    line(draw, [(4, 13), (4, 10), (5, 7), (7, 5), (9, 3), (11, 3), (12, 4)], wood_light, 1)
-    rect(draw, (4, 9, 6, 12), grip)
-    rect(draw, (5, 9, 6, 11), accent)
-    if kind == "trail":
-        rect(draw, (3, 8, 4, 9), accent)
-        rect(draw, (6, 8, 7, 9), accent)
-        rect(draw, (4, 12, 5, 13), accent)
-        rect(draw, (10, 2, 11, 3), accent)
-    else:
-        rect(draw, (4, 7, 4, 8), glow)
-        rect(draw, (8, 3, 8, 4), glow)
-        rect(draw, (10, 3, 10, 3), glow)
-
-    string_mid = [(6, 8), (7, 8), (8, 8), (9, 8)][stage]
-    line(draw, [(12, 4), string_mid, (4, 13)], string if stage < 2 else glow, 1)
-    arrow_shaft = (58, 48, 44, 255)
-    arrow_head = glow if kind == "teleport" else (224, 224, 208, 255)
-    draw_arrow(draw, (4, 8), (12, 8), arrow_shaft, arrow_head)
-    if stage == 2:
-        rect(draw, (10, 6, 11, 7), glow)
+    source_name = "bow.png" if stage == 0 else f"bow_pulling_{stage - 1}.png"
+    image = recolor_vanilla_texture(source_name, RECOLOR_PALETTES[kind])
+    if stage > 0:
+        draw_custom_bow_projectile(image, kind, source_name)
     return image
 
 
-def draw_explosive_crossbow(stage: str, frame: int = 0) -> Image.Image:
-    image, draw = canvas()
-    outline = (18, 18, 21, 255)
-    iron = (92, 99, 105, 255)
-    iron_light = (158, 166, 166, 255)
-    wood = (109, 61, 28, 255)
-    wood_light = (161, 96, 39, 255)
+def draw_charged_explosive_crossbow(frame: int = 0) -> Image.Image:
+    """Overlay the TNT accent on a recolored vanilla crossbow with its bolt."""
+    image = recolor_vanilla_texture(CROSSBOW_PROJECTILE_REFERENCE, RECOLOR_PALETTES["explosive"])
+    draw = ImageDraw.Draw(image)
     red = (185, 35, 26, 255)
     white = (226, 220, 188, 255)
     orange = (248, 118, 22, 255)
 
-    rect(draw, (5, 6, 10, 10), outline)
-    rect(draw, (6, 7, 9, 9), iron)
-    rect(draw, (7, 10, 8, 14), outline)
-    rect(draw, (7, 11, 8, 14), wood)
-    rect(draw, (8, 12, 9, 13), wood_light)
-    line(draw, [(3, 4), (6, 7), (7, 8), (6, 9), (3, 12)], outline, 3)
-    line(draw, [(3, 4), (6, 7), (7, 8), (6, 9), (3, 12)], iron_light, 1)
-    line(draw, [(12, 4), (9, 7), (8, 8), (9, 9), (12, 12)], outline, 3)
-    line(draw, [(12, 4), (9, 7), (8, 8), (9, 9), (12, 12)], iron_light, 1)
-
-    string_y = {"base": 6, "pulling_0": 7, "pulling_1": 8, "pulling_2": 9}.get(stage, 8)
-    line(draw, [(3, 4), (13, 4)], iron, 1)
-    line(draw, [(3, 12), (13, 12)], iron, 1)
-    line(draw, [(3, 4), (3, string_y), (13, string_y), (13, 4)], iron_light, 1)
-    if stage in {"charged", "charged_firework"}:
-        line(draw, [(2, 8), (13, 8)], iron_light, 1)
-    if stage in {"base", "pulling_0", "pulling_1", "pulling_2"}:
-        rect(draw, (6, 5, 9, 7), red)
-        rect(draw, (7, 6, 8, 6), white)
-        rect(draw, (6, 4, 6, 5), orange)
-    elif stage == "charged":
-        # The charged texture is exported as an atlas. Move the TNT vertically
-        # by one logical pixel per frame so the fuse visibly flickers while the
-        # crossbow remains symmetric in the player's hand.
-        tnt_y = 7 + ((frame % 4) - 1 if frame % 4 in (0, 2) else 0)
-        rect(draw, (5, tnt_y, 10, tnt_y + 2), red)
-        rect(draw, (6, tnt_y, 9, tnt_y + 1), white)
-        rect(draw, (5, tnt_y, 6, tnt_y + 1), orange)
-    else:
-        rect(draw, (6, 6, 9, 10), red)
-        rect(draw, (7, 7, 8, 9), white)
-        rect(draw, (7, 5, 7, 6), orange)
-        rect(draw, (7, 4, 7, 4), orange)
-
-    # Keep every state exactly mirrored around the two center pixels.  This
-    # avoids a one-pixel asymmetry as the item switches between pull frames.
-    for x in range(8):
-        for y in range(16):
-            image.putpixel((15 - x, y), image.getpixel((x, y)))
+    # Keep the TNT animation, but never draw a vanilla/projectile arrow into
+    # the custom charged texture.
+    tnt_y = 7 + ((frame % 4) - 1 if frame % 4 in (0, 2) else 0)
+    rect(draw, (5, tnt_y, 10, tnt_y + 2), red)
+    rect(draw, (6, tnt_y, 9, tnt_y + 1), white)
+    rect(draw, (5, tnt_y, 6, tnt_y + 1), orange)
     return image
 
 
@@ -281,7 +321,13 @@ def main() -> None:
     for stage in ("base", "pulling_0", "pulling_1", "pulling_2", "charged_firework"):
         suffix = "" if stage == "base" else f"_{stage}"
         name = f"explosive_crossbow{suffix}"
-        save_texture(name, draw_explosive_crossbow(stage))
+        if stage == "base":
+            image = recolor_vanilla_texture("crossbow_standby.png", RECOLOR_PALETTES["explosive"])
+        elif stage.startswith("pulling"):
+            image = recolor_vanilla_texture(f"crossbow_{stage}.png", RECOLOR_PALETTES["explosive"])
+        else:
+            image = draw_charged_explosive_crossbow()
+        save_texture(name, image)
         if stage == "base":
             parent = "minecraft:item/crossbow"
         elif stage.startswith("pulling"):
@@ -292,7 +338,7 @@ def main() -> None:
 
     save_animation_texture(
         "explosive_crossbow_charged",
-        [draw_explosive_crossbow("charged", frame) for frame in range(4)],
+        [draw_charged_explosive_crossbow(frame) for frame in range(4)],
         frametime=3,
     )
     save_model("explosive_crossbow_charged", "explosive_crossbow_charged", "minecraft:item/crossbow_arrow")

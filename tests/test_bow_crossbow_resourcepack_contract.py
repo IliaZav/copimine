@@ -135,24 +135,29 @@ def test_source_models_and_textures_have_all_animation_states():
         assert image.mode == "RGBA"
 
 
-def test_explosive_crossbow_frames_are_vertically_symmetric():
-    for suffix in ("", "_pulling_0", "_pulling_1", "_pulling_2", "_charged", "_charged_firework"):
+def test_explosive_crossbow_frames_preserve_vanilla_shape():
+    reference_dir = ROOT / "resourcepacks" / "reference" / "vanilla" / "item"
+    source_names = {
+        "": "crossbow_standby.png",
+        "_pulling_0": "crossbow_pulling_0.png",
+        "_pulling_1": "crossbow_pulling_1.png",
+        "_pulling_2": "crossbow_pulling_2.png",
+    }
+    for suffix, source_name in source_names.items():
         texture = SRC / "assets" / "copimine" / "textures" / "item" / "artifacts" / f"explosive_crossbow{suffix}.png"
-        with Image.open(texture) as image:
-            rgba = image.convert("RGBA")
-            frame_height = 32
-            frame_count = rgba.height // frame_height
-            assert rgba.width == 32
-            for frame in range(frame_count):
-                for y in range(frame_height):
-                    absolute_y = frame * frame_height + y
-                    for x in range(16):
-                        assert rgba.getpixel((x, absolute_y)) == rgba.getpixel((31 - x, absolute_y)), (
-                            texture,
-                            frame,
-                            x,
-                            y,
-                        )
+        with Image.open(texture) as output_file, Image.open(reference_dir / source_name) as source_file:
+            output = output_file.convert("RGBA").resize((16, 16), Image.Resampling.NEAREST)
+            source = source_file.convert("RGBA")
+            assert output_file.size == (32, 32)
+            assert any(
+                output.getpixel((x, y))[:3] != source.getpixel((x, y))[:3]
+                for y in range(16)
+                for x in range(16)
+                if source.getpixel((x, y))[3]
+            )
+            for y in range(16):
+                for x in range(16):
+                    assert output.getpixel((x, y))[3] == source.getpixel((x, y))[3], (texture, x, y)
 
 
 def test_built_models_preserve_vanilla_states_and_zip_contains_new_assets():

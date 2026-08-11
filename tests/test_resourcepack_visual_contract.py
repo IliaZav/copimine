@@ -35,9 +35,15 @@ class ResourcepackVisualContractTest(unittest.TestCase):
             with Image.open(TEXTURE_DIR / name) as image:
                 self.assertEqual(image.size, (32, 32), name)
 
-    def test_generator_draws_explicit_arrow_and_animated_tnt_frames(self) -> None:
+    def test_generator_recolors_vanilla_frames_and_keeps_animated_tnt(self) -> None:
         source = GENERATOR.read_text(encoding="utf-8")
-        self.assertIn("draw_arrow", source)
+        self.assertIn("load_vanilla_texture", source)
+        self.assertIn("recolor_vanilla_texture", source)
+        self.assertIn("BOW_PROJECTILE_COORDS", source)
+        self.assertIn("CROSSBOW_PROJECTILE_REFERENCE", source)
+        self.assertIn("draw_custom_bow_projectile", source)
+        self.assertNotIn("draw_arrow", source)
+        self.assertIn("draw_charged_explosive_crossbow", source)
         self.assertIn("save_animation_texture", source)
         self.assertIn("frametime", source)
 

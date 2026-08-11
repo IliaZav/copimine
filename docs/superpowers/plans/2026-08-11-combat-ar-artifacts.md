@@ -4,7 +4,7 @@
 
 **Goal:** Add three AR combat projectile artifacts and one hidden streamer artifact with test-backed projectile, trail, explosion, and arc-knockback behavior.
 
-**Architecture:** Keep the existing `CopiMineArtifacts` entry point and catalog. Mark official projectiles at `EntityShootBowEvent` with PDC, process them at `ProjectileHitEvent`, and keep all world mutations on the server thread. Use a bounded main-thread tracker for the bow trail and existing authenticity/cooldown gates for melee behavior.
+**Architecture:** Keep the existing `CopiMineArtifacts` entry point and catalog. Mark official projectiles at `EntityShootBowEvent` with PDC, process them at `ProjectileHitEvent`, and keep all world mutations on the server thread. Use a bounded main-thread tracker for the crossbow trail and existing authenticity/cooldown gates for melee behavior.
 
 **Tech Stack:** Java 21, Paper/Bukkit 1.21 API, YAML catalog, PowerShell/Python repository validators, deterministic source/contract tests.
 
@@ -108,7 +108,7 @@
 
 **Interfaces:**
 - Vanilla items remain outside the authenticity gate.
-- Teleport crossbow, cobblestone bow, and streamer stick use 15 seconds; explosive crossbow uses 30 seconds.
+- Teleport crossbow, cobblestone crossbow, and streamer stick use 15 seconds; explosive crossbow uses 30 seconds.
 - A Multishot event window accepts at most three projectiles from one accepted shot and charges 6 HP once.
 
 - [ ] **Step 1: Add the failing pure policy test for cooldown and three-projectile admission**

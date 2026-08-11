@@ -148,6 +148,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import io.papermc.paper.event.player.PlayerShieldDisableEvent;
 import io.papermc.paper.event.entity.EntityInsideBlockEvent;
+import io.papermc.paper.event.entity.EntityLoadCrossbowEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
@@ -2812,6 +2813,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          // Keep damage predictable; Unbreaking III is applied when the official
          // item is created, and a single blocked hit consumes at most one point.
          event.setDamage(Math.min(1, Math.max(0, event.getDamage())));
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = true
+   )
+   public void onTrailCrossbowLoad(EntityLoadCrossbowEvent event) {
+      if (!(event.getEntity() instanceof Player player)) {
+         return;
+      }
+      CatalogItem weapon = this.authenticCatalogItem(event.getCrossbow(), player, "crossbow_load");
+      if (weapon != null && "AR_COBBLESTONE_TRAIL".equalsIgnoreCase(weapon.effect())) {
+         // Keep the crossbow's loaded projectile while preserving the old
+         // bow's infinite-ammo behavior. Vanilla crossbows are not matched.
+         event.setConsumeItem(false);
       }
    }
 

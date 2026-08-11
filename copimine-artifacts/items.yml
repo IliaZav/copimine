@@ -36,11 +36,11 @@ items:
 
   - id: cobblestone_trail_bow
     category: WEAPON
-    material: BOW
+    material: CROSSBOW
     source: AR_SHOP
     custom_model_data: 0
     custom-texture-mode-allowed: false
-    name: "&dЛук"
+    name: "&dАрбалет блоков"
     rarity: EPIC
     price_ar: 64
     supply_limit: 0

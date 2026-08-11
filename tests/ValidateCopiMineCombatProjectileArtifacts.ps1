@@ -15,6 +15,7 @@ foreach ($marker in @(
     'cooldown_seconds: 15',
     'effect: AR_CROSSBOW_TELEPORT',
     'id: cobblestone_trail_bow',
+    'material: CROSSBOW',
     'price_ar: 64',
     'cooldown_seconds: 15',
     'effect: AR_COBBLESTONE_TRAIL',

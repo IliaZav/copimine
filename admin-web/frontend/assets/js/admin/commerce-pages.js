@@ -213,6 +213,23 @@ export function createAdminCommercePages(deps) {
     restoreBalanceForm(values);
   }
 
+  function treasuryLedgerMarkup(rows = []) {
+    const committed = asArray(rows).filter((row) => String(row?.status || "COMMITTED").toUpperCase() === "COMMITTED");
+    if (!committed.length) return `<div class="empty-state"><strong>Журнал казны пуст</strong><span>Подтверждённых записей пока нет.</span></div>`;
+    return `<div class="ledger treasury-ledger">${committed.map((row) => {
+      const txId = cleanText(row?.tx_id || row?.txId || "");
+      const type = cleanText(row?.tx_type || row?.txType || "ОПЕРАЦИЯ КАЗНЫ");
+      const amount = Number(row?.amount || 0);
+      const details = cleanText(row?.details || "");
+      return `<article class="ledger-row treasury-ledger-row">
+        <div><strong>${esc(type)}</strong><span>${esc(row?.actor || "Система")}</span></div>
+        <div><strong>${formatAr(amount)}</strong><span>${dt(row?.created_at || row?.createdAt || 0)}</span></div>
+        <p>${esc(short(details || "Без комментария", 180))}</p>
+        <button class="btn btn-danger btn-small" data-click="adminDeleteTreasuryLedger('${esc(txId)}')">Удалить запись</button>
+      </article>`;
+    }).join("")}</div>`;
+  }
+
   async function loadEconomy() {
     setLoading("Загружаю экономику");
     const players = await ensurePlayers();
@@ -301,6 +318,14 @@ export function createAdminCommercePages(deps) {
             ["Каталог donation", `${donationItems.length} предметов · версия ${donationCatalog.catalogVersion || 0}`],
             ["Последнее обновление каталога", dt(donationCatalog.updatedAt || 0)],
           ])}
+          <div class="spacer-12"></div>
+          <div class="form-grid compact-grid">
+            <label class="field-stack"><span>Новый баланс казны, AR</span><input id="treasuryBalanceValue" type="number" min="0" max="1000000000" step="1" value="${esc(String(Number(treasury.account?.balance || 0)))}" /></label>
+            <label class="field-stack"><span>Причина изменения</span><input id="treasuryBalanceReason" value="admin-treasury-balance-edit" maxlength="160" /></label>
+            <button class="btn btn-primary full" data-click="adminSetTreasuryBalance()">Изменить счёт казны</button>
+          </div>
+          <p class="panel-hint">Удаление записи убирает её из журнала и публичной истории, но не меняет баланс. Для изменения денег используй поле выше.</p>
+          ${treasuryLedgerMarkup(treasury.ledger)}
         `)}
         ${panel("Баланс игрока", "Выберите игрока, посмотрите его текущие AR и donation, затем задайте точное значение и сохраните.", `
           <div class="field-stack">
@@ -688,6 +713,52 @@ export function createAdminCommercePages(deps) {
     }
   }
 
+  async function adminSetTreasuryBalance() {
+    try {
+      const parsed = strictWholeAmount($("treasuryBalanceValue")?.value, { allowZero: true });
+      if (!parsed.ok) return operationAlert(`Казна: ${parsed.reason}`, true);
+      const headers = await dangerConfirm(
+        `Установить баланс казны на ${formatAr(parsed.value)}? Это создаст аудируемую запись изменения счёта.`,
+        "TREASURY_BALANCE_SET",
+      );
+      if (!headers) return;
+      const result = await api("/api/admin/economy/treasury/set-balance", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          balance: parsed.value,
+          reason: $("treasuryBalanceReason")?.value?.trim() || "admin-treasury-balance-edit",
+          idempotency_key: randomActionKey("treasury-set"),
+        }),
+      });
+      operationAlert(`Баланс казны изменён: ${formatAr(result?.balanceBefore || 0)} → ${formatAr(result?.balanceAfter || 0)}.`);
+      await loadEconomy();
+    } catch (err) {
+      operationAlert(err.message, true);
+    }
+  }
+
+  async function adminDeleteTreasuryLedger(txId = "") {
+    const safeTxId = String(txId || "").trim();
+    if (!safeTxId) return operationAlert("Не найден идентификатор записи казны.", true);
+    try {
+      const headers = await dangerConfirm(
+        "Убрать эту запись из журнала казны и публичной истории? Баланс казны не изменится.",
+        "TREASURY_LEDGER_DELETE",
+      );
+      if (!headers) return;
+      const result = await api(`/api/admin/economy/treasury/ledger/${encodeURIComponent(safeTxId)}`, {
+        method: "DELETE",
+        headers,
+        body: JSON.stringify({ reason: "admin-ledger-delete" }),
+      });
+      operationAlert(result?.balanceUnchanged ? "Запись удалена из журнала. Баланс казны не изменён." : "Запись удалена.");
+      await loadEconomy();
+    } catch (err) {
+      operationAlert(err.message, true);
+    }
+  }
+
   return {
     loadEconomy,
     createEconomySnapshot,
@@ -702,6 +773,8 @@ export function createAdminCommercePages(deps) {
     adminDonationCancelSession,
     adminSetTreasuryPin,
     adminResetTreasury,
+    adminSetTreasuryBalance,
+    adminDeleteTreasuryLedger,
   };
 }
 

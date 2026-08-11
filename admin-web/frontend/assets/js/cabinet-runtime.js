@@ -4485,6 +4485,10 @@ window.adminApplyBalanceTopups = async () => getAdminCommercePages().adminApplyB
 
 window.adminResetTreasury = async () => getAdminCommercePages().adminResetTreasury();
 
+window.adminSetTreasuryBalance = async () => getAdminCommercePages().adminSetTreasuryBalance();
+
+window.adminDeleteTreasuryLedger = async (txId = "") => getAdminCommercePages().adminDeleteTreasuryLedger(txId);
+
 window.adminArSetBalance = async () => getAdminCommercePages().adminArSetBalance();
 
 window.adminDonationSetBalance = async () => getAdminCommercePages().adminDonationSetBalance();

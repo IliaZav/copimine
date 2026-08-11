@@ -234,7 +234,7 @@ settings:
         UnrestrictedInventories: []
     security:
         # Minimum length of password
-        minPasswordLength: 12
+        minPasswordLength: 5
         # Maximum length of password
         passwordMaxLength: 30
         # Possible values: SHA256, BCRYPT, BCRYPT2Y, PBKDF2, SALTEDSHA512,

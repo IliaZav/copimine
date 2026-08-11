@@ -66,6 +66,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
 import org.bukkit.FluidCollisionMode;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -199,11 +200,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
    private static final int COMPASS_COOLDOWN_SECONDS = 15;
    private static final int EXPLOSIVE_CROSSBOW_FUSE_TICKS = 40;
+   private static final long ANGEL_WINGS_FLIGHT_TICKS = AngelWingsFlightPolicy.FLIGHT_SECONDS * 20L;
    private static final int MAX_COBBLESTONE_TRAIL_BLOCKS = 256;
    private static final double COBBLESTONE_TRAIL_MAX_STEP = 0.75D;
-   private static final double STREAMER_STICK_AIR_HORIZONTAL_SPEED = 1.00D;
-   private static final double STREAMER_STICK_GROUND_HORIZONTAL_SPEED = 1.50D;
-   private static final double STREAMER_STICK_VERTICAL_SPEED = 1.30D;
    private static final int MAX_TRAIL_BLOCKS_PER_TICK = 8;
    /** One chunk is sixteen blocks; the actual limit is the world's view distance. */
    private static final double MAX_COMPASS_TELEPORT_DISTANCE = 16.0D;
@@ -241,8 +240,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<UUID, UUID> explosiveTntOwners = new ConcurrentHashMap<>();
    private final Map<String, CombatArtifactShotPolicy.ShotWindow> explosiveShotWindows = new ConcurrentHashMap<>();
    private final Map<UUID, ReturnStoneChannel> returnStoneChannels = new ConcurrentHashMap<>();
-   /** Exact seal snapshots waiting for the death event's cancellation boundary. */
-   private final Map<UUID, PendingAngelSealConsumption> pendingAngelSealConsumptions = new ConcurrentHashMap<>();
+   /** Prevent duplicate asynchronous admission retries for one physical stone. */
+   private final Set<String> returnStoneBindingRetryInFlight = ConcurrentHashMap.newKeySet();
+   private final Map<UUID, AngelWingsFlight> angelWingsFlights = new ConcurrentHashMap<>();
    private final Set<String> infiniteTorchPlacementGuards = ConcurrentHashMap.newKeySet();
    /** Keep a successful placement's exact instance across a disconnect before
     * the next-tick restoration task can run. */
@@ -301,6 +301,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyExplosiveTnt;
    private NamespacedKey keyRepairKitUses;
    private NamespacedKey keyReturnStoneCooldownUntil;
+   private NamespacedKey keyAngelWingsCooldownUntil;
    private NamespacedKey attackDamageKey;
    private NamespacedKey visualEntityTypeKey;
    private NamespacedKey visualKindKey;
@@ -341,6 +342,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyExplosiveTnt = new NamespacedKey(this, "explosive_artifact_tnt");
       this.keyRepairKitUses = new NamespacedKey(this, "repair_kit_uses");
       this.keyReturnStoneCooldownUntil = new NamespacedKey(this, "return_stone_cooldown_until");
+      this.keyAngelWingsCooldownUntil = new NamespacedKey(this, "angel_wings_cooldown_until");
       this.loadPendingInfiniteTorchRestores();
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
@@ -551,6 +553,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.restoreAllTemporaryTraps();
       this.savePendingInfiniteTotemRestores();
       this.savePendingInfiniteTorchRestores();
+      this.revokeAllAngelWingsFlight();
       Bukkit.getScheduler().cancelTasks(this);
       this.cleanupAllProtectedBlockVisualEntities();
       if (this.deliveryTask != null) {
@@ -591,7 +594,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       }
       this.returnStoneChannels.clear();
-      this.pendingAngelSealConsumptions.clear();
+      this.returnStoneBindingRetryInFlight.clear();
+      this.angelWingsFlights.clear();
       this.infiniteTorchPlacementGuards.clear();
       this.pendingInfiniteTorchRestores.clear();
       this.repairKitInteractionGuards.clear();
@@ -1129,6 +1133,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             retired.setLong(1, this.now());
             retired.setString(2, "ya_esche_ne_vse_isportil_totem");
             retired.executeUpdate();
+            // Angel Seal was removed completely.  Retire a pre-upgrade
+            // catalog row as well, otherwise the website/shop database can
+            // keep advertising the old death-protection item.
+            retired.setString(2, "angel_seal");
+            retired.executeUpdate();
             // eternal_totem is the AR infinite totem and remains enabled by
             // the catalog above. Only the retired donation totem is disabled.
          }
@@ -1204,11 +1213,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void loadTerminalInstanceCache() throws SQLException {
       Connection connection = this.pgPool.acquire();
       try (PreparedStatement statement = connection.prepareStatement(
-            "SELECT unique_item_id FROM artifact_item_instances WHERE status IN ('BROKEN','LOST_RECLAIMABLE','CONSUMED','REPLACED_AFTER_LOSS','DELETED_AS_INVALID','DELIVERY_REVIEW','REPAIR_REVIEW')");
+            "SELECT unique_item_id,item_id FROM artifact_item_instances WHERE status IN ('BROKEN','LOST_RECLAIMABLE','CONSUMED','REPLACED_AFTER_LOSS','DELETED_AS_INVALID','DELIVERY_REVIEW','REPAIR_REVIEW')");
            ResultSet result = statement.executeQuery()) {
          while (result.next()) {
             String id = this.firstNonBlank(result.getString(1), "");
-            if (!id.isBlank()) this.terminalDonationInstanceIds.add(id);
+            if (!id.isBlank()) {
+               this.terminalDonationInstanceIds.add(id);
+            }
          }
       } finally {
          this.pgPool.release(connection);
@@ -2103,6 +2114,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onQuit(PlayerQuitEvent var1) {
       UUID playerUuid = var1.getPlayer().getUniqueId();
       this.cancelReturnStoneChannel(var1.getPlayer());
+      this.cancelAngelWingsFlight(var1.getPlayer());
       this.combatProjectileIdentities.entrySet().removeIf(
             entry -> entry.getValue() != null && playerUuid.equals(entry.getValue().ownerUuid())
       );
@@ -2117,7 +2129,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.sessions.remove(playerUuid);
       this.pozdnyakovNauseaCooldowns.remove(playerUuid);
       this.repairKitInteractionGuards.remove(playerUuid);
-      this.pendingAngelSealConsumptions.remove(playerUuid);
       String prefix = playerUuid + ":";
       this.actionCooldowns.keySet().removeIf(key -> key.startsWith(prefix));
       this.explosiveShotWindows.keySet().removeIf(key -> key.startsWith(prefix));
@@ -2259,193 +2270,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   /**
-    * Angel Seal is a two-phase death transaction. The seal is removed from
-    * the exact inventory surface immediately, while every other ItemStack is
-    * retained by vanilla's keep-inventory path. The MONITOR callback commits
-    * the removal only after all ordinary listeners have had a chance to
-    * cancel the death; a cancelled event restores the exact snapshot.
-    */
-   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-   public void onAngelSealDeath(PlayerDeathEvent event) {
-      if (event == null || event.isCancelled() || event.getKeepInventory()) {
-         return;
-      }
-      Player player = event.getEntity();
-      if (player == null) {
-         return;
-      }
-      AngelSealDeathPolicy.SealCandidate selected = this.findAngelSeal(player);
-      AngelSealDeathPolicy.Decision decision = AngelSealDeathPolicy.decide(
-            event.isCancelled(),
-            event.getKeepInventory(),
-            false,
-            selected == null ? List.of() : List.of(selected)
-      );
-      if (!decision.preserveInventory() || decision.selectedSeal() == null) {
-         return;
-      }
-      ItemStack consumed = this.consumeAngelSeal(player, decision.selectedSeal());
-      if (consumed == null) {
-         return;
-      }
-      this.pendingAngelSealConsumptions.put(
-            player.getUniqueId(),
-            new PendingAngelSealConsumption(decision.selectedSeal(), consumed)
-      );
-      event.setKeepInventory(true);
-      // The seal was removed from the player's inventory, and no other stack
-      // may become a ground copy while keep-inventory is active.
-      event.getDrops().clear();
-   }
-
-   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
-   public void onAngelSealDeathMonitor(PlayerDeathEvent event) {
-      if (event == null || event.getEntity() == null) {
-         return;
-      }
-      UUID playerUuid = event.getEntity().getUniqueId();
-      PendingAngelSealConsumption pending = this.pendingAngelSealConsumptions.get(playerUuid);
-      if (pending == null) {
-         return;
-      }
-      if (event.isCancelled()) {
-         Bukkit.getScheduler().runTask(this, () -> this.restoreAngelSeal(playerUuid, pending));
-      } else {
-         // The item was removed from the exact slot and the real death was
-         // not cancelled. There is no item to restore or respawn duplicate.
-         this.pendingAngelSealConsumptions.remove(playerUuid, pending);
-      }
-   }
-
-   private AngelSealDeathPolicy.SealCandidate findAngelSeal(Player player) {
-      if (player == null) {
-         return null;
-      }
-      List<AngelSealDeathPolicy.SealCandidate> candidates = new ArrayList<>();
-      // PlayerInventory#getContents contains the storage/hotbar segment first;
-      // scan exactly those 36 slots so the main hand is not counted twice.
-      ItemStack[] contents = player.getInventory().getContents();
-      int storageSize = Math.min(36, contents == null ? 0 : contents.length);
-      for (int slot = 0; slot < storageSize; slot++) {
-         ItemStack current = contents[slot];
-         if (this.isAngelSealItem(current)) {
-            boolean authentic = !this.hasInvalidAngelSealAmount(current)
-                  && this.isAuthenticAngelSeal(current, player, "angel_seal_death");
-            candidates.add(new AngelSealDeathPolicy.SealCandidate(
-                  AngelSealDeathPolicy.Surface.STORAGE, slot, this.uniqueItemIdOf(current), authentic
-            ));
-         }
-      }
-      ItemStack[] armor = player.getInventory().getArmorContents();
-      for (int slot = 0; slot < (armor == null ? 0 : armor.length); slot++) {
-         ItemStack current = armor[slot];
-         if (this.isAngelSealItem(current)) {
-            boolean authentic = !this.hasInvalidAngelSealAmount(current)
-                  && this.isAuthenticAngelSeal(current, player, "angel_seal_death");
-            candidates.add(new AngelSealDeathPolicy.SealCandidate(
-                  AngelSealDeathPolicy.Surface.ARMOR, slot, this.uniqueItemIdOf(current), authentic
-            ));
-         }
-      }
-      ItemStack offhand = player.getInventory().getItemInOffHand();
-      if (this.isAngelSealItem(offhand)) {
-         boolean authentic = !this.hasInvalidAngelSealAmount(offhand)
-               && this.isAuthenticAngelSeal(offhand, player, "angel_seal_death");
-         candidates.add(new AngelSealDeathPolicy.SealCandidate(
-               AngelSealDeathPolicy.Surface.OFFHAND, 0, this.uniqueItemIdOf(offhand), authentic
-         ));
-      }
-      AngelSealDeathPolicy.Decision decision = AngelSealDeathPolicy.decide(false, false, false, candidates);
-      return decision.selectedSeal();
-   }
-
-   private boolean isAuthenticAngelSeal(ItemStack stack, Player player, String context) {
-      CatalogItem item = this.authenticCatalogItem(stack, player, context);
-      return item != null && "ANGEL_SEAL".equalsIgnoreCase(item.effect());
-   }
-
-   private boolean isAngelSealItem(ItemStack stack) {
-      if (stack == null || stack.getType().isAir() || !stack.hasItemMeta() || stack.getItemMeta() == null) {
-         return false;
-      }
-      String itemId = stack.getItemMeta().getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING);
-      return "angel_seal".equalsIgnoreCase(itemId);
-   }
-
-   private boolean hasInvalidAngelSealAmount(ItemStack stack) {
-      return this.isAngelSealItem(stack) && stack.getAmount() > 1;
-   }
-
-   private ItemStack consumeAngelSeal(Player player, AngelSealDeathPolicy.SealCandidate candidate) {
-      if (player == null || candidate == null) {
-         return null;
-      }
-      ItemStack current = this.angelSealAt(player, candidate);
-      if (current == null || current.getAmount() > 1 || current.getAmount() != 1
-            || !Objects.equals(candidate.uniqueItemId(), this.uniqueItemIdOf(current))
-            || !this.isAuthenticAngelSeal(current, player, "angel_seal_consume")) {
-         return null;
-      }
-      ItemStack snapshot = current.clone();
-      this.setAngelSealAt(player, candidate, new ItemStack(Material.AIR));
-      // Keep the exact one-use decrement explicit; malformed stacks are
-      // rejected above and can never turn into a larger or infinite seal.
-      current.setAmount(current.getAmount() - 1);
-      return snapshot;
-   }
-
-   private ItemStack angelSealAt(Player player, AngelSealDeathPolicy.SealCandidate candidate) {
-      if (player == null || candidate == null) {
-         return null;
-      }
-      return switch (candidate.surface()) {
-         case STORAGE -> {
-            ItemStack[] storage = player.getInventory().getStorageContents();
-            yield candidate.slot() >= 0 && candidate.slot() < storage.length ? storage[candidate.slot()] : null;
-         }
-         case ARMOR -> {
-            ItemStack[] armor = player.getInventory().getArmorContents();
-            yield candidate.slot() >= 0 && candidate.slot() < armor.length ? armor[candidate.slot()] : null;
-         }
-         case OFFHAND -> player.getInventory().getItemInOffHand();
-      };
-   }
-
-   private void setAngelSealAt(Player player, AngelSealDeathPolicy.SealCandidate candidate, ItemStack value) {
-      if (player == null || candidate == null) {
-         return;
-      }
-      ItemStack replacement = value == null ? new ItemStack(Material.AIR) : value;
-      switch (candidate.surface()) {
-         case STORAGE -> player.getInventory().setItem(candidate.slot(), replacement);
-         case ARMOR -> {
-            ItemStack[] armor = player.getInventory().getArmorContents();
-            if (candidate.slot() >= 0 && candidate.slot() < armor.length) {
-               armor[candidate.slot()] = replacement;
-               player.getInventory().setArmorContents(armor);
-            }
-         }
-         case OFFHAND -> player.getInventory().setItemInOffHand(replacement);
-      }
-   }
-
-   private void restoreAngelSeal(UUID playerUuid, PendingAngelSealConsumption pending) {
-      if (playerUuid == null || pending == null || !this.pendingAngelSealConsumptions.remove(playerUuid, pending)) {
-         return;
-      }
-      Player player = Bukkit.getPlayer(playerUuid);
-      if (player == null || !player.isOnline()) {
-         return;
-      }
-      for (ItemStack stack : player.getInventory().getContents()) {
-         if (stack != null && Objects.equals(pending.selectedSeal().uniqueItemId(), this.uniqueItemIdOf(stack))) {
-            return;
-         }
-      }
-      this.setAngelSealAt(player, pending.selectedSeal(), pending.snapshot().clone());
-   }
-
    private LivingEntity resolveDamageAttacker(EntityDamageByEntityEvent event) {
       if (event == null) {
          return null;
@@ -2459,8 +2283,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return null;
    }
 
-   @EventHandler
+   @EventHandler(ignoreCancelled = true)
    public void onDeath(PlayerDeathEvent var1) {
+      if (var1 == null || var1.isCancelled()) {
+         return;
+      }
       this.cancelReturnStoneChannel(var1.getEntity());
       CopiMineArtifacts.SessionState var2 = this.sessions.get(var1.getEntity().getUniqueId());
       if (var2 != null && var2.purchaseInFlightId.isBlank()) {
@@ -2833,8 +2660,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        if (this.hasPendingInfiniteTorchRestores(var1.getPlayer().getUniqueId())) {
           Bukkit.getScheduler().runTaskLater(this, () -> this.restorePendingInfiniteTorch(var1.getPlayer()), 5L);
        }
-      this.recoverStrandedDeliveries(var1.getPlayer());
-      this.refreshEquippedArtifactBindingsAsync(var1.getPlayer());
+       this.recoverStrandedDeliveries(var1.getPlayer());
+       // A paid AR row that is still pending after a restart should not
+       // require the player to discover a recovery command when space is
+       // already available. The physical-identity recovery runs first and
+       // skips rows whose exact item is already present.
+       Bukkit.getScheduler().runTaskLater(this, () -> this.autoClaimPendingDeliveries(var1.getPlayer()), 20L);
+       this.refreshEquippedArtifactBindingsAsync(var1.getPlayer());
       UUID playerUuid = var1.getPlayer().getUniqueId();
       this.runAsync(
          () -> {
@@ -2862,9 +2694,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler(
       ignoreCancelled = true
    )
-    public void onPlayerDeath(PlayerDeathEvent var1) {
+   public void onPlayerDeath(PlayerDeathEvent var1) {
       Player player = var1.getEntity();
       this.cancelReturnStoneChannel(player);
+      this.cancelAngelWingsFlight(player);
       if (player != null && player.getWorld() != null) {
          Location deathLocation = player.getLocation().clone();
          this.lastDeathLocations.put(player.getUniqueId(), deathLocation);
@@ -3457,8 +3290,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     }
 
     private boolean isUtilityArtifactItem(ItemStack stack) {
-       return this.isRepairKitItem(stack) || this.isReturnStoneItem(stack)
-             || this.isInfiniteTorchItem(stack) || this.isAngelSealItem(stack);
+        return this.isRepairKitItem(stack)
+              || this.isInfiniteTorchItem(stack);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -3468,9 +3301,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           Player player = event.getWhoClicked() instanceof Player p ? p : null;
           if (this.creativeUtilityActionLeavesPlayerInventory(event, player)) {
              if (this.hasInvalidInfiniteTorchAmount(event.getCursor())
-                   || this.hasInvalidAngelSealAmount(event.getCursor())
-                   || this.hasInvalidInfiniteTorchAmount(event.getCurrentItem())
-                   || this.hasInvalidAngelSealAmount(event.getCurrentItem())) {
+                   || this.hasInvalidInfiniteTorchAmount(event.getCurrentItem())) {
                 event.setCancelled(true);
              }
              return;
@@ -3495,7 +3326,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              || event.getClick() == ClickType.CONTROL_DROP) {
           return false;
        }
-       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
+       if (this.isPlayerCraftingInventory(top)) {
           return event.getRawSlot() >= top.getSize();
        }
        return top.getType() == InventoryType.CREATIVE
@@ -3529,8 +3360,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        if (!involved) {
           return false;
        }
-       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
-          return false;
+        if (this.isPlayerCraftingInventory(top)) {
+           return false;
        }
        Player player = event.getWhoClicked() instanceof Player p ? p : null;
        if (player != null && top.getType() == InventoryType.CREATIVE
@@ -3541,92 +3372,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        return true;
     }
 
-    private boolean shouldBlockReturnStoneContainerTransfer(InventoryClickEvent event) {
-       if (event == null || event.getView() == null) {
-          return false;
-       }
-       Inventory top = event.getView().getTopInventory();
-       boolean involved = this.isReturnStoneItem(event.getCursor())
-             || this.isReturnStoneItem(event.getCurrentItem());
-       if (!involved) {
-          return false;
-       }
-       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
-          return false;
-       }
-       Player player = event.getWhoClicked() instanceof Player p ? p : null;
-       return player == null || top.getType() != InventoryType.CREATIVE
-             || event.getClickedInventory() != player.getInventory()
-             || event.getRawSlot() < top.getSize();
-    }
-
-    private boolean shouldBlockAngelSealContainerTransfer(InventoryClickEvent event) {
-       if (event == null || event.getView() == null) {
-          return false;
-       }
-       Inventory top = event.getView().getTopInventory();
-       Player player = event.getWhoClicked() instanceof Player p ? p : null;
-       boolean involved = this.isAngelSealItem(event.getCursor())
-             || this.isAngelSealItem(event.getCurrentItem());
-       if (!involved) {
-          return false;
-       }
-       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
-          return false;
-       }
-       return player == null || top.getType() != InventoryType.CREATIVE
-             || event.getClickedInventory() != player.getInventory()
-             || event.getRawSlot() < top.getSize();
-    }
-
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInfiniteTorchInventoryMove(InventoryMoveItemEvent event) {
        if (event != null && this.isInfiniteTorchItem(event.getItem())) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onReturnStoneInventoryMove(InventoryMoveItemEvent event) {
-       if (event != null && this.isReturnStoneItem(event.getItem())) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onAngelSealInventoryMove(InventoryMoveItemEvent event) {
-       if (event != null && this.isAngelSealItem(event.getItem())) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onAngelSealDispense(BlockDispenseEvent event) {
-       if (event != null && this.isAngelSealItem(event.getItem())) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onAngelSealInventoryPickup(InventoryPickupItemEvent event) {
-       if (event != null && event.getItem() != null
-             && this.isAngelSealItem(event.getItem().getItemStack())) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onAngelSealMerge(ItemMergeEvent event) {
-       if (event != null && (this.isAngelSealItem(event.getEntity() == null ? null : event.getEntity().getItemStack())
-             || this.isAngelSealItem(event.getTarget() == null ? null : event.getTarget().getItemStack()))) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onAngelSealDrop(PlayerDropItemEvent event) {
-       if (event != null && event.getItemDrop() != null
-             && this.hasInvalidAngelSealAmount(event.getItemDrop().getItemStack())) {
           event.setCancelled(true);
        }
     }
@@ -3700,24 +3448,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInfiniteTorchClick(InventoryClickEvent event) {
        if (this.shouldBlockInfiniteTorchContainerTransfer(event)
-             || this.hasInvalidInfiniteTorchAmount(event)
-             || this.hasInvalidAngelSealAmount(event)) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onReturnStoneInventoryTransportClick(InventoryClickEvent event) {
-       if (this.shouldBlockReturnStoneContainerTransfer(event)
-             || this.hasInvalidReturnStoneAmount(event)) {
-          event.setCancelled(true);
-       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onAngelSealInventoryTransportClick(InventoryClickEvent event) {
-       if (this.shouldBlockAngelSealContainerTransfer(event)
-             || this.hasInvalidAngelSealAmount(event)) {
+             || this.hasInvalidInfiniteTorchAmount(event)) {
           event.setCancelled(true);
        }
     }
@@ -3731,38 +3462,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           event.setCancelled(true);
           return;
        }
-       if (this.hasInvalidAngelSealAmount(event)) {
-          event.setCancelled(true);
-          return;
-       }
        boolean entersExternal = event.getRawSlots().stream().anyMatch(slot -> slot >= 0
              && slot < event.getView().getTopInventory().getSize()
-             && !(event.getView().getTopInventory().getType() == InventoryType.CRAFTING
-                  && event.getView().getTopInventory().getHolder() instanceof Player));
+             && !this.isPlayerCraftingInventory(event.getView().getTopInventory()));
        if (entersExternal && (this.isInfiniteTorchItem(event.getOldCursor())
              || this.hasInfiniteTorchIngredient(event.getView().getTopInventory()))) {
           event.setCancelled(true);
       }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onReturnStoneInventoryDrag(InventoryDragEvent event) {
-       if (event == null || event.getView() == null) {
-          return;
-       }
-       if (this.hasInvalidReturnStoneAmount(event.getOldCursor())
-             || event.getNewItems().values().stream().anyMatch(this::hasInvalidReturnStoneAmount)) {
-          event.setCancelled(true);
-          return;
-       }
-       Inventory top = event.getView().getTopInventory();
-       boolean entersExternal = event.getRawSlots().stream().anyMatch(slot -> slot >= 0
-             && slot < top.getSize()
-             && !(top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player));
-       if (entersExternal && (this.isReturnStoneItem(event.getOldCursor())
-             || event.getNewItems().values().stream().anyMatch(this::isReturnStoneItem))) {
-          event.setCancelled(true);
-       }
     }
 
     private boolean hasInvalidInfiniteTorchAmount(InventoryDragEvent event) {
@@ -3773,16 +3479,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           return true;
        }
        return event.getNewItems().values().stream().anyMatch(this::hasInvalidInfiniteTorchAmount);
-    }
-
-    private boolean hasInvalidAngelSealAmount(InventoryDragEvent event) {
-       if (event == null) {
-          return false;
-       }
-       if (this.hasInvalidAngelSealAmount(event.getOldCursor())) {
-          return true;
-       }
-       return event.getNewItems().values().stream().anyMatch(this::hasInvalidAngelSealAmount);
     }
 
     private boolean hasInvalidInfiniteTorchAmount(InventoryClickEvent event) {
@@ -3796,36 +3492,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              || this.hasInvalidInfiniteTorchAmount(event.getCurrentItem())
              || this.hasInvalidInfiniteTorchAmount(hotbar)
              || this.hasInvalidInfiniteTorchAmount(player == null ? null : player.getInventory().getItemInOffHand());
-    }
-
-    private boolean hasInvalidReturnStoneAmount(InventoryClickEvent event) {
-       if (event == null) {
-          return false;
-       }
-       Player player = event.getWhoClicked() instanceof Player p ? p : null;
-       ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
-             ? player.getInventory().getItem(event.getHotbarButton()) : null;
-       return this.hasInvalidReturnStoneAmount(event.getCursor())
-             || this.hasInvalidReturnStoneAmount(event.getCurrentItem())
-             || this.hasInvalidReturnStoneAmount(hotbar)
-             || this.hasInvalidReturnStoneAmount(player == null ? null : player.getInventory().getItemInOffHand());
-    }
-
-    private boolean hasInvalidReturnStoneAmount(ItemStack stack) {
-       return this.isReturnStoneItem(stack) && stack.getAmount() != 1;
-    }
-
-    private boolean hasInvalidAngelSealAmount(InventoryClickEvent event) {
-       if (event == null) {
-          return false;
-       }
-       Player player = event.getWhoClicked() instanceof Player p ? p : null;
-       ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
-             ? player.getInventory().getItem(event.getHotbarButton()) : null;
-       return this.hasInvalidAngelSealAmount(event.getCursor())
-             || this.hasInvalidAngelSealAmount(event.getCurrentItem())
-             || this.hasInvalidAngelSealAmount(hotbar)
-             || this.hasInvalidAngelSealAmount(player == null ? null : player.getInventory().getItemInOffHand());
     }
 
     private boolean hasInvalidInfiniteTorchAmount(ItemStack stack) {
@@ -3864,9 +3530,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var1.setUseItemInHand(Event.Result.DENY);
             var1.setUseInteractedBlock(Event.Result.DENY);
             var1.setCancelled(true);
-         }
-      }
-      CopiMineArtifacts.CatalogItem var3 = this.authenticCatalogItem(var1.getItem(), var2, "interact");
+          }
+       }
+       if (this.deferReturnStoneInteractionUntilBindingReady(var1, var2)) {
+          return;
+       }
+       CopiMineArtifacts.CatalogItem var3 = this.authenticCatalogItem(var1.getItem(), var2, "interact");
       if (var3 != null) {
          String var4 = var3.effect().toUpperCase(Locale.ROOT);
          if (this.artifactInteractEffects().contains(var4)) {
@@ -3908,6 +3577,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var1.setUseInteractedBlock(Event.Result.DENY);
             long var6 = this.now();
             long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var3), 0L);
+            if ("ANGEL_WINGS".equals(var4)) {
+               var8 = Math.max(
+                     var8,
+                     var2.getPersistentDataContainer().getOrDefault(
+                           this.keyAngelWingsCooldownUntil,
+                           PersistentDataType.LONG,
+                           0L
+                     )
+               );
+            }
             if (var8 > var6) {
                this.sendCooldownMessage(var2, var3, var8, var6);
                var2.sendMessage(
@@ -3932,13 +3611,23 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   }
                   case "LOOT_COMPASS" -> this.activateLootCompass(var2, var1.getItem());
                   case "ETERNAL_BOOST" -> this.triggerEternalBoost(var2);
+                  case "ANGEL_WINGS" -> this.activateAngelWings(var2);
                   default -> false;
                };
                if (var10) {
                   long cooldownSeconds = "LOOT_COMPASS".equals(var4)
                      ? COMPASS_COOLDOWN_SECONDS
-                     : Math.max(1, var3.cooldownSeconds());
+                     : "ANGEL_WINGS".equals(var4)
+                        ? AngelWingsFlightPolicy.COOLDOWN_SECONDS
+                        : Math.max(1, var3.cooldownSeconds());
                   this.actionCooldowns.put(this.actionCooldownKey(var2, var3), var6 + cooldownSeconds);
+                  if ("ANGEL_WINGS".equals(var4)) {
+                     var2.getPersistentDataContainer().set(
+                           this.keyAngelWingsCooldownUntil,
+                           PersistentDataType.LONG,
+                           AngelWingsFlightPolicy.nextCooldownUntil(var6)
+                     );
+                  }
                   if (!var3.visualEffectId().isBlank()) {
                      this.visualEffects.applyTo(var2, var3.visualEffectId(), Math.max(4, var3.cooldownSeconds()));
                   }
@@ -3947,6 +3636,118 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                }
             }
          }
+      }
+   }
+
+   /**
+    * A restart/join can expose a delivered ItemStack before the asynchronous
+    * instance cache refresh has published its binding.  The normal
+    * authenticity check must stay fail-closed, but a valid return-stone click
+    * should not be lost forever just because it was the first click after
+    * that race.  Admit the event, refresh the durable row off-thread, and
+    * retry against a fresh hand snapshot only after the row is DELIVERED or
+    * ACTIVE.
+    */
+   private boolean deferReturnStoneInteractionUntilBindingReady(PlayerInteractEvent event, Player player) {
+      if (event == null || player == null || event.isCancelled()
+            || (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK)
+            || !this.isReturnStoneItem(event.getItem())) {
+         return false;
+      }
+      ItemStack held = event.getItem();
+      String uniqueItemId = this.uniqueItemIdOf(held);
+      String itemId = held.hasItemMeta() && held.getItemMeta() != null
+            ? this.firstNonBlank(held.getItemMeta().getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING), "")
+            : "";
+      CatalogItem stone = this.runtimeCatalogItem(itemId);
+      if (uniqueItemId.isBlank() || stone == null || !"RETURN_STONE".equalsIgnoreCase(stone.effect())
+            || (this.instanceBindings.containsKey(uniqueItemId) && this.instanceToItem.containsKey(uniqueItemId))) {
+         return false;
+      }
+      event.setUseItemInHand(Event.Result.DENY);
+      event.setUseInteractedBlock(Event.Result.DENY);
+      event.setCancelled(true);
+      this.retryReturnStoneAfterBindingRefresh(player, event.getHand(), held.clone(), stone);
+      return true;
+   }
+
+   private void retryReturnStoneAfterBindingRefresh(Player player, EquipmentSlot hand, ItemStack snapshot, CatalogItem stone) {
+      if (player == null || hand == null || snapshot == null || stone == null) {
+         return;
+      }
+      String uniqueItemId = this.uniqueItemIdOf(snapshot);
+      if (uniqueItemId.isBlank()) {
+         return;
+      }
+      String retryKey = player.getUniqueId() + ":" + uniqueItemId;
+      if (!this.returnStoneBindingRetryInFlight.add(retryKey)) {
+         player.sendMessage(this.color("&eПроверка камня возвращения уже выполняется."));
+         return;
+      }
+      boolean queued = this.runAsync(() -> {
+         boolean ready = false;
+         boolean pending = false;
+         Exception failure = null;
+         Connection connection = null;
+         try {
+            connection = this.pgPool.acquire();
+            try (PreparedStatement query = connection.prepareStatement(
+                  "SELECT item_id,owner_uuid,status FROM artifact_item_instances "
+                        + "WHERE unique_item_id=? AND item_id=? AND owner_uuid=? "
+                        + "AND status IN ('DELIVERED','ACTIVE','DELIVERING','PENDING_DELIVERY') LIMIT 1")) {
+               query.setString(1, uniqueItemId);
+               query.setString(2, stone.itemId());
+               query.setString(3, player.getUniqueId().toString());
+               try (ResultSet result = query.executeQuery()) {
+                  if (result.next()) {
+                     String status = this.firstNonBlank(result.getString(3), "");
+                     if ("DELIVERED".equalsIgnoreCase(status) || "ACTIVE".equalsIgnoreCase(status)) {
+                        this.cacheOfficialBinding(uniqueItemId, result.getString(1), result.getString(2));
+                        ready = true;
+                     } else {
+                        pending = true;
+                     }
+                  }
+               }
+            }
+         } catch (Exception error) {
+            failure = error;
+         } finally {
+            if (connection != null) {
+               this.pgPool.release(connection);
+            }
+         }
+         boolean bindingReady = ready;
+         boolean deliveryPending = pending;
+         Exception refreshFailure = failure;
+         this.runSync(() -> {
+            this.returnStoneBindingRetryInFlight.remove(retryKey);
+            if (!player.isOnline()) {
+               return;
+            }
+            ItemStack current = hand == EquipmentSlot.OFF_HAND
+                  ? player.getInventory().getItemInOffHand()
+                  : player.getInventory().getItemInMainHand();
+            if (bindingReady && Objects.equals(uniqueItemId, this.uniqueItemIdOf(current))) {
+               CatalogItem authenticated = this.authenticCatalogItem(current, player, "return_stone_retry");
+               if (authenticated != null && "RETURN_STONE".equalsIgnoreCase(authenticated.effect())) {
+                  this.beginReturnStoneChannel(player, hand, current.clone(), authenticated);
+                  return;
+               }
+            }
+            if (deliveryPending) {
+               player.sendMessage(this.color("&eКамень ещё находится в отложенной выдаче. Используйте &f/cmartifacts claim&e, затем повторите клик."));
+            } else if (refreshFailure != null) {
+               this.getLogger().log(Level.FINE, "Return-stone binding refresh failed for " + uniqueItemId, refreshFailure);
+               player.sendMessage(this.color("&cНе удалось проверить камень возвращения. Повторите попытку через секунду."));
+            } else {
+               player.sendMessage(this.color("&cКамень возвращения не найден среди выданных предметов."));
+            }
+         });
+      });
+      if (!queued) {
+         this.returnStoneBindingRetryInFlight.remove(retryKey);
+         player.sendMessage(this.color("&cПроверка камня возвращения временно недоступна."));
       }
    }
 
@@ -4093,24 +3894,106 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onAngelSealInventoryDrag(InventoryDragEvent event) {
-       if (event == null || event.getView() == null) {
-          return;
-       }
-       if (this.hasInvalidAngelSealAmount(event)) {
-          event.setCancelled(true);
-          return;
-       }
-       Inventory top = event.getView().getTopInventory();
-       boolean entersExternal = event.getRawSlots().stream().anyMatch(slot -> slot >= 0
-             && slot < top.getSize()
-             && !(top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player));
-       if (entersExternal && (this.isAngelSealItem(event.getOldCursor())
-             || event.getNewItems().values().stream().anyMatch(this::isAngelSealItem))) {
-          event.setCancelled(true);
-       }
-    }
+   private boolean activateAngelWings(Player player) {
+      if (player == null || player.isDead()
+            || player.getGameMode() == GameMode.CREATIVE
+            || player.getGameMode() == GameMode.SPECTATOR) {
+         return false;
+      }
+      UUID playerUuid = player.getUniqueId();
+      AngelWingsFlight previous = this.angelWingsFlights.remove(playerUuid);
+      if (previous != null && previous.countdownTask != null) {
+         previous.countdownTask.cancel();
+      }
+      AngelWingsFlight flight = new AngelWingsFlight(player.getAllowFlight(), player.isFlying());
+      player.setAllowFlight(true);
+      player.setFlying(true);
+      long countdownStartTicks = ANGEL_WINGS_FLIGHT_TICKS
+            - AngelWingsFlightPolicy.COUNTDOWN_SECONDS * 20L;
+      flight.countdownTask = Bukkit.getScheduler().runTaskTimer(
+            this,
+            new Runnable() {
+               private long elapsedSeconds = AngelWingsFlightPolicy.FLIGHT_SECONDS
+                     - AngelWingsFlightPolicy.COUNTDOWN_SECONDS;
+
+               @Override
+               public void run() {
+                  Player current = Bukkit.getPlayer(playerUuid);
+                  int secondsRemaining = AngelWingsFlightPolicy.countdownSecondsAtElapsed(this.elapsedSeconds);
+                  if (current == null || !current.isOnline() || secondsRemaining < 0) {
+                     if (flight.countdownTask != null) {
+                        flight.countdownTask.cancel();
+                     }
+                     return;
+                  }
+                  // sendTitle targets this Player only; no server-wide broadcast
+                  // is emitted for the countdown.
+                  current.sendTitle(
+                        CopiMineArtifacts.this.color("&dКрылья ангела"),
+                        CopiMineArtifacts.this.color("&fОсталось: " + secondsRemaining + " сек."),
+                        0,
+                        20,
+                        0
+                  );
+                  this.elapsedSeconds++;
+                  if (secondsRemaining == 0) {
+                     CopiMineArtifacts.this.finishAngelWingsFlight(playerUuid);
+                  }
+               }
+            },
+            countdownStartTicks,
+            20L
+      );
+      this.angelWingsFlights.put(playerUuid, flight);
+      player.sendMessage(this.color("&dКрылья ангела: &fполёт на 15 секунд."));
+      return true;
+   }
+
+   private void finishAngelWingsFlight(UUID playerUuid) {
+      AngelWingsFlight flight = this.angelWingsFlights.remove(playerUuid);
+      if (flight == null) {
+         return;
+      }
+      if (flight.countdownTask != null) {
+         flight.countdownTask.cancel();
+      }
+      Player player = Bukkit.getPlayer(playerUuid);
+      if (player != null && player.isOnline()) {
+         this.restoreAngelWingsFlight(player, flight);
+      }
+   }
+
+   private void cancelAngelWingsFlight(Player player) {
+      if (player == null) {
+         return;
+      }
+      AngelWingsFlight flight = this.angelWingsFlights.remove(player.getUniqueId());
+      if (flight != null && flight.countdownTask != null) {
+         flight.countdownTask.cancel();
+      }
+      if (flight != null && player.isOnline()) {
+         this.restoreAngelWingsFlight(player, flight);
+      }
+   }
+
+   private void restoreAngelWingsFlight(Player player, AngelWingsFlight flight) {
+      if (player == null || flight == null
+            || !AngelWingsFlightPolicy.shouldRevokeFlight(
+                  flight.hadAllowFlight,
+                  player.getGameMode() == GameMode.CREATIVE,
+                  player.getGameMode() == GameMode.SPECTATOR)) {
+         return;
+      }
+      player.setFlying(flight.hadFlying);
+      player.setAllowFlight(false);
+   }
+
+   private void revokeAllAngelWingsFlight() {
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         this.cancelAngelWingsFlight(player);
+      }
+      this.angelWingsFlights.clear();
+   }
 
    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
    public void onReturnStoneDamage(EntityDamageEvent event) {
@@ -10813,12 +10696,123 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void recoverStrandedDeliveries(Player var1) {
-      if (var1 != null) {
+      if (var1 != null && var1.isOnline()) {
+         if (!this.isAuthenticatedByAuthMe(var1)) {
+            Bukkit.getScheduler().runTaskLater(this, () -> this.recoverStrandedDeliveries(var1), 20L);
+            return;
+         }
          UUID var2 = var1.getUniqueId();
          this.runAsync(() -> {
-            List var3 = this.readPendingByStatus(var2.toString(), "DELIVERING");
-            List var4 = this.readDeliveringInstances(var2.toString());
-            this.runSync(() -> this.reconcileStrandedDeliveries(var1, var3, var4));
+            List<CopiMineArtifacts.PendingDeliveryRow> deliveringRows = this.readPendingByStatus(var2.toString(), "DELIVERING");
+            List<CopiMineArtifacts.PendingDeliveryRow> pendingRows = this.readPendingByStatus(var2.toString(), "PENDING");
+            List<CopiMineArtifacts.DeliveringInstanceRow> deliveringInstances = this.readDeliveringInstances(var2.toString());
+            this.runSync(() -> {
+               if (var1.isOnline() && this.isAuthenticatedByAuthMe(var1)) {
+                  this.reconcileStrandedDeliveries(var1, deliveringRows, deliveringInstances);
+                  this.reconcilePendingPhysicalDeliveries(var1, pendingRows);
+               } else if (var1.isOnline()) {
+                  Bukkit.getScheduler().runTaskLater(this, () -> this.recoverStrandedDeliveries(var1), 20L);
+               }
+            });
+         });
+      }
+   }
+
+   private void autoClaimPendingDeliveries(Player player) {
+      if (player == null || !player.isOnline()) {
+         return;
+      }
+      if (!this.isAuthenticatedByAuthMe(player)) {
+         Bukkit.getScheduler().runTaskLater(this, () -> this.autoClaimPendingDeliveries(player), 20L);
+         return;
+      }
+      UUID playerUuid = player.getUniqueId();
+      this.runAsync(() -> {
+         List<CopiMineArtifacts.PendingDeliveryRow> rows = this.readPendingByStatus(playerUuid.toString(), "PENDING");
+         this.runSync(() -> {
+            if (!player.isOnline()) {
+               return;
+            }
+            if (!this.isAuthenticatedByAuthMe(player)) {
+               Bukkit.getScheduler().runTaskLater(this, () -> this.autoClaimPendingDeliveries(player), 20L);
+               return;
+            }
+            for (CopiMineArtifacts.PendingDeliveryRow row : rows) {
+               if (player.getInventory().firstEmpty() < 0) {
+                  break;
+               }
+               // A row can become physical between the read and this tick;
+               // never call the normal claim path for that row, because it
+               // would mint a second ItemStack.
+               if (!this.playerHasOfficialInstance(player, row.uniqueItemId(), row.itemId(), playerUuid)) {
+                  this.deliverPendingRowV2(player, row);
+               }
+            }
+         });
+      });
+   }
+
+   /**
+    * AuthMe restores/clears the pre-authentication player state. Never write
+    * a paid artifact into that temporary inventory: doing so can make the DB
+    * row DELIVERED while the item disappears immediately after /login.
+    * Reflection keeps AuthMe optional at compile time; if the plugin is
+    * present but its API cannot be checked, delivery stays fail-closed.
+    */
+   private boolean isAuthenticatedByAuthMe(Player player) {
+      if (player == null || !player.isOnline()) {
+         return false;
+      }
+      Plugin authMe = Bukkit.getPluginManager().getPlugin("AuthMe");
+      if (authMe == null || !authMe.isEnabled()) {
+         return true;
+      }
+      try {
+         Class<?> apiClass = Class.forName("fr.xephi.authme.api.v3.AuthMeApi");
+         Object api = apiClass.getMethod("getInstance").invoke(null);
+         Object authenticated = apiClass.getMethod("isAuthenticated", Player.class).invoke(api, player);
+         return Boolean.TRUE.equals(authenticated);
+      } catch (ReflectiveOperationException | RuntimeException error) {
+         this.getLogger().log(Level.FINE, "AuthMe authentication state could not be checked; delaying artifact delivery", error);
+         return false;
+      }
+   }
+
+   /**
+    * Older interrupted claims can leave the exact physical item in the
+    * player's inventory while both durable rows still say PENDING_DELIVERY.
+    * Do not issue another copy: prove the unique identity is already present,
+    * then advance that one row to DELIVERED.
+    */
+   private void reconcilePendingPhysicalDeliveries(Player player, List<CopiMineArtifacts.PendingDeliveryRow> rows) {
+      if (player == null || !player.isOnline() || rows == null || rows.isEmpty()) {
+         return;
+      }
+      for (CopiMineArtifacts.PendingDeliveryRow row : rows) {
+         if (!this.playerHasOfficialInstance(player, row.uniqueItemId(), row.itemId(), player.getUniqueId())) {
+            continue;
+         }
+         this.cacheProvisionalDonationInstances(row.itemId(), player.getUniqueId(), List.of(row.uniqueItemId()));
+         this.runAsync(() -> {
+            try {
+               boolean finalized = this.finalizePendingPhysicalDelivery(
+                     row.deliveryId(), row.purchaseId(), row.uniqueItemId(), row.itemId());
+               if (!finalized) {
+                  this.removeProvisionalDonationInstances(List.of(row.uniqueItemId()));
+                  this.getLogger().warning("Physical pending delivery was not finalized: " + row.deliveryId());
+                  return;
+               }
+               this.runSync(() -> {
+                  this.cacheOfficialBinding(row.uniqueItemId(), row.itemId(), player.getUniqueId());
+                  this.removeProvisionalDonationInstances(List.of(row.uniqueItemId()));
+                  if (player.isOnline()) {
+                     player.sendMessage(this.color("&aНезавершённая выдача подтверждена: &f" + this.strip(this.runtimeCatalogItem(row.itemId()).name())));
+                  }
+               });
+            } catch (Exception error) {
+               this.getLogger().log(Level.WARNING, "Failed to finalize physical pending delivery " + row.deliveryId(), error);
+               this.removeProvisionalDonationInstances(List.of(row.uniqueItemId()));
+            }
          });
       }
    }
@@ -12115,7 +12109,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private boolean isBlockedArtifactProcessingInventory(Inventory var1) {
       if (var1 == null) {
          return false;
-      } else if (var1.getType() == InventoryType.CRAFTING && var1.getHolder() instanceof Player) {
+      } else if (this.isPlayerCraftingInventory(var1)) {
          // The top inventory of a normal player inventory view is also
          // reported as CRAFTING.  It is not an external processing surface:
          // catalog items must remain freely movable in the player's own
@@ -12127,6 +12121,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             default -> false;
          };
       }
+   }
+
+   /**
+    * Bukkit normally exposes the player as the crafting inventory holder, but
+    * a few Paper/container adapters report a null holder for the same view.
+    * A normal player crafting view is still the player's own inventory and
+    * must not be treated as an external processing/container surface.
+    */
+   private boolean isPlayerCraftingInventory(Inventory inventory) {
+      if (inventory == null || inventory.getType() != InventoryType.CRAFTING) {
+         return false;
+      }
+      InventoryHolder holder = inventory.getHolder();
+      return holder == null || holder instanceof Player;
    }
 
    private boolean containsOfficialArtifact(Inventory inventory) {
@@ -12209,9 +12217,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             // current model so the old item remains usable after restart.
             boolean legacyReturnStoneModel = "return_stone".equalsIgnoreCase(var6)
                   && (var9 == null || var9 == 0);
-            boolean var10 = var8 != null && var8.customModelData() > 0
-                  && !Objects.equals(var9, var8.customModelData())
-                  && !legacyReturnStoneModel;
+            boolean var10 = var8 != null && (
+                  var8.customModelData() > 0
+                     && !Objects.equals(var9, var8.customModelData())
+                     && !legacyReturnStoneModel
+            );
             boolean varStackOrMaterialMismatch = var8 == null || var1.getAmount() != 1
                || var1.getType() != var8.material();
             String var11 = (String)var5.get(this.keyOwnerUuid, PersistentDataType.STRING);
@@ -12335,13 +12345,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              var6.setMaxStackSize(1);
              var7.add(this.color("&7Осталось использований: " + RepairKitMath.MAX_USES + "/" + RepairKitMath.MAX_USES));
           }
-          if ("INFINITE_TORCH".equalsIgnoreCase(var1.effect())) {
+          if ("INFINITE_TORCH".equalsIgnoreCase(var1.effect())
+                || "RETURN_STONE".equalsIgnoreCase(var1.effect())) {
              var6.setMaxStackSize(1);
           }
-          if ("ANGEL_SEAL".equalsIgnoreCase(var1.effect())) {
-             // FEATHER is the vanilla base item, but this entitlement must
-             // never be stackable because its physical identity is consumed
-             // exactly once on a real death.
+          if ("ANGEL_WINGS".equalsIgnoreCase(var1.effect())) {
+             // Keep the reusable flight artifact as one physical item; the
+             // cooldown is player-scoped and is not represented by stacking.
              var6.setMaxStackSize(1);
           }
           var6.setLore(var7);
@@ -12879,6 +12889,64 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
 
          this.pgPool.release(var3);
+      }
+   }
+
+   private boolean finalizePendingPhysicalDelivery(String deliveryId, String purchaseId, String uniqueItemId, String itemId) throws SQLException {
+      Connection connection = this.pgPool.acquire();
+      try {
+         connection.setAutoCommit(false);
+         try (PreparedStatement delivery = connection.prepareStatement(
+                  "UPDATE artifact_pending_deliveries SET status='CLAIMED',updated_at=? WHERE delivery_id=? AND status='PENDING'");
+              PreparedStatement purchase = connection.prepareStatement(
+                  "UPDATE artifact_purchases SET status='DELIVERED',delivery_mode='DIRECT',updated_at=? "
+                        + "WHERE purchase_id=? AND status IN ('PAID','DELIVERING','PENDING_DELIVERY')");
+              PreparedStatement instance = connection.prepareStatement(
+                  "UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? "
+                        + "WHERE unique_item_id=? AND item_id=? AND status='PENDING_DELIVERY'")) {
+            long updatedAt = this.now();
+            delivery.setLong(1, updatedAt);
+            delivery.setString(2, deliveryId);
+            if (delivery.executeUpdate() != 1) {
+               connection.rollback();
+               // Another recovery worker may have committed this exact row.
+               // Treat that as success only after both durable rows prove the
+               // physical instance is already delivered.
+               try (PreparedStatement state = connection.prepareStatement(
+                     "SELECT d.status,i.status FROM artifact_pending_deliveries d "
+                           + "LEFT JOIN artifact_item_instances i ON i.unique_item_id=d.unique_item_id "
+                           + "WHERE d.delivery_id=? AND d.purchase_id=? AND d.unique_item_id=?")) {
+                  state.setString(1, deliveryId);
+                  state.setString(2, purchaseId);
+                  state.setString(3, uniqueItemId);
+                  try (ResultSet result = state.executeQuery()) {
+                     return result.next()
+                           && "CLAIMED".equalsIgnoreCase(this.firstNonBlank(result.getString(1), ""))
+                           && "DELIVERED".equalsIgnoreCase(this.firstNonBlank(result.getString(2), ""));
+                  }
+               }
+            }
+            purchase.setLong(1, updatedAt);
+            purchase.setString(2, purchaseId);
+            purchase.executeUpdate();
+            instance.setLong(1, updatedAt);
+            instance.setString(2, uniqueItemId);
+            instance.setString(3, itemId);
+            if (instance.executeUpdate() != 1) {
+               throw new SQLException("Physical pending delivery lost its PENDING_DELIVERY instance row.");
+            }
+            connection.commit();
+            return true;
+         } catch (SQLException error) {
+            connection.rollback();
+            throw error;
+         }
+      } finally {
+         try {
+            connection.setAutoCommit(true);
+         } catch (SQLException ignored) {
+         }
+         this.pgPool.release(connection);
       }
    }
 
@@ -14732,7 +14800,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private Set<String> artifactInteractEffects() {
-      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST", "RETURN_STONE");
+      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST", "RETURN_STONE", "ANGEL_WINGS");
    }
 
    private Set<String> artifactDefenseEffects() {
@@ -16134,10 +16202,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static record RepairKitInteractionGuard(long tick, String key) {
    }
 
-   private static record PendingAngelSealConsumption(
-      AngelSealDeathPolicy.SealCandidate selectedSeal,
-      ItemStack snapshot
-   ) {
+   private static final class AngelWingsFlight {
+      final boolean hadAllowFlight;
+      final boolean hadFlying;
+      BukkitTask countdownTask;
+
+      AngelWingsFlight(boolean hadAllowFlight, boolean hadFlying) {
+         this.hadAllowFlight = hadAllowFlight;
+         this.hadFlying = hadFlying;
+      }
    }
 
    private static final class ReturnStoneChannel {

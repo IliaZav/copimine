@@ -13,7 +13,7 @@ $required = @(
   'batin_remen_sudnogo_dnya','nu_ty_i_nakopal_blyat_pickaxe','kosa_nalogovoy_inspekcii','kaska_prorab_huev',
   'mne_pohuy_ya_v_tanke_vest','pohuy_na_debaffy_amulet',
   'vremya_platit_nalogi_clock','gde_moy_lut_blyat_compass',
-  'repair_kit','return_stone','infinite_torch',
+  'repair_kit','return_stone','angel_wings','infinite_torch',
   'combat_crossbow','cobblestone_trail_bow','explosive_crossbow',
   'narcotic_recipe_feta','narcotic_recipe_kola','narcotic_recipe_girion','narcotic_recipe_sbp',
   'narcotic_recipe_sos','narcotic_recipe_drun','narcotic_recipe_chups','narcotic_recipe_borshevik'

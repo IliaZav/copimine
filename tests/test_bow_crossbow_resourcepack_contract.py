@@ -26,6 +26,7 @@ PROJECTILE_ITEMS = {
 UTILITY_ITEMS = {
     "repair_kit": ("SHEARS", 10025, "repair_kit"),
     "return_stone": ("ECHO_SHARD", 10026, "return_stone"),
+    "angel_wings": ("FEATHER", 10028, "angel_seal"),
     "infinite_torch": ("TORCH", 10027, "infinite_torch"),
 }
 NOTE_ITEMS = [
@@ -125,6 +126,13 @@ def test_source_models_and_textures_have_all_animation_states():
         with Image.open(texture) as image:
             assert image.size == (32, 32)
             assert image.mode == "RGBA"
+
+    wings_model = SRC / "assets" / "copimine" / "models" / "item" / "artifacts" / "angel_wings.json"
+    assert wings_model.is_file()
+    assert model_json(wings_model)["textures"]["layer0"] == "copimine:item/artifacts/angel_seal"
+    with Image.open(SRC / "assets" / "copimine" / "textures" / "item" / "artifacts" / "angel_seal.png") as image:
+        assert image.size == (32, 32)
+        assert image.mode == "RGBA"
 
     common_model = SRC / "assets" / "copimine" / "models" / "item" / "artifacts" / "recipe_note.json"
     common_texture = SRC / "assets" / "copimine" / "textures" / "item" / "artifacts" / "recipe_note.png"

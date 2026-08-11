@@ -22,6 +22,13 @@
       "texture": "copimine:item/artifacts/return_stone"
     },
     {
+      "id": "angel_wings",
+      "custom_model_data": 10028,
+      "base_material": "feather",
+      "model": "copimine:item/artifacts/angel_wings",
+      "texture": "copimine:item/artifacts/angel_seal"
+    },
+    {
       "id": "infinite_torch",
       "custom_model_data": 10027,
       "base_material": "torch",

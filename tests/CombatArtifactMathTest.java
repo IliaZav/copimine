@@ -9,6 +9,7 @@ public final class CombatArtifactMathTest {
         testArcVelocityUsesRequestedMagnitude();
         testZeroHorizontalDistanceStillLaunchesUpward();
         testStreamerKnockbackReachesTheRequestedEnvelope();
+        testGroundedStreamerKnockbackUsesTheSameEnvelope();
         System.out.println("CombatArtifactMathTest OK");
     }
 
@@ -93,6 +94,16 @@ public final class CombatArtifactMathTest {
             "streamer stick horizontal speed must target about ten blocks before landing");
         check(velocity.y() >= 1.2 && velocity.y() <= 1.4,
             "streamer stick must launch the target clearly upward");
+    }
+
+    private static void testGroundedStreamerKnockbackUsesTheSameEnvelope() {
+        var velocity = CombatArtifactMath.streamerKnockbackVelocity(
+            new CombatArtifactMath.Point(0.0, 64.0, 0.0),
+            new CombatArtifactMath.Point(0.0, 64.0, 2.0),
+            true);
+        double horizontal = Math.hypot(velocity.x(), velocity.z());
+        check(horizontal >= 1.0 && horizontal <= 1.3,
+            "grounded streamer targets must not receive an excessive horizontal impulse");
     }
 
     private static void check(boolean condition, String message) {

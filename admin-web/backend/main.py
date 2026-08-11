@@ -748,6 +748,16 @@ class AdminDonationBalanceSetIn(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class AdminTreasuryBalanceSetIn(BaseModel):
+    balance: int = Field(ge=0, le=1000000000)
+    reason: str = Field(min_length=2, max_length=160)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class AdminTreasuryLedgerDeleteIn(BaseModel):
+    reason: str = Field(default="admin-ledger-delete", min_length=2, max_length=160)
+
+
 class AdminDonationTestPurchaseIn(BaseModel):
     minecraft_uuid: str = Field(default="", max_length=64)
     minecraft_name: str = Field(min_length=3, max_length=16)
@@ -6090,7 +6100,7 @@ def treasury_bank_profile_sync(account: dict[str, Any]) -> dict[str, Any]:
                    COALESCE(counterparty.owner_name,'') AS counterparty_name,l.created_at,l.details
             FROM cmv4_bank_ledger l
             LEFT JOIN cmv4_bank_accounts counterparty ON counterparty.account_id=l.counterparty_account_id
-            WHERE l.account_id=%s
+            WHERE l.account_id=%s AND l.status='COMMITTED'
             ORDER BY l.created_at DESC
             LIMIT 120
             """,
@@ -6120,7 +6130,7 @@ def admin_treasury_bank_profile_sync(actor: str) -> dict[str, Any]:
             """
             SELECT tx_id,tx_type,amount,balance_after,counterparty_account_id,created_at,details
             FROM cmv4_bank_ledger
-            WHERE account_id=%s
+            WHERE account_id=%s AND status='COMMITTED'
             ORDER BY created_at DESC
             LIMIT 120
             """,
@@ -6135,6 +6145,119 @@ def admin_treasury_bank_profile_sync(actor: str) -> dict[str, Any]:
         "ledger": ledger,
         "actor": actor,
     }
+
+
+def admin_set_treasury_balance_sync(actor: str, balance: int, reason: str, idempotency_key: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    target_balance = int(balance or 0)
+    if target_balance < 0 or target_balance > 1_000_000_000:
+        raise HTTPException(status_code=400, detail="Баланс казны должен быть от 0 до 1 000 000 000 AR")
+    safe_key = str(idempotency_key or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,120}", safe_key):
+        raise HTTPException(status_code=400, detail="Некорректный ключ операции")
+    now = donation_now_ms()
+    ledger_key = f"admin-treasury-set-{safe_key}"
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        advisory_lock(conn, f"admin-treasury-set:{safe_key}")
+        existing = conn.execute(
+            "SELECT tx_id,balance_after FROM cmv4_bank_ledger WHERE idempotency_key=%s LIMIT 1",
+            (ledger_key,),
+        ).fetchone()
+        if existing:
+            return {
+                "ok": True,
+                "accountId": TREASURY_ACCOUNT_ID,
+                "txId": str(row_get(existing, "tx_id", "") or ""),
+                "balanceAfter": int(row_get(existing, "balance_after", 0) or 0),
+                "idempotent": True,
+            }
+        ensure_treasury_bank_account(conn)
+        locked = conn.execute(
+            "SELECT balance FROM cmv4_bank_accounts WHERE account_id=%s FOR UPDATE",
+            (TREASURY_ACCOUNT_ID,),
+        ).fetchone()
+        before = int(row_get(locked, "balance", 0) or 0)
+        delta = target_balance - before
+        tx_id = f"admin-treasury-set-{secrets.token_hex(12)}"
+        details = json.dumps(
+            {
+                "source": "admin-web",
+                "mode": "set",
+                "reason": sanitize_public_plain_text(reason, 160),
+                "before": before,
+                "after": target_balance,
+                "delta": delta,
+            },
+            ensure_ascii=False,
+        )
+        conn.execute(
+            "UPDATE cmv4_bank_accounts SET balance=%s,version=version+1,updated_at=%s WHERE account_id=%s",
+            (target_balance, now, TREASURY_ACCOUNT_ID),
+        )
+        conn.execute(
+            """
+            INSERT INTO cmv4_bank_ledger(
+                tx_id,account_id,counterparty_account_id,player_uuid,tx_type,
+                amount,balance_after,idempotency_key,status,created_at,actor,details
+            ) VALUES(%s,%s,'','',%s,%s,%s,%s,'COMMITTED',%s,%s,%s)
+            """,
+            (tx_id, TREASURY_ACCOUNT_ID, "ADMIN_TREASURY_SET", abs(delta), target_balance, ledger_key, now, actor, details),
+        )
+        conn.commit()
+    audit_event(actor, "treasury.balance.set", target=TREASURY_ACCOUNT_ID, details={"before": before, "after": target_balance, "delta": delta, "txId": tx_id, "reason": reason})
+    append_panel_event("economy", "treasury_balance_set", actor=actor, target=TREASURY_ACCOUNT_ID, metadata={"before": before, "after": target_balance, "delta": delta, "txId": tx_id}, tags=["economy", "treasury", "admin"])
+    return {
+        "ok": True,
+        "accountId": TREASURY_ACCOUNT_ID,
+        "txId": tx_id,
+        "balanceBefore": before,
+        "balanceAfter": target_balance,
+        "delta": delta,
+        "idempotent": False,
+    }
+
+
+def admin_delete_treasury_ledger_sync(actor: str, tx_id: str, reason: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    safe_tx_id = str(tx_id or "").strip()
+    if not safe_tx_id or len(safe_tx_id) > 200:
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор записи казны")
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        ensure_treasury_bank_account(conn)
+        row = conn.execute(
+            "SELECT tx_id,tx_type,amount,status,details FROM cmv4_bank_ledger WHERE account_id=%s AND tx_id=%s FOR UPDATE",
+            (TREASURY_ACCOUNT_ID, safe_tx_id),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Запись казны не найдена")
+        status = str(row_get(row, "status", "") or "").upper()
+        if status == "VOIDED":
+            conn.commit()
+            return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "txId": safe_tx_id, "deleted": False, "idempotent": True}
+        if status != "COMMITTED":
+            raise HTTPException(status_code=409, detail="Можно удалить только подтверждённую запись казны")
+        try:
+            details = json.loads(str(row_get(row, "details", "") or ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            details = {}
+        if not isinstance(details, dict):
+            details = {}
+        details.update({"voidedAt": now, "voidedBy": actor, "voidReason": sanitize_public_plain_text(reason, 160)})
+        conn.execute(
+            "UPDATE cmv4_bank_ledger SET status='VOIDED',details=%s WHERE account_id=%s AND tx_id=%s",
+            (json.dumps(details, ensure_ascii=False), TREASURY_ACCOUNT_ID, safe_tx_id),
+        )
+        conn.commit()
+        tx_type = str(row_get(row, "tx_type", "") or "")
+        amount = int(row_get(row, "amount", 0) or 0)
+    audit_event(actor, "treasury.ledger.delete", target=TREASURY_ACCOUNT_ID, details={"txId": safe_tx_id, "txType": tx_type, "amount": amount, "reason": reason})
+    append_panel_event("economy", "treasury_ledger_deleted", actor=actor, target=TREASURY_ACCOUNT_ID, metadata={"txId": safe_tx_id, "txType": tx_type, "amount": amount}, tags=["economy", "treasury", "admin"])
+    return {"ok": True, "accountId": TREASURY_ACCOUNT_ID, "txId": safe_tx_id, "deleted": True, "balanceUnchanged": True}
 
 
 def admin_set_treasury_pin_sync(actor: str, data: PlayerPinSetIn) -> dict[str, Any]:
@@ -6268,7 +6391,7 @@ def public_treasury_overview_sync(limit: int = 30) -> dict[str, Any]:
                    cp.owner_name AS counterparty_name
             FROM cmv4_bank_ledger
             l LEFT JOIN cmv4_bank_accounts cp ON cp.account_id=l.counterparty_account_id
-            WHERE l.account_id=%s
+            WHERE l.account_id=%s AND l.status='COMMITTED'
             ORDER BY l.created_at DESC
             LIMIT %s
             """,
@@ -6486,7 +6609,7 @@ def public_president_budget_history_sync(limit: int = 20, offset: int = 0) -> di
                    l.counterparty_account_id,cp.owner_name AS counterparty_name
             FROM cmv4_bank_ledger l
             LEFT JOIN cmv4_bank_accounts cp ON cp.account_id=l.counterparty_account_id
-            WHERE l.account_id=%s
+            WHERE l.account_id=%s AND l.status='COMMITTED'
             ORDER BY l.created_at DESC
             LIMIT %s OFFSET %s
             """,
@@ -13473,6 +13596,20 @@ async def player_bank_pin_set(player: str, data: PlayerPinSetIn, request: Reques
 @app.get("/api/admin/economy/treasury")
 async def admin_treasury_profile(username: str = Depends(require_admin)) -> dict[str, Any]:
     return await bg(admin_treasury_bank_profile_sync, username)
+
+
+@app.post("/api/admin/economy/treasury/set-balance")
+async def admin_treasury_set_balance(data: AdminTreasuryBalanceSetIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "TREASURY_BALANCE_SET")
+    check_rate_limit(request, "admin-treasury-balance-set", limit=10, window_seconds=60)
+    return await bg(admin_set_treasury_balance_sync, username, data.balance, data.reason, data.idempotency_key)
+
+
+@app.delete("/api/admin/economy/treasury/ledger/{tx_id}")
+async def admin_treasury_ledger_delete(tx_id: str, data: AdminTreasuryLedgerDeleteIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    require_sensitive_confirm(request, "TREASURY_LEDGER_DELETE")
+    check_rate_limit(request, "admin-treasury-ledger-delete", limit=20, window_seconds=60)
+    return await bg(admin_delete_treasury_ledger_sync, username, tx_id, data.reason)
 
 
 @app.post("/api/admin/economy/treasury/pin")

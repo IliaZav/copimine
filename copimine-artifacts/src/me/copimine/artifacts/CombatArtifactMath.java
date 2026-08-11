@@ -6,6 +6,8 @@ import java.util.List;
 /** Pure geometry used by projectile artifact handlers and unit-tested without Bukkit. */
 public final class CombatArtifactMath {
     private static final double EPSILON = 1.0e-9;
+    private static final double STREAMER_HORIZONTAL_SPEED = 1.15D;
+    private static final double STREAMER_VERTICAL_SPEED = 1.30D;
 
     private CombatArtifactMath() {
     }
@@ -64,8 +66,13 @@ public final class CombatArtifactMath {
     }
 
     public static Velocity streamerKnockbackVelocity(Point attacker, Point target, boolean targetOnGround) {
-        double horizontal = targetOnGround ? 1.50D : 1.00D;
-        return awayArcVelocity(attacker, target, horizontal, 1.30D);
+        // Grounded targets used to receive a larger impulse than airborne
+        // targets. That made the same hit behave like a launch into the
+        // distance and could push a player through protected areas. The
+        // server-side correction already replaces the vanilla velocity on
+        // the next tick, so one bounded profile is deterministic for both
+        // paths and stays close to the requested ten-block arc.
+        return awayArcVelocity(attacker, target, STREAMER_HORIZONTAL_SPEED, STREAMER_VERTICAL_SPEED);
     }
 
     public record Point(double x, double y, double z) {

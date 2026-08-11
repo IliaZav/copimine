@@ -52,24 +52,24 @@ items:
     lore:
       - "&7Возвращает к точке возрождения"
 
-  - id: angel_seal
+  - id: angel_wings
     category: TOOL
     material: FEATHER
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
-    name: "&dПечать ангела"
+    custom_model_data: 10028
+    custom-texture-mode-allowed: true
+    name: "&dКрылья ангела"
     rarity: EPIC
-    price_ar: 1000
+    price_ar: 750
     supply_limit: 0
     per_player_limit: 3
-    cooldown_seconds: 0
-    effect: ANGEL_SEAL
+    cooldown_seconds: 300
+    effect: ANGEL_WINGS
     effect_chance_percent: 100
     visual_effect_id: ""
     max_stack_size: 1
     lore:
-      - "&7Сохраняет вещи после смерти"
+      - "&7Даёт полёт на 15 секунд"
 
   - id: infinite_torch
     category: TOOL

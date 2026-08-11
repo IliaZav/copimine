@@ -6,6 +6,7 @@
     {"id":"zmei_gorynych","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/Zmei_Gorinich_sword.png","base_material":"NETHERITE_SWORD","custom_model_data":10001},
     {"id":"repair_kit","catalog":"AR","source_group":"Generated","source_path":"generated/repair_kit.png","base_material":"SHEARS","custom_model_data":10025},
     {"id":"return_stone","catalog":"AR","source_group":"Generated","source_path":"generated/return_stone.png","base_material":"ECHO_SHARD","custom_model_data":10026},
+    {"id":"angel_wings","catalog":"AR","source_group":"Generated","source_path":"generated/angel_seal.png","base_material":"FEATHER","custom_model_data":10028},
     {"id":"infinite_torch","catalog":"AR","source_group":"Generated","source_path":"generated/infinite_torch.png","base_material":"TORCH","custom_model_data":10027},
     {"id":"smena_bez_perekura_pickaxe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/smena_bez_perekura_pickaxe.png","base_material":"NETHERITE_PICKAXE","custom_model_data":10002},
     {"id":"lesnoy_bespredel_axe","catalog":"AR","source_group":"No_Donate","source_path":"No_Donate/Lesnoy_bespredel_axe.png","base_material":"NETHERITE_AXE","custom_model_data":10003},

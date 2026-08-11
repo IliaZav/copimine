@@ -16,6 +16,60 @@ items:
     lore:
       - "&7С каждым ударом есть шанс нанести крит с дебаффами"
 
+  - id: repair_kit
+    category: TOOL
+    material: SHEARS
+    source: AR_SHOP
+    custom_model_data: 0
+    custom-texture-mode-allowed: false
+    name: "&dРемкомплект"
+    rarity: EPIC
+    price_ar: 10
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: REPAIR_KIT
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Чинит обычный предмет в другой руке"
+
+  - id: return_stone
+    category: TOOL
+    material: ECHO_SHARD
+    source: AR_SHOP
+    custom_model_data: 0
+    custom-texture-mode-allowed: false
+    name: "&dКамень возвращения"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 300
+    effect: RETURN_STONE
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Возвращает к точке возрождения"
+
+  - id: infinite_torch
+    category: TOOL
+    material: TORCH
+    source: AR_SHOP
+    custom_model_data: 0
+    custom-texture-mode-allowed: false
+    name: "&dБесконечный факел"
+    rarity: EPIC
+    price_ar: 100
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: INFINITE_TORCH
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Не расходуется при установке"
+
   - id: combat_crossbow
     category: WEAPON
     material: CROSSBOW
@@ -36,11 +90,11 @@ items:
 
   - id: cobblestone_trail_bow
     category: WEAPON
-    material: CROSSBOW
+    material: BOW
     source: AR_SHOP
     custom_model_data: 0
     custom-texture-mode-allowed: false
-    name: "&dАрбалет блоков"
+    name: "&dЛук блоков"
     rarity: EPIC
     price_ar: 64
     supply_limit: 0

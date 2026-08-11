@@ -111,6 +111,7 @@ import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockCookEvent;
+import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -127,6 +128,7 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCreativeEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
@@ -145,10 +147,11 @@ import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import io.papermc.paper.event.player.PlayerShieldDisableEvent;
 import io.papermc.paper.event.entity.EntityInsideBlockEvent;
-import io.papermc.paper.event.entity.EntityLoadCrossbowEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
@@ -230,6 +233,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
    private final Map<UUID, CombatProjectileState> combatProjectiles = new ConcurrentHashMap<>();
    private final Map<String, CombatArtifactShotPolicy.ShotWindow> explosiveShotWindows = new ConcurrentHashMap<>();
+   private final Map<UUID, ReturnStoneChannel> returnStoneChannels = new ConcurrentHashMap<>();
+   private final Set<String> infiniteTorchPlacementGuards = ConcurrentHashMap.newKeySet();
    /** Instance ids whose physical copy is no longer valid (lost/consumed/replaced). */
    private final Set<String> terminalDonationInstanceIds = ConcurrentHashMap.newKeySet();
    private final Map<UUID, ItemStack> pendingInfiniteTotemRestores = new ConcurrentHashMap<>();
@@ -279,7 +284,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyLastDeathZ;
    private NamespacedKey keyProjectileAbility;
    private NamespacedKey keyProjectileOwner;
-   private NamespacedKey keyExplosiveShotDamage;
+   private NamespacedKey keyRepairKitUses;
+   private NamespacedKey keyReturnStoneCooldownUntil;
    private NamespacedKey attackDamageKey;
    private NamespacedKey visualEntityTypeKey;
    private NamespacedKey visualKindKey;
@@ -317,7 +323,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyLastDeathZ = new NamespacedKey(this, "last_death_z");
       this.keyProjectileAbility = new NamespacedKey(this, "combat_projectile_ability");
       this.keyProjectileOwner = new NamespacedKey(this, "combat_projectile_owner");
-      this.keyExplosiveShotDamage = new NamespacedKey(this, "explosive_shot_damage");
+      this.keyRepairKitUses = new NamespacedKey(this, "repair_kit_uses");
+      this.keyReturnStoneCooldownUntil = new NamespacedKey(this, "return_stone_cooldown_until");
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
       this.visualKindKey = new NamespacedKey("copimine", "visual_kind");
@@ -545,6 +552,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       this.combatProjectiles.clear();
       this.explosiveShotWindows.clear();
+      for (ReturnStoneChannel channel : this.returnStoneChannels.values()) {
+         if (channel.task != null) {
+            channel.task.cancel();
+         }
+      }
+      this.returnStoneChannels.clear();
+      this.infiniteTorchPlacementGuards.clear();
 
       this.claimAllInFlight.clear();
 
@@ -1992,6 +2006,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler
    public void onQuit(PlayerQuitEvent var1) {
       UUID playerUuid = var1.getPlayer().getUniqueId();
+      this.cancelReturnStoneChannel(var1.getPlayer());
       this.sessions.remove(playerUuid);
       this.pozdnyakovNauseaCooldowns.remove(playerUuid);
       String prefix = playerUuid + ":";
@@ -2143,6 +2158,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    @EventHandler
    public void onDeath(PlayerDeathEvent var1) {
+      this.cancelReturnStoneChannel(var1.getEntity());
       CopiMineArtifacts.SessionState var2 = this.sessions.get(var1.getEntity().getUniqueId());
       if (var2 != null && var2.purchaseInFlightId.isBlank()) {
          var2.actions.clear();
@@ -2538,7 +2554,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler(
       ignoreCancelled = true
    )
-   public void onPlayerDeath(PlayerDeathEvent var1) {
+    public void onPlayerDeath(PlayerDeathEvent var1) {
       Player player = var1.getEntity();
       if (player != null && player.getWorld() != null) {
          Location deathLocation = player.getLocation().clone();
@@ -2551,11 +2567,636 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   @EventHandler(
-      priority = EventPriority.HIGHEST,
-      ignoreCancelled = false
-   )
-   public void onArtifactInteract(PlayerInteractEvent var1) {
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRepairKitInteract(PlayerInteractEvent event) {
+       if (event == null || event.isCancelled()
+             || (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK)
+             || (event.getHand() != EquipmentSlot.HAND && event.getHand() != EquipmentSlot.OFF_HAND)
+             || event.getPlayer() == null) {
+          return;
+       }
+
+       ItemStack held = event.getItem();
+       if (!this.isRepairKitItem(held)) {
+          return;
+       }
+
+       // A malformed/spoofed kit must not fall through to vanilla flint-and-steel.
+       event.setUseItemInHand(Event.Result.DENY);
+       event.setUseInteractedBlock(Event.Result.DENY);
+       event.setCancelled(true);
+
+       Player player = event.getPlayer();
+       CatalogItem kit = this.authenticCatalogItem(held, player, "repair_kit_use");
+       if (kit == null || !"REPAIR_KIT".equalsIgnoreCase(kit.effect())) {
+          return;
+       }
+
+       ItemStack target = event.getHand() == EquipmentSlot.HAND
+             ? player.getInventory().getItemInOffHand()
+             : player.getInventory().getItemInMainHand();
+       if (!this.applyRepairKit(player, event.getHand(), held, target)) {
+          player.sendMessage(this.color("&cРемкомплект можно использовать только на повреждённом обычном предмете в другой руке."));
+          return;
+       }
+       player.updateInventory();
+    }
+
+    private boolean applyRepairKit(Player player, EquipmentSlot hand, ItemStack capturedKit, ItemStack target) {
+       if (player == null || hand == null || capturedKit == null || target == null
+             || capturedKit.getAmount() != 1 || target.getAmount() != 1
+             || !this.isRepairKitItem(capturedKit) || this.hasCopiMineOfficialMetadata(target)
+             || this.isOfficialArtifactItem(target) || this.isOfficialDonationItem(target)
+             || this.isRepairKitItem(target)) {
+          return false;
+       }
+
+       PlayerInventory inventory = player.getInventory();
+       ItemStack currentKit = hand == EquipmentSlot.HAND
+             ? inventory.getItemInMainHand()
+             : inventory.getItemInOffHand();
+       if (!this.isRepairKitItem(currentKit)
+             || !Objects.equals(this.uniqueItemIdOf(capturedKit), this.uniqueItemIdOf(currentKit))
+             || this.repairKitUses(currentKit) <= 0) {
+          return false;
+       }
+
+       int currentUses = this.repairKitUses(currentKit);
+       if (!(currentKit.getItemMeta() instanceof Damageable currentKitDamage)
+             || !currentKitDamage.hasMaxDamage()
+             || currentKitDamage.getMaxDamage() != RepairKitMath.MAX_USES
+             || currentKitDamage.getDamage() != RepairKitMath.damageForRemainingUses(
+                   RepairKitMath.MAX_USES, currentUses)) {
+          return false;
+       }
+
+       ItemMeta targetMeta = target.getItemMeta();
+       if (!(targetMeta instanceof Damageable targetDamage)
+             || target.getType().getMaxDurability() <= 0
+             || targetDamage.getDamage() <= 0) {
+          return false;
+       }
+       int maxDurability = target.getType().getMaxDurability();
+       int oldDamage = targetDamage.getDamage();
+       int newDamage = RepairKitMath.repairedDamage(oldDamage, maxDurability);
+       if (!RepairKitMath.canRepair(oldDamage, maxDurability, currentUses,
+             this.hasCopiMineOfficialMetadata(target) || this.isOfficialArtifactItem(target) || this.isOfficialDonationItem(target),
+             this.isRepairKitItem(target), false)
+             || newDamage >= oldDamage) {
+          return false;
+       }
+
+       ItemStack repairedTarget = target.clone();
+       ItemMeta repairedMeta = repairedTarget.getItemMeta();
+       if (!(repairedMeta instanceof Damageable repairedDamage)) {
+          return false;
+       }
+       repairedDamage.setDamage(newDamage);
+       repairedTarget.setItemMeta(repairedMeta);
+
+       int remainingUses = RepairKitMath.remainingUsesAfterSuccess(currentUses);
+       ItemStack updatedKit = this.withRepairKitUses(currentKit, remainingUses);
+       if (hand == EquipmentSlot.HAND) {
+          inventory.setItemInMainHand(updatedKit);
+          inventory.setItemInOffHand(repairedTarget);
+       } else {
+          inventory.setItemInOffHand(updatedKit);
+          inventory.setItemInMainHand(repairedTarget);
+       }
+       return true;
+    }
+
+    private ItemStack withRepairKitUses(ItemStack stack, int usesRemaining) {
+       if (usesRemaining <= 0) {
+          return new ItemStack(Material.AIR);
+       }
+       ItemStack updated = stack.clone();
+       updated.setAmount(1);
+       ItemMeta meta = updated.getItemMeta();
+       if (meta == null) {
+          return updated;
+       }
+       meta.getPersistentDataContainer().set(this.keyRepairKitUses, PersistentDataType.INTEGER,
+             Math.min(RepairKitMath.MAX_USES, Math.max(0, usesRemaining)));
+       if (meta instanceof Damageable repairKitDamage) {
+          repairKitDamage.setMaxDamage(RepairKitMath.MAX_USES);
+          repairKitDamage.setDamage(RepairKitMath.damageForRemainingUses(RepairKitMath.MAX_USES, usesRemaining));
+       }
+       meta.setMaxStackSize(1);
+       List<String> lore = meta.hasLore() && meta.getLore() != null
+             ? new ArrayList<>(meta.getLore())
+             : new ArrayList<>();
+       lore.removeIf(line -> line != null && ChatColor.stripColor(line).startsWith("Осталось использований:"));
+       lore.add(this.color("&7Осталось использований: " + usesRemaining + "/" + RepairKitMath.MAX_USES));
+       meta.setLore(lore);
+       updated.setItemMeta(meta);
+       return updated;
+    }
+
+    private int repairKitUses(ItemStack stack) {
+       if (!this.isRepairKitItem(stack) || stack.getItemMeta() == null) {
+          return 0;
+       }
+       Integer uses = stack.getItemMeta().getPersistentDataContainer().get(this.keyRepairKitUses, PersistentDataType.INTEGER);
+       return uses == null || uses < 0 || uses > RepairKitMath.MAX_USES ? 0 : uses;
+    }
+
+    private boolean isRepairKitItem(ItemStack stack) {
+       if (stack == null || stack.getType().isAir() || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+          return false;
+       }
+       String itemId = stack.getItemMeta().getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING);
+       return "repair_kit".equalsIgnoreCase(itemId);
+    }
+
+    private boolean hasCopiMineOfficialMetadata(ItemStack stack) {
+       if (stack == null || stack.getType().isAir() || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+          return false;
+       }
+       Set<String> officialKeyNames = Set.of(
+             "artifact_item_id", "artifact_unique_item_id", "artifact_category", "artifact_rarity",
+             "artifact_owner_uuid", "artifact_owner_name", "artifact_purchase_id", "artifact_source",
+             "artifact_bound", "artifact_reclaimable", "copimine_item_type", "narcotic_id",
+             "narcotic_instance_id", "narcotic_signature", "narcotic_signature_version", "ar_serial",
+             "ar_signature", "ar_denomination", "ar_signature_version", "ar_issuance_token"
+       );
+       for (NamespacedKey key : stack.getItemMeta().getPersistentDataContainer().getKeys()) {
+          String namespace = key.getNamespace().toLowerCase(Locale.ROOT);
+          String keyName = key.getKey().toLowerCase(Locale.ROOT);
+          if (namespace.startsWith("copimine") || officialKeyNames.contains(keyName)) {
+             return true;
+          }
+       }
+       return false;
+    }
+
+    private boolean hasRepairKitIngredient(ItemStack[] contents) {
+       if (contents == null) {
+          return false;
+       }
+       for (ItemStack stack : contents) {
+          if (this.isRepairKitItem(stack)) {
+             return true;
+          }
+       }
+       return false;
+    }
+
+    private boolean hasRepairKitIngredient(Inventory inventory) {
+       return inventory != null && this.hasRepairKitIngredient(inventory.getStorageContents());
+    }
+
+    private boolean shouldBlockRepairKitInsertion(InventoryClickEvent event) {
+       if (event == null || event.getView() == null || !this.isBlockedArtifactProcessingInventory(event.getView().getTopInventory())) {
+          return false;
+       }
+       Inventory top = event.getView().getTopInventory();
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+             ? player.getInventory().getItem(event.getHotbarButton()) : null;
+       ItemStack offhand = player == null ? null : player.getInventory().getItemInOffHand();
+       return this.isRepairKitItem(event.getCursor()) || this.isRepairKitItem(event.getCurrentItem())
+             || this.isRepairKitItem(hotbar) || this.isRepairKitItem(offhand)
+             || this.hasRepairKitIngredient(top);
+    }
+
+    private boolean shouldBlockRepairKitDrag(InventoryDragEvent event) {
+       if (event == null || event.getView() == null || !this.isBlockedArtifactProcessingInventory(event.getView().getTopInventory())) {
+          return false;
+       }
+       return this.isRepairKitItem(event.getOldCursor()) || this.hasRepairKitIngredient(event.getView().getTopInventory());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRepairKitItemDamage(PlayerItemDamageEvent event) {
+       if (event != null && this.isRepairKitItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitInventoryMove(InventoryMoveItemEvent event) {
+       if (event != null && this.isRepairKitItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitDispense(BlockDispenseEvent event) {
+       if (event != null && this.isRepairKitItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitMerge(ItemMergeEvent event) {
+       if (event != null && (this.isRepairKitItem(event.getEntity() == null ? null : event.getEntity().getItemStack())
+             || this.isRepairKitItem(event.getTarget() == null ? null : event.getTarget().getItemStack()))) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitInventoryPickup(InventoryPickupItemEvent event) {
+       if (event != null && event.getItem() != null && this.isRepairKitItem(event.getItem().getItemStack())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitEntityPickup(EntityPickupItemEvent event) {
+       if (event != null && event.getItem() != null && this.isRepairKitItem(event.getItem().getItemStack())
+             && event.getItem().getItemStack().getAmount() != 1) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitDrop(PlayerDropItemEvent event) {
+       if (event != null && event.getItemDrop() != null && this.isRepairKitItem(event.getItemDrop().getItemStack())
+             && event.getItemDrop().getItemStack().getAmount() != 1) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitCraft(PrepareItemCraftEvent event) {
+       if (event != null && this.hasRepairKitIngredient(event.getInventory().getMatrix())) {
+          event.getInventory().setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitMend(PlayerItemMendEvent event) {
+       if (event != null && this.isRepairKitItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitAnvil(PrepareAnvilEvent event) {
+       if (event != null && this.hasRepairKitIngredient(event.getInventory())) {
+          event.setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitGrindstone(PrepareGrindstoneEvent event) {
+       if (event != null && this.hasRepairKitIngredient(event.getInventory())) {
+          event.setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitSmithing(PrepareSmithingEvent event) {
+       if (event != null && this.hasRepairKitIngredient(event.getInventory())) {
+          event.setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitClick(InventoryClickEvent event) {
+       if (this.shouldBlockRepairKitInsertion(event) || this.hasInvalidRepairKitAmount(event)) {
+          event.setCancelled(true);
+       }
+    }
+
+    private boolean hasInvalidRepairKitAmount(InventoryClickEvent event) {
+       if (event == null) {
+          return false;
+       }
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+             ? player.getInventory().getItem(event.getHotbarButton()) : null;
+       ItemStack offhand = player == null ? null : player.getInventory().getItemInOffHand();
+       return this.hasInvalidRepairKitAmount(event.getCursor())
+             || this.hasInvalidRepairKitAmount(event.getCurrentItem())
+             || this.hasInvalidRepairKitAmount(hotbar)
+             || this.hasInvalidRepairKitAmount(offhand);
+    }
+
+    private boolean hasInvalidRepairKitAmount(ItemStack stack) {
+       return this.isRepairKitItem(stack) && stack.getAmount() != 1;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitDrag(InventoryDragEvent event) {
+       if (this.shouldBlockRepairKitDrag(event) || this.hasInvalidRepairKitAmount(event)) {
+          event.setCancelled(true);
+       }
+    }
+
+    private boolean hasInvalidRepairKitAmount(InventoryDragEvent event) {
+       if (event == null) {
+          return false;
+       }
+       if (this.hasInvalidRepairKitAmount(event.getOldCursor())) {
+          return true;
+       }
+       return event.getNewItems().values().stream().anyMatch(this::hasInvalidRepairKitAmount);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitBlockCook(BlockCookEvent event) {
+       if (event != null && (this.isRepairKitItem(event.getSource()) || this.isRepairKitItem(event.getResult()))) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRepairKitBrew(BrewEvent event) {
+       if (event != null && this.hasRepairKitIngredient(event.getContents())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onInfiniteTorchPlace(BlockPlaceEvent event) {
+       if (event == null || event.isCancelled() || !event.canBuild()
+             || event.getPlayer() == null || event.getHand() == null) {
+          return;
+       }
+       CatalogItem torch = this.authenticCatalogItem(event.getItemInHand(), event.getPlayer(), "infinite_torch_place");
+       if (torch == null || !"INFINITE_TORCH".equalsIgnoreCase(torch.effect())) {
+          return;
+       }
+       String uniqueItemId = this.uniqueItemIdOf(event.getItemInHand());
+       if (uniqueItemId.isBlank()) {
+          return;
+       }
+       String guardKey = event.getPlayer().getUniqueId() + ":" + uniqueItemId + ":" + event.getHand().name();
+       if (!this.infiniteTorchPlacementGuards.add(guardKey)) {
+          return;
+       }
+       ItemStack snapshot = event.getItemInHand().clone();
+       snapshot.setAmount(1);
+       Bukkit.getScheduler().runTask(
+             this,
+             () -> this.restoreInfiniteTorchAfterSuccessfulPlacement(
+                   event.getPlayer(), event.getHand(), uniqueItemId, snapshot, guardKey
+             )
+       );
+    }
+
+    private void restoreInfiniteTorchAfterSuccessfulPlacement(
+          Player player, EquipmentSlot hand, String uniqueItemId, ItemStack snapshot, String guardKey) {
+       try {
+          if (player == null || !player.isOnline() || uniqueItemId == null || uniqueItemId.isBlank()
+                || snapshot == null || !this.isInfiniteTorchItem(snapshot)
+                || this.containsUniqueItem(player, uniqueItemId)) {
+             return;
+          }
+          PlayerInventory inventory = player.getInventory();
+          ItemStack expected = hand == EquipmentSlot.HAND
+                ? inventory.getItemInMainHand()
+                : inventory.getItemInOffHand();
+          if (expected == null || expected.getType().isAir()) {
+             if (hand == EquipmentSlot.HAND) {
+                inventory.setItemInMainHand(snapshot.clone());
+             } else {
+                inventory.setItemInOffHand(snapshot.clone());
+             }
+             return;
+          }
+          Map<Integer, ItemStack> leftovers = inventory.addItem(snapshot.clone());
+          for (ItemStack leftover : leftovers.values()) {
+             if (leftover != null && !leftover.getType().isAir()) {
+                player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+             }
+          }
+       } finally {
+          if (guardKey != null) {
+             this.infiniteTorchPlacementGuards.remove(guardKey);
+          }
+       }
+    }
+
+    private boolean containsUniqueItem(Player player, String uniqueItemId) {
+       if (player == null || uniqueItemId == null || uniqueItemId.isBlank()) {
+          return false;
+       }
+       PlayerInventory inventory = player.getInventory();
+       for (ItemStack stack : inventory.getContents()) {
+          if (Objects.equals(uniqueItemId, this.uniqueItemIdOf(stack))) {
+             return true;
+          }
+       }
+       for (ItemStack stack : inventory.getArmorContents()) {
+          if (Objects.equals(uniqueItemId, this.uniqueItemIdOf(stack))) {
+             return true;
+          }
+       }
+       return Objects.equals(uniqueItemId, this.uniqueItemIdOf(inventory.getItemInOffHand()));
+    }
+
+    private boolean isInfiniteTorchItem(ItemStack stack) {
+       if (stack == null || stack.getType().isAir() || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+          return false;
+       }
+       String itemId = stack.getItemMeta().getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING);
+       return "infinite_torch".equalsIgnoreCase(itemId);
+    }
+
+    private boolean isReturnStoneItem(ItemStack stack) {
+       if (stack == null || stack.getType().isAir() || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+          return false;
+       }
+       String itemId = stack.getItemMeta().getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING);
+       return "return_stone".equalsIgnoreCase(itemId);
+    }
+
+    private boolean isUtilityArtifactItem(ItemStack stack) {
+       return this.isRepairKitItem(stack) || this.isReturnStoneItem(stack) || this.isInfiniteTorchItem(stack);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onUtilityArtifactCreative(InventoryCreativeEvent event) {
+       if (event != null && (this.isUtilityArtifactItem(event.getCursor())
+             || this.isUtilityArtifactItem(event.getCurrentItem()))) {
+          // Creative slot packets can clone an exact PDC-bearing stack without
+          // going through the normal click/drag path.  Utility artifacts are
+          // never created by a creative packet; their authentic instance must
+          // come from the AR delivery flow.
+          event.setCancelled(true);
+       }
+    }
+
+    private boolean hasInfiniteTorchIngredient(ItemStack[] contents) {
+       if (contents == null) {
+          return false;
+       }
+       for (ItemStack stack : contents) {
+          if (this.isInfiniteTorchItem(stack)) {
+             return true;
+          }
+       }
+       return false;
+    }
+
+    private boolean hasInfiniteTorchIngredient(Inventory inventory) {
+       return inventory != null && this.hasInfiniteTorchIngredient(inventory.getStorageContents());
+    }
+
+    private boolean shouldBlockInfiniteTorchContainerTransfer(InventoryClickEvent event) {
+       if (event == null || event.getView() == null) {
+          return false;
+       }
+       Inventory top = event.getView().getTopInventory();
+       boolean involved = this.isInfiniteTorchItem(event.getCursor())
+             || this.isInfiniteTorchItem(event.getCurrentItem())
+             || this.hasInfiniteTorchIngredient(top);
+       if (!involved) {
+          return false;
+       }
+       return !(top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchInventoryMove(InventoryMoveItemEvent event) {
+       if (event != null && this.isInfiniteTorchItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchDispense(BlockDispenseEvent event) {
+       if (event != null && this.isInfiniteTorchItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchInventoryPickup(InventoryPickupItemEvent event) {
+       if (event != null && event.getItem() != null && this.isInfiniteTorchItem(event.getItem().getItemStack())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchEntityPickup(EntityPickupItemEvent event) {
+       if (event != null && event.getItem() != null && this.isInfiniteTorchItem(event.getItem().getItemStack())
+             && event.getItem().getItemStack().getAmount() != 1) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchDrop(PlayerDropItemEvent event) {
+       if (event != null && event.getItemDrop() != null && this.isInfiniteTorchItem(event.getItemDrop().getItemStack())
+             && event.getItemDrop().getItemStack().getAmount() != 1) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchMerge(ItemMergeEvent event) {
+       if (event != null && (this.isInfiniteTorchItem(event.getEntity() == null ? null : event.getEntity().getItemStack())
+             || this.isInfiniteTorchItem(event.getTarget() == null ? null : event.getTarget().getItemStack()))) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchCraft(PrepareItemCraftEvent event) {
+       if (event != null && this.hasInfiniteTorchIngredient(event.getInventory().getMatrix())) {
+          event.getInventory().setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchAnvil(PrepareAnvilEvent event) {
+       if (event != null && this.hasInfiniteTorchIngredient(event.getInventory())) {
+          event.setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchGrindstone(PrepareGrindstoneEvent event) {
+       if (event != null && this.hasInfiniteTorchIngredient(event.getInventory())) {
+          event.setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchSmithing(PrepareSmithingEvent event) {
+       if (event != null && this.hasInfiniteTorchIngredient(event.getInventory())) {
+          event.setResult(null);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchClick(InventoryClickEvent event) {
+       if (this.shouldBlockInfiniteTorchContainerTransfer(event)
+             || this.hasInvalidInfiniteTorchAmount(event)) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchDrag(InventoryDragEvent event) {
+       if (event == null || event.getView() == null) {
+          return;
+       }
+       if (this.hasInvalidInfiniteTorchAmount(event)) {
+          event.setCancelled(true);
+          return;
+       }
+       boolean entersExternal = event.getRawSlots().stream().anyMatch(slot -> slot >= 0
+             && slot < event.getView().getTopInventory().getSize()
+             && !(event.getView().getTopInventory().getType() == InventoryType.CRAFTING
+                  && event.getView().getTopInventory().getHolder() instanceof Player));
+       if (entersExternal && (this.isInfiniteTorchItem(event.getOldCursor())
+             || this.hasInfiniteTorchIngredient(event.getView().getTopInventory()))) {
+          event.setCancelled(true);
+       }
+    }
+
+    private boolean hasInvalidInfiniteTorchAmount(InventoryDragEvent event) {
+       if (event == null) {
+          return false;
+       }
+       if (this.hasInvalidInfiniteTorchAmount(event.getOldCursor())) {
+          return true;
+       }
+       return event.getNewItems().values().stream().anyMatch(this::hasInvalidInfiniteTorchAmount);
+    }
+
+    private boolean hasInvalidInfiniteTorchAmount(InventoryClickEvent event) {
+       if (event == null) {
+          return false;
+       }
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+             ? player.getInventory().getItem(event.getHotbarButton()) : null;
+       return this.hasInvalidInfiniteTorchAmount(event.getCursor())
+             || this.hasInvalidInfiniteTorchAmount(event.getCurrentItem())
+             || this.hasInvalidInfiniteTorchAmount(hotbar)
+             || this.hasInvalidInfiniteTorchAmount(player == null ? null : player.getInventory().getItemInOffHand());
+    }
+
+    private boolean hasInvalidInfiniteTorchAmount(ItemStack stack) {
+       return this.isInfiniteTorchItem(stack) && stack.getAmount() != 1;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchBlockCook(BlockCookEvent event) {
+       if (event != null && (this.isInfiniteTorchItem(event.getSource()) || this.isInfiniteTorchItem(event.getResult()))) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInfiniteTorchBrew(BrewEvent event) {
+       if (event != null && this.hasInfiniteTorchIngredient(event.getContents())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(
+       priority = EventPriority.HIGHEST,
+       ignoreCancelled = false
+    )
+    public void onArtifactInteract(PlayerInteractEvent var1) {
       Player var2 = var1.getPlayer();
       // Elytra use normally consumes FIREWORK_ROCKET before the ability can
       // finish.  Deny that vanilla path up front for the official eternal
@@ -2587,6 +3228,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                    return;
                 }
             } else if (var5 != Action.RIGHT_CLICK_AIR && var5 != Action.RIGHT_CLICK_BLOCK) {
+               return;
+            }
+
+            if ("RETURN_STONE".equals(var4)) {
+               if (var1.isCancelled()) {
+                  return;
+               }
+               var1.setUseItemInHand(Event.Result.DENY);
+               var1.setUseInteractedBlock(Event.Result.DENY);
+               this.beginReturnStoneChannel(var2, var1.getHand(), var1.getItem(), var3);
+               var1.setCancelled(true);
                return;
             }
 
@@ -2636,6 +3288,176 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                }
             }
          }
+      }
+   }
+
+   private void beginReturnStoneChannel(Player player, EquipmentSlot hand, ItemStack held, CatalogItem stone) {
+      if (player == null || hand == null || held == null || stone == null
+            || !"RETURN_STONE".equalsIgnoreCase(stone.effect())) {
+         return;
+      }
+      String uniqueItemId = this.uniqueItemIdOf(held);
+      if (uniqueItemId.isBlank()) {
+         return;
+      }
+      long current = this.now();
+      long storedCooldown = player.getPersistentDataContainer().getOrDefault(
+            this.keyReturnStoneCooldownUntil, PersistentDataType.LONG, 0L);
+      long cooldownUntil = Math.max(
+            storedCooldown,
+            this.actionCooldowns.getOrDefault(this.actionCooldownKey(player, stone), 0L)
+      );
+      if (cooldownUntil > current) {
+         this.sendCooldownMessage(player, stone, cooldownUntil, current);
+         return;
+      }
+      if (this.returnStoneChannels.containsKey(player.getUniqueId())) {
+         player.sendMessage(this.color("&eТелепортация уже подготавливается."));
+         return;
+      }
+      ReturnStoneChannel channel = new ReturnStoneChannel(uniqueItemId, hand);
+      ReturnStoneChannel previous = this.returnStoneChannels.putIfAbsent(player.getUniqueId(), channel);
+      if (previous != null) {
+         player.sendMessage(this.color("&eТелепортация уже подготавливается."));
+         return;
+      }
+      channel.task = Bukkit.getScheduler().runTaskLater(
+            this,
+            () -> this.completeReturnStoneChannel(player.getUniqueId(), channel),
+            60L
+      );
+      player.sendMessage(this.color("&7Камень возвращения активирован. Не получайте урон в течение 3 секунд."));
+   }
+
+   private void completeReturnStoneChannel(UUID playerUuid, ReturnStoneChannel channel) {
+      if (playerUuid == null || channel == null || !this.returnStoneChannels.remove(playerUuid, channel)) {
+         return;
+      }
+      Player player = Bukkit.getPlayer(playerUuid);
+      if (player == null || !player.isOnline() || player.isDead()) {
+         return;
+      }
+      ItemStack held = channel.hand == EquipmentSlot.HAND
+            ? player.getInventory().getItemInMainHand()
+            : player.getInventory().getItemInOffHand();
+      CatalogItem stone = this.authenticCatalogItem(held, player, "return_stone_complete");
+      if (stone == null || !"RETURN_STONE".equalsIgnoreCase(stone.effect())
+            || !Objects.equals(channel.uniqueItemId, this.uniqueItemIdOf(held))) {
+         player.sendMessage(this.color("&cТелепортация отменена: камень возвращения больше не находится в руке."));
+         return;
+      }
+      Location destination = this.findReturnStoneDestination(player);
+      if (destination == null || !player.teleport(destination)) {
+         player.sendMessage(this.color("&cНе удалось найти безопасную точку возвращения."));
+         return;
+      }
+      long cooldownUntil = this.now() + 300L;
+      player.getPersistentDataContainer().set(
+            this.keyReturnStoneCooldownUntil,
+            PersistentDataType.LONG,
+            cooldownUntil
+      );
+      this.actionCooldowns.put(this.actionCooldownKey(player, stone), cooldownUntil);
+      player.setFallDistance(0.0F);
+      player.sendMessage(this.color("&aВы возвращены к точке возрождения."));
+   }
+
+   private Location findReturnStoneDestination(Player player) {
+      if (player == null) {
+         return null;
+      }
+      Location personal = this.findSafeReturnStoneLocation(player.getRespawnLocation());
+      if (personal != null) {
+         return personal;
+      }
+      List<World> worlds = Bukkit.getWorlds();
+      if (worlds.isEmpty()) {
+         return null;
+      }
+      return this.findSafeReturnStoneLocation(worlds.get(0).getSpawnLocation());
+   }
+
+   private Location findSafeReturnStoneLocation(Location origin) {
+      if (origin == null || origin.getWorld() == null) {
+         return null;
+      }
+      World world = origin.getWorld();
+      int baseX = origin.getBlockX();
+      int baseY = origin.getBlockY();
+      int baseZ = origin.getBlockZ();
+      for (int radius = 0; radius <= 2; radius++) {
+         for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+               for (int dz = -radius; dz <= radius; dz++) {
+                  Location candidate = new Location(
+                        world,
+                        baseX + dx + 0.5D,
+                        baseY + dy,
+                        baseZ + dz + 0.5D,
+                        origin.getYaw(),
+                        origin.getPitch()
+                  );
+                  if (world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)
+                        && world.getWorldBorder().isInside(candidate)
+                        && this.isSafeCompassLocation(candidate)) {
+                     return candidate;
+                  }
+               }
+            }
+         }
+      }
+      return null;
+   }
+
+   private void cancelReturnStoneChannel(Player player) {
+      if (player == null) {
+         return;
+      }
+      ReturnStoneChannel channel = this.returnStoneChannels.remove(player.getUniqueId());
+      if (channel != null && channel.task != null) {
+         channel.task.cancel();
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onReturnStoneDamage(EntityDamageEvent event) {
+      if (event != null && event.getEntity() instanceof Player player) {
+         this.cancelReturnStoneChannel(player);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onReturnStoneHeldChange(PlayerItemHeldEvent event) {
+      if (event != null) {
+         this.cancelReturnStoneChannel(event.getPlayer());
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onReturnStoneSwapHands(PlayerSwapHandItemsEvent event) {
+      if (event != null) {
+         this.cancelReturnStoneChannel(event.getPlayer());
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onReturnStoneDrop(PlayerDropItemEvent event) {
+      if (event != null) {
+         this.cancelReturnStoneChannel(event.getPlayer());
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onReturnStoneClick(InventoryClickEvent event) {
+      if (event != null && event.getWhoClicked() instanceof Player player) {
+         this.cancelReturnStoneChannel(player);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onReturnStoneDrag(InventoryDragEvent event) {
+      if (event != null && event.getWhoClicked() instanceof Player player) {
+         this.cancelReturnStoneChannel(player);
       }
    }
 
@@ -2820,22 +3642,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       priority = EventPriority.HIGHEST,
       ignoreCancelled = true
    )
-   public void onTrailCrossbowLoad(EntityLoadCrossbowEvent event) {
-      if (!(event.getEntity() instanceof Player player)) {
-         return;
-      }
-      CatalogItem weapon = this.authenticCatalogItem(event.getCrossbow(), player, "crossbow_load");
-      if (weapon != null && "AR_COBBLESTONE_TRAIL".equalsIgnoreCase(weapon.effect())) {
-         // Keep the crossbow's loaded projectile while preserving the old
-         // bow's infinite-ammo behavior. Vanilla crossbows are not matched.
-         event.setConsumeItem(false);
-      }
-   }
-
-   @EventHandler(
-      priority = EventPriority.HIGHEST,
-      ignoreCancelled = true
-   )
    public void onCrossbowArtifactShot(EntityShootBowEvent var1) {
       if (var1.getEntity() instanceof Player var2) {
          // EntityShootBowEvent exposes the weapon in getBow().  Reading only
@@ -2877,13 +3683,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   );
                }
                this.markCombatProjectile(var1.getProjectile(), var2, weapon);
-               if (explosiveMultishot && decision.startsShot() && var1.getProjectile() instanceof Projectile projectile) {
-                  projectile.getPersistentDataContainer().set(
-                     this.keyExplosiveShotDamage,
-                     PersistentDataType.BYTE,
-                     (byte)1
-                  );
-               }
             }
          }
 
@@ -2897,25 +3696,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             );
          }
       }
-   }
-
-   @EventHandler(
-      priority = EventPriority.MONITOR,
-      ignoreCancelled = true
-   )
-   public void onAcceptedExplosiveCrossbowShot(EntityShootBowEvent event) {
-      if (!(event.getEntity() instanceof Player player) || !(event.getProjectile() instanceof Projectile projectile)) {
-         return;
-      }
-      PersistentDataContainer data = projectile.getPersistentDataContainer();
-      Byte marker = data.get(this.keyExplosiveShotDamage, PersistentDataType.BYTE);
-      if (marker == null || marker != (byte)1) {
-         return;
-      }
-      data.remove(this.keyExplosiveShotDamage);
-      // Standard Bukkit damage keeps the server's normal protection, resistance,
-      // absorption and damage-event rules.  The configured amount is 6 HP = 3 hearts.
-      player.damage(6.0D);
    }
 
    private void markCombatProjectile(Entity launched, Player owner, CatalogItem weapon) {
@@ -6671,9 +7451,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                "&cВ руке должен быть официальный предмет CopiMineArtifacts."
             )
          );
-      } else {
-         CopiMineArtifacts.CatalogItem catalog = var3;
-         if (!isArCatalogItem(catalog.itemId())) {
+       } else {
+          CopiMineArtifacts.CatalogItem catalog = var3;
+          if (this.isRepairKitItem(var2) || "REPAIR_KIT".equalsIgnoreCase(catalog.effect())) {
+             var1.sendMessage(this.color("&cРемкомплект расходует собственные использования и не принимается в платный ремонт."));
+             return;
+          }
+          if (!isArCatalogItem(catalog.itemId())) {
             var1.sendMessage(this.color("&cРемонт за AR доступен только для AR-предметов лавки."));
             return;
          }
@@ -7773,8 +8557,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                "&cПоддельный предмет не принимается в ремонт."
             )
          );
-      } else {
-         if (!this.isArCatalogItem(var5.itemId())) {
+       } else {
+          if (this.isRepairKitItem(var4) || "REPAIR_KIT".equalsIgnoreCase(var5.effect())) {
+             var1.sendMessage(this.color("&cРемкомплект расходует собственные использования и не принимается в платный ремонт."));
+             return;
+          }
+          if (!this.isArCatalogItem(var5.itemId())) {
             var1.sendMessage(this.color("&cРемонт за AR доступен только для AR-предметов лавки."));
             return;
          }
@@ -10655,8 +11443,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var6.setCustomModelData(var1.customModelData());
          }
 
-         var7.add(this.color("&8Редкость: " + var1.rarity()));
-         var6.setLore(var7);
+          var7.add(this.color("&8Редкость: " + var1.rarity()));
+          if ("REPAIR_KIT".equalsIgnoreCase(var1.effect())) {
+             if (var6 instanceof Damageable repairKitDamage) {
+                repairKitDamage.setMaxDamage(RepairKitMath.MAX_USES);
+                repairKitDamage.setDamage(RepairKitMath.damageForRemainingUses(RepairKitMath.MAX_USES, RepairKitMath.MAX_USES));
+             }
+             var6.setMaxStackSize(1);
+             var7.add(this.color("&7Осталось использований: " + RepairKitMath.MAX_USES + "/" + RepairKitMath.MAX_USES));
+          }
+          if ("INFINITE_TORCH".equalsIgnoreCase(var1.effect())) {
+             var6.setMaxStackSize(1);
+          }
+          var6.setLore(var7);
          boolean var10 = "AR_COBBLESTONE_TRAIL".equalsIgnoreCase(var1.effect());
          boolean var11 = "AR_EXPLOSIVE_CROSSBOW".equalsIgnoreCase(var1.effect());
          if (var10) {
@@ -10673,9 +11472,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var6.getPersistentDataContainer().set(this.keyUniqueItemId, PersistentDataType.STRING, var2);
          var6.getPersistentDataContainer().set(this.keyCategory, PersistentDataType.STRING, var1.category().name());
          var6.getPersistentDataContainer().set(this.keyRarity, PersistentDataType.STRING, var1.rarity());
-         var6.getPersistentDataContainer().set(this.keyOwnerUuid, PersistentDataType.STRING, var3.toString());
-         var6.getPersistentDataContainer().set(this.keyOwnerName, PersistentDataType.STRING, this.firstNonBlank(Bukkit.getOfflinePlayer(var3).getName(), ""));
-         var6.getPersistentDataContainer().set(this.keyPurchaseId, PersistentDataType.STRING, var4);
+          var6.getPersistentDataContainer().set(this.keyOwnerUuid, PersistentDataType.STRING, var3.toString());
+          var6.getPersistentDataContainer().set(this.keyOwnerName, PersistentDataType.STRING, this.firstNonBlank(Bukkit.getOfflinePlayer(var3).getName(), ""));
+          var6.getPersistentDataContainer().set(this.keyPurchaseId, PersistentDataType.STRING, var4);
+          if ("REPAIR_KIT".equalsIgnoreCase(var1.effect())) {
+             var6.getPersistentDataContainer().set(this.keyRepairKitUses, PersistentDataType.INTEGER, RepairKitMath.MAX_USES);
+          }
          if (this.isDonationCatalogItem(var1.itemId())) {
             var6.getPersistentDataContainer().set(this.keyItemType, PersistentDataType.STRING, "DONATION_SHOP_ITEM");
             var6.getPersistentDataContainer().set(this.keySource, PersistentDataType.STRING, "DONATION_SHOP");
@@ -10854,9 +11656,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (!uniqueItemId.equals(this.uniqueItemIdOf(current)) || !this.repairFingerprint(current).equals(fingerprint)) {
          return false;
       }
-      CatalogItem authenticated = this.authenticCatalogItem(current, player, "repair_apply");
-      if (authenticated == null || !authenticated.itemId().equalsIgnoreCase(itemId)
-            || !(current.getItemMeta() instanceof Damageable damageable)
+       CatalogItem authenticated = this.authenticCatalogItem(current, player, "repair_apply");
+       if (authenticated == null || !authenticated.itemId().equalsIgnoreCase(itemId)
+             || this.isRepairKitItem(current) || "REPAIR_KIT".equalsIgnoreCase(authenticated.effect())
+             || !(current.getItemMeta() instanceof Damageable damageable)
             || damageable.getDamage() != originalDamage || damageable.getDamage() <= 0) {
          return false;
       }
@@ -13044,7 +13847,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private Set<String> artifactInteractEffects() {
-      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST");
+      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST", "RETURN_STONE");
    }
 
    private Set<String> artifactDefenseEffects() {
@@ -14418,6 +15221,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private static record CombatProjectileState(UUID ownerUuid, Location lastLocation, double travelledBlocks) {
+   }
+
+   private static final class ReturnStoneChannel {
+      final String uniqueItemId;
+      final EquipmentSlot hand;
+      BukkitTask task;
+
+      ReturnStoneChannel(String uniqueItemId, EquipmentSlot hand) {
+         this.uniqueItemId = uniqueItemId;
+         this.hand = hand;
+      }
    }
 
    private static record CatalogItem(

@@ -15,7 +15,7 @@ foreach ($marker in @(
     'cooldown_seconds: 15',
     'effect: AR_CROSSBOW_TELEPORT',
     'id: cobblestone_trail_bow',
-    'material: CROSSBOW',
+    'material: BOW',
     'price_ar: 64',
     'cooldown_seconds: 15',
     'effect: AR_COBBLESTONE_TRAIL',
@@ -45,10 +45,13 @@ foreach ($marker in @(
     'BlockPlaceEvent',
     'STREAMER_STICK_ARC',
     'setVelocity',
-    'Bukkit.getCurrentTick()',
-    'player.damage(6.0D)'
+    'Bukkit.getCurrentTick()'
 )) {
     Require $java $marker "Implementation is missing marker: $marker"
+}
+
+if ($java.Contains('player.damage(6.0D)')) {
+    $errors.Add('Explosive crossbow must not damage its owner.')
 }
 
 if ($errors.Count -gt 0) {

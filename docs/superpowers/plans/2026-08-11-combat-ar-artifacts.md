@@ -14,7 +14,7 @@
 - New catalog items have no texture: `custom_model_data: 0`.
 - AR items use ordinary purple names and `EPIC` rarity.
 - The streamer stick remains `ADMIN_ONLY` and does not appear in the AR shop; combat projectile items use 15-second cooldowns except the explosive crossbow at 30 seconds.
-- An accepted explosive-crossbow shot damages its owner by 6 HP exactly once, while Multishot's three projectile events share one shot window.
+- An accepted explosive-crossbow shot never damages its owner, while Multishot's three projectile events share one shot window.
 - Recipe fragments are separate `WRITTEN_BOOK` AR items priced at 300 AR and do not change brewing.
 - Do not replace existing blocks while building the trail; route placement through `BlockPlaceEvent`.
 - Run tests before committing and verify the exact deployed JAR after upload.
@@ -96,7 +96,7 @@
 - [ ] **Step 3: Enforce live target/self-hit/cooldown guards**
 - [ ] **Step 4: Run focused tests and existing ability validators**
 
-### Task 4a: Enforce cooldown and explosive-shot self-damage
+### Task 4a: Enforce cooldown and explosive-shot no-self-damage
 
 **Files:**
 - Create: `copimine-artifacts/src/me/copimine/artifacts/CombatArtifactShotPolicy.java`
@@ -108,11 +108,11 @@
 
 **Interfaces:**
 - Vanilla items remain outside the authenticity gate.
-- Teleport crossbow, cobblestone crossbow, and streamer stick use 15 seconds; explosive crossbow uses 30 seconds.
-- A Multishot event window accepts at most three projectiles from one accepted shot and charges 6 HP once.
+- Teleport crossbow, cobblestone bow, and streamer stick use 15 seconds; explosive crossbow uses 30 seconds.
+- A Multishot event window accepts at most three projectiles from one accepted shot without charging the owner HP.
 
 - [ ] **Step 1: Add the failing pure policy test for cooldown and three-projectile admission**
-- [ ] **Step 2: Implement the bounded Multishot shot window and self-damage gate**
+- [ ] **Step 2: Implement the bounded Multishot shot window and remove the stale self-damage gate**
 - [ ] **Step 3: Add exact catalog/source contracts and rerun focused tests**
 
 ### Task 5: Build and verify the release artifact

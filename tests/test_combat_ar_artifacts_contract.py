@@ -56,13 +56,13 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "custom_model_data: 0",
         )
 
-    def test_trail_crossbow_has_infinity_and_exact_catalog_contract(self) -> None:
+    def test_trail_bow_has_infinity_and_exact_catalog_contract(self) -> None:
         block = item_block("cobblestone_trail_bow")
         require_all(
             block,
-            "material: CROSSBOW",
+            "material: BOW",
             "source: AR_SHOP",
-            "name: \"&dАрбалет блоков\"",
+            "name: \"&dЛук блоков\"",
             "rarity: EPIC",
             "price_ar: 64",
             "cooldown_seconds: 15",
@@ -106,9 +106,6 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             source,
             "ProjectileHitEvent",
             "var1.getBow()",
-            "EntityLoadCrossbowEvent",
-            "event.getCrossbow()",
-            "event.setConsumeItem(false)",
             "keyProjectileAbility",
             "keyProjectileOwner",
             "AR_CROSSBOW_TELEPORT",
@@ -122,10 +119,10 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "MULTISHOT",
             "INFINITY",
             "Bukkit.getCurrentTick()",
-            "onAcceptedExplosiveCrossbowShot",
-            "keyExplosiveShotDamage",
-            "player.damage(6.0D)",
         )
+        self.assertNotIn("EntityLoadCrossbowEvent", source)
+        self.assertNotIn("keyExplosiveShotDamage", source)
+        self.assertNotIn("player.damage(6.0D)", source)
 
     def test_new_shot_rules_do_not_intercept_vanilla_items(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")

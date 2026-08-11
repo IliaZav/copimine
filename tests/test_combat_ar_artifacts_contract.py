@@ -42,13 +42,13 @@ def require_all(text: str, *needles: str) -> None:
 
 
 class CombatArtifactCatalogContractTest(unittest.TestCase):
-    def test_teleport_crossbow_catalog_is_plain_epic_and_priced(self) -> None:
+    def test_teleport_bow_catalog_is_plain_epic_and_priced(self) -> None:
         block = item_block("combat_crossbow")
         require_all(
             block,
-            "material: CROSSBOW",
+            "material: BOW",
             "source: AR_SHOP",
-            'name: "&dАрбалет"',
+            'name: "&dЛук"',
             "rarity: EPIC",
             "price_ar: 100",
             "cooldown_seconds: 15",
@@ -56,7 +56,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "custom_model_data: 0",
         )
 
-    def test_trail_bow_has_infinity_and_exact_catalog_contract(self) -> None:
+    def test_trail_bow_has_no_infinity_and_exact_catalog_contract(self) -> None:
         block = item_block("cobblestone_trail_bow")
         require_all(
             block,
@@ -68,8 +68,8 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "cooldown_seconds: 15",
             "effect: AR_COBBLESTONE_TRAIL",
             "custom_model_data: 0",
-            "enchantment: INFINITY",
         )
+        self.assertNotIn("enchantment: INFINITY", block)
 
     def test_explosive_crossbow_has_multishot_and_exact_catalog_contract(self) -> None:
         block = item_block("explosive_crossbow")

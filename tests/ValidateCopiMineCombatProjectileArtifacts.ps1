@@ -19,7 +19,6 @@ foreach ($marker in @(
     'price_ar: 64',
     'cooldown_seconds: 15',
     'effect: AR_COBBLESTONE_TRAIL',
-    'enchantment: INFINITY',
     'id: explosive_crossbow',
     'price_ar: 300',
     'cooldown_seconds: 30',
@@ -32,6 +31,10 @@ foreach ($marker in @(
     'custom_model_data: 0'
 )) {
     Require $items $marker "Catalog is missing marker: $marker"
+}
+
+if ($items.Contains('enchantment: INFINITY')) {
+    $errors.Add('The cobblestone trail bow must not carry Infinity.')
 }
 
 foreach ($marker in @(

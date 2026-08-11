@@ -72,11 +72,11 @@ items:
 
   - id: combat_crossbow
     category: WEAPON
-    material: CROSSBOW
+    material: BOW
     source: AR_SHOP
     custom_model_data: 0
     custom-texture-mode-allowed: false
-    name: "&dАрбалет"
+    name: "&dЛук"
     rarity: EPIC
     price_ar: 100
     supply_limit: 0
@@ -103,7 +103,6 @@ items:
     effect: AR_COBBLESTONE_TRAIL
     effect_chance_percent: 100
     visual_effect_id: ""
-    enchantment: INFINITY
     lore:
       - "&7Строит дорожку из булыжника за стрелой"
 

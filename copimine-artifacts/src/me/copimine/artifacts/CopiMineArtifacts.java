@@ -11791,16 +11791,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              var6.setMaxStackSize(1);
           }
           var6.setLore(var7);
-         boolean var10 = "AR_COBBLESTONE_TRAIL".equalsIgnoreCase(var1.effect());
          boolean var11 = "AR_EXPLOSIVE_CROSSBOW".equalsIgnoreCase(var1.effect());
-         if (var10) {
-            var6.addEnchant(Enchantment.INFINITY, 1, true);
-         }
          if (var11) {
             var6.addEnchant(Enchantment.MULTISHOT, 1, true);
          }
          this.decorateNarcoticRecipeBook(var6, var1);
-         var6.addItemFlags(var10 || var11
+         var6.addItemFlags(var11
             ? new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE}
             : new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE});
          var6.getPersistentDataContainer().set(this.keyItemId, PersistentDataType.STRING, var1.itemId());

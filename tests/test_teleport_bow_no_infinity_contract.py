@@ -23,20 +23,20 @@ def item_block(item_id: str) -> str:
     return match.group(0)
 
 
-class TeleportCrossbowAndTrailInfinityContractTest(unittest.TestCase):
-    def test_teleport_item_remains_a_crossbow_in_the_ar_catalog(self) -> None:
+class TeleportBowAndNoInfinityContractTest(unittest.TestCase):
+    def test_teleport_item_is_a_bow_in_the_ar_catalog(self) -> None:
         block = item_block("combat_crossbow")
-        self.assertIn("material: CROSSBOW", block)
-        self.assertIn('name: "&dАрбалет"', block)
+        self.assertIn("material: BOW", block)
+        self.assertIn('name: "&dЛук"', block)
         self.assertIn("source: AR_SHOP", block)
         self.assertIn("effect: AR_CROSSBOW_TELEPORT", block)
 
-    def test_trail_bow_keeps_infinity_for_vanilla_bow_use(self) -> None:
+    def test_trail_bow_has_no_infinity_enchantment(self) -> None:
         self.assertIn("material: BOW", item_block("cobblestone_trail_bow"))
-        self.assertIn("enchantment: INFINITY", item_block("cobblestone_trail_bow"))
+        self.assertNotIn("enchantment: INFINITY", item_block("cobblestone_trail_bow"))
 
         source = SOURCE.read_text(encoding="utf-8")
-        self.assertIn("Enchantment.INFINITY", source)
+        self.assertNotIn("Enchantment.INFINITY", source)
 
 
 if __name__ == "__main__":

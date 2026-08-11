@@ -672,12 +672,12 @@ donation-catalog:
       consume-policy: PERSISTENT
       effect-profile-id: LOOT_COMPASS
       effect-description: "Телепортация по направлению взгляда"
-      cooldown-seconds: 15
+      cooldown-seconds: 10
       proc-chance: 1.0
       max-stack: 1
       repairable: false
       custom-texture-mode-allowed: true
       custom-model-data: 20010
-      visual-effect-id: TUNNEL_VISION
+      visual-effect-id: ""
       lore:
         - "&7Телепортация по направлению взгляда"

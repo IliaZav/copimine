@@ -198,7 +198,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
    private static final String GUI_BACK_LABEL = "&aНазад";
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
-   private static final int COMPASS_COOLDOWN_SECONDS = 15;
+   private static final int COMPASS_COOLDOWN_SECONDS = 10;
+   private static final double AR_SWORD_ATTACK_DAMAGE = 12.5D;
+   private static final int PICKAXE_EFFICIENCY_LEVEL = 2;
+   private static final int HASTE_BURST_LONG_TICKS = 3600;
+   private static final int HASTE_MAX_AMPLIFIER = 255;
    private static final int EXPLOSIVE_CROSSBOW_FUSE_TICKS = 40;
    private static final long ANGEL_WINGS_FLIGHT_TICKS = AngelWingsFlightPolicy.FLIGHT_SECONDS * 20L;
    private static final int MAX_COBBLESTONE_TRAIL_BLOCKS = 256;
@@ -2653,6 +2657,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler
    public void onJoin(PlayerJoinEvent var1) {
       this.normalizeVanillaShieldItems(var1.getPlayer());
+      this.normalizeExistingArCombatItems(var1.getPlayer());
       ItemStack queuedTotem = this.pendingInfiniteTotemRestores.get(var1.getPlayer().getUniqueId());
        if (queuedTotem != null) {
           Bukkit.getScheduler().runTaskLater(this, () -> this.restoreInfiniteTotem(var1.getPlayer(), queuedTotem), 5L);
@@ -3598,7 +3603,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             } else {
                boolean var10 = switch (var4) {
                   case "HASTE_BURST_LONG" -> {
-                     var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 3600, 1, false, false, true));
+                     var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, HASTE_BURST_LONG_TICKS, HASTE_MAX_AMPLIFIER, false, false, true));
                      var2.getWorld().spawnParticle(Particle.ENCHANT, var2.getLocation().add(0.0, 1.0, 0.0), 18, 0.45, 0.45, 0.45, 0.02);
                      yield true;
                   }
@@ -3628,7 +3633,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            AngelWingsFlightPolicy.nextCooldownUntil(var6)
                      );
                   }
-                  if (!var3.visualEffectId().isBlank()) {
+                  if (!var3.visualEffectId().isBlank() && !"LOOT_COMPASS".equalsIgnoreCase(var4)) {
                      this.visualEffects.applyTo(var2, var3.visualEffectId(), Math.max(4, var3.cooldownSeconds()));
                   }
 
@@ -12354,6 +12359,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              // cooldown is player-scoped and is not represented by stacking.
              var6.setMaxStackSize(1);
           }
+          this.normalizeCustomPickaxeMeta(var6, var1);
           var6.setLore(var7);
          boolean var11 = "AR_EXPLOSIVE_CROSSBOW".equalsIgnoreCase(var1.effect());
          if (var11) {
@@ -12402,16 +12408,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       bookMeta.setPages(data.pages());
    }
 
-   private void ensureAttackDamageAttribute(ItemStack stack, CopiMineArtifacts.CatalogItem item) {
+   private boolean ensureAttackDamageAttribute(ItemStack stack, CopiMineArtifacts.CatalogItem item) {
       if (stack == null || item == null || !this.isDamageMaterial(item.material()) || this.attackDamageKey == null) {
-         return;
+         return false;
       }
       ItemMeta meta = stack.getItemMeta();
       if (meta == null) {
-         return;
+         return false;
       }
-      this.ensureAttackDamageAttribute(meta, item);
-      stack.setItemMeta(meta);
+      boolean changed = this.ensureAttackDamageAttribute(meta, item);
+      if (changed) {
+         stack.setItemMeta(meta);
+      }
+      return changed;
    }
 
    private boolean shouldBlockOfficialArtifactDrag(InventoryDragEvent event) {
@@ -12438,26 +12447,131 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return false;
    }
 
-   private void ensureAttackDamageAttribute(ItemMeta meta, CopiMineArtifacts.CatalogItem item) {
+   private boolean ensureAttackDamageAttribute(ItemMeta meta, CopiMineArtifacts.CatalogItem item) {
       if (meta == null || item == null || !this.isDamageMaterial(item.material()) || this.attackDamageKey == null) {
-         return;
+         return false;
       }
       Collection<AttributeModifier> modifiers = meta.getAttributeModifiers(Attribute.GENERIC_ATTACK_DAMAGE);
+      double target = this.isArSwordCatalogItem(item)
+         ? AR_SWORD_ATTACK_DAMAGE
+         : "NALOGOVAYA_KOSA".equalsIgnoreCase(item.effect()) ? 12.0 : 10.0;
+      double delta = target - vanillaAttackDamage(item.material());
+      boolean changed = false;
+      boolean correctModifierPresent = false;
       if (modifiers != null) {
-         for (AttributeModifier modifier : modifiers) {
-            if (this.attackDamageKey.equals(modifier.getKey())) {
-               return;
+         for (AttributeModifier modifier : List.copyOf(modifiers)) {
+            if (!this.attackDamageKey.equals(modifier.getKey())) {
+               continue;
+            }
+            if (!correctModifierPresent && delta > 0.0 && Math.abs(modifier.getAmount() - delta) < 0.000001D) {
+               correctModifierPresent = true;
+            } else {
+               meta.removeAttributeModifier(Attribute.GENERIC_ATTACK_DAMAGE, modifier);
+               changed = true;
             }
          }
       }
-      double target = "NALOGOVAYA_KOSA".equalsIgnoreCase(item.effect()) ? 12.0 : 10.0;
-      double delta = target - vanillaAttackDamage(item.material());
-      if (delta > 0.0) {
+      if (!correctModifierPresent && delta > 0.0) {
          meta.addAttributeModifier(
             Attribute.GENERIC_ATTACK_DAMAGE,
             new AttributeModifier(this.attackDamageKey, delta, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.MAINHAND)
          );
+         changed = true;
       }
+      return changed;
+   }
+
+   private boolean isArSwordCatalogItem(CopiMineArtifacts.CatalogItem item) {
+      if (item == null || !this.isArCatalogItem(item.itemId()) || this.isAdminOnlyCatalogItem(item.itemId())) {
+         return false;
+      }
+      return switch (item.material()) {
+         case WOODEN_SWORD, STONE_SWORD, IRON_SWORD, GOLDEN_SWORD, DIAMOND_SWORD, NETHERITE_SWORD -> true;
+         default -> false;
+      };
+   }
+
+   private boolean normalizeCustomPickaxeMeta(ItemMeta meta, CopiMineArtifacts.CatalogItem item) {
+      if (meta == null || item == null || item.material() != Material.NETHERITE_PICKAXE) {
+         return false;
+      }
+      if ("HASTE_BURST_LONG".equalsIgnoreCase(item.effect())) {
+         return meta.hasEnchant(Enchantment.EFFICIENCY) && meta.removeEnchant(Enchantment.EFFICIENCY);
+      }
+      if (meta.getEnchantLevel(Enchantment.EFFICIENCY) == PICKAXE_EFFICIENCY_LEVEL) {
+         return false;
+      }
+      meta.removeEnchant(Enchantment.EFFICIENCY);
+      meta.addEnchant(Enchantment.EFFICIENCY, PICKAXE_EFFICIENCY_LEVEL, true);
+      return true;
+   }
+
+   private void normalizeExistingArCombatItems(Player player) {
+      if (player == null) {
+         return;
+      }
+      boolean changed = false;
+      PlayerInventory inventory = player.getInventory();
+      ItemStack[] storage = inventory.getStorageContents();
+      for (int index = 0; index < storage.length; index++) {
+         if (this.normalizeExistingArCombatItem(storage[index])) {
+            inventory.setItem(index, storage[index]);
+            changed = true;
+         }
+      }
+      ItemStack[] armor = inventory.getArmorContents();
+      boolean armorChanged = false;
+      for (int index = 0; index < armor.length; index++) {
+         if (this.normalizeExistingArCombatItem(armor[index])) {
+            changed = true;
+            armorChanged = true;
+         }
+      }
+      if (armorChanged) {
+         inventory.setArmorContents(armor);
+      }
+      ItemStack offhand = inventory.getItemInOffHand();
+      if (this.normalizeExistingArCombatItem(offhand)) {
+         inventory.setItemInOffHand(offhand);
+         changed = true;
+      }
+      Inventory enderChest = player.getEnderChest();
+      ItemStack[] ender = enderChest.getContents();
+      for (int index = 0; index < ender.length; index++) {
+         if (this.normalizeExistingArCombatItem(ender[index])) {
+            enderChest.setItem(index, ender[index]);
+            changed = true;
+         }
+      }
+      if (changed) {
+         player.updateInventory();
+      }
+   }
+
+   private boolean normalizeExistingArCombatItem(ItemStack stack) {
+      if (stack == null || stack.getType().isAir() || !this.isOfficialArtifactItem(stack)) {
+         return false;
+      }
+      ItemMeta meta = stack.getItemMeta();
+      if (meta == null) {
+         return false;
+      }
+      String itemId = meta.getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING);
+      CatalogItem item = this.runtimeCatalogItem(itemId);
+      if (item == null) {
+         return false;
+      }
+      boolean changed = false;
+      if (this.isArSwordCatalogItem(item)) {
+         changed |= this.ensureAttackDamageAttribute(meta, item);
+      }
+      if (item.material() == Material.NETHERITE_PICKAXE) {
+         changed |= this.normalizeCustomPickaxeMeta(meta, item);
+      }
+      if (changed) {
+         stack.setItemMeta(meta);
+      }
+      return changed;
    }
 
    private double vanillaAttackDamage(Material material) {

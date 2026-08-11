@@ -922,7 +922,9 @@ EOF
   legacy_backup_root="/opt/copimine-backups/nginx-legacy-$(date +%Y%m%d-%H%M%S)"
   for legacy_path in \
     /etc/nginx/sites-available/copimine-public \
-    /etc/nginx/sites-enabled/copimine-public; do
+    /etc/nginx/sites-enabled/copimine-public \
+    /etc/nginx/sites-available/copimine-http.conf \
+    /etc/nginx/sites-enabled/copimine-http.conf; do
     if [[ -e "$legacy_path" || -L "$legacy_path" ]]; then
       if (( legacy_backup_created == 0 )); then
         install -d -o root -g root -m 0700 "$legacy_backup_root/available" "$legacy_backup_root/enabled"

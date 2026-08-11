@@ -571,6 +571,8 @@ PY
   # relay vhosts removed before nginx validates the configuration.
   rm -f -- /etc/nginx/sites-enabled/copimine-public \
     /etc/nginx/sites-available/copimine-public \
+    /etc/nginx/sites-enabled/copimine-http.conf \
+    /etc/nginx/sites-available/copimine-http.conf \
     /etc/nginx/sites-enabled/default
   ln -sfn "$config" "$enabled"
   nginx -t

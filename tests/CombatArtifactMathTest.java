@@ -8,6 +8,7 @@ public final class CombatArtifactMathTest {
         testArcVelocityPointsAwayAndUp();
         testArcVelocityUsesRequestedMagnitude();
         testZeroHorizontalDistanceStillLaunchesUpward();
+        testStreamerKnockbackReachesTheRequestedEnvelope();
         System.out.println("CombatArtifactMathTest OK");
     }
 
@@ -81,6 +82,17 @@ public final class CombatArtifactMathTest {
         check(velocity.y() > 0.0, "coincident attacker/target must still launch upward");
         check(Double.isFinite(velocity.x()) && Double.isFinite(velocity.z()),
             "zero horizontal distance must not create NaN velocity");
+    }
+
+    private static void testStreamerKnockbackReachesTheRequestedEnvelope() {
+        var velocity = CombatArtifactMath.streamerKnockbackVelocity(
+            new CombatArtifactMath.Point(0.0, 64.0, 0.0),
+            new CombatArtifactMath.Point(0.0, 64.0, 2.0));
+        double horizontal = Math.hypot(velocity.x(), velocity.z());
+        check(horizontal >= 1.0 && horizontal <= 1.3,
+            "streamer stick horizontal speed must target about ten blocks before landing");
+        check(velocity.y() >= 1.2 && velocity.y() <= 1.4,
+            "streamer stick must launch the target clearly upward");
     }
 
     private static void check(boolean condition, String message) {

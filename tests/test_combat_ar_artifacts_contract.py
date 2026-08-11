@@ -192,6 +192,17 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "combatProjectiles.entrySet().removeIf",
         )
 
+    def test_cobblestone_trail_is_queued_and_drained_behind_the_projectile(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        for marker in (
+            "pendingCobblestoneTrails",
+            "queueCobblestoneTrail",
+            "drainCobblestoneTrailQueue",
+            "MAX_TRAIL_BLOCKS_PER_TICK",
+            "skipTip",
+        ):
+            self.assertIn(marker, source)
+
     def test_shot_cannot_consume_cooldown_without_a_projectile(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
@@ -221,9 +232,10 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             source,
             "this.actionCooldowns.put(this.actionCooldownKey(var2, var15)",
             "if (var10 != null && var10 != var2)",
-            "CombatArtifactMath.awayArcVelocity",
             "var10.setFallDistance(0.0F)",
             '"STREAMER_STICK_ARC".equals(var16) && (var10 == null || var10 == var2)',
+            "CombatArtifactMath.streamerKnockbackVelocity",
+            "Bukkit.getScheduler().runTask(this",
         )
 
     def test_streamer_arc_is_melee_only_and_ignores_dead_targets(self) -> None:

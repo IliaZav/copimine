@@ -9,6 +9,8 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "src" / "assets" / "copimine" / "models" / "item" / "artifacts"
 TEXTURE_DIR = ROOT / "src" / "assets" / "copimine" / "textures" / "item" / "artifacts"
+LOGICAL_SIZE = 16
+OUTPUT_SIZE = 32
 
 
 def canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
@@ -29,12 +31,31 @@ def line(draw: ImageDraw.ImageDraw, points: list[tuple[int, int]], color: tuple[
 
 
 def save_texture(name: str, image: Image.Image) -> None:
+    # Render on a compact pixel grid, then upscale without interpolation so
+    # the exported pack remains crisp in first-person hand models.
+    if image.width == LOGICAL_SIZE:
+        image = image.resize((OUTPUT_SIZE, image.height * 2), Image.Resampling.NEAREST)
     image.save(TEXTURE_DIR / f"{name}.png", format="PNG", optimize=False)
 
 
-def save_model(name: str, texture: str) -> None:
+def save_animation_texture(name: str, frames: list[Image.Image], frametime: int = 3) -> None:
+    if not frames:
+        raise ValueError("at least one animation frame is required")
+    atlas = Image.new("RGBA", (LOGICAL_SIZE, LOGICAL_SIZE * len(frames)), (0, 0, 0, 0))
+    for index, frame in enumerate(frames):
+        atlas.paste(frame, (0, LOGICAL_SIZE * index))
+    save_texture(name, atlas)
+    metadata_path = TEXTURE_DIR / f"{name}.png.mcmeta"
+    metadata_path.write_text(
+        json.dumps({"animation": {"frametime": frametime, "interpolate": False}}, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def save_model(name: str, texture: str, parent: str = "minecraft:item/generated") -> None:
     payload = {
-        "parent": "minecraft:item/generated",
+        "parent": parent,
         "textures": {"layer0": f"copimine:item/artifacts/{texture}"},
     }
     (MODEL_DIR / f"{name}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
@@ -107,6 +128,20 @@ def draw_infinite_torch() -> Image.Image:
     return image
 
 
+def draw_arrow(
+    draw: ImageDraw.ImageDraw,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    shaft: tuple[int, int, int, int],
+    head: tuple[int, int, int, int],
+) -> None:
+    """Draw a readable vanilla-style arrow over a bow pull frame."""
+    line(draw, [start, end], shaft, 1)
+    ex, ey = end
+    line(draw, [(ex - 2, ey - 1), (ex, ey), (ex - 2, ey + 1)], head, 1)
+    rect(draw, (start[0], start[1] - 1, start[0] + 1, start[1]), head)
+
+
 def draw_bow(kind: str, stage: int) -> Image.Image:
     image, draw = canvas()
     outline = (24, 16, 14, 255)
@@ -139,13 +174,15 @@ def draw_bow(kind: str, stage: int) -> Image.Image:
 
     string_mid = [(6, 8), (7, 8), (8, 8), (9, 8)][stage]
     line(draw, [(12, 4), string_mid, (4, 13)], string if stage < 2 else glow, 1)
+    arrow_shaft = (58, 48, 44, 255)
+    arrow_head = glow if kind == "teleport" else (224, 224, 208, 255)
+    draw_arrow(draw, (4, 8), (12, 8), arrow_shaft, arrow_head)
     if stage == 2:
-        line(draw, [(5, 12), (10, 7)], glow, 1)
         rect(draw, (10, 6, 11, 7), glow)
     return image
 
 
-def draw_explosive_crossbow(stage: str) -> Image.Image:
+def draw_explosive_crossbow(stage: str, frame: int = 0) -> Image.Image:
     image, draw = canvas()
     outline = (18, 18, 21, 255)
     iron = (92, 99, 105, 255)
@@ -177,9 +214,13 @@ def draw_explosive_crossbow(stage: str) -> Image.Image:
         rect(draw, (7, 6, 8, 6), white)
         rect(draw, (6, 4, 6, 5), orange)
     elif stage == "charged":
-        rect(draw, (5, 7, 10, 9), red)
-        rect(draw, (6, 7, 9, 8), white)
-        rect(draw, (5, 7, 6, 8), orange)
+        # The charged texture is exported as an atlas. Move the TNT vertically
+        # by one logical pixel per frame so the fuse visibly flickers while the
+        # crossbow remains symmetric in the player's hand.
+        tnt_y = 7 + ((frame % 4) - 1 if frame % 4 in (0, 2) else 0)
+        rect(draw, (5, tnt_y, 10, tnt_y + 2), red)
+        rect(draw, (6, tnt_y, 9, tnt_y + 1), white)
+        rect(draw, (5, tnt_y, 6, tnt_y + 1), orange)
     else:
         rect(draw, (6, 6, 9, 10), red)
         rect(draw, (7, 7, 8, 9), white)
@@ -234,13 +275,27 @@ def main() -> None:
             suffix = "" if stage == 0 else f"_pulling_{stage - 1}"
             name = f"{prefix}{suffix}"
             save_texture(name, draw_bow(kind, stage))
-            save_model(name, name)
+            parent = "minecraft:item/bow" if stage == 0 else f"minecraft:item/bow_pulling_{stage - 1}"
+            save_model(name, name, parent)
 
-    for stage in ("base", "pulling_0", "pulling_1", "pulling_2", "charged", "charged_firework"):
+    for stage in ("base", "pulling_0", "pulling_1", "pulling_2", "charged_firework"):
         suffix = "" if stage == "base" else f"_{stage}"
         name = f"explosive_crossbow{suffix}"
         save_texture(name, draw_explosive_crossbow(stage))
-        save_model(name, name)
+        if stage == "base":
+            parent = "minecraft:item/crossbow"
+        elif stage.startswith("pulling"):
+            parent = f"minecraft:item/crossbow_{stage}"
+        else:
+            parent = "minecraft:item/crossbow_firework"
+        save_model(name, name, parent)
+
+    save_animation_texture(
+        "explosive_crossbow_charged",
+        [draw_explosive_crossbow("charged", frame) for frame in range(4)],
+        frametime=3,
+    )
+    save_model("explosive_crossbow_charged", "explosive_crossbow_charged", "minecraft:item/crossbow_arrow")
 
 
 if __name__ == "__main__":

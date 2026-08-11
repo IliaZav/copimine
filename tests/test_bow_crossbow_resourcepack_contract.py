@@ -113,7 +113,8 @@ def test_source_models_and_textures_have_all_animation_states():
             assert model.is_file(), model
             assert texture.is_file(), texture
             with Image.open(texture) as image:
-                assert image.size == (16, 16)
+                expected_size = (32, 128) if stem == "explosive_crossbow" and suffix == "_charged" else (32, 32)
+                assert image.size == expected_size
                 assert image.mode == "RGBA"
 
     for stem in ("repair_kit", "return_stone", "infinite_torch"):
@@ -122,7 +123,7 @@ def test_source_models_and_textures_have_all_animation_states():
         assert model.is_file(), model
         assert texture.is_file(), texture
         with Image.open(texture) as image:
-            assert image.size == (16, 16)
+            assert image.size == (32, 32)
             assert image.mode == "RGBA"
 
     common_model = SRC / "assets" / "copimine" / "models" / "item" / "artifacts" / "recipe_note.json"
@@ -130,7 +131,7 @@ def test_source_models_and_textures_have_all_animation_states():
     assert common_model.is_file()
     assert common_texture.is_file()
     with Image.open(common_texture) as image:
-        assert image.size == (16, 16)
+        assert image.size == (32, 32)
         assert image.mode == "RGBA"
 
 
@@ -139,9 +140,19 @@ def test_explosive_crossbow_frames_are_vertically_symmetric():
         texture = SRC / "assets" / "copimine" / "textures" / "item" / "artifacts" / f"explosive_crossbow{suffix}.png"
         with Image.open(texture) as image:
             rgba = image.convert("RGBA")
-            for y in range(16):
-                for x in range(8):
-                    assert rgba.getpixel((x, y)) == rgba.getpixel((15 - x, y)), (texture, x, y)
+            frame_height = 32
+            frame_count = rgba.height // frame_height
+            assert rgba.width == 32
+            for frame in range(frame_count):
+                for y in range(frame_height):
+                    absolute_y = frame * frame_height + y
+                    for x in range(16):
+                        assert rgba.getpixel((x, absolute_y)) == rgba.getpixel((31 - x, absolute_y)), (
+                            texture,
+                            frame,
+                            x,
+                            y,
+                        )
 
 
 def test_built_models_preserve_vanilla_states_and_zip_contains_new_assets():

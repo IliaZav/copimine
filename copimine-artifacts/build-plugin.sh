@@ -25,6 +25,9 @@ fi
 if [[ -f "$release_root/copimine-admin-plugin/CopiMineUltimateAdminPlus.jar" ]]; then
   cp_entries+=("$release_root/copimine-admin-plugin/CopiMineUltimateAdminPlus.jar")
 fi
+if [[ -f "$release_root/copimine-economy-core/CopiMineEconomyCore.jar" ]]; then
+  cp_entries+=("$release_root/copimine-economy-core/CopiMineEconomyCore.jar")
+fi
 classpath="$(IFS=:; echo "${cp_entries[*]}")"
 
 rm -rf "$classes"

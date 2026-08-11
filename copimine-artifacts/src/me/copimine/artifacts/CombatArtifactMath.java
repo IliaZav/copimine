@@ -53,6 +53,21 @@ public final class CombatArtifactMath {
         );
     }
 
+    /**
+     * Launch profile used by the streamer stick. Grounded targets need a
+     * little more horizontal impulse because vanilla knockback is applied
+     * before this next-tick correction; airborne targets use the gentler
+     * profile so the arc remains close to ten blocks.
+     */
+    public static Velocity streamerKnockbackVelocity(Point attacker, Point target) {
+        return streamerKnockbackVelocity(attacker, target, false);
+    }
+
+    public static Velocity streamerKnockbackVelocity(Point attacker, Point target, boolean targetOnGround) {
+        double horizontal = targetOnGround ? 1.50D : 1.00D;
+        return awayArcVelocity(attacker, target, horizontal, 1.30D);
+    }
+
     public record Point(double x, double y, double z) {
         public double distanceTo(Point other) {
             if (other == null) {

@@ -1,5 +1,5 @@
 {
-  "parent": "minecraft:item/generated",
+  "parent": "minecraft:item/crossbow_firework",
   "textures": {
     "layer0": "copimine:item/artifacts/explosive_crossbow_charged_firework"
   }

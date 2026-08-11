@@ -146,6 +146,7 @@ import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -200,8 +201,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final int EXPLOSIVE_CROSSBOW_FUSE_TICKS = 40;
    private static final int MAX_COBBLESTONE_TRAIL_BLOCKS = 256;
    private static final double COBBLESTONE_TRAIL_MAX_STEP = 0.75D;
-   private static final double STREAMER_STICK_HORIZONTAL_SPEED = 1.65D;
-   private static final double STREAMER_STICK_VERTICAL_SPEED = 1.25D;
+   private static final double STREAMER_STICK_AIR_HORIZONTAL_SPEED = 1.00D;
+   private static final double STREAMER_STICK_GROUND_HORIZONTAL_SPEED = 1.50D;
+   private static final double STREAMER_STICK_VERTICAL_SPEED = 1.30D;
+   private static final int MAX_TRAIL_BLOCKS_PER_TICK = 8;
    /** One chunk is sixteen blocks; the actual limit is the world's view distance. */
    private static final double MAX_COMPASS_TELEPORT_DISTANCE = 16.0D;
    private static final Map<String, Integer> ARTIFACT_MODEL_DATA = Map.of("zmei_gorynych", 10001);
@@ -232,11 +235,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
    private final Map<UUID, CombatProjectileState> combatProjectiles = new ConcurrentHashMap<>();
+   private final Map<UUID, PendingCobblestoneTrail> pendingCobblestoneTrails = new ConcurrentHashMap<>();
    /** Server-side admission record: PDC alone is never enough to authorize a hit. */
    private final Map<UUID, CombatProjectileIdentity> combatProjectileIdentities = new ConcurrentHashMap<>();
    private final Map<UUID, UUID> explosiveTntOwners = new ConcurrentHashMap<>();
    private final Map<String, CombatArtifactShotPolicy.ShotWindow> explosiveShotWindows = new ConcurrentHashMap<>();
    private final Map<UUID, ReturnStoneChannel> returnStoneChannels = new ConcurrentHashMap<>();
+   /** Exact seal snapshots waiting for the death event's cancellation boundary. */
+   private final Map<UUID, PendingAngelSealConsumption> pendingAngelSealConsumptions = new ConcurrentHashMap<>();
    private final Set<String> infiniteTorchPlacementGuards = ConcurrentHashMap.newKeySet();
    /** Keep a successful placement's exact instance across a disconnect before
     * the next-tick restoration task can run. */
@@ -575,6 +581,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.combatProjectileTask.cancel();
       }
       this.combatProjectiles.clear();
+      this.pendingCobblestoneTrails.clear();
       this.combatProjectileIdentities.clear();
       this.explosiveTntOwners.clear();
       this.explosiveShotWindows.clear();
@@ -584,6 +591,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       }
       this.returnStoneChannels.clear();
+      this.pendingAngelSealConsumptions.clear();
       this.infiniteTorchPlacementGuards.clear();
       this.pendingInfiniteTorchRestores.clear();
       this.repairKitInteractionGuards.clear();
@@ -2101,6 +2109,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.combatProjectiles.entrySet().removeIf(
             entry -> entry.getValue() != null && playerUuid.equals(entry.getValue().ownerUuid())
       );
+      this.pendingCobblestoneTrails.remove(playerUuid);
       this.explosiveTntOwners.entrySet().removeIf(entry -> playerUuid.equals(entry.getValue()));
       CatalogItem explosiveCrossbow = this.runtimeCatalogItem("explosive_crossbow");
       String explosiveCooldownKey = this.actionCooldownKey(var1.getPlayer(), explosiveCrossbow);
@@ -2108,6 +2117,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.sessions.remove(playerUuid);
       this.pozdnyakovNauseaCooldowns.remove(playerUuid);
       this.repairKitInteractionGuards.remove(playerUuid);
+      this.pendingAngelSealConsumptions.remove(playerUuid);
       String prefix = playerUuid + ":";
       this.actionCooldowns.keySet().removeIf(key -> key.startsWith(prefix));
       this.explosiveShotWindows.keySet().removeIf(key -> key.startsWith(prefix));
@@ -2247,6 +2257,193 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             return;
          }
       }
+   }
+
+   /**
+    * Angel Seal is a two-phase death transaction. The seal is removed from
+    * the exact inventory surface immediately, while every other ItemStack is
+    * retained by vanilla's keep-inventory path. The MONITOR callback commits
+    * the removal only after all ordinary listeners have had a chance to
+    * cancel the death; a cancelled event restores the exact snapshot.
+    */
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   public void onAngelSealDeath(PlayerDeathEvent event) {
+      if (event == null || event.isCancelled() || event.getKeepInventory()) {
+         return;
+      }
+      Player player = event.getEntity();
+      if (player == null) {
+         return;
+      }
+      AngelSealDeathPolicy.SealCandidate selected = this.findAngelSeal(player);
+      AngelSealDeathPolicy.Decision decision = AngelSealDeathPolicy.decide(
+            event.isCancelled(),
+            event.getKeepInventory(),
+            false,
+            selected == null ? List.of() : List.of(selected)
+      );
+      if (!decision.preserveInventory() || decision.selectedSeal() == null) {
+         return;
+      }
+      ItemStack consumed = this.consumeAngelSeal(player, decision.selectedSeal());
+      if (consumed == null) {
+         return;
+      }
+      this.pendingAngelSealConsumptions.put(
+            player.getUniqueId(),
+            new PendingAngelSealConsumption(decision.selectedSeal(), consumed)
+      );
+      event.setKeepInventory(true);
+      // The seal was removed from the player's inventory, and no other stack
+      // may become a ground copy while keep-inventory is active.
+      event.getDrops().clear();
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+   public void onAngelSealDeathMonitor(PlayerDeathEvent event) {
+      if (event == null || event.getEntity() == null) {
+         return;
+      }
+      UUID playerUuid = event.getEntity().getUniqueId();
+      PendingAngelSealConsumption pending = this.pendingAngelSealConsumptions.get(playerUuid);
+      if (pending == null) {
+         return;
+      }
+      if (event.isCancelled()) {
+         Bukkit.getScheduler().runTask(this, () -> this.restoreAngelSeal(playerUuid, pending));
+      } else {
+         // The item was removed from the exact slot and the real death was
+         // not cancelled. There is no item to restore or respawn duplicate.
+         this.pendingAngelSealConsumptions.remove(playerUuid, pending);
+      }
+   }
+
+   private AngelSealDeathPolicy.SealCandidate findAngelSeal(Player player) {
+      if (player == null) {
+         return null;
+      }
+      List<AngelSealDeathPolicy.SealCandidate> candidates = new ArrayList<>();
+      // PlayerInventory#getContents contains the storage/hotbar segment first;
+      // scan exactly those 36 slots so the main hand is not counted twice.
+      ItemStack[] contents = player.getInventory().getContents();
+      int storageSize = Math.min(36, contents == null ? 0 : contents.length);
+      for (int slot = 0; slot < storageSize; slot++) {
+         ItemStack current = contents[slot];
+         if (this.isAngelSealItem(current)) {
+            boolean authentic = !this.hasInvalidAngelSealAmount(current)
+                  && this.isAuthenticAngelSeal(current, player, "angel_seal_death");
+            candidates.add(new AngelSealDeathPolicy.SealCandidate(
+                  AngelSealDeathPolicy.Surface.STORAGE, slot, this.uniqueItemIdOf(current), authentic
+            ));
+         }
+      }
+      ItemStack[] armor = player.getInventory().getArmorContents();
+      for (int slot = 0; slot < (armor == null ? 0 : armor.length); slot++) {
+         ItemStack current = armor[slot];
+         if (this.isAngelSealItem(current)) {
+            boolean authentic = !this.hasInvalidAngelSealAmount(current)
+                  && this.isAuthenticAngelSeal(current, player, "angel_seal_death");
+            candidates.add(new AngelSealDeathPolicy.SealCandidate(
+                  AngelSealDeathPolicy.Surface.ARMOR, slot, this.uniqueItemIdOf(current), authentic
+            ));
+         }
+      }
+      ItemStack offhand = player.getInventory().getItemInOffHand();
+      if (this.isAngelSealItem(offhand)) {
+         boolean authentic = !this.hasInvalidAngelSealAmount(offhand)
+               && this.isAuthenticAngelSeal(offhand, player, "angel_seal_death");
+         candidates.add(new AngelSealDeathPolicy.SealCandidate(
+               AngelSealDeathPolicy.Surface.OFFHAND, 0, this.uniqueItemIdOf(offhand), authentic
+         ));
+      }
+      AngelSealDeathPolicy.Decision decision = AngelSealDeathPolicy.decide(false, false, false, candidates);
+      return decision.selectedSeal();
+   }
+
+   private boolean isAuthenticAngelSeal(ItemStack stack, Player player, String context) {
+      CatalogItem item = this.authenticCatalogItem(stack, player, context);
+      return item != null && "ANGEL_SEAL".equalsIgnoreCase(item.effect());
+   }
+
+   private boolean isAngelSealItem(ItemStack stack) {
+      if (stack == null || stack.getType().isAir() || !stack.hasItemMeta() || stack.getItemMeta() == null) {
+         return false;
+      }
+      String itemId = stack.getItemMeta().getPersistentDataContainer().get(this.keyItemId, PersistentDataType.STRING);
+      return "angel_seal".equalsIgnoreCase(itemId);
+   }
+
+   private boolean hasInvalidAngelSealAmount(ItemStack stack) {
+      return this.isAngelSealItem(stack) && stack.getAmount() > 1;
+   }
+
+   private ItemStack consumeAngelSeal(Player player, AngelSealDeathPolicy.SealCandidate candidate) {
+      if (player == null || candidate == null) {
+         return null;
+      }
+      ItemStack current = this.angelSealAt(player, candidate);
+      if (current == null || current.getAmount() > 1 || current.getAmount() != 1
+            || !Objects.equals(candidate.uniqueItemId(), this.uniqueItemIdOf(current))
+            || !this.isAuthenticAngelSeal(current, player, "angel_seal_consume")) {
+         return null;
+      }
+      ItemStack snapshot = current.clone();
+      this.setAngelSealAt(player, candidate, new ItemStack(Material.AIR));
+      // Keep the exact one-use decrement explicit; malformed stacks are
+      // rejected above and can never turn into a larger or infinite seal.
+      current.setAmount(current.getAmount() - 1);
+      return snapshot;
+   }
+
+   private ItemStack angelSealAt(Player player, AngelSealDeathPolicy.SealCandidate candidate) {
+      if (player == null || candidate == null) {
+         return null;
+      }
+      return switch (candidate.surface()) {
+         case STORAGE -> {
+            ItemStack[] storage = player.getInventory().getStorageContents();
+            yield candidate.slot() >= 0 && candidate.slot() < storage.length ? storage[candidate.slot()] : null;
+         }
+         case ARMOR -> {
+            ItemStack[] armor = player.getInventory().getArmorContents();
+            yield candidate.slot() >= 0 && candidate.slot() < armor.length ? armor[candidate.slot()] : null;
+         }
+         case OFFHAND -> player.getInventory().getItemInOffHand();
+      };
+   }
+
+   private void setAngelSealAt(Player player, AngelSealDeathPolicy.SealCandidate candidate, ItemStack value) {
+      if (player == null || candidate == null) {
+         return;
+      }
+      ItemStack replacement = value == null ? new ItemStack(Material.AIR) : value;
+      switch (candidate.surface()) {
+         case STORAGE -> player.getInventory().setItem(candidate.slot(), replacement);
+         case ARMOR -> {
+            ItemStack[] armor = player.getInventory().getArmorContents();
+            if (candidate.slot() >= 0 && candidate.slot() < armor.length) {
+               armor[candidate.slot()] = replacement;
+               player.getInventory().setArmorContents(armor);
+            }
+         }
+         case OFFHAND -> player.getInventory().setItemInOffHand(replacement);
+      }
+   }
+
+   private void restoreAngelSeal(UUID playerUuid, PendingAngelSealConsumption pending) {
+      if (playerUuid == null || pending == null || !this.pendingAngelSealConsumptions.remove(playerUuid, pending)) {
+         return;
+      }
+      Player player = Bukkit.getPlayer(playerUuid);
+      if (player == null || !player.isOnline()) {
+         return;
+      }
+      for (ItemStack stack : player.getInventory().getContents()) {
+         if (stack != null && Objects.equals(pending.selectedSeal().uniqueItemId(), this.uniqueItemIdOf(stack))) {
+            return;
+         }
+      }
+      this.setAngelSealAt(player, pending.selectedSeal(), pending.snapshot().clone());
    }
 
    private LivingEntity resolveDamageAttacker(EntityDamageByEntityEvent event) {
@@ -3260,19 +3457,49 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     }
 
     private boolean isUtilityArtifactItem(ItemStack stack) {
-       return this.isRepairKitItem(stack) || this.isReturnStoneItem(stack) || this.isInfiniteTorchItem(stack);
+       return this.isRepairKitItem(stack) || this.isReturnStoneItem(stack)
+             || this.isInfiniteTorchItem(stack) || this.isAngelSealItem(stack);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onUtilityArtifactCreative(InventoryCreativeEvent event) {
        if (event != null && (this.isUtilityArtifactItem(event.getCursor())
              || this.isUtilityArtifactItem(event.getCurrentItem()))) {
+          Player player = event.getWhoClicked() instanceof Player p ? p : null;
+          if (this.creativeUtilityActionLeavesPlayerInventory(event, player)) {
+             if (this.hasInvalidInfiniteTorchAmount(event.getCursor())
+                   || this.hasInvalidAngelSealAmount(event.getCursor())
+                   || this.hasInvalidInfiniteTorchAmount(event.getCurrentItem())
+                   || this.hasInvalidAngelSealAmount(event.getCurrentItem())) {
+                event.setCancelled(true);
+             }
+             return;
+          }
           // Creative slot packets can clone an exact PDC-bearing stack without
-          // going through the normal click/drag path.  Utility artifacts are
-          // never created by a creative packet; their authentic instance must
-          // come from the AR delivery flow.
+          // going through the normal click/drag path. Utility artifacts can be
+          // moved inside the player's own inventory, but never created by a
+          // creative packet or transferred to an external container.
           event.setCancelled(true);
        }
+    }
+
+    private boolean creativeUtilityActionLeavesPlayerInventory(InventoryCreativeEvent event, Player player) {
+       if (event == null || player == null || event.getView() == null || event.getRawSlot() < 0) {
+          return false;
+       }
+       InventoryView view = event.getView();
+       Inventory top = view.getTopInventory();
+       boolean clickedPlayerInventory = event.getClickedInventory() == player.getInventory()
+             || (view.getBottomInventory() == player.getInventory() && event.getRawSlot() >= top.getSize());
+       if (!clickedPlayerInventory || event.getClick() == ClickType.DROP
+             || event.getClick() == ClickType.CONTROL_DROP) {
+          return false;
+       }
+       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
+          return event.getRawSlot() >= top.getSize();
+       }
+       return top.getType() == InventoryType.CREATIVE
+             && view.getBottomInventory() instanceof PlayerInventory;
     }
 
     private boolean hasInfiniteTorchIngredient(ItemStack[] contents) {
@@ -3302,12 +3529,104 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        if (!involved) {
           return false;
        }
-       return !(top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player);
+       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
+          return false;
+       }
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       if (player != null && top.getType() == InventoryType.CREATIVE
+             && event.getClickedInventory() == player.getInventory()
+             && event.getRawSlot() >= top.getSize()) {
+          return false;
+       }
+       return true;
+    }
+
+    private boolean shouldBlockReturnStoneContainerTransfer(InventoryClickEvent event) {
+       if (event == null || event.getView() == null) {
+          return false;
+       }
+       Inventory top = event.getView().getTopInventory();
+       boolean involved = this.isReturnStoneItem(event.getCursor())
+             || this.isReturnStoneItem(event.getCurrentItem());
+       if (!involved) {
+          return false;
+       }
+       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
+          return false;
+       }
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       return player == null || top.getType() != InventoryType.CREATIVE
+             || event.getClickedInventory() != player.getInventory()
+             || event.getRawSlot() < top.getSize();
+    }
+
+    private boolean shouldBlockAngelSealContainerTransfer(InventoryClickEvent event) {
+       if (event == null || event.getView() == null) {
+          return false;
+       }
+       Inventory top = event.getView().getTopInventory();
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       boolean involved = this.isAngelSealItem(event.getCursor())
+             || this.isAngelSealItem(event.getCurrentItem());
+       if (!involved) {
+          return false;
+       }
+       if (top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player) {
+          return false;
+       }
+       return player == null || top.getType() != InventoryType.CREATIVE
+             || event.getClickedInventory() != player.getInventory()
+             || event.getRawSlot() < top.getSize();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInfiniteTorchInventoryMove(InventoryMoveItemEvent event) {
        if (event != null && this.isInfiniteTorchItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onReturnStoneInventoryMove(InventoryMoveItemEvent event) {
+       if (event != null && this.isReturnStoneItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAngelSealInventoryMove(InventoryMoveItemEvent event) {
+       if (event != null && this.isAngelSealItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAngelSealDispense(BlockDispenseEvent event) {
+       if (event != null && this.isAngelSealItem(event.getItem())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAngelSealInventoryPickup(InventoryPickupItemEvent event) {
+       if (event != null && event.getItem() != null
+             && this.isAngelSealItem(event.getItem().getItemStack())) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAngelSealMerge(ItemMergeEvent event) {
+       if (event != null && (this.isAngelSealItem(event.getEntity() == null ? null : event.getEntity().getItemStack())
+             || this.isAngelSealItem(event.getTarget() == null ? null : event.getTarget().getItemStack()))) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAngelSealDrop(PlayerDropItemEvent event) {
+       if (event != null && event.getItemDrop() != null
+             && this.hasInvalidAngelSealAmount(event.getItemDrop().getItemStack())) {
           event.setCancelled(true);
        }
     }
@@ -3381,7 +3700,24 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInfiniteTorchClick(InventoryClickEvent event) {
        if (this.shouldBlockInfiniteTorchContainerTransfer(event)
-             || this.hasInvalidInfiniteTorchAmount(event)) {
+             || this.hasInvalidInfiniteTorchAmount(event)
+             || this.hasInvalidAngelSealAmount(event)) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onReturnStoneInventoryTransportClick(InventoryClickEvent event) {
+       if (this.shouldBlockReturnStoneContainerTransfer(event)
+             || this.hasInvalidReturnStoneAmount(event)) {
+          event.setCancelled(true);
+       }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAngelSealInventoryTransportClick(InventoryClickEvent event) {
+       if (this.shouldBlockAngelSealContainerTransfer(event)
+             || this.hasInvalidAngelSealAmount(event)) {
           event.setCancelled(true);
        }
     }
@@ -3395,12 +3731,36 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           event.setCancelled(true);
           return;
        }
+       if (this.hasInvalidAngelSealAmount(event)) {
+          event.setCancelled(true);
+          return;
+       }
        boolean entersExternal = event.getRawSlots().stream().anyMatch(slot -> slot >= 0
              && slot < event.getView().getTopInventory().getSize()
              && !(event.getView().getTopInventory().getType() == InventoryType.CRAFTING
                   && event.getView().getTopInventory().getHolder() instanceof Player));
        if (entersExternal && (this.isInfiniteTorchItem(event.getOldCursor())
              || this.hasInfiniteTorchIngredient(event.getView().getTopInventory()))) {
+          event.setCancelled(true);
+      }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onReturnStoneInventoryDrag(InventoryDragEvent event) {
+       if (event == null || event.getView() == null) {
+          return;
+       }
+       if (this.hasInvalidReturnStoneAmount(event.getOldCursor())
+             || event.getNewItems().values().stream().anyMatch(this::hasInvalidReturnStoneAmount)) {
+          event.setCancelled(true);
+          return;
+       }
+       Inventory top = event.getView().getTopInventory();
+       boolean entersExternal = event.getRawSlots().stream().anyMatch(slot -> slot >= 0
+             && slot < top.getSize()
+             && !(top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player));
+       if (entersExternal && (this.isReturnStoneItem(event.getOldCursor())
+             || event.getNewItems().values().stream().anyMatch(this::isReturnStoneItem))) {
           event.setCancelled(true);
        }
     }
@@ -3415,6 +3775,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        return event.getNewItems().values().stream().anyMatch(this::hasInvalidInfiniteTorchAmount);
     }
 
+    private boolean hasInvalidAngelSealAmount(InventoryDragEvent event) {
+       if (event == null) {
+          return false;
+       }
+       if (this.hasInvalidAngelSealAmount(event.getOldCursor())) {
+          return true;
+       }
+       return event.getNewItems().values().stream().anyMatch(this::hasInvalidAngelSealAmount);
+    }
+
     private boolean hasInvalidInfiniteTorchAmount(InventoryClickEvent event) {
        if (event == null) {
           return false;
@@ -3426,6 +3796,36 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              || this.hasInvalidInfiniteTorchAmount(event.getCurrentItem())
              || this.hasInvalidInfiniteTorchAmount(hotbar)
              || this.hasInvalidInfiniteTorchAmount(player == null ? null : player.getInventory().getItemInOffHand());
+    }
+
+    private boolean hasInvalidReturnStoneAmount(InventoryClickEvent event) {
+       if (event == null) {
+          return false;
+       }
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+             ? player.getInventory().getItem(event.getHotbarButton()) : null;
+       return this.hasInvalidReturnStoneAmount(event.getCursor())
+             || this.hasInvalidReturnStoneAmount(event.getCurrentItem())
+             || this.hasInvalidReturnStoneAmount(hotbar)
+             || this.hasInvalidReturnStoneAmount(player == null ? null : player.getInventory().getItemInOffHand());
+    }
+
+    private boolean hasInvalidReturnStoneAmount(ItemStack stack) {
+       return this.isReturnStoneItem(stack) && stack.getAmount() != 1;
+    }
+
+    private boolean hasInvalidAngelSealAmount(InventoryClickEvent event) {
+       if (event == null) {
+          return false;
+       }
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       ItemStack hotbar = player != null && event.getHotbarButton() >= 0 && event.getHotbarButton() < 9
+             ? player.getInventory().getItem(event.getHotbarButton()) : null;
+       return this.hasInvalidAngelSealAmount(event.getCursor())
+             || this.hasInvalidAngelSealAmount(event.getCurrentItem())
+             || this.hasInvalidAngelSealAmount(hotbar)
+             || this.hasInvalidAngelSealAmount(player == null ? null : player.getInventory().getItemInOffHand());
     }
 
     private boolean hasInvalidInfiniteTorchAmount(ItemStack stack) {
@@ -3491,14 +3891,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                }
                var1.setUseItemInHand(Event.Result.DENY);
                var1.setUseInteractedBlock(Event.Result.DENY);
-               Bukkit.getScheduler().runTask(
-                     this,
-                     () -> {
-                        if (!var1.isCancelled()) {
-                           this.beginReturnStoneChannel(var2, var1.getHand(), var1.getItem(), var3);
-                        }
-                     }
-               );
+               // Own the event synchronously. A later listener may cancel the
+               // mutable PlayerInteractEvent, but it must not turn this valid
+               // admission into a race after the hand/item were read.
+               var1.setCancelled(true);
+               EquipmentSlot hand = var1.getHand();
+               ItemStack held = var1.getItem() == null ? null : var1.getItem().clone();
+               this.beginReturnStoneChannel(var2, hand, held, var3);
                return;
             }
 
@@ -3668,6 +4067,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                         origin.getYaw(),
                         origin.getPitch()
                   );
+                  if (candidate.getBlockY() < world.getMinHeight()
+                        || candidate.getBlockY() + 1 >= world.getMaxHeight()) {
+                     continue;
+                  }
                   if (world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)
                         && world.getWorldBorder().isInside(candidate)
                         && this.isSafeCompassLocation(candidate)) {
@@ -3689,6 +4092,25 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          channel.task.cancel();
       }
    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onAngelSealInventoryDrag(InventoryDragEvent event) {
+       if (event == null || event.getView() == null) {
+          return;
+       }
+       if (this.hasInvalidAngelSealAmount(event)) {
+          event.setCancelled(true);
+          return;
+       }
+       Inventory top = event.getView().getTopInventory();
+       boolean entersExternal = event.getRawSlots().stream().anyMatch(slot -> slot >= 0
+             && slot < top.getSize()
+             && !(top.getType() == InventoryType.CRAFTING && top.getHolder() instanceof Player));
+       if (entersExternal && (this.isAngelSealItem(event.getOldCursor())
+             || event.getNewItems().values().stream().anyMatch(this::isAngelSealItem))) {
+          event.setCancelled(true);
+       }
+    }
 
    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
    public void onReturnStoneDamage(EntityDamageEvent event) {
@@ -3729,6 +4151,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onReturnStoneDrag(InventoryDragEvent event) {
       if (event != null && event.getWhoClicked() instanceof Player player) {
          this.cancelReturnStoneChannel(player);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onReturnStoneWorldChange(PlayerChangedWorldEvent event) {
+      if (event != null) {
+         this.cancelReturnStoneChannel(event.getPlayer());
       }
    }
 
@@ -4021,7 +4450,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
          Player owner = Bukkit.getPlayer(previous.ownerUuid());
          if (owner != null && owner.isOnline() && owner.getWorld() == current.getWorld()) {
-            this.placeCobblestoneTrail(owner, last, current);
+            // Do not place the block under the current projectile tip. Queue
+            // the segment and let the bounded drain advance behind the arrow.
+            this.queueCobblestoneTrail(owner, last, current, true);
          }
          this.combatProjectiles.replace(
             entry.getKey(),
@@ -4037,6 +4468,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          Entity entity = Bukkit.getEntity(uuid);
          return !(entity instanceof TNTPrimed tnt) || tnt.isDead() || !tnt.isValid();
       });
+      this.drainCobblestoneTrailQueue();
    }
 
    @EventHandler(
@@ -4073,7 +4505,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          case "AR_CROSSBOW_TELEPORT" -> this.teleportOwnerToProjectileHit(owner, projectile);
          case "AR_COBBLESTONE_TRAIL" -> {
             if (owner != null && previous != null && owner.isOnline() && owner.getWorld() == projectile.getWorld()) {
-               this.placeCobblestoneTrail(owner, previous.lastLocation(), projectile.getLocation());
+               this.queueCobblestoneTrail(owner, previous.lastLocation(), projectile.getLocation(), true);
             }
          }
          case "AR_EXPLOSIVE_CROSSBOW" -> this.spawnExplosiveTnt(owner, projectile);
@@ -4188,44 +4620,95 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return tnt;
    }
 
-   private void placeCobblestoneTrail(Player owner, Location from, Location to) {
-      if (owner == null || from == null || to == null || from.getWorld() == null || from.getWorld() != to.getWorld()) {
+   private void queueCobblestoneTrail(Player owner, Location from, Location to, boolean skipTip) {
+      if (owner == null || !owner.isOnline() || from == null || to == null
+            || from.getWorld() == null || from.getWorld() != to.getWorld()) {
          return;
       }
       CombatArtifactMath.Point start = new CombatArtifactMath.Point(from.getX(), from.getY(), from.getZ());
       CombatArtifactMath.Point end = new CombatArtifactMath.Point(to.getX(), to.getY(), to.getZ());
-      Set<String> placedKeys = new HashSet<>();
-      for (CombatArtifactMath.Point point : CombatArtifactMath.interpolate(start, end, COBBLESTONE_TRAIL_MAX_STEP)) {
-         int x = (int)Math.floor(point.x());
-         int y = (int)Math.floor(point.y()) - 1;
-         int z = (int)Math.floor(point.z());
-         World world = from.getWorld();
-         if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+      List<CombatArtifactMath.Point> points = CombatArtifactMath.interpolate(start, end, COBBLESTONE_TRAIL_MAX_STEP);
+      int pointLimit = skipTip ? Math.max(0, points.size() - 1) : points.size();
+      PendingCobblestoneTrail pending = this.pendingCobblestoneTrails.computeIfAbsent(
+            owner.getUniqueId(), ignored -> new PendingCobblestoneTrail(owner.getUniqueId())
+      );
+      for (int index = 0; index < pointLimit; index++) {
+         CombatArtifactMath.Point point = points.get(index);
+         Location location = new Location(from.getWorld(), point.x(), point.y(), point.z());
+         String key = this.trailFloorKey(location);
+         if (key != null && pending.queuedKeys.add(key)) {
+            pending.locations.addLast(location);
+         }
+      }
+   }
+
+   private String trailFloorKey(Location location) {
+      if (location == null || location.getWorld() == null) {
+         return null;
+      }
+      return this.blockKey(new Location(
+            location.getWorld(),
+            Math.floor(location.getX()),
+            Math.floor(location.getY()) - 1.0D,
+            Math.floor(location.getZ())
+      ));
+   }
+
+   private void drainCobblestoneTrailQueue() {
+      int remainingBudget = MAX_TRAIL_BLOCKS_PER_TICK;
+      for (Map.Entry<UUID, PendingCobblestoneTrail> entry : this.pendingCobblestoneTrails.entrySet()) {
+         if (remainingBudget <= 0) {
+            break;
+         }
+         PendingCobblestoneTrail pending = entry.getValue();
+         Player owner = Bukkit.getPlayer(entry.getKey());
+         if (owner == null || !owner.isOnline()) {
+            this.pendingCobblestoneTrails.remove(entry.getKey(), pending);
             continue;
          }
-         Block floor = world.getBlockAt(x, y, z);
-         if (!world.getWorldBorder().isInside(floor.getLocation())) {
-            continue;
+         while (remainingBudget-- > 0 && !pending.locations.isEmpty()) {
+            Location point = pending.locations.removeFirst();
+            String key = this.trailFloorKey(point);
+            if (key != null) {
+               this.placeCobblestoneTrailPoint(owner, point, key);
+               pending.queuedKeys.remove(key);
+            }
          }
-         String key = this.blockKey(floor.getLocation());
-         if (!placedKeys.add(key) || !floor.isReplaceable() || floor.isLiquid()
-               || this.shopsByLocation.containsKey(key)) {
-            continue;
+         if (pending.locations.isEmpty()) {
+            this.pendingCobblestoneTrails.remove(entry.getKey(), pending);
          }
-         BlockPlaceEvent place = new BlockPlaceEvent(
+      }
+   }
+
+   private void placeCobblestoneTrailPoint(Player owner, Location point, String key) {
+      if (owner == null || point == null || point.getWorld() == null || key == null) {
+         return;
+      }
+      World world = point.getWorld();
+      int x = point.getBlockX();
+      int y = point.getBlockY() - 1;
+      int z = point.getBlockZ();
+      if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+         return;
+      }
+      Block floor = world.getBlockAt(x, y, z);
+      if (!world.getWorldBorder().isInside(floor.getLocation()) || !floor.isReplaceable()
+            || floor.isLiquid() || this.shopsByLocation.containsKey(key)) {
+         return;
+      }
+      BlockPlaceEvent place = new BlockPlaceEvent(
             floor,
             floor.getState(),
             floor.getRelative(BlockFace.DOWN),
             new ItemStack(Material.COBBLESTONE),
             owner,
             true
-         );
-         Bukkit.getPluginManager().callEvent(place);
-         if (place.isCancelled() || !place.canBuild()) {
-            continue;
-         }
-         floor.setType(Material.COBBLESTONE, false);
+      );
+      Bukkit.getPluginManager().callEvent(place);
+      if (place.isCancelled() || !place.canBuild()) {
+         return;
       }
+      floor.setType(Material.COBBLESTONE, false);
    }
 
    @EventHandler(
@@ -4351,14 +4834,25 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            break;
                          case "STREAMER_STICK_ARC":
                             if (var10 != null && var10 != var2) {
-                               CombatArtifactMath.Velocity arc = CombatArtifactMath.awayArcVelocity(
-                                  new CombatArtifactMath.Point(var2.getLocation().getX(), var2.getLocation().getY(), var2.getLocation().getZ()),
-                                  new CombatArtifactMath.Point(var10.getLocation().getX(), var10.getLocation().getY(), var10.getLocation().getZ()),
-                                  STREAMER_STICK_HORIZONTAL_SPEED,
-                                  STREAMER_STICK_VERTICAL_SPEED
+                               CombatArtifactMath.Point streamerAttacker = new CombatArtifactMath.Point(
+                                  var2.getLocation().getX(), var2.getLocation().getY(), var2.getLocation().getZ()
                                );
-                               var10.setVelocity(new Vector(arc.x(), arc.y(), arc.z()));
-                               var10.setFallDistance(0.0F);
+                               CombatArtifactMath.Point streamerTarget = new CombatArtifactMath.Point(
+                                  var10.getLocation().getX(), var10.getLocation().getY(), var10.getLocation().getZ()
+                               );
+                               boolean targetWasOnGround = var10.isOnGround();
+                               // Bukkit's vanilla knockback runs after this
+                               // event. Apply the authoritative arc next tick
+                               // so it is not multiplied down by vanilla.
+                               Bukkit.getScheduler().runTask(this, () -> {
+                                  if (!var10.isDead() && var10.isValid()) {
+                                     CombatArtifactMath.Velocity arc = CombatArtifactMath.streamerKnockbackVelocity(
+                                        streamerAttacker, streamerTarget, targetWasOnGround
+                                     );
+                                     var10.setVelocity(new Vector(arc.x(), arc.y(), arc.z()));
+                                     var10.setFallDistance(0.0F);
+                                  }
+                               });
                                var20.getWorld().spawnParticle(Particle.CLOUD, var20, 24, 0.35, 0.35, 0.35, 0.04);
                             }
                             break;
@@ -9893,6 +10387,15 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.refreshOfficialBindingAsync(player, stack, "join");
          }
       }
+      // The previous refresh only covered equipment. A delivered artifact
+      // sitting in an ordinary storage/hotbar slot could therefore fail
+      // closed until it was equipped; include every player-owned slot on
+      // join, still using the existing asynchronous readiness path.
+      for (ItemStack stack : player.getInventory().getStorageContents()) {
+         if (this.hasArtifactIdentity(stack)) {
+            this.refreshOfficialBindingAsync(player, stack, "join_storage");
+         }
+      }
    }
 
    private void refreshOfficialBindingAsync(Player player, ItemStack stack, String context) {
@@ -11700,12 +12203,23 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (var6 != null && var7 != null) {
             CopiMineArtifacts.CatalogItem var8 = this.runtimeCatalogItem(var6);
             Integer var9 = var4.hasCustomModelData() ? var4.getCustomModelData() : null;
-            boolean var10 = var8 != null && var8.customModelData() > 0 && !Objects.equals(var9, var8.customModelData());
+            // Return Stone was originally issued as a vanilla ECHO_SHARD with
+            // CMD 0. A bound item from that release is still authentic; once
+            // the durable binding is confirmed it is normalized to the
+            // current model so the old item remains usable after restart.
+            boolean legacyReturnStoneModel = "return_stone".equalsIgnoreCase(var6)
+                  && (var9 == null || var9 == 0);
+            boolean var10 = var8 != null && var8.customModelData() > 0
+                  && !Objects.equals(var9, var8.customModelData())
+                  && !legacyReturnStoneModel;
             boolean varStackOrMaterialMismatch = var8 == null || var1.getAmount() != 1
                || var1.getType() != var8.material();
             String var11 = (String)var5.get(this.keyOwnerUuid, PersistentDataType.STRING);
             String var12 = this.firstNonBlank(var11, "");
             CopiMineArtifacts.OfficialInstanceBinding var13 = this.instanceBindings.get(var7);
+            if (var13 == null || !this.instanceToItem.containsKey(var7)) {
+               this.ensureOfficialBindingAvailable(var1, var2, var3);
+            }
             boolean var14 = var2 != null
                && (
                   !var12.equalsIgnoreCase(var2.getUniqueId().toString()) || var13 == null || !var13.ownerUuid().equalsIgnoreCase(var2.getUniqueId().toString())
@@ -11731,6 +12245,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
             // instanceToItem.containsKey(uniqueItemId)
             if (var8 != null && this.instanceToItem.containsKey(var7) && !var15 && !var10 && !varStackOrMaterialMismatch && !var14 && !var18 && !var19) {
+               if (legacyReturnStoneModel) {
+                  this.normalizeLegacyReturnStoneModel(var1, var8);
+               }
                this.ensureAttackDamageAttribute(var1, var8);
                return var8;
             } else {
@@ -11751,6 +12268,37 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       } else {
          return null;
+      }
+   }
+
+   private void ensureOfficialBindingAvailable(ItemStack stack, Player player, String context) {
+      if (stack == null || player == null || !this.hasArtifactIdentity(stack)) {
+         return;
+      }
+      ItemMeta meta = stack.getItemMeta();
+      if (meta == null) {
+         return;
+      }
+      PersistentDataContainer data = meta.getPersistentDataContainer();
+      String uniqueItemId = this.firstNonBlank(data.get(this.keyUniqueItemId, PersistentDataType.STRING), "");
+      if (uniqueItemId.isBlank() || this.instanceBindings.containsKey(uniqueItemId)) {
+         return;
+      }
+      // Never query PostgreSQL on the Bukkit tick. The async refresh is a
+      // readiness fallback for restart/join races and admits only
+      // DELIVERED/ACTIVE rows in its cache callback.
+      this.refreshOfficialBindingAsync(player, stack, context);
+   }
+
+   private void normalizeLegacyReturnStoneModel(ItemStack stack, CatalogItem item) {
+      if (stack == null || item == null || !"return_stone".equalsIgnoreCase(item.itemId())
+            || item.customModelData() <= 0 || !stack.hasItemMeta()) {
+         return;
+      }
+      ItemMeta meta = stack.getItemMeta();
+      if (meta != null && (!meta.hasCustomModelData() || meta.getCustomModelData() == 0)) {
+         meta.setCustomModelData(item.customModelData());
+         stack.setItemMeta(meta);
       }
    }
 
@@ -11788,6 +12336,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              var7.add(this.color("&7Осталось использований: " + RepairKitMath.MAX_USES + "/" + RepairKitMath.MAX_USES));
           }
           if ("INFINITE_TORCH".equalsIgnoreCase(var1.effect())) {
+             var6.setMaxStackSize(1);
+          }
+          if ("ANGEL_SEAL".equalsIgnoreCase(var1.effect())) {
+             // FEATHER is the vanilla base item, but this entitlement must
+             // never be stackable because its physical identity is consumed
+             // exactly once on a real death.
              var6.setMaxStackSize(1);
           }
           var6.setLore(var7);
@@ -15567,7 +16121,23 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static record CombatProjectileIdentity(UUID ownerUuid, String itemId, String ability, String uniqueItemId) {
    }
 
+   private static final class PendingCobblestoneTrail {
+      final UUID ownerUuid;
+      final Deque<Location> locations = new ArrayDeque<>();
+      final Set<String> queuedKeys = new HashSet<>();
+
+      PendingCobblestoneTrail(UUID ownerUuid) {
+         this.ownerUuid = ownerUuid;
+      }
+   }
+
    private static record RepairKitInteractionGuard(long tick, String key) {
+   }
+
+   private static record PendingAngelSealConsumption(
+      AngelSealDeathPolicy.SealCandidate selectedSeal,
+      ItemStack snapshot
+   ) {
    }
 
    private static final class ReturnStoneChannel {

@@ -4,7 +4,9 @@ public final class CombatArtifactMathTest {
     public static void main(String[] args) {
         testInterpolationHasNoGaps();
         testInterpolationIncludesEndpoints();
+        testInterpolationRejectsInvalidStep();
         testArcVelocityPointsAwayAndUp();
+        testArcVelocityUsesRequestedMagnitude();
         testZeroHorizontalDistanceStillLaunchesUpward();
         System.out.println("CombatArtifactMathTest OK");
     }
@@ -30,6 +32,20 @@ public final class CombatArtifactMathTest {
         check(points.get(points.size() - 1).equals(end), "interpolation must preserve end");
     }
 
+    private static void testInterpolationRejectsInvalidStep() {
+        boolean rejected = false;
+        try {
+            CombatArtifactMath.interpolate(
+                new CombatArtifactMath.Point(0.0, 0.0, 0.0),
+                new CombatArtifactMath.Point(1.0, 0.0, 0.0),
+                0.0
+            );
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        check(rejected, "zero interpolation step must be rejected");
+    }
+
     private static void testArcVelocityPointsAwayAndUp() {
         var velocity = CombatArtifactMath.awayArcVelocity(
             new CombatArtifactMath.Point(0.0, 64.0, 0.0),
@@ -40,6 +56,19 @@ public final class CombatArtifactMathTest {
         check(velocity.z() > 0.0, "target must be launched away from attacker");
         check(velocity.y() > 0.0, "target must be launched upward");
         check(Math.abs(velocity.x()) < 0.000001, "sideways velocity must not be invented");
+    }
+
+    private static void testArcVelocityUsesRequestedMagnitude() {
+        var velocity = CombatArtifactMath.awayArcVelocity(
+            new CombatArtifactMath.Point(0.0, 0.0, 0.0),
+            new CombatArtifactMath.Point(3.0, 0.0, 4.0),
+            1.65,
+            1.25
+        );
+        check(Math.abs(Math.hypot(velocity.x(), velocity.z()) - 1.65) < 0.000001,
+            "horizontal launch speed must be preserved");
+        check(Math.abs(velocity.y() - 1.25) < 0.000001,
+            "vertical launch speed must be preserved");
     }
 
     private static void testZeroHorizontalDistanceStillLaunchesUpward() {

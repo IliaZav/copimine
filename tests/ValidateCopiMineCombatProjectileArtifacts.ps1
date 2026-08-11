@@ -12,18 +12,22 @@ function Require([string]$text, [string]$needle, [string]$message) {
 foreach ($marker in @(
     'id: combat_crossbow',
     'price_ar: 100',
+    'cooldown_seconds: 15',
     'effect: AR_CROSSBOW_TELEPORT',
     'id: cobblestone_trail_bow',
     'price_ar: 64',
+    'cooldown_seconds: 15',
     'effect: AR_COBBLESTONE_TRAIL',
     'enchantment: INFINITY',
     'id: explosive_crossbow',
     'price_ar: 300',
+    'cooldown_seconds: 30',
     'effect: AR_EXPLOSIVE_CROSSBOW',
     'enchantment: MULTISHOT',
     'id: streamer_stick',
     'source: ADMIN_ONLY',
     'effect: STREAMER_STICK_ARC',
+    'cooldown_seconds: 15',
     'custom_model_data: 0'
 )) {
     Require $items $marker "Catalog is missing marker: $marker"
@@ -31,14 +35,17 @@ foreach ($marker in @(
 
 foreach ($marker in @(
     'ProjectileHitEvent',
-    'event.getBow()',
+    'var1.getBow()',
     'keyProjectileAbility',
     'keyProjectileOwner',
     'TNTPrimed',
     'CombatArtifactMath.interpolate',
+    'CombatArtifactShotPolicy.decide',
     'BlockPlaceEvent',
     'STREAMER_STICK_ARC',
-    'setVelocity'
+    'setVelocity',
+    'Bukkit.getCurrentTick()',
+    'player.damage(6.0D)'
 )) {
     Require $java $marker "Implementation is missing marker: $marker"
 }

@@ -92,6 +92,7 @@ import org.bukkit.entity.TextDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.TNTPrimed;
 import org.bukkit.entity.Display.Billboard;
 import org.bukkit.entity.ItemDisplay.ItemDisplayTransform;
 import org.bukkit.event.EventHandler;
@@ -116,6 +117,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -159,6 +161,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.BundleMeta;
 import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.block.Container;
@@ -190,6 +193,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String GUI_BACK_LABEL = "&aНазад";
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
    private static final int COMPASS_COOLDOWN_SECONDS = 15;
+   private static final int EXPLOSIVE_CROSSBOW_FUSE_TICKS = 40;
+   private static final int MAX_COBBLESTONE_TRAIL_BLOCKS = 256;
+   private static final double COBBLESTONE_TRAIL_MAX_STEP = 0.75D;
+   private static final double STREAMER_STICK_HORIZONTAL_SPEED = 1.65D;
+   private static final double STREAMER_STICK_VERTICAL_SPEED = 1.25D;
    /** One chunk is sixteen blocks; the actual limit is the world's view distance. */
    private static final double MAX_COMPASS_TELEPORT_DISTANCE = 16.0D;
    private static final Map<String, Integer> ARTIFACT_MODEL_DATA = Map.of("zmei_gorynych", 10001);
@@ -219,6 +227,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<UUID, Location> lastDeathLocations = new ConcurrentHashMap<>();
    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
+   private final Map<UUID, CombatProjectileState> combatProjectiles = new ConcurrentHashMap<>();
+   private final Map<String, CombatArtifactShotPolicy.ShotWindow> explosiveShotWindows = new ConcurrentHashMap<>();
    /** Instance ids whose physical copy is no longer valid (lost/consumed/replaced). */
    private final Set<String> terminalDonationInstanceIds = ConcurrentHashMap.newKeySet();
    private final Map<UUID, ItemStack> pendingInfiniteTotemRestores = new ConcurrentHashMap<>();
@@ -266,6 +276,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyLastDeathX;
    private NamespacedKey keyLastDeathY;
    private NamespacedKey keyLastDeathZ;
+   private NamespacedKey keyProjectileAbility;
+   private NamespacedKey keyProjectileOwner;
+   private NamespacedKey keyExplosiveShotDamage;
    private NamespacedKey attackDamageKey;
    private NamespacedKey visualEntityTypeKey;
    private NamespacedKey visualKindKey;
@@ -277,6 +290,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private BukkitTask armorEffectTask;
    private BukkitTask donationOwnershipSweepTask;
    private BukkitTask shopAnchorGuardTask;
+   private BukkitTask combatProjectileTask;
    /** Monotonic catalog generation used to invalidate stale purchase screens. */
    private long catalogGeneration = 1L;
 
@@ -300,6 +314,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyLastDeathX = new NamespacedKey(this, "last_death_x");
       this.keyLastDeathY = new NamespacedKey(this, "last_death_y");
       this.keyLastDeathZ = new NamespacedKey(this, "last_death_z");
+      this.keyProjectileAbility = new NamespacedKey(this, "combat_projectile_ability");
+      this.keyProjectileOwner = new NamespacedKey(this, "combat_projectile_owner");
+      this.keyExplosiveShotDamage = new NamespacedKey(this, "explosive_shot_damage");
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
       this.visualKindKey = new NamespacedKey("copimine", "visual_kind");
@@ -404,6 +421,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
       this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
       this.armorEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickEquippedArmor, 1L, 20L);
+      this.combatProjectileTask = Bukkit.getScheduler().runTaskTimer(this, this::tickCombatProjectiles, 2L, 2L);
       // A pickup/inventory event is the fast path.  This low-cost sweep is
       // the restart/third-party-plugin safety net for foreign copies.
       // Custom shop items are ordinary transferable stacks.  The historical
@@ -520,6 +538,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (this.shopAnchorGuardTask != null) {
          this.shopAnchorGuardTask.cancel();
       }
+
+      if (this.combatProjectileTask != null) {
+         this.combatProjectileTask.cancel();
+      }
+      this.combatProjectiles.clear();
+      this.explosiveShotWindows.clear();
 
       this.claimAllInFlight.clear();
 
@@ -2420,6 +2444,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       });
       long nowSeconds = this.now();
       this.actionCooldowns.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= nowSeconds);
+      this.explosiveShotWindows.keySet().removeIf(key -> !this.actionCooldowns.containsKey(key));
       this.pozdnyakovNauseaCooldowns.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= nowSeconds);
       this.lastDeathLocations.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
    }
@@ -2796,6 +2821,55 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onCrossbowArtifactShot(EntityShootBowEvent var1) {
       if (var1.getEntity() instanceof Player var2) {
+         // EntityShootBowEvent exposes the weapon in getBow().  Reading only
+         // getConsumable() misses ordinary arrows fired by crossbows and bows,
+         // and reading the player's hand later would break when the player
+         // changes slots before the projectile lands.
+         CopiMineArtifacts.CatalogItem weapon = this.authenticCatalogItem(var1.getBow(), var2, "projectile_shoot");
+         if (weapon != null) {
+            String ability = weapon.effect().toUpperCase(Locale.ROOT);
+            if (Set.of("AR_CROSSBOW_TELEPORT", "AR_COBBLESTONE_TRAIL", "AR_EXPLOSIVE_CROSSBOW").contains(ability)) {
+               if (!this.rollEffectChance(weapon)) {
+                  return;
+               }
+               String cooldownKey = this.actionCooldownKey(var2, weapon);
+               long currentSecond = this.now();
+               long cooldownUntil = this.actionCooldowns.getOrDefault(cooldownKey, 0L);
+               boolean explosiveMultishot = "AR_EXPLOSIVE_CROSSBOW".equals(ability);
+               CombatArtifactShotPolicy.Decision decision = CombatArtifactShotPolicy.decide(
+                  currentSecond,
+                  Bukkit.getCurrentTick(),
+                  cooldownUntil,
+                  explosiveMultishot,
+                  this.explosiveShotWindows.get(cooldownKey)
+               );
+               if (!decision.allowed()) {
+                  var1.setCancelled(true);
+                  this.sendCooldownMessage(var2, weapon, cooldownUntil, currentSecond);
+                  return;
+               }
+               if (explosiveMultishot) {
+                  this.explosiveShotWindows.put(cooldownKey, decision.window());
+               } else {
+                  this.explosiveShotWindows.remove(cooldownKey);
+               }
+               if (decision.startsShot()) {
+                  this.actionCooldowns.put(
+                     cooldownKey,
+                     currentSecond + (long)Math.max(1, weapon.cooldownSeconds())
+                  );
+               }
+               this.markCombatProjectile(var1.getProjectile(), var2, weapon);
+               if (explosiveMultishot && decision.startsShot() && var1.getProjectile() instanceof Projectile projectile) {
+                  projectile.getPersistentDataContainer().set(
+                     this.keyExplosiveShotDamage,
+                     PersistentDataType.BYTE,
+                     (byte)1
+                  );
+               }
+            }
+         }
+
          CopiMineArtifacts.CatalogItem var4 = this.authenticCatalogItem(var1.getConsumable(), var2, "crossbow");
          if (var4 != null && "ETERNAL_BOOST".equalsIgnoreCase(var4.effect())) {
             var1.setCancelled(true);
@@ -2805,6 +2879,216 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                )
             );
          }
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.MONITOR,
+      ignoreCancelled = true
+   )
+   public void onAcceptedExplosiveCrossbowShot(EntityShootBowEvent event) {
+      if (!(event.getEntity() instanceof Player player) || !(event.getProjectile() instanceof Projectile projectile)) {
+         return;
+      }
+      PersistentDataContainer data = projectile.getPersistentDataContainer();
+      Byte marker = data.get(this.keyExplosiveShotDamage, PersistentDataType.BYTE);
+      if (marker == null || marker != (byte)1) {
+         return;
+      }
+      data.remove(this.keyExplosiveShotDamage);
+      // Standard Bukkit damage keeps the server's normal protection, resistance,
+      // absorption and damage-event rules.  The configured amount is 6 HP = 3 hearts.
+      player.damage(6.0D);
+   }
+
+   private void markCombatProjectile(Entity launched, Player owner, CatalogItem weapon) {
+      if (!(launched instanceof Projectile projectile) || owner == null || weapon == null) {
+         return;
+      }
+      String ability = weapon.effect().toUpperCase(Locale.ROOT);
+      PersistentDataContainer data = projectile.getPersistentDataContainer();
+      data.set(this.keyProjectileAbility, PersistentDataType.STRING, ability);
+      data.set(this.keyProjectileOwner, PersistentDataType.STRING, owner.getUniqueId().toString());
+      data.set(this.keyItemId, PersistentDataType.STRING, weapon.itemId());
+      if ("AR_COBBLESTONE_TRAIL".equals(ability)) {
+         this.combatProjectiles.put(
+            projectile.getUniqueId(),
+            new CombatProjectileState(owner.getUniqueId(), projectile.getLocation().clone(), 0.0D)
+         );
+      }
+   }
+
+   private void tickCombatProjectiles() {
+      for (Map.Entry<UUID, CombatProjectileState> entry : this.combatProjectiles.entrySet()) {
+         Entity entity = Bukkit.getEntity(entry.getKey());
+         if (!(entity instanceof Projectile projectile) || projectile.isDead() || !projectile.isValid()) {
+            this.combatProjectiles.remove(entry.getKey(), entry.getValue());
+            continue;
+         }
+
+         CombatProjectileState previous = entry.getValue();
+         Location current = projectile.getLocation().clone();
+         Location last = previous.lastLocation();
+         if (last.getWorld() == null || current.getWorld() == null || last.getWorld() != current.getWorld()) {
+            this.combatProjectiles.remove(entry.getKey(), previous);
+            continue;
+         }
+         double segmentDistance = last.distance(current);
+         double travelled = previous.travelledBlocks() + segmentDistance;
+         if (travelled > MAX_COBBLESTONE_TRAIL_BLOCKS) {
+            this.combatProjectiles.remove(entry.getKey(), previous);
+            continue;
+         }
+
+         Player owner = Bukkit.getPlayer(previous.ownerUuid());
+         if (owner != null && owner.isOnline() && owner.getWorld() == current.getWorld()) {
+            this.placeCobblestoneTrail(owner, last, current);
+         }
+         this.combatProjectiles.replace(
+            entry.getKey(),
+            previous,
+            new CombatProjectileState(previous.ownerUuid(), current, travelled)
+         );
+      }
+   }
+
+   @EventHandler(
+      priority = EventPriority.HIGHEST,
+      ignoreCancelled = false
+   )
+   public void onCombatProjectileHit(ProjectileHitEvent event) {
+      Projectile projectile = event.getEntity();
+      PersistentDataContainer data = projectile.getPersistentDataContainer();
+      String ability = data.get(this.keyProjectileAbility, PersistentDataType.STRING);
+      if (ability == null || ability.isBlank()) {
+         return;
+      }
+      CombatProjectileState previous = this.combatProjectiles.remove(projectile.getUniqueId());
+      if (event.isCancelled()) {
+         data.remove(this.keyProjectileAbility);
+         data.remove(this.keyProjectileOwner);
+         data.remove(this.keyItemId);
+         return;
+      }
+      UUID ownerUuid = this.projectileOwner(data);
+      Player owner = ownerUuid == null ? null : Bukkit.getPlayer(ownerUuid);
+      switch (ability.toUpperCase(Locale.ROOT)) {
+         case "AR_CROSSBOW_TELEPORT" -> this.teleportOwnerToProjectileHit(owner, projectile);
+         case "AR_COBBLESTONE_TRAIL" -> {
+            if (owner != null && previous != null && owner.isOnline() && owner.getWorld() == projectile.getWorld()) {
+               this.placeCobblestoneTrail(owner, previous.lastLocation(), projectile.getLocation());
+            }
+         }
+         case "AR_EXPLOSIVE_CROSSBOW" -> this.spawnExplosiveTnt(owner, projectile);
+         default -> {
+         }
+      }
+      data.remove(this.keyProjectileAbility);
+      data.remove(this.keyProjectileOwner);
+      data.remove(this.keyItemId);
+   }
+
+   private UUID projectileOwner(PersistentDataContainer data) {
+      String raw = data.get(this.keyProjectileOwner, PersistentDataType.STRING);
+      if (raw == null || raw.isBlank()) {
+         return null;
+      }
+      try {
+         return UUID.fromString(raw);
+      } catch (IllegalArgumentException ignored) {
+         return null;
+      }
+   }
+
+   private void teleportOwnerToProjectileHit(Player owner, Projectile projectile) {
+      if (owner == null || !owner.isOnline() || projectile == null || projectile.getWorld() == null
+            || owner.getWorld() != projectile.getWorld()) {
+         return;
+      }
+      Location safe = this.findSafeProjectileLocation(projectile);
+      if (safe == null || !owner.teleport(safe)) {
+         return;
+      }
+      owner.setFallDistance(0.0F);
+      owner.setVelocity(new Vector());
+   }
+
+   private Location findSafeProjectileLocation(Projectile projectile) {
+      Location hit = projectile.getLocation().clone();
+      World world = hit.getWorld();
+      if (world == null || !world.isChunkLoaded(hit.getBlockX() >> 4, hit.getBlockZ() >> 4)
+            || !world.getWorldBorder().isInside(hit)) {
+         return null;
+      }
+      Vector retreat = projectile.getVelocity().clone();
+      if (retreat.lengthSquared() > 0.0001D) {
+         retreat.normalize().multiply(-0.75D);
+      } else {
+         retreat.zero();
+      }
+      for (int attempt = 0; attempt < 5; attempt++) {
+         Location candidate = hit.clone().add(retreat.clone().multiply(attempt));
+         if (this.isSafeCompassLocation(candidate)) {
+            return candidate;
+         }
+      }
+      return null;
+   }
+
+   private void spawnExplosiveTnt(Player owner, Projectile projectile) {
+      if (projectile == null || projectile.getWorld() == null) {
+         return;
+      }
+      Location location = projectile.getLocation().clone();
+      World world = location.getWorld();
+      if (!world.isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)
+            || !world.getWorldBorder().isInside(location)) {
+         return;
+      }
+      TNTPrimed tnt = world.spawn(location, TNTPrimed.class);
+      tnt.setFuseTicks(EXPLOSIVE_CROSSBOW_FUSE_TICKS);
+      if (owner != null) {
+         tnt.setSource(owner);
+      }
+   }
+
+   private void placeCobblestoneTrail(Player owner, Location from, Location to) {
+      if (owner == null || from == null || to == null || from.getWorld() == null || from.getWorld() != to.getWorld()) {
+         return;
+      }
+      CombatArtifactMath.Point start = new CombatArtifactMath.Point(from.getX(), from.getY(), from.getZ());
+      CombatArtifactMath.Point end = new CombatArtifactMath.Point(to.getX(), to.getY(), to.getZ());
+      Set<String> placedKeys = new HashSet<>();
+      for (CombatArtifactMath.Point point : CombatArtifactMath.interpolate(start, end, COBBLESTONE_TRAIL_MAX_STEP)) {
+         int x = (int)Math.floor(point.x());
+         int y = (int)Math.floor(point.y()) - 1;
+         int z = (int)Math.floor(point.z());
+         World world = from.getWorld();
+         if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+            continue;
+         }
+         Block floor = world.getBlockAt(x, y, z);
+         if (!world.getWorldBorder().isInside(floor.getLocation())) {
+            continue;
+         }
+         String key = this.blockKey(floor.getLocation());
+         if (!placedKeys.add(key) || !floor.isReplaceable() || floor.isLiquid()
+               || this.shopsByLocation.containsKey(key)) {
+            continue;
+         }
+         BlockPlaceEvent place = new BlockPlaceEvent(
+            floor,
+            floor.getState(),
+            floor.getRelative(BlockFace.DOWN),
+            new ItemStack(Material.COBBLESTONE),
+            owner,
+            true
+         );
+         Bukkit.getPluginManager().callEvent(place);
+         if (place.isCancelled() || !place.canBuild()) {
+            continue;
+         }
+         floor.setType(Material.COBBLESTONE, false);
       }
    }
 
@@ -2825,16 +3109,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          CopiMineArtifacts.CatalogItem var15 = this.authenticCatalogItem(var14, var2, "use");
          if (var15 != null) {
             String var16 = var15.effect().toUpperCase(Locale.ROOT);
+            LivingEntity var10 = var1.getEntity() instanceof LivingEntity var11 ? var11 : null;
+            if ("STREAMER_STICK_ARC".equals(var16) && (var10 == null || var10 == var2)) {
+               return;
+            }
             if ("NALOGOVAYA_KOSA".equals(var16)) {
-               LivingEntity target = var1.getEntity() instanceof LivingEntity living ? living : null;
-               this.tryRareArTheft(var2, target);
+               this.tryRareArTheft(var2, var10);
             }
             if (this.artifactCombatEffects().contains(var16)) {
                long var19 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var15), 0L);
                long var8 = this.now();
                if (var19 <= var8 && this.rollEffectChance(var15)) {
                   this.actionCooldowns.put(this.actionCooldownKey(var2, var15), var8 + (long)var15.cooldownSeconds());
-                  LivingEntity var10 = var1.getEntity() instanceof LivingEntity var11 ? var11 : null;
                   Location var20 = var1.getEntity().getLocation().add(0.0, 1.0, 0.0);
                   switch (var16) {
                         case "LIGHTNING":
@@ -2921,7 +3207,20 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            this.healPlayerCapped(var2, 4.0);
                            var20.getWorld().spawnParticle(Particle.SCULK_SOUL, var20, 10, 0.25, 0.25, 0.25, 0.01);
                            break;
-                        case "DUTY_ARGUMENT":
+                         case "STREAMER_STICK_ARC":
+                            if (var10 != null && var10 != var2) {
+                               CombatArtifactMath.Velocity arc = CombatArtifactMath.awayArcVelocity(
+                                  new CombatArtifactMath.Point(var2.getLocation().getX(), var2.getLocation().getY(), var2.getLocation().getZ()),
+                                  new CombatArtifactMath.Point(var10.getLocation().getX(), var10.getLocation().getY(), var10.getLocation().getZ()),
+                                  STREAMER_STICK_HORIZONTAL_SPEED,
+                                  STREAMER_STICK_VERTICAL_SPEED
+                               );
+                               var10.setVelocity(new Vector(arc.x(), arc.y(), arc.z()));
+                               var10.setFallDistance(0.0F);
+                               var20.getWorld().spawnParticle(Particle.CLOUD, var20, 24, 0.35, 0.35, 0.35, 0.04);
+                            }
+                            break;
+                         case "DUTY_ARGUMENT":
                            var1.setDamage(var1.getDamage() + 2.0);
                            var2.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 80, 0, false, false, true));
                            if (var10 != null) {
@@ -3062,7 +3361,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       String itemId = args[3].trim().toLowerCase(Locale.ROOT);
       CopiMineArtifacts.CatalogItem item = this.runtimeCatalogItem(itemId);
-      if (item == null || !this.isAdminOnlyCatalogItem(itemId) || !"POZDNYAKOV_ACE".equalsIgnoreCase(item.effect())) {
+      if (item == null || !this.isAdminOnlyCatalogItem(itemId)) {
          actor.sendMessage(this.color("&cНеизвестный административный предмет."));
          return true;
       }
@@ -10341,7 +10640,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
          var7.add(this.color("&8Редкость: " + var1.rarity()));
          var6.setLore(var7);
-         var6.addItemFlags(new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE});
+         boolean var10 = "AR_COBBLESTONE_TRAIL".equalsIgnoreCase(var1.effect());
+         boolean var11 = "AR_EXPLOSIVE_CROSSBOW".equalsIgnoreCase(var1.effect());
+         if (var10) {
+            var6.addEnchant(Enchantment.INFINITY, 1, true);
+         }
+         if (var11) {
+            var6.addEnchant(Enchantment.MULTISHOT, 1, true);
+         }
+         this.decorateNarcoticRecipeBook(var6, var1);
+         var6.addItemFlags(var10 || var11
+            ? new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE}
+            : new ItemFlag[]{ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE});
          var6.getPersistentDataContainer().set(this.keyItemId, PersistentDataType.STRING, var1.itemId());
          var6.getPersistentDataContainer().set(this.keyUniqueItemId, PersistentDataType.STRING, var2);
          var6.getPersistentDataContainer().set(this.keyCategory, PersistentDataType.STRING, var1.category().name());
@@ -10363,6 +10673,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var5.setItemMeta(var6);
          return var5;
       }
+   }
+
+   private void decorateNarcoticRecipeBook(ItemMeta meta, CopiMineArtifacts.CatalogItem item) {
+      if (!(meta instanceof BookMeta bookMeta)) {
+         return;
+      }
+      NarcoticRecipeBookData.BookData data = NarcoticRecipeBookData.forItem(item.itemId());
+      if (data == null) {
+         return;
+      }
+      bookMeta.setTitle("Обрывок из книги рецептов");
+      bookMeta.setAuthor("Странный учёный");
+      bookMeta.setPages(data.pages());
    }
 
    private void ensureAttackDamageAttribute(ItemStack stack, CopiMineArtifacts.CatalogItem item) {
@@ -12694,7 +13017,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          "BATIN_REMEN",
          "NAKOPAL_PICKAXE",
          "NALOGOVAYA_KOSA",
-         "DUTY_ARGUMENT"
+         "DUTY_ARGUMENT",
+         "STREAMER_STICK_ARC"
       );
    }
 
@@ -14074,6 +14398,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private static record BridgeTxnResult(boolean ok, String code, String message, long balanceAfter, String txId) {
+   }
+
+   private static record CombatProjectileState(UUID ownerUuid, Location lastLocation, double travelledBlocks) {
    }
 
    private static record CatalogItem(

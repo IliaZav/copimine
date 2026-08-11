@@ -13,7 +13,9 @@
 - Do not modify or wipe worlds, player inventories, elections, accounts, or databases.
 - New catalog items have no texture: `custom_model_data: 0`.
 - AR items use ordinary purple names and `EPIC` rarity.
-- The streamer stick remains `ADMIN_ONLY` and does not appear in the AR shop.
+- The streamer stick remains `ADMIN_ONLY` and does not appear in the AR shop; combat projectile items use 15-second cooldowns except the explosive crossbow at 30 seconds.
+- An accepted explosive-crossbow shot damages its owner by 6 HP exactly once, while Multishot's three projectile events share one shot window.
+- Recipe fragments are separate `WRITTEN_BOOK` AR items priced at 300 AR and do not change brewing.
 - Do not replace existing blocks while building the trail; route placement through `BlockPlaceEvent`.
 - Run tests before committing and verify the exact deployed JAR after upload.
 
@@ -94,6 +96,25 @@
 - [ ] **Step 3: Enforce live target/self-hit/cooldown guards**
 - [ ] **Step 4: Run focused tests and existing ability validators**
 
+### Task 4a: Enforce cooldown and explosive-shot self-damage
+
+**Files:**
+- Create: `copimine-artifacts/src/me/copimine/artifacts/CombatArtifactShotPolicy.java`
+- Modify: `copimine-artifacts/items.yml`
+- Modify: `copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java`
+- Create: `tests/CombatArtifactShotPolicyTest.java`
+- Modify: `tests/test_combat_ar_artifacts_contract.py`
+- Modify: `tests/ValidateCopiMineCombatProjectileArtifacts.ps1`
+
+**Interfaces:**
+- Vanilla items remain outside the authenticity gate.
+- Teleport crossbow, cobblestone bow, and streamer stick use 15 seconds; explosive crossbow uses 30 seconds.
+- A Multishot event window accepts at most three projectiles from one accepted shot and charges 6 HP once.
+
+- [ ] **Step 1: Add the failing pure policy test for cooldown and three-projectile admission**
+- [ ] **Step 2: Implement the bounded Multishot shot window and self-damage gate**
+- [ ] **Step 3: Add exact catalog/source contracts and rerun focused tests**
+
 ### Task 5: Build and verify the release artifact
 
 **Files:**
@@ -123,3 +144,22 @@
 - [ ] **Step 1: Generate several simple pixel-art candidates for the three visible items**
 - [ ] **Step 2: Display the candidates to the user in chat**
 - [ ] **Step 3: Do not copy any candidate into the resource pack until the user explicitly approves one.**
+
+### Task 8: Add narcotic recipe books without changing brewing
+
+**Files:**
+- Create: `copimine-artifacts/src/me/copimine/artifacts/NarcoticRecipeBookData.java`
+- Modify: `copimine-artifacts/items.yml`
+- Modify: `copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java`
+- Create: `tests/NarcoticRecipeBookDataTest.java`
+- Create: `tests/test_narcotic_recipe_books_contract.py`
+
+**Interfaces:**
+- The eight book catalog records are official AR items priced at 300 and use `WRITTEN_BOOK`.
+- `BookMeta` receives exactly two pages: centered recipe title and Russian ingredient names.
+- The book catalog is checked against the existing narcotics recipe configuration; the `zhuzevo` fallback with no ingredients is excluded.
+
+- [ ] **Step 1: Write failing catalog/data tests for all eight recipes**
+- [ ] **Step 2: Add pure recipe-book page data and catalog records**
+- [ ] **Step 3: Decorate official written books while preserving existing brewing code**
+- [ ] **Step 4: Run focused tests and verify no brewing files changed**

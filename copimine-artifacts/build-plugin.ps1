@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $pluginDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $releaseRoot = Resolve-Path (Join-Path $pluginDir '..')
 $serverDir = Join-Path $releaseRoot 'minecraft\server'
-$src = Join-Path $pluginDir 'src\me\copimine\artifacts\CopiMineArtifacts.java'
+$srcRoot = Join-Path $pluginDir 'src'
 $classes = Join-Path $pluginDir 'build\classes'
 $jar = Join-Path $pluginDir 'CopiMineArtifacts.jar'
 $serverJar = Join-Path $serverDir 'plugins\CopiMineArtifacts.jar'
@@ -46,7 +46,11 @@ if (Test-Path (Join-Path $serverDir 'libraries')) {
 
 Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
-javac -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $src
+$sources = Get-ChildItem -Path $srcRoot -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName
+if (-not $sources) {
+  throw "No Java sources found under $srcRoot."
+}
+javac -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
 if ($LASTEXITCODE -ne 0) {
   throw "javac failed for CopiMineArtifacts with exit code $LASTEXITCODE."
 }

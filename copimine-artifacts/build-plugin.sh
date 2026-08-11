@@ -4,7 +4,7 @@ set -euo pipefail
 plugin_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 release_root="$(cd "$plugin_dir/.." && pwd)"
 server_dir="$release_root/minecraft/server"
-src="$plugin_dir/src/me/copimine/artifacts/CopiMineArtifacts.java"
+src_root="$plugin_dir/src"
 classes="$plugin_dir/build/classes"
 jar_file="$plugin_dir/CopiMineArtifacts.jar"
 server_jar="$server_dir/plugins/CopiMineArtifacts.jar"
@@ -29,7 +29,13 @@ classpath="$(IFS=:; echo "${cp_entries[*]}")"
 
 rm -rf "$classes"
 mkdir -p "$classes"
-javac -encoding UTF-8 -cp "$classpath" -d "$classes" "$src"
+javac_sources=()
+while IFS= read -r source_file; do javac_sources+=("$source_file"); done < <(find "$src_root" -type f -name '*.java' -print | sort)
+if [[ "${#javac_sources[@]}" -eq 0 ]]; then
+  echo "No Java sources found under $src_root." >&2
+  exit 1
+fi
+javac -encoding UTF-8 -cp "$classpath" -d "$classes" "${javac_sources[@]}"
 cp "$plugin_dir/plugin.yml" "$classes/plugin.yml"
 cp "$plugin_dir/config.yml" "$classes/config.yml"
 cp "$plugin_dir/items.yml" "$classes/items.yml"

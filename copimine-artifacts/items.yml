@@ -16,6 +16,212 @@ items:
     lore:
       - "&7С каждым ударом есть шанс нанести крит с дебаффами"
 
+  - id: combat_crossbow
+    category: WEAPON
+    material: CROSSBOW
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dАрбалет"
+    rarity: EPIC
+    price_ar: 100
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 15
+    effect: AR_CROSSBOW_TELEPORT
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Телепортирует владельца к месту попадания стрелы"
+
+  - id: cobblestone_trail_bow
+    category: WEAPON
+    material: BOW
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dЛук"
+    rarity: EPIC
+    price_ar: 64
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 15
+    effect: AR_COBBLESTONE_TRAIL
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    enchantment: INFINITY
+    lore:
+      - "&7Строит дорожку из булыжника за стрелой"
+
+  - id: explosive_crossbow
+    category: WEAPON
+    material: CROSSBOW
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dВзрывной арбалет"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 30
+    effect: AR_EXPLOSIVE_CROSSBOW
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    enchantment: MULTISHOT
+    lore:
+      - "&7Создаёт подожжённую TNT при попадании стрелы"
+
+  - id: streamer_stick
+    category: WEAPON
+    material: STICK
+    source: ADMIN_ONLY
+    custom_model_data: 0
+    name: "&dПалка стримера"
+    rarity: EPIC
+    price_ar: 0
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 15
+    effect: STREAMER_STICK_ARC
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Отбрасывает цель вверх и назад"
+
+  - id: narcotic_recipe_feta
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
+  - id: narcotic_recipe_kola
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
+  - id: narcotic_recipe_girion
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
+  - id: narcotic_recipe_sbp
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
+  - id: narcotic_recipe_sos
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
+  - id: narcotic_recipe_drun
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
+  - id: narcotic_recipe_chups
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
+  - id: narcotic_recipe_borshevik
+    category: TOOL
+    material: WRITTEN_BOOK
+    source: AR_SHOP
+    custom_model_data: 0
+    name: "&dОбрывок из книги рецептов"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NARCOTIC_RECIPE_BOOK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Обрывок из книги рецептов странного учёного"
+
   - id: smena_bez_perekura_pickaxe
     category: TOOL
     material: NETHERITE_PICKAXE

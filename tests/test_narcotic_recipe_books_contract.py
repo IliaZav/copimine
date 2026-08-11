@@ -59,12 +59,15 @@ def recipe_tokens(item_id: str) -> list[str]:
 
 
 def test_every_recipe_with_ingredients_has_a_300_ar_written_book() -> None:
+    expected_model_data = {
+        recipe_id: 10017 + index for index, recipe_id in enumerate(EXPECTED_RECIPES)
+    }
     for recipe_id, expected_tokens in EXPECTED_RECIPES.items():
         block = item_block(f"narcotic_recipe_{recipe_id}")
         assert "category: NOTES" in block
         assert "material: WRITTEN_BOOK" in block
         assert "source: AR_SHOP" in block
-        assert "custom_model_data: 0" in block
+        assert f"custom_model_data: {expected_model_data[recipe_id]}" in block
         assert "name: \"&dОбрывок из книги рецептов\"" in block
         assert "rarity: EPIC" in block
         assert "price_ar: 300" in block

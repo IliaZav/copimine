@@ -40,8 +40,8 @@ class UtilityArtifactCatalogContractTest(unittest.TestCase):
             "rarity: EPIC",
             "price_ar: 10",
             "effect: REPAIR_KIT",
-            "custom_model_data: 0",
-            "custom-texture-mode-allowed: false",
+            "custom_model_data: 10025",
+            "custom-texture-mode-allowed: true",
         )
 
     def test_return_stone_catalog_contract(self) -> None:
@@ -55,8 +55,8 @@ class UtilityArtifactCatalogContractTest(unittest.TestCase):
             "price_ar: 300",
             "cooldown_seconds: 300",
             "effect: RETURN_STONE",
-            "custom_model_data: 0",
-            "custom-texture-mode-allowed: false",
+            "custom_model_data: 10026",
+            "custom-texture-mode-allowed: true",
         )
 
     def test_infinite_torch_catalog_contract(self) -> None:
@@ -69,8 +69,8 @@ class UtilityArtifactCatalogContractTest(unittest.TestCase):
             "rarity: EPIC",
             "price_ar: 100",
             "effect: INFINITE_TORCH",
-            "custom_model_data: 0",
-            "custom-texture-mode-allowed: false",
+            "custom_model_data: 10027",
+            "custom-texture-mode-allowed: true",
         )
 
     def test_return_stone_is_player_scoped_and_channelled(self) -> None:

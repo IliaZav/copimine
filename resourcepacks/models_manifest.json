@@ -8,6 +8,27 @@
       "texture": "copimine:item/artifacts/zmei_gorynych"
     },
     {
+      "id": "repair_kit",
+      "custom_model_data": 10025,
+      "base_material": "shears",
+      "model": "copimine:item/artifacts/repair_kit",
+      "texture": "copimine:item/artifacts/repair_kit"
+    },
+    {
+      "id": "return_stone",
+      "custom_model_data": 10026,
+      "base_material": "echo_shard",
+      "model": "copimine:item/artifacts/return_stone",
+      "texture": "copimine:item/artifacts/return_stone"
+    },
+    {
+      "id": "infinite_torch",
+      "custom_model_data": 10027,
+      "base_material": "torch",
+      "model": "copimine:item/artifacts/infinite_torch",
+      "texture": "copimine:item/artifacts/infinite_torch"
+    },
+    {
       "id": "smena_bez_perekura_pickaxe",
       "custom_model_data": 10002,
       "base_material": "netherite_pickaxe",
@@ -232,6 +253,83 @@
       "base_material": "paper",
       "model": "copimine:item/block/artifact_shop_marker",
       "texture": "copimine:block/artifact_shop_marker"
+    },
+    {
+      "id": "combat_crossbow",
+      "custom_model_data": 10014,
+      "base_material": "bow",
+      "model": "copimine:item/artifacts/teleport_bow",
+      "texture": "copimine:item/artifacts/teleport_bow"
+    },
+    {
+      "id": "cobblestone_trail_bow",
+      "custom_model_data": 10015,
+      "base_material": "bow",
+      "model": "copimine:item/artifacts/cobblestone_trail_bow",
+      "texture": "copimine:item/artifacts/cobblestone_trail_bow"
+    },
+    {
+      "id": "explosive_crossbow",
+      "custom_model_data": 10016,
+      "base_material": "crossbow",
+      "model": "copimine:item/artifacts/explosive_crossbow",
+      "texture": "copimine:item/artifacts/explosive_crossbow"
+    },
+    {
+      "id": "narcotic_recipe_feta",
+      "custom_model_data": 10017,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "narcotic_recipe_kola",
+      "custom_model_data": 10018,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "narcotic_recipe_girion",
+      "custom_model_data": 10019,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "narcotic_recipe_sbp",
+      "custom_model_data": 10020,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "narcotic_recipe_sos",
+      "custom_model_data": 10021,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "narcotic_recipe_drun",
+      "custom_model_data": 10022,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "narcotic_recipe_chups",
+      "custom_model_data": 10023,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "narcotic_recipe_borshevik",
+      "custom_model_data": 10024,
+      "base_material": "written_book",
+      "model": "copimine:item/artifacts/recipe_note",
+      "texture": "copimine:item/artifacts/recipe_note"
     }
   ]
 }

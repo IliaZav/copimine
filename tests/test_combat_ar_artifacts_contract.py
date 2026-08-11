@@ -48,12 +48,12 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             block,
             "material: BOW",
             "source: AR_SHOP",
-            'name: "&dЛук"',
+            'name: "&dЛук телепортации"',
             "rarity: EPIC",
             "price_ar: 100",
             "cooldown_seconds: 15",
             "effect: AR_CROSSBOW_TELEPORT",
-            "custom_model_data: 0",
+            "custom_model_data: 10014",
         )
 
     def test_trail_bow_has_no_infinity_and_exact_catalog_contract(self) -> None:
@@ -67,7 +67,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "price_ar: 64",
             "cooldown_seconds: 15",
             "effect: AR_COBBLESTONE_TRAIL",
-            "custom_model_data: 0",
+            "custom_model_data: 10015",
         )
         self.assertNotIn("enchantment: INFINITY", block)
 
@@ -83,7 +83,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "cooldown_seconds: 30",
             "effect: AR_EXPLOSIVE_CROSSBOW",
             "enchantment: MULTISHOT",
-            "custom_model_data: 0",
+            "custom_model_data: 10016",
         )
 
     def test_streamer_stick_is_hidden_and_not_an_ar_shop_item(self) -> None:

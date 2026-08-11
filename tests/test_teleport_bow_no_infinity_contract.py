@@ -27,7 +27,7 @@ class TeleportBowAndNoInfinityContractTest(unittest.TestCase):
     def test_teleport_item_is_a_bow_in_the_ar_catalog(self) -> None:
         block = item_block("combat_crossbow")
         self.assertIn("material: BOW", block)
-        self.assertIn('name: "&dЛук"', block)
+        self.assertIn('name: "&dЛук телепортации"', block)
         self.assertIn("source: AR_SHOP", block)
         self.assertIn("effect: AR_CROSSBOW_TELEPORT", block)
 

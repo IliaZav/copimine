@@ -20,17 +20,20 @@ $repair = Get-ItemBlock 'repair_kit'
 Require $repair 'material: SHEARS' 'repair_kit must use SHEARS.'
 Require $repair 'price_ar: 10' 'repair_kit price must be 10 AR.'
 Require $repair 'effect: REPAIR_KIT' 'repair_kit effect is missing.'
+Require $repair 'custom_model_data: 10025' 'repair_kit custom model data is missing.'
 
 $returnStone = Get-ItemBlock 'return_stone'
 Require $returnStone 'material: ECHO_SHARD' 'return_stone must use ECHO_SHARD.'
 Require $returnStone 'price_ar: 300' 'return_stone price must be 300 AR.'
 Require $returnStone 'cooldown_seconds: 300' 'return_stone cooldown must be 300 seconds.'
 Require $returnStone 'effect: RETURN_STONE' 'return_stone effect is missing.'
+Require $returnStone 'custom_model_data: 10026' 'return_stone custom model data is missing.'
 
 $torch = Get-ItemBlock 'infinite_torch'
 Require $torch 'material: TORCH' 'infinite_torch must use TORCH.'
 Require $torch 'price_ar: 100' 'infinite_torch price must be 100 AR.'
 Require $torch 'effect: INFINITE_TORCH' 'infinite_torch effect is missing.'
+Require $torch 'custom_model_data: 10027' 'infinite_torch custom model data is missing.'
 
 foreach ($marker in @(
     'RepairKitMath.MAX_USES',

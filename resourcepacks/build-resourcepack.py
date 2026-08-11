@@ -311,15 +311,7 @@ def build_stage() -> None:
         overrides = vanilla_special_overrides(material)
         custom_overrides = []
         for entry in sorted(entries, key=lambda x: x["custom_model_data"]):
-            model_ref = entry["model"]
-            if material in {"clock", "compass"} and entry.get("animation"):
-                model_ref = write_directional_animation_models(entry, material)
-            custom_overrides.append(
-                {
-                    "predicate": {"custom_model_data": entry["custom_model_data"]},
-                    "model": model_ref,
-                }
-            )
+            custom_overrides.extend(item_model_overrides(entry, material))
         overrides.extend(custom_overrides)
         # Keep vanilla special-item rendering intact.  The vanilla clock and
         # compass textures are selected by time/angle predicates. The shield
@@ -355,7 +347,21 @@ def build_stage() -> None:
 
 
 def vanilla_special_overrides(material: str) -> list[dict]:
-    """Return the vanilla 1.21.1 time/angle/blocking model predicates."""
+    """Return vanilla predicates that must remain before custom overrides."""
+    if material == "bow":
+        return [
+            {"predicate": {"pulling": 1}, "model": "minecraft:item/bow_pulling_0"},
+            {"predicate": {"pulling": 1, "pull": 0.65}, "model": "minecraft:item/bow_pulling_1"},
+            {"predicate": {"pulling": 1, "pull": 0.9}, "model": "minecraft:item/bow_pulling_2"},
+        ]
+    if material == "crossbow":
+        return [
+            {"predicate": {"pulling": 1}, "model": "minecraft:item/crossbow_pulling_0"},
+            {"predicate": {"pulling": 1, "pull": 0.58}, "model": "minecraft:item/crossbow_pulling_1"},
+            {"predicate": {"pulling": 1, "pull": 1}, "model": "minecraft:item/crossbow_pulling_2"},
+            {"predicate": {"charged": 1}, "model": "minecraft:item/crossbow_arrow"},
+            {"predicate": {"charged": 1, "firework": 1}, "model": "minecraft:item/crossbow_firework"},
+        ]
     if material == "compass":
         values = [
             0.000000, 0.015625, 0.046875, 0.078125, 0.109375, 0.140625,
@@ -375,6 +381,67 @@ def vanilla_special_overrides(material: str) -> list[dict]:
         return [{"predicate": {"time": value}, "model": f"minecraft:item/{model}"}
                 for value, model in zip(values, models)]
     return []
+
+
+def item_model_overrides(entry: dict, material: str) -> list[dict]:
+    """Build a custom item base plus state-specific overrides.
+
+    Vanilla predicates are evaluated in order and the last matching override
+    wins.  Keep the custom base before its state predicates so a custom item
+    falls back to its own art while idle, then follows the exact vanilla bow
+    or crossbow state thresholds while it is being used.
+    """
+    model_ref = entry["model"]
+    if material in {"clock", "compass"} and entry.get("animation"):
+        model_ref = write_directional_animation_models(entry, material)
+
+    custom_model_data = entry["custom_model_data"]
+    overrides = [
+        {"predicate": {"custom_model_data": custom_model_data}, "model": model_ref},
+    ]
+    if material == "bow":
+        overrides.extend(
+            [
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "pulling": 1},
+                    "model": f"{model_ref}_pulling_0",
+                },
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "pulling": 1, "pull": 0.65},
+                    "model": f"{model_ref}_pulling_1",
+                },
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "pulling": 1, "pull": 0.9},
+                    "model": f"{model_ref}_pulling_2",
+                },
+            ]
+        )
+    elif material == "crossbow":
+        overrides.extend(
+            [
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "pulling": 1},
+                    "model": f"{model_ref}_pulling_0",
+                },
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "pulling": 1, "pull": 0.58},
+                    "model": f"{model_ref}_pulling_1",
+                },
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "pulling": 1, "pull": 1},
+                    "model": f"{model_ref}_pulling_2",
+                },
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "charged": 1},
+                    "model": f"{model_ref}_charged",
+                },
+                {
+                    "predicate": {"custom_model_data": custom_model_data, "charged": 1, "firework": 1},
+                    "model": f"{model_ref}_charged_firework",
+                },
+            ]
+        )
+    return overrides
 
 
 def write_directional_animation_models(entry: dict, material: str) -> str:

@@ -12,7 +12,11 @@ $required = @(
   'kozyrny_tuz_pozdnyakova',
   'batin_remen_sudnogo_dnya','nu_ty_i_nakopal_blyat_pickaxe','kosa_nalogovoy_inspekcii','kaska_prorab_huev',
   'mne_pohuy_ya_v_tanke_vest','pohuy_na_debaffy_amulet',
-  'vremya_platit_nalogi_clock','gde_moy_lut_blyat_compass'
+  'vremya_platit_nalogi_clock','gde_moy_lut_blyat_compass',
+  'repair_kit','return_stone','infinite_torch',
+  'combat_crossbow','cobblestone_trail_bow','explosive_crossbow',
+  'narcotic_recipe_feta','narcotic_recipe_kola','narcotic_recipe_girion','narcotic_recipe_sbp',
+  'narcotic_recipe_sos','narcotic_recipe_drun','narcotic_recipe_chups','narcotic_recipe_borshevik'
 )
 $errors = [System.Collections.Generic.List[string]]::new()
 $rows = @($sources.items)
@@ -30,7 +34,7 @@ foreach ($id in $required) {
   if (-not $rowById.ContainsKey($id)) { $errors.Add("Texture source mapping is missing $id"); continue }
   $row = $rowById[$id]
   if ([int]$row.custom_model_data -le 0) { $errors.Add("$id has non-positive custom model data") }
-  if ($row.catalog -eq 'AR' -and $row.source_group -ne 'No_Donate') { $errors.Add("AR item $id must come from No_Donate") }
+  if ($row.catalog -eq 'AR' -and $row.source_group -notin @('No_Donate', 'Generated')) { $errors.Add("AR item $id must come from No_Donate or Generated") }
   if ($row.catalog -eq 'ADMIN_ONLY' -and $row.source_group -ne 'User_Supplied') { $errors.Add("Admin-only item $id must come from User_Supplied") }
   if ($row.catalog -eq 'DONATION' -and $row.source_group -ne 'Donate') { $errors.Add("Donation item $id must come from Donate") }
   $key = "{0}:{1}" -f ([string]$row.base_material).ToUpperInvariant(), [int]$row.custom_model_data

@@ -28,7 +28,9 @@ foreach ($marker in @(
     'source: ADMIN_ONLY',
     'effect: STREAMER_STICK_ARC',
     'cooldown_seconds: 15',
-    'custom_model_data: 0'
+    'custom_model_data: 10014',
+    'custom_model_data: 10015',
+    'custom_model_data: 10016'
 )) {
     Require $items $marker "Catalog is missing marker: $marker"
 }

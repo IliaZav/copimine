@@ -49,7 +49,7 @@ class RepairKitCatalogContractTest(unittest.TestCase):
             "rarity: EPIC",
             "price_ar: 10",
             "effect: REPAIR_KIT",
-            "custom_model_data: 0",
+            "custom_model_data: 10025",
             "lore:",
             "Чинит обычный предмет в другой руке",
         )

@@ -20,13 +20,13 @@ items:
     category: TOOL
     material: SHEARS
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10025
+    custom-texture-mode-allowed: true
     name: "&dРемкомплект"
     rarity: EPIC
     price_ar: 10
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: REPAIR_KIT
     effect_chance_percent: 100
@@ -38,13 +38,13 @@ items:
     category: TOOL
     material: ECHO_SHARD
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10026
+    custom-texture-mode-allowed: true
     name: "&dКамень возвращения"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 300
     effect: RETURN_STONE
     effect_chance_percent: 100
@@ -56,13 +56,13 @@ items:
     category: TOOL
     material: TORCH
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10027
+    custom-texture-mode-allowed: true
     name: "&dБесконечный факел"
     rarity: EPIC
     price_ar: 100
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: INFINITE_TORCH
     effect_chance_percent: 100
@@ -74,13 +74,13 @@ items:
     category: WEAPON
     material: BOW
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
-    name: "&dЛук"
+    custom_model_data: 10014
+    custom-texture-mode-allowed: true
+    name: "&dЛук телепортации"
     rarity: EPIC
     price_ar: 100
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 15
     effect: AR_CROSSBOW_TELEPORT
     effect_chance_percent: 100
@@ -92,13 +92,13 @@ items:
     category: WEAPON
     material: BOW
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10015
+    custom-texture-mode-allowed: true
     name: "&dЛук блоков"
     rarity: EPIC
     price_ar: 64
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 15
     effect: AR_COBBLESTONE_TRAIL
     effect_chance_percent: 100
@@ -110,13 +110,13 @@ items:
     category: WEAPON
     material: CROSSBOW
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10016
+    custom-texture-mode-allowed: true
     name: "&dВзрывной арбалет"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 30
     effect: AR_EXPLOSIVE_CROSSBOW
     effect_chance_percent: 100
@@ -147,13 +147,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10017
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -165,13 +165,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10018
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -183,13 +183,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10019
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -201,13 +201,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10020
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -219,13 +219,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10021
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -237,13 +237,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10022
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -255,13 +255,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10023
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -273,13 +273,13 @@ items:
     category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
-    custom_model_data: 0
-    custom-texture-mode-allowed: false
+    custom_model_data: 10024
+    custom-texture-mode-allowed: true
     name: "&dОбрывок из книги рецептов"
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 3
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -662,4 +662,3 @@ donation-catalog:
       visual-effect-id: TUNNEL_VISION
       lore:
         - "&7Телепортация по направлению взгляда"
-

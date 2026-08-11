@@ -42,13 +42,13 @@ def require_all(text: str, *needles: str) -> None:
 
 
 class CombatArtifactCatalogContractTest(unittest.TestCase):
-    def test_ar_crossbow_catalog_is_plain_epic_and_priced(self) -> None:
+    def test_teleport_crossbow_catalog_is_plain_epic_and_priced(self) -> None:
         block = item_block("combat_crossbow")
         require_all(
             block,
             "material: CROSSBOW",
             "source: AR_SHOP",
-            "name: \"&dАрбалет\"",
+            'name: "&dАрбалет"',
             "rarity: EPIC",
             "price_ar: 100",
             "cooldown_seconds: 15",
@@ -67,8 +67,8 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "price_ar: 64",
             "cooldown_seconds: 15",
             "effect: AR_COBBLESTONE_TRAIL",
-            "enchantment: INFINITY",
             "custom_model_data: 0",
+            "enchantment: INFINITY",
         )
 
     def test_explosive_crossbow_has_multishot_and_exact_catalog_contract(self) -> None:
@@ -117,12 +117,16 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "CombatArtifactShotPolicy.decide",
             "BlockPlaceEvent",
             "MULTISHOT",
-            "INFINITY",
             "Bukkit.getCurrentTick()",
         )
         self.assertNotIn("EntityLoadCrossbowEvent", source)
         self.assertNotIn("keyExplosiveShotDamage", source)
         self.assertNotIn("player.damage(6.0D)", source)
+
+    def test_teleport_crossbow_uses_the_normal_catalog_material_binding(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        require_all(source, "var1.getType() != var8.material()")
+        self.assertNotIn("legacyTeleportCrossbow", source)
 
     def test_new_shot_rules_do_not_intercept_vanilla_items(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
@@ -159,6 +163,58 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         )
         self.assertNotIn("world.spawn(location, TNTPrimed.class);\n      tnt.setFuseTicks", source[: source.index("onCombatProjectileHit")])
 
+    def test_projectile_hit_requires_a_server_registered_shot_identity(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        require_all(
+            source,
+            "combatProjectileIdentities",
+            "CombatProjectileIdentity",
+            "this.combatProjectileIdentities.put",
+            "CombatProjectileIdentity identity = this.combatProjectileIdentities.remove",
+            "if (identity == null)",
+            "identity.ability()",
+            "identity.ownerUuid()",
+        )
+
+    def test_projectile_identity_and_explosive_tracker_are_cleaned_on_quit(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        quit_handler = source[source.index("public void onQuit"):source.index("private void tickPozdnyakovAce")]
+        require_all(
+            source,
+            "explosiveTntOwners",
+            "keyExplosiveTnt",
+            "onExplosiveArtifactOwnerDamage",
+            "this.combatProjectileIdentities.clear()",
+        )
+        require_all(
+            quit_handler,
+            "combatProjectileIdentities.entrySet().removeIf",
+            "combatProjectiles.entrySet().removeIf",
+        )
+
+    def test_shot_cannot_consume_cooldown_without_a_projectile(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
+        require_all(shot_handler, "if (!(var1.getProjectile() instanceof Projectile))")
+
+    def test_safe_teleport_checks_every_candidate_chunk(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        safe_location = source[source.index("private Location findSafeProjectileLocation"):source.index("private void spawnExplosiveTnt")]
+        require_all(safe_location, "world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)")
+
+    def test_explosive_tnt_cannot_damage_its_owner(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        require_all(
+            source,
+            "getDamageSource()",
+            "getCausingEntity()",
+            "keyExplosiveTnt",
+            "explosiveTntOwners",
+            "tnt.getPersistentDataContainer().set(",
+            "owner.getUniqueId().toString()",
+            "event.setCancelled(true)",
+        )
+
     def test_streamer_arc_keeps_existing_cooldown_and_self_hit_guard(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         require_all(
@@ -168,6 +224,16 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "CombatArtifactMath.awayArcVelocity",
             "var10.setFallDistance(0.0F)",
             '"STREAMER_STICK_ARC".equals(var16) && (var10 == null || var10 == var2)',
+        )
+
+    def test_streamer_arc_is_melee_only_and_ignores_dead_targets(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        require_all(
+            source,
+            "isStreamerMeleeHit(var1)",
+            "var10.isDead()",
+            "private boolean isStreamerMeleeHit",
+            "event.getDamager() instanceof Player",
         )
 
     def test_admin_give_accepts_all_admin_only_catalog_items(self) -> None:

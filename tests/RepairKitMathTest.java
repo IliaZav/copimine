@@ -3,6 +3,7 @@ import me.copimine.artifacts.RepairKitMath;
 public final class RepairKitMathTest {
     public static void main(String[] args) {
         testRepairsExactlyOneQuarterOfMaximum();
+        testQuarterRoundingForNonDivisibleMaximum();
         testRepairDamageIsClampedAtZero();
         testFirstSuccessfulRepairLeavesFourUses();
         testSecondSuccessfulRepairLeavesThreeUses();
@@ -28,6 +29,11 @@ public final class RepairKitMathTest {
             "a whole item must remain whole");
         check(RepairKitMath.repairedDamage(100, 0) == 100,
             "invalid maximum durability must not mutate damage");
+    }
+
+    private static void testQuarterRoundingForNonDivisibleMaximum() {
+        check(RepairKitMath.repairedDamage(101, 101) == 75,
+            "a 101-point item must restore the ceiling of 25 percent (26 points)");
     }
 
     private static void testFirstSuccessfulRepairLeavesFourUses() {

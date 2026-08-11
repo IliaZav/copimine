@@ -82,12 +82,17 @@ class UtilityArtifactCatalogContractTest(unittest.TestCase):
             "runTaskLater(this",
             "300L",
             "isSafeCompassLocation",
+            "resolveMainWorld",
+            "Bukkit.getWorld(\"world\")",
+            "World.Environment.NORMAL",
             "keyReturnStoneCooldownUntil",
             "returnStoneChannels",
             "PlayerQuitEvent",
             "PlayerDeathEvent",
         )
         self.assertNotIn("this.actionCooldowns.put(this.actionCooldownKey(var2, var3), var6 + 300L)", source)
+        death_handler = source[source.index("public void onPlayerDeath"):source.index("public void onRepairKitInteract")]
+        require_all(death_handler, "cancelReturnStoneChannel(player)")
 
     def test_infinite_torch_restores_only_after_successful_placement(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
@@ -111,6 +116,10 @@ class UtilityArtifactCatalogContractTest(unittest.TestCase):
         source = SOURCE.read_text(encoding="utf-8")
         require_all(
             source,
+            "hasUtilityArtifactIngredient",
+            "onPrepareItemCraft",
+            "onPrepareSmithing",
+            "onPrepareGrindstone",
             "onInfiniteTorchMerge",
             "onInfiniteTorchCraft",
             "onInfiniteTorchAnvil",
@@ -125,6 +134,11 @@ class UtilityArtifactCatalogContractTest(unittest.TestCase):
             "onReturnStoneDrag",
             "cancelReturnStoneChannel",
         )
+
+    def test_return_stone_is_not_a_vanilla_processing_ingredient(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        craft_handler = source[source.index("public void onPrepareItemCraft"):source.index("public void onPrepareAnvil")]
+        require_all(craft_handler, "hasUtilityArtifactIngredient", "setResult(null)")
 
 
 if __name__ == "__main__":

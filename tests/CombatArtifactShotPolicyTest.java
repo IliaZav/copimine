@@ -5,6 +5,7 @@ public final class CombatArtifactShotPolicyTest {
         testMultishotAllowsExactlyThreeProjectilesFromOneShot();
         testCooldownBlocksASecondShot();
         testWindowExpiresAfterTwoTicks();
+        testDifferentPhysicalCrossbowCannotContinueTheWindow();
         System.out.println("CombatArtifactShotPolicyTest OK");
     }
 
@@ -33,6 +34,12 @@ public final class CombatArtifactShotPolicyTest {
         var first = CombatArtifactShotPolicy.decide(100L, 200L, 0L, true, null);
         var expired = CombatArtifactShotPolicy.decide(100L, 203L, 115L, true, first.window());
         check(!expired.allowed(), "a delayed projectile must not be mistaken for the same multishot");
+    }
+
+    private static void testDifferentPhysicalCrossbowCannotContinueTheWindow() {
+        var first = CombatArtifactShotPolicy.decide(100L, 200L, 0L, true, "crossbow-one", null);
+        var foreign = CombatArtifactShotPolicy.decide(100L, 201L, 115L, true, "crossbow-two", first.window());
+        check(!foreign.allowed(), "a second physical crossbow must not continue the first shot window");
     }
 
     private static void check(boolean condition, String message) {

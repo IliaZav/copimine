@@ -145,7 +145,7 @@ items:
       - "&7Отбрасывает цель вверх и назад"
 
   - id: narcotic_recipe_feta
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0
@@ -163,7 +163,7 @@ items:
       - "&7Обрывок из книги рецептов странного учёного"
 
   - id: narcotic_recipe_kola
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0
@@ -181,7 +181,7 @@ items:
       - "&7Обрывок из книги рецептов странного учёного"
 
   - id: narcotic_recipe_girion
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0
@@ -199,7 +199,7 @@ items:
       - "&7Обрывок из книги рецептов странного учёного"
 
   - id: narcotic_recipe_sbp
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0
@@ -217,7 +217,7 @@ items:
       - "&7Обрывок из книги рецептов странного учёного"
 
   - id: narcotic_recipe_sos
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0
@@ -235,7 +235,7 @@ items:
       - "&7Обрывок из книги рецептов странного учёного"
 
   - id: narcotic_recipe_drun
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0
@@ -253,7 +253,7 @@ items:
       - "&7Обрывок из книги рецептов странного учёного"
 
   - id: narcotic_recipe_chups
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0
@@ -271,7 +271,7 @@ items:
       - "&7Обрывок из книги рецептов странного учёного"
 
   - id: narcotic_recipe_borshevik
-    category: TOOL
+    category: NOTES
     material: WRITTEN_BOOK
     source: AR_SHOP
     custom_model_data: 0

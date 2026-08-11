@@ -1,7 +1,12 @@
 package me.copimine.artifacts;
 
+import java.io.File;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 
 /** Immutable, testable page data for the official narcotic recipe fragments. */
 public final class NarcoticRecipeBookData {
@@ -45,15 +50,77 @@ public final class NarcoticRecipeBookData {
       Map.entry("narcotic_recipe_borshevik", recipe("Борщевика", "LARGE_FERN", "DRIED_KELP_BLOCK", "SUGAR_CANE"))
    );
 
+   private static final Map<String, String> RECIPE_TITLES = Map.ofEntries(
+      Map.entry("feta", "Феты"),
+      Map.entry("kola", "Колы"),
+      Map.entry("girion", "Гириона"),
+      Map.entry("sbp", "СБП"),
+      Map.entry("sos", "Соси"),
+      Map.entry("drun", "Друна"),
+      Map.entry("chups", "Чупса"),
+      Map.entry("borshevik", "Борщевика")
+   );
+   private static volatile Map<String, BookData> activeBooks = BOOKS;
+
    private NarcoticRecipeBookData() {
    }
 
    public static BookData forItem(String itemId) {
-      return BOOKS.get(itemId);
+      return activeBooks.get(itemId);
+   }
+
+   /** Load recipe tokens from the installed CopiMineNarcotics config. */
+   public static synchronized void loadFromConfig(File configFile) {
+      if (configFile == null || !configFile.isFile()) {
+         throw new IllegalArgumentException("copimine-narcotics config.yml is missing");
+      }
+      YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);
+      ConfigurationSection items = config.getConfigurationSection("items");
+      if (items == null) {
+         throw new IllegalArgumentException("copimine-narcotics config has no items section");
+      }
+      Map<String, BookData> loaded = new LinkedHashMap<>();
+      for (String catalogId : BOOKS.keySet()) {
+         String narcoticId = catalogId.substring("narcotic_recipe_".length());
+         ConfigurationSection item = items.getConfigurationSection(narcoticId);
+         if (item == null) {
+            throw new IllegalArgumentException("missing narcotic recipe: " + narcoticId);
+         }
+         List<String> rawRecipe = item.getStringList("recipe");
+         if (rawRecipe.isEmpty()) {
+            throw new IllegalArgumentException("empty narcotic recipe: " + narcoticId);
+         }
+         List<String> ingredientKeys = rawRecipe.stream()
+               .map(NarcoticRecipeBookData::normalizeIngredient)
+               .toList();
+         loaded.put(catalogId, recipe(RECIPE_TITLES.getOrDefault(narcoticId, narcoticId), ingredientKeys));
+      }
+      activeBooks = Map.copyOf(loaded);
+   }
+
+   private static String normalizeIngredient(String raw) {
+      if (raw == null || raw.isBlank()) {
+         throw new IllegalArgumentException("blank narcotic ingredient");
+      }
+      String token = raw.trim().toUpperCase(Locale.ROOT);
+      if (token.startsWith("MATERIAL:")) {
+         token = token.substring("MATERIAL:".length());
+      } else if (token.startsWith("POTION:")) {
+         token = "POTION:" + token.substring("POTION:".length());
+      } else {
+         throw new IllegalArgumentException("unsupported narcotic ingredient: " + raw);
+      }
+      if (token.isBlank() || !INGREDIENT_NAMES.containsKey(token)) {
+         throw new IllegalArgumentException("unlocalized narcotic ingredient: " + raw);
+      }
+      return token;
    }
 
    private static BookData recipe(String name, String... ingredientKeys) {
-      List<String> keys = List.of(ingredientKeys);
+      return recipe(name, List.of(ingredientKeys));
+   }
+
+   private static BookData recipe(String name, List<String> keys) {
       List<String> names = keys.stream().map(INGREDIENT_NAMES::get).toList();
       if (names.stream().anyMatch(nameValue -> nameValue == null)) {
          throw new IllegalStateException("Unknown recipe ingredient for " + name);

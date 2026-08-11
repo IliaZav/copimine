@@ -232,9 +232,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
    private final Map<UUID, CombatProjectileState> combatProjectiles = new ConcurrentHashMap<>();
+   /** Server-side admission record: PDC alone is never enough to authorize a hit. */
+   private final Map<UUID, CombatProjectileIdentity> combatProjectileIdentities = new ConcurrentHashMap<>();
+   private final Map<UUID, UUID> explosiveTntOwners = new ConcurrentHashMap<>();
    private final Map<String, CombatArtifactShotPolicy.ShotWindow> explosiveShotWindows = new ConcurrentHashMap<>();
    private final Map<UUID, ReturnStoneChannel> returnStoneChannels = new ConcurrentHashMap<>();
    private final Set<String> infiniteTorchPlacementGuards = ConcurrentHashMap.newKeySet();
+   /** Keep a successful placement's exact instance across a disconnect before
+    * the next-tick restoration task can run. */
+   private final Map<UUID, Map<String, ItemStack>> pendingInfiniteTorchRestores = new ConcurrentHashMap<>();
+   /** De-duplicates repeated PlayerInteractEvent delivery in one server tick. */
+   private final Map<UUID, RepairKitInteractionGuard> repairKitInteractionGuards = new ConcurrentHashMap<>();
    /** Instance ids whose physical copy is no longer valid (lost/consumed/replaced). */
    private final Set<String> terminalDonationInstanceIds = ConcurrentHashMap.newKeySet();
    private final Map<UUID, ItemStack> pendingInfiniteTotemRestores = new ConcurrentHashMap<>();
@@ -284,6 +292,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyLastDeathZ;
    private NamespacedKey keyProjectileAbility;
    private NamespacedKey keyProjectileOwner;
+   private NamespacedKey keyExplosiveTnt;
    private NamespacedKey keyRepairKitUses;
    private NamespacedKey keyReturnStoneCooldownUntil;
    private NamespacedKey attackDamageKey;
@@ -323,8 +332,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyLastDeathZ = new NamespacedKey(this, "last_death_z");
       this.keyProjectileAbility = new NamespacedKey(this, "combat_projectile_ability");
       this.keyProjectileOwner = new NamespacedKey(this, "combat_projectile_owner");
+      this.keyExplosiveTnt = new NamespacedKey(this, "explosive_artifact_tnt");
       this.keyRepairKitUses = new NamespacedKey(this, "repair_kit_uses");
       this.keyReturnStoneCooldownUntil = new NamespacedKey(this, "return_stone_cooldown_until");
+      this.loadPendingInfiniteTorchRestores();
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
       this.visualKindKey = new NamespacedKey("copimine", "visual_kind");
@@ -406,6 +417,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       try {
+         this.loadNarcoticRecipeBooksFromInstalledConfig();
          this.repairShopTitleDisplays();
          this.repairProtectedBlockVisuals();
       } catch (Exception error) {
@@ -440,6 +452,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       // no ghost visual is recreated after WorldEdit/plugin removal.
       this.shopAnchorGuardTask = Bukkit.getScheduler().runTaskTimer(this, this::guardShopAnchors, 40L, 40L);
       this.getLogger().info("CopiMineArtifacts enabled with " + this.catalogById.size() + " active catalog items.");
+   }
+
+   private void loadNarcoticRecipeBooksFromInstalledConfig() {
+      Plugin narcotics = Bukkit.getPluginManager().getPlugin("CopiMineNarcotics");
+      if (narcotics == null || !narcotics.isEnabled()) {
+         this.getLogger().warning("CopiMineNarcotics is unavailable; using compatibility recipe-book data.");
+         return;
+      }
+      File configFile = new File(narcotics.getDataFolder(), "config.yml");
+      NarcoticRecipeBookData.loadFromConfig(configFile);
+      this.getLogger().info("Loaded AR recipe books from copimine-narcotics/config.yml.");
    }
 
    /**
@@ -521,6 +544,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.restorePendingMagmaBlocks();
       this.restoreAllTemporaryTraps();
       this.savePendingInfiniteTotemRestores();
+      this.savePendingInfiniteTorchRestores();
       Bukkit.getScheduler().cancelTasks(this);
       this.cleanupAllProtectedBlockVisualEntities();
       if (this.deliveryTask != null) {
@@ -551,6 +575,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.combatProjectileTask.cancel();
       }
       this.combatProjectiles.clear();
+      this.combatProjectileIdentities.clear();
+      this.explosiveTntOwners.clear();
       this.explosiveShotWindows.clear();
       for (ReturnStoneChannel channel : this.returnStoneChannels.values()) {
          if (channel.task != null) {
@@ -559,6 +585,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       this.returnStoneChannels.clear();
       this.infiniteTorchPlacementGuards.clear();
+      this.pendingInfiniteTorchRestores.clear();
+      this.repairKitInteractionGuards.clear();
 
       this.claimAllInFlight.clear();
 
@@ -646,6 +674,60 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.getConfig().set("pendingInfiniteTotems", null);
       for (Map.Entry<UUID, ItemStack> entry : pendingInfiniteTotemRestores.entrySet()) {
          this.getConfig().set("pendingInfiniteTotems." + entry.getKey(), entry.getValue());
+      }
+      this.saveConfig();
+   }
+
+   private void loadPendingInfiniteTorchRestores() {
+      ConfigurationSection section = this.getConfig().getConfigurationSection("pendingInfiniteTorches");
+      if (section == null) {
+         return;
+      }
+      for (String key : section.getKeys(false)) {
+         try {
+            UUID playerUuid = UUID.fromString(key);
+            ConfigurationSection items = section.getConfigurationSection(key);
+            if (items != null) {
+               for (String uniqueItemId : items.getKeys(false)) {
+                  this.queuePendingInfiniteTorchRestore(playerUuid, items.getItemStack(uniqueItemId));
+               }
+            } else {
+               // Migrate the previous one-item-per-player representation.
+               this.queuePendingInfiniteTorchRestore(playerUuid, section.getItemStack(key));
+            }
+         } catch (IllegalArgumentException ignored) {
+            this.getLogger().warning("Ignoring malformed pending infinite torch owner " + key);
+         }
+      }
+   }
+
+   private void queuePendingInfiniteTorchRestore(UUID playerUuid, ItemStack stack) {
+      if (playerUuid == null || stack == null || stack.getType().isAir() || !this.isInfiniteTorchItem(stack)) {
+         return;
+      }
+      String uniqueItemId = this.uniqueItemIdOf(stack);
+      if (uniqueItemId.isBlank()) {
+         return;
+      }
+      this.pendingInfiniteTorchRestores
+            .computeIfAbsent(playerUuid, ignored -> new ConcurrentHashMap<>())
+            .putIfAbsent(uniqueItemId, stack.clone());
+   }
+
+   private boolean hasPendingInfiniteTorchRestores(UUID playerUuid) {
+      Map<String, ItemStack> pending = playerUuid == null ? null : this.pendingInfiniteTorchRestores.get(playerUuid);
+      return pending != null && !pending.isEmpty();
+   }
+
+   private synchronized void savePendingInfiniteTorchRestores() {
+      this.getConfig().set("pendingInfiniteTorches", null);
+      for (Map.Entry<UUID, Map<String, ItemStack>> ownerEntry : this.pendingInfiniteTorchRestores.entrySet()) {
+         for (Map.Entry<String, ItemStack> itemEntry : ownerEntry.getValue().entrySet()) {
+            this.getConfig().set(
+                  "pendingInfiniteTorches." + ownerEntry.getKey() + "." + itemEntry.getKey(),
+                  itemEntry.getValue()
+            );
+         }
       }
       this.saveConfig();
    }
@@ -1947,8 +2029,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler(
       priority = EventPriority.HIGHEST
    )
-   public void onPrepareItemCraft(PrepareItemCraftEvent var1) {
-      // Catalog items use vanilla crafting behavior.
+    public void onPrepareItemCraft(PrepareItemCraftEvent var1) {
+      if (var1 != null && this.hasUtilityArtifactIngredient(var1.getInventory().getMatrix())) {
+         var1.getInventory().setResult(null);
+      }
    }
 
    @EventHandler(
@@ -1963,15 +2047,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    @EventHandler(
       priority = EventPriority.HIGHEST
    )
-   public void onPrepareSmithing(PrepareSmithingEvent var1) {
-      // Catalog items use vanilla smithing behavior.
+    public void onPrepareSmithing(PrepareSmithingEvent var1) {
+      if (var1 != null && this.hasUtilityArtifactIngredient(var1.getInventory().getStorageContents())) {
+         var1.setResult(null);
+      }
    }
 
    @EventHandler(
       priority = EventPriority.HIGHEST
    )
-   public void onPrepareGrindstone(PrepareGrindstoneEvent var1) {
-      // Catalog items use vanilla grindstone behavior.
+    public void onPrepareGrindstone(PrepareGrindstoneEvent var1) {
+      if (var1 != null && this.hasUtilityArtifactIngredient(var1.getInventory().getStorageContents())) {
+         var1.setResult(null);
+      }
    }
 
    @EventHandler
@@ -2007,10 +2095,25 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onQuit(PlayerQuitEvent var1) {
       UUID playerUuid = var1.getPlayer().getUniqueId();
       this.cancelReturnStoneChannel(var1.getPlayer());
+      this.combatProjectileIdentities.entrySet().removeIf(
+            entry -> entry.getValue() != null && playerUuid.equals(entry.getValue().ownerUuid())
+      );
+      this.combatProjectiles.entrySet().removeIf(
+            entry -> entry.getValue() != null && playerUuid.equals(entry.getValue().ownerUuid())
+      );
+      this.explosiveTntOwners.entrySet().removeIf(entry -> playerUuid.equals(entry.getValue()));
+      CatalogItem explosiveCrossbow = this.runtimeCatalogItem("explosive_crossbow");
+      String explosiveCooldownKey = this.actionCooldownKey(var1.getPlayer(), explosiveCrossbow);
+      this.explosiveShotWindows.keySet().removeIf(key -> key.equals(explosiveCooldownKey));
       this.sessions.remove(playerUuid);
       this.pozdnyakovNauseaCooldowns.remove(playerUuid);
+      this.repairKitInteractionGuards.remove(playerUuid);
       String prefix = playerUuid + ":";
       this.actionCooldowns.keySet().removeIf(key -> key.startsWith(prefix));
+      this.explosiveShotWindows.keySet().removeIf(key -> key.startsWith(prefix));
+      if (this.hasPendingInfiniteTorchRestores(playerUuid)) {
+         this.savePendingInfiniteTorchRestores();
+      }
    }
 
    private void tickPozdnyakovAce() {
@@ -2064,6 +2167,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    /** Refreshes passive armor effects without waiting for a damage event. */
    private void tickEquippedArmor() {
       for (Player player : Bukkit.getOnlinePlayers()) {
+         if (this.hasPendingInfiniteTorchRestores(player.getUniqueId())) {
+            this.restorePendingInfiniteTorch(player);
+         }
          ItemStack queuedTotem = this.pendingInfiniteTotemRestores.get(player.getUniqueId());
          if (queuedTotem != null) {
             this.restoreInfiniteTotem(player, queuedTotem);
@@ -2462,6 +2568,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       long nowSeconds = this.now();
       this.actionCooldowns.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= nowSeconds);
       this.explosiveShotWindows.keySet().removeIf(key -> !this.actionCooldowns.containsKey(key));
+      long currentTick = Bukkit.getCurrentTick();
+      this.repairKitInteractionGuards.entrySet().removeIf(entry -> currentTick - entry.getValue().tick() > 2L);
       this.pozdnyakovNauseaCooldowns.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= nowSeconds);
       this.lastDeathLocations.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
    }
@@ -2522,9 +2630,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onJoin(PlayerJoinEvent var1) {
       this.normalizeVanillaShieldItems(var1.getPlayer());
       ItemStack queuedTotem = this.pendingInfiniteTotemRestores.get(var1.getPlayer().getUniqueId());
-      if (queuedTotem != null) {
-         Bukkit.getScheduler().runTaskLater(this, () -> this.restoreInfiniteTotem(var1.getPlayer(), queuedTotem), 5L);
-      }
+       if (queuedTotem != null) {
+          Bukkit.getScheduler().runTaskLater(this, () -> this.restoreInfiniteTotem(var1.getPlayer(), queuedTotem), 5L);
+       }
+       if (this.hasPendingInfiniteTorchRestores(var1.getPlayer().getUniqueId())) {
+          Bukkit.getScheduler().runTaskLater(this, () -> this.restorePendingInfiniteTorch(var1.getPlayer()), 5L);
+       }
       this.recoverStrandedDeliveries(var1.getPlayer());
       this.refreshEquippedArtifactBindingsAsync(var1.getPlayer());
       UUID playerUuid = var1.getPlayer().getUniqueId();
@@ -2556,6 +2667,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
     public void onPlayerDeath(PlayerDeathEvent var1) {
       Player player = var1.getEntity();
+      this.cancelReturnStoneChannel(player);
       if (player != null && player.getWorld() != null) {
          Location deathLocation = player.getLocation().clone();
          this.lastDeathLocations.put(player.getUniqueId(), deathLocation);
@@ -2592,17 +2704,49 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           return;
        }
 
-       ItemStack target = event.getHand() == EquipmentSlot.HAND
-             ? player.getInventory().getItemInOffHand()
-             : player.getInventory().getItemInMainHand();
-       if (!this.applyRepairKit(player, event.getHand(), held, target)) {
+        ItemStack target = event.getHand() == EquipmentSlot.HAND
+              ? player.getInventory().getItemInOffHand()
+              : player.getInventory().getItemInMainHand();
+        long currentTick = Bukkit.getCurrentTick();
+        String interactionKey = this.repairKitInteractionKey(event.getHand(), held, target);
+        if (this.isDuplicateRepairKitInteraction(player, interactionKey, currentTick)) {
+           return;
+        }
+        this.markRepairKitInteraction(player, interactionKey, currentTick);
+        if (!this.applyRepairKit(player, event.getHand(), held, target)) {
           player.sendMessage(this.color("&cРемкомплект можно использовать только на повреждённом обычном предмете в другой руке."));
           return;
        }
-       player.updateInventory();
-    }
+        player.updateInventory();
+     }
 
-    private boolean applyRepairKit(Player player, EquipmentSlot hand, ItemStack capturedKit, ItemStack target) {
+     private String repairKitInteractionKey(EquipmentSlot hand, ItemStack kit, ItemStack target) {
+        String targetHand = hand == EquipmentSlot.HAND ? EquipmentSlot.OFF_HAND.name() : EquipmentSlot.HAND.name();
+        String targetMaterial = target == null || target.getType().isAir() ? "AIR" : target.getType().name();
+        // Do not include mutable damage in this key: a duplicate event may
+        // arrive after the first repair has already changed that damage.
+        return (hand == null ? "" : hand.name()) + ":" + this.uniqueItemIdOf(kit)
+              + ":" + targetHand + ":" + targetMaterial;
+     }
+
+     private boolean isDuplicateRepairKitInteraction(Player player, String interactionKey, long currentTick) {
+        if (player == null || interactionKey == null || interactionKey.isBlank()) {
+           return false;
+        }
+        RepairKitInteractionGuard previous = this.repairKitInteractionGuards.get(player.getUniqueId());
+        return previous != null && previous.tick() == currentTick && previous.key().equals(interactionKey);
+     }
+
+     private void markRepairKitInteraction(Player player, String interactionKey, long currentTick) {
+        if (player != null && interactionKey != null && !interactionKey.isBlank()) {
+           this.repairKitInteractionGuards.put(
+                 player.getUniqueId(),
+                 new RepairKitInteractionGuard(currentTick, interactionKey)
+           );
+        }
+     }
+
+     private boolean applyRepairKit(Player player, EquipmentSlot hand, ItemStack capturedKit, ItemStack target) {
        if (player == null || hand == null || capturedKit == null || target == null
              || capturedKit.getAmount() != 1 || target.getAmount() != 1
              || !this.isRepairKitItem(capturedKit) || this.hasCopiMineOfficialMetadata(target)
@@ -2744,6 +2888,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
     private boolean hasRepairKitIngredient(Inventory inventory) {
        return inventory != null && this.hasRepairKitIngredient(inventory.getStorageContents());
+    }
+
+    private boolean hasUtilityArtifactIngredient(ItemStack[] contents) {
+       if (contents == null) {
+          return false;
+       }
+       for (ItemStack stack : contents) {
+          if (this.isUtilityArtifactItem(stack)) {
+             return true;
+          }
+       }
+       return false;
     }
 
     private boolean shouldBlockRepairKitInsertion(InventoryClickEvent event) {
@@ -2928,9 +3084,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        if (!this.infiniteTorchPlacementGuards.add(guardKey)) {
           return;
        }
-       ItemStack snapshot = event.getItemInHand().clone();
-       snapshot.setAmount(1);
-       Bukkit.getScheduler().runTask(
+        ItemStack snapshot = event.getItemInHand().clone();
+        snapshot.setAmount(1);
+        this.queuePendingInfiniteTorchRestore(event.getPlayer().getUniqueId(), snapshot);
+        this.savePendingInfiniteTorchRestores();
+        Bukkit.getScheduler().runTask(
              this,
              () -> this.restoreInfiniteTorchAfterSuccessfulPlacement(
                    event.getPlayer(), event.getHand(), uniqueItemId, snapshot, guardKey
@@ -2941,39 +3099,97 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     private void restoreInfiniteTorchAfterSuccessfulPlacement(
           Player player, EquipmentSlot hand, String uniqueItemId, ItemStack snapshot, String guardKey) {
        try {
-          if (player == null || !player.isOnline() || uniqueItemId == null || uniqueItemId.isBlank()
-                || snapshot == null || !this.isInfiniteTorchItem(snapshot)
-                || this.containsUniqueItem(player, uniqueItemId)) {
-             return;
-          }
-          PlayerInventory inventory = player.getInventory();
-          ItemStack expected = hand == EquipmentSlot.HAND
-                ? inventory.getItemInMainHand()
-                : inventory.getItemInOffHand();
-          if (expected == null || expected.getType().isAir()) {
-             if (hand == EquipmentSlot.HAND) {
-                inventory.setItemInMainHand(snapshot.clone());
-             } else {
-                inventory.setItemInOffHand(snapshot.clone());
-             }
-             return;
-          }
-          Map<Integer, ItemStack> leftovers = inventory.addItem(snapshot.clone());
-          for (ItemStack leftover : leftovers.values()) {
-             if (leftover != null && !leftover.getType().isAir()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), leftover);
-             }
-          }
+           if (player == null || uniqueItemId == null || uniqueItemId.isBlank()
+                 || snapshot == null || !this.isInfiniteTorchItem(snapshot)) {
+              return;
+           }
+           this.queuePendingInfiniteTorchRestore(player.getUniqueId(), snapshot);
+           this.restorePendingInfiniteTorch(player, hand, uniqueItemId);
        } finally {
-          if (guardKey != null) {
-             this.infiniteTorchPlacementGuards.remove(guardKey);
-          }
+           if (guardKey != null) {
+              this.infiniteTorchPlacementGuards.remove(guardKey);
+           }
        }
     }
 
-    private boolean containsUniqueItem(Player player, String uniqueItemId) {
-       if (player == null || uniqueItemId == null || uniqueItemId.isBlank()) {
-          return false;
+    private void restorePendingInfiniteTorch(Player player) {
+       if (player == null) {
+          return;
+       }
+       Map<String, ItemStack> pending = this.pendingInfiniteTorchRestores.get(player.getUniqueId());
+       if (pending == null || pending.isEmpty()) {
+          return;
+       }
+       for (String uniqueItemId : List.copyOf(pending.keySet())) {
+          this.restorePendingInfiniteTorch(player, EquipmentSlot.HAND, uniqueItemId);
+       }
+    }
+
+    private void restorePendingInfiniteTorch(Player player, EquipmentSlot preferredHand) {
+       this.restorePendingInfiniteTorch(player, preferredHand, null);
+    }
+
+    private void restorePendingInfiniteTorch(Player player, EquipmentSlot preferredHand, String expectedUniqueItemId) {
+       if (player == null || !player.isOnline()) {
+          return;
+       }
+       Map<String, ItemStack> pending = this.pendingInfiniteTorchRestores.get(player.getUniqueId());
+       if (pending == null || pending.isEmpty()) {
+          return;
+       }
+       String uniqueItemId = expectedUniqueItemId;
+       if (uniqueItemId == null || uniqueItemId.isBlank()) {
+          uniqueItemId = pending.keySet().iterator().next();
+       }
+       ItemStack snapshot = pending.get(uniqueItemId);
+       if (snapshot == null) {
+          return;
+       }
+       if (snapshot.getType().isAir() || !this.isInfiniteTorchItem(snapshot)
+             || !uniqueItemId.equals(this.uniqueItemIdOf(snapshot))) {
+          this.removePendingInfiniteTorchRestore(player.getUniqueId(), uniqueItemId, snapshot);
+          return;
+       }
+       if (this.containsUniqueItem(player, uniqueItemId)) {
+          this.removePendingInfiniteTorchRestore(player.getUniqueId(), uniqueItemId, snapshot);
+          return;
+       }
+       PlayerInventory inventory = player.getInventory();
+       ItemStack expected = preferredHand == EquipmentSlot.OFF_HAND
+             ? inventory.getItemInOffHand()
+             : inventory.getItemInMainHand();
+       if (expected == null || expected.getType().isAir()) {
+          if (preferredHand == EquipmentSlot.OFF_HAND) {
+             inventory.setItemInOffHand(snapshot.clone());
+          } else {
+             inventory.setItemInMainHand(snapshot.clone());
+          }
+          this.removePendingInfiniteTorchRestore(player.getUniqueId(), uniqueItemId, snapshot);
+          return;
+       }
+       Map<Integer, ItemStack> leftovers = inventory.addItem(snapshot.clone());
+       if (leftovers.isEmpty()) {
+          this.removePendingInfiniteTorchRestore(player.getUniqueId(), uniqueItemId, snapshot);
+       }
+       // If the inventory is full, leave the exact snapshot queued.  It will
+       // be retried on the next join/tick instead of being silently dropped or
+       // duplicated as a world item.
+    }
+
+    private void removePendingInfiniteTorchRestore(UUID playerUuid, String uniqueItemId, ItemStack snapshot) {
+       Map<String, ItemStack> pending = playerUuid == null ? null : this.pendingInfiniteTorchRestores.get(playerUuid);
+       if (pending == null || uniqueItemId == null || uniqueItemId.isBlank()) {
+          return;
+       }
+       if (pending.remove(uniqueItemId, snapshot) && pending.isEmpty()) {
+          this.pendingInfiniteTorchRestores.remove(playerUuid, pending);
+       }
+       this.savePendingInfiniteTorchRestores();
+    }
+
+     private boolean containsUniqueItem(Player player, String uniqueItemId) {
+        if (player == null || uniqueItemId == null || uniqueItemId.isBlank()) {
+           return false;
        }
        PlayerInventory inventory = player.getInventory();
        for (ItemStack stack : inventory.getContents()) {
@@ -2985,11 +3201,49 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
           if (Objects.equals(uniqueItemId, this.uniqueItemIdOf(stack))) {
              return true;
           }
-       }
-       return Objects.equals(uniqueItemId, this.uniqueItemIdOf(inventory.getItemInOffHand()));
-    }
+        }
+        return Objects.equals(uniqueItemId, this.uniqueItemIdOf(inventory.getItemInOffHand()));
+     }
 
-    private boolean isInfiniteTorchItem(ItemStack stack) {
+     /**
+      * PDC is copied by creative/container exploits, so a valid binding alone
+      * cannot authorize two physical copies held by the same player.  Count
+      * every player-owned inventory surface before an artifact ability or
+      * repair is admitted.  A single legitimate item may still move freely
+      * between these surfaces.
+      */
+     private boolean hasDuplicatePhysicalIdentity(Player player, String uniqueItemId) {
+        return this.countUniqueItemOccurrences(player, uniqueItemId) > 1;
+     }
+
+     private int countUniqueItemOccurrences(Player player, String uniqueItemId) {
+        if (player == null || uniqueItemId == null || uniqueItemId.isBlank()) {
+           return 0;
+        }
+        int count = 0;
+        PlayerInventory inventory = player.getInventory();
+        for (ItemStack stack : inventory.getStorageContents()) {
+           if (Objects.equals(uniqueItemId, this.uniqueItemIdOf(stack))) {
+              count++;
+           }
+        }
+        for (ItemStack stack : inventory.getArmorContents()) {
+           if (Objects.equals(uniqueItemId, this.uniqueItemIdOf(stack))) {
+              count++;
+           }
+        }
+        if (Objects.equals(uniqueItemId, this.uniqueItemIdOf(inventory.getItemInOffHand()))) {
+           count++;
+        }
+        for (ItemStack stack : player.getEnderChest().getContents()) {
+           if (Objects.equals(uniqueItemId, this.uniqueItemIdOf(stack))) {
+              count++;
+           }
+        }
+        return count;
+     }
+
+     private boolean isInfiniteTorchItem(ItemStack stack) {
        if (stack == null || stack.getType().isAir() || !stack.hasItemMeta() || stack.getItemMeta() == null) {
           return false;
        }
@@ -3237,8 +3491,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                }
                var1.setUseItemInHand(Event.Result.DENY);
                var1.setUseInteractedBlock(Event.Result.DENY);
-               this.beginReturnStoneChannel(var2, var1.getHand(), var1.getItem(), var3);
-               var1.setCancelled(true);
+               Bukkit.getScheduler().runTask(
+                     this,
+                     () -> {
+                        if (!var1.isCancelled()) {
+                           this.beginReturnStoneChannel(var2, var1.getHand(), var1.getItem(), var3);
+                        }
+                     }
+               );
                return;
             }
 
@@ -3370,11 +3630,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (personal != null) {
          return personal;
       }
-      List<World> worlds = Bukkit.getWorlds();
-      if (worlds.isEmpty()) {
+      World mainWorld = this.resolveMainWorld();
+      if (mainWorld == null) {
          return null;
       }
-      return this.findSafeReturnStoneLocation(worlds.get(0).getSpawnLocation());
+      return this.findSafeReturnStoneLocation(mainWorld.getSpawnLocation());
+   }
+
+   private World resolveMainWorld() {
+      World named = Bukkit.getWorld("world");
+      if (named != null) {
+         return named;
+      }
+      return Bukkit.getWorlds().stream()
+            .filter(world -> world.getEnvironment() == World.Environment.NORMAL)
+            .findFirst()
+            .orElseGet(() -> Bukkit.getWorlds().stream().findFirst().orElse(null));
    }
 
    private Location findSafeReturnStoneLocation(Location origin) {
@@ -3652,6 +3923,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (weapon != null) {
             String ability = weapon.effect().toUpperCase(Locale.ROOT);
             if (Set.of("AR_CROSSBOW_TELEPORT", "AR_COBBLESTONE_TRAIL", "AR_EXPLOSIVE_CROSSBOW").contains(ability)) {
+               if (!(var1.getProjectile() instanceof Projectile)) {
+                  return;
+               }
                if (!this.rollEffectChance(weapon)) {
                   return;
                }
@@ -3664,6 +3938,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   Bukkit.getCurrentTick(),
                   cooldownUntil,
                   explosiveMultishot,
+                  this.uniqueItemIdOf(var1.getBow()),
                   this.explosiveShotWindows.get(cooldownKey)
                );
                if (!decision.allowed()) {
@@ -3682,7 +3957,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      currentSecond + (long)Math.max(1, weapon.cooldownSeconds())
                   );
                }
-               this.markCombatProjectile(var1.getProjectile(), var2, weapon);
+               this.markCombatProjectile(var1.getProjectile(), var2, weapon, this.uniqueItemIdOf(var1.getBow()));
             }
          }
 
@@ -3698,15 +3973,22 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
-   private void markCombatProjectile(Entity launched, Player owner, CatalogItem weapon) {
+   private void markCombatProjectile(Entity launched, Player owner, CatalogItem weapon, String uniqueItemId) {
       if (!(launched instanceof Projectile projectile) || owner == null || weapon == null) {
          return;
       }
       String ability = weapon.effect().toUpperCase(Locale.ROOT);
+      if (uniqueItemId.isBlank()) {
+         return;
+      }
       PersistentDataContainer data = projectile.getPersistentDataContainer();
       data.set(this.keyProjectileAbility, PersistentDataType.STRING, ability);
       data.set(this.keyProjectileOwner, PersistentDataType.STRING, owner.getUniqueId().toString());
       data.set(this.keyItemId, PersistentDataType.STRING, weapon.itemId());
+      this.combatProjectileIdentities.put(
+            projectile.getUniqueId(),
+            new CombatProjectileIdentity(owner.getUniqueId(), weapon.itemId(), ability, uniqueItemId)
+      );
       if ("AR_COBBLESTONE_TRAIL".equals(ability)) {
          this.combatProjectiles.put(
             projectile.getUniqueId(),
@@ -3747,6 +4029,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             new CombatProjectileState(previous.ownerUuid(), current, travelled)
          );
       }
+      this.combatProjectileIdentities.entrySet().removeIf(entry -> {
+         Entity entity = Bukkit.getEntity(entry.getKey());
+         return !(entity instanceof Projectile projectile) || projectile.isDead() || !projectile.isValid();
+      });
+      this.explosiveTntOwners.keySet().removeIf(uuid -> {
+         Entity entity = Bukkit.getEntity(uuid);
+         return !(entity instanceof TNTPrimed tnt) || tnt.isDead() || !tnt.isValid();
+      });
    }
 
    @EventHandler(
@@ -3755,9 +4045,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onCombatProjectileHit(ProjectileHitEvent event) {
       Projectile projectile = event.getEntity();
+      CombatProjectileIdentity identity = this.combatProjectileIdentities.remove(projectile.getUniqueId());
       PersistentDataContainer data = projectile.getPersistentDataContainer();
-      String ability = data.get(this.keyProjectileAbility, PersistentDataType.STRING);
-      if (ability == null || ability.isBlank()) {
+      if (identity == null) {
          return;
       }
       CombatProjectileState previous = this.combatProjectiles.remove(projectile.getUniqueId());
@@ -3768,8 +4058,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       UUID ownerUuid = this.projectileOwner(data);
+      String ability = data.get(this.keyProjectileAbility, PersistentDataType.STRING);
+      String itemId = data.get(this.keyItemId, PersistentDataType.STRING);
+      if (!identity.ability().equalsIgnoreCase(ability)
+            || !identity.itemId().equalsIgnoreCase(itemId)
+            || !identity.ownerUuid().equals(ownerUuid)) {
+         data.remove(this.keyProjectileAbility);
+         data.remove(this.keyProjectileOwner);
+         data.remove(this.keyItemId);
+         return;
+      }
       Player owner = ownerUuid == null ? null : Bukkit.getPlayer(ownerUuid);
-      switch (ability.toUpperCase(Locale.ROOT)) {
+      switch (identity.ability().toUpperCase(Locale.ROOT)) {
          case "AR_CROSSBOW_TELEPORT" -> this.teleportOwnerToProjectileHit(owner, projectile);
          case "AR_COBBLESTONE_TRAIL" -> {
             if (owner != null && previous != null && owner.isOnline() && owner.getWorld() == projectile.getWorld()) {
@@ -3825,7 +4125,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       for (int attempt = 0; attempt < 5; attempt++) {
          Location candidate = hit.clone().add(retreat.clone().multiply(attempt));
-         if (this.isSafeCompassLocation(candidate)) {
+         if (world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)
+               && this.isSafeCompassLocation(candidate)) {
             return candidate;
          }
       }
@@ -3844,9 +4145,47 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       TNTPrimed tnt = world.spawn(location, TNTPrimed.class);
       tnt.setFuseTicks(EXPLOSIVE_CROSSBOW_FUSE_TICKS);
+      tnt.getPersistentDataContainer().set(this.keyExplosiveTnt, PersistentDataType.BYTE, (byte) 1);
       if (owner != null) {
+         this.explosiveTntOwners.put(tnt.getUniqueId(), owner.getUniqueId());
+         tnt.getPersistentDataContainer().set(
+            this.keyProjectileOwner,
+            PersistentDataType.STRING,
+            owner.getUniqueId().toString()
+         );
          tnt.setSource(owner);
       }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+   public void onExplosiveArtifactOwnerDamage(EntityDamageEvent event) {
+      if (event == null || !(event.getEntity() instanceof Player player)) {
+         return;
+      }
+      Entity direct = event instanceof EntityDamageByEntityEvent byEntity ? byEntity.getDamager() : null;
+      Entity causing = event.getDamageSource() == null ? null : event.getDamageSource().getCausingEntity();
+      Entity source = this.explosiveTntSource(direct);
+      if (source == null) {
+         source = this.explosiveTntSource(causing);
+      }
+      if (source == null) {
+         return;
+      }
+      UUID ownerUuid = this.explosiveTntOwners.get(source.getUniqueId());
+      if (ownerUuid == null && source instanceof TNTPrimed tnt) {
+         ownerUuid = this.projectileOwner(tnt.getPersistentDataContainer());
+      }
+      if (player.getUniqueId().equals(ownerUuid)) {
+         event.setCancelled(true);
+      }
+   }
+
+   private TNTPrimed explosiveTntSource(Entity source) {
+      if (!(source instanceof TNTPrimed tnt)
+            || tnt.getPersistentDataContainer().get(this.keyExplosiveTnt, PersistentDataType.BYTE) == null) {
+         return null;
+      }
+      return tnt;
    }
 
    private void placeCobblestoneTrail(Player owner, Location from, Location to) {
@@ -3907,7 +4246,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (var15 != null) {
             String var16 = var15.effect().toUpperCase(Locale.ROOT);
             LivingEntity var10 = var1.getEntity() instanceof LivingEntity var11 ? var11 : null;
+            if ("STREAMER_STICK_ARC".equals(var16) && !this.isStreamerMeleeHit(var1)) {
+               return;
+            }
             if ("STREAMER_STICK_ARC".equals(var16) && (var10 == null || var10 == var2)) {
+               return;
+            }
+            if ("STREAMER_STICK_ARC".equals(var16) && var10.isDead()) {
                return;
             }
             if ("NALOGOVAYA_KOSA".equals(var16)) {
@@ -4040,6 +4385,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             }
          }
       }
+   }
+
+   private boolean isStreamerMeleeHit(EntityDamageByEntityEvent event) {
+      return event != null && event.getDamager() instanceof Player;
    }
 
    public boolean onCommand(CommandSender var1, Command var2, String var3, String[] var4) {
@@ -5036,6 +5385,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.setAction(var3, var2, 10, this.categoryIcon(CopiMineArtifacts.Category.WEAPON), "cat:WEAPON");
       this.setAction(var3, var2, 12, this.categoryIcon(CopiMineArtifacts.Category.ARMOR), "cat:ARMOR");
       this.setAction(var3, var2, 14, this.categoryIcon(CopiMineArtifacts.Category.TOOL), "cat:TOOL");
+      this.setAction(var3, var2, 18, this.categoryIcon(CopiMineArtifacts.Category.NOTES), "cat:NOTES");
       var3.setItem(
          16,
          this.button(
@@ -5274,6 +5624,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.setAction(var5, var4, 10, this.categoryIcon(CopiMineArtifacts.Category.WEAPON), "cat:WEAPON");
          this.setAction(var5, var4, 12, this.categoryIcon(CopiMineArtifacts.Category.ARMOR), "cat:ARMOR");
          this.setAction(var5, var4, 14, this.categoryIcon(CopiMineArtifacts.Category.TOOL), "cat:TOOL");
+         this.setAction(var5, var4, 34, this.categoryIcon(CopiMineArtifacts.Category.NOTES), "cat:NOTES");
          var5.setItem(
             16,
             this.button(
@@ -5325,19 +5676,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                )
             ),
             "repair:open"
-         );
-         this.setAction(
-            var5,
-            var4,
-            34,
-            this.button(
-               Material.BOOK,
-               "&eПомощь",
-               List.of(
-                  "&7Короткая инструкция по покупке, PIN и выдаче."
-               )
-            ),
-            "help"
          );
          this.setAction(
             var5,
@@ -5512,6 +5850,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.setAction(var5, var4, 10, this.categoryIcon(CopiMineArtifacts.Category.WEAPON), "cat:WEAPON");
       this.setAction(var5, var4, 12, this.categoryIcon(CopiMineArtifacts.Category.ARMOR), "cat:ARMOR");
       this.setAction(var5, var4, 14, this.categoryIcon(CopiMineArtifacts.Category.TOOL), "cat:TOOL");
+      this.setAction(var5, var4, 34, this.categoryIcon(CopiMineArtifacts.Category.NOTES), "cat:NOTES");
       this.setAction(
          var5,
          var4,
@@ -5568,19 +5907,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          ),
          "repair:open"
       );
-         this.setAction(
-            var5,
-            var4,
-            34,
-         this.button(
-            Material.BOOK,
-            "&eПомощь",
-            List.of(
-               "&7Короткая инструкция по покупке, PIN и выдаче."
-            )
-            ),
-            "help"
-         );
       this.setAction(
          var5,
          var4,
@@ -11375,7 +11701,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             CopiMineArtifacts.CatalogItem var8 = this.runtimeCatalogItem(var6);
             Integer var9 = var4.hasCustomModelData() ? var4.getCustomModelData() : null;
             boolean var10 = var8 != null && var8.customModelData() > 0 && !Objects.equals(var9, var8.customModelData());
-            boolean varStackOrMaterialMismatch = var8 == null || var1.getAmount() != 1 || var1.getType() != var8.material();
+            boolean varStackOrMaterialMismatch = var8 == null || var1.getAmount() != 1
+               || var1.getType() != var8.material();
             String var11 = (String)var5.get(this.keyOwnerUuid, PersistentDataType.STRING);
             String var12 = this.firstNonBlank(var11, "");
             CopiMineArtifacts.OfficialInstanceBinding var13 = this.instanceBindings.get(var7);
@@ -11392,6 +11719,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                && (!this.firstNonBlank(var16, "").isBlank() || !this.firstNonBlank(var17, "").isBlank())
                && (!"AR_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(var16, "")) || !"AR_SHOP".equalsIgnoreCase(this.firstNonBlank(var17, "")));
             if (this.provisionalDonationInstanceIds.contains(var7)) {
+               return null;
+            }
+            if (var2 != null && this.hasDuplicatePhysicalIdentity(var2, var7)) {
+               String duplicateKey = var2.getUniqueId() + ":" + var7 + ":duplicate-physical-identity";
+               if (this.suspiciousSeen.add(duplicateKey)) {
+                  this.runAsync(() -> this.logSuspicious(var2, var3, "duplicate physical artifact_unique_item_id=" + var7));
+               }
+               var2.sendMessage(this.color("&cПодозрительный предмет CopiMineArtifacts заблокирован: обнаружена физическая копия."));
                return null;
             }
             // instanceToItem.containsKey(uniqueItemId)
@@ -13859,6 +14194,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          case WEAPON -> "Боевые артефакты";
          case ARMOR -> "Защитные артефакты";
          case TOOL -> "Рабочие артефакты";
+         case NOTES -> "Записки";
          case RP -> "RP-предметы";
       };
    }
@@ -13868,6 +14204,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          case WEAPON -> "&7Оружие с короткими контролируемыми эффектами.";
          case ARMOR -> "&7Броня и экипировка для выживания.";
          case TOOL -> "&7Инструменты без vein-miner и массовых сканов.";
+         case NOTES -> "&7Записки и книги с рецептами.";
          case RP -> "&7Обычная RP-вкладка без активных товаров.";
       };
    }
@@ -13877,6 +14214,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          case WEAPON -> Material.NETHERITE_SWORD;
          case ARMOR -> Material.DIAMOND_CHESTPLATE;
          case TOOL -> Material.DIAMOND_PICKAXE;
+         case NOTES -> Material.WRITTEN_BOOK;
          case RP -> Material.NAME_TAG;
       };
    }
@@ -13904,6 +14242,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          List.of(
             "&7Кирки, топоры, лопаты и ремесло.",
             "&8Без массовых проверок мира."
+         )
+      );
+         case NOTES -> this.button(
+         Material.WRITTEN_BOOK,
+         "&eЗаписки",
+         List.of(
+            "&7Книги с рецептами и заметками."
          )
       );
          case RP -> this.button(
@@ -15223,6 +15568,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static record CombatProjectileState(UUID ownerUuid, Location lastLocation, double travelledBlocks) {
    }
 
+   private static record CombatProjectileIdentity(UUID ownerUuid, String itemId, String ability, String uniqueItemId) {
+   }
+
+   private static record RepairKitInteractionGuard(long tick, String key) {
+   }
+
    private static final class ReturnStoneChannel {
       final String uniqueItemId;
       final EquipmentSlot hand;
@@ -15262,6 +15613,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       WEAPON,
       ARMOR,
       TOOL,
+      NOTES,
       RP;
    }
 

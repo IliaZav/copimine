@@ -61,7 +61,7 @@ def recipe_tokens(item_id: str) -> list[str]:
 def test_every_recipe_with_ingredients_has_a_300_ar_written_book() -> None:
     for recipe_id, expected_tokens in EXPECTED_RECIPES.items():
         block = item_block(f"narcotic_recipe_{recipe_id}")
-        assert "category: TOOL" in block
+        assert "category: NOTES" in block
         assert "material: WRITTEN_BOOK" in block
         assert "source: AR_SHOP" in block
         assert "custom_model_data: 0" in block
@@ -87,6 +87,16 @@ def test_book_runtime_writes_two_pages_and_does_not_touch_brewing() -> None:
     assert "WRITTEN_BOOK" in CATALOG.read_text(encoding="utf-8")
     assert "public static BookData forItem" in book_data
     assert "pages().size()" not in source or "setPages(data.pages())" in source
+
+
+def test_book_data_loads_recipe_tokens_from_narcotics_config() -> None:
+    source = BOOK_DATA_SOURCE.read_text(encoding="utf-8")
+    artifacts_source = ARTIFACTS_SOURCE.read_text(encoding="utf-8")
+    assert "loadFromConfig" in source
+    assert "YamlConfiguration" in source
+    assert "getConfigurationSection(\"items\")" in source
+    assert "NarcoticRecipeBookData.loadFromConfig" in artifacts_source
+    assert "copimine-narcotics" in artifacts_source
 
 
 def test_all_recipe_keys_are_present_in_pure_book_data() -> None:

@@ -323,6 +323,19 @@ def build_stage() -> None:
         elif material == "compass":
             parent = "minecraft:item/generated"
             textures = {"layer0": "minecraft:item/compass_16"}
+        elif material == "crossbow":
+            # Vanilla 1.21.1 uses the standby sprite as the base state.  The
+            # previous generic item/{material} fallback referenced the
+            # nonexistent item/crossbow texture and made every vanilla
+            # crossbow render broken while preserving the state predicates.
+            parent = "minecraft:item/generated"
+            textures = {"layer0": "minecraft:item/crossbow_standby"}
+        elif material == "torch":
+            # A torch is a 3D block model in the vanilla hand/inventory, not
+            # a flat generated item icon.  Keep its model and append the
+            # infinite-torch CMD override below.
+            parent = "minecraft:block/torch"
+            textures = {}
         elif material == "blue_stained_glass_pane":
             # Minecraft 1.21.1 has no aggregate block model named
             # ``blue_stained_glass_pane``.  The vanilla item model is a flat
@@ -334,13 +347,15 @@ def build_stage() -> None:
         else:
             parent = "minecraft:item/generated"
             textures = {"layer0": f"minecraft:item/{material}"}
+        model_payload = {
+            "parent": parent,
+            "overrides": overrides,
+        }
+        if textures:
+            model_payload["textures"] = textures
         write_json(
             STAGE / "assets" / "minecraft" / "models" / "item" / f"{material}.json",
-            {
-                "parent": parent,
-                "textures": textures,
-                "overrides": overrides,
-            },
+            model_payload,
         )
 
     normalize_stage_text_files()

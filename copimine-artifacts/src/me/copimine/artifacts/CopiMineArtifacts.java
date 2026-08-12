@@ -198,11 +198,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
    private static final String GUI_BACK_LABEL = "&aНазад";
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
-   private static final int COMPASS_COOLDOWN_SECONDS = 10;
+   private static final int COMPASS_COOLDOWN_SECONDS = 15;
    private static final double AR_SWORD_ATTACK_DAMAGE = 12.5D;
-   private static final int PICKAXE_EFFICIENCY_LEVEL = 2;
-   private static final int HASTE_BURST_LONG_TICKS = 3600;
-   private static final int HASTE_MAX_AMPLIFIER = 255;
+   private static final int PICKAXE_EFFICIENCY_LEVEL = 5;
    private static final int EXPLOSIVE_CROSSBOW_FUSE_TICKS = 40;
    private static final long ANGEL_WINGS_FLIGHT_TICKS = AngelWingsFlightPolicy.FLIGHT_SECONDS * 20L;
    private static final int MAX_COBBLESTONE_TRAIL_BLOCKS = 256;
@@ -448,6 +446,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          setPriceCommand.setTabCompleter(this);
       }
       Bukkit.getPluginManager().registerEvents(this, this);
+      // The catalog and official-instance cache are loaded asynchronously
+      // before listeners are registered. Re-check players that were already
+      // online during a plugin reload, and give join-time inventory restores
+      // one delayed pass after every other join listener has finished.
+      this.normalizeOnlineArCombatItems();
+      Bukkit.getScheduler().runTaskLater(this, this::normalizeOnlineArCombatItems, 1L);
       this.registerExternalItemRemovalListener();
       this.deliveryTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPendingHints, 20L * 60L, 20L * 60L);
       this.sessionCleanupTask = Bukkit.getScheduler().runTaskTimer(this, this::cleanupExpiredSessions, 20L * 60L, 20L * 60L);
@@ -2658,6 +2662,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    public void onJoin(PlayerJoinEvent var1) {
       this.normalizeVanillaShieldItems(var1.getPlayer());
       this.normalizeExistingArCombatItems(var1.getPlayer());
+      Bukkit.getScheduler().runTaskLater(this, () -> {
+         if (var1.getPlayer().isOnline()) {
+            this.normalizeExistingArCombatItems(var1.getPlayer());
+         }
+      }, 20L);
       ItemStack queuedTotem = this.pendingInfiniteTotemRestores.get(var1.getPlayer().getUniqueId());
        if (queuedTotem != null) {
           Bukkit.getScheduler().runTaskLater(this, () -> this.restoreInfiniteTotem(var1.getPlayer(), queuedTotem), 5L);
@@ -3603,7 +3612,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             } else {
                boolean var10 = switch (var4) {
                   case "HASTE_BURST_LONG" -> {
-                     var2.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, HASTE_BURST_LONG_TICKS, HASTE_MAX_AMPLIFIER, false, false, true));
+                     // Keep the historical effect id for already issued
+                     // instances, but restore the intended vanilla mechanic:
+                     // the pickaxe itself carries maximum Efficiency instead
+                     // of granting a Haste potion effect.
+                     ItemStack pickaxe = var1.getItem();
+                     if (pickaxe != null && pickaxe.hasItemMeta()) {
+                        ItemMeta pickaxeMeta = pickaxe.getItemMeta();
+                        if (this.normalizeCustomPickaxeMeta(pickaxeMeta, var3)) {
+                           pickaxe.setItemMeta(pickaxeMeta);
+                        }
+                     }
                      var2.getWorld().spawnParticle(Particle.ENCHANT, var2.getLocation().add(0.0, 1.0, 0.0), 18, 0.45, 0.45, 0.45, 0.02);
                      yield true;
                   }
@@ -12495,9 +12514,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (meta == null || item == null || item.material() != Material.NETHERITE_PICKAXE) {
          return false;
       }
-      if ("HASTE_BURST_LONG".equalsIgnoreCase(item.effect())) {
-         return meta.hasEnchant(Enchantment.EFFICIENCY) && meta.removeEnchant(Enchantment.EFFICIENCY);
-      }
       if (meta.getEnchantLevel(Enchantment.EFFICIENCY) == PICKAXE_EFFICIENCY_LEVEL) {
          return false;
       }
@@ -12545,6 +12561,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       if (changed) {
          player.updateInventory();
+      }
+   }
+
+   private void normalizeOnlineArCombatItems() {
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         this.normalizeExistingArCombatItems(player);
       }
    }
 

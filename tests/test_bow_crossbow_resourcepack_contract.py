@@ -171,6 +171,7 @@ def test_explosive_crossbow_frames_preserve_vanilla_shape():
 def test_built_models_preserve_vanilla_states_and_zip_contains_new_assets():
     bow = model_json(STAGE / "assets" / "minecraft" / "models" / "item" / "bow.json")
     crossbow = model_json(STAGE / "assets" / "minecraft" / "models" / "item" / "crossbow.json")
+    torch = model_json(STAGE / "assets" / "minecraft" / "models" / "item" / "torch.json")
     written_book = model_json(STAGE / "assets" / "minecraft" / "models" / "item" / "written_book.json")
 
     assert_predicate(bow, {"pulling": 1}, "minecraft:item/bow_pulling_0")
@@ -181,6 +182,9 @@ def test_built_models_preserve_vanilla_states_and_zip_contains_new_assets():
     assert_predicate(crossbow, {"pulling": 1, "pull": 1}, "minecraft:item/crossbow_pulling_2")
     assert_predicate(crossbow, {"charged": 1}, "minecraft:item/crossbow_arrow")
     assert_predicate(crossbow, {"charged": 1, "firework": 1}, "minecraft:item/crossbow_firework")
+    assert crossbow["textures"]["layer0"] == "minecraft:item/crossbow_standby"
+    assert torch["parent"] == "minecraft:block/torch"
+    assert "textures" not in torch
     assert any(override.get("predicate", {}).get("custom_model_data") == 10014 for override in bow["overrides"])
     assert any(override.get("predicate", {}).get("custom_model_data") == 10016 for override in crossbow["overrides"])
     assert any(override.get("predicate", {}).get("custom_model_data") == 10017 for override in written_book["overrides"])

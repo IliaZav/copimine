@@ -29,6 +29,57 @@ DEFAULT_WORLD_SEED = "-1861153001556076901"
 RESOURCE_PACK_ZIP_TIMESTAMP = (2024, 1, 1, 0, 0, 0)
 RESOURCE_PACK_TEXT_SUFFIXES = {".json", ".mcmeta"}
 
+# These are the vanilla 1.21.1 transforms from the official bow/crossbow
+# item models.  Replacing the root model to add CustomModelData overrides
+# must not discard them: doing so makes the custom and vanilla weapons render
+# at the wrong angle/position in first- or third-person hands.
+VANILLA_ITEM_DISPLAY_TRANSFORMS = {
+    "bow": {
+        "thirdperson_righthand": {
+            "rotation": [-80, 260, -40],
+            "translation": [-1, -2, 2.5],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "thirdperson_lefthand": {
+            "rotation": [-80, -280, 40],
+            "translation": [-1, -2, 2.5],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "firstperson_righthand": {
+            "rotation": [0, -90, 25],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+        "firstperson_lefthand": {
+            "rotation": [0, 90, -25],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+    },
+    "crossbow": {
+        "thirdperson_righthand": {
+            "rotation": [-90, 0, -60],
+            "translation": [2, 0.1, -3],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "thirdperson_lefthand": {
+            "rotation": [-90, 0, 30],
+            "translation": [2, 0.1, -3],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "firstperson_righthand": {
+            "rotation": [-90, 0, -55],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+        "firstperson_lefthand": {
+            "rotation": [-90, 0, 35],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+    },
+}
+
 REQUIRED_SOURCE_FILES = [
     "pack.mcmeta",
     "assets/minecraft/font/default.json",
@@ -351,6 +402,8 @@ def build_stage() -> None:
             "parent": parent,
             "overrides": overrides,
         }
+        if material in VANILLA_ITEM_DISPLAY_TRANSFORMS:
+            model_payload["display"] = VANILLA_ITEM_DISPLAY_TRANSFORMS[material]
         if textures:
             model_payload["textures"] = textures
         write_json(

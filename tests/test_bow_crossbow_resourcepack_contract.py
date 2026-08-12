@@ -199,3 +199,35 @@ def test_built_models_preserve_vanilla_states_and_zip_contains_new_assets():
         assert "assets/copimine/textures/item/artifacts/teleport_bow_pulling_2.png" in names
         assert "assets/copimine/textures/item/artifacts/explosive_crossbow_charged_firework.png" in names
         assert "assets/copimine/textures/item/artifacts/recipe_note.png" in names
+
+
+def test_bow_and_crossbow_root_models_preserve_vanilla_hand_transforms():
+    expected = {
+        "bow": {
+            "firstperson_righthand": {
+                "rotation": [0, -90, 25],
+                "translation": [1.13, 3.2, 1.13],
+                "scale": [0.68, 0.68, 0.68],
+            },
+            "firstperson_lefthand": {
+                "rotation": [0, 90, -25],
+                "translation": [1.13, 3.2, 1.13],
+                "scale": [0.68, 0.68, 0.68],
+            },
+        },
+        "crossbow": {
+            "firstperson_righthand": {
+                "rotation": [-90, 0, -55],
+                "translation": [1.13, 3.2, 1.13],
+                "scale": [0.68, 0.68, 0.68],
+            },
+            "firstperson_lefthand": {
+                "rotation": [-90, 0, 35],
+                "translation": [1.13, 3.2, 1.13],
+                "scale": [0.68, 0.68, 0.68],
+            },
+        },
+    }
+    for material, transforms in expected.items():
+        model = model_json(STAGE / "assets" / "minecraft" / "models" / "item" / f"{material}.json")
+        assert {key: model.get("display", {}).get(key) for key in transforms} == transforms

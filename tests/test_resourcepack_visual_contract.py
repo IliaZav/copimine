@@ -35,6 +35,12 @@ class ResourcepackVisualContractTest(unittest.TestCase):
             with Image.open(TEXTURE_DIR / name) as image:
                 self.assertEqual(image.size, (32, 32), name)
 
+    def test_new_utility_item_textures_are_reproducible_32x32_assets(self) -> None:
+        names = ["repair_kit.png", "return_stone.png", "infinite_torch.png", "recipe_note.png"]
+        for name in names:
+            with Image.open(TEXTURE_DIR / name) as image:
+                self.assertEqual(image.size, (32, 32), name)
+
     def test_generator_recolors_vanilla_frames_and_keeps_animated_tnt(self) -> None:
         source = GENERATOR.read_text(encoding="utf-8")
         self.assertIn("load_vanilla_texture", source)

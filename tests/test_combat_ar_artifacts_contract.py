@@ -203,6 +203,54 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         ):
             self.assertIn(marker, source)
 
+    def test_cobblestone_trail_expires_only_tracked_cobblestone_blocks(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        require_all(
+            source,
+            "COBBLESTONE_TRAIL_LIFETIME_TICKS = 15 * 20",
+            "spawnedCobblestoneTrails",
+            "rememberSpawnedCobblestone",
+            "originalBlockData",
+            "expireSpawnedCobblestone",
+            "floor.getType() == Material.COBBLESTONE",
+            "tracked.originalBlockData()",
+            "this.spawnedCobblestoneTrails.remove(entry.getKey(), tracked)",
+            "onCobblestoneTrailBreak",
+            "onCobblestoneTrailPlace",
+            "onCobblestoneTrailPistonExtend",
+            "onCobblestoneTrailPistonRetract",
+            "onCobblestoneTrailFlow",
+            "onCobblestoneTrailPhysics",
+            "this.expireSpawnedCobblestone()",
+        )
+
+    def test_teleport_bow_and_compass_cooldowns_survive_relog(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        require_all(
+            source,
+            "keyTeleportBowCooldownUntil",
+            "keyCompassCooldownUntil",
+            'new NamespacedKey(this, "teleport_bow_cooldown_until")',
+            'new NamespacedKey(this, "compass_cooldown_until")',
+            "actionCooldownUntil(var2, var3)",
+            "storeActionCooldown(var2, var3",
+            "PersistentDataType.LONG",
+        )
+        shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
+        require_all(shot_handler, "actionCooldownUntil(var2, weapon)", "this.storeActionCooldown(")
+
+    def test_ar_shop_items_are_transferable_but_donation_items_remain_owner_bound(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        require_all(
+            source,
+            "private boolean isOwnerBoundGameplayItem",
+            "isDonationCatalogItem(itemId)",
+            "isAdminOnlyCatalogItem(itemId)",
+            "boolean ownerBound = this.isOwnerBoundGameplayItem(var6, var16, var17)",
+            "&& ownerBound && (",
+            "ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12)",
+        )
+
     def test_shot_cannot_consume_cooldown_without_a_projectile(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
@@ -212,6 +260,18 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         source = SOURCE.read_text(encoding="utf-8")
         safe_location = source[source.index("private Location findSafeProjectileLocation"):source.index("private void spawnExplosiveTnt")]
         require_all(safe_location, "world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)")
+
+    def test_teleport_bow_searches_a_safe_adjacent_space_when_arrow_hits_a_block(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        safe_location = source[source.index("private Location findSafeProjectileLocation"):source.index("private void spawnExplosiveTnt")]
+        require_all(
+            safe_location,
+            "for (int radius = 0; radius <= 3; radius++)",
+            "for (int dy = -2; dy <= 3; dy++)",
+            "for (int dx = -radius; dx <= radius; dx++)",
+            "for (int dz = -radius; dz <= radius; dz++)",
+            "this.isSafeCompassLocation(candidate)",
+        )
 
     def test_explosive_tnt_cannot_damage_its_owner(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")

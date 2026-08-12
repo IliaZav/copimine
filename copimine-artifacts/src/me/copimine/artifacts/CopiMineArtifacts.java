@@ -200,6 +200,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
    private static final int COMPASS_COOLDOWN_SECONDS = 200;
    private static final int TELEPORT_BOW_DEBUFF_TICKS = 100;
+   private static final long COBBLESTONE_TRAIL_LIFETIME_TICKS = 15 * 20;
    private static final double AR_SWORD_ATTACK_DAMAGE = 12.5D;
    private static final int PICKAXE_EFFICIENCY_LEVEL = 5;
    private static final int EXPLOSIVE_CROSSBOW_FUSE_TICKS = 40;
@@ -238,6 +239,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
    private final Map<UUID, CombatProjectileState> combatProjectiles = new ConcurrentHashMap<>();
    private final Map<UUID, PendingCobblestoneTrail> pendingCobblestoneTrails = new ConcurrentHashMap<>();
+   /** Only blocks placed by the cobblestone trail are eligible for expiry. */
+   private final Map<String, SpawnedCobblestoneTrail> spawnedCobblestoneTrails = new ConcurrentHashMap<>();
    /** Server-side admission record: PDC alone is never enough to authorize a hit. */
    private final Map<UUID, CombatProjectileIdentity> combatProjectileIdentities = new ConcurrentHashMap<>();
    private final Map<UUID, UUID> explosiveTntOwners = new ConcurrentHashMap<>();
@@ -305,6 +308,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyRepairKitUses;
    private NamespacedKey keyReturnStoneCooldownUntil;
    private NamespacedKey keyAngelWingsCooldownUntil;
+   private NamespacedKey keyTeleportBowCooldownUntil;
+   private NamespacedKey keyCompassCooldownUntil;
    private NamespacedKey attackDamageKey;
    private NamespacedKey visualEntityTypeKey;
    private NamespacedKey visualKindKey;
@@ -347,6 +352,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyRepairKitUses = new NamespacedKey(this, "repair_kit_uses");
       this.keyReturnStoneCooldownUntil = new NamespacedKey(this, "return_stone_cooldown_until");
       this.keyAngelWingsCooldownUntil = new NamespacedKey(this, "angel_wings_cooldown_until");
+      this.keyTeleportBowCooldownUntil = new NamespacedKey(this, "teleport_bow_cooldown_until");
+      this.keyCompassCooldownUntil = new NamespacedKey(this, "compass_cooldown_until");
       this.loadPendingInfiniteTorchRestores();
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
@@ -567,6 +574,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       // BlockData before the world is handed back to Bukkit.
       this.restorePendingMagmaBlocks();
       this.restoreAllTemporaryTraps();
+      this.expireSpawnedCobblestone(true);
       this.savePendingInfiniteTotemRestores();
       this.savePendingInfiniteTorchRestores();
       this.revokeAllAngelWingsFlight();
@@ -604,6 +612,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       this.combatProjectiles.clear();
       this.pendingCobblestoneTrails.clear();
+      this.spawnedCobblestoneTrails.clear();
       this.combatProjectileIdentities.clear();
       this.explosiveTntOwners.clear();
       this.explosiveShotWindows.clear();
@@ -3652,7 +3661,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var1.setUseItemInHand(Event.Result.DENY);
             var1.setUseInteractedBlock(Event.Result.DENY);
             long var6 = this.now();
-            long var8 = this.actionCooldowns.getOrDefault(this.actionCooldownKey(var2, var3), 0L);
+            long var8 = this.actionCooldownUntil(var2, var3);
             if ("ANGEL_WINGS".equals(var4)) {
                var8 = Math.max(
                      var8,
@@ -3706,7 +3715,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      : "ANGEL_WINGS".equals(var4)
                         ? AngelWingsFlightPolicy.COOLDOWN_SECONDS
                         : Math.max(1, var3.cooldownSeconds());
-                  this.actionCooldowns.put(this.actionCooldownKey(var2, var3), var6 + cooldownSeconds);
+                  this.storeActionCooldown(var2, var3, var6 + cooldownSeconds);
                   if ("ANGEL_WINGS".equals(var4)) {
                      var2.getPersistentDataContainer().set(
                            this.keyAngelWingsCooldownUntil,
@@ -4329,7 +4338,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                }
                String cooldownKey = this.actionCooldownKey(var2, weapon);
                long currentSecond = this.now();
-               long cooldownUntil = this.actionCooldowns.getOrDefault(cooldownKey, 0L);
+               long cooldownUntil = this.actionCooldownUntil(var2, weapon);
                boolean explosiveMultishot = "AR_EXPLOSIVE_CROSSBOW".equals(ability);
                CombatArtifactShotPolicy.Decision decision = CombatArtifactShotPolicy.decide(
                   currentSecond,
@@ -4350,8 +4359,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   this.explosiveShotWindows.remove(cooldownKey);
                }
                if (decision.startsShot()) {
-                  this.actionCooldowns.put(
-                     cooldownKey,
+                  this.storeActionCooldown(
+                     var2,
+                     weapon,
                      currentSecond + (long)Math.max(1, weapon.cooldownSeconds())
                   );
                }
@@ -4438,6 +4448,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return !(entity instanceof TNTPrimed tnt) || tnt.isDead() || !tnt.isValid();
       });
       this.drainCobblestoneTrailQueue();
+      this.expireSpawnedCobblestone();
    }
 
    @EventHandler(
@@ -4520,17 +4531,25 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             || !world.getWorldBorder().isInside(hit)) {
          return null;
       }
-      Vector retreat = projectile.getVelocity().clone();
-      if (retreat.lengthSquared() > 0.0001D) {
-         retreat.normalize().multiply(-0.75D);
-      } else {
-         retreat.zero();
-      }
-      for (int attempt = 0; attempt < 5; attempt++) {
-         Location candidate = hit.clone().add(retreat.clone().multiply(attempt));
-         if (world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)
-               && this.isSafeCompassLocation(candidate)) {
-            return candidate;
+      // An arrow that hits a wall or the ground is commonly inside a solid
+      // block. Searching only backwards along the arrow's velocity can leave
+      // every candidate inside that block. Search a small, deterministic
+      // volume around the hit and choose the first safe player-sized space.
+      int baseX = hit.getBlockX();
+      int baseY = hit.getBlockY();
+      int baseZ = hit.getBlockZ();
+      for (int radius = 0; radius <= 3; radius++) {
+         for (int dy = -2; dy <= 3; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+               for (int dz = -radius; dz <= radius; dz++) {
+                  Location candidate = new Location(world, baseX + dx + 0.5D, baseY + dy, baseZ + dz + 0.5D);
+                  if (world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)
+                        && world.getWorldBorder().isInside(candidate)
+                        && this.isSafeCompassLocation(candidate)) {
+                     return candidate;
+                  }
+               }
+            }
          }
       }
       return null;
@@ -4663,7 +4682,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       Block floor = world.getBlockAt(x, y, z);
-      if (!world.getWorldBorder().isInside(floor.getLocation()) || !floor.isReplaceable()
+      if (!world.getWorldBorder().isInside(floor.getLocation()) || floor.getType() == Material.COBBLESTONE
+            || !floor.isReplaceable()
             || floor.isLiquid() || this.shopsByLocation.containsKey(key)) {
          return;
       }
@@ -4679,7 +4699,132 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (place.isCancelled() || !place.canBuild()) {
          return;
       }
+      String originalBlockData = floor.getBlockData().getAsString();
       floor.setType(Material.COBBLESTONE, false);
+      if (floor.getType() == Material.COBBLESTONE) {
+         this.rememberSpawnedCobblestone(floor, originalBlockData);
+      }
+   }
+
+   private void rememberSpawnedCobblestone(Block block, String originalBlockData) {
+      if (block == null || block.getType() != Material.COBBLESTONE) {
+         return;
+      }
+      String key = this.blockKey(block.getLocation());
+      this.spawnedCobblestoneTrails.putIfAbsent(
+            key,
+            new SpawnedCobblestoneTrail(
+                  block.getLocation().clone(),
+                  this.firstNonBlank(originalBlockData, "minecraft:air"),
+                  (long)Bukkit.getCurrentTick() + COBBLESTONE_TRAIL_LIFETIME_TICKS
+            )
+      );
+   }
+
+   /** Remove only the exact trail blocks that are still cobblestone. */
+   private void expireSpawnedCobblestone() {
+      this.expireSpawnedCobblestone(false);
+   }
+
+   /** Remove only the exact trail blocks that are still cobblestone. */
+   private void expireSpawnedCobblestone(boolean force) {
+      long currentTick = Bukkit.getCurrentTick();
+      for (Map.Entry<String, SpawnedCobblestoneTrail> entry : this.spawnedCobblestoneTrails.entrySet()) {
+         SpawnedCobblestoneTrail tracked = entry.getValue();
+         if (!force && tracked.expiresAtTick() > currentTick) {
+            continue;
+         }
+         World world = tracked.location().getWorld();
+         if (world == null || !world.isChunkLoaded(
+               tracked.location().getBlockX() >> 4,
+               tracked.location().getBlockZ() >> 4
+         )) {
+            // Never load an old trail chunk from the cleanup task. It will be
+            // removed as soon as the chunk is naturally loaded again.
+            continue;
+         }
+         Block block = tracked.location().getBlock();
+         if (block.getType() == Material.COBBLESTONE) {
+            try {
+               block.setBlockData(Bukkit.createBlockData(tracked.originalBlockData()), false);
+            } catch (IllegalArgumentException ignored) {
+               block.setType(Material.AIR, false);
+            }
+         }
+         this.spawnedCobblestoneTrails.remove(entry.getKey(), tracked);
+      }
+   }
+
+   private void forgetSpawnedCobblestone(Block block) {
+      if (block != null) {
+         this.spawnedCobblestoneTrails.remove(this.blockKey(block.getLocation()));
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailBreak(BlockBreakEvent event) {
+      if (event != null && !event.isCancelled()) {
+         this.forgetSpawnedCobblestone(event.getBlock());
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailPlace(BlockPlaceEvent event) {
+      if (event != null && !event.isCancelled()) {
+         this.forgetSpawnedCobblestone(event.getBlock());
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailBlockExplode(BlockExplodeEvent event) {
+      if (event != null && !event.isCancelled()) {
+         for (Block block : event.blockList()) {
+            this.forgetSpawnedCobblestone(block);
+         }
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailEntityExplode(EntityExplodeEvent event) {
+      if (event != null && !event.isCancelled()) {
+         for (Block block : event.blockList()) {
+            this.forgetSpawnedCobblestone(block);
+         }
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailPistonExtend(BlockPistonExtendEvent event) {
+      if (event != null && !event.isCancelled()) {
+         for (Block block : event.getBlocks()) {
+            this.forgetSpawnedCobblestone(block);
+         }
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailPistonRetract(BlockPistonRetractEvent event) {
+      if (event != null && !event.isCancelled()) {
+         for (Block block : event.getBlocks()) {
+            this.forgetSpawnedCobblestone(block);
+         }
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailFlow(BlockFromToEvent event) {
+      if (event != null && !event.isCancelled()) {
+         this.forgetSpawnedCobblestone(event.getBlock());
+         this.forgetSpawnedCobblestone(event.getToBlock());
+      }
+   }
+
+   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+   public void onCobblestoneTrailPhysics(BlockPhysicsEvent event) {
+      if (event != null && !event.isCancelled()
+            && event.getBlock().getType() != Material.COBBLESTONE) {
+         this.forgetSpawnedCobblestone(event.getBlock());
+      }
    }
 
    @EventHandler(
@@ -12160,6 +12305,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          && !this.donationCatalogById.containsKey(itemId.toLowerCase(Locale.ROOT));
    }
 
+   /**
+    * AR shop items are ordinary transferable physical items. Donation and
+    * admin-only instances retain their owner binding; the database unique id,
+    * catalog material/model, and AR source/type still authenticate AR items.
+    */
+   private boolean isOwnerBoundGameplayItem(String itemId, String itemType, String source) {
+      return this.isDonationCatalogItem(itemId)
+            || this.isAdminOnlyCatalogItem(itemId)
+            || "DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(itemType, ""))
+            || "DONATION_SHOP".equalsIgnoreCase(this.firstNonBlank(source, ""));
+   }
+
    private boolean isAdminOnlyCatalogItem(String itemId) {
       return itemId != null && this.adminOnlyCatalogItems.contains(itemId.toLowerCase(Locale.ROOT));
    }
@@ -12314,17 +12471,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                || var1.getType() != var8.material();
             String var11 = (String)var5.get(this.keyOwnerUuid, PersistentDataType.STRING);
             String var12 = this.firstNonBlank(var11, "");
+            String var16 = (String)var5.get(this.keyItemType, PersistentDataType.STRING);
+            String var17 = (String)var5.get(this.keySource, PersistentDataType.STRING);
+            boolean ownerBound = this.isOwnerBoundGameplayItem(var6, var16, var17);
             CopiMineArtifacts.OfficialInstanceBinding var13 = this.instanceBindings.get(var7);
             if (var13 == null || !this.instanceToItem.containsKey(var7)) {
                this.ensureOfficialBindingAvailable(var1, var2, var3);
             }
             boolean var14 = var2 != null
-               && (
+               && ownerBound && (
                   !var12.equalsIgnoreCase(var2.getUniqueId().toString()) || var13 == null || !var13.ownerUuid().equalsIgnoreCase(var2.getUniqueId().toString())
                );
-            boolean var15 = var13 == null || !var13.itemId().equalsIgnoreCase(var6) || !var13.ownerUuid().equalsIgnoreCase(var12);
-            String var16 = (String)var5.get(this.keyItemType, PersistentDataType.STRING);
-            String var17 = (String)var5.get(this.keySource, PersistentDataType.STRING);
+            boolean var15 = var13 == null || !var13.itemId().equalsIgnoreCase(var6)
+               || ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12);
             boolean var18 = this.isDonationCatalogItem(var6)
                && (!"DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(var16, "")) || !"DONATION_SHOP".equalsIgnoreCase(this.firstNonBlank(var17, "")));
             boolean var19 = this.isArCatalogItem(var6)
@@ -15839,6 +15998,45 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return player.getUniqueId() + ":" + item.itemId();
    }
 
+   /**
+    * Read the in-memory cooldown and the player-persistent cooldown together.
+    * The persistent copy is needed for the two teleport artifacts: a relog or
+    * a plugin restart must not turn a 200-second cooldown into a free use.
+    */
+   private long actionCooldownUntil(Player player, CopiMineArtifacts.CatalogItem item) {
+      if (player == null || item == null) {
+         return 0L;
+      }
+      long cooldownUntil = this.actionCooldowns.getOrDefault(this.actionCooldownKey(player, item), 0L);
+      PersistentDataContainer data = player.getPersistentDataContainer();
+      if ("AR_CROSSBOW_TELEPORT".equalsIgnoreCase(item.effect())) {
+         cooldownUntil = Math.max(
+               cooldownUntil,
+               data.getOrDefault(this.keyTeleportBowCooldownUntil, PersistentDataType.LONG, 0L)
+         );
+      } else if ("LOOT_COMPASS".equalsIgnoreCase(item.effect())) {
+         cooldownUntil = Math.max(
+               cooldownUntil,
+               data.getOrDefault(this.keyCompassCooldownUntil, PersistentDataType.LONG, 0L)
+         );
+      }
+      return cooldownUntil;
+   }
+
+   private void storeActionCooldown(Player player, CopiMineArtifacts.CatalogItem item, long cooldownUntil) {
+      String key = this.actionCooldownKey(player, item);
+      if (key.isBlank() || player == null || item == null) {
+         return;
+      }
+      this.actionCooldowns.put(key, cooldownUntil);
+      PersistentDataContainer data = player.getPersistentDataContainer();
+      if ("AR_CROSSBOW_TELEPORT".equalsIgnoreCase(item.effect())) {
+         data.set(this.keyTeleportBowCooldownUntil, PersistentDataType.LONG, cooldownUntil);
+      } else if ("LOOT_COMPASS".equalsIgnoreCase(item.effect())) {
+         data.set(this.keyCompassCooldownUntil, PersistentDataType.LONG, cooldownUntil);
+      }
+   }
+
    private void sendCooldownMessage(Player player, CopiMineArtifacts.CatalogItem item, long cooldownUntil, long current) {
       long remaining = Math.max(1L, cooldownUntil - current);
       String itemName = this.firstNonBlank(item == null ? "" : item.name(), "Предмет");
@@ -16399,6 +16597,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private static record CombatProjectileIdentity(UUID ownerUuid, String itemId, String ability, String uniqueItemId) {
+   }
+
+   private static record SpawnedCobblestoneTrail(Location location, String originalBlockData, long expiresAtTick) {
    }
 
    private static final class PendingCobblestoneTrail {

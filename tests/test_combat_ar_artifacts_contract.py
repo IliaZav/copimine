@@ -239,17 +239,14 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
         require_all(shot_handler, "actionCooldownUntil(var2, weapon)", "this.storeActionCooldown(")
 
-    def test_ar_shop_items_are_transferable_but_donation_items_remain_owner_bound(self) -> None:
+    def test_official_items_keep_entitlement_identity_but_are_usable_by_current_holder(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
-        require_all(
-            source,
-            "private boolean isOwnerBoundGameplayItem",
-            "isDonationCatalogItem(itemId)",
-            "isAdminOnlyCatalogItem(itemId)",
-            "boolean ownerBound = this.isOwnerBoundGameplayItem(var6, var16, var17)",
-            "&& ownerBound && (",
-            "ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12)",
-        )
+        auth_start = source.index("private CopiMineArtifacts.CatalogItem authenticCatalogItem")
+        auth_body = source[auth_start:source.index("private void ensureOfficialBindingAvailable", auth_start)]
+        require_all(source, "keyOwnerUuid", "keyHolderUuid", 'artifact_holder_uuid')
+        require_all(auth_body, "var13.itemId()", "!var15", "!var18", "!var19")
+        self.assertNotIn("ownerBound && (", auth_body)
+        self.assertNotIn("ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12)", auth_body)
 
     def test_shot_cannot_consume_cooldown_without_a_projectile(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")

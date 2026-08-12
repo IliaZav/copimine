@@ -292,6 +292,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyCategory;
    private NamespacedKey keyRarity;
    private NamespacedKey keyOwnerUuid;
+   /**
+    * Current physical holder of an official item.  This is deliberately
+    * separate from keyOwnerUuid: the latter is the durable purchase/
+    * entitlement owner used by the reclaim and audit paths.
+    */
+   private NamespacedKey keyHolderUuid;
    private NamespacedKey keyOwnerName;
    private NamespacedKey keyPurchaseId;
    private NamespacedKey keyItemType;
@@ -336,6 +342,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyCategory = new NamespacedKey(this, "artifact_category");
       this.keyRarity = new NamespacedKey(this, "artifact_rarity");
       this.keyOwnerUuid = new NamespacedKey(this, "artifact_owner_uuid");
+      this.keyHolderUuid = new NamespacedKey(this, "artifact_holder_uuid");
       this.keyOwnerName = new NamespacedKey(this, "artifact_owner_name");
       this.keyPurchaseId = new NamespacedKey(this, "artifact_purchase_id");
       this.keyItemType = new NamespacedKey(this, "copimine_item_type");
@@ -1975,6 +1982,83 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    /**
+    * A dropped official artifact is a transferable physical item.  Keep the
+    * original purchase owner in artifact_owner_uuid for durable entitlement
+    * and reclaim accounting, but record the player who actually picked the
+    * item up as its current holder.  The update is deferred until after the
+    * vanilla pickup has completed so cancelled/protection-blocked pickups do
+    * not mutate the item or its ownership metadata.
+    */
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onOfficialArtifactPickup(EntityPickupItemEvent event) {
+      if (event == null || event.isCancelled() || !(event.getEntity() instanceof Player player)
+            || event.getItem() == null) {
+         return;
+      }
+      ItemStack pickedStack = event.getItem().getItemStack();
+      if (!this.isOfficialArtifactItem(pickedStack)) {
+         return;
+      }
+      String uniqueItemId = this.uniqueItemIdOf(pickedStack);
+      if (uniqueItemId.isBlank()) {
+         return;
+      }
+      Bukkit.getScheduler().runTask(this, () -> this.transferArtifactHolderAfterPickup(player, uniqueItemId));
+   }
+
+   /** Keep the current holder correct for old items that predate holder PDC. */
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onOfficialArtifactDrop(PlayerDropItemEvent event) {
+      if (event == null || event.isCancelled() || event.getPlayer() == null || event.getItemDrop() == null) {
+         return;
+      }
+      ItemStack dropped = event.getItemDrop().getItemStack();
+      if (!this.isOfficialArtifactItem(dropped)) {
+         return;
+      }
+      UUID holderUuid = event.getPlayer().getUniqueId();
+      Bukkit.getScheduler().runTask(this, () -> {
+         if (event.getItemDrop() != null && !event.getItemDrop().isDead()) {
+            this.setArtifactHolder(event.getItemDrop().getItemStack(), holderUuid);
+         }
+      });
+   }
+
+   private void transferArtifactHolderAfterPickup(Player player, String uniqueItemId) {
+      if (player == null || !player.isOnline() || this.keyHolderUuid == null || uniqueItemId.isBlank()) {
+         return;
+      }
+      PlayerInventory inventory = player.getInventory();
+      for (int slot = 0; slot < inventory.getSize(); slot++) {
+         ItemStack current = inventory.getItem(slot);
+         if (!uniqueItemId.equals(this.uniqueItemIdOf(current)) || current.getItemMeta() == null) {
+            continue;
+         }
+         this.setArtifactHolder(current, player.getUniqueId());
+         inventory.setItem(slot, current);
+         return;
+      }
+   }
+
+   private boolean setArtifactHolder(ItemStack stack, UUID holderUuid) {
+      if (stack == null || stack.getType() == Material.AIR || holderUuid == null
+            || this.keyHolderUuid == null || !stack.hasItemMeta()) {
+         return false;
+      }
+      ItemMeta meta = stack.getItemMeta();
+      if (meta == null) {
+         return false;
+      }
+      meta.getPersistentDataContainer().set(
+            this.keyHolderUuid,
+            PersistentDataType.STRING,
+            holderUuid.toString()
+      );
+      stack.setItemMeta(meta);
+      return true;
+   }
+
+   /**
     * A placeable donation material must not be usable as a world/block
     * storage bypass by somebody who picked it up from another player.  The
     * owner is left untouched; foreign copies are journaled and removed by
@@ -2383,7 +2467,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
          for (ItemStack var5 : var1.getDrops()) {
             CopiMineArtifacts.OfficialDonationRef var6 = this.officialDonationRef(var5);
-            if (var6 != null && var1.getEntity().getUniqueId().equals(var6.ownerUuid())) {
+            if (var6 != null && var1.getEntity().getUniqueId().equals(this.holderUuidOf(var5))) {
                var3.put(var6.uniqueItemId(), var6.itemId());
             }
          }
@@ -2423,7 +2507,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    )
    public void onPlayerItemBreak(PlayerItemBreakEvent var1) {
       CopiMineArtifacts.OfficialDonationRef var2 = this.officialDonationRef(var1.getBrokenItem());
-      if (var2 != null && var1.getPlayer().getUniqueId().equals(var2.ownerUuid())) {
+      if (var2 != null && var1.getPlayer().getUniqueId().equals(this.holderUuidOf(var1.getBrokenItem()))) {
          // This event is post-destruction on Paper.  Durability breaks are
          // terminal, not reclaimable losses: never mint a replacement for an
          // item that was intentionally exhausted.
@@ -4285,7 +4369,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       OfficialDonationRef ref = this.officialDonationRef(event.getItem());
-      if (ref == null || !event.getPlayer().getUniqueId().equals(ref.ownerUuid())) {
+      if (ref == null || !event.getPlayer().getUniqueId().equals(this.holderUuidOf(event.getItem()))) {
          return;
       }
       ItemMeta meta = event.getItem().getItemMeta();
@@ -11387,7 +11471,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private OfficialDonationRef foreignDonationRef(ItemStack stack, UUID actorUuid) {
       OfficialDonationRef ref = this.rawDonationIdentity(stack);
-      return ref != null && actorUuid != null && !actorUuid.equals(ref.ownerUuid()) ? ref : null;
+      UUID holderUuid = this.holderUuidOf(stack);
+      return ref != null && actorUuid != null && !actorUuid.equals(holderUuid) ? ref : null;
    }
 
    /**
@@ -11512,6 +11597,33 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
       return this.firstNonBlank(
             stack.getItemMeta().getPersistentDataContainer().get(this.keyUniqueItemId, PersistentDataType.STRING), "");
+   }
+
+   /**
+    * Resolve the current physical holder, with a legacy fallback for items
+    * created before artifact_holder_uuid was introduced.  The purchase owner
+    * remains the fallback and is never replaced in the item or database.
+    */
+   private UUID holderUuidOf(ItemStack stack) {
+      if (stack == null || stack.getType() == Material.AIR || !stack.hasItemMeta()
+            || stack.getItemMeta() == null) {
+         return null;
+      }
+      PersistentDataContainer pdc = stack.getItemMeta().getPersistentDataContainer();
+      String raw = this.firstNonBlank(
+            pdc.get(this.keyHolderUuid, PersistentDataType.STRING), "");
+      raw = this.firstNonBlank(
+            raw,
+            this.firstNonBlank(pdc.get(this.keyOwnerUuid, PersistentDataType.STRING), "")
+      );
+      if (raw.isBlank()) {
+         return null;
+      }
+      try {
+         return UUID.fromString(raw);
+      } catch (IllegalArgumentException invalidUuid) {
+         return null;
+      }
    }
 
    private boolean isProvisionalDonationItem(ItemStack stack) {
@@ -12305,18 +12417,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          && !this.donationCatalogById.containsKey(itemId.toLowerCase(Locale.ROOT));
    }
 
-   /**
-    * AR shop items are ordinary transferable physical items. Donation and
-    * admin-only instances retain their owner binding; the database unique id,
-    * catalog material/model, and AR source/type still authenticate AR items.
-    */
-   private boolean isOwnerBoundGameplayItem(String itemId, String itemType, String source) {
-      return this.isDonationCatalogItem(itemId)
-            || this.isAdminOnlyCatalogItem(itemId)
-            || "DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(itemType, ""))
-            || "DONATION_SHOP".equalsIgnoreCase(this.firstNonBlank(source, ""));
-   }
-
    private boolean isAdminOnlyCatalogItem(String itemId) {
       return itemId != null && this.adminOnlyCatalogItems.contains(itemId.toLowerCase(Locale.ROOT));
    }
@@ -12473,17 +12573,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             String var12 = this.firstNonBlank(var11, "");
             String var16 = (String)var5.get(this.keyItemType, PersistentDataType.STRING);
             String var17 = (String)var5.get(this.keySource, PersistentDataType.STRING);
-            boolean ownerBound = this.isOwnerBoundGameplayItem(var6, var16, var17);
             CopiMineArtifacts.OfficialInstanceBinding var13 = this.instanceBindings.get(var7);
             if (var13 == null || !this.instanceToItem.containsKey(var7)) {
                this.ensureOfficialBindingAvailable(var1, var2, var3);
             }
-            boolean var14 = var2 != null
-               && ownerBound && (
-                  !var12.equalsIgnoreCase(var2.getUniqueId().toString()) || var13 == null || !var13.ownerUuid().equalsIgnoreCase(var2.getUniqueId().toString())
-               );
-            boolean var15 = var13 == null || !var13.itemId().equalsIgnoreCase(var6)
-               || ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12);
+            boolean var15 = var13 == null
+               || !var13.itemId().equalsIgnoreCase(var6)
+               || !var13.ownerUuid().equalsIgnoreCase(var12);
             boolean var18 = this.isDonationCatalogItem(var6)
                && (!"DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(var16, "")) || !"DONATION_SHOP".equalsIgnoreCase(this.firstNonBlank(var17, "")));
             boolean var19 = this.isArCatalogItem(var6)
@@ -12501,7 +12597,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                return null;
             }
             // instanceToItem.containsKey(uniqueItemId)
-            if (var8 != null && this.instanceToItem.containsKey(var7) && !var15 && !var10 && !varStackOrMaterialMismatch && !var14 && !var18 && !var19) {
+            if (var8 != null && this.instanceToItem.containsKey(var7) && !var15 && !var10 && !varStackOrMaterialMismatch && !var18 && !var19) {
                if (legacyReturnStoneModel) {
                   this.normalizeLegacyReturnStoneModel(var1, var8);
                }
@@ -12614,8 +12710,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          var6.getPersistentDataContainer().set(this.keyItemId, PersistentDataType.STRING, var1.itemId());
          var6.getPersistentDataContainer().set(this.keyUniqueItemId, PersistentDataType.STRING, var2);
          var6.getPersistentDataContainer().set(this.keyCategory, PersistentDataType.STRING, var1.category().name());
-         var6.getPersistentDataContainer().set(this.keyRarity, PersistentDataType.STRING, var1.rarity());
+          var6.getPersistentDataContainer().set(this.keyRarity, PersistentDataType.STRING, var1.rarity());
           var6.getPersistentDataContainer().set(this.keyOwnerUuid, PersistentDataType.STRING, var3.toString());
+          var6.getPersistentDataContainer().set(this.keyHolderUuid, PersistentDataType.STRING, var3.toString());
           var6.getPersistentDataContainer().set(this.keyOwnerName, PersistentDataType.STRING, this.firstNonBlank(Bukkit.getOfflinePlayer(var3).getName(), ""));
           var6.getPersistentDataContainer().set(this.keyPurchaseId, PersistentDataType.STRING, var4);
           if ("REPAIR_KIT".equalsIgnoreCase(var1.effect())) {

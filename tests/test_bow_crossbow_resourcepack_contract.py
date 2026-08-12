@@ -231,3 +231,35 @@ def test_bow_and_crossbow_root_models_preserve_vanilla_hand_transforms():
     for material, transforms in expected.items():
         model = model_json(STAGE / "assets" / "minecraft" / "models" / "item" / f"{material}.json")
         assert {key: model.get("display", {}).get(key) for key in transforms} == transforms
+
+
+def test_custom_bow_states_are_self_contained_and_keep_vanilla_hand_transforms():
+    expected_display = {
+        "thirdperson_righthand": {
+            "rotation": [-80, 260, -40],
+            "translation": [-1, -2, 2.5],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "thirdperson_lefthand": {
+            "rotation": [-80, -280, 40],
+            "translation": [-1, -2, 2.5],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "firstperson_righthand": {
+            "rotation": [0, -90, 25],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+        "firstperson_lefthand": {
+            "rotation": [0, 90, -25],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+    }
+    for prefix in ("teleport_bow", "cobblestone_trail_bow"):
+        for suffix in ("", "_pulling_0", "_pulling_1", "_pulling_2"):
+            model = model_json(
+                STAGE / "assets" / "copimine" / "models" / "item" / "artifacts" / f"{prefix}{suffix}.json"
+            )
+            assert model["parent"] == "minecraft:item/generated"
+            assert model["display"] == expected_display

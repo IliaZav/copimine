@@ -198,7 +198,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
    private static final String GUI_BACK_LABEL = "&aНазад";
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
-   private static final int COMPASS_COOLDOWN_SECONDS = 15;
+   private static final int COMPASS_COOLDOWN_SECONDS = 200;
    private static final double AR_SWORD_ATTACK_DAMAGE = 12.5D;
    private static final int PICKAXE_EFFICIENCY_LEVEL = 5;
    private static final int EXPLOSIVE_CROSSBOW_FUSE_TICKS = 40;

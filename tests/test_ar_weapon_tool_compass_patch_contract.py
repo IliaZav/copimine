@@ -70,11 +70,13 @@ def test_custom_pickaxes_get_max_efficiency_without_haste():
     assert "effect: HASTE_BURST_LONG" in smena
 
 
-def test_compass_has_restored_fifteen_second_cooldown_and_no_negative_visual_effect():
+def test_compass_and_teleport_bow_use_200_second_cooldown_and_no_negative_visual_effect():
+    teleport_bow = _block(ITEMS, "  - id: combat_crossbow\n", "  - id: cobblestone_trail_bow\n")
     compass = _block(ITEMS, "    - item-id: gde_moy_lut_blyat_compass\n", "      lore:\n")
-    assert "cooldown-seconds: 15" in compass
+    assert "cooldown_seconds: 200" in teleport_bow
+    assert "cooldown-seconds: 200" in compass
     assert "visual-effect-id: \"\"" in compass
-    assert "COMPASS_COOLDOWN_SECONDS = 15" in SOURCE
+    assert "COMPASS_COOLDOWN_SECONDS = 200" in SOURCE
     interact = _block(SOURCE, "public void onArtifactInteract(PlayerInteractEvent", "public void onArtifactDefend")
     assert '"LOOT_COMPASS".equals(var4)' in interact
     assert '"LOOT_COMPASS".equals(var4)' in SOURCE

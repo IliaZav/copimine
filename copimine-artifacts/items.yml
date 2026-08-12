@@ -100,7 +100,7 @@ items:
     price_ar: 100
     supply_limit: 0
     per_player_limit: 3
-    cooldown_seconds: 15
+    cooldown_seconds: 200
     effect: AR_CROSSBOW_TELEPORT
     effect_chance_percent: 100
     visual_effect_id: ""
@@ -672,7 +672,7 @@ donation-catalog:
       consume-policy: PERSISTENT
       effect-profile-id: LOOT_COMPASS
       effect-description: "Телепортация по направлению взгляда"
-      cooldown-seconds: 15
+      cooldown-seconds: 200
       proc-chance: 1.0
       max-stack: 1
       repairable: false

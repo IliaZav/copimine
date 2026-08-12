@@ -12,7 +12,7 @@ function Require([string]$text, [string]$needle, [string]$message) {
 foreach ($marker in @(
     'id: combat_crossbow',
     'price_ar: 100',
-    'cooldown_seconds: 15',
+    'cooldown_seconds: 200',
     'effect: AR_CROSSBOW_TELEPORT',
     'id: cobblestone_trail_bow',
     'material: BOW',

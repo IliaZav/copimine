@@ -51,7 +51,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             'name: "&dЛук телепортации"',
             "rarity: EPIC",
             "price_ar: 100",
-            "cooldown_seconds: 15",
+            "cooldown_seconds: 200",
             "effect: AR_CROSSBOW_TELEPORT",
             "custom_model_data: 10014",
         )

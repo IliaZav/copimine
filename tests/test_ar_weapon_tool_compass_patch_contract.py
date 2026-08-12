@@ -82,3 +82,22 @@ def test_compass_and_teleport_bow_use_200_second_cooldown_and_no_negative_visual
     assert '"LOOT_COMPASS".equals(var4)' in SOURCE
     assert "visualEffects.applyTo" in SOURCE
     assert "!\"LOOT_COMPASS\".equalsIgnoreCase(var4)" in SOURCE
+
+
+def test_teleport_bow_applies_five_second_slowness_and_darkness_but_compass_does_not():
+    teleport_body = _block(
+        SOURCE,
+        "private void teleportOwnerToProjectileHit(Player owner, Projectile projectile)",
+        "private Location findSafeProjectileLocation(Projectile projectile)",
+    )
+    compass_body = _block(
+        SOURCE,
+        "private boolean activateLootCompass(Player player, ItemStack ignored)",
+        "private double compassTeleportDistance(Player player)",
+    )
+
+    assert "TELEPORT_BOW_DEBUFF_TICKS = 100" in SOURCE
+    assert "PotionEffectType.SLOWNESS, TELEPORT_BOW_DEBUFF_TICKS" in teleport_body
+    assert "PotionEffectType.DARKNESS, TELEPORT_BOW_DEBUFF_TICKS" in teleport_body
+    assert "owner.teleport(safe)" in teleport_body
+    assert "addPotionEffect" not in compass_body

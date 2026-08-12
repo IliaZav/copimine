@@ -185,9 +185,9 @@ def test_foreign_donation_pickup_is_quarantined_before_storage_or_duplication():
     assert "this.quarantineForeignDonation(event.getPlayer(), ref, \"foreign-drop\");" in drop
 
 
-def test_artifact_compass_is_explicit_teleport_item_with_restored_fifteen_second_cooldown():
+def test_artifact_compass_is_explicit_teleport_item_with_200_second_cooldown():
     assert "КОМПАС ТЕЛЕПОРТАЦИИ" in ITEMS.upper()
-    assert "cooldown-seconds: 15" in ITEMS
+    assert "cooldown-seconds: 200" in ITEMS
     assert "getViewDistance" in ARTIFACTS or "view-distance" in ARTIFACTS
     assert "MAX_COMPASS_TELEPORT_DISTANCE" in ARTIFACTS
 

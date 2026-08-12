@@ -263,3 +263,35 @@ def test_custom_bow_states_are_self_contained_and_keep_vanilla_hand_transforms()
             )
             assert model["parent"] == "minecraft:item/generated"
             assert model["display"] == expected_display
+
+
+def test_custom_explosive_crossbow_states_are_self_contained_including_full_charge():
+    expected_display = {
+        "thirdperson_righthand": {
+            "rotation": [-90, 0, -60],
+            "translation": [2, 0.1, -3],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "thirdperson_lefthand": {
+            "rotation": [-90, 0, 30],
+            "translation": [2, 0.1, -3],
+            "scale": [0.9, 0.9, 0.9],
+        },
+        "firstperson_righthand": {
+            "rotation": [-90, 0, -55],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+        "firstperson_lefthand": {
+            "rotation": [-90, 0, 35],
+            "translation": [1.13, 3.2, 1.13],
+            "scale": [0.68, 0.68, 0.68],
+        },
+    }
+    for suffix in ("", "_pulling_0", "_pulling_1", "_pulling_2", "_charged", "_charged_firework"):
+        model = model_json(
+            SRC / "assets" / "copimine" / "models" / "item" / "artifacts" / f"explosive_crossbow{suffix}.json"
+        )
+        assert model["parent"] == "minecraft:item/generated"
+        assert model["display"] == expected_display
+        assert model["textures"]["layer0"].startswith("copimine:item/artifacts/explosive_crossbow")

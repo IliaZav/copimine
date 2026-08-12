@@ -316,6 +316,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private BukkitTask donationOwnershipSweepTask;
    private BukkitTask shopAnchorGuardTask;
    private BukkitTask combatProjectileTask;
+   private BukkitTask arCombatNormalizationTask;
    /** Monotonic catalog generation used to invalidate stale purchase screens. */
    private long catalogGeneration = 1L;
 
@@ -458,6 +459,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.artifactEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickPozdnyakovAce, 10L, 10L);
       this.armorEffectTask = Bukkit.getScheduler().runTaskTimer(this, this::tickEquippedArmor, 1L, 20L);
       this.combatProjectileTask = Bukkit.getScheduler().runTaskTimer(this, this::tickCombatProjectiles, 2L, 2L);
+      // Existing AR swords may already be in an online player's inventory
+      // when the plugin is patched. Re-check only visible player inventory
+      // slots once per second so their tooltip and combat metadata converge
+      // without repeatedly scanning ender chests on the server tick.
+      this.arCombatNormalizationTask = Bukkit.getScheduler().runTaskTimer(
+            this, this::normalizeOnlineVisibleArCombatItems, 20L, 20L);
       // A pickup/inventory event is the fast path.  This low-cost sweep is
       // the restart/third-party-plugin safety net for foreign copies.
       // Custom shop items are ordinary transferable stacks.  The historical
@@ -590,6 +597,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       if (this.combatProjectileTask != null) {
          this.combatProjectileTask.cancel();
+      }
+      if (this.arCombatNormalizationTask != null) {
+         this.arCombatNormalizationTask.cancel();
       }
       this.combatProjectiles.clear();
       this.pendingCobblestoneTrails.clear();
@@ -1821,6 +1831,57 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
       // Catalog items use the ordinary Bukkit drag/split rules everywhere.
+   }
+
+   /**
+    * Re-apply combat metadata after a player opens or transports an existing
+    * artifact.  A sword can predate the 12.5-damage migration, and a tooltip
+    * is rendered from the current ItemStack rather than from the catalog.
+    */
+   private void scheduleArCombatNormalization(Player player) {
+      if (player == null) {
+         return;
+      }
+      Bukkit.getScheduler().runTask(this, () -> {
+         if (player.isOnline()) {
+            this.normalizeExistingArCombatItems(player);
+         }
+      });
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onArCombatInventoryOpen(InventoryOpenEvent event) {
+      if (event != null && event.getPlayer() instanceof Player player) {
+         this.scheduleArCombatNormalization(player);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onArCombatInventoryClick(InventoryClickEvent event) {
+      if (event != null && event.getWhoClicked() instanceof Player player) {
+         this.scheduleArCombatNormalization(player);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onArCombatInventoryDrag(InventoryDragEvent event) {
+      if (event != null && event.getWhoClicked() instanceof Player player) {
+         this.scheduleArCombatNormalization(player);
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onArCombatItemHeld(PlayerItemHeldEvent event) {
+      if (event != null) {
+         this.scheduleArCombatNormalization(event.getPlayer());
+      }
+   }
+
+   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+   public void onArCombatSwapHands(PlayerSwapHandItemsEvent event) {
+      if (event != null) {
+         this.scheduleArCombatNormalization(event.getPlayer());
+      }
    }
 
    @EventHandler(
@@ -12523,6 +12584,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private void normalizeExistingArCombatItems(Player player) {
+      this.normalizeExistingArCombatItems(player, true);
+   }
+
+   private void normalizeExistingArCombatItems(Player player, boolean includeEnderChest) {
       if (player == null) {
          return;
       }
@@ -12551,12 +12616,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          inventory.setItemInOffHand(offhand);
          changed = true;
       }
-      Inventory enderChest = player.getEnderChest();
-      ItemStack[] ender = enderChest.getContents();
-      for (int index = 0; index < ender.length; index++) {
-         if (this.normalizeExistingArCombatItem(ender[index])) {
-            enderChest.setItem(index, ender[index]);
-            changed = true;
+      if (includeEnderChest) {
+         Inventory enderChest = player.getEnderChest();
+         ItemStack[] ender = enderChest.getContents();
+         for (int index = 0; index < ender.length; index++) {
+            if (this.normalizeExistingArCombatItem(ender[index])) {
+               enderChest.setItem(index, ender[index]);
+               changed = true;
+            }
          }
       }
       if (changed) {
@@ -12567,6 +12634,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private void normalizeOnlineArCombatItems() {
       for (Player player : Bukkit.getOnlinePlayers()) {
          this.normalizeExistingArCombatItems(player);
+      }
+   }
+
+   private void normalizeOnlineVisibleArCombatItems() {
+      for (Player player : Bukkit.getOnlinePlayers()) {
+         this.normalizeExistingArCombatItems(player, false);
       }
    }
 

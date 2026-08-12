@@ -48,6 +48,19 @@ def test_existing_ar_combat_items_are_rechecked_after_async_catalog_initializati
     assert "runTaskLater" in join
 
 
+def test_existing_ar_swords_are_normalized_after_inventory_transport_and_hand_changes():
+    assert "scheduleArCombatNormalization" in SOURCE
+    for handler in (
+        "onArCombatInventoryOpen(InventoryOpenEvent event)",
+        "onArCombatInventoryClick(InventoryClickEvent event)",
+        "onArCombatInventoryDrag(InventoryDragEvent event)",
+        "onArCombatItemHeld(PlayerItemHeldEvent event)",
+        "onArCombatSwapHands(PlayerSwapHandItemsEvent event)",
+    ):
+        assert handler in SOURCE
+    assert "normalizeExistingArCombatItems(player)" in SOURCE
+
+
 def test_custom_pickaxes_get_max_efficiency_without_haste():
     assert "PICKAXE_EFFICIENCY_LEVEL = 5" in SOURCE
     assert "Enchantment.EFFICIENCY, PICKAXE_EFFICIENCY_LEVEL" in SOURCE

@@ -535,7 +535,7 @@ $serverReleaseJars = @(
     'minecraft\server\plugins\SeeMore-1.0.2.jar',
     'minecraft\server\plugins\TAB.v6.0.1.jar',
     'minecraft\server\plugins\Vault.jar',
-    'minecraft\server\plugins\voicechat-bukkit-2.6.11.jar',
+    'minecraft\server\plugins\voicechat-bukkit-2.6.16.jar',
     'minecraft\server\plugins\worldedit-bukkit-7.3.9.jar',
     'minecraft\server\plugins\worldguard-bukkit-7.0.12-dist.jar',
     # Paper's plugin.yml libraries are resolved through its local Maven cache.
